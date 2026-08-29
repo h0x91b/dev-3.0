@@ -155,12 +155,14 @@ function renderTurn(
 }
 
 /** The first thing the user asked for, verbatim. Null when the session opened
- *  with an agent-written prompt (a compacted resume) or with no prose at all. */
+ *  with an agent-written prompt (a compacted resume) or with no prose at all.
+ *  Codex opens almost every session with injected context in the `user` role —
+ *  skipped here, or every Codex import would be titled after its AGENTS.md. */
 export function firstUserRequest(parsed: ParsedConversation): string | null {
 	for (const turn of parsed.turns) {
 		if (turn.trigger !== "user") continue;
 		const opener = turn.events.find((event) => event.kind === "message" && event.role === "user");
-		if (opener?.meta?.compactSummary === true) continue;
+		if (opener?.meta?.compactSummary === true || opener?.meta?.injected === true) continue;
 		const text = turn.userText?.trim();
 		if (text) return text;
 	}

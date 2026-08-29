@@ -4569,9 +4569,9 @@ export type AppRPCSchema = {
 				response: ConversationMatch[];
 			};
 			/**
-			 * Claude Code conversations that ran in this project's directory and
-			 * belong to no dev3 task. Read-only: nothing is created and a decline is
-			 * not recorded, so the same list comes back next time.
+			 * Claude Code and Codex conversations that ran in this project's directory
+			 * and belong to no dev3 task. Read-only: nothing is created and a decline
+			 * is not recorded, so the same list comes back next time.
 			 */
 			scanImportableConversations: {
 				params: { projectId: string };

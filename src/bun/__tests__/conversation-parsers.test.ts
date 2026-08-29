@@ -265,6 +265,25 @@ describe("parseCodexTranscript", () => {
 		expect(parsed.fidelity.warnings.join(" ")).toContain("encrypted");
 	});
 
+	// The context Codex injects into the `user` role is history, so it is kept —
+	// but it is not somebody speaking, and nothing may quote it as the request.
+	it("marks Codex's own injected context, and leaves real user prose alone", () => {
+		const injected = {
+			type: "response_item",
+			payload: {
+				type: "message",
+				role: "user",
+				id: "m0",
+				content: [{ type: "input_text", text: "# AGENTS.md instructions for /w" }],
+			},
+		};
+		const parsed = parseCodexTranscript(jsonl(injected, codexUserItem), "/r.jsonl");
+		const messages = ev(parsed).filter((e) => e.kind === "message");
+		expect(messages).toHaveLength(2);
+		expect(messages[0].meta).toMatchObject({ injected: true });
+		expect(messages[1].meta?.injected).toBeUndefined();
+	});
+
 	it("keeps an unmapped response item and reports it", () => {
 		const parsed = parseCodexTranscript(
 			jsonl({ type: "response_item", payload: { type: "brand_new_item", id: "x1" } }),

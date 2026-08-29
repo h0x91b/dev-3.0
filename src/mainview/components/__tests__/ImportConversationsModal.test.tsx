@@ -34,6 +34,7 @@ const project = { id: "p1", name: "dev-3.0", path: "/code/dev-3.0" } as Project;
 
 function conversation(over: Partial<ImportableConversationView> = {}): ImportableConversationView {
 	return {
+		source: "claude",
 		sessionId: "sess-1",
 		title: "Fix the parser",
 		workingDir: "/code/dev-3.0",
@@ -77,6 +78,32 @@ describe("ImportConversationsModal", () => {
 		expect(screen.getByTestId("import-conversations-list")).toBeInTheDocument();
 		expect(screen.getByTestId("import-conversation-sess-1")).toBeChecked();
 		expect(screen.getByTestId("import-conversation-sess-2")).toBeChecked();
+	});
+
+	it("names the agent behind each row, so a mixed list is not one undifferentiated pile", async () => {
+		const user = userEvent.setup();
+		mocks.scan.mockResolvedValue({
+			conversations: [conversation(), conversation({ source: "codex", sessionId: "sess-2", title: "Second" })],
+		});
+		renderModal();
+
+		await user.click(await screen.findByTestId("import-conversations-partial"));
+		expect(screen.getByText("Claude Code")).toBeInTheDocument();
+		expect(screen.getByText("Codex")).toBeInTheDocument();
+	});
+
+	// Codex writes no title of its own, so a Codex row is named after the first
+	// request. A list of Claude rows must not explain that.
+	it("explains the Codex titles only when the list actually holds a Codex row", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.click(await screen.findByTestId("import-conversations-partial"));
+		expect(screen.queryByTestId("import-conversations-codex-note")).not.toBeInTheDocument();
+
+		mocks.scan.mockResolvedValue({ conversations: [conversation({ source: "codex" })] });
+		renderModal();
+		await user.click((await screen.findAllByTestId("import-conversations-partial"))[1]);
+		expect(screen.getAllByTestId("import-conversations-codex-note").length).toBeGreaterThan(0);
 	});
 
 	it("imports everything the scan found when the default is left alone", async () => {

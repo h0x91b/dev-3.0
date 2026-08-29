@@ -14,7 +14,7 @@ import { renderHandoff } from "../../shared/conversation-render";
 import { resolveDev3Home } from "../../shared/dev3-home";
 import { resolveUserHome } from "../../shared/user-home";
 import { scanImportableConversations } from "../../bun/conversation-import";
-import type { ImportConversationsResult } from "../../shared/conversation-import-model";
+import { CONVERSATION_SOURCE_LABELS, type ImportConversationsResult } from "../../shared/conversation-import-model";
 import { sendRequest } from "../socket-client";
 import { DEFAULT_DUMP_BUDGET, type DumpBudget } from "../../shared/conversation-dump";
 import { atomicWriteFile } from "../../bun/atomic-write";
@@ -285,7 +285,7 @@ async function handoffCmd(args: ParsedArgs): Promise<void> {
 }
 
 /**
- * Import the Claude Code conversations that ran in this project's directory and
+ * Import the Claude Code and Codex conversations that ran in this project's directory and
  * belong to no dev3 task.
  *
  * `--dry-run` answers entirely from local files — the same scan the app runs, so
@@ -326,14 +326,15 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 			return;
 		}
 		if (selected.length === 0) {
-			process.stdout.write("No importable Claude Code conversations for this project.\n");
+			process.stdout.write("No importable conversations for this project.\n");
 			return;
 		}
 		process.stdout.write(`${selected.length} conversation(s) would be imported (nothing was created):\n\n`);
 		printTable(
-			["SESSION", "LAST ACTIVE", "TURNS", "COLUMN", "TITLE"],
+			["SESSION", "AGENT", "LAST ACTIVE", "TURNS", "COLUMN", "TITLE"],
 			selected.map((c) => [
 				c.sessionId.slice(0, 8),
+				CONVERSATION_SOURCE_LABELS[c.source],
 				new Date(c.lastActivityMs).toISOString().slice(0, 16).replace("T", " "),
 				String(c.turns),
 				c.targetStatus === "user-questions" ? "Has Questions" : "Completed",
@@ -347,7 +348,7 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 		exitError("dev3 must be running to import conversations. Use --dry-run to inspect the list without it.");
 	}
 	if (selected.length === 0) {
-		process.stdout.write("No importable Claude Code conversations for this project.\n");
+		process.stdout.write("No importable conversations for this project.\n");
 		return;
 	}
 

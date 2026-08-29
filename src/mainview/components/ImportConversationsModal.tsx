@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Project } from "../../shared/types";
 import { STATUS_COLORS } from "../../shared/types";
-import type { ImportableConversationView } from "../../shared/conversation-import-model";
+import { CONVERSATION_SOURCE_LABELS, type ImportableConversationView } from "../../shared/conversation-import-model";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -196,11 +196,16 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 											/>
 											<span className="min-w-0 flex-1">
 												<span className="block text-fg text-sm truncate">{c.title}</span>
-												<span className="block text-fg-muted text-xs mt-0.5">
-													{t("importConversations.rowMeta", {
-														age: compactAge(new Date(c.lastActivityMs).toISOString()),
-														turns: String(c.turns),
-													})}
+												<span className="flex items-center gap-1.5 text-fg-muted text-xs mt-0.5">
+													<span className="px-1.5 py-px rounded bg-raised text-fg-3 whitespace-nowrap">
+														{CONVERSATION_SOURCE_LABELS[c.source]}
+													</span>
+													<span className="truncate">
+														{t("importConversations.rowMeta", {
+															age: compactAge(new Date(c.lastActivityMs).toISOString()),
+															turns: String(c.turns),
+														})}
+													</span>
 												</span>
 											</span>
 											<span
@@ -219,6 +224,12 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 						)}
 
 						<p className="text-fg-muted text-xs leading-5">{t("importConversations.hint")}</p>
+						{/* Only where it applies: a list of Claude rows should not explain Codex. */}
+						{conversations.some((c) => c.source === "codex") && (
+							<p className="text-fg-muted text-xs leading-5" data-testid="import-conversations-codex-note">
+								{t("importConversations.codexNote")}
+							</p>
+						)}
 					</div>
 				)}
 

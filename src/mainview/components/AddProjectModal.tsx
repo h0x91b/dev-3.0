@@ -20,7 +20,7 @@ interface AddProjectModalProps {
 	initialSpaceIds?: string[];
 	/**
 	 * The git projects this dialog just added, reported once it is done. dev3
-	 * offers to import the Claude Code conversations that already ran in them.
+	 * offers to import the agent conversations that already ran in them.
 	 */
 	onGitProjectsAdded?: (projects: Project[]) => void;
 }

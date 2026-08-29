@@ -84,6 +84,7 @@ function conversation(over: Partial<ImportableConversation> = {}): ImportableCon
 	const path = over.transcriptPath ?? `/store/${over.sessionId ?? "sess-1"}.jsonl`;
 	FIXTURES.set(path, transcript("Please fix the parser", "Fixed it, tests pass."));
 	return {
+		source: "claude",
 		sessionId: "sess-1",
 		title: "Fix the parser",
 		workingDir: "/code/dev-3.0",
@@ -140,6 +141,7 @@ describe("scanImportableConversations", () => {
 		mocks.scanImportableConversations.mockReturnValue([conversation()]);
 		const result = await conversationImportHandlers.scanImportableConversations({ projectId: "p1" });
 		expect(result.conversations).toEqual([{
+			source: "claude",
 			sessionId: "sess-1",
 			title: "Fix the parser",
 			workingDir: "/code/dev-3.0",

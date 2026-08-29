@@ -5,6 +5,7 @@ import * as repoConfig from "../repo-config";
 import { parseTranscriptFile } from "../conversation-parse";
 import { scanImportableConversations, type ImportableConversation } from "../conversation-import";
 import {
+	CONVERSATION_SOURCE_LABELS,
 	IMPORTED_LABEL_NAME,
 	type ImportConversationsResult,
 	type ImportableConversationView,
@@ -13,8 +14,8 @@ import { firstUserRequest, renderImportedDescription } from "../../shared/conver
 import { getPushMessage, log } from "./shared";
 
 /**
- * Turning the Claude Code conversations that ran in a project's own directory
- * into ordinary dev3 tasks.
+ * Turning the Claude Code and Codex conversations that ran in a project's own
+ * directory into ordinary dev3 tasks.
  *
  * "Ordinary" is the whole design: after the import a task carries a title, a
  * description, a label and (when the work is recent) a worktree, and nothing
@@ -24,6 +25,7 @@ import { getPushMessage, log } from "./shared";
 
 function toView(conversation: ImportableConversation): ImportableConversationView {
 	return {
+		source: conversation.source,
 		sessionId: conversation.sessionId,
 		title: conversation.title,
 		workingDir: conversation.workingDir,
@@ -79,7 +81,8 @@ async function ensureImportedLabel(projectId: string): Promise<Label> {
 function overviewFor(conversation: ImportableConversation, firstLine: string): string {
 	const when = new Date(conversation.lastActivityMs).toISOString().slice(0, 10);
 	const head = firstLine.replace(/\s+/g, " ").trim().slice(0, 220);
-	return `Imported Claude Code conversation (${conversation.turns} turns, last active ${when}).${head ? ` ${head}` : ""}`;
+	const agent = CONVERSATION_SOURCE_LABELS[conversation.source];
+	return `Imported ${agent} conversation (${conversation.turns} turns, last active ${when}).${head ? ` ${head}` : ""}`;
 }
 
 /**
@@ -99,7 +102,7 @@ async function importOne(
 	labelId: string,
 	problems: { title: string; error: string }[],
 ): Promise<Task> {
-	const parsed = parseTranscriptFile(conversation.transcriptPath, "claude");
+	const parsed = parseTranscriptFile(conversation.transcriptPath, conversation.source);
 	if (!parsed) throw new Error(`Could not parse ${conversation.transcriptPath}`);
 	const description = renderImportedDescription(parsed);
 	const recent = conversation.targetStatus === "user-questions";

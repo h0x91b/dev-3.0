@@ -357,7 +357,7 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "import",
 				usage: "dev3 conversations import [--project <id>] [--dry-run] [--sessions <id,id>] [--json]",
-				summary: "Turn Claude Code conversations that ran in this project's directory into tasks.",
+				summary: "Turn Claude Code and Codex conversations that ran in this project's directory into tasks.",
 				details: [
 					"Only conversations that belong to no dev3 task are offered, and an already",
 					"imported one is never offered again. Work from the last week lands in Has",

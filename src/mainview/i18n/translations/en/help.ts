@@ -191,7 +191,7 @@ const help = {
 		"Point dev3 at a local git repo, clone a remote first, or create an Operations board — a virtual project whose tasks run agents in managed folders, without git.",
 	"help.modal.importConversations.title": "Import conversations",
 	"help.modal.importConversations.body":
-		"Claude Code conversations that ran in this project's folder outside dev3 become ordinary tasks: Claude's own title, a retelling of the conversation as the description, and the `imported` label. Work from the last week keeps a worktree; older work lands in Completed.",
+		"Claude Code and Codex conversations that ran in this project's folder outside dev3 become ordinary tasks: a title, a retelling of the conversation as the description, and the `imported` label. Claude names its own conversations; a Codex one is named after the first request. Work from the last week keeps a worktree; older work lands in Completed.",
 	"help.modal.spawnAgent.title": "Spawn an agent",
 	"help.modal.spawnAgent.body":
 		"Drop a second agent into this task's existing session — same worktree, same terminal. Useful to hand off to a different model or run a helper alongside the main agent.",

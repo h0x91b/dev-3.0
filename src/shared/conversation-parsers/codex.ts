@@ -38,6 +38,53 @@ import type { ParseConversationOptions } from "./types";
 /** UI events whose content is already covered by a `response_item`. */
 const DUPLICATE_EVENTS = new Set(["user_message", "agent_message", "agent_reasoning"]);
 
+/**
+ * Blocks Codex writes into the `user` role itself: environment, skills, images,
+ * an aborted turn, the AGENTS.md preamble. They are part of the model-facing
+ * history and are kept, but they are not somebody speaking, so anything counting
+ * or quoting the human's own requests must skip them.
+ *
+ * The list is explicit rather than "any leading tag" on purpose. `<dev3-ai-message>`
+ * is agent-to-agent traffic that a person's board really did send, and a blanket
+ * tag rule misclassified 686 of those across this machine's 826 rollouts.
+ * Measured against Codex's own `event_msg`/`user_message` stream — which is
+ * exactly what the UI showed as user input — the list below agrees on 99.8% of
+ * 6 159 messages.
+ */
+const INJECTED_USER_TAGS = new Set([
+	"app-context",
+	"environment_context",
+	"image",
+	"in-app-browser-context",
+	"multi_agent_mode",
+	"permissions instructions",
+	"recommended_plugins",
+	"skill",
+	"subagent_notification",
+	"turn_aborted",
+	"user_action",
+	"user_instructions",
+	"user_shell_command",
+]);
+
+const INJECTED_USER_HEADINGS = [
+	"# AGENTS.md instructions",
+	"# Files mentioned by the user:",
+	"## Referenced ChatGPT conversation:",
+	"Warning: apply_patch was requested via ",
+];
+
+const LEADING_TAG = /^<([a-z][a-z0-9_-]*)(?:\s[^>]*)?>/;
+
+/** Is this `user` text Codex's own injected context rather than the human's words? */
+export function isCodexInjectedUserText(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return true;
+	const tag = LEADING_TAG.exec(trimmed);
+	if (tag && INJECTED_USER_TAGS.has(tag[1])) return true;
+	return INJECTED_USER_HEADINGS.some((heading) => trimmed.startsWith(heading));
+}
+
 function roleOf(payload: Record<string, unknown>): ConversationRole {
 	const role = stringAt(payload, "role");
 	if (role === "user" || role === "assistant" || role === "system" || role === "developer") return role;
@@ -78,7 +125,9 @@ function eventsFromResponseItem(
 	if (type === "message" || type === "agent_message") {
 		const text = textFromBlocks(payload.content, (t) => t === "input_text" || t === "output_text" || t === "text");
 		if (!text.trim()) return [];
-		return [{ ...base, id, kind: "message", role: roleOf(payload), text }];
+		const role = roleOf(payload);
+		const injected = role === "user" && isCodexInjectedUserText(text);
+		return [{ ...base, id, kind: "message", role, text, ...(injected ? { meta: { injected: true } } : {}) }];
 	}
 
 	if (type === "reasoning") {

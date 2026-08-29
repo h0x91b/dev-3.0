@@ -1,6 +1,6 @@
 /**
- * Discovery for the conversation import: which Claude Code conversations a
- * project is offered, and which it must never be offered.
+ * Discovery for the conversation import: which Claude Code and Codex
+ * conversations a project is offered, and which it must never be offered.
  *
  * Every case builds a temporary home with hand-written JSONL — nothing here may
  * depend on the developer's own `~/.claude`.
@@ -10,7 +10,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
-import { classifyClaudeTranscript, scanImportableConversations } from "../conversation-import";
+import {
+	classifyClaudeTranscript,
+	classifyCodexRollout,
+	codexHeaderFrom,
+	codexTitleFrom,
+	scanImportableConversations,
+} from "../conversation-import";
+import { isCodexInjectedUserText } from "../../shared/conversation-parsers/codex";
 
 let home: string;
 let project: string;
@@ -62,6 +69,63 @@ function seedConversation(sessionId: string, options: SeedOptions = {}): string 
 	];
 
 	const file = join(dir, `${sessionId}.jsonl`);
+	writeFileSync(file, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
+	if (options.ageDays !== undefined) {
+		const when = (NOW - options.ageDays * DAY_MS) / 1000;
+		utimesSync(file, when, when);
+	}
+	return file;
+}
+
+interface CodexSeedOptions {
+	/** Codex home the rollout lives under. Defaults to `~/.codex`. */
+	codexHome?: string;
+	workingDir?: string;
+	/** Omitted entirely when null — a rollout whose header records no cwd. */
+	cwd?: string | null;
+	gitBranch?: string | null;
+	prompts?: string[];
+	/** Blocks Codex writes into the `user` role itself. Never a turn, never a title. */
+	injected?: string[];
+	/** Drop the `session_meta` line, so the file is not a rollout at all. */
+	headerless?: boolean;
+	ageDays?: number;
+}
+
+function seedRollout(sessionId: string, options: CodexSeedOptions = {}): string {
+	const codexHome = options.codexHome ?? join(home, ".codex");
+	const workingDir = options.workingDir ?? project;
+	const dir = join(codexHome, "sessions", "2026", "08", "20");
+	mkdirSync(dir, { recursive: true });
+
+	const userMessage = (text: string) => ({
+		timestamp: "2026-08-20T10:00:00.000Z",
+		type: "response_item",
+		payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+	});
+
+	const records: Record<string, unknown>[] = [
+		...(options.headerless ? [] : [{
+			timestamp: "2026-08-20T09:59:00.000Z",
+			type: "session_meta",
+			payload: {
+				id: sessionId,
+				...(options.cwd === null ? {} : { cwd: options.cwd ?? workingDir }),
+				originator: "codex-tui",
+				...(options.gitBranch ? { git: { branch: options.gitBranch } } : {}),
+			},
+		}]),
+		// Codex opens sessions with its own context in the `user` role.
+		...(options.injected ?? ["# AGENTS.md instructions for /somewhere"]).map(userMessage),
+		...(options.prompts ?? ["Make the thing work"]).map(userMessage),
+		{
+			timestamp: "2026-08-20T10:00:01.000Z",
+			type: "response_item",
+			payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Done." }] },
+		},
+	];
+
+	const file = join(dir, `rollout-2026-08-20T10-00-00-${sessionId}.jsonl`);
 	writeFileSync(file, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
 	if (options.ageDays !== undefined) {
 		const when = (NOW - options.ageDays * DAY_MS) / 1000;
@@ -205,5 +269,154 @@ describe("scanImportableConversations", () => {
 		seedConversation("older", { ageDays: 20 });
 		seedConversation("newer", { ageDays: 2 });
 		expect(scan().map((c) => c.sessionId)).toEqual(["newer", "older"]);
+	});
+});
+
+describe("isCodexInjectedUserText", () => {
+	it("recognises the context blocks Codex writes into the user role", () => {
+		for (const text of [
+			"# AGENTS.md instructions for /code/dev-3.0",
+			"<environment_context>\n  <cwd>/code</cwd>\n</environment_context>",
+			"<turn_aborted>\nThe user interrupted the previous turn.\n</turn_aborted>",
+			"<skill>\n<name>dev3</name>\n</skill>",
+			"# Files mentioned by the user:\n\n## shot.png: /tmp/shot.png",
+			"Warning: apply_patch was requested via shell. Use the apply_patch tool.",
+		]) {
+			expect(isCodexInjectedUserText(text)).toBe(true);
+		}
+	});
+
+	// The rule that a blanket "starts with a tag" test got wrong: this is a message
+	// a person's board really sent, and dropping it loses a real turn.
+	it("keeps agent-to-agent traffic, which arrives in the user role wrapped in a tag", () => {
+		expect(isCodexInjectedUserText("<dev3-ai-message>\n<from-task>seq:1141</from-task>\n</dev3-ai-message>")).toBe(false);
+	});
+
+	it("keeps ordinary prose, including prose that opens with a heading", () => {
+		expect(isCodexInjectedUserText("please fix the parser")).toBe(false);
+		expect(isCodexInjectedUserText("# My own notes\n\nfix the parser")).toBe(false);
+	});
+});
+
+describe("codexHeaderFrom", () => {
+	it("reads the session id and cwd out of the first line", () => {
+		const head = `${JSON.stringify({ type: "session_meta", payload: { id: "s1", cwd: "/code" } })}\n{"type":"response_item"}`;
+		expect(codexHeaderFrom(head)).toEqual({ sessionId: "s1", cwd: "/code" });
+	});
+
+	// A header that did not fit the read budget arrives without its newline. Half a
+	// JSON object must never be guessed at.
+	it("reports nothing when the head holds no complete line", () => {
+		expect(codexHeaderFrom('{"type":"session_meta","payload":{"id":"s1"')).toBeNull();
+	});
+
+	it("reports nothing for a file that does not open with a session_meta", () => {
+		expect(codexHeaderFrom('{"type":"response_item","payload":{}}\n')).toBeNull();
+	});
+});
+
+describe("codexTitleFrom", () => {
+	it("takes the first non-empty line of the request", () => {
+		expect(codexTitleFrom("\n\nFix the parser\nand then the renderer")).toBe("Fix the parser");
+	});
+
+	it("cuts an over-long request at the width a task title has", () => {
+		const title = codexTitleFrom("x".repeat(200));
+		expect(title).toHaveLength(80);
+		expect(title?.endsWith("…")).toBe(true);
+	});
+
+	it("has no title for a session the human never spoke in", () => {
+		expect(codexTitleFrom(null)).toBeNull();
+	});
+});
+
+describe("classifyCodexRollout", () => {
+	it("counts only what the human asked for, and names the session after the first of them", () => {
+		const file = seedRollout("s1", { gitBranch: "feat/x", prompts: ["Fix the parser", "now the renderer"] });
+		expect(classifyCodexRollout(readFileSync(file, "utf-8"))).toEqual({
+			sessionId: "s1",
+			cwd: project,
+			gitBranch: "feat/x",
+			firstRequest: "Fix the parser",
+			turns: 2,
+		});
+	});
+
+	it("does not count Codex's own injected context as a turn", () => {
+		const file = seedRollout("s2", {
+			injected: ["# AGENTS.md instructions for /x", "<environment_context>\n</environment_context>"],
+			prompts: ["Fix the parser"],
+		});
+		expect(classifyCodexRollout(readFileSync(file, "utf-8")).turns).toBe(1);
+	});
+});
+
+describe("scanImportableConversations, Codex rollouts", () => {
+	it("offers a rollout that ran in the project, titled after the first request", () => {
+		seedRollout("c1", { prompts: ["Fix the parser"], gitBranch: "feat/x", ageDays: 1 });
+		expect(scan()).toMatchObject([{
+			source: "codex",
+			sessionId: "c1",
+			title: "Fix the parser",
+			workingDir: project,
+			gitBranch: "feat/x",
+			turns: 1,
+			targetStatus: "user-questions",
+		}]);
+	});
+
+	it("offers Claude and Codex side by side, newest first", () => {
+		seedConversation("s1", { ageDays: 9 });
+		seedRollout("c1", { ageDays: 2 });
+		expect(scan().map((c) => [c.source, c.sessionId])).toEqual([["codex", "c1"], ["claude", "s1"]]);
+	});
+
+	it("finds a rollout that ran under a dev3 agent account", () => {
+		seedRollout("c2", { codexHome: join(home, ".dev3.0", "agent-accounts", "codex", "acct-1") });
+		expect(scan().map((c) => c.sessionId)).toEqual(["c2"]);
+	});
+
+	it("never offers a rollout that ran inside a dev3 worktree", () => {
+		const worktree = join(home, ".dev3.0", "worktrees", "slug", "abc", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		seedRollout("c3", { workingDir: worktree });
+		expect(scan()).toEqual([]);
+	});
+
+	it("does not let a project claim a sibling whose name merely starts the same", () => {
+		const sibling = `${project}-scratch`;
+		mkdirSync(sibling, { recursive: true });
+		seedRollout("c4", { workingDir: sibling });
+		expect(scan()).toEqual([]);
+	});
+
+	it("offers a rollout that ran in a subdirectory of the project", () => {
+		const inner = join(project, "packages", "cli");
+		mkdirSync(inner, { recursive: true });
+		seedRollout("c5", { workingDir: inner });
+		expect(scan()).toMatchObject([{ sessionId: "c5", workingDir: inner }]);
+	});
+
+	it("skips a rollout whose header recorded no working directory", () => {
+		seedRollout("c6", { cwd: null });
+		expect(scan()).toEqual([]);
+	});
+
+	it("skips a file that is not a rollout at all", () => {
+		seedRollout("c7", { headerless: true });
+		expect(scan()).toEqual([]);
+	});
+
+	// A session that only ever received injected context has nothing to name a card
+	// after, and nothing in it for anyone to pick up.
+	it("skips a rollout the human never spoke in", () => {
+		seedRollout("c8", { prompts: [] });
+		expect(scan()).toEqual([]);
+	});
+
+	it("never offers a rollout that was already imported", () => {
+		seedRollout("c9");
+		expect(scan({ importedSessionIds: ["c9"] })).toEqual([]);
 	});
 });
