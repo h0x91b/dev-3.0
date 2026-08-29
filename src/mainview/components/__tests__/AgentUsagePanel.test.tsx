@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -85,6 +85,11 @@ function renderPanel(state: AgentAccountsState | null = accounts(), interactive 
 	);
 }
 
+/** The panel's own scroll body — the element the dwell timer hangs off. */
+function panelBody(): HTMLElement {
+	return screen.getByText("Pick the default for new launches.").parentElement?.parentElement as HTMLElement;
+}
+
 beforeEach(() => {
 	setActive.mockReset();
 	setActive.mockResolvedValue(undefined);
@@ -128,13 +133,35 @@ describe("AgentUsagePanel", () => {
 		}
 	});
 
-	it("stays read-only until the panel is pinned", async () => {
+	it("stays read-only for a pointer that has not settled in the panel", async () => {
 		renderPanel(accounts(), false);
-		expect(screen.getByText(/Click the pill to pin/)).toBeTruthy();
-		// The row a hovering pointer would land on: live in the pinned panel, inert here.
+		// The row a hovering pointer would land on: live in a pinned panel, inert
+		// here, because nothing has dwelled inside this one yet.
 		const home = screen.getAllByRole("radio").find((r) => r.textContent?.includes("Home Claude"));
 		expect(home?.getAttribute("aria-disabled")).toBe("true");
 		await userEvent.click(home as HTMLElement);
+		expect(setActive).not.toHaveBeenCalled();
+	});
+
+	it("arms its rows once the pointer has rested in the panel", async () => {
+		renderPanel(accounts(), false);
+		const home = () => screen.getAllByRole("radio").find((r) => r.textContent?.includes("Home Claude"));
+		// Still inert while the pointer could just be passing through.
+		expect(home()?.getAttribute("aria-disabled")).toBe("true");
+		await userEvent.hover(panelBody());
+		await waitFor(() => expect(home()?.getAttribute("aria-disabled")).toBeNull());
+		await userEvent.click(home() as HTMLElement);
+		expect(setActive).toHaveBeenCalledWith({ kind: "claude", accountId: "home" });
+	});
+
+	it("disarms again when the pointer leaves", async () => {
+		renderPanel(accounts(), false);
+		const home = () => screen.getAllByRole("radio").find((r) => r.textContent?.includes("Home Claude"));
+		await userEvent.hover(panelBody());
+		await waitFor(() => expect(home()?.getAttribute("aria-disabled")).toBeNull());
+		await userEvent.unhover(panelBody());
+		expect(home()?.getAttribute("aria-disabled")).toBe("true");
+		await userEvent.click(home() as HTMLElement);
 		expect(setActive).not.toHaveBeenCalled();
 	});
 

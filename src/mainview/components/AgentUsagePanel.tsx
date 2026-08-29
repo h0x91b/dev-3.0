@@ -220,11 +220,23 @@ function UsageRowCard({
  * narrow), never as a centred dialog: the readout belongs next to the pill it
  * explains, not on top of the whole board.
  *
- * `interactive` is the guard on that mutation. The flyout opens on hover, and a
- * durable setting must not be one stray click away from a panel the pointer
- * merely passed through — so the rows only become choosable once the panel is
- * pinned (or on narrow, where it is a sheet the user deliberately opened).
+ * A durable setting must not be one stray click away from a panel the pointer
+ * merely passed through, so the rows arm rather than being born live. What arms
+ * them is dwell: the pointer resting inside the panel for ARM_DELAY_MS. A
+ * pointer crossing the header towards another icon never lingers there, while a
+ * user who came to switch accounts has already spent longer than that reading
+ * the rows. `interactive` is the arming that needs no dwell — a pinned flyout,
+ * or the narrow sheet the user deliberately opened.
+ *
+ * It used to be the pin alone, and the pin is a click on the pill ABOVE the
+ * panel: the affordance for using a panel sat outside it, so the rows read as
+ * simply dead.
  */
+
+/** Long enough that a pointer merely travelling across the panel never arms it,
+ *  short enough to be over before anyone can read a row and reach for it. */
+const ARM_DELAY_MS = 300;
+
 export default function AgentUsagePanel({
 	report,
 	accounts,
@@ -238,6 +250,8 @@ export default function AgentUsagePanel({
 }) {
 	const t = useT();
 	const [busy, setBusy] = useState(false);
+	const [dwelled, setDwelled] = useState(false);
+	const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const now = Date.now();
 	const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 	/** Row keys in render order, so the pin-focus effect does not depend on the
@@ -266,18 +280,26 @@ export default function AgentUsagePanel({
 		(block) => block.rows.length > 0,
 	);
 
-	const isInert = (row: UsageRow) => busy || !interactive || !row.selectable || row.isDefault;
+	const armed = interactive || dwelled;
+	const isInert = (row: UsageRow) => busy || !armed || !row.selectable || row.isDefault;
 	orderedKeys.current = blocks.flatMap((block) => block.rows.map((row) => ({ key: row.key, isDefault: row.isDefault })));
 
-	// Pinning is the moment the panel becomes usable, so it is also the moment
-	// focus belongs inside it: the panel is portaled to <body>, so Tab from the
-	// pill would otherwise walk the rest of the header instead of entering it.
+	// Pinning is the moment the panel becomes usable to a KEYBOARD, so it is also
+	// the moment focus belongs inside it: the panel is portaled to <body>, so Tab
+	// from the pill would otherwise walk the rest of the header instead of
+	// entering it. Deliberately not keyed to `armed` — dwelling means the pointer
+	// is there, and moving focus under a mouse user steals it from wherever they
+	// were typing.
 	useEffect(() => {
 		if (!interactive) return;
 		const rows = orderedKeys.current;
 		const target = rows.find((row) => row.isDefault) ?? rows[0];
 		if (target) rowRefs.current.get(target.key)?.focus();
 	}, [interactive]);
+
+	useEffect(() => () => {
+		if (dwellTimer.current !== null) clearTimeout(dwellTimer.current);
+	}, []);
 
 	/** Arrows move focus only; Enter/Space commits. Selection-follows-focus is the
 	 *  radiogroup norm, but here a selection writes durable state — arrowing past
@@ -293,14 +315,28 @@ export default function AgentUsagePanel({
 	return (
 		// p-1.5 (6px) inside the flyout's rounded-xl (12px) makes the cards'
 		// rounded-md (6px) concentric with the panel's own corners.
-		<div className="p-1.5 space-y-1.5 text-xs">
+		<div
+			className="p-1.5 space-y-1.5 text-xs"
+			onMouseEnter={() => {
+				if (dwellTimer.current !== null) clearTimeout(dwellTimer.current);
+				dwellTimer.current = setTimeout(() => {
+					dwellTimer.current = null;
+					setDwelled(true);
+				}, ARM_DELAY_MS);
+			}}
+			onMouseLeave={() => {
+				if (dwellTimer.current !== null) clearTimeout(dwellTimer.current);
+				dwellTimer.current = null;
+				setDwelled(false);
+			}}
+		>
 			{/* Hint and the way out share one line. The way out used to be a
 			    full-width bordered button pinned to the bottom on its own sticky
 			    strip — 46px of chrome for a link nobody opens twice. */}
 			<div className="flex items-baseline gap-2 px-2 pt-0.5 pb-0.5">
-				<p className="min-w-0 flex-1 text-fg-3 leading-snug">
-					{interactive ? t("rateLimits.panelSubtitle") : t("rateLimits.pinToSwitch")}
-				</p>
+				{/* One line, never two states: the arming window is shorter than the
+				    time it takes to read a row, so a "not yet" hint would only flicker. */}
+				<p className="min-w-0 flex-1 text-fg-3 leading-snug">{t("rateLimits.panelSubtitle")}</p>
 				<button
 					type="button"
 					onClick={onOpenSettings}

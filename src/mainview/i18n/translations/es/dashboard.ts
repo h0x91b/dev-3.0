@@ -139,7 +139,6 @@ const dashboard = {
 	"rateLimits.openAccounts": "Abrir el uso y las cuentas de agentes",
 	"rateLimits.manageAccounts": "Configuración de cuentas",
 	"rateLimits.panelSubtitle": "Elige la cuenta por defecto para nuevos lanzamientos.",
-	"rateLimits.pinToSwitch": "Haz clic en la píldora para fijar y elegir.",
 	"rateLimits.defaultSwitched": "{label} es ahora la cuenta predeterminada para los nuevos lanzamientos",
 	"rateLimits.makeDefault": "Hacer que {label} sea la cuenta predeterminada",
 	"rateLimits.used": "usado",

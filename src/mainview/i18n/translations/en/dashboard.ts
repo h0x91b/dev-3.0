@@ -141,7 +141,6 @@ const dashboard = {
 	"rateLimits.openAccounts": "Open agent usage and accounts",
 	"rateLimits.manageAccounts": "Account settings",
 	"rateLimits.panelSubtitle": "Pick the default for new launches.",
-	"rateLimits.pinToSwitch": "Click the pill to pin, then pick a default.",
 	"rateLimits.defaultSwitched": "{label} is now the default for new launches",
 	"rateLimits.makeDefault": "Make {label} the default account",
 	"rateLimits.used": "used",

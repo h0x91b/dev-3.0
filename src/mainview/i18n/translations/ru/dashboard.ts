@@ -157,7 +157,6 @@ const dashboard = {
 	"rateLimits.openAccounts": "Открыть использование и аккаунты агентов",
 	"rateLimits.manageAccounts": "Настройки аккаунтов",
 	"rateLimits.panelSubtitle": "Аккаунт по умолчанию для новых запусков.",
-	"rateLimits.pinToSwitch": "Нажмите на плашку, чтобы закрепить и выбрать.",
 	"rateLimits.defaultSwitched": "{label} теперь аккаунт по умолчанию для новых запусков",
 	"rateLimits.makeDefault": "Сделать {label} аккаунтом по умолчанию",
 	"rateLimits.used": "использовано",

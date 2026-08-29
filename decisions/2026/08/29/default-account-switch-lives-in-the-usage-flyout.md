@@ -1,5 +1,10 @@
 # The default-account switch lives in the usage flyout, pinned-only
 
+> Superseded on 2026-08-29 by `decisions/2026/08/29/arm-the-usage-rows-on-dwell-not-on-a-pin.md`:
+> the switch stays on the readout and still has to be armed, but the arming gesture is the pointer
+> resting in the panel, not a click on the pill. Everything below about placement, the toast, and
+> the no-confirm-dialog pricing still holds; only the pin-as-guard part does not.
+
 ## Context
 
 The header rate-limit pill is an ambient readout. PR #1572 put a mutation on it: picking the
