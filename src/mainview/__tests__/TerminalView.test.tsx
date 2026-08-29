@@ -2357,30 +2357,32 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 	});
 });
 
-// ── Mobile long-press text selection ──────────────────────────────────────────
-// The touch gestures live on the canvas ghostty appends to the container, which
-// the mocked `open` normally never creates — so this block gives it one.
-describe("TerminalView – long-press selection on touch", () => {
-	const LONG_PRESS_MS = 450;
-
-	function touch(type: string, x: number, y: number, changed = false) {
+// ── Mobile text selection: the platform's own, over a real-DOM text layer ─────
+// The layer and the touch gestures live on the canvas ghostty appends to the
+// container, which the mocked `open` normally never creates — so this block
+// gives it one, and a touch device to install onto.
+describe("TerminalView – touch text layer", () => {
+	function touch(type: string, x: number, y: number, ended = false) {
 		const point = { clientX: x, clientY: y };
 		return Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
-			touches: changed ? [] : [point],
+			touches: ended ? [] : [point],
 			changedTouches: [point],
 		});
 	}
 
-	async function renderWithCanvas(touchComposeMode: boolean) {
+	async function renderOnTouchDevice() {
 		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
 			el.appendChild(document.createElement("canvas"));
 			el.appendChild(document.createElement("textarea"));
 		});
+		mockTermInstance.buffer.active = {
+			getLine: () => ({ isWrapped: false, length: 3, getCell: (x: number) => ({ getCode: () => "abc".charCodeAt(x) }) }),
+		} as never;
 		let result!: ReturnType<typeof render>;
 		await act(async () => {
 			result = render(
 				<I18nProvider>
-					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode={touchComposeMode} />
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode />
 				</I18nProvider>,
 			);
 			await Promise.resolve();
@@ -2388,56 +2390,48 @@ describe("TerminalView – long-press selection on touch", () => {
 		});
 		await act(async () => { fireResize?.(); });
 		const canvas = result.container.querySelector("canvas") as HTMLCanvasElement;
-		const mouse: string[] = [];
-		for (const type of ["mousedown", "mousemove", "mouseup"]) {
-			canvas.addEventListener(type, () => mouse.push(type));
-		}
-		return { canvas, mouse };
+		const layer = result.container.querySelector("[data-terminal-text-layer]") as HTMLElement;
+		const wheels: number[] = [];
+		canvas.addEventListener("wheel", (e) => wheels.push((e as WheelEvent).deltaY));
+		return { canvas, layer, wheels };
 	}
 
-	beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+	beforeEach(() => {
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+	});
 	afterEach(() => {
-		vi.useRealTimers();
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
 		mockTermInstance.open.mockReset();
+		mockTermInstance.buffer.active = mockBufferActive as never;
+		vi.restoreAllMocks();
 	});
 
-	it("anchors a selection after a still finger holds, and extends it on drag", async () => {
-		const { canvas, mouse } = await renderWithCanvas(true);
-
-		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
-		expect(mouse).toEqual([]);
-		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
-		expect(mouse).toEqual(["mousedown"]);
-		expect(canvas.dataset.selecting).toBe("1");
-
-		act(() => { canvas.dispatchEvent(touch("touchmove", 90, 60)); });
-		act(() => { canvas.dispatchEvent(touch("touchend", 90, 60, true)); });
-		expect(mouse).toEqual(["mousedown", "mousemove", "mouseup"]);
-		expect(canvas.dataset.selecting).toBeUndefined();
+	it("installs a selectable text layer over the canvas on a touch device", async () => {
+		const { layer } = await renderOnTouchDevice();
+		expect(layer).toBeTruthy();
+		expect(layer.style.getPropertyValue("user-select")).toBe("text");
+		// The container stays unselectable, so a press off the glyphs selects nothing.
+		expect(layer.parentElement!.style.getPropertyValue("user-select")).toBe("none");
 	});
 
-	it("does not select when the finger moves before the hold completes", async () => {
-		const { canvas, mouse } = await renderWithCanvas(true);
+	it("scrolls from a vertical drag on the layer, which is what a finger now hits", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
 
-		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
-		act(() => { canvas.dispatchEvent(touch("touchmove", 40, 80)); }); // scroll
-		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
 
-		expect(mouse).toEqual([]);
-		expect(canvas.dataset.selecting).toBeUndefined();
+		expect(wheels.length).toBeGreaterThan(0);
 	});
 
-	// Compose mode swallows touchend before the canvas sees it, so the hold timer
-	// has to be cancelled by the blocker — otherwise a tap starts a selection with
-	// no finger left on the glass.
-	it("never fires a phantom selection after a tap in compose mode", async () => {
-		const { canvas, mouse } = await renderWithCanvas(true);
+	// A long press hands the gesture to the OS. Scrolling under its handles would
+	// move the text out from under the selection the user is still adjusting.
+	it("stands down while the platform holds a selection", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
+		layer.setAttribute("data-selecting", "1");
 
-		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
-		act(() => { canvas.dispatchEvent(touch("touchend", 40, 40, true)); });
-		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
 
-		expect(mouse).toEqual([]);
-		expect(canvas.dataset.selecting).toBeUndefined();
+		expect(wheels).toEqual([]);
 	});
 });
