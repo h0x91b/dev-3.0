@@ -19,8 +19,8 @@ type ManageAction = "splitH" | "splitV" | "newWindow" | "close";
  * ghostty canvas turns touch into mouse events (selection / SGR mouse for
  * vim/htop/less), so we arbitrate by axis in the CAPTURE phase — a clearly
  * horizontal drag is ours (preventDefault + stopPropagation so the canvas never
- * sees the move, and we collapse any nascent selection at the START coords),
- * while a vertical drag or a tap falls through to the terminal untouched.
+ * sees the move), while a vertical drag, a tap, or a long-press text selection
+ * falls through to the terminal untouched.
  */
 const PANE_POLL_MS = 3000;
 const SWIPE_DECIDE_PX = 10; // movement before we lock the gesture axis
@@ -192,23 +192,18 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 
 		function onMove(e: TouchEvent) {
 			if (axis === "v" || e.touches.length !== 1) return;
+			// A long-press text selection in the terminal drags horizontally too, and
+			// it owns the gesture — swiping panes out from under it would both lose
+			// the selection and change pane.
+			if (el!.querySelector("canvas")?.dataset.selecting === "1") {
+				axis = "v";
+				return;
+			}
 			dx = e.touches[0].clientX - startX;
 			const dy = e.touches[0].clientY - startY;
 			if (axis === null) {
 				if (Math.abs(dx) > SWIPE_DECIDE_PX && Math.abs(dx) > Math.abs(dy) * 1.4) {
 					axis = "h";
-					// In raw mode TerminalView anchors a drag-selection (mousedown at the
-					// start point) once a drag passes its 8px axis check, which can fire
-					// before our 10px decide — so a nascent selection may already exist.
-					// Collapse it by ending the drag AT THE START point (a mouseup
-					// elsewhere — e.g. 0,0 — would select to there) plus a click.
-					const canvas = el!.querySelector("canvas");
-					if (canvas) {
-						const at = { bubbles: true, clientX: startX, clientY: startY } as MouseEventInit;
-						canvas.dispatchEvent(new MouseEvent("mouseup", at));
-						canvas.dispatchEvent(new MouseEvent("mousedown", at));
-						canvas.dispatchEvent(new MouseEvent("mouseup", at));
-					}
 				} else if (Math.abs(dy) > SWIPE_DECIDE_PX) {
 					axis = "v";
 					return;
