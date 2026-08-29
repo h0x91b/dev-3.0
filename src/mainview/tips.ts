@@ -983,6 +983,17 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal"],
 	},
+	// Distinct from spawn-extra-agent: that one is "more hands on the same work",
+	// this one is "the same work, a different agent". Invisible until the dialog is
+	// already open, and nothing else in the product hints that a switch is possible.
+	{
+		id: "continue-in-another-agent",
+		titleKey: "tip.continueInAnotherAgent.title",
+		bodyKey: "tip.continueInAnotherAgent.body",
+		icon: "\u{F0450}", // nf-md-account_switch
+		score: 4,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

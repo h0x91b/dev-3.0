@@ -70,7 +70,8 @@ vi.mock("../../rpc", () => ({
 				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 			}),
-			spawnAgentInTask: vi.fn().mockResolvedValue(undefined),
+			spawnAgentInTask: vi.fn().mockResolvedValue({ handoff: null }),
+			previewTaskHandoff: vi.fn().mockResolvedValue(null),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
@@ -176,10 +177,47 @@ describe("SpawnAgentModal", () => {
 				projectId: "p1",
 				agentId: "builtin-claude",
 				configId: "claude-default",
+				handoff: false,
 			});
 		});
 
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	describe("handing the conversation to the new agent", () => {
+		const preview = { source: "claude" as const, sessionId: "s1", turns: 12, toolCalls: 40, fidelity: "full" as const };
+
+		it("offers nothing when this task has no conversation to retell", async () => {
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(null);
+			renderModal();
+
+			await vi.waitFor(() => expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled());
+			expect(screen.queryByTestId("spawn-agent-handoff")).toBeNull();
+		});
+
+		it("describes what would be handed over, and stays off until asked", async () => {
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			const box = await screen.findByTestId("spawn-agent-handoff");
+			expect(box).not.toBeChecked();
+			expect(screen.getByText(/retelling of the Claude Code session so far \(12 turns\)/)).toBeInTheDocument();
+			// The constraint the user must not misread: this is not a resume.
+			expect(screen.getByText(/Agents cannot resume each other/)).toBeInTheDocument();
+		});
+
+		it("asks for the handoff only when the box is ticked", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			await user.click(await screen.findByTestId("spawn-agent-handoff"));
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ handoff: true }));
+			});
+		});
 	});
 
 	it("shows error when spawn fails", async () => {
@@ -396,7 +434,7 @@ describe("SpawnAgentModal", () => {
 		beforeEach(() => {
 			// Earlier cases leave implementations behind (clearAllMocks keeps them):
 			// a rejecting spawn and an uninstalled agent both block the success path.
-			mockedApi.request.spawnAgentInTask.mockResolvedValue(undefined);
+			mockedApi.request.spawnAgentInTask.mockResolvedValue({ handoff: null });
 			mockedApi.request.checkAgentAvailability.mockResolvedValue([
 				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, resolvedPath: "/usr/local/bin/claude" },
 			]);

@@ -58,6 +58,8 @@ import {
 import { setSplitRatio, splitCreatedBySplitting } from "../../shared/split-tree";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { agentPromptMayHaveLanded, type AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
+import { handoffPrompt, prepareTaskHandoff, previewTaskHandoff } from "../conversation-handoff";
+import type { HandoffPreview, SpawnAgentResult } from "../../shared/conversation-handoff-model";
 import {
 	auxPaneAlive,
 	auxPaneTitle,
@@ -2614,14 +2616,30 @@ async function tmuxSearchCancel(params: { taskId: string; paneId: string }): Pro
 	await tmux.exitCopyMode(params.paneId, { socket, bestEffort: true });
 }
 
-async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null }): Promise<void> {
-	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId });
+async function spawnAgentInTask(params: {
+	taskId: string;
+	projectId: string;
+	agentId: string | null;
+	configId: string | null;
+	accountId?: string | null;
+	/** Hand the new agent a retelling of this task's newest conversation. */
+	handoff?: boolean;
+}): Promise<SpawnAgentResult> {
+	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true });
 
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree — cannot spawn agent");
+	}
+
+	// Written BEFORE the split on purpose: a conversation that cannot be retold
+	// must fail with no pane opened, rather than leave a bare agent standing where
+	// the user asked for a takeover.
+	const handoff = params.handoff ? await prepareTaskHandoff(task) : null;
+	if (params.handoff && !handoff) {
+		throw new Error("Nothing to hand over: no parseable agent transcript has been written for this task yet.");
 	}
 
 	const ctx: agents.TemplateContext = {
@@ -2758,7 +2776,36 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Bump the favorite usage counter if this launched combo is starred (best-effort).
 	void recordFavoriteUsages([{ agentId: launchedAgentId, configId: launchedConfigId }]);
 
+	let handoffResult: SpawnAgentResult["handoff"] = null;
+	if (handoff) {
+		// Held, not typed: the pointer lands once the new pane goes quiet, which is
+		// what "the agent finished booting" looks like from outside. A fixed sleep
+		// would guess at that, and guessing wrong types into a banner.
+		const delivery = newPaneId
+			? await deliverAgentPrompt(task, handoffPrompt(handoff), { kind: "pane", paneId: newPaneId }, { hold: true })
+				.catch((err): AgentPromptDelivery => ({ status: "unconfirmed", reason: "backend-failure", detail: String(err) }))
+			: ({ status: "not-delivered", reason: "pane-absent" } as AgentPromptDelivery);
+		handoffResult = { path: handoff.path, chars: handoff.chars, source: handoff.source, delivery };
+		log.info("Handed the conversation to the spawned agent", {
+			taskId: params.taskId.slice(0, 8),
+			chars: handoff.chars,
+			delivery: delivery.status,
+		});
+	}
+
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
+	return { handoff: handoffResult };
+}
+
+/**
+ * What a handoff from this task would retell. Answered from the transcripts on
+ * disk, so a task whose agent never wrote one gets a plain null and the picker
+ * offers nothing rather than an option that would fail on click.
+ */
+async function previewTaskHandoffHandler(params: { taskId: string; projectId: string }): Promise<HandoffPreview | null> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	return previewTaskHandoff(task);
 }
 
 /** How long the hunter agents get to boot before their prompt is typed in. */
@@ -3292,6 +3339,7 @@ export const tmuxPtyHandlers = {
 	tmuxSearchStep,
 	tmuxSearchCancel,
 	spawnAgentInTask,
+	previewTaskHandoff: previewTaskHandoffHandler,
 	spawnBugHuntersInTask,
 	resumeTask,
 	restartTask,

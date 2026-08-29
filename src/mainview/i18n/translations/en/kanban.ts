@@ -302,6 +302,11 @@ const kanban = {
 	"spawnAgent.spawning": "Adding…",
 	"spawnAgent.failed": "Unable to add the agent. {error}",
 	"spawnAgent.notInstalled": "{name} is not installed. Install it first.",
+	"spawnAgent.handoff": "Continue this task's conversation",
+	"spawnAgent.handoffDesc_one": "The new agent gets a retelling of the {agent} session so far ({count} turn): your prompts and its replies verbatim, its actions summarised. Agents cannot resume each other, so a retelling is what a switch is.",
+	"spawnAgent.handoffDesc_other": "The new agent gets a retelling of the {agent} session so far ({count} turns): your prompts and its replies verbatim, its actions summarised. Agents cannot resume each other, so a retelling is what a switch is.",
+	"spawnAgent.handoffSent": "The conversation was handed over — the new agent reads it as soon as its pane goes quiet.",
+	"spawnAgent.handoffNotDelivered": "The agent started but never got the pointer to the retelling. It is written at {path} — point the agent at it by hand.",
 
 	// Watch
 	"task.devStarting": "starting",

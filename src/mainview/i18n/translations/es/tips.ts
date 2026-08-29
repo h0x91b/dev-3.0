@@ -233,6 +233,8 @@ const tips = {
 	"tip.spaceSearch.body": "⌘K también busca nombres de espacios — escribe un espacio para ver sus proyectos, y filtra tareas con `space:\"Client X\"`.",
 	"tip.agentTrafficLog.title": "Lee lo que dijeron tus agentes",
 	"tip.agentTrafficLog.body": "Pulsa \u21e7\u2318M para el registro de tráfico: 30 días de cada mensaje que tus agentes se escribieron.",
+	"tip.continueInAnotherAgent.title": "Cambia de agente a mitad de tarea",
+	"tip.continueInAnotherAgent.body": "En + Agente marca «Continuar la conversación de esta tarea»: el nuevo agente recibe un resumen narrado de la sesión y retoma el trabajo.",
 	"tip.remoteSelfUpdate.title": "Las máquinas remotas se autoactualizan",
 	"tip.remoteSelfUpdate.body": "Un servidor `dev3 remote` instala actualizaciones solo cuando la máquina está tranquila y conserva su enlace público — o ejecuta `dev3 update` tú mismo.",
 };

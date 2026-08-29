@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
+import type { HandoffPreview } from "../../shared/conversation-handoff-model";
+import { agentPromptMayHaveLanded } from "../../shared/agent-prompt-delivery";
 import { getTaskTitle } from "../../shared/types";
+import { toast } from "../toast";
 import { launchFailureHintKey } from "../../shared/launch-failure";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -40,6 +43,16 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const [spawning, setSpawning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
+	// Null until the scan answers, and null forever when this task has no parseable
+	// transcript — the option is then not offered rather than offered and failing.
+	const [handoffPreview, setHandoffPreview] = useState<HandoffPreview | null>(null);
+	const [handoff, setHandoff] = useState(false);
+
+	useEffect(() => {
+		api.request.previewTaskHandoff({ taskId: task.id, projectId: project.id })
+			.then(setHandoffPreview)
+			.catch(() => {});
+	}, [task.id, project.id]);
 
 	useEffect(() => {
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
@@ -103,14 +116,23 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		setSpawning(true);
 		setError(null);
 		try {
-			await api.request.spawnAgentInTask({
+			const result = await api.request.spawnAgentInTask({
 				taskId: task.id,
 				projectId: project.id,
 				agentId,
 				configId,
 				accountId,
+				handoff,
 			});
-			trackEvent("spawn_extra_agent", { project_id: project.id, agent_id: agentId ?? "default" });
+			// The pane is up either way; only the pointer into the retelling can still
+			// have failed, and that is the difference between a takeover and a fresh
+			// agent sitting in the same worktree. Say which one happened.
+			if (result?.handoff && !agentPromptMayHaveLanded(result.handoff.delivery)) {
+				toast.error(t("spawnAgent.handoffNotDelivered", { path: result.handoff.path }));
+			} else if (result?.handoff) {
+				toast.success(t("spawnAgent.handoffSent"));
+			}
+			trackEvent("spawn_extra_agent", { project_id: project.id, agent_id: agentId ?? "default", handoff });
 			trackAgentLaunched(agents, agentId, configId);
 			spawnedRef.current = true;
 			// The terminal holds this until the new pane is attachable, then types
@@ -181,6 +203,31 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 							favorites={globalSettings.favorites ?? []}
 							onToggleFavorite={handleToggleFavorite}
 						/>
+
+						{/* Hand the running conversation over. Rendered only when there is
+						    one to hand over, so it is never a control that fails on click. */}
+						{handoffPreview && (
+							<div className="rounded-lg border border-edge bg-raised px-3 py-2.5">
+								<label className="flex items-start gap-2.5 cursor-pointer">
+									<input
+										type="checkbox"
+										checked={handoff}
+										onChange={(e) => setHandoff(e.target.checked)}
+										className="w-4 h-4 mt-0.5 rounded accent-accent shrink-0"
+										data-testid="spawn-agent-handoff"
+									/>
+									<span>
+										<span className="text-fg text-sm font-medium block">{t("spawnAgent.handoff")}</span>
+										<span className="text-fg-3 text-xs block mt-0.5">
+											{t.plural("spawnAgent.handoffDesc", handoffPreview.turns, {
+												agent: handoffPreview.source === "claude" ? "Claude Code" : "Codex",
+												count: handoffPreview.turns,
+											})}
+										</span>
+									</span>
+								</label>
+							</div>
+						)}
 
 						{/* Warning for uninstalled agents */}
 						{agentNotInstalled && selectedAgent && (

@@ -217,26 +217,14 @@ export const IMPORTED_DESCRIPTION_LIMIT = 40_000;
 const TAIL_TURN_STEPS = [60, 30, 15, 8, 4, 2, 1];
 
 /**
- * The retelling that becomes an imported task's description: the user's original
- * request in full, then as much of the recent work as fits under `limit`.
+ * The widest tail that fits under `limit`.
  *
  * Head plus tail, never a silent middle cut — the turn count that was dropped is
  * stated by the renderer itself, and a body still over the cap after one turn
- * ends with the marker below rather than stopping mid-sentence-with-no-notice.
+ * ends with a marker rather than stopping mid-sentence with no notice.
  */
-export function renderImportedDescription(
-	parsed: ParsedConversation,
-	options: { limit?: number } = {},
-): string {
-	const limit = options.limit ?? IMPORTED_DESCRIPTION_LIMIT;
-	const render = (maxTurns: number): string => renderHandoff(parsed, {
-		target: "claude",
-		leadWithFirstRequest: true,
-		// A description is a brief, not an archive: an imported conversation's
-		// tool output is worth a glance, never 2 KB per call.
-		toolOutputLimit: 400,
-		maxTurns,
-	});
+function fitToLimit(parsed: ParsedConversation, limit: number, base: RenderOptions): string {
+	const render = (maxTurns: number): string => renderHandoff(parsed, { ...base, maxTurns });
 
 	for (const maxTurns of TAIL_TURN_STEPS) {
 		const text = render(maxTurns);
@@ -250,4 +238,49 @@ export function renderImportedDescription(
 	const agent = parsed.source === "codex" ? "Codex" : "Claude Code";
 	const marker = `\n…[${text.length - limit} more characters cut — the full conversation is still in ${agent}'s own transcript]\n`;
 	return `${text.slice(0, Math.max(0, limit - marker.length))}${marker}`;
+}
+
+/**
+ * The retelling that becomes an imported task's description: the user's original
+ * request in full, then as much of the recent work as fits under `limit`.
+ */
+export function renderImportedDescription(
+	parsed: ParsedConversation,
+	options: { limit?: number } = {},
+): string {
+	return fitToLimit(parsed, options.limit ?? IMPORTED_DESCRIPTION_LIMIT, {
+		target: "claude",
+		leadWithFirstRequest: true,
+		// A description is a brief, not an archive: an imported conversation's
+		// tool output is worth a glance, never 2 KB per call.
+		toolOutputLimit: 400,
+	});
+}
+
+/**
+ * Characters a handoff FILE may occupy.
+ *
+ * Three times the description cap, because nothing stores this one: it is written
+ * beside the task's other artifacts and read once, by the agent taking over. About
+ * 30k tokens — a long session's tail in full, still a fraction of the fresh context
+ * it lands in. The parent conversation of this feature renders to 359 KB with tool
+ * output dropped entirely, so an unbounded file is not an option.
+ */
+export const HANDOFF_FILE_LIMIT = 120_000;
+
+/**
+ * The retelling written to disk for another agent to read: the request that started
+ * the work, then as much recent detail as fits. Tool output is kept at a wider limit
+ * than a description gets — whoever picks this up has to know what the commands
+ * actually answered, not merely that they ran.
+ */
+export function renderHandoffFile(
+	parsed: ParsedConversation,
+	options: { limit?: number; target?: RenderTarget } = {},
+): string {
+	return fitToLimit(parsed, options.limit ?? HANDOFF_FILE_LIMIT, {
+		target: options.target ?? "claude",
+		leadWithFirstRequest: true,
+		toolOutputLimit: 800,
+	});
 }

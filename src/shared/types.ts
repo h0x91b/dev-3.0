@@ -1,6 +1,7 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
 import type { ImportConversationsResult, ImportableConversationView } from "./conversation-import-model";
+import type { HandoffPreview, SpawnAgentResult } from "./conversation-handoff-model";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
@@ -5215,8 +5216,20 @@ export type AppRPCSchema = {
 				response: { ok: boolean; tool: string | null };
 			};
 			spawnAgentInTask: {
-				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null };
-				response: void;
+				params: {
+					taskId: string;
+					projectId: string;
+					agentId: string | null;
+					configId: string | null;
+					accountId?: string | null;
+					handoff?: boolean;
+				};
+				response: SpawnAgentResult;
+			};
+			/** What a handoff from this task would retell, or null when nothing has. */
+			previewTaskHandoff: {
+				params: { taskId: string; projectId: string };
+				response: HandoffPreview | null;
 			};
 			spawnBugHuntersInTask: {
 				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null };

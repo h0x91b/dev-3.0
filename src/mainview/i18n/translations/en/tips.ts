@@ -233,6 +233,8 @@ const tips = {
 	"tip.spaceSearch.body": "⌘K matches space names too — type a space to list its projects, and filter tasks anywhere with `space:\"Client X\"`.",
 	"tip.agentTrafficLog.title": "Read what your agents said",
 	"tip.agentTrafficLog.body": "Press \u21e7\u2318M for the traffic log: 30 days of every message your agents typed into each other.",
+	"tip.continueInAnotherAgent.title": "Switch agents mid-task",
+	"tip.continueInAnotherAgent.body": "In + Agent, tick “Continue this task’s conversation” — the new agent gets a retelling of the session so far and picks the work up.",
 	"tip.remoteSelfUpdate.title": "Remote boxes self-update",
 	"tip.remoteSelfUpdate.body": "A `dev3 remote` server installs updates itself once the box goes quiet, keeping its public link — or run `dev3 update` yourself.",
 } as const;
