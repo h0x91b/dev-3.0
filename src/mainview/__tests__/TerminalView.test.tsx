@@ -2356,3 +2356,88 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 		expect(options.fontSize).toBe(20);
 	});
 });
+
+// ── Mobile long-press text selection ──────────────────────────────────────────
+// The touch gestures live on the canvas ghostty appends to the container, which
+// the mocked `open` normally never creates — so this block gives it one.
+describe("TerminalView – long-press selection on touch", () => {
+	const LONG_PRESS_MS = 450;
+
+	function touch(type: string, x: number, y: number, changed = false) {
+		const point = { clientX: x, clientY: y };
+		return Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+			touches: changed ? [] : [point],
+			changedTouches: [point],
+		});
+	}
+
+	async function renderWithCanvas(touchComposeMode: boolean) {
+		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
+			el.appendChild(document.createElement("canvas"));
+			el.appendChild(document.createElement("textarea"));
+		});
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode={touchComposeMode} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const canvas = result.container.querySelector("canvas") as HTMLCanvasElement;
+		const mouse: string[] = [];
+		for (const type of ["mousedown", "mousemove", "mouseup"]) {
+			canvas.addEventListener(type, () => mouse.push(type));
+		}
+		return { canvas, mouse };
+	}
+
+	beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+	afterEach(() => {
+		vi.useRealTimers();
+		mockTermInstance.open.mockReset();
+	});
+
+	it("anchors a selection after a still finger holds, and extends it on drag", async () => {
+		const { canvas, mouse } = await renderWithCanvas(true);
+
+		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
+		expect(mouse).toEqual([]);
+		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+		expect(mouse).toEqual(["mousedown"]);
+		expect(canvas.dataset.selecting).toBe("1");
+
+		act(() => { canvas.dispatchEvent(touch("touchmove", 90, 60)); });
+		act(() => { canvas.dispatchEvent(touch("touchend", 90, 60, true)); });
+		expect(mouse).toEqual(["mousedown", "mousemove", "mouseup"]);
+		expect(canvas.dataset.selecting).toBeUndefined();
+	});
+
+	it("does not select when the finger moves before the hold completes", async () => {
+		const { canvas, mouse } = await renderWithCanvas(true);
+
+		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
+		act(() => { canvas.dispatchEvent(touch("touchmove", 40, 80)); }); // scroll
+		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+
+		expect(mouse).toEqual([]);
+		expect(canvas.dataset.selecting).toBeUndefined();
+	});
+
+	// Compose mode swallows touchend before the canvas sees it, so the hold timer
+	// has to be cancelled by the blocker — otherwise a tap starts a selection with
+	// no finger left on the glass.
+	it("never fires a phantom selection after a tap in compose mode", async () => {
+		const { canvas, mouse } = await renderWithCanvas(true);
+
+		act(() => { canvas.dispatchEvent(touch("touchstart", 40, 40)); });
+		act(() => { canvas.dispatchEvent(touch("touchend", 40, 40, true)); });
+		act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+
+		expect(mouse).toEqual([]);
+		expect(canvas.dataset.selecting).toBeUndefined();
+	});
+});
