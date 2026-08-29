@@ -106,4 +106,65 @@ describe("installAgentSkills", () => {
 		expect(agentsMd).not.toContain("task move --status in-progress");
 		expect(agentsMd).not.toContain("At the END of every turn, move the task");
 	});
+
+	/**
+	 * A skill is inert until something loads it, so every non-Claude harness needs
+	 * an always-on line. It has to live inside dev3's existing managed block: the
+	 * user's own notes in that file are never dev3's to disturb.
+	 */
+	it("puts the low-battery always-on line inside the managed block, and nowhere else", async () => {
+		mkdirSync(join(tempHome, ".agents"), { recursive: true });
+		writeFileSync(join(tempHome, ".agents/AGENTS.md"), "# My own notes\n\nKeep these.\n", "utf-8");
+
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+
+		const agentsMd = readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8");
+		expect(agentsMd).toContain("# My own notes");
+		expect(agentsMd).toContain("Keep these.");
+		const block = /<!-- dev3:start -->[\s\S]*<!-- dev3:end -->/.exec(agentsMd)?.[0] ?? "";
+		expect(block).toContain("low-battery");
+		// Outside the block, dev3 wrote nothing.
+		expect(agentsMd.replace(block, "")).not.toContain("low-battery");
+	});
+
+	it("stays a single managed block across repeated installs", async () => {
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+		installAgentSkills();
+		installAgentSkills();
+
+		const agentsMd = readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8");
+		expect(agentsMd.match(/<!-- dev3:start -->/g)).toHaveLength(1);
+		expect(agentsMd.match(/<!-- dev3:end -->/g)).toHaveLength(1);
+		expect(agentsMd.match(/Load the `low-battery` skill/g)).toHaveLength(1);
+	});
+
+	it("takes the always-on line back out when low-battery is switched off", async () => {
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+		expect(readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8")).toContain("low-battery");
+
+		installAgentSkills({ lowBattery: false });
+
+		const agentsMd = readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8");
+		expect(agentsMd).not.toContain("low-battery");
+		expect(agentsMd.match(/<!-- dev3:start -->/g)).toHaveLength(1);
+		// The dev3 protocol itself is untouched by the low-battery toggle.
+		expect(agentsMd).toContain("dev-3.0 Managed Worktree");
+		expect(existsSync(join(tempHome, ".agents/skills/low-battery"))).toBe(false);
+	});
+
+	it("installs low-battery by default and removes it on an explicit opt-out", async () => {
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+		expect(existsSync(join(tempHome, ".agents/skills/low-battery/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude/output-styles/low-battery.md"))).toBe(true);
+
+		installAgentSkills({ lowBattery: false });
+		expect(existsSync(join(tempHome, ".agents/skills/low-battery/SKILL.md"))).toBe(false);
+		expect(existsSync(join(tempHome, ".claude/output-styles/low-battery.md"))).toBe(false);
+		// dev3's own skills are untouched by the low-battery toggle.
+		expect(existsSync(join(tempHome, ".agents/skills/dev3/SKILL.md"))).toBe(true);
+	});
 });

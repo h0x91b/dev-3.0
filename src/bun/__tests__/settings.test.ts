@@ -197,6 +197,8 @@ describe("saveSettings", () => {
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			experimentalAgentTraffic: true,
+			lowBatteryDisabled: true,
+			lowBatteryAnnounced: true,
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,

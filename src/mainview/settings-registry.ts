@@ -349,6 +349,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "surface",
 	},
 	{
+		id: "low-battery",
+		category: "agents",
+		titleKey: "settings.lowBattery",
+		descriptionKey: "settings.lowBatteryDesc",
+		anchor: "low-battery",
+		globalField: "lowBatteryDisabled",
+		storage: "global",
+	},
+	{
 		id: "rate-limit-tracking",
 		category: "agents",
 		titleKey: "settings.rateLimitTracking",
@@ -538,6 +547,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"helpModeDiscovered",
 	// Which guided tours have already run. Progress, not a preference.
 	"completedTours",
+	// One-way "we told them the answer format changed" flag. Progress, not a preference.
+	"lowBatteryAnnounced",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 /** Runtime list used by the registry integrity test; the type check catches schema drift. */
@@ -584,6 +595,8 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"keyboardShortcuts",
 	"reviewModePrompt",
 	"coordinatorPrompt",
+	"lowBatteryDisabled",
+	"lowBatteryAnnounced",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

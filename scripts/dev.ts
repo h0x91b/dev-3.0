@@ -37,6 +37,9 @@ export function devPlan(mode: DevMode, execPath: string): DevStep[] {
 	const steps: DevStep[] = [
 		{ label: "build info", command: [execPath, "scripts/generate-build-info.ts"] },
 		{ label: "changelog", command: [execPath, "scripts/generate-changelog.ts"] },
+		// Same step a release build runs, so a formatting bug reported against a
+		// release reproduces locally instead of against a stale checked-in copy.
+		{ label: "low-battery rules", command: [execPath, "scripts/generate-low-battery.ts"] },
 	];
 	if (mode === "dev") {
 		steps.push({ label: "renderer bundle", command: [execPath, VITE_BIN, "build"] });

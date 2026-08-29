@@ -186,6 +186,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
 		// Default-off experimental toggle — only an explicit true is a stored opt-in.
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
+		// Default-on feature — only an explicit true here is a stored opt-OUT, so an
+		// older settings.json with no key at all reads as "low-battery on".
+		lowBatteryDisabled: d.lowBatteryDisabled === true ? true : undefined,
+		lowBatteryAnnounced: d.lowBatteryAnnounced === true ? true : undefined,
 		// Bring-your-own-tunnel config; kept only when it names a runnable custom command.
 		remoteTunnel: sanitizeRemoteTunnel(d.remoteTunnel),
 		// Default-off beta toggle — only an explicit true is a stored opt-in.

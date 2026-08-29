@@ -88,7 +88,7 @@ describe("defaultLaunchShellPath", () => {
 describe("dev/start command chain", () => {
 	it("runs every step through the Bun executable, never a PATH tool or shell", () => {
 		const steps = devPlan("dev", "/usr/local/bin/bun");
-		expect(steps.map((s) => s.command[0])).toEqual(Array(5).fill("/usr/local/bin/bun"));
+		expect(steps.map((s) => s.command[0])).toEqual(Array(6).fill("/usr/local/bin/bun"));
 		for (const step of steps) {
 			expect(step.command.join(" ")).not.toMatch(/[&|;$]/);
 		}
@@ -104,6 +104,7 @@ describe("dev/start command chain", () => {
 		expect(devPlan("dev", "bun").map((s) => s.label)).toEqual([
 			"build info",
 			"changelog",
+			"low-battery rules",
 			"renderer bundle",
 			"CLI + native build",
 			"electrobun build",

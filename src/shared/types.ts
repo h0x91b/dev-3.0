@@ -12,6 +12,8 @@ export type { TelemetryProfile } from "./telemetry-profile";
 import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage } from "./agent-message-log";
+import type { LowBatteryStatus } from "./low-battery";
+export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
 
 // ---- Changelog ----
 
@@ -1170,6 +1172,18 @@ export interface GlobalSettings {
 	 * ⇧⌘M, no menu item, no palette command, no tip.
 	 */
 	experimentalAgentTraffic?: boolean;
+	/**
+	 * Turn off the `low-battery` answer format dev3 ships (header block first,
+	 * decision last, tables over prose). Default off ⇒ low-battery is installed.
+	 * Setting it is a real uninstall: only what dev3 wrote is removed, never the
+	 * user's own output style, skills or instruction files.
+	 */
+	lowBatteryDisabled?: boolean;
+	/**
+	 * Set once the "the answer format changed" notice has been shown, so an
+	 * upgrading user is told about low-battery exactly once. One-way.
+	 */
+	lowBatteryAnnounced?: boolean;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
@@ -4353,6 +4367,20 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/** What the low-battery answer format is doing right now: whether it is on,
+			 *  which upstream revision this build carries, and — the part the settings
+			 *  row has to say out loud — whether the user's own output style was left
+			 *  selected instead. */
+			getLowBatteryStatus: {
+				params: void;
+				response: LowBatteryStatus;
+			};
+			/** Select the low-battery output style for a user who kept their own and
+			 *  then asked for it anyway. The one-click switch under the settings row. */
+			selectLowBatteryStyle: {
+				params: void;
+				response: LowBatteryStatus;
 			};
 			/** Toggle an (agentId, configId) pair in the global favorites list —
 			 *  add it (with LFU-then-LRU eviction once MAX_FAVORITES is reached) or

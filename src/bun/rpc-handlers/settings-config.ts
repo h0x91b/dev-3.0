@@ -30,6 +30,9 @@ import { agentBinaryPathOverride, isExecutableFile } from "../executable";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH } from "../../shared/types";
+import type { LowBatteryStatus } from "../../shared/low-battery";
+import { installAgentSkills } from "../agent-skills";
+import { forceSelectLowBatteryStyle, lowBatteryStatus } from "../low-battery";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
  *  saves must not depend on the client being well-behaved. */
@@ -236,6 +239,18 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	const stored = await loadSettings();
 	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
 	await saveSettings(next);
+	// Apply the low-battery toggle straight away — a switch that only takes effect
+	// after an app restart does not mean what its label says. Flipping it off is a
+	// real uninstall of what dev3 wrote, so it must not wait either.
+	if ((stored.lowBatteryDisabled === true) !== (next.lowBatteryDisabled === true)) {
+		try {
+			// The installer owns both halves: the skill/style files and the always-on
+			// line inside dev3's managed block in ~/.agents/AGENTS.md.
+			installAgentSkills({ lowBattery: next.lowBatteryDisabled !== true });
+		} catch (err) {
+			log.warn("Failed to apply the low-battery toggle (non-fatal)", { error: String(err) });
+		}
+	}
 	// `resolvedTheme` may be absent (nothing has called setTmuxTheme yet); the
 	// live in-memory theme is the fallback, never a hardcoded "dark" — that would
 	// flip a light-theme user's terminals on an unrelated shell change.
@@ -646,6 +661,19 @@ async function setFeatureFlags(params: { flags: Record<string, boolean> }): Prom
 	cacheFeatureFlags(params.flags);
 }
 
+async function getLowBatteryStatus(): Promise<LowBatteryStatus> {
+	const settings = await loadSettings();
+	return lowBatteryStatus(homedir(), settings.lowBatteryDisabled !== true);
+}
+
+/** The user kept their own output style and then asked for low-battery anyway.
+ *  Only this path overwrites `outputStyle` — the installer never does. */
+async function selectLowBatteryStyle(): Promise<LowBatteryStatus> {
+	log.info("→ selectLowBatteryStyle");
+	forceSelectLowBatteryStyle(homedir());
+	return getLowBatteryStatus();
+}
+
 /** Read side for Debug -> Feature Flags: what bun actually gates code on. */
 async function getFeatureFlags(): Promise<Record<string, boolean>> {
 	return getAllFeatureFlags();
@@ -671,6 +699,8 @@ export const settingsConfigHandlers = {
 	getGitHubCliStatus,
 	getShellAvailability,
 	saveGlobalSettings,
+	getLowBatteryStatus,
+	selectLowBatteryStyle,
 	toggleFavoriteAgent,
 	installDev3Cli,
 	getAgents,
