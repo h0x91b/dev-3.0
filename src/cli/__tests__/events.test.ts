@@ -42,7 +42,7 @@ function selection(overrides?: Partial<EventSelection>): EventSelection {
 		droppedNewer: 0,
 		olderThanWindow: 0,
 		matched: events.length,
-		cursor: events.length ? "2026-08-29T10:12:03.114Z.86b9b644" : null,
+		cursor: events.length ? "2026-08-29T10:12:03.114" : null,
 		...overrides,
 	};
 }
@@ -86,12 +86,24 @@ afterEach(() => {
 
 describe("dev3 events — the cursor is never guessed", () => {
 	it("exits 19 and reads nothing when --from cannot be parsed", async () => {
-		await expect(handleEvents(args({ from: "2h" }), SOCKET, CTX)).rejects.toThrow(
+		await expect(handleEvents(args({ from: "yesterday" }), SOCKET, CTX)).rejects.toThrow(
 			`EXIT_${CLI_EXIT_CODE_EVENT_CURSOR_INVALID}`,
 		);
 		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("Unparseable --from cursor: 2h");
-		expect(stderrOutput).toContain("a position, not a duration");
+		expect(stderrOutput).toContain("Unparseable --from value: yesterday");
+		expect(stderrOutput).toContain("Three shapes are accepted");
+	});
+
+	it("accepts a duration and resolves it to an instant before sending", async () => {
+		mockSend.mockResolvedValue(okResp(selection()));
+
+		await handleEvents(args({ from: "2h" }), SOCKET, CTX);
+
+		const sent = mockSend.mock.calls[0]![2]!.cursor as string;
+		expect(sent).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+		const ageMs = Date.now() - Date.parse(sent);
+		expect(ageMs).toBeGreaterThan(2 * 60 * 60 * 1000 - 5000);
+		expect(ageMs).toBeLessThan(2 * 60 * 60 * 1000 + 5000);
 	});
 
 	it("is a usage error when --from carries no value", async () => {
@@ -104,11 +116,11 @@ describe("dev3 events — the cursor is never guessed", () => {
 	it("sends the parsed cursor to the app", async () => {
 		mockSend.mockResolvedValue(okResp(selection()));
 
-		await handleEvents(args({ from: "2026-08-29T09:00:00.000Z.aaaaaaaa" }), SOCKET, CTX);
+		await handleEvents(args({ from: "2026-08-29T09:00:00.000" }), SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "events.list", {
 			limit: 100,
-			cursor: { at: "2026-08-29T09:00:00.000Z", id: "aaaaaaaa" },
+			cursor: "2026-08-29T09:00:00.000Z",
 			projectId: "proj-001",
 		});
 	});
@@ -122,8 +134,8 @@ describe("dev3 events — the footer never lies about what was cut", () => {
 
 		expect(stdoutOutput).toContain("WINDOW, not a position");
 		expect(stdoutOutput).toContain("Older than the window: 340 events NOT shown.");
-		expect(stdoutOutput).toContain("Cursor: 2026-08-29T10:12:03.114Z.86b9b644");
-		expect(stdoutOutput).toContain("Next:   dev3 events --from 2026-08-29T10:12:03.114Z.86b9b644");
+		expect(stdoutOutput).toContain("Cursor: 2026-08-29T10:12:03.114");
+		expect(stdoutOutput).toContain("Next:   dev3 events --from 2026-08-29T10:12:03.114");
 	});
 
 	it("says plainly when the window cut nothing off", async () => {
@@ -146,11 +158,11 @@ describe("dev3 events — the footer never lies about what was cut", () => {
 	it("echoes the incoming cursor on a quiet sweep so the caller keeps a position", async () => {
 		mockSend.mockResolvedValue(okResp(selection({ events: [], cursor: null, matched: 0 })));
 
-		await handleEvents(args({ from: "2026-08-29T10:12:03.114Z.86b9b644" }), SOCKET, CTX);
+		await handleEvents(args({ from: "2026-08-29T10:12:03.114" }), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("No events");
-		expect(stdoutOutput).toContain("0 events since 2026-08-29T10:12:03.114Z.86b9b644.");
-		expect(stdoutOutput).toContain("Cursor: 2026-08-29T10:12:03.114Z.86b9b644");
+		expect(stdoutOutput).toContain("0 events since 2026-08-29T10:12:03.114.");
+		expect(stdoutOutput).toContain("Cursor: 2026-08-29T10:12:03.114");
 	});
 });
 
@@ -178,6 +190,18 @@ describe("dev3 events — the line carries its owner", () => {
 		mockSend.mockResolvedValue(okResp(selection()));
 		await handleEvents(args(), SOCKET, CTX);
 		expect(stdoutOutput).not.toContain("PROJECT");
+	});
+});
+
+describe("dev3 events — argument guards", () => {
+	it("echoes the RESOLVED instant, not the duration, on a quiet sweep", async () => {
+		mockSend.mockResolvedValue(okResp(selection({ events: [], cursor: null, matched: 0 })));
+
+		await handleEvents(args({ from: "2h" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("0 events since 2h.");
+		expect(stdoutOutput).not.toContain("Cursor: 2h");
+		expect(stdoutOutput).toMatch(/Cursor: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\n/);
 	});
 });
 

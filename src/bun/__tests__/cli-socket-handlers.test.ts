@@ -4301,21 +4301,21 @@ describe("events.list — the board's memory channel", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
 
 		const first = await handleRequest(makeRequest("events.list", {
-			cursor: { at: "2026-01-01T00:00:00.000Z", id: null },
+			cursor: "2026-01-01T00:00:00.000Z",
 			limit: 100,
 		}));
 		const cursorLine = (first.data as { cursor: string }).cursor;
-		expect(cursorLine).toBe("2026-08-29T10:00:00.000Z.n1");
+		expect(cursorLine).toBe("2026-08-29T10:00:00.000");
 
 		const second = await handleRequest(makeRequest("events.list", {
-			cursor: { at: "2026-08-29T10:00:00.000Z", id: "n1" },
+			cursor: "2026-08-29T10:00:00.000Z",
 			limit: 100,
 		}));
 		expect((second.data as { events: unknown[] }).events).toHaveLength(0);
 
 		tasks[0] = makeTask({ id: "t1", notes: [note("n1", "2026-08-29T10:00:00.000Z"), note("n2", "2026-08-29T11:00:00.000Z")] });
 		const third = await handleRequest(makeRequest("events.list", {
-			cursor: { at: "2026-08-29T10:00:00.000Z", id: "n1" },
+			cursor: "2026-08-29T10:00:00.000Z",
 			limit: 100,
 		}));
 		expect((third.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n2"]);
@@ -4330,7 +4330,7 @@ describe("events.list — the board's memory channel", () => {
 		]);
 
 		const resp = await handleRequest(makeRequest("events.list", {
-			cursor: { at: "2026-01-01T00:00:00.000Z", id: null },
+			cursor: "2026-01-01T00:00:00.000Z",
 			limit: 5,
 		}));
 

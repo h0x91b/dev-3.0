@@ -12,7 +12,7 @@ export interface BoardEvent {
 	kind: BoardEventKind;
 	/** Normalised ISO instant — the sort key, never the raw stored string. */
 	at: string;
-	/** Source record id (a note id); its 8-char prefix is the cursor tie-break. */
+	/** Source record id (a note id), shown so `dev3 note show` can fetch the body. */
 	id: string;
 	projectId: string;
 	projectName: string;
@@ -22,15 +22,6 @@ export interface BoardEvent {
 	taskStatus: TaskStatus;
 	source: NoteSource;
 	text: string;
-}
-
-/**
- * A position in the feed, not a time window. `id` is null for the wider
- * `--from <iso>` form, which means "everything strictly after this instant".
- */
-export interface EventCursor {
-	at: string;
-	id: string | null;
 }
 
 export interface EventSelection {
@@ -50,16 +41,32 @@ export const DEFAULT_EVENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_EVENT_LIMIT = 100;
 export const MAX_EVENT_LIMIT = 1000;
 
-const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
-const CURSOR_RE = /^(.+Z)\.([0-9a-fA-F]{8})$/;
+/**
+ * The cursor is a bare instant to the millisecond: `2026-08-28T20:22:22.303`.
+ * No `Z`, no id half — it is copied by hand into a prompt often enough that ten
+ * wasted characters are a real cost.
+ *
+ * Milliseconds are NOT decoration. Measured over the 1805 notes on the dev-3.0
+ * board: 73 individual seconds carry more than one note, and no millisecond
+ * carries two. A second-precision cursor would therefore have to either re-show
+ * the last event on every call or skip its same-second siblings — roughly 8% of
+ * notes sit in such a group.
+ */
+const CURSOR_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z?$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DURATION_RE = /^(\d+)\s*(s|m|h|d|w)$/i;
 
-/** The 8-char id half of a cursor — same prefix convention as `dev3 note show`. */
-export function eventCursorId(id: string): string {
-	return id.slice(0, 8).toLowerCase();
-}
+const DURATION_UNIT_MS: Record<string, number> = {
+	s: 1000,
+	m: 60 * 1000,
+	h: 60 * 60 * 1000,
+	d: 24 * 60 * 60 * 1000,
+	w: 7 * 24 * 60 * 60 * 1000,
+};
 
+/** What a run prints on its `Cursor:` line. */
 export function formatEventCursor(event: BoardEvent): string {
-	return `${event.at}.${eventCursorId(event.id)}`;
+	return event.at.replace(/Z$/, "");
 }
 
 /**
@@ -74,59 +81,66 @@ export function normalizeEventInstant(raw: string | undefined | null): string | 
 	return new Date(ms).toISOString();
 }
 
-/** Parse `<iso>.<id8>` or a bare `<iso>`. Returns null for anything else. */
-export function parseEventCursor(raw: string): EventCursor | null {
+/**
+ * Three accepted shapes, all resolving to one instant:
+ *   - `2026-08-28T20:22:22.303`  the printed cursor (a position)
+ *   - `2026-08-01` / `...Z`      a plainer instant, for a deliberately wider sweep
+ *   - `2h` / `30m` / `3d` / `1w` a duration back from now
+ *
+ * Returns null for anything else — a cursor is never guessed.
+ */
+export function parseEventCursor(raw: string, now: number = Date.now()): string | null {
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
 
-	const withId = CURSOR_RE.exec(trimmed);
-	if (withId) {
-		const at = normalizeEventInstant(withId[1]);
-		if (!at || !ISO_RE.test(withId[1])) return null;
-		return { at, id: withId[2].toLowerCase() };
+	const duration = DURATION_RE.exec(trimmed);
+	if (duration) {
+		const amount = Number(duration[1]);
+		if (!Number.isFinite(amount) || amount <= 0) return null;
+		return new Date(now - amount * DURATION_UNIT_MS[duration[2].toLowerCase()]).toISOString();
 	}
 
-	if (!ISO_RE.test(trimmed)) return null;
-	const at = normalizeEventInstant(trimmed);
-	return at ? { at, id: null } : null;
+	if (DATE_RE.test(trimmed)) return normalizeEventInstant(`${trimmed}T00:00:00.000Z`);
+
+	const stamp = CURSOR_RE.exec(trimmed);
+	if (!stamp) return null;
+	const millis = (stamp[7] ?? "").padEnd(3, "0");
+	return normalizeEventInstant(
+		`${stamp[1]}-${stamp[2]}-${stamp[3]}T${stamp[4]}:${stamp[5]}:${stamp[6]}.${millis}Z`,
+	);
 }
 
 function compareEvents(a: BoardEvent, b: BoardEvent): number {
 	if (a.at !== b.at) return a.at < b.at ? -1 : 1;
-	const aid = eventCursorId(a.id);
-	const bid = eventCursorId(b.id);
-	if (aid !== bid) return aid < bid ? -1 : 1;
 	return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-function isAfterCursor(event: BoardEvent, cursor: EventCursor): boolean {
-	if (event.at !== cursor.at) return event.at > cursor.at;
-	if (cursor.id === null) return false;
-	return eventCursorId(event.id) > cursor.id;
-}
-
 /**
- * Oldest-first selection. The cap keeps the OLDEST matches and reports the
- * newer ones it dropped, so re-running with the returned cursor continues
- * without a hole — dropping the oldest would skip them forever.
+ * Oldest-first selection. The cap keeps the OLDEST matches and reports the newer
+ * ones it dropped, so re-running with the returned cursor continues without a
+ * hole — dropping the oldest would skip them forever. It also never splits a
+ * group sharing one instant, because the cursor cannot address half of one.
  */
 export function selectEvents(
 	all: BoardEvent[],
-	opts: { cursor: EventCursor | null; limit: number; now: number; windowMs?: number },
+	opts: { cursor: string | null; limit: number; now: number; windowMs?: number },
 ): EventSelection {
 	const sorted = [...all].sort(compareEvents);
 
 	let matches: BoardEvent[];
 	let olderThanWindow = 0;
 	if (opts.cursor) {
-		matches = sorted.filter((e) => isAfterCursor(e, opts.cursor as EventCursor));
+		matches = sorted.filter((e) => e.at > (opts.cursor as string));
 	} else {
 		const cutoff = new Date(opts.now - (opts.windowMs ?? DEFAULT_EVENT_WINDOW_MS)).toISOString();
 		matches = sorted.filter((e) => e.at >= cutoff);
 		olderThanWindow = sorted.length - matches.length;
 	}
 
-	const events = matches.slice(0, Math.max(0, opts.limit));
+	let take = Math.max(0, Math.min(opts.limit, matches.length));
+	while (take > 0 && take < matches.length && matches[take].at === matches[take - 1].at) take++;
+
+	const events = matches.slice(0, take);
 	return {
 		events,
 		droppedNewer: matches.length - events.length,

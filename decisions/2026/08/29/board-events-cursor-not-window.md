@@ -33,8 +33,10 @@ pure selection in `src/shared/board-events.ts`).
 **A cursor, not a time window.** `--since 2h` fails in the dangerous direction: a coordinator sweeps
 when the user asks, not on a schedule, so a relative window silently drops everything older than
 itself and reports success. The caller cannot tell a quiet period from a truncated one. A cursor is
-a position — `<iso>.<8-hex>`, a total order over `(createdAt, note-id-prefix)` — so the same cursor
-against the same board gives the same answer, every time.
+a position — one instant, printed as `2026-08-28T20:22:22.303` — so the same cursor against the same
+board gives the same answer, every time. `--from` also takes a plain date and a duration (`2h`,
+`3d`); both resolve to an instant before anything is read, and a duration is never what a quiet
+sweep echoes back, or a stored cursor would be a moving window.
 
 **The caller carries the cursor; the app remembers nothing per caller.** Server-side memory is
 easier to use, but it has no honest answer to "who is asking". Identity would have to be derived
@@ -48,6 +50,15 @@ the last 24 hours, says in words that this is a window rather than a position, a
 number of events older than it (`olderThanWindow`). The count is free — the full corpus is already
 in hand — and it is what turns "probably nothing" into "340 events, go and get a cursor".
 
+**Milliseconds in the cursor are load-bearing; everything else was cut.** The printed form carries
+no `Z` and no note id — it is copied by hand into an agent's prompt often enough that ten wasted
+characters are a real cost. Millisecond precision stays because it was measured, not assumed: across
+the 1805 notes on the dev-3.0 board, **73 individual seconds carry more than one note and no
+millisecond carries two**. A second-precision cursor would therefore have to either re-show the last
+event on every call or skip its same-second siblings, and roughly 8% of notes sit in such a group.
+For the same reason the cap never splits a group sharing one instant — a cursor cannot address half
+of one.
+
 **The cap keeps the oldest.** `--limit` (default 100) drops the *newer* matches and reports how
 many, so continuing from the printed cursor leaves no hole; dropping the oldest would skip them
 forever. Both boundaries are stated as numbers: silent truncation reads as "that was everything".
@@ -59,16 +70,20 @@ degrading into a time window.
 
 - The caller can lose its cursor (an agent's context is wiped). Mitigated by the counted 24-hour
   window: the loss is visible and quantified, not silent.
-- Two notes sharing a millisecond *and* an 8-hex id prefix would be ordered ambiguously. The prefix
-  matches the `dev3 note show` convention everywhere else in the CLI, and the tie is broken by the
-  full id inside a single response.
+- Two notes sharing a millisecond exactly would be indistinguishable to a cursor. None exist on the
+  current board (0 of 1805), and the cap deliberately widens rather than splitting such a group, so
+  the failure would be one repeated line rather than a skipped note.
 - v1 emits only `kind: "note"`. Board movements and completions are the natural v2; the `KIND`
   column and the `--kind` filter exist so they arrive as a filter rather than a reformat.
 
 ## Alternatives considered
 
-- **`--since <duration>`** — rejected above: silently truncating and reporting success is the exact
-  failure this command exists to prevent.
+- **A duration as the DEFAULT addressing mode** — rejected: silently truncating and reporting
+  success is the exact failure this command exists to prevent. A duration is still accepted as an
+  explicit `--from` value, where the caller chose the window knowingly.
+- **A second-precision or opaque compact cursor** — rejected on the measurement above: seconds
+  collide 73 times on this board, and an opaque base36 form saves a handful of characters at the
+  cost of a cursor a human can no longer read in a prompt.
 - **Server-side per-caller cursors** — rejected: no honest caller identity outside a worktree, plus
   a read-advances position is lossy on interruption. It would also put new per-caller state under
   `~/.dev3.0`, which the on-disk invariants make expensive to get right for little gain.

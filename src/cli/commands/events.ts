@@ -55,12 +55,15 @@ function renderTable(events: BoardEvent[], multiProject: boolean): void {
 	printTable(headers, rows);
 }
 
-function renderFooter(sel: EventSelection, opts: { cursorIn: string | null; limit: number; windowMs: number }): void {
+function renderFooter(
+	sel: EventSelection,
+	opts: { asked: string | null; resolved: string | null; limit: number; windowMs: number },
+): void {
 	const out = (line: string) => process.stdout.write(`${line}\n`);
 	out("");
 
-	if (opts.cursorIn) {
-		out(`${sel.events.length} event${sel.events.length === 1 ? "" : "s"} since ${opts.cursorIn}.`);
+	if (opts.asked) {
+		out(`${sel.events.length} event${sel.events.length === 1 ? "" : "s"} since ${opts.asked}.`);
 	} else {
 		out(
 			`${sel.events.length} event${sel.events.length === 1 ? "" : "s"} in the last ${windowHours(opts.windowMs)}` +
@@ -83,9 +86,9 @@ function renderFooter(sel: EventSelection, opts: { cursorIn: string | null; limi
 		);
 	}
 
-	// Echo the incoming cursor when nothing moved, so a caller that stores this
-	// line verbatim keeps a valid position instead of losing one on a quiet sweep.
-	const cursor = sel.cursor ?? opts.cursorIn;
+	// On a quiet sweep, echo the RESOLVED instant rather than what was typed: a
+	// caller that stores `2h` verbatim would keep re-reading a moving window.
+	const cursor = sel.cursor ?? opts.resolved;
 	if (cursor) {
 		out(`Cursor: ${cursor}`);
 		out(`Next:   dev3 events --from ${cursor}`);
@@ -104,25 +107,23 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 
 	const rawFrom = args.flags.from;
-	if (rawFrom !== undefined && rawFrom !== "true") {
-		// A cursor that cannot be read is never degraded into a time window:
-		// silently answering "the last day" skips everything older and looks fine.
-		if (!parseEventCursor(rawFrom)) {
-			exitError(
-				`Unparseable --from cursor: ${rawFrom}`,
-				"A cursor is a position, not a duration.\n" +
-				"Use the value a previous run printed on its `Cursor:` line, e.g.\n" +
-				"  dev3 events --from 2026-08-29T10:12:03.114Z.86b9b644\n" +
-				"A bare ISO instant also works for a wider sweep:\n" +
-				"  dev3 events --from 2026-08-01T00:00:00Z\n" +
-				"Lost your cursor? Run `dev3 events` with no --from; it reports how much it cut off.",
-				CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
-			);
-		}
-	} else if (rawFrom === "true") {
-		exitUsage("--from needs a cursor value. Usage: dev3 events --from <cursor>");
+	if (rawFrom === "true") {
+		exitUsage("--from needs a value. Usage: dev3 events --from <cursor|instant|duration>");
 	}
-	const cursor = rawFrom && rawFrom !== "true" ? parseEventCursor(rawFrom) : null;
+	// Never degraded into a default window: silently answering "the last day"
+	// skips everything older and looks like success.
+	const cursor = rawFrom ? parseEventCursor(rawFrom) : null;
+	if (rawFrom && !cursor) {
+		exitError(
+			`Unparseable --from value: ${rawFrom}`,
+			"Three shapes are accepted:\n" +
+			"  a cursor    dev3 events --from 2026-08-29T10:12:03.114   (the `Cursor:` line of a previous run)\n" +
+			"  an instant  dev3 events --from 2026-08-01                (a deliberately wider sweep)\n" +
+			"  a duration  dev3 events --from 2h                        (s, m, h, d, w)\n" +
+			"Lost your cursor? Run `dev3 events` with no --from; it reports how much it cut off.",
+			CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
+		);
+	}
 
 	const kind = args.flags.kind ?? "all";
 	if (!(VALID_KINDS as readonly string[]).includes(kind)) {
@@ -161,7 +162,12 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	} else {
 		renderTable(selection.events, allProjects || !projectId);
 	}
-	renderFooter(selection, { cursorIn: cursor ? (rawFrom as string) : null, limit, windowMs: DEFAULT_EVENT_WINDOW_MS });
+	renderFooter(selection, {
+		asked: rawFrom ?? null,
+		resolved: cursor ? cursor.replace(/Z$/, "") : null,
+		limit,
+		windowMs: DEFAULT_EVENT_WINDOW_MS,
+	});
 }
 
 export async function handleEvents(

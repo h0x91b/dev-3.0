@@ -28,30 +28,36 @@ function event(at: string, id: string, overrides?: Partial<BoardEvent>): BoardEv
 }
 
 describe("parseEventCursor", () => {
-	it("accepts the printed <iso>.<id8> form", () => {
-		expect(parseEventCursor("2026-08-29T10:12:03.114Z.86b9b644")).toEqual({
-			at: "2026-08-29T10:12:03.114Z",
-			id: "86b9b644",
-		});
+	it("accepts the printed cursor — an instant to the millisecond, no Z, no id half", () => {
+		expect(parseEventCursor("2026-08-29T10:12:03.114")).toBe("2026-08-29T10:12:03.114Z");
 	});
 
-	it("accepts a bare ISO instant as the wider form", () => {
-		expect(parseEventCursor("2026-08-01T00:00:00Z")).toEqual({
-			at: "2026-08-01T00:00:00.000Z",
-			id: null,
-		});
+	it("still accepts the same instant written with a Z or without milliseconds", () => {
+		expect(parseEventCursor("2026-08-29T10:12:03.114Z")).toBe("2026-08-29T10:12:03.114Z");
+		expect(parseEventCursor("2026-08-29T10:12:03")).toBe("2026-08-29T10:12:03.000Z");
 	});
 
-	it("rejects durations, prose and half-cursors instead of guessing", () => {
-		for (const bad of ["2h", "yesterday", "", "   ", "2026-08-29", "2026-08-29T10:12:03.114Z.86b9", "2026-08-29T10:12:03.114Z.zzzzzzzz", "86b9b644"]) {
-			expect(parseEventCursor(bad), bad).toBeNull();
+	it("accepts a plain date as the wider sweep form", () => {
+		expect(parseEventCursor("2026-08-01")).toBe("2026-08-01T00:00:00.000Z");
+	});
+
+	it("accepts a duration back from now", () => {
+		expect(parseEventCursor("2h", NOW)).toBe("2026-08-29T10:00:00.000Z");
+		expect(parseEventCursor("30m", NOW)).toBe("2026-08-29T11:30:00.000Z");
+		expect(parseEventCursor("3d", NOW)).toBe("2026-08-26T12:00:00.000Z");
+		expect(parseEventCursor("1w", NOW)).toBe("2026-08-22T12:00:00.000Z");
+	});
+
+	it("rejects prose, empty input and a zero duration instead of guessing", () => {
+		for (const bad of ["yesterday", "", "   ", "0h", "-2h", "2y", "2026-13-01", "86b9b644"]) {
+			expect(parseEventCursor(bad, NOW), bad).toBeNull();
 		}
 	});
 
-	it("round-trips a formatted cursor", () => {
-		const e = event("2026-08-29T10:12:03.114Z", "86B9B644-1111-2222-3333-444444444444");
-		expect(formatEventCursor(e)).toBe("2026-08-29T10:12:03.114Z.86b9b644");
-		expect(parseEventCursor(formatEventCursor(e))).toEqual({ at: e.at, id: "86b9b644" });
+	it("round-trips what a run prints back into the instant it points at", () => {
+		const e = event("2026-08-29T10:12:03.114Z", "86b9b644");
+		expect(formatEventCursor(e)).toBe("2026-08-29T10:12:03.114");
+		expect(parseEventCursor(formatEventCursor(e))).toBe(e.at);
 	});
 });
 
@@ -76,7 +82,7 @@ describe("selectEvents — the cursor advances", () => {
 	it("returns everything in the window, oldest first", () => {
 		const first = selectEvents(all, { cursor: null, limit: 100, now: NOW });
 		expect(first.events.map((e) => e.id)).toEqual(["aaaaaaaa", "bbbbbbbb", "cccccccc"]);
-		expect(first.cursor).toBe("2026-08-29T11:00:00.000Z.cccccccc");
+		expect(first.cursor).toBe("2026-08-29T11:00:00.000");
 	});
 
 	it("returns NOTHING on a second read from the cursor the first read printed", () => {
@@ -92,22 +98,23 @@ describe("selectEvents — the cursor advances", () => {
 		const fresh = event("2026-08-29T11:30:00.000Z", "dddddddd");
 		const third = selectEvents([...all, fresh], { cursor: parseEventCursor(first.cursor!), limit: 100, now: NOW });
 		expect(third.events.map((e) => e.id)).toEqual(["dddddddd"]);
-		expect(third.cursor).toBe("2026-08-29T11:30:00.000Z.dddddddd");
+		expect(third.cursor).toBe("2026-08-29T11:30:00.000");
 	});
 
-	it("breaks a same-instant tie by id so the cursor never re-reads or skips", () => {
+	it("never splits a group sharing one instant, because a cursor cannot address half of it", () => {
 		const tied = [
 			event("2026-08-29T10:00:00.000Z", "11111111"),
 			event("2026-08-29T10:00:00.000Z", "22222222"),
 		];
 		const first = selectEvents(tied, { cursor: null, limit: 1, now: NOW });
-		expect(first.events.map((e) => e.id)).toEqual(["11111111"]);
+		expect(first.events.map((e) => e.id)).toEqual(["11111111", "22222222"]);
+		expect(first.droppedNewer).toBe(0);
 		const second = selectEvents(tied, { cursor: parseEventCursor(first.cursor!), limit: 10, now: NOW });
-		expect(second.events.map((e) => e.id)).toEqual(["22222222"]);
+		expect(second.events).toEqual([]);
 	});
 
 	it("is idempotent — the same cursor gives the same answer", () => {
-		const cursor = parseEventCursor("2026-08-29T09:00:00.000Z.aaaaaaaa");
+		const cursor = parseEventCursor("2026-08-29T09:00:00.000");
 		const a = selectEvents(all, { cursor, limit: 100, now: NOW });
 		const b = selectEvents(all, { cursor, limit: 100, now: NOW });
 		expect(a.events.map((e) => e.id)).toEqual(b.events.map((e) => e.id));
@@ -151,7 +158,7 @@ describe("selectEvents — the bare window reports what it cut off", () => {
 
 	it("does not report a window cut when a cursor was supplied", () => {
 		const old = event("2026-01-01T00:00:00.000Z", "ancient1");
-		const sel = selectEvents([old], { cursor: parseEventCursor("2025-01-01T00:00:00Z"), limit: 100, now: NOW });
+		const sel = selectEvents([old], { cursor: parseEventCursor("2025-01-01"), limit: 100, now: NOW });
 		expect(sel.events.map((e) => e.id)).toEqual(["ancient1"]);
 		expect(sel.olderThanWindow).toBe(0);
 	});

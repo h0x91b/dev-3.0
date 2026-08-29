@@ -133,6 +133,6 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_EVENT_CURSOR_INVALID",
 		code: CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
 		description:
-			"`dev3 events --from <cursor>` was given a cursor it cannot parse, and NOTHING was read. A cursor is a position, not a duration: `<iso>.<8-hex>` as printed by a previous run, or a bare ISO instant for a wider sweep. Distinct from exit 3 so a caller that lost its cursor can recognise this one case and fall back to a bare `dev3 events` instead of treating it as a misspelled command. Never silently degraded into a time window — a cursor that quietly becomes 'the last day' skips everything older and reports success.",
+			"`dev3 events --from <cursor>` was given a cursor it cannot parse, and NOTHING was read. Three shapes are accepted: a cursor as printed by a previous run (`2026-08-29T10:12:03.114`), a plain date or instant for a deliberately wider sweep, and a duration such as `2h`. Distinct from exit 3 so a caller that lost its cursor can recognise this one case and fall back to a bare `dev3 events` instead of treating it as a misspelled command. Never silently degraded into a time window — a cursor that quietly becomes 'the last day' skips everything older and reports success.",
 	},
 ] as const;
