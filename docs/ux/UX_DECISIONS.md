@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-30 — Sidebar rows carry the task_card PR badge cluster
+
+`surfaces.sidebar` may render `git_status_badge` — the shared `TaskPrBadges` component, leading the row's signals line, without the board's discovery poll. Why: `decisions/2026/08/30/sidebar-pr-badge-without-discovery-poll.md`.
+
 ## 2026-08-27 — Notification preferences have one Settings home
 
 - **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. **Why:** `decisions/2026/08/27/notification-preferences-settings-home.md`.

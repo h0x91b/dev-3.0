@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import type { CodingAgent, Label, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -16,6 +16,7 @@ import PipelineDropdown from "./PipelineDropdown";
 import PriorityBadge from "./PriorityBadge";
 import StatusMenuPortal from "./StatusMenuPortal";
 import TaskCardRail from "./TaskCardRail";
+import TaskPrBadges from "./TaskPrBadges";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
 import VariantDots from "./VariantDots";
@@ -44,6 +45,8 @@ interface ActiveTaskRowProps {
 	groupMembers: Task[];
 	projectBadgeName?: string;
 	ports?: PortInfo[];
+	/** The task's pull request, when anything has ever seen one. */
+	prInfo?: TaskPRBadgeInfo;
 	statusColors: Record<TaskStatus, string>;
 	/** Custom-column colour when parked in one, else the built-in status hue. */
 	color: string;
@@ -77,6 +80,7 @@ export default function ActiveTaskRow({
 	groupMembers,
 	projectBadgeName,
 	ports,
+	prInfo,
 	statusColors,
 	color,
 	now,
@@ -268,6 +272,10 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
+						{/* Git group leads the signals, mirroring the board bottom bar. */}
+						{prInfo && (
+							<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} />
+						)}
 					{assignedLabels.length > 0 && (
 						<div className="flex flex-wrap gap-0.5 min-w-0">
 							{assignedLabels.map((label) => (

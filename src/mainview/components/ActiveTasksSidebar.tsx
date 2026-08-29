@@ -6,6 +6,7 @@ import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 import { groupTasksIntoTiers } from "./sidebarTiers";
 import { toast } from "../toast";
 import { useStatusColors } from "../hooks/useStatusColors";
+import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
@@ -279,10 +280,17 @@ function ActiveTasksSidebar({
 		return map;
 	}, [allProjects, project]);
 
+	// PR badges from what each task already carries, kept fresh by the
+	// `taskPrStatus` push. No `discoverProjectIds`: this surface spans EVERY
+	// project in global scope, so the board's branch->PR lookup would fan out to
+	// one `gh` call per project per minute instead of one. See
+	// decisions/2026/08/30/sidebar-pr-badge-without-discovery-poll.md.
+	const knowsProject = useCallback((projectId: string) => projectById.has(projectId), [projectById]);
+	const taskPrMap = useTaskPrBadges({ tasks: activeTasks, knowsProject });
+
 	// Facet resolver + funnel pool for the token-DSL filter. Labels/statuses are
 	// resolved per the task's OWN project (the pool may be cross-project in
-	// global scope). The sidebar tracks no live PR map — the matcher falls back to
-	// the task's own sticky prNumber/prUrl, so PR search still works here.
+	// global scope).
 	const resolver: FacetResolver = useMemo(() => ({
 		agents,
 		labelsFor: (task) => {
@@ -301,7 +309,8 @@ function ActiveTasksSidebar({
 		// Space names come from the task's OWN project, so a cross-project pool
 		// can be filtered by space; a single-project pool yields one value.
 		spaceNamesFor: (task) => spacesOfProject(spaces, task.projectId).map((s) => s.name),
-	}), [agents, projectById, taskPorts, spaces, t]);
+		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
+	}), [agents, projectById, taskPorts, taskPrMap, spaces, t]);
 
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
 		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
@@ -723,6 +732,7 @@ function ActiveTasksSidebar({
 											groupMembers={groupMembers}
 											projectBadgeName={showProjectBadge ? taskProject?.name ?? t("sidebar.unknownProject") : undefined}
 											ports={taskPorts.get(task.id)}
+											prInfo={taskPrMap.get(task.id)}
 											statusColors={statusColors}
 											color={taskColor(task)}
 											now={now}

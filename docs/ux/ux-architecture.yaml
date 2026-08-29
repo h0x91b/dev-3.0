@@ -417,7 +417,7 @@ ux_architecture:
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
-      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark"]
+      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark", "git_status_badge"]
       forbidden: ["durable_configuration"]
       variant_dots: "Same capped clickable dots + SiblingPopover as task_card (see surfaces.task_card.variant_dots); placed in the card's bottom status row, mirroring the kanban card position."
       queue_policy: "Readiness tiers are NEEDS YOU (review-by-user, user-questions, review-by-colleague) → project custom columns → WAITING (in-progress, review-by-ai). Per-task bells are visual notifications and never alter tier membership."

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, PRInfo, Project, ResourceUsage, Space, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
@@ -18,7 +18,7 @@ import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesTaskQuery } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
-import { startVisibilityAwarePoll } from "../utils/poll";
+import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -52,61 +52,6 @@ interface KanbanBoardProps {
 	activeTaskId?: string;
 	disableGlobalFindShortcut?: boolean;
 	onOpenUnresolvedComments?: (task: Task) => void;
-}
-
-type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
-
-function samePRIdentity(left: TaskPRBadgeInfo | null | undefined, right: PRIdentity): boolean {
-	return left?.number === right.number && left.url === right.url;
-}
-
-function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): TaskPRBadgeInfo | null {
-	const cache = task.prStatusCache;
-	const sticky = task.prNumber != null && task.prUrl ? { number: task.prNumber, url: task.prUrl } : undefined;
-	const cachedIdentity = cache?.url ? { number: cache.number, url: cache.url } : undefined;
-	const pr = identity ?? sticky ?? cachedIdentity;
-	if (!pr) return null;
-	const cached = cache && samePRIdentity({ number: cache.number, url: cache.url }, pr) ? cache : null;
-	return {
-		number: pr.number,
-		url: pr.url,
-		autoMergeEnabled: cached?.autoMergeEnabled ?? null,
-		ciStatus: cached?.ciStatus ?? null,
-		reviewState: cached?.reviewState ?? null,
-		reviewDecision: cached?.reviewDecision ?? null,
-		unresolvedCount: cached?.unresolvedCount ?? null,
-		mergeState: cached?.mergeState ?? null,
-		checks: cached?.checks ?? [],
-		prTitle: cached?.prTitle ?? null,
-		isDraft: cached?.isDraft ?? null,
-	};
-}
-
-function mergeTaskPRBadge(task: Task, identity: PRIdentity | undefined, existing: TaskPRBadgeInfo | undefined): TaskPRBadgeInfo | null {
-	const stored = taskPRBadgeFromStoredData(task, identity);
-	if (!stored) return null;
-	if (!existing || !samePRIdentity(existing, stored)) return stored;
-	return {
-		...stored,
-		autoMergeEnabled: existing.autoMergeEnabled ?? stored.autoMergeEnabled,
-		ciStatus: existing.ciStatus ?? stored.ciStatus,
-		reviewState: existing.reviewState ?? stored.reviewState,
-		reviewDecision: existing.reviewDecision ?? stored.reviewDecision,
-		unresolvedCount: existing.unresolvedCount ?? stored.unresolvedCount,
-		mergeState: existing.mergeState ?? stored.mergeState,
-		checks: existing.checks && existing.checks.length > 0 ? existing.checks : stored.checks,
-		prTitle: existing.prTitle ?? stored.prTitle,
-		isDraft: existing.isDraft ?? stored.isDraft,
-	};
-}
-
-function hydrateTaskPRMap(tasks: Task[], previous = new Map<string, TaskPRBadgeInfo>()): Map<string, TaskPRBadgeInfo> {
-	const next = new Map<string, TaskPRBadgeInfo>();
-	for (const task of tasks) {
-		const badge = mergeTaskPRBadge(task, undefined, previous.get(task.id));
-		if (badge) next.set(task.id, badge);
-	}
-	return next;
 }
 
 function KanbanBoard({
@@ -168,10 +113,6 @@ function KanbanBoard({
 	// its own collapse memory instead of inheriting the anchor project's.
 	const collapseState = useColumnCollapse(space ? `space-${space.id}` : project.id);
 
-	// PR badge data for task cards. Seed from persisted task metadata so the board
-	// stays useful while the first live GitHub lookup is still in flight.
-	const [taskPrMap, setTaskPrMap] = useState<Map<string, TaskPRBadgeInfo>>(() => hydrateTaskPRMap(tasks));
-
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
 			const next = new Set(prev);
@@ -193,109 +134,17 @@ function KanbanBoard({
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 	}, []);
 
-	useEffect(() => {
-		setTaskPrMap((prev) => {
-			const next = new Map<string, TaskPRBadgeInfo>();
-			for (const task of tasks) {
-				const existing = prev.get(task.id);
-				const badge = existing ?? taskPRBadgeFromStoredData(task);
-				if (badge) next.set(task.id, badge);
-			}
-			if (next.size === prev.size && [...next.keys()].every((taskId) => prev.has(taskId))) return prev;
-			return next;
-		});
-	}, [project.id, tasks]);
-
-	// Fetch open PRs for the project and map branch names to task IDs. CI/review
-	// state is supplied separately by the background poller's `taskPrStatus`
-	// push, so preserve any already-known ci/review fields when rebuilding here.
+	// PR badge data for task cards: what each task already carries (sticky
+	// prNumber/prUrl + prStatusCache), refreshed in-session by the `taskPrStatus`
+	// push, plus a per-project branch->PR lookup so a PR whose identity was never
+	// persisted still gets a badge. Virtual (Operations) boards have no git repo,
+	// so they get no lookup instead of a doomed RPC every 60s.
 	const gitProjectIds = useMemo(
 		() => boardProjects.filter((p) => p.kind !== "virtual").map((p) => p.id),
 		[boardProjects],
 	);
-	const fetchPRs = useCallback(() => {
-		// One lookup per member project: a branch name is only unique inside its own
-		// repository, so the branch→PR map is per project too.
-		Promise.all(
-			gitProjectIds.map((projectId) =>
-				api.request.getProjectPRs({ projectId }).then(
-					(prs: PRInfo[]) => [projectId, prs] as const,
-					() => [projectId, [] as PRInfo[]] as const,
-				),
-			),
-		).then((results) => {
-			const branchToPR = new Map<string, { number: number; url: string }>();
-			for (const [projectId, prs] of results) {
-				for (const pr of prs) {
-					branchToPR.set(`${projectId}::${pr.headRefName}`, { number: pr.number, url: pr.url });
-				}
-			}
-			setTaskPrMap((prev) => {
-				const map = new Map<string, TaskPRBadgeInfo>();
-				for (const task of tasks) {
-					const discovered = task.branchName ? branchToPR.get(`${task.projectId}::${task.branchName}`) : undefined;
-					const stored = taskPRBadgeFromStoredData(task, discovered);
-					const existing = prev.get(task.id);
-					const badge = stored && existing && samePRIdentity(existing, stored) ? existing : stored;
-					if (badge) map.set(task.id, badge);
-				}
-				return map;
-			});
-		}).catch(() => {});
-	}, [gitProjectIds, tasks]);
-
-	useEffect(() => {
-		// Virtual (Operations) boards have no git repo, branches, or PRs — skip the
-		// poll entirely instead of firing a doomed getProjectPRs RPC every 60s.
-		if (gitProjectIds.length === 0) return;
-		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
-	}, [fetchPRs, gitProjectIds]);
-
-	// CI/review status pushed by the background PR poller — merge onto the
-	// existing PR badge entry (carrying number/url forward if already known).
-	useEffect(() => {
-		function onPrStatus(e: Event) {
-			const detail = (e as CustomEvent).detail as {
-				projectId: string;
-				taskId: string;
-				prNumber: number | null;
-				prUrl: string | null;
-				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
-				ciStatus: TaskPRBadgeInfo["ciStatus"];
-				reviewState: TaskPRBadgeInfo["reviewState"];
-				reviewDecision?: TaskPRBadgeInfo["reviewDecision"];
-				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
-				mergeState: TaskPRBadgeInfo["mergeState"];
-				checks: TaskPRBadgeInfo["checks"];
-				prTitle: TaskPRBadgeInfo["prTitle"];
-				isDraft: TaskPRBadgeInfo["isDraft"];
-			};
-			if (!projectById.has(detail.projectId)) return;
-			setTaskPrMap((prev) => {
-				const existing = prev.get(detail.taskId);
-				const number = detail.prNumber ?? existing?.number;
-				const url = detail.prUrl ?? existing?.url;
-				if (number === undefined || url === undefined) return prev;
-				const next = new Map(prev);
-				next.set(detail.taskId, {
-					number,
-					url,
-					autoMergeEnabled: detail.autoMergeEnabled,
-					ciStatus: detail.ciStatus,
-					reviewState: detail.reviewState,
-					reviewDecision: detail.reviewDecision,
-					unresolvedCount: detail.unresolvedCount,
-					mergeState: detail.mergeState,
-					checks: detail.checks ?? [],
-					prTitle: detail.prTitle,
-					isDraft: detail.isDraft,
-				});
-				return next;
-			});
-		}
-		window.addEventListener("rpc:taskPrStatus", onPrStatus);
-		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
-	}, [projectById]);
+	const knowsProject = useCallback((projectId: string) => projectById.has(projectId), [projectById]);
+	const taskPrMap = useTaskPrBadges({ tasks, discoverProjectIds: gitProjectIds, knowsProject });
 
 	// Global dragend listener to clear drag state
 	useEffect(() => {
