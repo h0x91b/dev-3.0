@@ -1,0 +1,3 @@
+Short: Agent usage panel fits without scrolling
+
+The header rate-limit panel is about half as tall: each limit window is now one dense "label · bar · % · resets in" line instead of text stacked over a full-width bar, the capture age rides that line instead of taking its own, an account with no reading says so on its headline, and the oversized Account settings button at the bottom became a link in the panel's header row. Usage bars inside a card also render full width again in the desktop app, and a long workspace name now elides instead of pushing the plan and Default chips off the panel's right edge.

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useLocale, useT } from "../i18n";
 import type { AgentRateLimitSnapshot, RateLimitSource, RateLimitWindow } from "../../shared/rate-limits";
 import {
@@ -107,43 +108,54 @@ export function UsageBar({ percent, className }: { percent: number; className: s
 	);
 }
 
-/** One limit window inside an account card: label + reset + percent over a bar. */
+/**
+ * One limit window as a single dense line: `label · bar · % · reset`, the same
+ * grammar the launch account picker uses. It replaced a two-line "text over a
+ * full-width bar" block — two windows plus a provenance line made every account
+ * card ~90px tall, so a handful of accounts could not be compared without
+ * scrolling the panel.
+ */
 export function WindowBarRow({
 	label,
 	usedPercent,
 	resetsAt,
 	now,
 	detail,
+	trailing,
 }: {
 	label: string;
 	usedPercent: number;
 	resetsAt: number | null;
 	now: number;
 	detail?: string;
+	/** Rides the last line of a card (capture age), instead of its own line. */
+	trailing?: ReactNode;
 }) {
 	const t = useT();
 	const percent = Math.round(usedPercent);
 	const reset = formatResetDelta(resetsAt, now);
 	return (
 		<div className="flex flex-col gap-[0.1875rem]">
-			<div className="flex items-baseline gap-2">
-				<span className="min-w-0 truncate font-medium text-fg-3">{label}</span>
-				{reset && (
-					<span className="ml-auto shrink-0 tabular-nums text-fg-muted">{t("rateLimits.resetsIn", { time: reset })}</span>
-				)}
-				<span className={`shrink-0 font-medium tabular-nums ${reset ? "" : "ml-auto"} ${severityText(percent)}`}>
-					{t("rateLimits.percentUsed", { percent })}
+			<div className="flex items-center gap-1.5">
+				<span className="min-w-[1.5rem] shrink-0 font-medium tabular-nums text-fg-3">{label}</span>
+				<UsageBar percent={usedPercent} className="h-1 min-w-[3rem] flex-1" />
+				<span className="shrink-0 whitespace-nowrap tabular-nums">
+					<span className={`font-semibold ${severityText(percent)}`}>{t("rateLimits.percentUsed", { percent })}</span>
+					{reset && <span className="text-fg-3"> · {t("rateLimits.resetsIn", { time: reset })}</span>}
+					{trailing}
 				</span>
 			</div>
-			<UsageBar percent={usedPercent} className="h-1.5 w-full" />
 			{detail && <span className="text-fg-muted">{detail}</span>}
 		</div>
 	);
 }
 
 /** Shared card chrome, so surfaces that have an account but no usage reading
- *  (the usage modal) render an identical-looking card. */
-export const ACCOUNT_CARD_CLASS = "flex flex-col gap-1.5 rounded-md border border-edge bg-raised/65 px-2.5 py-2";
+ *  (the usage panel) render an identical-looking card. `items-stretch` is not
+ *  redundant: WebKit's UA stylesheet centres a <button>'s flex children, which
+ *  shrank every usage bar inside one to its own text width. */
+export const ACCOUNT_CARD_CLASS =
+	"flex flex-col items-stretch gap-1 rounded-md border border-edge bg-raised/65 px-2 py-1";
 
 /** Card headline: provider name, account identity, plan/API chips. */
 export function AccountCardHeader({
@@ -171,7 +183,9 @@ export function AccountCardHeader({
 		<div className="flex items-center gap-1.5">
 			<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[source] ?? source}</span>
 			{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
-			{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0 streamer-private">· {account?.organization}</span>}
+			{/* The workspace shrinks too. Held at its natural width it pushed the plan
+			    and "Default" chips off the panel's right edge instead of eliding. */}
+			{showOrg && <span className="min-w-0 truncate text-fg-muted streamer-private">· {account?.organization}</span>}
 			{account?.planLabel && (
 				<span className="text-accent text-micro px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
 			)}
@@ -198,10 +212,21 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 	// The monthly_credits window mirrors snap.monthlyCredits; the dedicated row
 	// below renders it with its used/limit detail, so skip the duplicate here.
 	const windows = snap.windows.filter((w: RateLimitWindow) => !(w.id === "monthly_credits" && monthly));
+	// Provenance rides the last quota line as a "· 15h" suffix. On its own line it
+	// cost every card a full row for four characters.
+	const age = <CapturedAgeSuffix capturedAt={snap.capturedAt} now={now} />;
+	const lastWindowIndex = monthly ? -1 : windows.length - 1;
 	return (
 		<>
-			{windows.map((win) => (
-				<WindowBarRow key={win.id} label={windowLabel(win)} usedPercent={win.usedPercent} resetsAt={win.resetsAt} now={now} />
+			{windows.map((win, index) => (
+				<WindowBarRow
+					key={win.id}
+					label={windowLabel(win)}
+					usedPercent={win.usedPercent}
+					resetsAt={win.resetsAt}
+					now={now}
+					trailing={index === lastWindowIndex ? age : undefined}
+				/>
 			))}
 			{monthly && (
 				<WindowBarRow
@@ -209,6 +234,7 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 					usedPercent={Math.max(0, 100 - monthly.remainingPercent)}
 					resetsAt={monthly.resetsAt}
 					now={now}
+					trailing={age}
 					detail={t("rateLimits.monthlyUsage", {
 						used: numberFormat.format(monthly.used),
 						limit: numberFormat.format(monthly.limit),
@@ -219,27 +245,16 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 			{snap.creditsBalance != null && !unlimited && (
 				<span className="text-fg-3">{t("rateLimits.credits", { balance: snap.creditsBalance })}</span>
 			)}
-			<CapturedNote capturedAt={snap.capturedAt} now={now} />
 		</>
 	);
 }
 
-/**
- * Per-card provenance line: how long ago this account's rate-limit reading was
- * captured. Data is only refreshed while a session for that account is active,
- * so anything beyond a few minutes may be stale — flagged in the warning tint
- * once past STALE_AFTER_MS so a reading from days ago never reads as live.
- */
-export function CapturedNote({ capturedAt, now }: { capturedAt: number; now: number }) {
-	const t = useT();
-	const age = Math.max(0, now - capturedAt);
-	const stale = age > STALE_AFTER_MS;
-	const label = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
-	return (
-		<span className={`flex items-center gap-1 text-xs tabular-nums ${stale ? "text-warning-strong" : "text-fg-3"}`}>
-			{label}
-		</span>
-	);
+/** Whether a reading has anything to plot. An unlimited account has no window
+ *  at all, so its card is a headline only — and its capture age has to ride
+ *  that headline rather than dangle on a line of its own. */
+export function hasQuotaLines(snap: AgentRateLimitSnapshot): boolean {
+	if (snap.monthlyCredits || snap.windows.length > 0) return true;
+	return snap.creditsBalance != null && !isUnlimitedRateLimitSnapshot(snap);
 }
 
 /**

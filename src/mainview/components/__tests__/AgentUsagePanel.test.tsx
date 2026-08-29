@@ -98,7 +98,7 @@ describe("AgentUsagePanel", () => {
 		expect(screen.getByText("Work Claude")).toBeTruthy();
 		expect(screen.getByText("Home Claude")).toBeTruthy();
 		expect(screen.getByText("42% used")).toBeTruthy();
-		expect(screen.getAllByText("no recent usage data").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("no recent data").length).toBeGreaterThan(0);
 	});
 
 	it("marks the current default and leaves it inert", async () => {
@@ -130,7 +130,7 @@ describe("AgentUsagePanel", () => {
 
 	it("stays read-only until the panel is pinned", async () => {
 		renderPanel(accounts(), false);
-		expect(screen.getByText(/Click the pill to pin this panel/)).toBeTruthy();
+		expect(screen.getByText(/Click the pill to pin/)).toBeTruthy();
 		// The row a hovering pointer would land on: live in the pinned panel, inert here.
 		const home = screen.getAllByRole("radio").find((r) => r.textContent?.includes("Home Claude"));
 		expect(home?.getAttribute("aria-disabled")).toBe("true");

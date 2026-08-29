@@ -138,8 +138,8 @@ const dashboard = {
 	"rateLimits.panelTitle": "Límites de agentes",
 	"rateLimits.openAccounts": "Abrir el uso y las cuentas de agentes",
 	"rateLimits.manageAccounts": "Configuración de cuentas",
-	"rateLimits.panelSubtitle": "Uso por cuenta. Elige la cuenta con la que arrancan los nuevos lanzamientos — las sesiones en ejecución mantienen su login actual.",
-	"rateLimits.pinToSwitch": "Uso por cuenta. Haz clic en la píldora para fijar este panel y luego elige la cuenta con la que arrancan los nuevos lanzamientos.",
+	"rateLimits.panelSubtitle": "Elige la cuenta por defecto para nuevos lanzamientos.",
+	"rateLimits.pinToSwitch": "Haz clic en la píldora para fijar y elegir.",
 	"rateLimits.defaultSwitched": "{label} es ahora la cuenta predeterminada para los nuevos lanzamientos",
 	"rateLimits.makeDefault": "Hacer que {label} sea la cuenta predeterminada",
 	"rateLimits.used": "usado",
@@ -152,7 +152,7 @@ const dashboard = {
 	"rateLimits.captured": "capturado hace {time}",
 	"rateLimits.capturedNow": "capturado ahora mismo",
 	"rateLimits.capturedAgeNow": "ahora mismo",
-	"rateLimits.noRecentData": "sin datos de uso recientes",
+	"rateLimits.noRecentData": "sin datos recientes",
 	"rateLimits.quotaExhausted": "Sin cuota disponible — este lanzamiento fallará hasta que se restablezca.",
 
 	// Remote Access QR Modal

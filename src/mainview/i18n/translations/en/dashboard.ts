@@ -140,8 +140,8 @@ const dashboard = {
 	"rateLimits.panelTitle": "Agent rate limits",
 	"rateLimits.openAccounts": "Open agent usage and accounts",
 	"rateLimits.manageAccounts": "Account settings",
-	"rateLimits.panelSubtitle": "Usage per account. Pick the account new launches start with — running sessions keep their current login.",
-	"rateLimits.pinToSwitch": "Usage per account. Click the pill to pin this panel, then pick the account new launches start with.",
+	"rateLimits.panelSubtitle": "Pick the default for new launches.",
+	"rateLimits.pinToSwitch": "Click the pill to pin, then pick a default.",
 	"rateLimits.defaultSwitched": "{label} is now the default for new launches",
 	"rateLimits.makeDefault": "Make {label} the default account",
 	"rateLimits.used": "used",
@@ -154,7 +154,7 @@ const dashboard = {
 	"rateLimits.captured": "captured {time} ago",
 	"rateLimits.capturedNow": "captured just now",
 	"rateLimits.capturedAgeNow": "just now",
-	"rateLimits.noRecentData": "no recent usage data",
+	"rateLimits.noRecentData": "no recent data",
 	"rateLimits.quotaExhausted": "No quota left — this launch will fail until it resets.",
 
 	// Remote Access QR Modal

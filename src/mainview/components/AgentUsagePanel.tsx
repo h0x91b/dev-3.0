@@ -10,8 +10,10 @@ import {
 	ACCOUNT_CARD_CLASS,
 	AccountCardHeader,
 	AccountQuotaLines,
+	CapturedAgeSuffix,
 	SOURCE_NAMES,
 	type AccountLine,
+	hasQuotaLines,
 	resolveAccount,
 } from "./rate-limit-ui";
 
@@ -174,7 +176,7 @@ function UsageRowCard({
 				row.isDefault ? "border-accent/50" : ""
 			} ${inert ? "cursor-default" : "cursor-pointer hover:bg-elevated-hover"} transition-colors`}
 		>
-			<div className="flex items-center gap-2">
+			<div className="flex items-center gap-1.5">
 				<span
 					aria-hidden
 					className={`w-3 h-3 rounded-full border-2 shrink-0 ${
@@ -192,16 +194,20 @@ function UsageRowCard({
 					<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">{row.chip}</span>
 				) : null}
 				{row.isDefault ? (
-					<span className="text-success text-micro px-1.5 py-0.5 bg-success/15 rounded shrink-0">
+					<span className="text-success text-micro px-1 py-px bg-success/15 rounded shrink-0">
 						{t("settings.accountsActive")}
 					</span>
 				) : null}
+				{/* An account with nothing to plot says so on its headline instead of
+				    spending a whole second line on three muted words. */}
+				{!row.snap ? <span className="text-fg-muted text-micro shrink-0">{t("rateLimits.noRecentData")}</span> : null}
+				{row.snap && !hasQuotaLines(row.snap) ? (
+					<span className="shrink-0 tabular-nums">
+						<CapturedAgeSuffix capturedAt={row.snap.capturedAt} now={now} />
+					</span>
+				) : null}
 			</div>
-			{row.snap ? (
-				<AccountQuotaLines snap={row.snap} now={now} />
-			) : (
-				<span className="text-fg-muted">{t("rateLimits.noRecentData")}</span>
-			)}
+			{row.snap && hasQuotaLines(row.snap) ? <AccountQuotaLines snap={row.snap} now={now} /> : null}
 		</button>
 	);
 }
@@ -285,19 +291,33 @@ export default function AgentUsagePanel({
 	};
 
 	return (
-		<div className="p-3 space-y-3 text-xs">
-			<p className="text-fg-3 leading-snug">
-				{interactive ? t("rateLimits.panelSubtitle") : t("rateLimits.pinToSwitch")}
-			</p>
+		// p-1.5 (6px) inside the flyout's rounded-xl (12px) makes the cards'
+		// rounded-md (6px) concentric with the panel's own corners.
+		<div className="p-1.5 space-y-1.5 text-xs">
+			{/* Hint and the way out share one line. The way out used to be a
+			    full-width bordered button pinned to the bottom on its own sticky
+			    strip — 46px of chrome for a link nobody opens twice. */}
+			<div className="flex items-baseline gap-2 px-2 pt-0.5 pb-0.5">
+				<p className="min-w-0 flex-1 text-fg-3 leading-snug">
+					{interactive ? t("rateLimits.panelSubtitle") : t("rateLimits.pinToSwitch")}
+				</p>
+				<button
+					type="button"
+					onClick={onOpenSettings}
+					className="shrink-0 rounded text-accent hover:text-accent-emphasis active:scale-[0.96] transition-[color,scale]"
+				>
+					{t("rateLimits.manageAccounts")}
+				</button>
+			</div>
 			{blocks.map((block) => {
 				// One tab stop per group: the current default, or the first row.
 				const stop = block.rows.find((row) => row.isDefault) ?? block.rows[0];
 				return (
-					<div key={block.kind} className="space-y-1.5">
-						<div className="text-fg-2 font-semibold uppercase tracking-wider">
+					<div key={block.kind} className="space-y-1">
+						<div className="px-2 text-fg-muted text-micro font-semibold uppercase tracking-wider">
 							{SOURCE_NAMES[block.kind] ?? block.kind}
 						</div>
-						<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1.5">
+						<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1">
 							{block.rows.map((row, index) => (
 								<UsageRowCard
 									key={row.key}
@@ -320,17 +340,6 @@ export default function AgentUsagePanel({
 					</div>
 				);
 			})}
-			{/* Sticky, because a user with several accounts scrolls past the fold and
-			    the way out of this panel must not be the thing below it. */}
-			<div className="sticky bottom-0 -mx-3 -mb-3 px-3 pb-3 pt-2 bg-overlay">
-				<button
-					type="button"
-					onClick={onOpenSettings}
-					className="w-full px-3 py-1.5 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-				>
-					{t("rateLimits.manageAccounts")}
-				</button>
-			</div>
 		</div>
 	);
 }

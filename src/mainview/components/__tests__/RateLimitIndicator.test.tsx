@@ -303,7 +303,9 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await openUsagePanel();
-		expect(await screen.findByText("captured just now")).toBeTruthy();
+		// Provenance rides the last quota line as a "· now" suffix; the full
+		// sentence is its title.
+		expect(await screen.findByTitle("captured just now")).toBeTruthy();
 	});
 
 	it("flags a stale reading with its age and the warning tint", async () => {
@@ -326,7 +328,7 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await openUsagePanel();
-		const note = await screen.findByText("captured 20m ago");
+		const note = await screen.findByTitle("captured 20m ago");
 		expect(note.className).toContain("text-warning");
 	});
 

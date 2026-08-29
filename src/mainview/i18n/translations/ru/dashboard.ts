@@ -156,8 +156,8 @@ const dashboard = {
 	"rateLimits.panelTitle": "Лимиты агентов",
 	"rateLimits.openAccounts": "Открыть использование и аккаунты агентов",
 	"rateLimits.manageAccounts": "Настройки аккаунтов",
-	"rateLimits.panelSubtitle": "Использование по аккаунтам. Выберите аккаунт, с которым будут стартовать новые запуски — запущенные сессии сохранят текущий логин.",
-	"rateLimits.pinToSwitch": "Использование по аккаунтам. Нажмите на плашку, чтобы закрепить панель, и выберите аккаунт для новых запусков.",
+	"rateLimits.panelSubtitle": "Аккаунт по умолчанию для новых запусков.",
+	"rateLimits.pinToSwitch": "Нажмите на плашку, чтобы закрепить и выбрать.",
 	"rateLimits.defaultSwitched": "{label} теперь аккаунт по умолчанию для новых запусков",
 	"rateLimits.makeDefault": "Сделать {label} аккаунтом по умолчанию",
 	"rateLimits.used": "использовано",
@@ -170,7 +170,7 @@ const dashboard = {
 	"rateLimits.captured": "снято {time} назад",
 	"rateLimits.capturedNow": "снято только что",
 	"rateLimits.capturedAgeNow": "только что",
-	"rateLimits.noRecentData": "нет свежих данных об использовании",
+	"rateLimits.noRecentData": "нет свежих данных",
 	"rateLimits.quotaExhausted": "Лимит исчерпан — запуск будет падать до сброса.",
 
 	// Remote Access QR Modal
