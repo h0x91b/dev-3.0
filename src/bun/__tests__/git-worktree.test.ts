@@ -34,7 +34,7 @@ import {
 	recoverStaleInitializingWorktrees,
 	taskDir,
 } from "../git";
-import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
+import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
 
 // ─── Shared factories ────────────────────────────────────────────────────────
 
@@ -559,6 +559,59 @@ describe("createWorktree", () => {
 
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 		g("git branch -D dev3/task-dddddddd", repo.local);
+	});
+
+	// Variants of one task race for .git/config.lock while writing the new
+	// branch's upstream config; the loser exits after the branch already exists.
+	it("retries through .git/config lock contention held by another git process", async () => {
+		const project = makeProject(repo.local);
+		const task = makeTask({ id: "abababab-cdcd-efef-0101-232323232323" });
+		const lockPath = join(repo.local, ".git", "config.lock");
+		writeFileSync(lockPath, "");
+		const before = spawnedCommands.length;
+		// Released only once the first attempt has provably failed — the retry's
+		// `branch -D` of the leftover branch is what proves it. A timer here would
+		// let the lock expire before git ever reached the config write.
+		const release = setInterval(() => {
+			const cleanedUp = spawnedCommands
+				.slice(before)
+				.some((cmd) => cmd.join(" ").includes("branch -D dev3/task-abababab"));
+			if (cleanedUp) rmSync(lockPath, { force: true });
+		}, 5);
+
+		try {
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-abababab");
+			const adds = spawnedCommands
+				.slice(before)
+				.filter((cmd) => cmd.join(" ").includes("worktree add"));
+			expect(adds.length).toBeGreaterThanOrEqual(2);
+			g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+			g("git branch -D dev3/task-abababab", repo.local);
+		} finally {
+			clearInterval(release);
+			rmSync(lockPath, { force: true });
+		}
+	});
+
+	it("gives up after 3 retries when the config lock is never released", async () => {
+		const project = makeProject(repo.local);
+		const task = makeTask({ id: "bcbcbcbc-cdcd-efef-0101-232323232323" });
+		const lockPath = join(repo.local, ".git", "config.lock");
+		writeFileSync(lockPath, "");
+		const before = spawnedCommands.length;
+
+		try {
+			await expect(createWorktree(project, task)).rejects.toThrow(/could not lock config file/);
+			const adds = spawnedCommands
+				.slice(before)
+				.filter((cmd) => cmd.join(" ").includes("worktree add"));
+			expect(adds).toHaveLength(4);
+		} finally {
+			rmSync(lockPath, { force: true });
+			g("git branch -D dev3/task-bcbcbcbc", repo.local);
+		}
 	});
 });
 

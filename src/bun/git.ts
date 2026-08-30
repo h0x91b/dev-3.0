@@ -961,6 +961,41 @@ async function reclaimStaleWorktreeDir(project: Project, wtPath: string): Promis
 	await run(["git", "worktree", "prune"], project.path);
 }
 
+const WORKTREE_ADD_RETRY_DELAYS_MS = [200, 500, 1_200];
+
+/** Lock files git creates per-operation: another git process holds one right now. */
+function isGitLockContention(stderr: string): boolean {
+	return /could not lock config file/i.test(stderr)
+		|| (/\.lock/.test(stderr) && /File exists/i.test(stderr));
+}
+
+/**
+ * `git worktree add` writes the new branch's tracking config into the repo-wide
+ * .git/config, so variants of one task starting together lose the race for
+ * config.lock ("could not lock config file … File exists"). The loser only has
+ * to wait — but the failed attempt already created the branch, so every retry
+ * re-runs the same reclaim the first attempt did.
+ */
+async function worktreeAddWithRetry(
+	args: string[],
+	project: Project,
+	wtPath: string,
+	createdBranch: string | undefined,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	let result = await run(args, project.path);
+	for (const delayMs of WORKTREE_ADD_RETRY_DELAYS_MS) {
+		if (result.ok || !isGitLockContention(result.stderr)) break;
+		log.warn("Worktree add hit git lock contention, retrying", { wtPath, delayMs, stderr: result.stderr });
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+		await reclaimStaleWorktreeDir(project, wtPath);
+		if (createdBranch && await localBranchExists(project.path, createdBranch)) {
+			await run(["git", "branch", "-D", createdBranch], project.path);
+		}
+		result = await run(args, project.path);
+	}
+	return result;
+}
+
 export async function createWorktree(
 	project: Project,
 	task: Task,
@@ -986,14 +1021,20 @@ export async function createWorktree(
 		await reclaimStaleWorktreeDir(project, wtPath);
 		// A leftover variant branch (re-run of a task that kept its branch) is
 		// checked out instead of recreated, so its commits survive the re-run.
-		const variantAddArgs = await localBranchExists(project.path, variantBranchName)
+		const variantBranchSurvived = await localBranchExists(project.path, variantBranchName);
+		const variantAddArgs = variantBranchSurvived
 			? ["git", "worktree", "add", wtPath, variantBranchName]
 			: ["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase];
 
 		const result = await measureGitStep(
 			"createWorktree.variant.worktreeAdd",
 			{ taskId: task.id.slice(0, 8), wtPath, variantBranchName, base: resolvedBase },
-			() => run(variantAddArgs, project.path),
+			() => worktreeAddWithRetry(
+				variantAddArgs,
+				project,
+				wtPath,
+				variantBranchSurvived ? undefined : variantBranchName,
+			),
 		);
 
 		if (!result.ok) {
@@ -1022,9 +1063,11 @@ export async function createWorktree(
 		const result = await measureGitStep(
 			"createWorktree.existing.worktreeAdd",
 			{ taskId: task.id.slice(0, 8), wtPath, resolvedBranch, isRemoteRef },
-			() => run(
+			() => worktreeAddWithRetry(
 				["git", "worktree", "add", wtPath, resolvedBranch],
-				project.path,
+				project,
+				wtPath,
+				undefined,
 			),
 		);
 
@@ -1042,9 +1085,11 @@ export async function createWorktree(
 				const trackResult = await measureGitStep(
 					"createWorktree.existing.trackRemoteBranch",
 					{ taskId: task.id.slice(0, 8), wtPath, resolvedBranch, existingBranch },
-					() => run(
+					() => worktreeAddWithRetry(
 						["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
-						project.path,
+						project,
+						wtPath,
+						resolvedBranch,
 					),
 				);
 				if (!trackResult.ok) {
@@ -1064,9 +1109,11 @@ export async function createWorktree(
 				const fallbackResult = await measureGitStep(
 					"createWorktree.existing.fallbackBranch",
 					{ taskId: task.id.slice(0, 8), wtPath, taskBranch, resolvedBranch },
-					() => run(
+					() => worktreeAddWithRetry(
 						["git", "worktree", "add", "-b", taskBranch, wtPath, resolvedBranch],
-						project.path,
+						project,
+						wtPath,
+						taskBranch,
 					),
 				);
 				if (!fallbackResult.ok) {
@@ -1162,9 +1209,11 @@ export async function createWorktree(
 	const result = await measureGitStep(
 		"createWorktree.default.worktreeAdd",
 		{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
-		() => run(
+		() => worktreeAddWithRetry(
 			["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
-			project.path,
+			project,
+			wtPath,
+			branch,
 		),
 	);
 
