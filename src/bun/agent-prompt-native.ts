@@ -117,7 +117,9 @@ function performNativeDelivery(
 				// there is — the same assumption the held CR has always been sent on.
 				return true;
 			},
-			submit: () => terminal.write(SUBMIT_KEY),
+			// The same gap a hand-off leaves: a CR written straight after the last paste
+			// is read as part of it, and the burst never gets submitted.
+			submit: () => scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId }),
 		},
 		{ taskId: taskId.slice(0, 8), paneId },
 	);

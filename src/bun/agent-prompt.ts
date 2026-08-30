@@ -189,9 +189,14 @@ function agentMessageTextStages(prompt: string): PaneInputStage[] {
  * The submit-only program the Enter that ends a burst is delivered as. Separate from
  * the text because the seam caps a program's in-band delays at two seconds
  * ({@link PANE_INPUT_LIMITS}) and the quiet window is many times that.
+ *
+ * It still carries the hand-off's own gap: two back-to-back `send-keys` are milliseconds
+ * apart, and Claude Code then reads the burst's last paste and the CR as one paste with a
+ * newline in it — the text sits in the box unsubmitted, and every later message stacks
+ * onto it.
  */
 function agentPromptSubmitStages(): PaneInputStage[] {
-	return [{ steps: [{ kind: "key", key: "enter" }] }];
+	return [{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] }];
 }
 
 /**
