@@ -12,9 +12,14 @@ interface SpacePickerProps {
 	selectedIds: string[];
 	/** Toggle membership. The parent owns persistence. */
 	onToggle: (spaceId: string) => void;
-	/** Create a space with the typed name (the parent decides the first member).
-	 *  Omitted when creation is impossible, e.g. no project exists yet. */
-	onCreateNew?: (name: string) => void;
+	/** Create a space with the typed name. Always available: a parent whose
+	 *  project does not exist yet holds the name until it does. */
+	onCreateNew: (name: string) => void;
+	/** Names accepted but not created yet, shown as already-ticked rows so the
+	 *  picker never claims "no spaces" right after one was added. */
+	pendingNames?: string[];
+	/** Drop a pending name again. Required whenever `pendingNames` is passed. */
+	onTogglePending?: (name: string) => void;
 	anchorEl: HTMLElement;
 	onClose: () => void;
 }
@@ -30,7 +35,60 @@ function fuzzyMatch(text: string, query: string): boolean {
 	return qi === q.length;
 }
 
-function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onClose }: SpacePickerProps) {
+function Row({
+	label,
+	checked,
+	onClick,
+	testId,
+	masked,
+	badge,
+}: {
+	label: string;
+	checked: boolean;
+	onClick: () => void;
+	testId: string;
+	masked?: boolean;
+	badge?: string;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
+			data-testid={testId}
+			aria-pressed={checked}
+		>
+			{/* A box on the left, filled or empty, says "several of these can be
+			    on" before anything is clicked. A checkmark that only exists when
+			    selected leaves an unselected row looking like a one-shot menu item. */}
+			<span
+				aria-hidden="true"
+				className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+					checked ? "bg-accent border-accent text-white" : "border-edge-active text-transparent"
+				}`}
+			>
+				<svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+					<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+				</svg>
+			</span>
+			<span className={`text-xs text-fg flex-1 truncate ${masked ? MASK_CLASS : ""}`}>{label}</span>
+			{badge && (
+				<span className="text-dense leading-none uppercase tracking-wide text-accent/80 flex-shrink-0">{badge}</span>
+			)}
+		</button>
+	);
+}
+
+function SpacePicker({
+	spaces,
+	selectedIds,
+	onToggle,
+	onCreateNew,
+	pendingNames = [],
+	onTogglePending,
+	anchorEl,
+	onClose,
+}: SpacePickerProps) {
 	const t = useT();
 	const [query, setQuery] = useState("");
 	const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -39,11 +97,10 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const filtered = query ? spaces.filter((s) => fuzzyMatch(s.name, query)) : spaces;
+	const filteredPending = query ? pendingNames.filter((n) => fuzzyMatch(n, query)) : pendingNames;
 
-	const showCreate =
-		!!onCreateNew &&
-		query.trim().length > 0 &&
-		!spaces.some((s) => s.name.toLowerCase() === query.trim().toLowerCase());
+	const taken = [...spaces.map((s) => s.name), ...pendingNames].map((n) => n.toLowerCase());
+	const showCreate = query.trim().length > 0 && !taken.includes(query.trim().toLowerCase());
 
 	// Position the picker relative to anchor, clamped to viewport
 	useLayoutEffect(() => {
@@ -84,9 +141,10 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 
 	function createFromQuery() {
 		const name = query.trim();
-		if (!name || !onCreateNew) return;
+		if (!name) return;
 		onCreateNew(name);
 		setQuery("");
+		inputRef.current?.focus();
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -118,38 +176,29 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 			</div>
 
 			<div className="max-h-48 overflow-y-auto p-1">
-				{filtered.length === 0 && !showCreate && (
+				{filtered.length === 0 && filteredPending.length === 0 && !showCreate && (
 					<div className="px-3 py-4 text-xs text-fg-muted text-center">{t("spaces.noSpaces")}</div>
 				)}
-				{filtered.map((space) => {
-					const isOn = selectedIds.includes(space.id);
-					return (
-						<button
-							key={space.id}
-							type="button"
-							onClick={() => onToggle(space.id)}
-							className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
-							data-testid={`space-picker-row-${space.id}`}
-							aria-pressed={isOn}
-						>
-							{/* A box on the left, filled or empty, says "several of these
-							    can be on" before anything is clicked. A checkmark that
-							    only exists when selected leaves an unselected row looking
-							    like a one-shot menu item. */}
-							<span
-								aria-hidden="true"
-								className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
-									isOn ? "bg-accent border-accent text-white" : "border-edge-active text-transparent"
-								}`}
-							>
-								<svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-									<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-								</svg>
-							</span>
-							<span className={`text-xs text-fg flex-1 truncate ${space.sensitive ? MASK_CLASS : ""}`}>{space.name}</span>
-						</button>
-					);
-				})}
+				{filtered.map((space) => (
+					<Row
+						key={space.id}
+						label={space.name}
+						masked={!!space.sensitive}
+						checked={selectedIds.includes(space.id)}
+						onClick={() => onToggle(space.id)}
+						testId={`space-picker-row-${space.id}`}
+					/>
+				))}
+				{filteredPending.map((name) => (
+					<Row
+						key={`pending-${name}`}
+						label={name}
+						checked
+						badge={t("spaces.pendingNew")}
+						onClick={() => onTogglePending?.(name)}
+						testId={`space-picker-pending-${name}`}
+					/>
+				))}
 
 				{showCreate && (
 					<button

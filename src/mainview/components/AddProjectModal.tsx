@@ -11,7 +11,7 @@ import posthog from "../posthog";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import { toast } from "../toast";
 import { useFocusTrap } from "../utils/useFocusTrap";
-import ProjectSpacesField from "./ProjectSpacesField";
+import ProjectSpacesField, { applyDeferredSpaces, type DeferredSpaces } from "./ProjectSpacesField";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -40,16 +40,18 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	const [initializing, setInitializing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [cloneOutput, setCloneOutput] = useState<string[]>([]);
-	const [pendingSpaceIds, setPendingSpaceIds] = useState<string[]>(initialSpaceIds ?? []);
+	const [pendingSpaces, setPendingSpaces] = useState<DeferredSpaces>({
+		spaceIds: initialSpaceIds ?? [],
+		newNames: [],
+	});
 	const cloneProgressIdRef = useRef<string | null>(null);
 	const urlInputRef = useRef<HTMLInputElement>(null);
 
 	// Membership is applied after the project exists; failures only toast —
 	// the project itself was created fine.
 	async function applyPendingSpaces(projectId: string) {
-		if (pendingSpaceIds.length === 0) return;
 		try {
-			await api.request.setProjectSpaces({ projectId, spaceIds: pendingSpaceIds });
+			await applyDeferredSpaces(projectId, pendingSpaces);
 		} catch (err) {
 			toast.error(t("spaces.failedUpdate", { error: String(err) }), { source: "dashboard" });
 		}
@@ -459,7 +461,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				{/* Optional space memberships, applied after the project is created */}
 				<div className="flex items-center gap-3">
 					<span className="text-fg-2 text-sm font-medium flex-shrink-0">{t("spaces.fieldLabel")}</span>
-					<ProjectSpacesField mode="deferred" value={pendingSpaceIds} onChange={setPendingSpaceIds} />
+					<ProjectSpacesField mode="deferred" value={pendingSpaces} onChange={setPendingSpaces} />
 				</div>
 				</>
 				)}

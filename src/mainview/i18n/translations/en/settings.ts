@@ -792,6 +792,7 @@ const settings = {
 	"spaces.searchPlaceholder": "Search or create…",
 	"spaces.noSpaces": "No spaces yet — type a name to create one",
 	"spaces.createSpace": "Create space “{name}”",
+	"spaces.pendingNew": "New",
 	"spaces.autoDeleted": "Space “{name}” was removed — its last project left",
 	"spaces.failedCreate": "Failed to create space: {error}",
 	"spaces.failedUpdate": "Failed to update spaces: {error}",

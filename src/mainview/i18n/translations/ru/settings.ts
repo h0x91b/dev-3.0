@@ -816,6 +816,7 @@ const settings = {
 	"spaces.searchPlaceholder": "Найти или создать…",
 	"spaces.noSpaces": "Пространств пока нет — введите название, чтобы создать",
 	"spaces.createSpace": "Создать пространство «{name}»",
+	"spaces.pendingNew": "Новое",
 	"spaces.autoDeleted": "Пространство «{name}» удалено — из него ушёл последний проект",
 	"spaces.failedCreate": "Не удалось создать пространство: {error}",
 	"spaces.failedUpdate": "Не удалось обновить пространства: {error}",
