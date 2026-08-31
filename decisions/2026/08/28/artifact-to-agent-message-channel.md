@@ -1,5 +1,11 @@
 # Artifact → agent messages, and why the API is `window.dev3`
 
+> Extended on 2026-08-31 by
+> `decisions/2026/08/31/keep-unsent-artifact-input-across-versions.md`: every ruling below
+> still holds, but "the agent answers by republishing" destroys input the user had typed and
+> not yet sent. The draft is now kept outside the frame and `canSendToAgent` became a live
+> getter rather than a compose-time constant.
+
 ## Context
 
 An HTML artifact published with `dev3 show-artifact` was a one-way surface. When a report asked the

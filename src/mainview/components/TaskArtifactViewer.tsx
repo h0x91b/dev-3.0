@@ -7,6 +7,7 @@ import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
+import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
@@ -102,14 +103,30 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		setIndex(Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	}, [artifacts.length, initialIndex]);
 
+	// What the user typed into a version's form and never sent. Held here rather
+	// than in the artifact because the frame is opaque-origin — every storage API
+	// inside it throws — and because it has to outlive the document it came from.
+	const [draft, setDraft] = useState<{ artifactId: string; version: number; draft: ArtifactDraft } | null>(null);
+	const [draftDismissed, setDraftDismissed] = useState(false);
+	const pendingDraft = group && draft?.artifactId === group.id ? draft : null;
+	const draftIsHere = pendingDraft?.version === selectedVersion;
+
 	// Compose-time half of `window.dev3.canSendToAgent`. An older version's form is
 	// inert on purpose: it asks a question the newest report has already replaced.
-	// The runtime half (is this document actually inside the viewer's frame) lives
-	// in the injected bridge, and whether an agent is alive is only knowable at send
-	// time — that failure arrives as a toast.
+	// The exception is the version the user is part-way through answering — that
+	// question is the one in front of them, and refusing to send it would only
+	// trade a wiped form for a dead button. The runtime half (is this document
+	// actually inside the viewer's frame) lives in the injected bridge, and whether
+	// an agent is alive is only knowable at send time — that arrives as a toast.
 	const canSendToAgent = Boolean(group)
-		&& selectedVersion === latestArtifactVersion(group)
+		&& (selectedVersion === latestArtifactVersion(group) || Boolean(draftIsHere))
 		&& !(taskStatus && TERMINAL_STATUSES.includes(taskStatus));
+
+	// Deliberately NOT a dependency of the compose effect below: re-composing the
+	// document to change this flag would unmount the iframe and destroy the very
+	// input this feature exists to keep. The frame is told instead.
+	const canSendRef = useRef(canSendToAgent);
+	canSendRef.current = canSendToAgent;
 
 	useEffect(() => {
 		if (!current) return;
@@ -126,15 +143,27 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			.then((payload) => {
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendToAgent));
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
-	}, [current, t, canSendToAgent]);
+	}, [current, t]);
 
 	const postToFrame = useCallback((message: Record<string, unknown>) => {
 		frameRef.current?.contentWindow?.postMessage(message, "*");
 	}, []);
+
+	// The frame keeps its own copy of the capability so it never has to be rebuilt
+	// to learn the answer changed.
+	useEffect(() => {
+		postToFrame({ type: "dev3-artifact-can-send", canSend: canSendToAgent });
+	}, [canSendToAgent, srcDoc, postToFrame]);
+
+	// Put the unsent answer back the moment its own version is on screen again.
+	const restoreDraft = useCallback(() => {
+		if (!draftIsHere || !pendingDraft) return;
+		postToFrame({ type: "dev3-artifact-draft-restore", draft: pendingDraft.draft });
+	}, [draftIsHere, pendingDraft, postToFrame]);
 
 	const openSearch = useCallback(() => {
 		setSearchOpen(true);
@@ -179,21 +208,37 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 
 	// Read at send time, not captured when the listener registers: the user may have
 	// paged to another artifact between opening the form and clicking send.
-	const currentRef = useRef({ title: "", version: 1, versionCount: 1 });
+	const currentRef = useRef({ title: "", version: 1, versionCount: 1, artifactId: "" });
 	currentRef.current = {
 		title: current?.title ?? "",
 		version: selectedVersion,
 		versionCount: group ? latestArtifactVersion(group) : 1,
+		artifactId: group?.id ?? "",
 	};
 
 	useEffect(() => {
 		function onMessage(event: MessageEvent) {
 			if (event.source !== frameRef.current?.contentWindow) return;
-			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string } | null;
+			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string; fields?: ArtifactDraft["fields"]; custom?: unknown } | null;
 			if (!data) return;
 			// Keyboard events inside the sandboxed iframe never reach this window, so
 			// the artifact's own ⌘F handler asks us to open the bar.
 			if (data.type === "dev3-artifact-find-open") { openSearch(); return; }
+			// The frame reports its unsent form values whenever they stop matching
+			// their defaults. Empty and with nothing custom means the form went clean
+			// again, so the offer to restore goes away with it.
+			if (data.type === "dev3-artifact-draft") {
+				const fields = Array.isArray(data.fields) ? data.fields : [];
+				const artifactId = currentRef.current.artifactId;
+				if (!artifactId) return;
+				setDraftDismissed(false);
+				if (!fields.length && data.custom === undefined) {
+					setDraft((held) => (held?.artifactId === artifactId && held.version === currentRef.current.version ? null : held));
+					return;
+				}
+				setDraft({ artifactId, version: currentRef.current.version, draft: { fields, custom: data.custom } });
+				return;
+			}
 			if (data.type === "dev3-artifact-find-result") {
 				if (data.token !== searchTokenRef.current) return;
 				setMatches(typeof data.matches === "number" ? data.matches : 0);
@@ -436,6 +481,30 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				)}
 				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
 			</header>
+			{pendingDraft && !draftIsHere && !draftDismissed && (
+				<div
+					role="status"
+					aria-live="polite"
+					data-testid="artifact-draft-notice"
+					className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-edge bg-raised px-3 py-2 text-xs text-fg-2"
+				>
+					<span className="min-w-0 flex-1">{t("artifactViewer.draftKept", { version: pendingDraft.version })}</span>
+					<button
+						type="button"
+						data-testid="artifact-draft-restore"
+						className="rounded-md px-2 py-1 font-medium text-accent transition-colors hover:bg-elevated-hover hover:text-accent-emphasis"
+						onClick={() => setPick({ id: pendingDraft.artifactId, version: pendingDraft.version })}
+					>{t("artifactViewer.draftBack", { version: pendingDraft.version })}</button>
+					<button
+						type="button"
+						data-testid="artifact-draft-dismiss"
+						className="rounded-md px-2 py-1 text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
+						onClick={() => setDraftDismissed(true)}
+						aria-label={t("artifactViewer.draftDismiss")}
+						title={t("artifactViewer.draftDismiss")}
+					><span style={{ fontFamily: ICON }}></span></button>
+				</div>
+			)}
 			<div className="relative min-h-0 flex-1 bg-base">
 				{searchOpen && srcDoc && !error && (
 					<ArtifactSearchBar
@@ -456,7 +525,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 						title={current.title}
 						sandbox="allow-scripts"
 						srcDoc={srcDoc}
-						onLoad={sendTheme}
+						onLoad={() => { sendTheme(); restoreDraft(); }}
 						className="h-full w-full border-0 bg-base"
 					/>
 				) : (

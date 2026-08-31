@@ -458,3 +458,114 @@ describe("TaskArtifactViewer agent messages", () => {
 		expect(frame.getAttribute("srcdoc")).toContain('"canSend":false');
 	});
 });
+
+// Republishing swaps the whole document, which used to take the user's half-typed
+// answer with it and leave no trace that anything was lost.
+describe("TaskArtifactViewer unsent input", () => {
+	const DRAFT = [{ key: "answer", value: "a long answer I do not want to retype" }];
+
+	function republished(): SharedArtifact {
+		const before = versioned();
+		return {
+			...before,
+			version: 10,
+			name: "tenth.html",
+			storedPath: "/wt/shared-artifacts/tenth/tenth.html",
+			createdAt: 4_000,
+			previousVersions: [
+				...(before.previousVersions ?? []),
+				{ version: 9, name: "newest.html", storedPath: "/wt/shared-artifacts/newest/newest.html", originalPath: "/tmp/newest.html", bytes: 9, createdAt: 3_000, assets: [] },
+			],
+		};
+	}
+
+	function view(artifacts: SharedArtifact[]) {
+		return (
+			<I18nProvider>
+				<TaskArtifactViewer taskId="task-9" taskStatus="in-progress" artifacts={artifacts} initialIndex={0} onClose={vi.fn()} />
+			</I18nProvider>
+		);
+	}
+
+	async function frameOf(): Promise<HTMLIFrameElement> {
+		const frame = await screen.findByTitle("Artifact v") as HTMLIFrameElement;
+		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("data-dev3-artifact-bridge"));
+		return frame;
+	}
+
+	function relay(frame: HTMLIFrameElement, data: Record<string, unknown>) {
+		const event = new MessageEvent("message", { data });
+		Object.defineProperty(event, "source", { value: frame.contentWindow });
+		window.dispatchEvent(event);
+	}
+
+	it("keeps the answer, offers the version it belongs to, and sends from there", async () => {
+		const { rerender } = render(view([versioned()]));
+		const frame = await frameOf();
+		relay(frame, { type: "dev3-artifact-draft", fields: DRAFT });
+
+		// The agent answers by republishing — the document under the user is replaced.
+		rerender(view([republished()]));
+		await waitFor(() => expect(screen.getByTestId("artifact-version-picker")).toHaveTextContent("v10"));
+
+		const notice = await screen.findByTestId("artifact-draft-notice");
+		expect(notice).toHaveTextContent("unsent answer on version 9");
+
+		await userEvent.click(screen.getByTestId("artifact-draft-restore"));
+		await waitFor(() => expect(screen.getByTestId("artifact-version-picker")).toHaveTextContent("v9"));
+
+		// Back on version 9 the values go in, and the form is not a dead end: the
+		// question on screen is the one being answered, so sending stays allowed.
+		const back = await frameOf();
+		const postMessage = vi.spyOn(back.contentWindow!, "postMessage");
+		fireEvent.load(back);
+		expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-draft-restore", draft: { fields: DRAFT, custom: undefined } }, "*");
+		expect(back.getAttribute("srcdoc")).toContain('"canSend":true');
+	});
+
+	it("tells the frame the capability moved instead of rebuilding the document", async () => {
+		render(view([versioned()]));
+		// Park on an older version, where sending is refused and the document says so.
+		// Options run newest first: 9, 8, 7.
+		await userEvent.click(screen.getByTestId("artifact-version-picker"));
+		await userEvent.click(screen.getAllByTestId("artifact-version-option")[2]);
+		const frame = await frameOf();
+		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain('"canSend":false'));
+		const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+
+		// Typing here earns the capability back — and must not cost the document.
+		relay(frame, { type: "dev3-artifact-draft", fields: DRAFT });
+
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-can-send", canSend: true }, "*"));
+		expect(frame.getAttribute("srcdoc")).toContain('"canSend":false');
+	});
+
+	it("drops the offer when the form goes back to its defaults", async () => {
+		const { rerender } = render(view([versioned()]));
+		const frame = await frameOf();
+		relay(frame, { type: "dev3-artifact-draft", fields: DRAFT });
+		relay(frame, { type: "dev3-artifact-draft", fields: [] });
+
+		rerender(view([republished()]));
+		await waitFor(() => expect(screen.getByTestId("artifact-version-picker")).toHaveTextContent("v10"));
+		expect(screen.queryByTestId("artifact-draft-notice")).toBeNull();
+	});
+
+	it("hides the notice on request without throwing the answer away", async () => {
+		const { rerender } = render(view([versioned()]));
+		relay(await frameOf(), { type: "dev3-artifact-draft", fields: DRAFT });
+		rerender(view([republished()]));
+
+		await userEvent.click(await screen.findByTestId("artifact-draft-dismiss"));
+		expect(screen.queryByTestId("artifact-draft-notice")).toBeNull();
+
+		// The draft is still there — reaching version 9 by hand restores it.
+		// Options run newest first: 10, 9, 8, 7.
+		await userEvent.click(screen.getByTestId("artifact-version-picker"));
+		await userEvent.click(screen.getAllByTestId("artifact-version-option")[1]);
+		const back = await frameOf();
+		const postMessage = vi.spyOn(back.contentWindow!, "postMessage");
+		fireEvent.load(back);
+		expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-draft-restore", draft: { fields: DRAFT, custom: undefined } }, "*");
+	});
+});

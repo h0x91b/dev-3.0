@@ -1,4 +1,5 @@
 import {
+	ARTIFACT_BRIDGE_DRAFT_MS,
 	ARTIFACT_BRIDGE_GESTURE_MS,
 	ARTIFACT_BRIDGE_TIMEOUT_MS,
 	artifactBridgeScript,
@@ -51,6 +52,7 @@ function install(opts: { canSend?: boolean; framed?: boolean } = {}): FakeWindow
 		canSend: opts.canSend ?? true,
 		gestureMs: ARTIFACT_BRIDGE_GESTURE_MS,
 		timeoutMs: ARTIFACT_BRIDGE_TIMEOUT_MS,
+		draftMs: ARTIFACT_BRIDGE_DRAFT_MS,
 	});
 	return win;
 }
@@ -152,6 +154,113 @@ describe("artifact bridge", () => {
 		expect(artifactBridgeScript(true)).toContain('"canSend":true');
 		expect(artifactBridgeScript(false)).toContain('"canSend":false');
 		expect(artifactBridgeScript(true)).toContain("data-dev3-artifact-bridge");
+	});
+
+	describe("unsent input", () => {
+		function form(html: string): FakeWindow {
+			document.body.innerHTML = html;
+			const win = fakeWindow();
+			// A real document, because the snapshot reads defaultValue/defaultChecked
+			// off live controls — the whole point is that it needs no author help.
+			Object.assign(win, { document, Event: window.Event, CustomEvent: window.CustomEvent, dispatchEvent: () => true });
+			installArtifactBridge(win, {
+				canSend: true,
+				gestureMs: ARTIFACT_BRIDGE_GESTURE_MS,
+				timeoutMs: ARTIFACT_BRIDGE_TIMEOUT_MS,
+				draftMs: ARTIFACT_BRIDGE_DRAFT_MS,
+			});
+			return win;
+		}
+
+		function drafts(win: FakeWindow): Array<{ fields: Array<{ key: string; value?: string; checked?: boolean }> }> {
+			return (win.sent as unknown as Array<{ type: string }>)
+				.filter((message) => message.type === "dev3-artifact-draft") as never;
+		}
+
+		function settle(win: FakeWindow): void {
+			win.fire("input", {});
+			vi.advanceTimersByTime(ARTIFACT_BRIDGE_DRAFT_MS + 1);
+		}
+
+		it("reports every edited control and stays silent about untouched ones", () => {
+			const win = form(`
+				<input id="who" value="">
+				<textarea name="answer"></textarea>
+				<input id="untouched" value="keep me">
+				<input id="agree" type="checkbox">
+			`);
+			(document.getElementById("who") as HTMLInputElement).value = "Evgeny";
+			(document.querySelector("textarea") as HTMLTextAreaElement).value = "a long answer";
+			(document.getElementById("agree") as HTMLInputElement).checked = true;
+			settle(win);
+
+			expect(drafts(win)).toHaveLength(1);
+			expect(drafts(win)[0].fields).toEqual([
+				{ key: "who", value: "Evgeny" },
+				{ key: "answer", value: "a long answer" },
+				{ key: "agree", checked: true },
+			]);
+		});
+
+		it("never lets a password out of the frame", () => {
+			const win = form(`<input id="secret" type="password"><input id="plain" value="">`);
+			(document.getElementById("secret") as HTMLInputElement).value = "hunter2";
+			(document.getElementById("plain") as HTMLInputElement).value = "fine";
+			settle(win);
+
+			expect(drafts(win)[0].fields).toEqual([{ key: "plain", value: "fine" }]);
+		});
+
+		it("reports an empty draft once the form matches its defaults again", () => {
+			const win = form(`<input id="who" value="">`);
+			const field = document.getElementById("who") as HTMLInputElement;
+			field.value = "typed";
+			settle(win);
+			field.value = "";
+			settle(win);
+
+			expect(drafts(win)[1].fields).toEqual([]);
+		});
+
+		it("puts the values back when the viewer hands the draft in", () => {
+			const win = form(`<input id="who" value=""><textarea name="answer"></textarea><input id="agree" type="checkbox">`);
+			win.fire("message", { data: { type: "dev3-artifact-draft-restore", draft: { fields: [
+				{ key: "who", value: "Evgeny" },
+				{ key: "answer", value: "a long answer" },
+				{ key: "agree", checked: true },
+			] } } });
+
+			expect((document.getElementById("who") as HTMLInputElement).value).toBe("Evgeny");
+			expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("a long answer");
+			expect((document.getElementById("agree") as HTMLInputElement).checked).toBe(true);
+		});
+
+		it("carries whatever the report saved itself, and hands it back on restore", () => {
+			const win = form(`<div id="canvas"></div>`);
+			const seen: unknown[] = [];
+			Object.assign(win, { dispatchEvent: (event: CustomEvent) => { seen.push(event.detail); return true; } });
+			(win.dev3 as unknown as { saveDraft(value: unknown): void }).saveDraft({ picked: 3 });
+			vi.advanceTimersByTime(ARTIFACT_BRIDGE_DRAFT_MS + 1);
+			const posts = win.sent as unknown as Array<{ custom?: unknown }>;
+			expect(posts[posts.length - 1]?.custom).toEqual({ picked: 3 });
+
+			win.fire("message", { data: { type: "dev3-artifact-draft-restore", draft: { fields: [], custom: { picked: 3 } } } });
+			expect(seen).toEqual([{ picked: 3 }]);
+		});
+
+		it("takes the capability back and grants it again without being rebuilt", async () => {
+			const win = install({ canSend: false });
+			expect(win.dev3!.canSendToAgent).toBe(false);
+
+			win.fire("message", { data: { type: "dev3-artifact-can-send", canSend: true } });
+			expect(win.dev3!.canSendToAgent).toBe(true);
+			win.gesture();
+			void win.dev3!.sendToAgent("now allowed").catch(() => {});
+			expect(win.sent).toHaveLength(1);
+
+			win.fire("message", { data: { type: "dev3-artifact-can-send", canSend: false } });
+			expect(win.dev3!.canSendToAgent).toBe(false);
+		});
 	});
 
 	// The serializer is `Function.prototype.toString`, so the function may reference

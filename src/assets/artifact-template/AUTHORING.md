@@ -248,11 +248,37 @@ if (window.dev3?.canSendToAgent) {
 }
 ```
 
-- **`canSendToAgent`** — read it before rendering the form. It is false in a copy opened in its own browser tab, in a downloaded file, on an older version of the artifact, and when the owning task has finished. It does **not** promise an agent is running right now — that is only knowable at send time, and it arrives as a rejection.
+- **`canSendToAgent`** — read it before rendering the form, and read it **again on every use**: it is a live getter the viewer can flip while the document is open, not a value to cache at startup. It is false in a copy opened in its own browser tab, in a downloaded file, on an older version of the artifact, and when the owning task has finished. It is true again on an older version the user is part-way through answering. It does **not** promise an agent is running right now — that is only knowable at send time, and it arrives as a rejection.
 - **`sendToAgent(text)`** — returns a promise; the rejected `Error` carries a machine-readable `reason`: `unavailable`, `empty`, `busy`, `no-gesture`, `timeout`, `failed`.
 - **Call it from a real click or key press.** A call that no trusted input precedes is refused (`no-gesture`) — that guard is why an unattended script in a report cannot drive the agent.
 - **One send at a time.** A second call while one is in flight rejects with `busy`, so a double click cannot send twice.
 - The body is a plain string and travels verbatim. Want structure, format it yourself. There is no length cap — an oversized body is spilled to a file the same way an oversized `dev3 message` is.
+
+### Unsent input survives a republish — you get this for free
+
+The agent answers by publishing a new version, and that replaces the document the user is
+looking at. Anything they had typed and not sent would go with it, so the viewer keeps it:
+every `<input>`, `<textarea>` and `<select>` whose value no longer matches its default is
+reported out of the frame automatically and held there. When the version it belongs to is on
+screen again the values are put back and `input` / `change` fire on each restored control, so
+report code that mirrors its own state hears about it. **Write nothing for this** — no save
+button, no storage call.
+
+Storage inside an artifact is not an alternative: the viewer sandboxes the document without
+`allow-same-origin`, so `sessionStorage`, `localStorage` and `document.cookie` all throw
+`SecurityError`. That is why the draft lives outside the frame.
+
+Two things it deliberately does not carry: a `type="password"` or `type="file"` field, and
+state your report holds in JavaScript rather than in a control. For the second, hand it over
+yourself and listen for it coming back:
+
+```js
+dev3.saveDraft({ picked: choice, skipped });          // any JSON-serialisable value
+
+addEventListener("dev3:draft-restore", (event) => {
+  applyMyState(event.detail);                          // exactly what saveDraft() was given
+});
+```
 
 ## Contracts to preserve
 

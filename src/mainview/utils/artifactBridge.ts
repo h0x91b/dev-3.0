@@ -20,10 +20,32 @@ export interface ArtifactBridgeConfig {
 	gestureMs: number;
 	/** How long a send waits for the viewer's reply before giving up. */
 	timeoutMs: number;
+	/** Debounce before an edited form is reported to the viewer. */
+	draftMs: number;
 }
 
 export const ARTIFACT_BRIDGE_GESTURE_MS = 5_000;
 export const ARTIFACT_BRIDGE_TIMEOUT_MS = 15_000;
+/** Coalesces a burst of keystrokes into one snapshot post. */
+export const ARTIFACT_BRIDGE_DRAFT_MS = 250;
+
+/**
+ * One control's unsent value. The key is the field's `id`, else its `name`, else
+ * its tag and position — positional is safe because a draft is only ever restored
+ * into the version it was captured from, whose form is the same form.
+ */
+export interface ArtifactDraftField {
+	key: string;
+	value?: string;
+	checked?: boolean;
+}
+
+/** What the frame posts out whenever its controls stop matching their defaults. */
+export interface ArtifactDraft {
+	fields: ArtifactDraftField[];
+	/** Whatever the report handed to `dev3.saveDraft()`, if anything. */
+	custom?: unknown;
+}
 
 /** Reason codes an author can branch on; also the rejected Error's `.reason`. */
 export type ArtifactBridgeReason =
@@ -39,6 +61,8 @@ export interface ArtifactBridgeWindow {
 	addEventListener(type: string, listener: (event: never) => void, capture?: boolean): void;
 	postMessage?(message: unknown, targetOrigin: string): void;
 	dev3?: unknown;
+	/** Absent in unit tests, which hand the bridge a bare object as its window. */
+	document?: { querySelectorAll?(selector: string): unknown } | null;
 }
 
 /**
@@ -52,7 +76,10 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 	// No distinct parent frame → this copy was opened on its own (a browser tab, a
 	// downloaded file). Nothing is listening, so the capability is honestly false.
 	const framed = Boolean(parentWindow) && parentWindow !== w;
-	const canSend = Boolean(config.canSend) && framed;
+	// Mutable, not compose-time: the viewer re-states the capability when the task's
+	// newest version moves, so a document already on screen is never re-rendered
+	// just to flip this flag — re-rendering it is what destroys unsent input.
+	let canSend = Boolean(config.canSend) && framed;
 	let lastGesture = -Infinity;
 	let pendingId: number | null = null;
 	let pending: { resolve: () => void; reject: (error: Error) => void } | null = null;
@@ -76,9 +103,106 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		}, true);
 	});
 
-	w.addEventListener("message", function (event: { data?: { type?: string; id?: number; ok?: boolean; reason?: string; message?: string } }) {
+	// --- Unsent input, kept outside this frame -------------------------------
+	// Storage inside an artifact is impossible: the viewer sandboxes it without
+	// `allow-same-origin`, so its origin is opaque and sessionStorage, localStorage
+	// and cookies all throw SecurityError. The draft therefore lives in the viewer,
+	// and this half only reports and re-applies it.
+	let custom: unknown;
+	let draftTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function controls(): any[] {
+		const doc = w.document;
+		if (!doc || !doc.querySelectorAll) return [];
+		return [].slice.call(doc.querySelectorAll("input,textarea,select"));
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function fieldKey(el: any, index: number): string {
+		return String(el.id || el.name || String(el.tagName) + ":" + index);
+	}
+
+	/** The value the control would have had if nobody had touched it. */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function pristine(el: any): string {
+		if (el.tagName !== "SELECT") return el.defaultValue == null ? "" : String(el.defaultValue);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const options: any[] = [].slice.call(el.options || []);
+		for (let i = 0; i < options.length; i++) if (options[i].defaultSelected) return String(options[i].value);
+		return options.length ? String(options[0].value) : "";
+	}
+
+	function snapshot(): ArtifactDraftField[] {
+		const fields: ArtifactDraftField[] = [];
+		controls().forEach(function (el, index) {
+			const type = String(el.type || "").toLowerCase();
+			// A password never leaves the frame, and a file input cannot be restored.
+			if (type === "password" || type === "file" || type === "hidden") return;
+			if (type === "checkbox" || type === "radio") {
+				if (Boolean(el.checked) === Boolean(el.defaultChecked)) return;
+				fields.push({ key: fieldKey(el, index), checked: Boolean(el.checked) });
+				return;
+			}
+			const value = el.value == null ? "" : String(el.value);
+			if (value === pristine(el)) return;
+			fields.push({ key: fieldKey(el, index), value: value });
+		});
+		return fields;
+	}
+
+	function reportDraft(): void {
+		if (!framed) return;
+		const fields = snapshot();
+		// Posted even when empty: that is how the viewer learns the form went clean
+		// again and drops its offer to restore.
+		parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields, custom: custom }, "*");
+	}
+
+	function scheduleDraft(): void {
+		if (draftTimer !== null) clearTimeout(draftTimer);
+		draftTimer = setTimeout(function () {
+			draftTimer = null;
+			reportDraft();
+		}, config.draftMs);
+	}
+
+	["input", "change"].forEach(function (type) {
+		w.addEventListener(type, scheduleDraft, true);
+	});
+
+	function restoreDraft(draft: ArtifactDraft): void {
+		const byKey: Record<string, ArtifactDraftField> = {};
+		(draft.fields || []).forEach(function (field) { byKey[field.key] = field; });
+		controls().forEach(function (el, index) {
+			const field = byKey[fieldKey(el, index)];
+			if (!field) return;
+			if (typeof field.checked === "boolean") el.checked = field.checked;
+			else if (typeof field.value === "string") el.value = field.value;
+			// Report code that mirrors its own state only hears about a change through
+			// these — setting `.value` alone fires nothing.
+			["input", "change"].forEach(function (type) {
+				if (el.dispatchEvent && w.Event) el.dispatchEvent(new w.Event(type, { bubbles: true }));
+			});
+		});
+		custom = draft.custom;
+		if (draft.custom !== undefined && w.dispatchEvent && w.CustomEvent) {
+			w.dispatchEvent(new w.CustomEvent("dev3:draft-restore", { detail: draft.custom }));
+		}
+	}
+
+	w.addEventListener("message", function (event: { data?: { type?: string; id?: number; ok?: boolean; reason?: string; message?: string; canSend?: boolean; draft?: ArtifactDraft } }) {
 		const data = event && event.data;
-		if (!data || data.type !== "dev3-artifact-send-result" || data.id !== pendingId) return;
+		if (!data) return;
+		if (data.type === "dev3-artifact-can-send") {
+			canSend = Boolean(data.canSend) && framed;
+			return;
+		}
+		if (data.type === "dev3-artifact-draft-restore") {
+			if (data.draft) restoreDraft(data.draft);
+			return;
+		}
+		if (data.type !== "dev3-artifact-send-result" || data.id !== pendingId) return;
 		const settled = pending;
 		settle();
 		if (!settled) return;
@@ -119,7 +243,17 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		});
 	}
 
-	w.dev3 = { canSendToAgent: canSend, sendToAgent: sendToAgent };
+	function saveDraft(value: unknown): void {
+		custom = value;
+		scheduleDraft();
+	}
+
+	w.dev3 = {
+		// A getter, not a snapshot: the viewer can revoke or grant this mid-life.
+		get canSendToAgent() { return canSend; },
+		sendToAgent: sendToAgent,
+		saveDraft: saveDraft,
+	};
 }
 
 /** The injected `<script>` that installs the bridge inside the artifact document. */
@@ -128,6 +262,7 @@ export function artifactBridgeScript(canSend: boolean): string {
 		canSend,
 		gestureMs: ARTIFACT_BRIDGE_GESTURE_MS,
 		timeoutMs: ARTIFACT_BRIDGE_TIMEOUT_MS,
+		draftMs: ARTIFACT_BRIDGE_DRAFT_MS,
 	};
 	return `<script data-dev3-artifact-bridge>(${installArtifactBridge.toString()})(window,${JSON.stringify(config)});</script>`;
 }
