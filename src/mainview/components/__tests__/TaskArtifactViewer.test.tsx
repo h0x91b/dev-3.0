@@ -139,6 +139,23 @@ describe("TaskArtifactViewer", () => {
 		expect(frame).toBeInTheDocument();
 	});
 
+	it("follows a republish that reorders a list of the same length", async () => {
+		const { rerender } = render(
+			<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a"), artifact("b"), artifact("c")]} initialIndex={2} onClose={vi.fn()} /></I18nProvider>,
+		);
+		await userEvent.click(screen.getByLabelText("Previous artifact"));
+		expect(screen.getByText("Artifact b")).toBeInTheDocument();
+
+		// Re-publishing "a" moves its row to the end; the length never changes, so the
+		// viewer has to key on the list itself to land on what was just published.
+		rerender(
+			<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("b"), artifact("c"), artifact("a")]} initialIndex={2} onClose={vi.fn()} /></I18nProvider>,
+		);
+
+		expect(screen.getByText("Artifact a")).toBeInTheDocument();
+		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+	});
+
 	it("toggles fullscreen and closes", async () => {
 		const onClose = vi.fn();
 		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);

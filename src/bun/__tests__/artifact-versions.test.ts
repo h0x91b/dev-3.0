@@ -54,7 +54,7 @@ describe("appendArtifactVersion", () => {
 		expect(artifacts).toHaveLength(1);
 		expect(pruned).toEqual([]);
 		const merged = artifacts[0];
-		// The row keeps its original identity so it does not move or lose its place.
+		// The row keeps its original identity, so nothing pointing at it breaks.
 		expect(merged.id).toBe("a");
 		expect(merged.version).toBe(2);
 		expect(merged.isUnread).toBe(true);
@@ -63,6 +63,15 @@ describe("appendArtifactVersion", () => {
 		expect(merged.name).toBe("report2.html");
 		expect(merged.bytes).toBe(200);
 		expect(merged.previousVersions?.map((entry) => entry.storedPath)).toEqual([first.storedPath]);
+	});
+
+	it("moves the republished row to the end so the viewer opens on it", () => {
+		const other = (n: number) => publish({ id: `other-${n}`, title: `Other ${n}`, groupKey: artifactGroupKey({ title: `Other ${n}` }) });
+		const existing = [publish({ id: "a", createdAt: 1 }), other(1), other(2)];
+		const { artifacts } = appendArtifactVersion(existing, publish({ id: "b", createdAt: 2 }));
+
+		expect(artifacts.map((artifact) => artifact.id)).toEqual(["other-1", "other-2", "a"]);
+		expect(artifacts[artifacts.length - 1].version).toBe(2);
 	});
 
 	it("keeps a differently titled artifact as its own row", () => {

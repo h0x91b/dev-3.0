@@ -98,10 +98,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		[group, selectedVersion],
 	);
 
+	// Keyed on the array identity, not its length: a republish hands over a fresh
+	// list of the same size whose last row is the artifact that was just published,
+	// and the viewer has to land on it rather than sit on whatever index it held.
 	useEffect(() => {
 		setPick(null);
 		setIndex(Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
-	}, [artifacts.length, initialIndex]);
+	}, [artifacts, initialIndex]);
 
 	// What the user typed into a version's form and never sent. Held here rather
 	// than in the artifact because the frame is opaque-origin — every storage API

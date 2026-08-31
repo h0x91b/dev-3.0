@@ -77,9 +77,12 @@ export function artifactAtVersion(artifact: SharedArtifact, version: number): Sh
  * Fold a fresh publish into the task's artifact list.
  *
  * Records sharing the incoming key — including legacy ones grouped by title —
- * collapse into a single artifact at the FIRST matching position, so a row the
- * user already knows does not jump. Versions are renumbered 1..N because each
- * legacy record claims version 1, then trimmed to `cap`.
+ * collapse into a single artifact, keeping the target's id so nothing that
+ * points at it breaks. The merged row moves to the END of the list: every
+ * surface opens a task's artifacts at the last one, so the row just published
+ * has to be the last one or the user pages back to it after every publish.
+ * Versions are renumbered 1..N because each legacy record claims version 1,
+ * then trimmed to `cap`.
  */
 export function appendArtifactVersion(
 	existing: SharedArtifact[],
@@ -118,8 +121,7 @@ export function appendArtifactVersion(
 		previousVersions: kept.slice(0, -1),
 	};
 	return {
-		artifacts: existing.filter((artifact) => artifact === target || recordGroupKey(artifact) !== key)
-			.map((artifact) => (artifact === target ? merged : artifact)),
+		artifacts: [...existing.filter((artifact) => recordGroupKey(artifact) !== key), merged],
 		pruned,
 	};
 }
