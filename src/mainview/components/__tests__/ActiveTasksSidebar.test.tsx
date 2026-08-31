@@ -1483,7 +1483,11 @@ describe("pull-request badges", () => {
 			},
 		})]);
 
-		expect(screen.getByText("Conflicts")).toBeInTheDocument();
+		// On this ~200px row the merge verdict is glyph-only, so the word has to
+		// survive in the accessible name and the tooltip instead of on screen.
+		const merge = screen.getByLabelText("PR is not mergeable — click to open the PR — Conflicts");
+		expect(merge).toHaveAttribute("title", "Conflicts");
+		expect(merge).not.toHaveTextContent("Conflicts");
 		expect(screen.getByLabelText("Changes requested — click to open the PR")).toBeInTheDocument();
 		expect(screen.getByLabelText("3 unresolved comments")).toBeInTheDocument();
 	});
@@ -1494,6 +1498,28 @@ describe("pull-request badges", () => {
 
 		await user.hover(screen.getByLabelText("Open PR #1591"));
 		await waitFor(() => expect(screen.getByTestId("pr-status-popover")).toBeInTheDocument());
+	});
+
+	it("keeps the merge verdict's word out of the row but reachable", () => {
+		renderWith([prTask({
+			prStatusCache: {
+				number: 1591,
+				url: "https://github.com/h0x91b/dev-3.0/pull/1591",
+				ciStatus: "success",
+				reviewState: "approved",
+				reviewDecision: "approved",
+				unresolvedCount: 0,
+				mergeState: { mergeable: "MERGEABLE", status: "CLEAN" },
+				checks: [],
+				prTitle: "Ship the badge",
+				isDraft: false,
+				cachedAt: "2026-08-30T00:00:00Z",
+			},
+		})]);
+
+		// The word is 77px of a 200px line; it must not be rendered as text here.
+		expect(screen.queryByText("Mergeable")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("PR is mergeable — click to open the PR — Mergeable")).toBeInTheDocument();
 	});
 
 	it("renders no PR badge for a task nothing has ever seen a PR for", () => {
@@ -1530,6 +1556,6 @@ describe("pull-request badges", () => {
 		}));
 
 		await waitFor(() => expect(screen.getByLabelText("PR approved — click to open the PR")).toBeInTheDocument());
-		expect(screen.getByText("Mergeable")).toBeInTheDocument();
+		expect(screen.getByLabelText("PR is mergeable — click to open the PR — Mergeable")).toHaveAttribute("title", "Mergeable");
 	});
 });

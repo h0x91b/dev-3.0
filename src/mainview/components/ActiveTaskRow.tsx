@@ -272,10 +272,12 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
-						{/* Git group leads the signals, mirroring the board bottom bar. */}
-						{prInfo && (
-							<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} />
-						)}
+					{/* Git group leads the signals, mirroring the board bottom bar. The
+					    merge verdict goes glyph-only here: its word is 77px of a 200px
+					    line, and it survives in the tooltip, the name and the popover. */}
+					{prInfo && (
+						<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} compact />
+					)}
 					{assignedLabels.length > 0 && (
 						<div className="flex flex-wrap gap-0.5 min-w-0">
 							{assignedLabels.map((label) => (
@@ -294,35 +296,15 @@ export default function ActiveTaskRow({
 						size="sm"
 						testId={`variant-indicator-${task.id}`}
 					/>
-					{agePart && (
-						<Tooltip
-							content={t("sidebar.statusChanged", {
-								ago:
-									agePart.unit === "s" && agePart.value < 1
-										? t("activity.justNow")
-										: t(AGE_UNIT_KEY[agePart.unit] as Parameters<typeof t>[0], {
-												count: String(agePart.value),
-											}),
-								date: new Date(task.movedAt!).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }),
-							})}
-						>
-							<span
-								className="ml-auto shrink-0 flex items-center gap-0.5 text-nano text-fg-3 font-mono whitespace-nowrap"
-								data-testid={`sidebar-status-age-${task.id}`}
-							>
-								<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{""}
-								</span>
-								{compactAge(task.movedAt, now)}
-							</span>
-						</Tooltip>
-					)}
 				</div>
 
 				{/* IDENTITY — one muted line, last. Same order as the card: the
-				    backend qualifies the task, so it precedes the agent badge. */}
+				    backend qualifies the task, so it precedes the agent badge. The
+				    status age rides this line rather than the signals line: it is
+				    metadata, and its 22px were what pushed a PR badge onto row two. */}
+				<div className="mt-1 flex items-center gap-1.5 min-w-0">
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
-					<div className="mt-1 flex items-center gap-1.5 min-w-0" data-testid={`sidebar-identity-${task.id}`}>
+					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
 						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
 						{isCoordinatorTask(task) && (
@@ -364,6 +346,30 @@ export default function ActiveTaskRow({
 						<div className="min-w-0 flex-1 truncate text-nano font-mono text-fg-muted">{agentSummary}</div>
 					</div>
 				</Tooltip>
+				{agePart && (
+					<Tooltip
+						content={t("sidebar.statusChanged", {
+							ago:
+								agePart.unit === "s" && agePart.value < 1
+									? t("activity.justNow")
+									: t(AGE_UNIT_KEY[agePart.unit] as Parameters<typeof t>[0], {
+											count: String(agePart.value),
+										}),
+							date: new Date(task.movedAt!).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }),
+						})}
+					>
+						<span
+							className="shrink-0 flex items-center gap-0.5 text-nano text-fg-3 font-mono whitespace-nowrap"
+							data-testid={`sidebar-status-age-${task.id}`}
+						>
+							<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{""}
+							</span>
+							{compactAge(task.movedAt, now)}
+						</span>
+					</Tooltip>
+				)}
+				</div>
 
 				{/* Port indicators */}
 				{ports && ports.length > 0 && (

@@ -24,6 +24,13 @@ interface TaskPrBadgesProps {
 	taskId: string;
 	/** Makes the popover's unresolved-comments row a deep link into the diff. */
 	onShowUnresolved?: () => void;
+	/**
+	 * Narrow hosts (the ~200px Active Tasks row) drop the merge verdict's word
+	 * and keep its glyph: the word is 77px of a 200px line, which is what forced
+	 * the row to wrap. The word itself survives in the tooltip, the accessible
+	 * name, and the popover.
+	 */
+	compact?: boolean;
 }
 
 /**
@@ -40,7 +47,7 @@ interface TaskPrBadgesProps {
  * already folds failing/blocking checks into one verdict, and the popover keeps
  * the per-check breakdown for detail.
  */
-export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolved }: TaskPrBadgesProps) {
+export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolved, compact = false }: TaskPrBadgesProps) {
 	const t = useT();
 	const mergeability = summarizeMergeability(prInfo.mergeState);
 	const reviewMeta = prInfo.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
@@ -77,11 +84,12 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 							e.stopPropagation();
 							window.open(prInfo.url, "_blank");
 						}}
-						className={`inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-dense font-semibold leading-none transition-colors ${ok ? "text-success bg-success/10 hover:bg-success/20" : "text-danger bg-danger/10 hover:bg-danger/20"}`}
-						aria-label={t(ok ? "task.mergeBadge.mergeableAria" : "task.mergeBadge.notMergeableAria")}
+						className={`inline-flex flex-shrink-0 items-center rounded font-mono text-dense font-semibold leading-none transition-colors ${compact ? "h-5 w-5 justify-center p-0" : "h-5 max-w-full gap-1 px-1.5 py-0.5"} ${ok ? "text-success bg-success/10 hover:bg-success/20" : "text-danger bg-danger/10 hover:bg-danger/20"}`}
+						aria-label={`${t(ok ? "task.mergeBadge.mergeableAria" : "task.mergeBadge.notMergeableAria")} — ${mergeLabel}`}
+						title={compact ? mergeLabel : undefined}
 					>
 						<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ok ? "\u{F0623}" : "\uf05e"}</span>
-						<span className="truncate leading-none">{mergeLabel}</span>
+						{!compact && <span className="truncate leading-none">{mergeLabel}</span>}
 					</button>
 				</TaskPrStatusPopover>
 			)}
