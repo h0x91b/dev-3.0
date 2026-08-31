@@ -285,9 +285,11 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(4);
+		// The first opens the turn; the other two arrive behind a blank line, because an
+		// envelope ends without a newline and used to weld onto its predecessor (#1608).
 		expect(sentChunks(0)).toEqual([{ literal: "one" }]);
-		expect(sentChunks(1)).toEqual([{ literal: "two" }]);
-		expect(sentChunks(2)).toEqual([{ literal: "three" }]);
+		expect(sentChunks(1)).toEqual([{ literal: "\n\ntwo" }]);
+		expect(sentChunks(2)).toEqual([{ literal: "\n\nthree" }]);
 		expect(sentChunks(3)).toEqual([{ keys: ["Enter"] }]);
 	});
 

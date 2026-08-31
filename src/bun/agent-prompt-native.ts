@@ -111,8 +111,8 @@ function performNativeDelivery(
 	const delayMs = holdAgentMessage(
 		agentMessageHoldKey("native", taskId, paneId),
 		{
-			deliver: () => {
-				terminal.write(prompt);
+			deliver: (separator) => {
+				terminal.write(`${separator}${prompt}`);
 				// A native write cannot be acknowledged, so "it landed" is the best answer
 				// there is — the same assumption the held CR has always been sent on.
 				return true;

@@ -8,6 +8,19 @@ import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
 export const REPLY_SUBJECT_PLACEHOLDER = "what your reply is about";
 
 /**
+ * What separates two envelopes typed into one input box. A burst is several whole
+ * messages in one turn, and {@link wrapAgentMessage} ends without a newline — so
+ * without this the receiver reads `</dev3-ai-message><dev3-ai-message>` on ONE line
+ * and the boundary between two senders is gone. Measured on a real coordinator's
+ * inbox: every multi-part report arrived welded (issue #1608).
+ *
+ * A blank line rather than one newline, because the tags alone already delimit for a
+ * parser; what a reader needs is to SEE where one message stops. Also used before the
+ * board snapshot that trails a burst.
+ */
+export const AGENT_MESSAGE_BURST_SEPARATOR = "\n\n";
+
+/**
  * Wrap a cross-task agent message in a pseudo-XML envelope so the receiving
  * agent immediately sees the text came from another task's agent (not from the
  * human) and knows the exact command to answer with.

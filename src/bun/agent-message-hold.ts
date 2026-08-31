@@ -10,6 +10,10 @@
  *  - ONE hold per pane, never a queue of Enters. Several messages stack their TEXTS
  *    in arrival order and end in exactly one Enter; two Enters for two stacked
  *    messages would split the burst again, which is the original defect.
+ *  - Every message after the first is typed behind a blank line. An envelope ends
+ *    without a newline, so a burst used to reach the receiver as
+ *    `</dev3-ai-message><dev3-ai-message>` on one line, with no boundary between two
+ *    senders' reports (issue #1608).
  *  - The newest registration wins the submit closure, because it carries the freshest
  *    pane pin; the ceiling deadline stays with the FIRST undelivered message.
  *  - A MESSAGE-driven hold keeps the ceiling; a HUMAN-driven one has none, and its quiet
@@ -28,6 +32,7 @@
  * PR, commit, rebase, bug-hunter prompts — type and submit at once.
  */
 
+import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
 import {
 	AGENT_MESSAGE_HOLD_CEILING_MS,
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
@@ -39,8 +44,13 @@ const log = createLogger("agent-message-hold");
 
 /** One message waiting for a pane: how to type it, and how to submit the burst. */
 export interface HeldAgentMessage {
-	/** Types this message's text. True when it provably landed. */
-	deliver: () => boolean | Promise<boolean>;
+	/**
+	 * Types this message's text, prefixed by `separator`. The hold passes the empty
+	 * string to the message that opens a burst and
+	 * {@link AGENT_MESSAGE_BURST_SEPARATOR} to every one after it: position in the
+	 * burst is knowable here and nowhere else. True when it provably landed.
+	 */
+	deliver: (separator: string) => boolean | Promise<boolean>;
 	/**
 	 * Optional trailer typed ONCE after the whole burst, just before the Enter —
 	 * the coordinator's board snapshot. It belongs here rather than on each
@@ -181,9 +191,11 @@ async function release(key: string, hold: Hold): Promise<void> {
 	if (hold.timer) clearTimeout(hold.timer);
 
 	let landed = false;
-	for (const deliver of hold.deliveries) {
+	for (const [index, deliver] of hold.deliveries.entries()) {
+		// The first message opens the turn; every later one needs a visible boundary,
+		// because an envelope ends without a newline and would weld onto its predecessor.
 		try {
-			if (await deliver()) landed = true;
+			if (await deliver(index === 0 ? "" : AGENT_MESSAGE_BURST_SEPARATOR)) landed = true;
 		} catch (err) {
 			log.warn("held agent message text failed", { ...hold.context, error: String(err) });
 		}

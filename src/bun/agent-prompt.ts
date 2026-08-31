@@ -4,6 +4,7 @@ import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-promp
 import type { AgentPromptEpilogue } from "./agent-prompt-delivery";
 import { sendPaneInput } from "./pane-input";
 import { agentMessageHoldKey, holdAgentMessage } from "./agent-message-hold";
+import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
 import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
 
@@ -218,8 +219,8 @@ function holdAgentMessageForPane(
 	const delayMs = holdAgentMessage(
 		agentMessageHoldKey("tmux", task.id, paneId),
 		{
-			deliver: async () => {
-				const text = await sendPaneInput(task, paneId, agentMessageTextStages(prompt), { idPrefix: "agent-prompt" });
+			deliver: async (separator) => {
+				const text = await sendPaneInput(task, paneId, agentMessageTextStages(`${separator}${prompt}`), { idPrefix: "agent-prompt" });
 				if (text.status !== "delivered") {
 					log.warn("held agent message text did not land", { ...context, status: text.status });
 				}
@@ -233,7 +234,7 @@ function holdAgentMessageForPane(
 						const sent = await sendPaneInput(
 							task,
 							paneId,
-							agentMessageTextStages(`\n${trailer}`),
+							agentMessageTextStages(`${AGENT_MESSAGE_BURST_SEPARATOR}${trailer}`),
 							{ idPrefix: "agent-epilogue" },
 						);
 						return sent.status === "delivered";
