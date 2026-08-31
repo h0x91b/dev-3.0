@@ -14,12 +14,18 @@ export const REPLY_SUBJECT_PLACEHOLDER = "what your reply is about";
  *
  * `receiverProjectId` is the project of the task being written TO — it decides
  * whether the reply command needs `--project` (see {@link agentReplyCommand}).
+ *
+ * `fullCopyPath` is the receipt for a long body (see `agent-message-spill.ts`). It goes
+ * LAST, after the body, because that is the only position a lost head cannot take with
+ * it: a receiver holding a closing tag and no opening one still holds the way back to
+ * the whole text.
  */
 export function wrapAgentMessage(
 	text: string,
 	source: AgentMessageSource,
 	receiverProjectId: string,
 	subject?: string,
+	fullCopyPath?: string | null,
 ): string {
 	// A record queued before `seqShared` existed only knows it was a variant, so it
 	// keeps the old pessimistic address rather than risking an ambiguous seq.
@@ -51,8 +57,9 @@ export function wrapAgentMessage(
 		"<message>",
 		text,
 		"</message>",
-		"</dev3-ai-message>",
 	);
+	if (fullCopyPath) lines.push(`<full-copy>${escapeXmlText(fullCopyPath)}</full-copy>`);
+	lines.push("</dev3-ai-message>");
 	return lines.join("\n");
 }
 

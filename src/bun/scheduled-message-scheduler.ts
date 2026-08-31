@@ -14,7 +14,7 @@ import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
-import { spillOversizedAgentMessage } from "./agent-message-spill";
+import { spillOversizedAgentMessage, writeAgentMessageReceipt } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
@@ -71,8 +71,12 @@ function messagePreview(text: string): string {
 async function deliverToTarget(task: Task, message: ScheduledMessage, hold: boolean): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
+	// A long body also lands on disk, and the envelope names that copy at its very end —
+	// the one position a lost head cannot take with it (issue #1608). Only agent traffic:
+	// a human watching the pane sees what happened to his own message.
+	const receiptPath = message.source ? await writeAgentMessageReceipt(task, message.text) : null;
 	const text = message.source
-		? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
+		? wrapAgentMessage(message.text, message.source, task.projectId, message.subject, receiptPath)
 		: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message

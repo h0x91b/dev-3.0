@@ -2698,6 +2698,23 @@ export const MAX_SCHEDULED_MESSAGE_LENGTH = 80_000;
  */
 export const AGENT_MESSAGE_SPILL_THRESHOLD_BYTES = 4_000;
 
+/**
+ * UTF-8 bytes of message body above which a copy is kept on disk as well — the
+ * message's receipt, named at the END of the envelope so a lost head cannot take the
+ * way back with it (issue #1608). Below it the body still travels as text alone.
+ *
+ * 1 500 because that is where the field report starts: every truncated arrival in
+ * #1608 was over roughly 1.5 KB, and shorter messages arrived whole.
+ */
+export const AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES = 1_500;
+
+/**
+ * How many receipts one task keeps. Writing the newest deletes the oldest beyond this,
+ * so a long-lived coordinator receiving thousands of reports holds a bounded directory
+ * rather than a growing one. Everything older is already in the project's message log.
+ */
+export const AGENT_MESSAGE_RECEIPT_KEEP = 50;
+
 /** Raster image extensions accepted by `dev3 show-image` (lowercase, no dot).
  * SVG is excluded on purpose — an inline data-URI SVG in the webview is an XSS
  * vector, and screenshots/renders are raster anyway. Shared by the CLI (early

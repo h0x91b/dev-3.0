@@ -8,8 +8,14 @@
  * is written next to the task and the agent is told to read it.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, type Task } from "../shared/types";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import {
+	AGENT_MESSAGE_RECEIPT_KEEP,
+	AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES,
+	AGENT_MESSAGE_SPILL_THRESHOLD_BYTES,
+	type Task,
+} from "../shared/types";
 import { utf8Length } from "../shared/pane-input";
 import * as data from "./data";
 import { taskDir } from "./git";
@@ -57,4 +63,55 @@ export async function spillOversizedAgentMessage(task: Task, text: string): Prom
 	await writeFile(path, text, "utf8");
 	log.info("Agent message spilled to file", { taskId: task.id.slice(0, 8), bytes, path });
 	return { text: spillPointerText(path, bytes), spilledPath: path };
+}
+
+/**
+ * Receipts live in their own directory, never beside the spill files: a spill is the ONLY
+ * copy of a body that was never typed, and pruning must not be able to reach one.
+ */
+function messageReceiptDir(taskRoot: string): string {
+	return `${taskRoot}/messages/receipts`;
+}
+
+/**
+ * Delete every receipt past the newest {@link AGENT_MESSAGE_RECEIPT_KEEP}. The name
+ * carries an ISO stamp, so lexicographic order is chronological order.
+ */
+async function pruneReceipts(dir: string): Promise<void> {
+	const names = (await readdir(dir)).filter((name) => name.startsWith("message-")).sort();
+	for (const name of names.slice(0, Math.max(0, names.length - AGENT_MESSAGE_RECEIPT_KEEP))) {
+		await rm(`${dir}/${name}`, { force: true });
+	}
+}
+
+/**
+ * Write a long body next to the task and return that path — the message's receipt.
+ *
+ * The text is still typed in full; this is the copy the receiver falls back to when what
+ * reached it is not what was sent. Delivery into a terminal ends in an agent CLI's input
+ * layer, which dev3 does not own, and issue #1608 is a report of a head arriving missing
+ * from one — so every body big enough to be at risk keeps a copy the receiver can name.
+ *
+ * Bounded, not accumulating: the newest {@link AGENT_MESSAGE_RECEIPT_KEEP} survive and the
+ * directory dies with the task. Best-effort by design — a receipt that could not be
+ * written must never cost the message itself, so a failure is logged and delivery goes on.
+ */
+export async function writeAgentMessageReceipt(task: Task, text: string): Promise<string | null> {
+	const bytes = utf8Length(text);
+	if (bytes < AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES) return null;
+	try {
+		const project = await data.getProject(task.projectId);
+		// A stamp alone collides when two peers report in the same millisecond, and the
+		// loser would silently overwrite the winner's receipt.
+		const stamp = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+		const dir = messageReceiptDir(taskDir(project, task));
+		const path = `${dir}/message-${stamp}.md`;
+		await mkdir(dir, { recursive: true });
+		await writeFile(path, text, "utf8");
+		await pruneReceipts(dir);
+		return path;
+	} catch (err) {
+		log.warn("Could not write the message receipt", { taskId: task.id.slice(0, 8), bytes, error: String(err) });
+		return null;
+	}
 }
