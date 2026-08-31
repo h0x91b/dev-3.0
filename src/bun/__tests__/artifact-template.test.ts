@@ -367,15 +367,25 @@ describe("bundled artifact starter contract", () => {
 		const evidenceCells = css.match(/\.evidence-table th, \.evidence-table td \{([^}]*)\}/)?.[1] || "";
 		expect(evidenceCells).not.toContain("nowrap");
 		expect(css).toContain("overflow-wrap: break-word");
-		// The table measures its own box, so one in a narrow panel stacks too.
-		expect(css).toContain(".table-card, .evidence-table-scroll { container: dev3-table / inline-size; }");
+		// The table measures its own box, so one in a narrow panel stacks too — and
+		// the box is whatever holds the table, or a plain <table> in a plain card
+		// has no container at all and the query below silently never matches.
+		expect(css).toContain(
+			":not(html, body):has(> table), .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }",
+		);
 		expect(stackedBlock).toContain("thead { display: none; }");
 		expect(stackedBlock).toContain("content: attr(data-dev3-label)");
 		// Paper is narrow enough to match the query, so print drops the container.
-		expect(printBlock).toContain(".table-card, .evidence-table-scroll { container: normal; }");
+		expect(printBlock).toContain(
+			":not(html, body):has(> table), .table-card, .evidence-table-scroll { container: normal; }",
+		);
 		// Labels come from the shell, so a plain <table> needs no new markup.
 		expect(app).toContain("function labelTableCells");
 		expect(app).toContain('cell.setAttribute("data-dev3-label", label)');
+		// A report writes the whole table into a host div in one go, so the target
+		// of that mutation is the div — the added subtree has to be inspected too.
+		expect(app).toContain("function recordTouchesTable");
+		expect(app).toContain('node.matches("table") || node.querySelector("table")');
 		expect(guide).toContain("No table scrolls sideways");
 	});
 

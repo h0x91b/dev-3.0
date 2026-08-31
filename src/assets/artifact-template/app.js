@@ -590,9 +590,17 @@
 
   // report.js renders and re-renders rows after the shell has run, so relabel
   // whenever a table's contents change. childList only — writing the attribute
-  // must not retrigger the pass.
+  // must not retrigger the pass. A report usually writes the whole table at once
+  // into a plain host div, and then the mutation target is that div, not a cell.
+  function recordTouchesTable(record) {
+    if (record.target instanceof Element && record.target.closest("table")) return true;
+    return Array.from(record.addedNodes).some(
+      (node) => node instanceof Element && (node.matches("table") || node.querySelector("table")),
+    );
+  }
+
   new MutationObserver((records) => {
-    if (records.some((record) => record.target instanceof Element && record.target.closest("table"))) scheduleTableLabels();
+    if (records.some(recordTouchesTable)) scheduleTableLabels();
   }).observe(document.body, { childList: true, subtree: true });
 
   // ---- generic shell controls -----------------------------------------------

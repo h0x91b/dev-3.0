@@ -544,8 +544,11 @@
     /* clip, not hidden: hidden makes the card a scrollport and unpins the header. */
     .table-card { padding: 0; overflow: clip; }
     /* A table answers to the box it sits in, not to the window: one inside a
-       half-width panel has to stack while the page is still wide. */
-    .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }
+       half-width panel has to stack while the page is still wide. The box that
+       holds the table is the container, whatever an author called it — the
+       stacking below is worthless to a plain <table> in a plain card without it,
+       and a container query with no container silently never matches. */
+    :not(html, body):has(> table), .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }
     .table-head { padding: 16px 18px 12px; }
     .table-tools { gap: 8px; }
     .table-tools input, .table-tools select {
@@ -768,7 +771,7 @@
       .evidence-table-meta { font-size: .375rem; }
       /* Paper is narrow enough to trip the stacking query, and print wants real
          columns with a repeating header — so the query container goes away. */
-      .table-card, .evidence-table-scroll { container: normal; }
+      :not(html, body):has(> table), .table-card, .evidence-table-scroll { container: normal; }
       .evidence-table { width: 100%; table-layout: auto; }
       .evidence-table th, .evidence-table td { display: table-cell; padding: 1.5px 3px; white-space: normal; font-size: .3875rem; }
       .evidence-table th { font-size: .3625rem; }
