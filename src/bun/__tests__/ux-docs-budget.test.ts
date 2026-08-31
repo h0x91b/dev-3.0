@@ -50,7 +50,16 @@ const BUDGET_KB: Record<string, number> = {
 	// ambient readout is exactly what this manifest exists to prevent. Compaction was the
 	// alternative and it meant deleting other rules' why — the failure the note above names.
 	// Reasoning: decisions/2026/08/29/default-account-switch-lives-in-the-usage-flyout.md.
-	"ux-architecture.yaml": 115,
+	//
+	// 115 → 116 for one token: `git_status_badge` in `surfaces.sidebar.allowed`, because the
+	// Active Tasks row now carries the task_card PR cluster. Twenty bytes, and the smallest
+	// manifest change there is — but `main` had 7 bytes of headroom left, so the merge came to
+	// 115.013 KB. Compaction ran first and found nothing free: no trailing whitespace, no
+	// duplicate evidence paths, no blank-line runs, so the next 13 bytes would have come out of
+	// another rule's why. `allowed` is the gate ux-principal reads to decide placement, so
+	// leaving the token out would have made the shipped badge read as unsanctioned.
+	// Reasoning: decisions/2026/08/30/sidebar-pr-badge-without-discovery-poll.md.
+	"ux-architecture.yaml": 116,
 	"UX_DECISIONS.md": 80,
 };
 
