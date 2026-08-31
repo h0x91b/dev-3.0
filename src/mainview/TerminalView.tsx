@@ -31,7 +31,7 @@ import {
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
-import { installTouchTextLayer, SELECTING_ATTR, type TouchTextLayer } from "./terminal-touch-text-layer";
+import { installTouchTextLayer, type TouchTextLayer } from "./terminal-touch-text-layer";
 import { session } from "./terminal-session-stats";
 import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
@@ -1085,8 +1085,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// what a finger actually lands on once installed.
 				const textLayer = touchTextLayerRef.current;
 				const touchTarget: HTMLElement = textLayer?.element ?? canvas;
-				const selectionLive = () =>
-					textLayer?.element.hasAttribute(SELECTING_ATTR) ?? false;
+				const selectionLive = () => textLayer?.hasSelection() ?? false;
 				const SCROLL_DECIDE_PX = 8; // movement before a drag locks scroll/select
 				let touchStartX = 0;
 				let touchStartY = 0;

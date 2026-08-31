@@ -32,11 +32,43 @@ export interface TouchTextLayer {
 	element: HTMLElement;
 	/** Re-read the viewport into the DOM. A no-op while a selection is live. */
 	refresh(): void;
+	/** Is the platform holding a selection over these rows, right now? */
+	hasSelection(): boolean;
 	dispose(): void;
 }
 
-/** Marks the layer while the user holds a selection — read by MobilePaneCarousel. */
-export const SELECTING_ATTR = "data-selecting";
+/** Identifies a layer in the DOM for code that has no handle on one. */
+export const TEXT_LAYER_SELECTOR = "[data-terminal-text-layer]";
+
+/**
+ * Does the current selection touch `element`?
+ *
+ * Asked synchronously, never cached behind a `selectionchange` listener: Blink
+ * dispatches that event on a task, so a cached answer is stale for exactly the
+ * frames in which the user is starting a drag — and every caller here is deciding
+ * whether to move the text out from under them.
+ *
+ * `intersectsNode`, not `contains`: a range the browser anchored at a parent
+ * still covers our rows, and treating that as "no selection" is what lets a
+ * rebuild destroy it.
+ */
+export function selectionTouches(element: Element): boolean {
+	const selection = document.getSelection();
+	if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+	const range = selection.getRangeAt(0);
+	try {
+		if (typeof range.intersectsNode === "function") return range.intersectsNode(element);
+	} catch {
+		// A detached range throws; fall through to the containment test.
+	}
+	return element.contains(range.commonAncestorContainer);
+}
+
+/** The same question for a caller that only has a subtree, not a layer handle. */
+export function terminalTextSelectionLive(root: ParentNode): boolean {
+	const layer = root.querySelector(TEXT_LAYER_SELECTOR);
+	return !!layer && selectionTouches(layer);
+}
 
 export function installTouchTextLayer(
 	container: HTMLElement,
@@ -83,13 +115,7 @@ export function installTouchTextLayer(
 		return lastAdvance;
 	}
 
-	/** True while the user holds a selection anywhere inside this layer. */
-	function hasLiveSelection(): boolean {
-		const selection = document.getSelection();
-		if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
-		const range = selection.getRangeAt(0);
-		return element.contains(range.commonAncestorContainer);
-	}
+	const hasLiveSelection = () => selectionTouches(element);
 
 	function refresh(): void {
 		// Rebuilding the text nodes would collapse a selection the user is still
@@ -140,18 +166,11 @@ export function installTouchTextLayer(
 		rowPool.length = term.rows;
 	}
 
-	function onSelectionChange() {
-		if (hasLiveSelection()) element.setAttribute(SELECTING_ATTR, "1");
-		else element.removeAttribute(SELECTING_ATTR);
-	}
-
-	document.addEventListener("selectionchange", onSelectionChange);
-
 	return {
 		element,
 		refresh,
+		hasSelection: hasLiveSelection,
 		dispose() {
-			document.removeEventListener("selectionchange", onSelectionChange);
 			element.remove();
 			rowPool.length = 0;
 		},

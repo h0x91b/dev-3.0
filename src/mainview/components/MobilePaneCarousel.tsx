@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { terminalTextSelectionLive } from "../terminal-touch-text-layer";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { confirm } from "../confirm";
@@ -195,7 +196,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 			// While the OS is dragging a text-selection handle in the terminal, the
 			// move is horizontal but not ours — swiping would lose the selection
 			// and change pane under the user's finger.
-			if (el!.querySelector("[data-terminal-text-layer][data-selecting]")) {
+			if (terminalTextSelectionLive(el!)) {
 				axis = "v";
 				return;
 			}
