@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import type { Task, TaskHistoryEntry, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
 import { projectSlug } from "../../shared/conversation-search-core";
+import { toPosixSeparators } from "../../shared/project-storage-key";
 import { searchConversations, type EngineTask } from "../../bun/conversation-search";
 import {
 	conversationDumpDir,
@@ -19,12 +20,22 @@ import { sendRequest } from "../socket-client";
 import { DEFAULT_DUMP_BUDGET, type DumpBudget } from "../../shared/conversation-dump";
 import { atomicWriteFile } from "../../bun/atomic-write";
 import type { ParsedArgs } from "../args";
-import { detectFromWorktreePath, projectOwningCwd, readProjectDirect, resolveProjectId, type CliContext } from "../context";
+import {
+	detectFromWorktreePath,
+	projectOwningCwd,
+	readProjectDirect,
+	resolveProjectId,
+	type CliContext,
+	type ProjectDirect,
+} from "../context";
 import { exitError, exitUsage, printTable } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { CLI_EXIT_CODE_NO_PROJECT_FOR_CWD } from "../../shared/cli-exit-codes";
 
 const DEV3_DIR = "/.dev3.0";
+
+/** Marker that appears in every virtual ("Operations") task working dir. */
+const OPS_MARKER = "/.dev3.0/ops/";
 
 /**
  * The user home (where `~/.claude` lives) and the data root of the board being
@@ -376,21 +387,21 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 	}
 }
 
-/**
- * `dev3 import` — put the conversation you are sitting in onto the board.
- *
- * Run from the agent's own shell, so both halves are already known: the cwd says
- * which project owns the work, and `CLAUDE_CODE_SESSION_ID` says which
- * conversation this is. `dev3 conversations import` covers the batch case; this
- * covers "this one, now".
- */
-export async function handleImportCurrentSession(
-	args: ParsedArgs,
-	socketPath: string | null,
-): Promise<void> {
-	rejectUnknownFlags(args, ["json"]);
-	const asJson = args.flags.json === "true";
+/** What `dev3 import` needs before it has any use for the app: who, and where. */
+export interface ImportTarget {
+	sessionId: string;
+	project: ProjectDirect;
+}
 
+/**
+ * Both halves of `dev3 import`, answered from local files alone.
+ *
+ * Kept separate from the handler so `main.ts` can ask BEFORE it goes looking for
+ * the app: a directory no project owns is the commonest answer this command has,
+ * and reporting "dev3 is not running" instead sends the reader to restart an app
+ * that would not have helped.
+ */
+export function resolveImportTarget(cwd: string = process.cwd()): ImportTarget {
 	const sessionId = process.env.CLAUDE_CODE_SESSION_ID?.trim();
 	if (!sessionId) {
 		exitError(
@@ -400,9 +411,32 @@ export async function handleImportCurrentSession(
 		);
 	}
 
-	const cwd = process.cwd();
 	const project = projectOwningCwd(cwd);
 	if (!project) exitNoProjectForCwd(cwd);
+	return { sessionId, project };
+}
+
+/**
+ * `dev3 import` — put the conversation you are sitting in onto the board.
+ *
+ * Run from the agent's own shell, so both halves are already known: the cwd says
+ * which project owns the work, and `CLAUDE_CODE_SESSION_ID` says which
+ * conversation this is. `dev3 conversations import` covers the batch case; this
+ * covers "this one, now".
+ *
+ * A conversation that is still going in gets imported as it stands right now:
+ * the description is the transcript up to this moment and does not follow the
+ * rest of the session, and a recent conversation also arrives with a worktree of
+ * its own (`importOne`). Both are stated in `dev3 import --help`.
+ */
+export async function handleImportCurrentSession(
+	args: ParsedArgs,
+	socketPath: string | null,
+	target: ImportTarget = resolveImportTarget(),
+): Promise<void> {
+	rejectUnknownFlags(args, ["json"]);
+	const asJson = args.flags.json === "true";
+	const { sessionId, project } = target;
 
 	const { home, dev3Home } = resolveHomes();
 	const tasks = loadProjectTasks(dev3Home, projectSlug(project.path));
@@ -443,11 +477,13 @@ export async function handleImportCurrentSession(
 
 	if (asJson) {
 		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-		return;
+	} else {
+		for (const task of result.tasks) {
+			process.stdout.write(`Imported as seq ${task.seq} (${task.status}): ${task.title}\n`);
+		}
 	}
-	for (const task of result.tasks) {
-		process.stdout.write(`Imported as seq ${task.seq} (${task.status}): ${task.title}\n`);
-	}
+	// Checked in BOTH modes: an import that could not build its worktree must not
+	// exit 0 just because the caller asked for JSON.
 	if (result.problems.length > 0) {
 		exitError(
 			`${result.problems.length} conversation(s) had trouble`,
@@ -456,18 +492,43 @@ export async function handleImportCurrentSession(
 	}
 }
 
-/** The common miss: this directory belongs to no board, so nothing can own the import. */
+/**
+ * The common miss: this directory belongs to no board, so nothing can own the
+ * import.
+ *
+ * Two of those directories are where agents actually live, and "add this
+ * repository to dev3" is wrong advice in both — a dev3 worktree already belongs
+ * to a project (its conversation IS a task), and a virtual board has no
+ * repository to import into at all. They get told what is true instead.
+ */
 function exitNoProjectForCwd(cwd: string): never {
-	const lines = [
-		"No dev3 project owns this directory:",
-		`  ${cwd}`,
-		"",
-		"A conversation is imported into the project that owns the directory it ran in,",
-		"and nowhere else — anywhere else would attach it to the wrong repository.",
-		"",
-		"Next step: add this repository to dev3 (File > Add Local Project), then run",
-		"`dev3 import` here again.",
-	];
+	const lines = ["No dev3 project owns this directory:", `  ${cwd}`, ""];
+
+	if (detectFromWorktreePath(cwd)) {
+		lines.push(
+			"This is a dev3 task's own worktree, so this conversation is already the task",
+			"you are working in — there is nothing to put on the board.",
+			"",
+			"To import a conversation that ran in the project's own checkout, run",
+			"`dev3 import` from there instead.",
+		);
+	} else if (toPosixSeparators(cwd).includes(OPS_MARKER)) {
+		lines.push(
+			"This is a virtual (\"Operations\") board's working directory. A virtual board",
+			"has no repository, so no conversation can be imported into it.",
+			"",
+			"Run `dev3 import` from a git project's own checkout instead.",
+		);
+	} else {
+		lines.push(
+			"A conversation is imported into the project that owns the directory it ran in,",
+			"and nowhere else — anywhere else would attach it to the wrong repository.",
+			"",
+			"Next step: add this repository to dev3 (\"Add project\" on the dashboard), then",
+			"run `dev3 import` here again.",
+		);
+	}
+
 	process.stderr.write(`${lines.join("\n")}\n`);
 	process.exit(CLI_EXIT_CODE_NO_PROJECT_FOR_CWD);
 }

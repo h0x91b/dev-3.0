@@ -6,7 +6,7 @@
  * depend on the developer's own `~/.claude`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
@@ -269,6 +269,23 @@ describe("scanImportableConversations", () => {
 		seedConversation("older", { ageDays: 20 });
 		seedConversation("newer", { ageDays: 2 });
 		expect(scan().map((c) => c.sessionId)).toEqual(["newer", "older"]);
+	});
+
+	it("finds the conversation when the stored project path carries a trailing slash", () => {
+		// A store name is the encoding of a cwd, which never has one, and the
+		// encoding maps `/` to `-` — so `…app/` encodes to a directory that exists
+		// nowhere and the scan quietly returns nothing.
+		seedConversation("s1", { title: "Fix the parser" });
+		expect(scan({ projectPath: `${project}/` }).map((c) => c.sessionId)).toEqual(["s1"]);
+	});
+
+	it("finds the conversation when the project is registered through a symlink", () => {
+		// Claude records the PHYSICAL working directory, while the folder picker
+		// stored whichever link the user browsed through.
+		seedConversation("s1", { title: "Fix the parser", workingDir: realpathSync(project) });
+		const link = join(home, "linked-project");
+		symlinkSync(project, link);
+		expect(scan({ projectPath: link }).map((c) => c.sessionId)).toEqual(["s1"]);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
@@ -754,29 +754,59 @@ export function resolveProjectId(flagValue: string | undefined, context: CliCont
 export type ProjectDirect = Pick<Project, "id" | "name" | "path"> & Partial<Project>;
 
 /**
- * Read a project directly from data files (no socket needed). Returns the full
- * stored object (incl. customColumns/columnOrder/kind) so offline callers can
- * enumerate board columns; `name` is coalesced to "" if a legacy record lacks it.
+ * One comparable spelling of a path: symlinks resolved, separators forward, no
+ * trailing slash.
+ *
+ * All three matter for the same comparison. `process.cwd()` hands back the
+ * PHYSICAL path while a stored project path is whatever the folder picker
+ * produced, so a symlinked checkout compares unequal to itself. Windows spells
+ * the same directory with backslashes on one side and forward slashes on the
+ * other. A path that is not on this machine keeps its raw spelling, which is
+ * still comparable against another raw spelling.
  */
+function comparablePath(value: string): string {
+	let resolved = value;
+	try {
+		resolved = realpathSync(value);
+	} catch {
+		// Unmounted volume, deleted directory, or a fixture path — raw it is.
+	}
+	return toPosixSeparators(resolved).replace(/\/+$/, "");
+}
+
 /**
  * The registered project whose directory contains `cwd`, or null.
  *
  * Deepest path wins, so a project nested inside another claims its own
  * subdirectory. Matching is on a path boundary, never a bare prefix: a project
  * at `…/app` must not claim `…/app-scratch`.
+ *
+ * The record comes back with its stored `path` UNTOUCHED, because that string is
+ * what `projectStorageKey` turned into the project's data directory — a caller
+ * handed a tidied path would look for a directory that is not there.
  */
 export function projectOwningCwd(cwd: string): ProjectDirect | null {
-	const target = cwd.replace(/\/+$/, "");
+	const target = comparablePath(cwd);
 	let best: ProjectDirect | null = null;
+	let bestRootLength = -1;
 	for (const project of readAllProjectsRaw()) {
 		if (!project.path || project.kind === "virtual") continue;
-		const root = project.path.replace(/\/+$/, "");
+		const root = comparablePath(project.path);
 		if (target !== root && !target.startsWith(`${root}/`)) continue;
-		if (!best || root.length > best.path.length) best = { ...project, name: project.name ?? "" };
+		// Compare like with like: the raw stored path may carry a trailing slash
+		// the normalised one does not, and that used to decide which project won.
+		if (root.length <= bestRootLength) continue;
+		bestRootLength = root.length;
+		best = { ...project, name: project.name ?? "" };
 	}
 	return best;
 }
 
+/**
+ * Read a project directly from data files (no socket needed). Returns the full
+ * stored object (incl. customColumns/columnOrder/kind) so offline callers can
+ * enumerate board columns; `name` is coalesced to "" if a legacy record lacks it.
+ */
 export function readProjectDirect(projectId: string): ProjectDirect | null {
 	const match = readAllProjectsRaw().find((p) => p.id === projectId || p.id.startsWith(projectId));
 	return match ? { ...match, name: match.name ?? "" } : null;

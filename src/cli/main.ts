@@ -17,7 +17,7 @@ import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
-import { handleConversations, handleImportCurrentSession } from "./commands/conversations";
+import { handleConversations, handleImportCurrentSession, resolveImportTarget } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
@@ -77,6 +77,8 @@ Commands:
   dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]  Search past task conversations (completed/cancelled)
   dev3 conversations dump [--latest] [--stdout]  Parse this task's agent transcripts into JSON
   dev3 conversations handoff [--for claude|codex]  Retell this conversation as one message for another agent
+  dev3 import [--json]                  Put the Claude Code conversation you are running inside onto the board as a task
+                                         (takes nothing: the working directory picks the project, CLAUDE_CODE_SESSION_ID picks the conversation)
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
@@ -243,8 +245,18 @@ async function main(): Promise<void> {
 		return await handleInlineHtml(rawArgs.slice(1));
 	}
 	if (command === "import") {
-		// Imports the conversation this shell is running inside. Creates a task, so
-		// it needs the socket like every other write.
+		// It takes nothing: the session id comes from the environment and the
+		// project from the working directory, so an argument here is a mistake
+		// worth naming (`dev3 conversations import --sessions <id>` is next door).
+		if (subcommand) {
+			exitUsage(`\`dev3 import\` takes no arguments (got "${subcommand}"). It imports the conversation it is run from.`);
+		}
+		// Both of those are answered from local files, so they are answered FIRST:
+		// "no project owns this directory" is the commonest outcome, and hiding it
+		// behind "dev3 is not running" sends the reader off to restart the app.
+		const target = resolveImportTarget();
+		// Creating the task is a write, so from here it needs the socket like
+		// every other write.
 		if (!socketPath) socketPath = await resolveSocketPathWithRetry();
 		if (!socketPath) {
 			exitAppNotRunning({
@@ -253,7 +265,7 @@ async function main(): Promise<void> {
 				...debugAppNotRunning("discovery"),
 			});
 		}
-		return await handleImportCurrentSession(args, socketPath ?? null);
+		return await handleImportCurrentSession(args, socketPath ?? null, target);
 	}
 	if (command === "conversations") {
 		// search/dump/handoff are read-only over local transcript files and answer

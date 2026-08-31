@@ -1,4 +1,5 @@
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync, type Dirent } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync, type Dirent } from "node:fs";
+import { toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
 import { resolveDev3Home } from "../shared/dev3-home";
 import { claudeEncodePath, claudeProjectsDir } from "../shared/conversation-search-core";
@@ -263,6 +264,8 @@ interface ScanContext {
 	home: string;
 	nowMs: number;
 	projectPath: string;
+	/** Every spelling a store name may be encoded from — see `projectPathCandidates`. */
+	projectPaths: Array<{ path: string; encoded: string }>;
 	already: Set<string>;
 	seenSessions: Set<string>;
 	dev3Prefixes: string[];
@@ -282,6 +285,12 @@ export function scanImportableConversations(options: ScanOptions): ImportableCon
 		home,
 		nowMs: options.nowMs ?? Date.now(),
 		projectPath: options.projectPath,
+		// A store name encodes the cwd that agent recorded, which is not always the
+		// project path as it was stored: a symlinked checkout records the physical
+		// path, and a stored trailing slash encodes to a directory that exists
+		// nowhere. Both spellings are therefore candidates, and whichever one a
+		// store name matches decides what "inside the project" means for it.
+		projectPaths: projectPathCandidates(options.projectPath),
 		already: new Set(options.importedSessionIds ?? []),
 		seenSessions: new Set<string>(),
 		// Two roots, not one: a redirected instance (`DEV3_HOME`, the `--qa` board)
@@ -295,7 +304,6 @@ export function scanImportableConversations(options: ScanOptions): ImportableCon
 }
 
 function scanClaudeStore(context: ScanContext): ImportableConversation[] {
-	const encodedProject = claudeEncodePath(context.projectPath);
 	const found: ImportableConversation[] = [];
 
 	for (const storeRoot of claudeConfigDirs(context.home).map(claudeProjectsDir)) {
@@ -303,14 +311,17 @@ function scanClaudeStore(context: ScanContext): ImportableConversation[] {
 			// Cheap prefix filter, not the boundary: encoding maps `/` and `.` to `-`,
 			// so a sibling `<project>-scratch` matches here too. `resolveWorkingDir`
 			// is what rejects it, on the record's own cwd — do not drop that check.
-			if (storeName !== encodedProject && !storeName.startsWith(`${encodedProject}-`)) continue;
+			const store = context.projectPaths.find(
+				(c) => storeName === c.encoded || storeName.startsWith(`${c.encoded}-`),
+			);
+			if (!store) continue;
 			for (const file of jsonlFiles(`${storeRoot}/${storeName}`)) {
 				const body = readFileSafe(file);
 				if (body == null) continue;
 				const classified = classifyClaudeTranscript(body);
 				if (classified.kind !== "main" || !classified.sessionId || !classified.title) continue;
 
-				const workingDir = resolveWorkingDir(classified.cwd, storeName, encodedProject, context.projectPath);
+				const workingDir = resolveWorkingDir(classified.cwd, storeName, store.encoded, store.path);
 				const candidate = admit(context, {
 					source: "claude",
 					sessionId: classified.sessionId,
@@ -349,7 +360,10 @@ function scanCodexStore(context: ScanContext): ImportableConversation[] {
 			if (head == null) continue;
 			const header = codexHeaderFrom(head);
 			if (!header?.cwd) continue;
-			if (!withinProject(header.cwd, context.projectPath)) continue;
+			// Same spellings as the Claude side: a rollout records the physical cwd,
+			// which need not be the project path as the picker stored it.
+			const headerCwd = header.cwd;
+			if (!withinAnyProjectPath(context, headerCwd)) continue;
 			if (context.already.has(header.sessionId) || context.seenSessions.has(header.sessionId)) continue;
 
 			// Phase two, for the few that survived: the whole body, for turns and title.
@@ -391,7 +405,7 @@ function admit(
 	// A working directory dev3 owns is never project work, and one that is gone is
 	// not somewhere work can be picked up again.
 	if (context.dev3Prefixes.some((p) => workingDir === p || workingDir.startsWith(`${p}/`))) return null;
-	if (!withinProject(workingDir, context.projectPath)) return null;
+	if (!withinAnyProjectPath(context, workingDir)) return null;
 	if (!existsSync(workingDir)) return null;
 
 	const lastActivityMs = mtimeMsOf(candidate.transcriptPath);
@@ -409,6 +423,34 @@ function admit(
 /** Containment on a path boundary, so `/p/dev-3.0-scratch` is not read as `/p/dev-3.0`. */
 function withinProject(dir: string, projectPath: string): boolean {
 	return dir === projectPath || dir.startsWith(`${projectPath}/`);
+}
+
+/** Inside the project under ANY spelling of its path — see `projectPathCandidates`. */
+function withinAnyProjectPath(context: ScanContext, dir: string): boolean {
+	return context.projectPaths.some((c) => withinProject(dir, c.path));
+}
+
+/**
+ * Every spelling of the project path a Claude store name may legitimately be
+ * encoded from, most literal first.
+ *
+ * The stored path is what the folder picker produced; the recorded cwd is what
+ * that agent's shell reported. They differ in two ways that both make the encoded
+ * store name miss: a trailing slash (which the encoder turns into a trailing `-`),
+ * and a symlinked checkout (where the recorded cwd is the physical path).
+ *
+ * The stored path is NOT rewritten anywhere else — `projectStorageKey` turns it
+ * into the project's data directory and that mapping is frozen (AGENTS.md).
+ */
+export function projectPathCandidates(projectPath: string): Array<{ path: string; encoded: string }> {
+	const paths = [toPosixSeparators(projectPath).replace(/\/+$/, "")];
+	try {
+		const physical = toPosixSeparators(realpathSync(projectPath)).replace(/\/+$/, "");
+		if (!paths.includes(physical)) paths.push(physical);
+	} catch {
+		// Unmounted volume, or a path that is not on this machine at all.
+	}
+	return paths.map((path) => ({ path, encoded: claudeEncodePath(path) }));
 }
 
 /**

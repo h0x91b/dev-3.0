@@ -140,6 +140,6 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_NO_PROJECT_FOR_CWD",
 		code: CLI_EXIT_CODE_NO_PROJECT_FOR_CWD,
 		description:
-			"`dev3 import` was run in a directory no registered dev3 project owns. A conversation can only be imported into the project that owns the directory it ran in, so the project has to be added to the board first — there is deliberately no flag to import it somewhere else. The message names the directory checked and lists the projects that ARE registered.",
+			"`dev3 import` was run in a directory no registered dev3 project owns. A conversation can only be imported into the project that owns the directory it ran in, so the project has to be added to the board first — there is deliberately no flag to import it somewhere else. The message names the directory checked, and says something more useful than 'add the repository' for the two directories agents actually live in: a dev3 worktree (whose conversation is already a task) and a virtual board's working dir (which has no repository at all).",
 	},
 ] as const;
