@@ -47,8 +47,14 @@ guard's `onFrame` (ghostty-web never fires `onRender`), coalesced to one rebuild
 animation frame, and skips entirely while a selection is live so output cannot collapse
 it. Because the layer is on top, it — not the canvas — is what a finger lands on, so
 the scroll/tap gestures in [`TerminalView.tsx`](../../../../src/mainview/TerminalView.tsx)
-now listen there and stand down whenever the layer carries `data-selecting`;
-`MobilePaneCarousel` reads the same attribute so a handle drag never swipes panes.
+now listen there and stand down whenever a selection touches the layer;
+`MobilePaneCarousel` asks the same question so a handle drag never swipes panes.
+Both ask `selectionTouches()` **synchronously** rather than reading a flag kept by a
+`selectionchange` listener: Blink dispatches that event on a task, so a cached answer
+is stale for exactly the frames in which the user is starting a drag — long enough to
+synthesize a scroll under their handles. The range test is `intersectsNode`, not
+`contains`, because a range the browser anchored at a parent still covers our rows and
+must not read as "no selection".
 
 ## Risks
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { installTouchTextLayer, SELECTING_ATTR, type TouchTextLayerTerminal } from "../terminal-touch-text-layer";
+import { installTouchTextLayer, terminalTextSelectionLive, type TouchTextLayerTerminal } from "../terminal-touch-text-layer";
 
 function line(text: string) {
 	return {
@@ -33,7 +33,7 @@ function mount(term: TouchTextLayerTerminal) {
 	container.appendChild(canvas);
 	document.body.appendChild(container);
 	const layer = installTouchTextLayer(container, canvas, term);
-	return { container, canvas, layer };
+	return { container, canvas, layer, term };
 }
 
 const mounted: { layer: { dispose(): void }; container: HTMLElement }[] = [];
@@ -50,7 +50,22 @@ function selectInside(node: Node) {
 	vi.spyOn(document, "getSelection").mockReturnValue({
 		isCollapsed: false,
 		rangeCount: 1,
-		getRangeAt: () => ({ commonAncestorContainer: node }),
+		getRangeAt: () => ({
+			commonAncestorContainer: node,
+			intersectsNode: (other: Node) => other === node || other.contains(node),
+		}),
+	} as unknown as Selection);
+}
+
+/** A range the browser anchored ABOVE the layer — Blink does this readily. */
+function selectFromAncestor(ancestor: Node, layer: Node) {
+	vi.spyOn(document, "getSelection").mockReturnValue({
+		isCollapsed: false,
+		rangeCount: 1,
+		getRangeAt: () => ({
+			commonAncestorContainer: ancestor,
+			intersectsNode: (other: Node) => other === layer || other === ancestor,
+		}),
 	} as unknown as Selection);
 }
 
@@ -138,30 +153,49 @@ describe("terminal touch text layer", () => {
 		expect(row.textContent).toBe("before");
 	});
 
-	it("flags itself while a selection is held so the pane swipe stands down", () => {
+	// Answered from the live selection, never from a cached flag: Blink dispatches
+	// `selectionchange` on a task, so a cached answer is stale for exactly the
+	// frames in which the user is starting a drag.
+	it("reports a held selection without waiting for a selectionchange event", () => {
 		const m = mount(makeTerm(["text"]));
 		mounted.push(m);
 		m.layer.refresh();
 
 		selectInside(m.layer.element.firstElementChild!);
-		document.dispatchEvent(new Event("selectionchange"));
-		expect(m.layer.element.hasAttribute(SELECTING_ATTR)).toBe(true);
+		expect(m.layer.hasSelection()).toBe(true);
+		expect(terminalTextSelectionLive(m.container)).toBe(true);
 
 		vi.spyOn(document, "getSelection").mockReturnValue({ isCollapsed: true, rangeCount: 0 } as unknown as Selection);
-		document.dispatchEvent(new Event("selectionchange"));
-		expect(m.layer.element.hasAttribute(SELECTING_ATTR)).toBe(false);
+		expect(m.layer.hasSelection()).toBe(false);
+		expect(terminalTextSelectionLive(m.container)).toBe(false);
 	});
 
-	it("stops tracking selections once disposed", () => {
+	// `contains` alone misses this, and a rebuild would then destroy the selection
+	// the user is holding — on a printing terminal, within a frame.
+	it("counts a range the browser anchored above the layer", () => {
+		const m = mount(makeTerm(["before"]));
+		mounted.push(m);
+		m.layer.refresh();
+		const row = m.layer.element.firstElementChild as HTMLElement;
+
+		selectFromAncestor(m.container, m.layer.element);
+		expect(m.layer.hasSelection()).toBe(true);
+
+		m.term.buffer.active.getLine = () => ({
+			isWrapped: false, length: 5, getCell: (x: number) => ({ getCode: () => "after".charCodeAt(x) }),
+		});
+		m.layer.refresh();
+		expect(row.textContent).toBe("before");
+	});
+
+	it("detaches cleanly on dispose", () => {
 		const m = mount(makeTerm(["text"]));
 		m.layer.refresh();
 		const element = m.layer.element;
 		m.layer.dispose();
 		m.container.remove();
 
-		selectInside(element);
-		document.dispatchEvent(new Event("selectionchange"));
-		expect(element.hasAttribute(SELECTING_ATTR)).toBe(false);
 		expect(element.isConnected).toBe(false);
+		expect(terminalTextSelectionLive(document)).toBe(false);
 	});
 });

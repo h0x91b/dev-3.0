@@ -2428,7 +2428,11 @@ describe("TerminalView – touch text layer", () => {
 	// move the text out from under the selection the user is still adjusting.
 	it("stands down while the platform holds a selection", async () => {
 		const { layer, wheels } = await renderOnTouchDevice();
-		layer.setAttribute("data-selecting", "1");
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false,
+			rangeCount: 1,
+			getRangeAt: () => ({ commonAncestorContainer: layer, intersectsNode: () => true }),
+		} as unknown as Selection);
 
 		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
 		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
@@ -2465,5 +2469,66 @@ describe("TerminalView – no text layer for a mouse-driven pointer", () => {
 
 		expect(result.container.querySelector("[data-terminal-text-layer]")).toBeNull();
 		Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
+	});
+});
+
+// The OS starts a selection on long press, but `selectionchange` is dispatched on
+// a task — so between the finger deciding and us hearing about it there is a
+// window where we still think we own the gesture. Scrolling the terminal there
+// drags the text out from under the handles the user is holding.
+describe("TerminalView – selection guard does not lag the OS", () => {
+	beforeEach(() => {
+		vi.spyOn(window, "matchMedia").mockImplementation(
+			(query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+		);
+	});
+	afterEach(() => {
+		mockTermInstance.open.mockReset();
+		mockTermInstance.buffer.active = mockBufferActive as never;
+		vi.restoreAllMocks();
+	});
+
+	it("stands down on a selection the selectionchange listener has not seen yet", async () => {
+		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
+			el.appendChild(document.createElement("canvas"));
+			el.appendChild(document.createElement("textarea"));
+		});
+		mockTermInstance.buffer.active = {
+			getLine: () => ({ isWrapped: false, length: 3, getCell: (x: number) => ({ getCode: () => "abc".charCodeAt(x) }) }),
+		} as never;
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const canvas = result.container.querySelector("canvas") as HTMLCanvasElement;
+		const layer = result.container.querySelector("[data-terminal-text-layer]") as HTMLElement;
+		const wheels: number[] = [];
+		canvas.addEventListener("wheel", (e) => wheels.push((e as WheelEvent).deltaY));
+
+		// A live selection over the layer, with NO selectionchange delivered — the
+		// exact state Blink leaves us in for a frame or two.
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false,
+			rangeCount: 1,
+			getRangeAt: () => ({ commonAncestorContainer: layer, intersectsNode: () => true }),
+		} as unknown as Selection);
+		expect(layer.hasAttribute("data-selecting")).toBe(false);
+
+		const touch = (type: string, x: number, y: number) =>
+			Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+				touches: [{ clientX: x, clientY: y }],
+				changedTouches: [{ clientX: x, clientY: y }],
+			});
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+
+		expect(wheels).toEqual([]);
 	});
 });
