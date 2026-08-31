@@ -1,5 +1,7 @@
 # Giving a plain mouse wheel a way into horizontal-only scroll containers
 
+Superseded on 2026-08-31 by `decisions/2026/08/31/wheel-bridge-only-where-there-is-no-horizontal-axis.md`: this record assumed a trackpad always carries a horizontal delta, which is false for its vertical swipe, so the bridge no longer runs on every platform.
+
 ## Context
 
 The UI had been driven almost exclusively from a Mac trackpad. A trackpad's

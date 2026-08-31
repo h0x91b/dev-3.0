@@ -6,12 +6,16 @@
  * Kanban board were literally unreachable with a mouse while a trackpad's
  * two-finger swipe drove them fine.
  *
- * The rule is deliberately narrow: a vertical delta is handed to a horizontal
- * container ONLY when nothing between the pointer and the page can scroll
- * vertically. The moment a vertically-scrollable ancestor shows up it wins, so
- * wheeling over a wide code block inside the diff still scrolls the diff — we
- * never steal a wheel that already had a job.
+ * Two rules keep it narrow. A vertical delta is handed to a horizontal container
+ * only when nothing between the pointer and the page can scroll vertically — the
+ * first vertically-scrollable ancestor wins, so wheeling over a wide code block
+ * inside the diff still scrolls the diff. And it only ever runs for a pointing
+ * device that has no horizontal axis at all: a trackpad's *vertical* swipe
+ * arrives with `deltaX` exactly 0, indistinguishable from a mouse notch, so
+ * bridging on a trackpad turned plain vertical scrolling into sideways drift.
  */
+
+import { isMac } from "./platform";
 
 const SCROLLABLE_OVERFLOW = /auto|scroll|overlay/;
 
@@ -60,11 +64,26 @@ export function resolveHorizontalWheelTarget(start: Element | null, deltaY: numb
 	return roomFor(candidate, deltaY) > 0 ? candidate : null;
 }
 
-/** Installs the bridge on `document`; returns the teardown. */
+/**
+ * Installs the bridge on `document`; returns the teardown.
+ *
+ * The bridge stays dormant on any machine whose pointing device has a horizontal
+ * axis, because there is no way to tell that device's *vertical* gesture from a
+ * mouse notch — both arrive as `deltaX: 0`. macOS ships a trackpad, so it is
+ * excluded outright; anywhere else the first horizontal delta of the session
+ * proves a touchpad is in use and switches the bridge off for good.
+ */
 export function installHorizontalWheelBridge(doc: Document = document): () => void {
+	let hasHorizontalAxis = isMac();
+
 	function onWheel(e: WheelEvent) {
-		// A horizontal delta already works, and ctrl+wheel is zoom, not scroll.
-		if (e.deltaX !== 0 || e.deltaY === 0 || e.ctrlKey || e.defaultPrevented) return;
+		if (e.deltaX !== 0) {
+			hasHorizontalAxis = true;
+			return;
+		}
+		if (hasHorizontalAxis) return;
+		// ctrl+wheel is zoom, not scroll.
+		if (e.deltaY === 0 || e.ctrlKey || e.defaultPrevented) return;
 		const target = resolveHorizontalWheelTarget(e.target as Element | null, e.deltaY);
 		if (!target) return;
 		target.scrollLeft += e.deltaY;

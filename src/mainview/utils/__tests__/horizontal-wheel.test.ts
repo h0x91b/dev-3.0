@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { installHorizontalWheelBridge, resolveHorizontalWheelTarget } from "../horizontal-wheel";
+import * as platform from "../platform";
 
 /** happy-dom reports zero for every layout box, so scroll metrics are stubbed. */
 function sized(el: HTMLElement, m: { sw?: number; cw?: number; sh?: number; ch?: number }) {
@@ -88,7 +89,15 @@ describe("resolveHorizontalWheelTarget", () => {
 
 describe("installHorizontalWheelBridge", () => {
 	let teardown: () => void;
-	afterEach(() => teardown?.());
+
+	beforeEach(() => {
+		// Default the suite to a mouse-only machine; the trackpad cases opt in.
+		vi.spyOn(platform, "isMac").mockReturnValue(false);
+	});
+	afterEach(() => {
+		teardown?.();
+		vi.restoreAllMocks();
+	});
 
 	/** happy-dom's WheelEvent silently drops `ctrlKey`, so it is defined by hand. */
 	function wheel(target: Element, init: WheelEventInit & { ctrlKey?: boolean }) {
@@ -123,6 +132,31 @@ describe("installHorizontalWheelBridge", () => {
 		teardown = installHorizontalWheelBridge();
 
 		const e = wheel(board, { deltaX: 0, deltaY: 120, ctrlKey: true });
+
+		expect(board.scrollLeft).toBe(0);
+		expect(e.defaultPrevented).toBe(false);
+	});
+
+	it("never bridges on macOS — a trackpad's vertical swipe also carries deltaX 0", () => {
+		vi.spyOn(platform, "isMac").mockReturnValue(true);
+		const board = make("auto", "hidden", { sw: 2172, cw: 1600, sh: 876, ch: 876 });
+		teardown = installHorizontalWheelBridge();
+
+		const e = wheel(board, { deltaX: 0, deltaY: 120 });
+
+		expect(board.scrollLeft).toBe(0);
+		expect(e.defaultPrevented).toBe(false);
+	});
+
+	it("switches itself off for good once a horizontal delta proves a touchpad", () => {
+		const board = make("auto", "hidden", { sw: 2172, cw: 1600, sh: 876, ch: 876 });
+		teardown = installHorizontalWheelBridge();
+
+		// One sideways swipe: the device has a horizontal axis.
+		wheel(board, { deltaX: 40, deltaY: 0 });
+		board.scrollLeft = 0;
+		// Its vertical swipe must now be left entirely alone.
+		const e = wheel(board, { deltaX: 0, deltaY: 120 });
 
 		expect(board.scrollLeft).toBe(0);
 		expect(e.defaultPrevented).toBe(false);
