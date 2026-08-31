@@ -99,6 +99,9 @@ import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
 
+/** QR box in the Remote Access modal: 14rem, shrinking on short windows so it stays a scannable share of the height. */
+const QR_BOX_SIZE = "w-[min(14rem,26vh)] h-[min(14rem,26vh)]";
+
 /** QR token rotation period; the token's own TTL (`QR_TOKEN_TTL_S`) adds 5s headroom. */
 const QR_REFRESH_SECONDS = 60;
 
@@ -2946,12 +2949,66 @@ function App() {
 				</div>
 			)}
 			{remoteQR && (
-				<RemoteAccessDialog titleId="remote-access-dialog-title" onClose={closeRemoteQR}>
+				<RemoteAccessDialog
+					titleId="remote-access-dialog-title"
+					onClose={closeRemoteQR}
+					header={<h2 id="remote-access-dialog-title" className="text-fg text-lg font-semibold">{t("remote.title")}</h2>}
+					footer={remoteQR.serverStatus && !remoteQR.serverStatus.running ? undefined : (
+						<div className="flex items-center justify-center gap-2">
+							<button
+								type="button"
+								onClick={async () => {
+									if (qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying") return;
+									setRemoteUrlCopyState("copying");
+									try {
+										await navigator.clipboard.writeText(remoteQR.accessUrl);
+										setRemoteUrlCopyState("copied");
+										setTimeout(() => setRemoteUrlCopyState("idle"), 2000);
+									} catch {
+										setRemoteUrlCopyState("idle");
+									}
+								}}
+								disabled={qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying"}
+								aria-label={t(remoteCopyLabel)}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+							>
+								{remoteUrlCopyState === "copying" && (
+									<svg
+										className="w-3.5 h-3.5 animate-spin"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										aria-hidden="true"
+									>
+										<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
+										<path d="M21 12a9 9 0 0 1-9 9" strokeWidth="3" strokeLinecap="round" />
+									</svg>
+								)}
+								{remoteUrlCopyState === "copied" && (
+									<span
+										aria-hidden="true"
+										className="leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uF00C"}
+									</span>
+								)}
+								{t(remoteCopyLabel)}
+							</button>
+							<button
+								type="button"
+								onClick={closeRemoteQR}
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{t("remote.close")}
+							</button>
+						</div>
+					)}
+				>
 					{remoteQR.serverStatus && !remoteQR.serverStatus.running ? (
 						// Nothing is listening, so there is no URL and no QR to show — a code
 						// minted on port 0 would look scannable and go nowhere.
 						<>
-							<h2 id="remote-access-dialog-title" className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 							<RemoteAccessDownNotice
 								status={remoteQR.serverStatus}
 								onOpenSettings={() => {
@@ -2962,13 +3019,12 @@ function App() {
 						</>
 					) : (
 					<>
-						<h2 id="remote-access-dialog-title" className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
 						<div className="flex justify-center relative">
 							{tunnelUrlPending ? (
 								<div
 									data-testid="remote-qr-pending"
-									className="w-56 h-56 rounded-lg bg-base border border-edge flex flex-col items-center justify-center gap-3 px-4"
+									className={`${QR_BOX_SIZE} rounded-lg bg-base border border-edge flex flex-col items-center justify-center gap-3 px-4`}
 								>
 									<svg className="w-7 h-7 animate-spin text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
 										<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
@@ -2978,7 +3034,7 @@ function App() {
 									<span className="text-fg-muted text-xs leading-snug">{t("remote.qrWaitingTunnelHint")}</span>
 								</div>
 							) : (
-								<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-[opacity,filter] duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
+								<img src={remoteQR.qrDataUrl} alt="QR Code" className={`${QR_BOX_SIZE} rounded-lg transition-[opacity,filter] duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
 							)}
 							{qrConsumed && !tunnelUrlPending && (
 								<div className="absolute inset-0 flex items-center justify-center">
@@ -3031,7 +3087,15 @@ function App() {
 						)}
 						{!tunnelUrlPending && (
 							<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>
-								<code className={`text-xs break-all streamer-private ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
+								{/* Clamped: a tunnel URL with a sign-in token wraps over seven lines and
+								    pushed the action row off screen. The copy button below carries it. */}
+								<code
+									data-testid="remote-access-url"
+									title={remoteQR.accessUrl}
+									className={`text-xs break-all line-clamp-2 streamer-private ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}
+								>
+									{remoteQR.accessUrl}
+								</code>
 							</div>
 						)}
 
@@ -3232,56 +3296,6 @@ function App() {
 						</div>
 
 						<RemoteAccessExposedPorts />
-
-						<div className="flex items-center justify-center gap-2">
-							<button
-								type="button"
-								onClick={async () => {
-									if (qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying") return;
-									setRemoteUrlCopyState("copying");
-									try {
-										await navigator.clipboard.writeText(remoteQR.accessUrl);
-										setRemoteUrlCopyState("copied");
-										setTimeout(() => setRemoteUrlCopyState("idle"), 2000);
-									} catch {
-										setRemoteUrlCopyState("idle");
-									}
-								}}
-								disabled={qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying"}
-								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
-							>
-								{remoteUrlCopyState === "copying" && (
-									<svg
-										className="w-3.5 h-3.5 animate-spin"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										aria-hidden="true"
-									>
-										<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
-										<path d="M21 12a9 9 0 0 1-9 9" strokeWidth="3" strokeLinecap="round" />
-									</svg>
-								)}
-								{remoteUrlCopyState === "copied" && (
-									<span
-										aria-hidden="true"
-										className="leading-none"
-										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-									>
-										{"\uF00C"}
-									</span>
-								)}
-								{t(remoteCopyLabel)}
-							</button>
-							<button
-								type="button"
-								onClick={closeRemoteQR}
-								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-							>
-								{t("remote.close")}
-							</button>
-						</div>
 					</>
 					)}
 				</RemoteAccessDialog>
