@@ -288,9 +288,20 @@ describe("getBranchStatus", () => {
 
 	it("returns behind count when base has new commits", async () => {
 		queueResponse(0, "1\t2\n");
+		// Ahead AND behind is the one shape a missing fork point can also produce,
+		// so this path probes `git merge-base` before trusting the counts.
+		queueResponse(0, "abc1234\n");
 		const result = await getBranchStatus("/repo", "origin/main");
 		expect(result.ahead).toBe(2);
 		expect(result.behind).toBe(1);
+		expect(result.baseUnreachable).toBe(false);
+	});
+
+	it("reports the base as unreachable when the merge-base probe finds nothing", async () => {
+		queueResponse(0, "1\t2\n");
+		queueResponse(1, "", "fatal: refusing to merge unrelated histories");
+		const result = await getBranchStatus("/repo", "origin/main");
+		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: true });
 	});
 
 	it("returns zero for fresh branch with no changes", async () => {

@@ -219,7 +219,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
+		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
 	}
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
@@ -340,7 +340,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { insertions: 0, deletions: 0, unpushed: 0, ahead: 0 };
+		return { insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false };
 	}
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
@@ -351,7 +351,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 		git.getUnpreservedCount(task.worktreePath, branchForPush),
 		git.getBranchStatus(task.worktreePath, ref),
 	]);
-	return { ...uncommitted, unpushed, ahead: counts.ahead };
+	return { ...uncommitted, unpushed, ahead: counts.ahead, baseUnreachable: counts.baseUnreachable };
 }
 
 async function getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
@@ -566,6 +566,13 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 	// against a ref that does not exist in a remoteless repo, so it never fired.
 	const rebaseCheckRef = await resolveCompareRef(project, baseBranch, params.compareRef);
 	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
+	// `behind` is 0 both when the branch is up to date and when no fork point
+	// exists to measure it from, so the "not rebased" guard has to ask which one
+	// this is. Squashing onto a base nothing was compared against is exactly the
+	// move that must not happen silently.
+	if (status.baseUnreachable) {
+		throw new Error(`No common history between ${rebaseCheckRef} and this branch — the local clone is probably shallow (git fetch --unshallow)`);
+	}
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "merge");

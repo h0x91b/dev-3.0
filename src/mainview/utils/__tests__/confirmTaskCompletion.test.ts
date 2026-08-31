@@ -168,6 +168,7 @@ describe("confirmTaskCompletion", () => {
 			deletions: 0,
 			unpushed: 0,
 			ahead: 0,
+			baseUnreachable: false,
 			mergedByContent: false,
 		} as Awaited<ReturnType<typeof api.request.getUnsavedWork>>;
 

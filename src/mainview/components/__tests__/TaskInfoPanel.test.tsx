@@ -163,6 +163,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 const defaultBranchStatus: BranchStatus = {
 	ahead: 3,
 	behind: 0,
+	baseUnreachable: false,
 	canRebase: true,
 	insertions: 0,
 	deletions: 0,
@@ -1576,6 +1577,28 @@ describe("TaskInfoPanel", () => {
 			// The wording is red together with the number; only the ahead half stays muted.
 			expect(count).toHaveTextContent("1 behind");
 			expect(count.parentElement).toHaveTextContent("3 ahead · 1 behind");
+		});
+
+		/**
+		 * With no fork point git answers with each side's whole history, which the
+		 * bar printed verbatim — "1889 ahead" for a branch that was 2 ahead. The
+		 * slot must carry the failure, never a number.
+		 */
+		it("shows base unreachable instead of a count when there is no merge base", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 0,
+				behind: 0,
+				baseUnreachable: true,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.getAllByTestId("base-unreachable").length).toBeGreaterThanOrEqual(1);
+			expect(screen.queryByText(/commits? ahead/)).toBeNull();
+			expect(screen.queryByTestId("behind-count")).toBeNull();
 		});
 
 		it("shows uncommitted changes badge", async () => {

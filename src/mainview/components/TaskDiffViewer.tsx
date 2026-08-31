@@ -4419,13 +4419,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				)}
 
 				{/* An empty diff means "nothing changed" only when the comparison ran.
-				    A compare ref that is not in this repo produces the same emptiness
-				    and must say so instead. */}
+				    A compare ref that is not in this repo, or one that shares no
+				    history with HEAD, produces the same emptiness and must say so
+				    instead. */}
 				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && hiddenTestCount === 0 && (
 					payload.fallbackReason === "missing-compare-ref"
 						? renderState(
 							t("infoPanel.diffMissingCompareRef"),
 							t("infoPanel.diffMissingCompareRefBody", { ref: payload.compareLabel }),
+						)
+						: payload.fallbackReason === "no-merge-base"
+						? renderState(
+							t("infoPanel.diffNoMergeBase"),
+							t("infoPanel.diffNoMergeBaseBody", { ref: payload.compareLabel }),
 						)
 						: renderState(
 							t("infoPanel.diffNoChanges"),

@@ -6,6 +6,7 @@ function makeStatus(overrides?: Partial<BranchStatus>): BranchStatus {
 	return {
 		ahead: 0,
 		behind: 0,
+		baseUnreachable: false,
 		canRebase: false,
 		insertions: 0,
 		deletions: 0,

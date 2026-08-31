@@ -1750,24 +1750,51 @@ export function _resetFetchState(): void {
 	fetchProjectQueue.clear();
 }
 
+/**
+ * Is there a commit both `ref` and HEAD descend from? Everything the git bar
+ * shows about a branch is measured from that fork point, so its absence is a
+ * fact the caller has to know rather than paper over.
+ *
+ * A local clone that is shallow (or grafted) is the way this happens in
+ * practice: truncated history hides the common ancestor, and then the two
+ * commands that ask for it diverge in the worst possible way — `git diff
+ * ref...HEAD` dies with "no merge base", while `git rev-list --count
+ * --left-right ref...HEAD` silently degrades to the FULL symmetric difference
+ * and answers with the size of each side's whole history. Arseny's bar read
+ * "1889 ahead · 6 behind" for a branch that was 2 ahead of a 1894-commit main.
+ */
+async function hasMergeBase(worktreePath: string, ref: string): Promise<boolean> {
+	const result = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
+	return result.ok && result.stdout.length > 0;
+}
+
 export async function getBranchStatus(
 	worktreePath: string,
 	baseBranch: string,
-): Promise<{ ahead: number; behind: number }> {
+): Promise<{ ahead: number; behind: number; baseUnreachable: boolean }> {
 	const result = await run(
 		["git", "rev-list", "--count", "--left-right", `${baseBranch}...HEAD`],
 		worktreePath,
 	);
 	if (!result.ok) {
 		log.warn("getBranchStatus failed", { stderr: result.stderr });
-		return { ahead: 0, behind: 0 };
+		return { ahead: 0, behind: 0, baseUnreachable: false };
 	}
 	// Output is "behind\tahead" (left = remote, right = local)
 	const parts = result.stdout.split("\t");
-	return {
-		behind: parseInt(parts[0], 10) || 0,
-		ahead: parseInt(parts[1], 10) || 0,
-	};
+	const behind = parseInt(parts[0], 10) || 0;
+	const ahead = parseInt(parts[1], 10) || 0;
+	// The probe never misses: with no fork point both sides are the whole history
+	// of their end, so both are necessarily non-zero. Skipping it when either is
+	// zero costs nothing in accuracy and spares the extra spawn on every poll of
+	// a branch that is purely ahead or purely behind.
+	if (ahead > 0 && behind > 0 && !await hasMergeBase(worktreePath, baseBranch)) {
+		log.warn("getBranchStatus: no merge base — reporting the counts as unknown", {
+			worktreePath, baseBranch, degradedAhead: ahead, degradedBehind: behind,
+		});
+		return { ahead: 0, behind: 0, baseUnreachable: true };
+	}
+	return { behind, ahead, baseUnreachable: false };
 }
 
 export async function getUncommittedChanges(
@@ -2269,15 +2296,23 @@ export async function getTaskDiff(
 	}
 
 	/**
-	 * A compare ref that is not in the repo makes `git diff` fail, and a failed
-	 * diff arrives here as an empty one — "no changes to show" for a comparison
-	 * that never happened. Checked only when the diff came back empty, so the
-	 * normal path pays nothing.
+	 * Two ways a comparison never happens, both arriving here as an empty diff —
+	 * "no changes to show" for a question nobody answered. A compare ref that is
+	 * not in the repo makes `git diff` fail; so does a ref that exists but shares
+	 * no ancestor with HEAD (`fatal: ...: no merge base`, typically a shallow
+	 * clone). Checked only when the diff came back empty, so the normal path pays
+	 * nothing.
 	 */
 	const withMissingRefCheck = async (result: TaskDiffResponse): Promise<TaskDiffResponse> => {
 		if (result.files.length > 0 || result.skippedFiles.length > 0 || result.summary.files > 0) return result;
-		if (await refExists(worktreePath, defaultCompareRef)) return result;
-		return { ...result, fallbackReason: "missing-compare-ref", summary: { files: 0, insertions: 0, deletions: 0 } };
+		const empty = { files: 0, insertions: 0, deletions: 0 };
+		if (!await refExists(worktreePath, defaultCompareRef)) {
+			return { ...result, fallbackReason: "missing-compare-ref", summary: empty };
+		}
+		if (!await hasMergeBase(worktreePath, defaultCompareRef)) {
+			return { ...result, fallbackReason: "no-merge-base", summary: empty };
+		}
+		return result;
 	};
 
 	if (mode === "unpushed") {

@@ -26,6 +26,12 @@ function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Pr
 	if (status.unpushed === -1) {
 		if (status.ahead > 0) {
 			warnings.push(t.plural("task.warnNeverPushed", status.ahead));
+		} else if (status.baseUnreachable) {
+			// `ahead` is 0 because it could not be measured, not because the branch
+			// is empty. Dropping the loss warning here would let a branch that is on
+			// no remote be deleted in silence, which is the one outcome the dialog
+			// exists to prevent — so it fires without a count.
+			warnings.push(t("task.warnNeverPushedUnknownCount"));
 		}
 	} else if (status.unpushed > 0) {
 		warnings.push(t.plural("task.warnUnpushed", status.unpushed));

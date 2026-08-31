@@ -3338,6 +3338,12 @@ export type MergeRoute = "pull-request" | "local-squash";
 export interface BranchStatus {
 	ahead: number;
 	behind: number;
+	// No commit that both the compare ref and HEAD descend from, so neither count
+	// can be measured — typically a shallow local clone whose truncated history
+	// hides the fork point. `ahead`/`behind` are 0 here and mean "unknown", never
+	// "nothing": git's own degraded answer is each side's whole history, which
+	// once read as "1889 ahead" for a branch that was 2 ahead.
+	baseUnreachable: boolean;
 	canRebase: boolean;
 	insertions: number;
 	deletions: number;
@@ -3384,6 +3390,7 @@ export interface UnsavedWork {
 	// other), N = N commits missing from `origin/<branch>`. See `getUnpreservedCount`.
 	unpushed: number;
 	ahead: number; // commits ahead of the base branch, per the last known origin ref
+	baseUnreachable: boolean; // see BranchStatus.baseUnreachable — `ahead` is 0 and unknown
 }
 
 export type TaskDiffMode = "branch" | "uncommitted" | "unpushed" | "recent";
@@ -3404,8 +3411,11 @@ export type TaskDiffFileStatus =
  * `missing-compare-ref` — the compare ref does not exist in this repo (typically
  * `origin/<base>` in a repo with no remote); the diff is empty because nothing
  * could be compared, which must never read as "no changes".
+ * `no-merge-base` — the compare ref exists but shares no ancestor with HEAD, so
+ * `git diff <ref>...HEAD` refused to run. Same emptiness, different cause and
+ * different fix: the history is truncated (shallow clone), not the ref missing.
  */
-export type TaskDiffFallbackReason = "no-upstream" | "missing-compare-ref";
+export type TaskDiffFallbackReason = "no-upstream" | "missing-compare-ref" | "no-merge-base";
 
 export interface TaskDiffFile {
 	id: string;

@@ -222,6 +222,7 @@ const kanban = {
 	"task.warnUncommitted": "Cambios sin confirmar: +{insertions} / -{deletions} líneas",
 	"task.warnNeverPushed_one": "{count} commit nunca enviado — se perderá",
 	"task.warnNeverPushed_other": "{count} commits nunca enviados — se perderán",
+	"task.warnNeverPushedUnknownCount": "Esta rama no está en ningún remoto y sus commits no se pueden contar — se perderán",
 	"task.warnUnpushed_one": "{count} commit sin enviar — se perderá",
 	"task.warnUnpushed_other": "{count} commits sin enviar — se perderán",
 	"task.warnUnmerged_one": "{count} commit enviado pero no fusionado en {branch}",

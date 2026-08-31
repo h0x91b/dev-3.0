@@ -230,6 +230,7 @@ const kanban = {
 	"task.warnNeverPushed_few": "{count} коммита не запушено — будут потеряны",
 	"task.warnNeverPushed_many": "{count} коммитов не запушено — будут потеряны",
 	"task.warnNeverPushed_other": "{count} коммитов не запушено — будут потеряны",
+	"task.warnNeverPushedUnknownCount": "Ветки нет ни на одном remote, а посчитать её коммиты нельзя — они будут потеряны",
 	"task.warnUnpushed_one": "{count} незапушенный коммит — будет потерян",
 	"task.warnUnpushed_few": "{count} незапушенных коммита — будут потеряны",
 	"task.warnUnpushed_many": "{count} незапушенных коммитов — будут потеряны",

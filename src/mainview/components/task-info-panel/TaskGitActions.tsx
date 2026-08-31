@@ -275,7 +275,23 @@ export default function TaskGitActions({
 		setBranchMenuOpen(false);
 	}, [task.id]);
 
-	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
+	// No fork point, so there is no ahead and no behind to print. The counts git
+	// hands back in that state are each side's whole history — a number that once
+	// told the user his branch was 1889 commits adrift when it was 2 — so the slot
+	// says what is wrong instead of what it cannot know.
+	const branchStatusBadge = branchStatus?.baseUnreachable ? (
+		<Tooltip
+			content={t("infoPanel.baseUnreachableTooltip", { ref: displayRef })}
+			detail={t("infoPanel.baseUnreachableDetail")}
+		>
+			<span
+				className="flex items-center gap-1 text-micro font-medium text-warning-strong flex-shrink-0"
+				data-testid="base-unreachable"
+			>
+				{t("infoPanel.baseUnreachable")}
+			</span>
+		</Tooltip>
+	) : branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-micro flex-shrink-0">
 			{/* Only the behind count is a verdict — it means "rebase needed", so the
 			    number is red while the wording around it stays a muted readout. */}
@@ -355,13 +371,20 @@ export default function TaskGitActions({
 	// rebase" / no-status / in-flight disable it.
 	const rebaseNeedsAgent = !!branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase;
 	const rebaseDisabled = !branchStatus || branchStatus.behind === 0 || rebasing;
+	// `ahead`/`behind` are 0 here because nothing could be measured, so every
+	// action gated on them switches off. Each one says which of the two zeros it
+	// is — "nothing to push" would be a claim, and the wrong one.
+	const baseUnreachable = !!branchStatus?.baseUnreachable;
+	const baseUnreachableTooltip = t("infoPanel.baseUnreachableTooltip", { ref: displayRef });
 	const rebaseTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
-		: branchStatus.behind === 0
-			? t("infoPanel.rebaseDisabled")
-			: rebaseNeedsAgent
-				? t("infoPanel.rebaseViaAgent")
-				: t("infoPanel.rebase");
+		: baseUnreachable
+			? baseUnreachableTooltip
+			: branchStatus.behind === 0
+				? t("infoPanel.rebaseDisabled")
+				: rebaseNeedsAgent
+					? t("infoPanel.rebaseViaAgent")
+					: t("infoPanel.rebase");
 
 	// A repo with no `origin` cannot be pushed and has nowhere to open a PR. The
 	// buttons used to stay live and fail on click, which reads as a broken app
@@ -386,11 +409,13 @@ export default function TaskGitActions({
 		? t("infoPanel.statusLoading")
 		: noRemote
 			? t("infoPanel.noRemoteDisabled")
-			: pushIsForced
-				? t("infoPanel.forcePushTooltip", { branch: task.branchName ?? "" })
-				: branchStatus.ahead === 0
-					? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
-					: t("infoPanel.push");
+			: baseUnreachable
+				? baseUnreachableTooltip
+				: pushIsForced
+					? t("infoPanel.forcePushTooltip", { branch: task.branchName ?? "" })
+					: branchStatus.ahead === 0
+						? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
+						: t("infoPanel.push");
 
 	const hasPR = prInfo !== null;
 	const createPRDisabled = hasPR
@@ -407,6 +432,7 @@ export default function TaskGitActions({
 		if (!branchStatus) return t("infoPanel.statusLoading");
 		if (noRemote) return t("infoPanel.noRemoteDisabled");
 		if (noGitHubRemote) return t("infoPanel.noGitHubRemoteDisabled");
+		if (baseUnreachable) return baseUnreachableTooltip;
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -417,6 +443,7 @@ export default function TaskGitActions({
 		if (!branchStatus) return t("infoPanel.statusLoading");
 		if (noRemote) return t("infoPanel.noRemoteDisabled");
 		if (noGitHubRemote) return t("infoPanel.noGitHubRemoteDisabled");
+		if (baseUnreachable) return baseUnreachableTooltip;
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -431,7 +458,9 @@ export default function TaskGitActions({
 	const mergeLabel = mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge");
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
-		: branchStatus.ahead === 0
+		: baseUnreachable
+			? baseUnreachableTooltip
+			: branchStatus.ahead === 0
 			? t(hasUncommittedChanges ? "infoPanel.mergeDisabledUncommitted" : "infoPanel.mergeDisabledNoCommits")
 			: mergeIsPr
 				? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
