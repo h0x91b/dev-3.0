@@ -81,7 +81,9 @@ export function isCodexInjectedUserText(text: string): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return true;
 	const tag = LEADING_TAG.exec(trimmed);
-	if (tag && INJECTED_USER_TAGS.has(tag[1])) return true;
+	// Both the name and the whole tag body: `<permissions instructions>` is only
+	// ever the body, and `<image src=…>` is only ever the name.
+	if (tag && (INJECTED_USER_TAGS.has(tag[1]) || INJECTED_USER_TAGS.has(tag[0].slice(1, -1).trim()))) return true;
 	return INJECTED_USER_HEADINGS.some((heading) => trimmed.startsWith(heading));
 }
 

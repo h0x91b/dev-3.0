@@ -281,6 +281,10 @@ describe("isCodexInjectedUserText", () => {
 			"<skill>\n<name>dev3</name>\n</skill>",
 			"# Files mentioned by the user:\n\n## shot.png: /tmp/shot.png",
 			"Warning: apply_patch was requested via shell. Use the apply_patch tool.",
+			// A space inside the tag: matching the first word alone silently misses it.
+			"<permissions instructions>\nNever run destructive commands.\n</permissions instructions>",
+			// Attributes after the name: matching the whole body alone silently misses it.
+			'<image src="/tmp/shot.png">',
 		]) {
 			expect(isCodexInjectedUserText(text)).toBe(true);
 		}

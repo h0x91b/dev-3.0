@@ -245,6 +245,9 @@ export function renderImportedDescription(
 
 	const text = render(1);
 	if (text.length <= limit) return text;
-	const marker = `\n…[${text.length - limit} more characters cut — the full conversation is still in Claude Code's own transcript]\n`;
+	// Named from the transcript, not hardcoded: a Codex import must not be told to
+	// go look in Claude Code.
+	const agent = parsed.source === "codex" ? "Codex" : "Claude Code";
+	const marker = `\n…[${text.length - limit} more characters cut — the full conversation is still in ${agent}'s own transcript]\n`;
 	return `${text.slice(0, Math.max(0, limit - marker.length))}${marker}`;
 }
