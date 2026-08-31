@@ -11,6 +11,8 @@ import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
+import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
+import { artifactTransport } from "../utils/artifactTransport";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
@@ -78,13 +80,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	// null = nothing searched yet (empty query) — the counter stays hidden.
 	const [matches, setMatches] = useState<number | null>(null);
 	const [activeIndex, setActiveIndex] = useState(-1);
-	const frameRef = useRef<HTMLIFrameElement>(null);
+	const frameRef = useRef<ArtifactFrameHandle>(null);
 	const viewerRef = useRef<HTMLElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
 	const searchBarRef = useRef<ArtifactSearchBarHandle | null>(null);
 	const searchToggleRef = useRef<HTMLButtonElement>(null);
-	// Guards against out-of-order replies from the iframe while typing fast.
+	// Guards against out-of-order replies from the document while typing fast.
 	const searchTokenRef = useRef(0);
+	// Fixed for this window: which host renders the artifact, and therefore which
+	// channel the composed document must carry. See utils/artifactTransport.ts.
+	const [transport] = useState(artifactTransport);
 	const group = artifacts[index];
 	// Keyed by artifact id rather than reset in an effect: an artifact the user
 	// just opened has no pick, so it renders its newest version on the first
@@ -146,14 +151,14 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			.then((payload) => {
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current));
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current, transport));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
-	}, [current, t]);
+	}, [current, t, transport]);
 
 	const postToFrame = useCallback((message: Record<string, unknown>) => {
-		frameRef.current?.contentWindow?.postMessage(message, "*");
+		frameRef.current?.post(message);
 	}, []);
 
 	// The frame keeps its own copy of the capability so it never has to be rebuilt
@@ -219,12 +224,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		artifactId: group?.id ?? "",
 	};
 
-	useEffect(() => {
-		function onMessage(event: MessageEvent) {
-			if (event.source !== frameRef.current?.contentWindow) return;
-			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string; fields?: ArtifactDraft["fields"]; custom?: unknown } | null;
+	const onFrameMessage = useCallback((incoming: unknown) => {
+		{
+			const data = incoming as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string; fields?: ArtifactDraft["fields"]; custom?: unknown } | null;
 			if (!data) return;
-			// Keyboard events inside the sandboxed iframe never reach this window, so
+			// Keyboard events inside the sandboxed document never reach this window, so
 			// the artifact's own ⌘F handler asks us to open the bar.
 			if (data.type === "dev3-artifact-find-open") { openSearch(); return; }
 			// The frame reports its unsent form values whenever they stop matching
@@ -257,7 +261,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				const text = data.text;
 				if (typeof id !== "number" || typeof text !== "string") return;
 				const reply = (payload: Record<string, unknown>) =>
-					frameRef.current?.contentWindow?.postMessage({ type: "dev3-artifact-send-result", id, ...payload }, "*");
+					frameRef.current?.post({ type: "dev3-artifact-send-result", id, ...payload });
 				api.request.sendArtifactMessageToAgent({
 					taskId,
 					text,
@@ -285,13 +289,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				toast.error(t("artifactViewer.imageSaveFailed"), { taskId });
 			}
 		}
-		window.addEventListener("message", onMessage);
-		return () => window.removeEventListener("message", onMessage);
 	}, [t, taskId, openSearch]);
 
 	const sendTheme = useCallback(() => {
 		const theme = themeMode === "follow" ? currentTheme() : themeMode;
-		frameRef.current?.contentWindow?.postMessage({ type: "dev3-artifact-theme", theme }, "*");
+		frameRef.current?.post({ type: "dev3-artifact-theme", theme });
 	}, [themeMode]);
 
 	useEffect(() => {
@@ -523,12 +525,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				{error ? (
 					<div className="flex h-full items-center justify-center px-6 text-center text-sm text-danger">{t("artifactViewer.loadFailed")}</div>
 				) : srcDoc ? (
-					<iframe
+					<ArtifactFrame
 						ref={frameRef}
 						title={current.title}
-						sandbox="allow-scripts"
-						srcDoc={srcDoc}
-						onLoad={() => { sendTheme(); restoreDraft(); }}
+						transport={transport}
+						document={srcDoc}
+						onReady={() => { sendTheme(); restoreDraft(); }}
+						onMessage={onFrameMessage}
 						className="h-full w-full border-0 bg-base"
 					/>
 				) : (

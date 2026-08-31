@@ -6,6 +6,7 @@ import {
 	installArtifactBridge,
 	type ArtifactBridgeWindow,
 } from "../artifactBridge";
+import { installArtifactChannel } from "../artifactChannel";
 
 interface Sent { type: string; id: number; text: string }
 
@@ -18,8 +19,10 @@ interface FakeWindow extends ArtifactBridgeWindow {
 }
 
 /**
- * The bridge runs inside the artifact's own frame, so the test hands it a window
+ * The bridge runs inside the artifact's own document, so the test hands it a window
  * instead of driving a real one — that keeps the gesture and reply timing exact.
+ * The REAL channel is installed on it rather than a stub: the bridge's whole notion
+ * of "is anyone listening" now comes from there, so a stub would test nothing.
  */
 function fakeWindow(opts: { framed?: boolean } = {}): FakeWindow {
 	const listeners = new Map<string, Array<(event: unknown) => void>>();
@@ -43,6 +46,7 @@ function fakeWindow(opts: { framed?: boolean } = {}): FakeWindow {
 	// The viewer's frame: a distinct parent that collects what the bridge posts.
 	const parent = { postMessage: (message: Sent) => win.sent.push(message) };
 	(win as { parent?: unknown }).parent = opts.framed === false ? win : parent;
+	installArtifactChannel(win as unknown as Parameters<typeof installArtifactChannel>[0], "frame");
 	return win;
 }
 
@@ -117,7 +121,7 @@ describe("artifact bridge", () => {
 		expect(win.sent).toHaveLength(2);
 	});
 
-	it("reports the capability as false with no distinct parent frame", async () => {
+	it("reports the capability as false with nothing at the other end of the channel", async () => {
 		const win = install({ framed: false });
 		expect(win.dev3!.canSendToAgent).toBe(false);
 		win.gesture();
@@ -261,7 +265,9 @@ describe("artifact bridge", () => {
 			const win = form(`<input id="who" value="">`);
 			(document.getElementById("who") as HTMLInputElement).value = "Evgeny";
 			(win.dev3 as unknown as { saveDraft(value: unknown): void }).saveDraft({ node: document.body });
-			const parent = win.parent as { postMessage(message: unknown, origin: string): void };
+			// Reaches past the bridge into the channel's own transport: the throw has to
+			// come from the real postMessage, which is where a DataCloneError happens.
+			const parent = (win as unknown as { parent: { postMessage(message: unknown, origin: string): void } }).parent;
 			const real = parent.postMessage;
 			parent.postMessage = (message: unknown, origin: string) => {
 				if ((message as { custom?: unknown }).custom !== undefined) throw new Error("DataCloneError");
@@ -321,6 +327,7 @@ describe("artifact bridge", () => {
 			.replace(/<\/script>$/, "");
 		const win = fakeWindow();
 		new Function("window", body)(win);
+
 
 		expect(win.dev3!.canSendToAgent).toBe(true);
 		win.gesture();

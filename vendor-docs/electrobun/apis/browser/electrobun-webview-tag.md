@@ -1,5 +1,16 @@
 # Electrobun Webview Tag
 
+> **Corrections against the shipped code, measured on electrobun 1.18.1** (2026-08-31,
+> `decisions/2026/08/31/artifact-viewer-in-its-own-webview-process.md`). The vendor text
+> below was wrong in four places, each of which fails silently:
+>
+> | Doc said | Actually |
+> |---|---|
+> | Load `views://webviewtag/index.js` yourself | No script tag needed. Electrobun's own preload registers the element in every non-sandboxed webview (`dist/api/bun/preload/webviewTag.ts`, `initWebviewTag`) |
+> | `preload` is a script path | It is **inline JS source** — it is handed to native verbatim (`toCString(customPreload)`) |
+> | `__electrobunSendToHost` is available in preload scripts | Absent in a **sandboxed** child. Only `__electrobunEventBridge` is; see "Talking out of a sandboxed child" below |
+> | `callAsyncJavaScript`, `syncScreenshot`, `clearScreenImage`, `tryClearScreenImage`, `toggleHiddenMirrorMode`, `toggleDelegateMode` exist | They do not exist in 1.18.1. What does: `executeJavascript`, `findInPage`/`stopFindInPage`, `addMaskSelector`/`removeMaskSelector`, `loadHTML`, `openDevTools`/`closeDevTools`/`toggleDevTools` — none of which are documented below |
+
 ## Introduction
 
 Electrobun's webview tag functions as an enhanced iframe with important distinctions. It acts as a positional anchor within the DOM, communicating with a Zig backend to manage a distinct, isolated BrowserView, ensuring complete content separation from the host webview.
@@ -13,7 +24,7 @@ Electrobun's webview tag functions as an enhanced iframe with important distinct
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>webview tag test</title>
-    <script src="views://webviewtag/index.js"></script>
+    <!-- Stale: no such script in 1.18.1, and none is needed. -->
   </head>
   <body>
     <electrobun-webview src="https://electrobun.dev"></electrobun-webview>
@@ -43,7 +54,7 @@ Because Electrobun uses a div anchor with a separate isolated BrowserView positi
 |----------|------|-------------|
 | `src` | string | URL of the web page to load |
 | `html` | string | HTML content to load directly |
-| `preload` | string | Script path to preload before other scripts |
+| `preload` | string | **Inline JS source** (not a path) run before page scripts |
 | `partition` | string | Separate storage partition for different sessions |
 | `sandbox` | boolean | Sandbox mode (disables RPC, allows events only) |
 | `transparent` | boolean | Makes webview transparent |
@@ -124,13 +135,47 @@ Use the `on` method to listen for events dispatched as CustomEvents:
 | `did-navigate-in-page` | In-page navigation (hash changes) |
 | `did-commit-navigation` | Committed to navigating |
 | `new-window-open` | Attempted to open new window |
-| `host-message` | Preload script sent message to host |
+| `host-message` | The child sent a message to the host |
 
 ```javascript
 document.querySelector("electrobun-webview").on("host-message", (event) => {
   console.log("Received message from webview:", event.detail);
 });
 ```
+
+### `event.detail` arrives as an object, not the string that was sent
+
+This is a contract, not a quirk, and it differs from every other event. For
+`host-message` and `new-window-open` the host-side dispatch is built by splicing the
+child's `detail` into the host page as a **raw JS expression** and evaluating it
+(`webviewEventHandler` in `dist/api/bun/proc/native.ts`); every other event goes through
+`JSON.stringify` and does arrive as a string. So a child that sends
+`detail: JSON.stringify(msg)` produces `event.detail === msg`, already parsed.
+
+A listener written as `if (typeof detail !== "string") return;` therefore drops **every**
+inbound message, with nothing in any log. Accept both shapes.
+
+### Talking out of a sandboxed child
+
+`window.__electrobunSendToHost` is defined by the *trusted* preload only, so a child with
+the `sandbox` attribute does not have it. `window.__electrobunEventBridge` is present on
+every webview, sandboxed included, and taking its envelope by hand reaches the host's
+`host-message` listener:
+
+```javascript
+window.__electrobunEventBridge.postMessage(JSON.stringify({
+  id: "webviewEvent",
+  type: "message",
+  payload: {
+    id: window.__electrobunWebviewId,
+    eventName: "host-message",
+    detail: JSON.stringify(message),
+  },
+}));
+```
+
+Note that a preload and the page's own scripts share **one** JS world — measured — so a
+preload cannot hide anything from page code.
 
 ## Preload Scripts
 

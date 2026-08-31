@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
+import { ARTIFACT_OVERLAY_ATTRIBUTE } from "../utils/artifactOverlayMasks";
 
 export interface ArtifactSearchBarHandle {
 	/** Re-focus the query input and select its text (repeat ⌘F while open). */
@@ -62,6 +63,10 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 		return (
 			<div
 				data-testid="artifact-search-bar"
+				// The artifact may be rendered in a native webview layer that paints
+				// above the page; this attribute punches a hole for the bar. It is not
+				// position:fixed, so the automatic overlay scan cannot find it.
+				{...{ [ARTIFACT_OVERLAY_ATTRIBUTE]: "" }}
 				className="absolute top-2 right-2 z-30 flex items-center gap-1 rounded-lg border border-edge bg-elevated/95 px-2 py-1 shadow-lg shadow-black/30 backdrop-blur-sm"
 			>
 			{/* Nerd Font draws this glyph high in its em box, so box-centering alone

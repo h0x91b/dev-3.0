@@ -11,6 +11,10 @@
  * behaviour is directly testable; {@link artifactBridgeScript} serializes it.
  * That makes the function's isolation load-bearing: it may reference nothing
  * outside its own body except the two arguments it is handed.
+ *
+ * It talks through `window.__dev3ArtifactChannel` (see `artifactChannel.ts`) and
+ * never learns whether the document sits in an iframe or in its own webview
+ * process.
  */
 
 export interface ArtifactBridgeConfig {
@@ -57,29 +61,34 @@ export type ArtifactBridgeReason =
 	| "failed";
 
 export interface ArtifactBridgeWindow {
-	parent?: unknown;
 	addEventListener(type: string, listener: (event: never) => void, capture?: boolean): void;
-	postMessage?(message: unknown, targetOrigin: string): void;
+	/** Installed by `artifactChannel.ts`, whose script is injected before this one. */
+	__dev3ArtifactChannel?: {
+		connected: boolean;
+		send(message: unknown): void;
+		subscribe(listener: (message: unknown) => void): void;
+	};
 	dev3?: unknown;
 	/** Absent in unit tests, which hand the bridge a bare object as its window. */
 	document?: { querySelectorAll?(selector: string): unknown } | null;
 }
 
 /**
- * Install the bridge into `win`. Runs inside the artifact's own sandboxed frame,
- * so everything it needs — the parent window, timers, `Date` — comes from there.
+ * Install the bridge into `win`. Runs inside the artifact's own document, so
+ * everything it needs — the channel, timers, `Date` — comes from there. It never
+ * learns whether that document sits in an iframe or in its own webview process.
  */
 export function installArtifactBridge(win: ArtifactBridgeWindow, config: ArtifactBridgeConfig): void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const w = win as any;
-	const parentWindow = w.parent;
-	// No distinct parent frame → this copy was opened on its own (a browser tab, a
+	const channel = w.__dev3ArtifactChannel;
+	// Nothing at the other end → this copy was opened on its own (a browser tab, a
 	// downloaded file). Nothing is listening, so the capability is honestly false.
-	const framed = Boolean(parentWindow) && parentWindow !== w;
+	const connected = Boolean(channel) && Boolean(channel.connected);
 	// Mutable, not compose-time: the viewer re-states the capability when the task's
 	// newest version moves, so a document already on screen is never re-rendered
 	// just to flip this flag — re-rendering it is what destroys unsent input.
-	let canSend = Boolean(config.canSend) && framed;
+	let canSend = Boolean(config.canSend) && connected;
 	let lastGesture = -Infinity;
 	let pendingId: number | null = null;
 	let pending: { resolve: () => void; reject: (error: Error) => void } | null = null;
@@ -165,18 +174,18 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 	}
 
 	function reportDraft(): void {
-		if (!framed) return;
+		if (!connected) return;
 		const fields = snapshot();
 		// Posted even when empty: that is how the viewer learns the form went clean
 		// again and drops its offer to restore.
 		try {
-			parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields, custom: custom }, "*");
+			channel.send({ type: "dev3-artifact-draft", fields: fields, custom: custom });
 		} catch {
 			// `custom` is the author's own value, so it may not survive a structured
 			// clone. Losing it must not take the automatic half — which needs no
 			// author cooperation at all — down with it.
 			custom = undefined;
-			parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields }, "*");
+			channel.send({ type: "dev3-artifact-draft", fields: fields });
 		}
 	}
 
@@ -216,11 +225,11 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		}
 	}
 
-	w.addEventListener("message", function (event: { data?: { type?: string; id?: number; ok?: boolean; reason?: string; message?: string; canSend?: boolean; draft?: ArtifactDraft } }) {
-		const data = event && event.data;
+	if (channel) channel.subscribe(function (message: { type?: string; id?: number; ok?: boolean; reason?: string; message?: string; canSend?: boolean; draft?: ArtifactDraft }) {
+		const data = message;
 		if (!data) return;
 		if (data.type === "dev3-artifact-can-send") {
-			canSend = Boolean(data.canSend) && framed;
+			canSend = Boolean(data.canSend) && connected;
 			return;
 		}
 		if (data.type === "dev3-artifact-draft-restore") {
@@ -233,7 +242,7 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		if (!settled) return;
 		if (data.ok) settled.resolve();
 		else settled.reject(fail(data.reason || "failed", data.message || "Could not send the message to the agent."));
-	}, false);
+	});
 
 	function sendToAgent(text: unknown): Promise<void> {
 		return new Promise(function (resolve, reject) {
@@ -264,7 +273,7 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 				settle();
 				if (timedOut) timedOut.reject(fail("timeout", "The viewer did not answer."));
 			}, config.timeoutMs);
-			parentWindow.postMessage({ type: "dev3-artifact-send", id: id, text: text }, "*");
+			channel.send({ type: "dev3-artifact-send", id: id, text: text });
 		});
 	}
 
