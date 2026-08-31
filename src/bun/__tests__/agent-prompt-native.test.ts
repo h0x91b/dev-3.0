@@ -161,11 +161,13 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(writes).toEqual([]);
 
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(writes).toEqual(["one", "two"]);
+		// The first opens the turn; the second arrives behind a blank line, because an
+		// envelope ends without a newline and used to weld onto its predecessor (#1608).
+		expect(writes).toEqual(["one", "\n\ntwo"]);
 
 		// The CR keeps the hand-off's gap behind it, or the burst's last paste swallows it.
 		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
-		expect(writes).toEqual(["one", "two", "\r"]);
+		expect(writes).toEqual(["one", "\n\ntwo", "\r"]);
 
 		resetAgentMessageHolds();
 	});
