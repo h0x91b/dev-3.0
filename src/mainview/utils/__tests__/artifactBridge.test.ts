@@ -222,6 +222,56 @@ describe("artifact bridge", () => {
 			expect(drafts(win)[1].fields).toEqual([]);
 		});
 
+		// Every member of a radio or checkbox group carries the same `name`, so a
+		// name-only key matched all of them and the last one in the document won —
+		// the answer came back as a different answer, which is worse than losing it.
+		it("brings a radio group back on the option the user actually picked", () => {
+			const markup = ["1", "2", "3", "4", "5"]
+				.map((value) => `<input type="radio" name="rating" value="${value}">`).join("");
+			const win = form(markup);
+			(document.querySelectorAll("input")[1] as HTMLInputElement).checked = true;
+			settle(win);
+
+			const draft = drafts(win)[0];
+			form(markup);
+			win.fire("message", { data: { type: "dev3-artifact-draft-restore", draft } });
+
+			const picked = [...document.querySelectorAll("input")].map((el) => (el as HTMLInputElement).checked);
+			expect(picked).toEqual([false, true, false, false, false]);
+		});
+
+		it("brings back only the boxes ticked in a same-name checkbox group", () => {
+			const markup = ["a", "b", "c"]
+				.map((value) => `<input type="checkbox" name="tags" value="${value}">`).join("");
+			const win = form(markup);
+			(document.querySelectorAll("input")[0] as HTMLInputElement).checked = true;
+			settle(win);
+
+			const draft = drafts(win)[0];
+			form(markup);
+			win.fire("message", { data: { type: "dev3-artifact-draft-restore", draft } });
+
+			const ticked = [...document.querySelectorAll("input")].map((el) => (el as HTMLInputElement).checked);
+			expect(ticked).toEqual([true, false, false]);
+		});
+
+		// `saveDraft` takes an author-supplied value, and a value postMessage cannot
+		// clone would otherwise throw away the automatic half with it.
+		it("still reports the form when the report's own saved state cannot be cloned", () => {
+			const win = form(`<input id="who" value="">`);
+			(document.getElementById("who") as HTMLInputElement).value = "Evgeny";
+			(win.dev3 as unknown as { saveDraft(value: unknown): void }).saveDraft({ node: document.body });
+			const parent = win.parent as { postMessage(message: unknown, origin: string): void };
+			const real = parent.postMessage;
+			parent.postMessage = (message: unknown, origin: string) => {
+				if ((message as { custom?: unknown }).custom !== undefined) throw new Error("DataCloneError");
+				real.call(parent, message, origin);
+			};
+			vi.advanceTimersByTime(ARTIFACT_BRIDGE_DRAFT_MS + 1);
+
+			expect(drafts(win)[0].fields).toEqual([{ key: "who", value: "Evgeny" }]);
+		});
+
 		it("puts the values back when the viewer hands the draft in", () => {
 			const win = form(`<input id="who" value=""><textarea name="answer"></textarea><input id="agree" type="checkbox">`);
 			win.fire("message", { data: { type: "dev3-artifact-draft-restore", draft: { fields: [

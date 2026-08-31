@@ -56,9 +56,12 @@ not come from.
 
 - **The draft dies with the viewer.** Closing it discards the text. Persisting further would mean
   storing a user's half-written answer on disk, which is a bigger promise than the problem needs.
-- **Positional field keys.** A control with no `id` and no `name` is keyed by tag and position.
-  Safe only because a draft is restored solely into the version it was captured from — that
-  invariant is load-bearing, not incidental.
+- **Positional field keys.** A control with no `id` and no `name` is keyed by tag and position,
+  and a key two controls share — every member of a radio or checkbox group carries one `name` —
+  is disambiguated by its occurrence number. Safe only because a draft is restored solely into
+  the version it was captured from — that invariant is load-bearing, not incidental. A name-only
+  key was not merely lossy: every member of the group matched it, the last one written won, and
+  the user's second option came back as the fifth.
 - **Restore fires synthetic `input`/`change`.** A report that treats those as user intent (auto
   submit) would act on a restore. No such report exists; the alternative is authors seeing stale
   mirrored state, which is worse.

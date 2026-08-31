@@ -118,9 +118,20 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		return [].slice.call(doc.querySelectorAll("input,textarea,select"));
 	}
 
+	/**
+	 * One key per control, in document order. A radio group and a checkbox group
+	 * share a single `name`, so a name alone is not an identity: every member would
+	 * match the same draft entry and the last one written would win — the user's
+	 * second option comes back as the fifth. Repeats get an occurrence suffix.
+	 */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function fieldKey(el: any, index: number): string {
-		return String(el.id || el.name || String(el.tagName) + ":" + index);
+	function fieldKeys(list: any[]): string[] {
+		const seen: Record<string, number> = Object.create(null);
+		return list.map(function (el, index) {
+			const base = String(el.id || el.name || String(el.tagName) + ":" + index);
+			const nth = (seen[base] = (seen[base] || 0) + 1);
+			return nth === 1 ? base : base + "#" + nth;
+		});
 	}
 
 	/** The value the control would have had if nobody had touched it. */
@@ -135,18 +146,20 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 
 	function snapshot(): ArtifactDraftField[] {
 		const fields: ArtifactDraftField[] = [];
-		controls().forEach(function (el, index) {
+		const list = controls();
+		const keys = fieldKeys(list);
+		list.forEach(function (el, index) {
 			const type = String(el.type || "").toLowerCase();
 			// A password never leaves the frame, and a file input cannot be restored.
 			if (type === "password" || type === "file" || type === "hidden") return;
 			if (type === "checkbox" || type === "radio") {
 				if (Boolean(el.checked) === Boolean(el.defaultChecked)) return;
-				fields.push({ key: fieldKey(el, index), checked: Boolean(el.checked) });
+				fields.push({ key: keys[index], checked: Boolean(el.checked) });
 				return;
 			}
 			const value = el.value == null ? "" : String(el.value);
 			if (value === pristine(el)) return;
-			fields.push({ key: fieldKey(el, index), value: value });
+			fields.push({ key: keys[index], value: value });
 		});
 		return fields;
 	}
@@ -156,7 +169,15 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 		const fields = snapshot();
 		// Posted even when empty: that is how the viewer learns the form went clean
 		// again and drops its offer to restore.
-		parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields, custom: custom }, "*");
+		try {
+			parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields, custom: custom }, "*");
+		} catch {
+			// `custom` is the author's own value, so it may not survive a structured
+			// clone. Losing it must not take the automatic half — which needs no
+			// author cooperation at all — down with it.
+			custom = undefined;
+			parentWindow.postMessage({ type: "dev3-artifact-draft", fields: fields }, "*");
+		}
 	}
 
 	function scheduleDraft(): void {
@@ -172,10 +193,14 @@ export function installArtifactBridge(win: ArtifactBridgeWindow, config: Artifac
 	});
 
 	function restoreDraft(draft: ArtifactDraft): void {
-		const byKey: Record<string, ArtifactDraftField> = {};
+		// Null-prototype: a control with `id="constructor"` would otherwise find an
+		// inherited value here and be treated as a draft entry it never had.
+		const byKey: Record<string, ArtifactDraftField> = Object.create(null);
 		(draft.fields || []).forEach(function (field) { byKey[field.key] = field; });
-		controls().forEach(function (el, index) {
-			const field = byKey[fieldKey(el, index)];
+		const list = controls();
+		const keys = fieldKeys(list);
+		list.forEach(function (el, index) {
+			const field = byKey[keys[index]];
 			if (!field) return;
 			if (typeof field.checked === "boolean") el.checked = field.checked;
 			else if (typeof field.value === "string") el.value = field.value;
