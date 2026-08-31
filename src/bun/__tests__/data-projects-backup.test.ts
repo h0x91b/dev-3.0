@@ -30,7 +30,7 @@ beforeEach(() => {
 	mkdirSync(TEST_HOME, { recursive: true });
 });
 
-import { addProject, backupProjectsDaily, updateProject } from "../data";
+import { addProject, backupProjectsDaily, backupProjectsHourly, updateProject } from "../data";
 
 const PROJECTS_FILE = `${TEST_HOME}/projects.json`;
 
@@ -100,5 +100,78 @@ describe("daily projects.json backups", () => {
 		await backupProjectsDaily();
 
 		expect(existsSync(todayBackupFile())).toBe(true);
+	});
+});
+
+describe("hourly projects.json backups", () => {
+	const HOURLY_DIR = `${TEST_HOME}/projects-backups`;
+	const LAST_GOOD = `${TEST_HOME}/projects-last-known-good.json`;
+
+	function listHourly(): string[] {
+		return existsSync(HOURLY_DIR)
+			? readdirSync(HOURLY_DIR).filter((f) => /^\d{4}-\d{2}-\d{2}T\d{2}Z\.json$/.test(f)).sort()
+			: [];
+	}
+
+	it("snapshots on a timer tick with no save at all", async () => {
+		// The measured defect: 28-30 Aug 2026 have no copy because both schemes
+		// only fired on a save or at startup, and the app stayed up for days.
+		seedProjects([{ id: "a", name: "A", path: "/tmp/a" } as Project]);
+
+		await backupProjectsHourly();
+
+		expect(listHourly()).toHaveLength(1);
+		expect(JSON.parse(readFileSync(`${HOURLY_DIR}/${listHourly()[0]}`, "utf-8"))).toHaveLength(1);
+	});
+
+	it("keeps one snapshot per hour and prunes beyond 72", async () => {
+		seedProjects([{ id: "a", name: "A", path: "/tmp/a" } as Project]);
+		const hour = new Date("2026-08-31T10:00:00.000Z");
+
+		await backupProjectsHourly(hour);
+		await backupProjectsHourly(new Date("2026-08-31T10:59:59.000Z"));
+		expect(listHourly()).toEqual(["2026-08-31T10Z.json"]);
+
+		for (let i = 0; i < 80; i++) {
+			writeFileSync(`${HOURLY_DIR}/2026-05-${String((i % 28) + 1).padStart(2, "0")}T${String(i % 24).padStart(2, "0")}Z.json`, "[]");
+		}
+		await backupProjectsHourly(new Date("2026-08-31T12:00:00.000Z"));
+		expect(listHourly().length).toBeLessThanOrEqual(72);
+	});
+
+	it("keeps a good copy that no rotation can evict", async () => {
+		seedProjects(Array.from({ length: 29 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, path: `/tmp/p${i}` }) as Project));
+		await backupProjectsHourly(new Date("2026-08-31T10:00:00.000Z"));
+		expect(JSON.parse(readFileSync(LAST_GOOD, "utf-8"))).toHaveLength(29);
+
+		// The wreck arrives as the next hour's pre-write content.
+		seedProjects([{ id: "only", name: "dev-3.0", path: "/tmp/only" } as Project]);
+		await backupProjectsHourly(new Date("2026-08-31T11:00:00.000Z"));
+
+		// The hourly slot faithfully holds the wreck; the good copy is untouched.
+		expect(JSON.parse(readFileSync(`${HOURLY_DIR}/2026-08-31T11Z.json`, "utf-8"))).toHaveLength(1);
+		expect(JSON.parse(readFileSync(LAST_GOOD, "utf-8"))).toHaveLength(29);
+	});
+
+	it("still advances the good copy when a user deletes a project or two", async () => {
+		// A rule that refused every shrink would freeze this file forever and go on
+		// holding projects the user meant to be rid of.
+		seedProjects(Array.from({ length: 10 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, path: `/tmp/p${i}` }) as Project));
+		await backupProjectsHourly(new Date("2026-08-31T10:00:00.000Z"));
+
+		seedProjects(Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, path: `/tmp/p${i}` }) as Project));
+		await backupProjectsHourly(new Date("2026-08-31T11:00:00.000Z"));
+
+		expect(JSON.parse(readFileSync(LAST_GOOD, "utf-8"))).toHaveLength(8);
+	});
+
+	it("never lets unreadable bytes become the good copy", async () => {
+		seedProjects([{ id: "a", name: "A", path: "/tmp/a" } as Project]);
+		await backupProjectsHourly(new Date("2026-08-31T10:00:00.000Z"));
+
+		writeFileSync(PROJECTS_FILE, "{ truncated");
+		await backupProjectsHourly(new Date("2026-08-31T11:00:00.000Z"));
+
+		expect(JSON.parse(readFileSync(LAST_GOOD, "utf-8"))).toHaveLength(1);
 	});
 });

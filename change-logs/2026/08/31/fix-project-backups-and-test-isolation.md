@@ -1,0 +1,3 @@
+Short: Project list now backed up hourly
+
+The project list is now snapshotted hourly (72 kept) alongside the existing daily copies, and both are driven by a timer instead of only by a save — an app left running for days previously snapshotted nothing at all. A separate last-known-good copy is kept that no rotation can evict, so a collapsed project list can never become the only surviving backup. Separately, the test harness now drops every inherited DEV3_ environment variable rather than six named ones, closing a hole where a shell exporting DEV3_HOME made the backend suites resolve the real ~/.dev3.0 instead of their sandbox.

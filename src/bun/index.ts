@@ -307,14 +307,23 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
-// Daily projects.json safety snapshot (projects-YYYY-MM-DD.json.bak, 7 days kept).
-// Saves also trigger it, but projects.json can go untouched for weeks — the
-// startup hook guarantees at least one fresh backup per day the app is used.
+// projects.json safety snapshots: daily .bak files (7 kept) plus hourly ones
+// (72 kept), matching the cover the task store already had.
+//
+// The timer is the point of this block. Both schemes fired only on a save or at
+// startup, so an app left running for days snapshotted nothing — 28-30 Aug 2026
+// have no copy for exactly that reason, while the board was edited all three
+// days. Ticking below the hourly bucket gives every hour the app is alive one.
 {
-	const { backupProjectsDaily } = await import("./data");
-	backupProjectsDaily().catch((err) => {
-		log.warn("Startup projects backup failed (non-fatal)", { err });
-	});
+	// Half the hourly bucket, so no bucket can be skipped by drift.
+	const PROJECTS_BACKUP_TICK_MS = 30 * 60 * 1000;
+	const { backupProjectsDaily, backupProjectsHourly } = await import("./data");
+	const snapshotProjects = () => {
+		backupProjectsDaily().catch((err) => log.warn("Daily projects backup failed (non-fatal)", { err }));
+		backupProjectsHourly().catch((err) => log.warn("Hourly projects backup failed (non-fatal)", { err }));
+	};
+	snapshotProjects();
+	setInterval(snapshotProjects, PROJECTS_BACKUP_TICK_MS).unref?.();
 }
 
 // Exclude the worktrees root from OS backups (Time Machine) once at startup.
