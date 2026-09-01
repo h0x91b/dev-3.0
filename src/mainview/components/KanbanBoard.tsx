@@ -202,7 +202,7 @@ function KanbanBoard({
 			onOpenTask: () => {
 				const openMode = getTaskOpenMode();
 				navigate(openMode === "fullscreen"
-					? { screen: "task", projectId: taskProject.id, taskId: task.id }
+					? { screen: "task", projectId: taskProject.id, spaceId: space?.id, taskId: task.id }
 					: { screen: "project", projectId: taskProject.id, spaceId: space?.id, activeTaskId: task.id });
 			},
 			onMovingChange: (moving) => handleSetMoving(task.id, moving),

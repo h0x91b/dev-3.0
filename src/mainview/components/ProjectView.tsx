@@ -314,6 +314,7 @@ function ProjectView({
 					kanbanContent={
 						<ActiveTasksSidebar
 							project={project}
+							spaceId={spaceId}
 							tasks={tasks}
 							allProjects={projects}
 							activeTaskId={activeTaskId}

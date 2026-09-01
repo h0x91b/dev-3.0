@@ -1171,11 +1171,12 @@ describe("ActiveTasksSidebar — space scope", () => {
 		};
 	}
 
-	function renderSidebarWith(allProjects: Project[]) {
+	function renderSidebarWith(allProjects: Project[], spaceId?: string) {
 		return render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
+					spaceId={spaceId}
 					tasks={[makeTask()]}
 					allProjects={allProjects}
 					activeTaskId="t1"
@@ -1250,6 +1251,33 @@ describe("ActiveTasksSidebar — space scope", () => {
 		await user.click(screen.getByTestId("sidebar-scope-global"));
 		await waitFor(() => expect(screen.getByTestId("sidebar-scope-global").className).toContain("bg-accent/20"));
 		expect(screen.getByTestId("sidebar-scope-project").className).not.toContain("bg-accent/20");
+	});
+
+	// A project in two spaces: without the route's space the pool is the union of
+	// both, which is never the board the user is actually looking at.
+	it("scopes to the space on the route, not the union of the project's spaces", async () => {
+		const { api } = await import("../../rpc");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p1", "p2"], ["p1", "p3"]]));
+		const siblingTask = makeTask({
+			id: "t-sib", seq: 200, projectId: "p2",
+			title: "Sibling task", description: "Sibling task",
+			groupId: null as unknown as string, variantIndex: null,
+		});
+		const otherSpaceTask = makeTask({
+			id: "t-oth", seq: 201, projectId: "p3",
+			title: "Other space task", description: "Other space task",
+			groupId: null as unknown as string, variantIndex: null,
+		});
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValue([
+			{ projectId: "p1", tasks: [makeTask()] },
+			{ projectId: "p2", tasks: [siblingTask] },
+			{ projectId: "p3", tasks: [otherSpaceTask] },
+		]);
+
+		renderSidebarWith([project, otherProject, strangerProject], "sp_0");
+
+		await waitFor(() => expect(screen.getByText("Sibling task")).toBeInTheDocument());
+		expect(screen.queryByText("Other space task")).not.toBeInTheDocument();
 	});
 
 	it("opens on the space scope by default when the project is in a space", async () => {

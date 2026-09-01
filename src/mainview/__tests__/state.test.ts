@@ -1185,6 +1185,13 @@ describe("routeSpaceId", () => {
 		expect(routeSpaceId({ screen: "project", projectId: "p1", spaceId: "sp_1" })).toBe("sp_1");
 	});
 
+	// A task route carries one too, so a task opened out of a space board is still
+	// scoped to that space — which of a project's several spaces the user came
+	// through is not derivable from the project.
+	it("is the space when a full-page task route carries one", () => {
+		expect(routeSpaceId({ screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" })).toBe("sp_1");
+	});
+
 	// The whole reason a space rides on the board route rather than becoming its
 	// own screen: nothing that reads a project out of the route starts seeing null.
 	it("a space board still resolves to a project", () => {
@@ -1229,5 +1236,94 @@ describe("reducer — a board whose subject is a space", () => {
 		const projectRoute: Route = { screen: "project", projectId: "p1" };
 		const state: AppState = { ...initialState, route: projectRoute, routeHistory: [projectRoute] };
 		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] })).toBe(state);
+	});
+
+	// A full-page task route carries a space for scope and breadcrumb purposes but
+	// renders no board, so the multi-project store branches must ignore it.
+	it("a full-page task route carrying a space is not treated as a space board", () => {
+		const taskRoute: Route = { screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" };
+		const state: AppState = { ...initialState, route: taskRoute, routeHistory: [taskRoute] };
+		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] })).toBe(state);
+		expect(reducer(state, { type: "updateTask", task: taskIn("p2", "b") })).toBe(state);
+	});
+});
+
+// ---- The space follows the user into a task, and back out again ----
+//
+// Threading spaceId through ~30 task-opening call sites would lose it at the one
+// a future change forgets, so the reducer carries it. These cases ARE that
+// guarantee: they must fail if the rule is removed.
+describe("reducer — the space a task was opened through", () => {
+	const spaceBoard: Route = { screen: "project", projectId: "p1", spaceId: "sp_1" };
+	const onSpaceBoard: AppState = { ...initialState, route: spaceBoard, routeHistory: [spaceBoard] };
+
+	function navigateFrom(state: AppState, route: Route): Route {
+		return reducer(state, { type: "navigate", route }).route;
+	}
+
+	it("a full-page task opened with no space named inherits the board's", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "task", projectId: "p1", taskId: "t1" }))
+			.toEqual({ screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" });
+	});
+
+	it("a split-view task inherits it too", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "project", projectId: "p1", activeTaskId: "t1" }))
+			.toEqual({ screen: "project", projectId: "p1", spaceId: "sp_1", activeTaskId: "t1" });
+	});
+
+	// A member project's task opened from the space board keeps the space even
+	// though the route's project changes — that is the point of a space board.
+	it("carries across to another member project's task", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "project", projectId: "p2", activeTaskId: "t9" }))
+			.toEqual({ screen: "project", projectId: "p2", spaceId: "sp_1", activeTaskId: "t9" });
+	});
+
+	it("the empty split view (task closed) keeps the space", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "project", projectId: "p1", taskView: true }))
+			.toEqual({ screen: "project", projectId: "p1", spaceId: "sp_1", taskView: true });
+	});
+
+	// The project switcher navigates to a bare board: there the click means "this
+	// project's own board", never "the space I happened to be in".
+	it("a bare board route is left alone", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "project", projectId: "p2" }))
+			.toEqual({ screen: "project", projectId: "p2" });
+	});
+
+	it("an explicitly named space wins over the one being left", () => {
+		expect(navigateFrom(onSpaceBoard, { screen: "task", projectId: "p1", spaceId: "sp_2", taskId: "t1" }))
+			.toEqual({ screen: "task", projectId: "p1", spaceId: "sp_2", taskId: "t1" });
+	});
+
+	it("invents no space when there was none to carry", () => {
+		const projectBoard: Route = { screen: "project", projectId: "p1" };
+		const state: AppState = { ...initialState, route: projectBoard, routeHistory: [projectBoard] };
+		expect(navigateFrom(state, { screen: "task", projectId: "p1", taskId: "t1" }))
+			.toEqual({ screen: "task", projectId: "p1", taskId: "t1" });
+	});
+
+	it("a task opened from a space keeps it through Back and Forward", () => {
+		let state = reducer(onSpaceBoard, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "t1" } });
+		state = reducer(state, { type: "navigate", route: { screen: "dashboard" } });
+		state = reducer(state, { type: "goBack" });
+		expect(state.route).toEqual({ screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" });
+		state = reducer(state, { type: "goBack" });
+		expect(state.route).toEqual(spaceBoard);
+		state = reducer(state, { type: "goForward" });
+		expect(state.route).toEqual({ screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" });
+	});
+
+	// Stepping must replay what was stored: a stored spaceless route stays
+	// spaceless, or the stack stops describing where the user actually went.
+	it("Back does not re-run inheritance over a stored route", () => {
+		const bareBoard: Route = { screen: "project", projectId: "p2" };
+		const taskRoute: Route = { screen: "task", projectId: "p2", taskId: "t2" };
+		const state: AppState = {
+			...initialState,
+			route: spaceBoard,
+			routeHistory: [bareBoard, taskRoute, spaceBoard],
+			historyIndex: 2,
+		};
+		expect(reducer(state, { type: "goBack" }).route).toEqual(taskRoute);
 	});
 });

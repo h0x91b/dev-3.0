@@ -24,7 +24,7 @@ import { PanelLeftIcon } from "./TaskIcons";
 import ActiveTaskRow from "./ActiveTaskRow";
 import { useSpaces } from "../useSpaces";
 import SpaceIcon from "./SpaceIcon";
-import { spaceSiblingProjectIds } from "../utils/spaceScope";
+import { spaceScopeProjectIds } from "../utils/spaceScope";
 
 type SidebarScope = "project" | "global" | "space";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
@@ -56,6 +56,12 @@ interface ActiveTasksSidebarProps {
 	/** Absent on the dashboard mount: no current project, so the scope locks to
 	 *  global ("across all spaces") and the scope switcher is not rendered. */
 	project?: Project;
+	/**
+	 * The space the user came through, when there is one. A project can sit in
+	 * several spaces, so `space` scope cannot be derived from the project alone —
+	 * without this it pools every space the project belongs to.
+	 */
+	spaceId?: string;
 	tasks?: Task[];
 	allProjects?: Project[];
 	activeTaskId?: string;
@@ -140,6 +146,7 @@ const SCOPE_STATE_CLASS = (active: boolean) =>
 
 function ActiveTasksSidebar({
 	project,
+	spaceId,
 	tasks = [],
 	allProjects,
 	activeTaskId,
@@ -170,10 +177,12 @@ function ActiveTasksSidebar({
 	const { spaces, loading: spacesLoading } = useSpaces();
 
 	// null = the current project is in no space → the button disables and a
-	// stored "space" scope falls back to project below.
+	// stored "space" scope falls back to project below. With a space on the route
+	// the pool is that one space; without one (arrived from the dashboard, ⌘K, a
+	// deep link) it stays the union of the project's spaces.
 	const siblingIds = useMemo(
-		() => (project ? spaceSiblingProjectIds(spaces, project.id) : null),
-		[spaces, project],
+		() => (project ? spaceScopeProjectIds(spaces, project.id, spaceId ?? null) : null),
+		[spaces, project, spaceId],
 	);
 
 	const setScope = useCallback((next: SidebarScope) => {

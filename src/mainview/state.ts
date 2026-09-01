@@ -41,7 +41,7 @@ export type Route =
 	| { screen: "dashboard" }
 	| { screen: "project"; projectId: string; spaceId?: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-terminal"; projectId: string }
-	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
+	| { screen: "task"; projectId: string; spaceId?: string; taskId: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
 	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
@@ -201,14 +201,29 @@ export function routeAfterTaskClosed(route: Route, taskId: string, openMode: Tas
 }
 
 /**
- * The space a board route is ABOUT, or null when its subject is the project.
+ * The space a route is being viewed THROUGH, or null when its subject is the
+ * project alone. A project can sit in several spaces, so which one the user came
+ * through is not derivable — it has to travel with them.
  *
- * A space is not a place: it rides on the board route as an extra field, exactly
- * like the inline diff does on a task route. A space board still resolves to a
+ * A space is not a place: it rides on the route as an extra field, exactly like
+ * the inline diff does. Both board and task routes carry one, so opening a task
+ * from a space board keeps that space's scope. A space board still resolves to a
  * project (the one the user zoomed out of), so everything reading
  * `projectIdForRoute` keeps getting an id and nothing has to learn about spaces.
  */
 export function routeSpaceId(route: Route): string | null {
+	if (route.screen === "project" || route.screen === "task") return route.spaceId ?? null;
+	return null;
+}
+
+/**
+ * The space whose members make up the BOARD a route shows, or null for a
+ * single-project board. Narrower than {@link routeSpaceId} on purpose: a
+ * fullscreen task route carries a space for scope and breadcrumb purposes, but
+ * it renders no board, so the task-store branches keyed off this must not treat
+ * it as a multi-project one.
+ */
+function boardSpaceId(route: Route): string | null {
 	return route.screen === "project" ? route.spaceId ?? null : null;
 }
 
@@ -218,7 +233,30 @@ export function routeSpaceId(route: Route): string | null {
  * one project's cards as if they were the whole space.
  */
 function boardScopeKey(route: Route): string {
-	return `${projectIdForRoute(route) ?? ""}|${routeSpaceId(route) ?? ""}`;
+	return `${projectIdForRoute(route) ?? ""}|${boardSpaceId(route) ?? ""}`;
+}
+
+/**
+ * Carry the current space onto a route that opens a task but names no space.
+ *
+ * Threading `spaceId` through every one of the ~30 call sites that open a task
+ * (cards, info panel, sibling popover, variant switcher, task switcher, activity
+ * overview, tmux manager, agent traffic…) would lose it at whichever one a future
+ * change forgets, and most of those components never see the route. One rule here
+ * cannot be forgotten, and Back/Forward keeps working because history stores
+ * whole routes.
+ *
+ * Only task-bearing destinations inherit. A bare board route is left alone: it is
+ * what the project switcher navigates to, and there it means "this project's own
+ * board", not "the space I was in". The id is not validated here — a space the
+ * target project does not belong to is dropped by `spaceScopeProjectIds`.
+ */
+function inheritSpace(from: Route, to: Route): Route {
+	const spaceId = routeSpaceId(from);
+	if (!spaceId || routeSpaceId(to) !== null) return to;
+	if (to.screen === "task") return { ...to, spaceId };
+	if (to.screen === "project" && (to.activeTaskId || to.taskView)) return { ...to, spaceId };
+	return to;
 }
 
 /** The project id a route lands on, or null for project-less screens (dashboard, settings…). */
@@ -300,7 +338,11 @@ function normalizeProjectPath(path: string): string {
 }
 
 /** Push `route` onto the history stack, truncating any forward entries. */
-function pushRoute(state: AppState, route: Route): AppState {
+function pushRoute(state: AppState, requested: Route): AppState {
+	// Inheritance happens here and not in stepHistory/replaceRoute: Back and
+	// Forward must replay stored routes verbatim, or the stack stops matching
+	// where the user has been.
+	const route = inheritSpace(state.route, requested);
 	const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
 	// Truncate any forward history beyond the current index, then push
 	const base = state.routeHistory.slice(0, state.historyIndex + 1);
@@ -390,7 +432,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			// project the user has already left instead of repopulating the new
 			// project's board with stale cards. A space board holds several
 			// projects, so there it is the space, not one id, that bounds the scope.
-			const inScope = routeSpaceId(state.route) !== null
+			const inScope = boardSpaceId(state.route) !== null
 				? true
 				: projectIdForRoute(state.route) === action.projectId;
 			if (!inScope) return state;
@@ -416,7 +458,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				state.route.screen === "project" || state.route.screen === "task" || state.route.screen === "project-settings"
 					? state.route.projectId
 					: null;
-			if (routeSpaceId(state.route) !== null) {
+			if (boardSpaceId(state.route) !== null) {
 				return { ...state, currentProjectTasks: [...state.currentProjectTasks, action.task] };
 			}
 			if (viewingProjectId && action.task.projectId === viewingProjectId) {
@@ -440,7 +482,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			// `taskRemoved` for the SOURCE project would also strip the freshly-added
 			// card from a window viewing the TARGET (same task id). Unscoped removals
 			// (local delete) always filter, preserving prior behavior.
-			if (action.projectId && routeSpaceId(state.route) === null && projectIdForRoute(state.route) !== action.projectId) return state;
+			if (action.projectId && boardSpaceId(state.route) === null && projectIdForRoute(state.route) !== action.projectId) return state;
 			return {
 				...state,
 				currentProjectTasks: state.currentProjectTasks.filter(
