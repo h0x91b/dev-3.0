@@ -307,23 +307,26 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
-// projects.json safety snapshots: daily .bak files (7 kept) plus hourly ones
-// (72 kept), matching the cover the task store already had.
+// User-state safety snapshots: hourly copies (72 kept) of every file in the
+// registry — projects, virtual projects, spaces, agents, settings, the model
+// catalog — plus the daily projects.json .bak files (7 kept).
 //
 // The timer is the point of this block. Both schemes fired only on a save or at
 // startup, so an app left running for days snapshotted nothing — 28-30 Aug 2026
 // have no copy for exactly that reason, while the board was edited all three
-// days. Ticking below the hourly bucket gives every hour the app is alive one.
+// days. Ticking below the hourly bucket gives every hour the app is alive one,
+// and it is the ONLY trigger the files outside data.ts have.
 {
 	// Half the hourly bucket, so no bucket can be skipped by drift.
-	const PROJECTS_BACKUP_TICK_MS = 30 * 60 * 1000;
-	const { backupProjectsDaily, backupProjectsHourly } = await import("./data");
-	const snapshotProjects = () => {
+	const STATE_BACKUP_TICK_MS = 30 * 60 * 1000;
+	const { backupProjectsDaily } = await import("./data");
+	const { snapshotProtectedState } = await import("./state-backup");
+	const snapshotUserState = () => {
 		backupProjectsDaily().catch((err) => log.warn("Daily projects backup failed (non-fatal)", { err }));
-		backupProjectsHourly().catch((err) => log.warn("Hourly projects backup failed (non-fatal)", { err }));
+		snapshotProtectedState().catch((err) => log.warn("Hourly state backup failed (non-fatal)", { err }));
 	};
-	snapshotProjects();
-	setInterval(snapshotProjects, PROJECTS_BACKUP_TICK_MS).unref?.();
+	snapshotUserState();
+	setInterval(snapshotUserState, STATE_BACKUP_TICK_MS).unref?.();
 }
 
 // Exclude the worktrees root from OS backups (Time Machine) once at startup.

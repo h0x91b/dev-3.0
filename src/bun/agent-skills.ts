@@ -785,6 +785,7 @@ Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosin
 - Environment or setup acting up → \`dev3 doctor\` first.
 - Disk filling up → \`dev3 doctor --worktrees\`. Per project it shows what \`~/.dev3.0/worktrees\` holds and how much is reclaimable: orphaned folders whose task record is gone, worktrees whose teardown never finished, old diffs/logs. Report-only; \`--prune-orphans\` / \`--prune-older-than 30d\` delete, and anything on an unmerged \`dev3/task-*\` branch is skipped without \`--force-unmerged\`.
 - The task's terminal died → **Resume Agent Session** restarts the agent with its conversation intact (\`--continue\`), picking up right where it stopped.
+- Spaces, settings, agent presets, projects or the model catalog came back empty → dev3 keeps hourly copies of each, plus a last-known-good copy that rotation never evicts. Restoring is manual and always starts with quitting the app: \`docs/state-backups.md\` has the exact steps and the table of what is and is not copied (credentials deliberately are not).
 - "Why does dev3 behave this way?" → the relevant record in \`decisions/\` usually explains it.
 - Something crashed or misbehaved → the app logs, plus the decision record for that subsystem.
 
