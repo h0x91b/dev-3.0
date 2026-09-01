@@ -61,8 +61,8 @@ above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-poo
 
 `dev3 dev-server start` boots a full dev3 instance on **your real board** — another task's
 "Branch Merged — mark completed?" dialog is live and clickable in your browser, and another task's
-terminal is reachable by navigation. For anything that does not specifically need real data, run the
-scoped instance instead:
+terminal is reachable by navigation. It stays the default anyway, because it is the build the user
+runs; reach for the scoped board when the QA would touch real tasks, real accounts, or a live dialog:
 
 ```bash
 dev3 pane run "cd $PWD && bun run dev --qa"     # throwaway board: one fixture project, zero tasks
@@ -70,9 +70,10 @@ dev3 pane run "cd $PWD && bun run dev --qa=virgin"   # completely empty home —
 dev3 pane logs <run-id>                          # it prints the scoped DEV3_HOME and a reset line
 ```
 
-It binds the same `DEV3_PORT0` and prints the port, so steps 3–4 of the flow above are unchanged.
-The scoped root is stable per worktree, so a restart reuses the same board; `rm -rf` the printed
-root to start over.
+It binds the same `DEV3_PORT0` and prints the port, so step 3 of the flow above is unchanged.
+**Step 4 is not:** `dev3 dev-server stop` does not own a pane run, so close it with
+`dev3 pane close <run-id>` instead. The scoped root is stable per worktree, so a restart reuses
+the same board; `rm -rf` the printed root to start over.
 
 **What it does NOT isolate** — name these rather than assuming a clean room: the tmux socket
 directory (only `TMUX_TMPDIR` moves it, and dev3 sets it nowhere), the PowerShell history file on
@@ -101,8 +102,11 @@ inside a REAL worktree (cwd-based task detection outranks `$DEV3_HOME` by design
   *another* worktree — it won't have your changes. (Re)start THIS task's dev-server and confirm
   with `dev3 --version` (commit hash should match `git log -1`) + that your change actually
   renders. Don't assume.
-- **Tell the user before `dev3 dev-server start`** (visible side effect), and stop it after
-  (step 4) unless they want it kept.
+- **Tell the user before you start the app any way at all** (visible side effect), and stop it
+  after (step 4) unless they want it kept.
+- **`dev3` says `app not running`? Stop and tell the user.** Every route in this skill needs the
+  CLI, so there is nothing to fall back to. Never launch the app yourself — a bare `bun run dev`
+  opens a native window on the user's screen, which they did not ask for.
 - **No `DEV3_PORT0`?** (portCount 0, or an older worktree where it was never allocated) — run
   your own fixed-port server instead:
   `dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823` → `:47823/?token=$CODE`.
