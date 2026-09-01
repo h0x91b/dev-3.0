@@ -107,6 +107,8 @@ interface BreadcrumbSegment {
 	 * the trail's tail carries a dropdown, and the space is never the tail here.
 	 */
 	spaceLink?: boolean;
+	/** The chip names a SPACE, not a project — it wears the space glyph. */
+	isSpaceSubject?: boolean;
 	/** Streamer mode blurs this crumb (a space name can be a client's name). */
 	masked?: boolean;
 	task?: Task;
@@ -386,14 +388,16 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const onSpaceBoard = !!currentSpace && route.screen === "project" && !route.activeTaskId && !route.taskView;
 	/** The chip always names the trail's tail — the space above, a project here. */
 	const projectIsChipSubject = "projectId" in route && !onSpaceBoard;
-	// The unified-board control sits wherever a project is the chip's subject. A
-	// space already on the route is the single target, so it never asks; without
-	// one the project's own memberships are offered and several still ask.
+	// The unified-board control sits wherever a project is the chip's subject, and
+	// it offers the project's OWN memberships — not the route's space. Whether it
+	// asks depends on one thing only: whether there is anything to ask about. Two
+	// spaces means two possible boards, so it asks even when the user already came
+	// through one of them (from `AI` the other board is exactly what you cannot
+	// reach otherwise); one space means one destination, so it just goes. Keying it
+	// on the route instead made the menu appear and vanish for no visible reason.
 	const zoomOutSpaces = !currentProjectId || !projectIsChipSubject
 		? []
-		: currentSpace
-			? [currentSpace]
-			: orderSpaces(spacesOfProject(spacesFile.spaces, currentProjectId), spacesFile.order);
+		: orderSpaces(spacesOfProject(spacesFile.spaces, currentProjectId), spacesFile.order);
 
 	const zoomOutTo = useCallback((spaceId: string) => {
 		setShowSpacePicker(false);
@@ -448,6 +452,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			segments.push({
 				label: onSpaceBoard ? currentSpace.name : projectDisplayName(project, t("ops.boardName")),
 				isProjectDropdown: true,
+				// A chip naming a space wears the space glyph, the same one the
+				// dropdown's group headings carry. Without it `AI` in a chip is
+				// indistinguishable from a project called AI.
+				isSpaceSubject: !!onSpaceBoard,
 				onClick: onSpaceBoard ? undefined : projectNameOnClick,
 				masked: onSpaceBoard ? isSpaceSensitive(currentSpace, sensitiveProjectIds) : false,
 			});
@@ -524,9 +532,13 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 
 	// One switcher row. `keyPrefix` disambiguates a project that belongs to
-	// several spaces and therefore renders under each of them.
+	// several spaces and therefore renders under each of them — and it is also what
+	// decides which of those copies reads as "you are here": the one filed under the
+	// space the user actually came through. Lighting up both said the user was in
+	// two places at once. With no space on the route there is no basis to choose, so
+	// every copy is marked, which is the honest answer rather than a guess.
 	function renderSwitcherRow(p: Project, keyPrefix: string) {
-		const isCurrent = currentProjectId === p.id;
+		const isCurrent = currentProjectId === p.id && (routeSpace === null || keyPrefix === routeSpace);
 		const count = projectTaskCounts[p.id];
 		const isBuiltin = isBuiltinOpsProject(p);
 		const locked = privacy.isLocked(p);
@@ -694,7 +706,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											{seg.label}
 										</button>
 									) : (
-										<span className={`px-2 py-[3px] min-w-0 text-fg font-semibold truncate ${seg.masked ? MASK_CLASS : ""}`}>{seg.label}</span>
+										<span className="px-2 py-[3px] min-w-0 flex items-center gap-1.5 text-fg font-semibold">
+											{seg.isSpaceSubject && <SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-accent/90" />}
+											<span className={`truncate ${seg.masked ? MASK_CLASS : ""}`}>{seg.label}</span>
+										</span>
 									)}
 									<span className="w-px self-stretch bg-edge flex-shrink-0" aria-hidden="true" />
 									<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
@@ -738,16 +753,25 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 										<div className="px-3 py-1 text-nano font-semibold uppercase tracking-wider text-fg-3">
 											{t("spaces.zoomOutPick")}
 										</div>
-										{zoomOutSpaces.map((sp) => (
-											<button
-												key={sp.id}
-												onClick={() => zoomOutTo(sp.id)}
-												className="w-full flex items-center gap-2 px-3 py-2 text-left text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
-											>
-												<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-fg-muted" />
-												<span className={`truncate ${isSpaceSensitive(sp, sensitiveProjectIds) ? MASK_CLASS : ""}`}>{sp.name}</span>
-											</button>
-										))}
+										{zoomOutSpaces.map((sp) => {
+											// The board the user is already on is marked, not hidden: it
+											// is the answer to "which one am I in", and removing it would
+											// make the menu's length change with the route.
+											const here = sp.id === routeSpace;
+											return (
+												<button
+													key={sp.id}
+													onClick={() => zoomOutTo(sp.id)}
+													aria-current={here ? "true" : undefined}
+													className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+														here ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated hover:text-fg"
+													}`}
+												>
+													<SpaceIcon className={`w-3.5 h-3.5 flex-shrink-0 ${here ? "text-accent" : "text-fg-muted"}`} />
+													<span className={`truncate ${isSpaceSensitive(sp, sensitiveProjectIds) ? MASK_CLASS : ""}`}>{sp.name}</span>
+												</button>
+											);
+										})}
 									</div>
 								)}
 								{/* `w-96`, not `w-72`: a row carries the space indent, an active-task

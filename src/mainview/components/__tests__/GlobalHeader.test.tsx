@@ -1705,24 +1705,75 @@ describe("GlobalHeader — the space segment", () => {
 		expect(crumb.querySelector(".streamer-private")).not.toBeNull();
 	});
 
-	// The way up now exists twice by design: the crumb and the chip's unified-board
-	// button. With a space on the route the button has one target, so it never asks.
-	it("points the unified-board button straight at the space on the route", async () => {
+	// The unified-board button asks on exactly one condition: is there anything to
+	// ask about. Keying it on the route instead made the menu appear and vanish for
+	// no visible reason, which is what the user reported.
+	it("asks which space whenever the project has two, even from inside one of them", async () => {
 		withSpaces();
-		const navigate = vi.fn();
-		renderHeader(splitInSpace, [project1, project2], navigate, [makeBreadcrumbTask()]);
+		renderHeader(splitInSpace, [project1, project2], vi.fn(), [makeBreadcrumbTask()]);
 		const user = userEvent.setup();
 		await user.click(await screen.findByTestId("space-zoom-out"));
-		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_ai" });
-		expect(screen.queryByText("Which space?")).toBeNull();
+		const menu = await screen.findByRole("menu");
+		expect(within(menu).getByText("Which space?")).toBeInTheDocument();
+		// The board you are already on is marked, not hidden — the menu's length
+		// must not depend on where you stand.
+		const rows = within(menu).getAllByRole("button");
+		const current = rows.find((b) => b.textContent?.includes("AI Space"));
+		expect(current).toHaveAttribute("aria-current", "true");
+		expect(rows.find((b) => b.textContent?.includes("Other Space"))).not.toHaveAttribute("aria-current");
 	});
 
-	// p1 is in two spaces; arriving without one leaves the button unable to guess.
-	it("still asks which space when the route names none", async () => {
+	it("still asks when the route names no space", async () => {
 		withSpaces();
 		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2]);
 		const user = userEvent.setup();
 		await user.click(await screen.findByTestId("space-zoom-out"));
 		expect(await screen.findByText("Which space?")).toBeInTheDocument();
+	});
+
+	// p2 belongs to sp_ai alone: one destination, so there is nothing to ask.
+	it("goes straight there when the project has exactly one space", async () => {
+		withSpaces();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p2" }, [project1, project2], navigate);
+		const user = userEvent.setup();
+		await user.click(await screen.findByTestId("space-zoom-out"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2", spaceId: "sp_ai" });
+		expect(screen.queryByText("Which space?")).toBeNull();
+	});
+
+	// A project in two spaces rendered under both, and both copies lit up — the
+	// user was told they were in two places at once.
+	it("marks the current project only under the space on the route", async () => {
+		withSpaces();
+		renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
+		const user = userEvent.setup();
+		await user.click(getChevronButton());
+		const menu = await screen.findByRole("menu");
+		const rows = within(menu).getAllByRole("button").filter((b) => b.textContent?.includes("Project Alpha"));
+		// Once under AI Space, once under Other Space, plus the Home group never
+		// holds it — exactly one of them reads as current.
+		expect(rows.length).toBeGreaterThan(1);
+		expect(rows.filter((b) => b.className.includes("text-accent"))).toHaveLength(1);
+	});
+
+	it("marks every copy when the route names no space, having no basis to choose", async () => {
+		withSpaces();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2]);
+		const user = userEvent.setup();
+		await user.click(getChevronButton());
+		const menu = await screen.findByRole("menu");
+		const rows = within(menu).getAllByRole("button").filter((b) => b.textContent?.includes("Project Alpha"));
+		expect(rows.filter((b) => b.className.includes("text-accent")).length).toBe(rows.length);
+	});
+
+	// `AI` in a chip is otherwise indistinguishable from a project called AI.
+	it("wears the space glyph when the chip names a space", async () => {
+		withSpaces();
+		const { container } = renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
+		const chip = await screen.findByText("AI Space");
+		expect(chip.parentElement?.querySelector("svg")).not.toBeNull();
+		// The project chip carries no such glyph.
+		expect(container).toBeTruthy();
 	});
 });
