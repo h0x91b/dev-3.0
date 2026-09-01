@@ -427,8 +427,8 @@ All user-facing renderer strings are localized via `src/mainview/i18n/`; locales
 **Framework: Vitest** with `happy-dom` and React Testing Library. Three configs run as three independent processes: `vitest.config.ts` (renderer), `vitest.config.bun.ts` (backend), `vitest.config.cli.ts` (CLI).
 
 ```bash
-bun run test          # renderer + backend + cli in parallel, minus 6 slow e2e suites (~6s)
-bun run test:full     # everything incl. slow e2e (~42s) — what CI runs, required before a PR
+bun run test          # renderer + backend + cli in parallel, minus 7 slow e2e files (~6s)
+bun run test:full     # everything incl. slow e2e — what CI runs, and CI is where it runs
 bun run test:bun      # backend only
 bun run test:cli      # CLI only
 bun run test:watch    # watch mode
@@ -441,7 +441,7 @@ bun run test:watch    # watch mode
 Two gates, escalating. Committing itself has no gate — commit freely, verify before the work leaves the machine.
 
 1. **Before `git push`** — `bun run lint` plus the tests covering what you touched. A push that breaks type-checking is unacceptable even if the tests pass.
-2. **Before `gh pr create`, before enabling auto-merge, and again after any rebase** — **`bun run test:full`**, green end-to-end. Not the plain `bun run test`: it excludes 6 slow e2e suites that CI does run, so a green fast run is not a green CI. Only the file you edited is NOT sufficient either: sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`), and a rebase pulls in code your run never saw. Fix and re-run until green BEFORE opening the PR — don't open it and watch CI go red.
+2. **Before `gh pr create` and before enabling auto-merge** — the full suite green **on CI**, for the head you actually pushed. **Do not run `bun run test:full` locally**: it and every other unfiltered run are reserved for CI/PR validation (the Local E2E policy in [`/verify-changes`](.claude/skills/verify-changes/SKILL.md)), and on a shared dev box it cannot be taken green at all — the box is never quiet, so its failures are load, not evidence (`decisions/2026/08/27/cap-total-vitest-worker-count.md`). What you owe locally is `bun run test` plus the suites around what you touched: the file you edited is NOT sufficient on its own, because sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). **After any rebase, run that local set again and re-read CI on the new head** — a rebase pulls in code no earlier run ever saw. Enable auto-merge on a green CI, never on a green local run.
 
 ### Manual UI QA in a browser (MANDATORY)
 
