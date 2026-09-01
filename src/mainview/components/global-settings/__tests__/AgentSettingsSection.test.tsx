@@ -267,7 +267,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		renderSection();
 		// Claude's presets are grouped by model, labelled by the launch picker's mode leaf.
 		await user.click(screen.getAllByRole("option", { name: /Auto · Medium/ })[0]);
-		expect(screen.getByDisplayValue("Auto (Fable 5, Medium)")).toBeTruthy();
+		expect(screen.getByDisplayValue("Auto (Fable 5.1, Medium)")).toBeTruthy();
 		expect(screen.getByText("settings.commandPreview")).toBeTruthy();
 	});
 
@@ -317,9 +317,9 @@ describe("AgentSettingsSection — preset library", () => {
 		await user.click(screen.getByRole("button", { name: "settings.duplicatePreset" }));
 
 		const configs = lastClaude(onAgentsChange).configurations;
-		const sourceIndex = configs.findIndex((c) => c.id === "claude-auto-fable5-medium");
+		const sourceIndex = configs.findIndex((c) => c.id === "claude-auto-fable51-medium");
 		expect(configs[sourceIndex + 1].name).toBe("settings.presetCopyName");
-		expect(configs[sourceIndex + 1].model).toBe("claude-fable-5");
+		expect(configs[sourceIndex + 1].model).toBe("claude-fable-5-1[1m]");
 	});
 
 	it("Make default writes defaultConfigId for the selected preset", async () => {
@@ -327,7 +327,7 @@ describe("AgentSettingsSection — preset library", () => {
 		const onAgentsChange = renderSection();
 		await openPreset(user, /Auto · High/);
 		await user.click(screen.getByRole("button", { name: "settings.setDefaultConfig" }));
-		expect(lastClaude(onAgentsChange).defaultConfigId).toBe("claude-auto-fable5-high");
+		expect(lastClaude(onAgentsChange).defaultConfigId).toBe("claude-auto-fable51-high");
 	});
 
 	it("deleting a preset asks first and only then removes it", async () => {
@@ -338,7 +338,7 @@ describe("AgentSettingsSection — preset library", () => {
 
 		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
 		expect(
-			lastClaude(onAgentsChange).configurations.some((c) => c.id === "claude-auto-fable5-medium"),
+			lastClaude(onAgentsChange).configurations.some((c) => c.id === "claude-auto-fable51-medium"),
 		).toBe(false);
 	});
 
@@ -370,7 +370,7 @@ describe("AgentSettingsSection — preset library", () => {
 		await user.click(screen.getByRole("button", { name: "settings.favoriteAdd" }));
 		expect(api.request.toggleFavoriteAgent).toHaveBeenCalledWith({
 			agentId: "builtin-claude",
-			configId: "claude-auto-fable5-medium",
+			configId: "claude-auto-fable51-medium",
 		});
 	});
 
@@ -384,7 +384,7 @@ describe("AgentSettingsSection — preset library", () => {
 					globalSettings={{
 						...baseSettings,
 						favorites: [
-							{ agentId: "builtin-claude", configId: "claude-auto-fable5-medium", uses: 3, lastUsedAt: 1 },
+							{ agentId: "builtin-claude", configId: "claude-auto-fable51-medium", uses: 3, lastUsedAt: 1 },
 						],
 					}}
 					onAgentsChange={vi.fn()}
@@ -411,7 +411,7 @@ describe("AgentSettingsSection — preset library", () => {
 		await user.type(field, "ultra{Enter}");
 
 		const config = lastClaude(onAgentsChange).configurations.find(
-			(c) => c.id === "claude-auto-fable5-medium",
+			(c) => c.id === "claude-auto-fable51-medium",
 		);
 		expect(config?.effort).toBe("ultra");
 	});
@@ -486,7 +486,7 @@ describe("AgentSettingsSection — which CLI is this", () => {
 // Field-level editing moved here when Settings → Agents stopped being accordions;
 // GlobalSettings.test.tsx keeps only the screen-level agent CRUD.
 describe("AgentSettingsSection — preset fields", () => {
-	const PRESET_ID = "claude-auto-fable5-medium";
+	const PRESET_ID = "claude-auto-fable51-medium";
 
 	function editedPreset(onAgentsChange: ReturnType<typeof vi.fn>) {
 		return lastClaude(onAgentsChange).configurations.find((c) => c.id === PRESET_ID);

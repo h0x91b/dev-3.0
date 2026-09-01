@@ -21,6 +21,7 @@ import { translate } from "../i18n";
  *  the vendor prefix (e.g. "Opus 4.8", not "Claude Opus 4.8"). */
 export const MODEL_GROUP_LABELS: Record<string, string> = {
 	// Claude
+	"claude-fable-5-1[1m]": "Fable 5.1",
 	"claude-fable-5": "Fable 5",
 	"claude-opus-5[1m]": "Opus 5",
 	"claude-opus-4-8[1m]": "Opus 4.8",

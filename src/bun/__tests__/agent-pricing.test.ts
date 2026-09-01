@@ -29,6 +29,7 @@ describe("resolveModelRate", () => {
 
 	it("prices Fable 5 at $10/$50", () => {
 		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50 });
+		expect(resolveModelRate("claude-fable-5-1[1m]")).toMatchObject({ input: 10, output: 50 });
 	});
 
 	it("prices the open-source models dev3 recommends, by their OpenRouter slug", () => {

@@ -247,6 +247,7 @@ describe("pickConfigForModelChange", () => {
 
 describe("MODEL_GROUP_LABELS", () => {
 	it("covers the Claude model strings that drove the redesign", () => {
+		expect(MODEL_GROUP_LABELS["claude-fable-5-1[1m]"]).toBe("Fable 5.1");
 		expect(MODEL_GROUP_LABELS["claude-fable-5"]).toBe("Fable 5");
 		expect(MODEL_GROUP_LABELS["claude-opus-4-8[1m]"]).toBe("Opus 4.8");
 		expect(MODEL_GROUP_LABELS["claude-sonnet-5"]).toBe("Sonnet 5");

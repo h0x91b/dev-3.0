@@ -322,6 +322,37 @@ describe("DEFAULT_AGENTS", () => {
 		expect(claude!.baseCommand).toBe("claude");
 	});
 
+	it("uses the pinned 1M Fable 5.1 model in Fable 5.1 presets", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const fable51Configs = claude!.configurations.filter((config) => /-fable51(-|$)/.test(config.id));
+		expect(fable51Configs.map((c) => c.id)).toEqual([
+			"claude-auto-fable51-medium",
+			"claude-auto-fable51-high",
+			"claude-auto-fable51-xhigh",
+			"claude-bypass-fable51-medium",
+			"claude-bypass-fable51-high",
+			"claude-bypass-fable51-xhigh",
+			"claude-default-fable51",
+			"claude-plan-fable51",
+			"claude-approvals-fable51",
+		]);
+		for (const config of fable51Configs) {
+			expect(config.model).toBe("claude-fable-5-1[1m]");
+		}
+	});
+
+	it("lists Fable 5.1 ahead of Fable 5 in every Claude mode group", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const ids = claude!.configurations.map((c) => c.id);
+		const modes = ["claude-auto-", "claude-bypass-", "claude-default", "claude-plan", "claude-approvals"];
+		for (const mode of modes) {
+			const fable51 = ids.indexOf(mode === "claude-auto-" || mode === "claude-bypass-" ? `${mode}fable51-medium` : `${mode}-fable51`);
+			const fable5 = ids.indexOf(mode === "claude-auto-" || mode === "claude-bypass-" ? `${mode}fable5-medium` : mode);
+			expect(fable51, mode).toBeGreaterThanOrEqual(0);
+			expect(fable51, mode).toBeLessThan(fable5);
+		}
+	});
+
 	it("uses the pinned Opus 5 model in Opus 5 presets", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
 		expect(claude).toBeDefined();

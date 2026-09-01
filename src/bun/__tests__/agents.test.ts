@@ -1399,6 +1399,7 @@ describe("claudeModelFamily", () => {
 		expect(claudeModelFamily("claude-sonnet-5")).toBe("sonnet");
 		expect(claudeModelFamily("claude-haiku-4-5")).toBe("haiku");
 		expect(claudeModelFamily("claude-fable-5")).toBe("fable");
+		expect(claudeModelFamily("claude-fable-5-1[1m]")).toBe("fable");
 		expect(claudeModelFamily("openrouter/deepseek-v4")).toBeNull();
 	});
 });
