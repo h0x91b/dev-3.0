@@ -40,7 +40,9 @@ user home itself, with a reasoned allowlist for the cases that legitimately want
 (the installed CLI binary, the tmux shim, the user's own `~/.codex` and `~/.claude` config).
 
 `bun run dev --qa[=seeded|virgin]` (or `DEV3_QA_SCOPE`) points the launched app at a throwaway
-root under the OS temp dir (`scripts/qa-scope.ts`). `seeded` writes one throwaway git project and
+root under the OS temp dir (`scripts/qa-scope.ts`). Inside a task the env-var form is the one to
+use: `DEV3_QA_SCOPE` in `.dev3/config.local.json` `env` makes `dev3 dev-server start` boot the
+scoped board itself, so QA never has to start the app outside the dev-server (`/debug-ui`). `seeded` writes one throwaway git project and
 no tasks; `virgin` writes nothing, which is the state a brand-new user is in. Opt-in only — the
 plain `bun run dev` keeps showing the real board.
 

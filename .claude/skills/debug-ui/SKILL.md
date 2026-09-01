@@ -12,6 +12,17 @@ it works the same in a plain terminal session.
 This is **dev-internal tooling for the dev-3.0 repo** — NOT one of the skills dev3 ships to
 its users (those live in `src/bun/agent-skills.ts`).
 
+## One rule before the flow: the app starts through `dev3 dev-server`, nothing else
+
+Every QA run in this skill boots the app with `dev3 dev-server start` and takes it down with
+`dev3 dev-server stop`. **Never start the app any other way** — not a bare `bun run dev`, not
+`bun run dev --qa`, and not `dev3 pane run "bun run dev …"`. A pane run looks like a shortcut
+and costs you everything the dev-server owns: the port wait (`--wait`), `status` with its port
+conflicts, a verified stop that frees `DEV3_PORT0`, the Dev Server button in the task UI that
+shows the user what is running, and the `show-image` / `attention` routing rules below. If you
+need the app to behave differently (a throwaway board, an env flag), change what the dev-server
+runs — see "Scoped QA" — do not route around it.
+
 ## The whole flow
 
 This task's dev-server **is** the web UI: `bun run dev` serves the full app in local remote
@@ -62,18 +73,26 @@ above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-poo
 `dev3 dev-server start` boots a full dev3 instance on **your real board** — another task's
 "Branch Merged — mark completed?" dialog is live and clickable in your browser, and another task's
 terminal is reachable by navigation. It stays the default anyway, because it is the build the user
-runs; reach for the scoped board when the QA would touch real tasks, real accounts, or a live dialog:
+runs; reach for the scoped board when the QA would touch real tasks, real accounts, or a live dialog
+— creating or launching a task from the New Task dialog counts.
+
+The switch is an env var the `dev` script reads (`DEV3_QA_SCOPE`, see `scripts/dev.ts` and
+`scripts/qa-scope.ts`), and the dev-server takes project env from `.dev3/config.local.json`
+(gitignored, this worktree only). So the scoped board is **the same dev-server**, with one file
+in front of it:
 
 ```bash
-dev3 pane run "cd $PWD && bun run dev --qa"     # throwaway board: one fixture project, zero tasks
-dev3 pane run "cd $PWD && bun run dev --qa=virgin"   # completely empty home — first-run state
-dev3 pane logs <run-id>                          # it prints the scoped DEV3_HOME and a reset line
+mkdir -p .dev3
+printf '{ "env": { "DEV3_QA_SCOPE": "seeded" } }\n' > .dev3/config.local.json   # or "virgin"
+dev3 dev-server start --wait          # boots the throwaway board on the same DEV3_PORT0
 ```
 
-It binds the same `DEV3_PORT0` and prints the port, so step 3 of the flow above is unchanged.
-**Step 4 is not:** `dev3 dev-server stop` does not own a pane run, so close it with
-`dev3 pane close <run-id>` instead. The scoped root is stable per worktree, so a restart reuses
-the same board; `rm -rf` the printed root to start over.
+`seeded` = one fixture project, zero tasks; `virgin` = completely empty home, the first-run state.
+Steps 1, 3 and 4 of the flow above are unchanged — same port, same access code, same `stop`. The
+dev-server pane prints the scoped `DEV3_HOME` and an `rm -rf` reset line; the scoped root is stable
+per worktree, so a restart reuses the same board. Delete `.dev3/config.local.json` (and restart)
+when a later check needs the real board again. Verified 2026-09-01: the QA Fixture board came up on
+`DEV3_PORT0` with the ordinary `dev-web-access-code` token.
 
 **What it does NOT isolate** — name these rather than assuming a clean room: the tmux socket
 directory (only `TMUX_TMPDIR` moves it, and dev3 sets it nowhere), the PowerShell history file on
@@ -106,7 +125,8 @@ inside a REAL worktree (cwd-based task detection outranks `$DEV3_HOME` by design
   after (step 4) unless they want it kept.
 - **`dev3` says `app not running`? Stop and tell the user.** Every route in this skill needs the
   CLI, so there is nothing to fall back to. Never launch the app yourself — a bare `bun run dev`
-  opens a native window on the user's screen, which they did not ask for.
+  (with or without `--qa`, in your shell or in a `dev3 pane run`) opens a native window on the
+  user's screen that no dev-server owns, so nothing can `status` or `stop` it for you.
 - **No `DEV3_PORT0`?** (portCount 0, or an older worktree where it was never allocated) — run
   your own fixed-port server instead:
   `dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823` → `:47823/?token=$CODE`.
