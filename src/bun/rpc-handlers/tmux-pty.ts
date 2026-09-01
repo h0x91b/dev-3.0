@@ -2651,9 +2651,14 @@ async function spawnAgentInTask(params: {
 		throw new Error("Nothing to hand over: no parseable agent transcript has been written for this task yet.");
 	}
 
+	// The pointer rides the new agent's own command line, the way a task's first
+	// launch carries its description. It used to be typed into the pane afterwards
+	// and held until the pane went quiet — but the hold is deferred by ANY human
+	// keystroke in the task, and the user is invariably still typing in the pane he
+	// spawned this from, so the pointer sat there until he pressed Enter (seq 1775).
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
-		taskDescription: "",
+		taskDescription: handoff ? handoffPrompt(handoff) : "",
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath: task.worktreePath,
@@ -2683,7 +2688,9 @@ async function spawnAgentInTask(params: {
 		const resolved = await agents.resolveCommandForProject(
 			project,
 			task.title,
-			task.description,
+			// A takeover replaces the brief: the retelling already carries the original
+			// request, so re-launching on the raw description would start the work twice.
+			handoff ? ctx.taskDescription : task.description,
 			task.worktreePath,
 			undefined,
 			cmdOptions,
@@ -2787,13 +2794,10 @@ async function spawnAgentInTask(params: {
 
 	let handoffResult: SpawnAgentResult["handoff"] = null;
 	if (handoff) {
-		// Held, not typed: the pointer lands once the new pane goes quiet, which is
-		// what "the agent finished booting" looks like from outside. A fixed sleep
-		// would guess at that, and guessing wrong types into a banner.
-		const delivery = newPaneId
-			? await deliverAgentPrompt(task, handoffPrompt(handoff), { kind: "pane", paneId: newPaneId }, { hold: true })
-				.catch((err): AgentPromptDelivery => ({ status: "unconfirmed", reason: "backend-failure", detail: String(err) }))
-			: ({ status: "not-delivered", reason: "pane-absent" } as AgentPromptDelivery);
+		// Nothing is typed and nothing waits: the pointer went in as the launch
+		// prompt above, so it is the agent's first turn the moment it boots. Typing
+		// into the pane is what could not be timed — the launch cannot miss.
+		const delivery: AgentPromptDelivery = { status: "delivered", reason: "launch-prompt" };
 		handoffResult = { path: handoff.path, chars: handoff.chars, source: handoff.source, delivery };
 		log.info("Handed the conversation to the spawned agent", {
 			taskId: params.taskId.slice(0, 8),

@@ -304,7 +304,7 @@ const kanban = {
 	"spawnAgent.handoff": "Continuar la conversación de esta tarea",
 	"spawnAgent.handoffDesc_one": "El nuevo agente recibe un resumen narrado de la sesión de {agent} ({count} turno): tus mensajes y sus respuestas literales, sus acciones resumidas. Los agentes no pueden retomar la sesión de otro, así que cambiar es narrar.",
 	"spawnAgent.handoffDesc_other": "El nuevo agente recibe un resumen narrado de la sesión de {agent} ({count} turnos): tus mensajes y sus respuestas literales, sus acciones resumidas. Los agentes no pueden retomar la sesión de otro, así que cambiar es narrar.",
-	"spawnAgent.handoffSent": "La conversación se entregó — el nuevo agente la leerá en cuanto su panel quede en silencio.",
+	"spawnAgent.handoffSent": "La conversación se entregó — leer el resumen es el primer turno del nuevo agente.",
 	"spawnAgent.handoffNotDelivered": "El agente arrancó pero nunca recibió el puntero al resumen. Está escrito en {path} — indícaselo a mano.",
 
 	// Watch

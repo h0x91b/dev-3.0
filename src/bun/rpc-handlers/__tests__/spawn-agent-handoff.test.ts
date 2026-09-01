@@ -3,9 +3,10 @@
  *
  * What these guard: the retelling is written BEFORE a pane exists (so a task with
  * nothing to hand over never leaves a bare agent standing where a takeover was
- * asked for), the pointer is HELD rather than typed into a booting pane, and a
- * pointer that never lands comes back as a reported verdict instead of a throw —
- * the pane is already up by then, and killing it would be worse than saying so.
+ * asked for), and the pointer rides the new agent's LAUNCH COMMAND rather than
+ * being typed into its pane afterwards. Typing it was the original defect: the
+ * hold is pushed back by any human keystroke in the task, so the pointer waited
+ * for the user's Enter in the pane he spawned from (seq 1775).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -167,21 +168,36 @@ describe("spawnAgentInTask handing the conversation over", () => {
 		expect(mocks.calls).toEqual(["prepare", "split"]);
 	});
 
-	it("holds the pointer for the new pane instead of typing into a booting agent", async () => {
+	it("carries the pointer as the new agent's launch prompt", async () => {
 		const result = await spawn(true);
 
-		expect(mocks.deliverAgentPrompt).toHaveBeenCalledWith(
-			TASK,
-			`read ${PREPARED.path} and continue`,
-			{ kind: "pane", paneId: "%42" },
-			{ hold: true },
+		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			null,
+			expect.objectContaining({ taskDescription: `read ${PREPARED.path} and continue` }),
+			expect.anything(),
 		);
 		expect(result.handoff).toEqual({
 			path: PREPARED.path,
 			chars: PREPARED.chars,
 			source: "claude",
-			delivery: { status: "held" },
+			delivery: { status: "delivered", reason: "launch-prompt" },
 		});
+	});
+
+	it("types nothing into the pane — the launch already carried it", async () => {
+		await spawn(true);
+		expect(mocks.deliverAgentPrompt).not.toHaveBeenCalled();
+	});
+
+	it("leaves the launch prompt empty when nothing is being handed over", async () => {
+		await spawn(false);
+		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			null,
+			expect.objectContaining({ taskDescription: "" }),
+			expect.anything(),
+		);
 	});
 
 	it("opens no pane at all when there is nothing to hand over", async () => {
@@ -189,20 +205,5 @@ describe("spawnAgentInTask handing the conversation over", () => {
 
 		await expect(spawn(true)).rejects.toThrow("Nothing to hand over");
 		expect(mocks.splitTaskPane).not.toHaveBeenCalled();
-	});
-
-	it("reports a pointer that never landed rather than throwing over a live pane", async () => {
-		mocks.deliverAgentPrompt.mockResolvedValue({ status: "not-delivered", reason: "pane-dead" });
-
-		const result = await spawn(true);
-		expect(result.handoff?.delivery).toEqual({ status: "not-delivered", reason: "pane-dead" });
-		expect(mocks.splitTaskPane).toHaveBeenCalledTimes(1);
-	});
-
-	it("turns a delivery that threw into an unconfirmed verdict, keeping the pane", async () => {
-		mocks.deliverAgentPrompt.mockRejectedValue(new Error("socket gone"));
-
-		const result = await spawn(true);
-		expect(result.handoff?.delivery).toMatchObject({ status: "unconfirmed", reason: "backend-failure" });
 	});
 });
