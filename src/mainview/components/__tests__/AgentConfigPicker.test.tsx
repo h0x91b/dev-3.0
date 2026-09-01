@@ -148,7 +148,7 @@ describe("AgentConfigPicker", () => {
 	});
 
 	// Provider is a property of the model, so it is a caption on the Model field —
-	// never a fourth thing to pick (AGENTS.md § Model routing glossary).
+	// never a fourth thing to pick (docs/glossary.md § Model routing).
 	describe("the provider caption", () => {
 		const routedAgent: CodingAgent = {
 			id: "builtin-codex",

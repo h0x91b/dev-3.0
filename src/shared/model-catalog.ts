@@ -1,6 +1,6 @@
 /**
  * Model catalog and model roles — the pure core of dev3's multi-provider agent
- * routing (AGENTS.md § Model routing glossary).
+ * routing (docs/glossary.md § Model routing).
  *
  * Two layers that never learn about each other:
  *   - the CATALOG knows providers, credentials and named models, and nothing

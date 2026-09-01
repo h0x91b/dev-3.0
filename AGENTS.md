@@ -10,27 +10,27 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What is this
 
-A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal tools across tasks and projects. Built with **Electrobun** (not Electron), React 19, Tailwind CSS, Vite; runtime is Bun. Supports macOS, Linux, and Windows — Windows support is brand new and may still be rough (it ships with every release, unsigned at this time).
+A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal tools across tasks and projects. Built with **Electrobun** (not Electron), React 19, Tailwind CSS, Vite; runtime is Bun. Supports macOS, Linux, and Windows — Windows support is the youngest of the three and may still be rough (it ships with every release, unsigned at this time).
 
-Key idea: each project is a git repo; each task gets its own **git worktree** + **terminal** running inside **tmux** with a preconfigured command (e.g., `claude`).
+Key idea: each project is a git repo; each task gets its own **git worktree** + **terminal** — inside **tmux** on macOS/Linux, or the native terminal backend (the only option on Windows) — with a preconfigured command (e.g., `claude`). Vocabulary for the task lifecycle and model routing lives in [`docs/glossary.md`](docs/glossary.md); use its terms, do not invent synonyms.
 
 - Full product concept + implementation status tracker: [`concept.md`](concept.md)
 - Design system (colors, typography, components, glass morphism, themes): [`DESIGN.md`](DESIGN.md) — follow it for any UI code
 - UX architecture manifest (object model, navigation, surfaces, action taxonomy, placement rules, complexity budgets): [`docs/ux/PRODUCT_UX_BIBLE.md`](docs/ux/PRODUCT_UX_BIBLE.md) + machine-readable [`docs/ux/ux-architecture.yaml`](docs/ux/ux-architecture.yaml) — the canonical UX reference for where features live and which surface owns which action
 
-## UI/UX work — which skill, and when (MANDATORY)
+## UI/UX work — which skill, and when
 
 Two different jobs, two different skills, and they are not interchangeable. `/ux-principal` decides **where a thing goes, before it exists**. The `better-*` family judges **how it is built**. Pick by what the change does, not by how big it is:
 
 | Your change | Skill | Why |
 |---|---|---|
-| Adds a **destination, surface, or action** — new screen, new panel/drawer/inspector, new button or menu item, a nav change, a modal, or anything that pushes a complexity budget | `/ux-principal` first, **MANDATORY** | It owns placement, action classification, navigation rules, and the budgets. Never add UI controls ad hoc — that is exactly how toolbar/inspector button creep (the project's top UX anti-pattern) happens |
+| Adds a **destination, surface, or action** — new screen, new panel/drawer/inspector, new button or menu item, a nav change, a modal, or anything that pushes a complexity budget | `/ux-principal` first, always | It owns placement, action classification, navigation rules, and the budgets. Never add UI controls ad hoc — that is exactly how toolbar/inspector button creep (the project's top UX anti-pattern) happens |
 | Changes **how an existing control looks or feels** — radius, shadow, spacing, motion, icon, copy, colour, type, focus ring, ARIA | the owning `better-*` skill (`/better-ui`, `/better-layout`, `/better-writing`, `/better-typography`, `/better-colors`, `/better-accessibility`) | They are the craft authority and go deeper than the manifest ever did. Reading 300 KB of manifest to restyle a badge buys nothing |
 | A whole screen or flow, before a PR | `/better-interface` | Cross-discipline review pass over all six craft domains |
 
 `/ux-principal` no longer owns craft rules. Colour, contrast, typography, copy, motion, layout grammar, and accessibility belong to the `better-*` skills; the bible's §9a keeps only the **project deltas and documented overrides** those skills cannot know (see [Where dev3 overrides the better-family skills](#where-dev3-overrides-the-better-family-skills)). If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change — and note it is under a size budget enforced by `src/bun/__tests__/ux-docs-budget.test.ts`.
 
-**Screenshot the zone before you plan it.** Driving the current UI beats reasoning from memory about what is on screen — same tooling as the mandatory QA pass afterwards, see [Manual UI QA in a browser](#manual-ui-qa-in-a-browser-mandatory).
+**Screenshot the zone before you plan it.** Driving the current UI beats reasoning from memory about what is on screen — same tooling as the mandatory QA pass afterwards, see [Manual UI QA in a browser](#manual-ui-qa-in-a-browser).
 
 ## Where dev3 overrides the better-family skills
 
@@ -109,7 +109,7 @@ same as above. Reference implementation: `src/bun/notification-transports.ts`.
 
 **Aim for code that explains itself** (clear names, small functions) and add comments only where they earn their place. **Cap: a comment ≤ 3 lines.** The only exception is a genuinely weird, non-obvious use case (a workaround, a subtle invariant, a "why not the obvious thing") — those may go longer, and belong in a `decisions/` record if substantial. Don't restate what the code already says, don't narrate obvious steps, don't leave changelog-style history in comments.
 
-## No deprecation — ever (MANDATORY)
+## No deprecation — ever
 
 **This project does not deprecate things; it replaces them.** No `@deprecated` marker, no compatibility shim, no "the old path still works for now", no dead branch kept alive for callers that haven't migrated. The moment something is obsolete, delete it and rewrite **every** caller in the same change. Backward compatibility inside the codebase is not a goal — a full in-place refactor is.
 
@@ -117,13 +117,13 @@ If the rewrite feels too large to finish now, that is a signal to narrow the cha
 
 **The one carve-out is on-disk state**, where other installed versions of the app read the same files — there [On-disk data layout](#on-disk-data-layout--hard-invariants-mandatory) governs and its N-2 readability requirement wins. That is a data-format promise to other *processes*, not a deprecation policy for code.
 
-## Parallelism — prefer TeamCreate, within limits
+## Parallelism — TeamCreate when you have it, within limits
 
-When spawning agents for research, investigation, or parallel work, **prefer `TeamCreate` if your harness exposes it** — team members run as independent peers with full tool access and show up as real peers in the dev3 UI.
+When spawning agents for research, investigation, or parallel work, **prefer `TeamCreate` if it is in your tool list** — team members run as independent peers with full tool access and show up as real peers in the dev3 UI. It is not a given: in Claude Code it is an opt-in feature (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, wired in `src/shared/agent-hooks.ts`), and other harnesses do not have it at all. Check before you plan around it.
 
 Pick the mechanism by what is actually available and how wide the fan-out is:
 
-- **`TeamCreate`, up to 5 members** — the default for multi-agent work. Above 5 the team view becomes unreadable in the GUI, so never exceed it.
+- **`TeamCreate`, up to 5 members** — first choice when present. Above 5 the team view becomes unreadable in the GUI, so never exceed it.
 - **Wider than 5, or a deterministic multi-stage pipeline** — use `Workflow` (or plain `Agent` fan-out) instead of stuffing more members into a team. Breadth belongs in a workflow, not in the team panel.
 - **`Agent`** — correct when `TeamCreate` is not in your toolset at all, for a sub-agent spawned by a team member for its own internal sub-task, or for one-off delegation that doesn't need peers.
 - **No delegation** — work so trivial (single file read, single grep) that `Read` / `Grep` / `Glob` beats any agent.
@@ -180,7 +180,7 @@ Before pushing a PR branch or running `gh pr create`, rebase on the live base fi
 
 ### Task completion
 
-**Preservation gate (mandatory):** Never move a task to `completed`, and never request completion approval, while the task's work exists only in a disposable worktree. Completion is allowed when either the result is safely preserved in the destination the task requires — commonly a pull request merged into `main`, but it may be an external file, task note, shared artifact, or another explicit destination — or the user explicitly asks to complete the task. A local commit, passing tests, or an open/unmerged pull request is not enough by itself. If the required destination is unclear or the work is not safely preserved, keep the task open and ask the user.
+**Preservation gate:** never move a task to `completed`, and never request completion approval, while its work exists only in a disposable worktree — a local commit, green tests, or an open unmerged PR is not enough. The full rule (what counts as a preserved destination, what to do when it is unclear) is in the dev3 task-lifecycle protocol every agent receives at launch; this line exists so nobody reading only this file thinks completion is a formality.
 
 ## Changelog policy
 
@@ -224,13 +224,13 @@ Rules:
 
 ## Keyboard shortcuts
 
-**`src/mainview/keymap.ts` is the single source of truth for app-level keyboard shortcuts.** When you add or change one (a renderer `useGlobalShortcut` binding, a task-switcher key, or a native-menu accelerator users rely on), update its `keymap.ts` entry in the same commit — the registry renders the in-app Keyboard Shortcuts overlay (`KeyboardShortcutsModal`, Help → Keyboard Shortcuts / ⌘/ / ⇧⌘P), the [`docs/keyboard-shortcuts.md`](docs/keyboard-shortcuts.md) table, and the website, so an unregistered shortcut is invisible everywhere. `__tests__/keymap.test.ts` guards basic validity; keeping the registry in lockstep with handlers is your discipline. The registry **documents**, it does not dispatch — do not refactor the `App.tsx` handler chain to read from it. Terminal/tmux `⌃B` prefix bindings are not app-level; they live in `src/bun/tmux-config.ts` and render on the overlay's Terminal tab.
+**`src/mainview/keymap.ts` is the single source of truth for app-level keyboard shortcuts.** When you add or change one (a renderer `useGlobalShortcut` binding, a task-switcher key, or a native-menu accelerator users rely on), update its `keymap.ts` entry in the same commit — the registry renders the in-app Keyboard Shortcuts overlay (`KeyboardShortcutsModal`, Help → Keyboard Shortcuts / ⌘/ / ⇧⌘P), the [`docs/keyboard-shortcuts.md`](docs/keyboard-shortcuts.md) table, and the website, so an unregistered shortcut is invisible everywhere. `__tests__/keymap.test.ts` guards basic validity; keeping the registry in lockstep with handlers is your discipline. The registry **documents**, it does not dispatch — do not refactor the `App.tsx` handler chain to read from it. Terminal/tmux `⌃B` prefix bindings are not app-level; they live in `src/bun/tmux/config.ts` and render on the overlay's Terminal tab.
 
 ## Decision records
 
 Non-obvious architectural decisions, hacks, and workarounds go in `decisions/YYYY/MM/DD/short-slug.md` — dated directories exactly like `change-logs/`, plus a descriptive slug, e.g. `decisions/2026/08/06/worktree-branch-cleanup.md`. They record **why**, not just what, for future agents and humans.
 
-**Never number a record.** Sequential numbering cannot survive parallel agents: everyone branches off the same `main`, sees the same highest number, and picks it. Before this rule, 98 numbers were shared by two to seven records each — the number was not an identity. The **slug is the identity** and has never collided across 369 records; the date only sorts. All the old `NNN-slug.md` records were moved into the tree once, and [`decisions/README.md`](decisions/README.md) maps every old name to its new path so existing citations still resolve.
+**Never number a record.** Sequential numbering cannot survive parallel agents: everyone branches off the same `main`, sees the same highest number, and picks it. Before this rule, 98 numbers were shared by two to seven records each — the number was not an identity. The **slug is the identity** and has never collided; the date only sorts. All the old `NNN-slug.md` records were moved into the tree once, and [`decisions/README.md`](decisions/README.md) maps every old name to its new path so existing citations still resolve.
 
 **Cite a record by its path or slug, never by a bare number.** `decisions/2026/08/06/foo.md` or "the `foo` record" — "decision 164" pointed at seven different files.
 
@@ -291,47 +291,20 @@ Public `dev3` CLI exit codes are a documented contract:
 
 ## Architecture
 
-### Task lifecycle glossary
-
-- **Column** — the task's Kanban placement: a built-in `status` plus an optional custom-column ID. Users, hooks, and agents request column changes; the lifecycle machine accepts or rejects them from fresh task state.
-- **Runtime** — the actor-owned execution phase (`idle`, `preparing`, `running`, or `tearing-down`), independent of the column. `Task.runtimeState` is only a persisted recovery hint and must be verified against tmux/worktree reality at boot.
-- **Activity** — a watcher declared by lifecycle state, such as `mergeWatch` or `prWatch`. Activities deliver findings back through the task mailbox; they never write task status directly.
-- **Actor/mailbox** — the per-task FIFO that serializes lifecycle events while allowing different tasks to run in parallel. RPC callers await their own mailbox event and its synchronous effects.
-- **Draft** — a task the user explicitly marked unfinished ("Save as draft"). A property of the task (`Task.draft`), not a column and not a runtime phase: it lives in To Do, `idle`, with no worktree. No activation path may start it — the lifecycle machine rejects the move, so the UI affordances are only mirrors. The opposite of a *scratch* task (no prompt, launched immediately). Promotion to an ordinary task is one-way; see [decision 180](decisions/2026/07/29/draft-tasks-lifecycle-enforced-one-way.md).
-- **Hibernated** — a property of the task (`Task.hibernated`), not a column and not a runtime phase. The task keeps its column and its worktree; its agent, tmux session and dev server are destroyed to reclaim memory, and it sinks below every live P4 while refusing column changes. Waking is explicit and manual. It is the counterpart of *draft*: a draft never started and has no worktree; a hibernated task started, and everything it produced is intact. See [decision 184](decisions/2026/07/31/task-hibernation-property-not-runtime-phase.md).
-- **Foreign code** — a property of the task (`Task.foreignCode`), not a column and not a runtime phase: the task exists to look at commits the local user did not write (a pull request, a colleague's branch). It forbids nothing and makes nothing read-only. It gates exactly one thing: dev3 ignores that branch's committed command-bearing config (`setupScript`, `devScript`, `cleanupScript`, `env`, `builtinColumnAgents`) and skips agent trust / `.mcp.json` pre-approval, using the project's own checkout instead. Set automatically at creation from the ref the task starts on; the user may clear it after a warning — the risk then belongs to them. See [trust-the-branch-not-the-project](decisions/2026/08/10/trust-the-branch-not-the-project.md).
-- **Artifact message** — a message originated by a human gesture inside an HTML artifact, addressed to the agent of the task that published it. Delivered through `window.dev3.sendToAgent` in the viewer-injected bridge, wrapped in a `<dev3-artifact-message>` envelope. It changes no task property, forbids nothing, and lives exactly one hop: the agent answers by republishing the artifact as a new version, never by pushing into an open document. See [artifact-to-agent-message-channel](decisions/2026/08/28/artifact-to-agent-message-channel.md).
-- **Compensating event** — the explicit event dispatched when an `abort` effect fails. The transition table declares the recovery path; the executor must not hide it in ad-hoc catch logic.
-- **Peek** — a read-only observation of another task's terminal (`dev3 peek`): pane summary plus a bounded text tail. It never focuses, writes, resizes, or takes ownership, and it never classifies the peer's state — the caller reads the tail. Invisible from inside the observed task, and the observed task does not have to cooperate. See [decision 199](decisions/2026/08/06/peek-read-only-coordination-glance.md).
-- **Freshness granularity** — whether a reported last-output time describes one pane or the whole window. Native reports `pane`; tmux reports `window`, because tmux has no per-pane activity variable. Always carried next to the time so a reader knows how precise it is, never smoothed over.
-- **Handoff** — the port plus the still-running `cloudflared` process that a headless server about to exit leaves to its replacement (`RemoteHandoff` in `~/.dev3.0/remote/state.json`). The one place a child process is deliberately leaked: the quick tunnel's hostname is random per cloudflared process and the session cookie is bound to it, so killing it would change the public URL and force a re-auth on the device the user is holding. The successor re-binds the same port and adopts the same process; a record whose writer is still alive, or whose tunnel pid is dead, is discarded rather than trusted. See [self-update-handoff-and-quiet-window](decisions/2026/08/20/self-update-handoff-and-quiet-window.md).
-- **Staged update** — the slow half of a self-update, done while the old server is still serving: `brew fetch`, or download-and-extract into the install dir. The apply step is then renames only, which is what keeps the unreachable window at a few seconds. An apply that fails leaves a fully working server with its tunnel still attached.
-- **Quiet window** — the condition a headless box must meet before it updates itself unattended: no task in progress, no terminal producing output, and no browser connected, all three held together for 10 minutes. Past 72 hours of waiting it collapses to the first condition alone, so an open browser tab cannot pin a box on an old build. A pure reducer (`evaluateQuietWindow`) that also owns the hold clock; an unreadable activity probe counts as busy, never as quiet.
+Vocabulary — column, runtime, activity, draft, hibernated, foreign code, peek, handoff, harness, model catalog,
+proxy sidecar and the rest — is defined in [`docs/glossary.md`](docs/glossary.md). Read the entry before touching a
+feature it names; several of them look like a status or a column and deliberately are not.
 
 Two-process model:
 
 - **Main process** (`src/bun/index.ts`) — runs in Bun via Electrobun APIs (`BrowserWindow`, `Updater`, `Utils`); creates the app window, handles lifecycle.
 - **Renderer** (`src/mainview/`) — React app bundled by Vite; entry `main.tsx`, root component `App.tsx`.
 
-### Model routing glossary
-
-Vocabulary for running an agent CLI against arbitrary LLM providers through dev3's local proxy sidecar. Two layers, deliberately separate: one knows about providers and money and nothing about agents, the other knows about agents and nothing about credentials.
-
-**Three axes, and they are not interchangeable.** A launch picks a **harness**, then a **model**, then a **mode** — and a **provider** is a property of the model, never a fourth axis the user picks. `Provider` used to label the harness column in the launcher, which is how one word came to mean three things on one screen. It now means exactly one: who serves the model.
-
-- **Harness** — the agent CLI that runs: Claude Code, Codex, Gemini, Cursor Agent, Oh My OpenCode. It is the obvious first axis, because everything else is a property of it — which model slots exist, what a mode means, which config files it reads. Named `harness` in UI labels and in code (`launch.harness`, `${idPrefix}-harness`); "provider" for this is banned. `CodingAgent` remains the type name — one preset of one harness.
-- **Model catalog** — the app-wide list of models the user has made available, plus the providers and credentials behind them. One catalog per installation; it is not switchable and has no active/inactive state. dev3 owns the skeleton of the sidecar's config file; the user owns its contents.
-- **Catalog model** — one entry in the catalog: a user-chosen name bound to exactly one provider and one provider-native model id (`fast-gremlin` → OpenRouter, `deepseek-flash`). The name is what travels on the wire as `<provider>/<name>`, so it is limited to letters, digits, dot, dash and underscore; the sidecar resolves it. An entry belongs to a single provider — a name that could resolve to two providers is not a catalog model.
-- **Model roles** — the per-preset binding of catalog models to the roles an agent CLI actually exposes. Roles are that CLI's own, never a dev3-invented common vocabulary: Claude Code has its alias slots, Codex has its main / default-subagent / review models. A preset carrying roles is its own picker group (`groupLabel`), because its "model" is a set, not one model.
-- **Proxy sidecar** — the dev3-managed local process that realizes the catalog. Bound to loopback on one fixed port (`DEFAULT_SIDECAR_PORT`, below the ephemeral range), falling back to the last run's port and then to any free one; launched with an isolated app dir, credentials reaching it only through its child environment. One per app, brought up with the app whenever the catalog has a provider, dies with the app. The user never has to start it — the Start button exists for after a failure.
-- **Local session key** — the secret the agent CLI presents to the sidecar instead of any upstream API key. Remembered with the sidecar's port in its runtime dir and reused across restarts, because both are baked into a running agent's launch environment. Upstream keys never leave dev3's own storage and the sidecar's environment.
-- **Generated model metadata** — the model catalog dev3 hands Codex at launch so a routed model is a known model rather than an unknown slug on placeholder numbers. Cloned from Codex's own catalog, never authored by dev3, and it *replaces* the built-in catalog rather than extending it, so the built-ins are carried forward. Best-effort: if it cannot be generated the session launches on Codex's fallback metadata.
-
 ### RPC protocol
 
 Renderer ↔ main communicate via **Electrobun's built-in RPC** (IPC bridge); schema in `src/shared/types.ts` (`AppRPCSchema`, channels `bun` and `webview`).
 
-- **Request/response:** components call `api.request.METHOD(params)` (Promise, 2-minute timeout). Handlers live in `src/bun/rpc-handlers/*.ts`, split by domain (`app-handlers`, `settings-config`, `task-lifecycle`, `git-operations`, `tmux-pty`, `notes-labels`, `remote-access`, `port-tunnels`, `scripts`; `shared.ts`/`shared-pure.ts` are cross-domain helpers, not domains). `src/bun/rpc-handlers.ts` is a barrel re-exporter merging them into a single `handlers` object.
+- **Request/response:** components call `api.request.METHOD(params)` (Promise, 2-minute timeout). Handlers live in `src/bun/rpc-handlers/*.ts`, one file per domain (`task-lifecycle`, `git-operations`, `spaces`, `model-catalog`, … — list the directory rather than trusting any inventory here; `shared.ts`/`shared-pure.ts` are cross-domain helpers, not domains). `src/bun/rpc-handlers.ts` is a barrel re-exporter merging them into a single `handlers` object; a new handler goes into the domain file that already owns its data, a new domain gets a new file plus a line in the barrel.
 - **Push messages:** main sends unsolicited updates via `pushMessage?.("eventName", payload)`; the renderer dispatches them as `CustomEvent`s (e.g., `rpc:taskUpdated`) consumed with `window.addEventListener()`.
 
 ### State management
@@ -348,19 +321,19 @@ Vite builds `src/mainview/` → `dist/`; Electrobun copies `dist/` into `views/m
 
 ### Drag-and-drop files (uploaded into worktree)
 
-WKWebView does not expose native host file paths in drag-and-drop events. Dropped files are **uploaded into the task worktree** (up to 100 MB per file) and pasted as worktree-relative paths. See [decision 036](decisions/2026/04/16/worktree-uploaded-dnd-files.md).
+WKWebView does not expose native host file paths in drag-and-drop events. Dropped files are **uploaded into the task worktree** (up to 100 MB per file) and pasted as worktree-relative paths. See [`worktree-uploaded-dnd-files`](decisions/2026/04/16/worktree-uploaded-dnd-files.md).
 
 ### Process spawning (`Bun.spawn`)
 
 **NEVER use `Bun.spawn`/`Bun.spawnSync` directly** — always import `spawn`/`spawnSync` from `src/bun/spawn.ts`. macOS `.app` bundles inherit a minimal PATH; we patch `process.env.PATH` at startup (`shell-env.ts` → `index.ts`), but `Bun.spawn` without an explicit `env` option ignores the patch. The wrapper always passes `{ ...process.env, ...opts.env }` so every child process sees the full user PATH (homebrew, nvm, etc.).
 
-### tmux — always go through TmuxClient (MANDATORY)
+### tmux — always go through TmuxClient
 
-**Never spawn `tmux` directly — only via the `tmux` client singleton from `src/bun/tmux/`.** The module owns the binary/shim selection (a bare PATH `tmux` may be a different version than the server, which breaks every command — the v1.29.1 ELOOP incident, decision 105), the socket, all `-F` format declarations (`formats.ts`, TAB-separated, one parser), and `dev3-*` session naming (`session-names.ts` — never recompute names inline). A tmux subcommand the client doesn't cover means adding a typed method **plus its unit test** to `src/bun/tmux/client.ts` — not a raw spawn at the call site. Handler tests mock the `tmux` singleton (same pattern as mocking `rpc.ts`); the client's own tests inject a fake spawn. There is deliberately no automated guard for this rule — it is convention, enforced in review (decision 138).
+**Never spawn `tmux` directly — only via the `tmux` client singleton from `src/bun/tmux/`.** The module owns the binary/shim selection (a bare PATH `tmux` may be a different version than the server, which breaks every command — the v1.29.1 ELOOP incident, `decisions/2026/07/05/pin-tmux-3.6-vendored-keg.md`), the socket, all `-F` format declarations (`formats.ts`, TAB-separated, one parser), and `dev3-*` session naming (`session-names.ts` — never recompute names inline). A tmux subcommand the client doesn't cover means adding a typed method **plus its unit test** to `src/bun/tmux/client.ts` — not a raw spawn at the call site. Handler tests mock the `tmux` singleton (same pattern as mocking `rpc.ts`); the client's own tests inject a fake spawn. There is deliberately no automated guard for this rule — it is convention, enforced in review (`decisions/2026/07/19/deep-tmux-client.md`).
 
 ### Agent skill injection
 
-The app auto-installs the **dev3 skill** into agent config dirs (`~/.claude/skills/dev3/`, `~/.codex/skills/dev3/`, …) on every startup. The generated `SKILL.md` files are overwritten on each launch — **never edit them directly**; the template is the `SKILL_CONTENT` constant in `src/bun/agent-skills.ts`. The skill's `allowed-tools` frontmatter controls auto-permitted tools (omitted = no restriction, user's normal permissions apply; `allowed-tools: Bash` = Bash only).
+The app auto-installs the **dev3 skill** into agent config dirs (`~/.claude/skills/dev3/`, `~/.codex/skills/dev3/`, …) on every startup. The generated `SKILL.md` files are overwritten on each launch — **never edit them directly**; the text is composed in `src/shared/agent-skill-content.ts` (`CLAUDE_SKILL_BODY`, `CODEX_SKILL_BODY`, `GENERIC_SKILL_BODY` — one body per harness family) and written out by `src/bun/agent-skills.ts`. The skill's `allowed-tools` frontmatter controls auto-permitted tools (omitted = no restriction, user's normal permissions apply; `allowed-tools: Bash` = Bash only).
 
 **Feature differences between agents** (hooks, skill variants, CLI flags, integrations) are tracked in [`agent-support-matrix.md`](agent-support-matrix.md) — keep it up to date when adding or changing agent-specific behavior.
 
@@ -371,7 +344,7 @@ The same text is also injected as the agent's system prompt at launch, and for e
 - `src/shared/agent-command-line-budget.ts` owns the numbers: `WINDOWS_COMMAND_LINE_LIMIT`, the `AGENT_COMMAND_LINE_RESERVE` kept for the user's own task description, and `AGENT_SKILL_BODY_LIMIT` derived from them.
 - `src/bun/__tests__/agent-command-line-budget.test.ts` enforces both: each composed body against the cap **on both platforms** (the PR-footer section differs by platform, and the Windows wording is the longer one), and the whole `resolveAgentCommand` line for **every** agent against the ceiling with a full-size task.
 - When it fails, **cut prose — do not raise the cap.** Raising it moves the failure back into the OS, where there is no error message. Adding a new adapter means adding its command to that test's `AGENT_COMMANDS`.
-- Nothing else warns you: writing in `agent-skill-content.ts` gives no length signal, and POSIX has no comparable limit, so a body written on macOS looks fine right up to the point where Windows will not launch.
+- Nothing else warns you: writing in `src/shared/agent-skill-content.ts` gives no length signal, and POSIX has no comparable limit, so a body written on macOS looks fine right up to the point where Windows will not launch.
 
 ## Project scripts
 
@@ -416,7 +389,7 @@ All user-facing renderer strings are localized via `src/mainview/i18n/`; locales
 
 **Pluralization:** suffix convention `_one`, `_few`, `_many`, `_other`; call `t.plural("dashboard.projectCount", count)`. English needs only `_one`/`_other`; Russian needs all four (`"{count} проект"` / `"{count} проекта"` / `"{count} проектов"` / `"{count} проектов"`). Which suffix a count selects comes from `Intl.PluralRules` (`i18n/interpolate.ts`), so the categories are CLDR's — a new locale needs no code, only its keys.
 
-**A `{count}` string is plural by default.** `__tests__/plural-keys.test.ts` fails on any translation value containing `{count}` whose key has no plural suffix, on an incomplete form set, and on a plural base one locale has and another does not. A count that genuinely needs no agreement — a parenthetical `(N)`, a ratio `N/M`, an abbreviated unit, the total in "N of M" — goes in that test's `FLAT_COUNT_KEYS` **with a reason**. Never render a count with a hand-written ternary: `{n} {n === 1 ? "file" : "files"}` is untranslated and wrong in two of the three locales.
+**A `{count}` string is plural by default.** `src/mainview/i18n/__tests__/plural-keys.test.ts` fails on any translation value containing `{count}` whose key has no plural suffix, on an incomplete form set, and on a plural base one locale has and another does not. A count that genuinely needs no agreement — a parenthetical `(N)`, a ratio `N/M`, an abbreviated unit, the total in "N of M" — goes in that test's `FLAT_COUNT_KEYS` **with a reason**. Never render a count with a hand-written ternary: `{n} {n === 1 ? "file" : "files"}` is untranslated and wrong in two of the three locales.
 
 **Adding a locale:** mirror the `en/` domain files under `translations/{locale}/` + a merging barrel satisfying `TranslationRecord` (copy `ru.ts` structure); register in `ALL_LOCALES`/`LOCALE_LABELS` (`i18n/types.ts`) and `translationSets` (`i18n/context.tsx`). Plural rules need no code — `Intl.PluralRules` already knows the new locale; give every plural base the suffixes CLDR asks for (Polish and Czech want `_few`/`_many`, Arabic also `_zero`/`_two`), and `plural-keys.test.ts` will name the missing ones.
 
@@ -443,11 +416,11 @@ Two gates, escalating. Committing itself has no gate — commit freely, verify b
 1. **Before `git push`** — `bun run lint` plus the tests covering what you touched. A push that breaks type-checking is unacceptable even if the tests pass.
 2. **Before `gh pr create` and before enabling auto-merge** — the full suite green **on CI**, for the head you actually pushed. **Do not run `bun run test:full` locally**: it and every other unfiltered run are reserved for CI/PR validation (the Local E2E policy in [`/verify-changes`](.claude/skills/verify-changes/SKILL.md)), and on a shared dev box it cannot be taken green at all — the box is never quiet, so its failures are load, not evidence (`decisions/2026/08/27/cap-total-vitest-worker-count.md`). What you owe locally is `bun run test` plus the suites around what you touched: the file you edited is NOT sufficient on its own, because sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). **After any rebase, run that local set again and re-read CI on the new head** — a rebase pulls in code no earlier run ever saw. Enable auto-merge on a green CI, never on a green local run.
 
-### Manual UI QA in a browser (MANDATORY)
+### Manual UI QA in a browser
 
 **A green suite does not verify a visual surface.** Any change touching what the user sees can break subtly — layout shift, overflow on one viewport, console error, wrong state render. Drive the running UI, look at a screenshot, read the console before handing off. **Being a small change is not a reason to skip it** — small UI changes slip through the most. Only real exceptions: no visual surface at all, or the UI genuinely cannot be brought up. The full recipe (serving the app, the per-task isolated browser session, `agent-browser` usage) is the [`/debug-ui`](.claude/skills/debug-ui/SKILL.md) skill.
 
-**Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [decision 161](decisions/2026/07/23/streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
+**Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [`streamer-mode-css-blur-masking`](decisions/2026/07/23/streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
 
 ## Key files
 
@@ -462,10 +435,11 @@ Open the file itself rather than trusting a paraphrase — this list exists so y
 - `src/mainview/state.ts` — the reducer: every action and state field the UI has
 - `src/mainview/index.css` — design tokens, both themes
 - `src/mainview/keymap.ts` — every app-level keyboard shortcut
-- `src/bun/agent-skills.ts` — `SKILL_CONTENT`, the skill text shipped to agent config dirs
+- `src/shared/agent-skill-content.ts` — the dev3 skill text shipped to agent config dirs; `src/bun/agent-skills.ts` installs it
 - `src/shared/cli-exit-codes.ts` — public CLI exit-code contract
 - `.github/workflows/` — what CI actually runs (incl. the sharded test job)
-- `decisions/` — 280+ records of why non-obvious things are as they are; grep before assuming
+- `docs/glossary.md` — the project's vocabulary: task lifecycle, model routing
+- `decisions/` — several hundred records of why non-obvious things are as they are; grep before assuming
 
 ## Documentation
 

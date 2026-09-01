@@ -16,6 +16,7 @@ If a referenced file doesn't exist, **proceed silently** — don't flag its abse
 ├── AGENTS.md            ← primary domain + conventions doc (CLAUDE.md → symlink)
 ├── concept.md           ← product concept + implementation status
 ├── DESIGN.md            ← design system
+├── docs/glossary.md     ← project vocabulary (task lifecycle, model routing)
 ├── docs/ux/             ← UX manifest (PRODUCT_UX_BIBLE.md, ux-architecture.yaml)
 ├── decisions/           ← ADRs: YYYY/MM/DD/slug.md
 └── src/
@@ -23,7 +24,7 @@ If a referenced file doesn't exist, **proceed silently** — don't flag its abse
 
 ## Use the project's vocabulary
 
-When your output names a domain concept (a task title, a refactor proposal, a hypothesis, a test name), use the terms as they appear in `AGENTS.md` and the existing code (e.g. "worktree", "task", "project", "surface", "design token", "push message"). Don't drift to synonyms the project doesn't use.
+When your output names a domain concept (a task title, a refactor proposal, a hypothesis, a test name), use the terms as they appear in `docs/glossary.md`, `AGENTS.md` and the existing code (e.g. "worktree", "task", "project", "surface", "design token", "push message"). Don't drift to synonyms the project doesn't use.
 
 If the concept you need isn't documented yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
