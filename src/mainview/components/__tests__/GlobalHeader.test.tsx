@@ -1618,3 +1618,111 @@ describe("GlobalHeader — native terminal backend mark", () => {
 		expect(screen.queryByTestId("breadcrumb-native-backend")).toBeNull();
 	});
 });
+
+// ---- The space is a level of the trail, not a memory ----
+//
+// A project can sit in several spaces, so which one the user came through is not
+// derivable from the project. The trail states it: `dev-3.0 / AI / Nanochat`,
+// with the space a plain link and the tail always the switcher chip.
+describe("GlobalHeader — the space segment", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	function withSpaces(sensitive = false) {
+		mockedApi.request.getSpaces.mockResolvedValue({
+			version: 1,
+			spaces: [
+				{ id: "sp_ai", name: "AI Space", parentId: null, projectIds: ["p1", "p2"], createdAt: 1, sensitive },
+				{ id: "sp_other", name: "Other Space", parentId: null, projectIds: ["p1"], createdAt: 2 },
+			],
+			order: ["sp_ai", "sp_other"],
+		});
+	}
+
+	const splitInSpace: Route = { screen: "project", projectId: "p1", spaceId: "sp_ai", activeTaskId: "t1" };
+
+	it("names the space and the project, in that order, with a task open", async () => {
+		withSpaces();
+		renderHeader(splitInSpace, [project1, project2], vi.fn(), [makeBreadcrumbTask()]);
+		const crumb = await screen.findByTestId("breadcrumb-space");
+		expect(crumb).toHaveTextContent("AI Space");
+		expect(screen.getByText("Project Alpha")).toBeInTheDocument();
+		expect(screen.getByText("My Task Title")).toBeInTheDocument();
+		// dev-3.0 / AI Space / Project Alpha / #42 — the space sits before the chip.
+		expect(crumb.compareDocumentPosition(screen.getByText("Project Alpha")) & Node.DOCUMENT_POSITION_FOLLOWING)
+			.toBeTruthy();
+	});
+
+	it("carries the space into a full-page task too", async () => {
+		withSpaces();
+		renderHeader(
+			{ screen: "task", projectId: "p1", spaceId: "sp_ai", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[makeBreadcrumbTask()],
+		);
+		expect(await screen.findByTestId("breadcrumb-space")).toHaveTextContent("AI Space");
+	});
+
+	it("is a plain link to that space's board — never a second switcher", async () => {
+		withSpaces();
+		const navigate = vi.fn();
+		renderHeader(splitInSpace, [project1, project2], navigate, [makeBreadcrumbTask()]);
+		const user = userEvent.setup();
+		await user.click(await screen.findByTestId("breadcrumb-space"));
+		// Up a level: the space's own board, the task dropped.
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_ai" });
+		// One dropdown in the trail, and it belongs to the tail.
+		expect(screen.getAllByLabelText("Switch project")).toHaveLength(1);
+	});
+
+	// On the space board the space IS the tail, so it is the chip — putting a link
+	// there too would read as `AI / AI`.
+	it("does not duplicate the space on the space board itself", async () => {
+		withSpaces();
+		renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
+		await screen.findByText("AI Space");
+		expect(screen.queryByTestId("breadcrumb-space")).toBeNull();
+	});
+
+	it("stays absent when the route names no space", async () => {
+		withSpaces();
+		renderHeader({ screen: "project", projectId: "p1", activeTaskId: "t1" }, [project1], vi.fn(), [
+			makeBreadcrumbTask(),
+		]);
+		await screen.findByText("Project Alpha");
+		expect(screen.queryByTestId("breadcrumb-space")).toBeNull();
+	});
+
+	// A space name can be a client's name, so it blurs with everything else the
+	// camera must not see.
+	it("blurs a sensitive space's name", async () => {
+		withSpaces(true);
+		renderHeader(splitInSpace, [project1, project2], vi.fn(), [makeBreadcrumbTask()]);
+		const crumb = await screen.findByTestId("breadcrumb-space");
+		expect(crumb.querySelector(".streamer-private")).not.toBeNull();
+	});
+
+	// The way up now exists twice by design: the crumb and the chip's unified-board
+	// button. With a space on the route the button has one target, so it never asks.
+	it("points the unified-board button straight at the space on the route", async () => {
+		withSpaces();
+		const navigate = vi.fn();
+		renderHeader(splitInSpace, [project1, project2], navigate, [makeBreadcrumbTask()]);
+		const user = userEvent.setup();
+		await user.click(await screen.findByTestId("space-zoom-out"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_ai" });
+		expect(screen.queryByText("Which space?")).toBeNull();
+	});
+
+	// p1 is in two spaces; arriving without one leaves the button unable to guess.
+	it("still asks which space when the route names none", async () => {
+		withSpaces();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2]);
+		const user = userEvent.setup();
+		await user.click(await screen.findByTestId("space-zoom-out"));
+		expect(await screen.findByText("Which space?")).toBeInTheDocument();
+	});
+});

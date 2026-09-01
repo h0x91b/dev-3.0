@@ -813,6 +813,7 @@ const settings = {
 	"spaces.zoomOut": "Mostrar todo el espacio",
 	"spaces.openBoard": "Abrir tablero del espacio",
 	"spaces.zoomOutPick": "¿Qué espacio?",
+	"spaces.crumbOpenBoard": "Abrir el tablero del espacio {name}",
 	"spaces.boardSubtitle": "Todos los proyectos de este espacio",
 	"spaces.addProjectsSearch": "Buscar proyectos…",
 	"spaces.noProjectsMatch": "Ningún proyecto coincide",

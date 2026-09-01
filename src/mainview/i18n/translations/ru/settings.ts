@@ -838,6 +838,7 @@ const settings = {
 	"spaces.zoomOut": "Показать всё пространство",
 	"spaces.openBoard": "Доска пространства",
 	"spaces.zoomOutPick": "Какое пространство?",
+	"spaces.crumbOpenBoard": "Открыть доску пространства {name}",
 	"spaces.boardSubtitle": "Все проекты этого пространства",
 	"spaces.addProjectsSearch": "Поиск проектов…",
 	"spaces.noProjectsMatch": "Нет подходящих проектов",

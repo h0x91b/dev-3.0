@@ -81,13 +81,13 @@ ux_architecture:
       plural: "Spaces"
       observed: true
       primary_route: "screen:dashboard"      # a rail entry + a group header; NEVER its own screen
-      detail_route: null                     # a space is a grouping, not a place: no board, no breadcrumb
+      detail_route: "screen:project + spaceId"  # not a screen of its own: it rides the board route as its subject
       owner: "workspace"
       owns: []                               # references projects; owns nothing (git never moves)
       common_actions: ["create", "rename", "delete", "reorder", "edit_projects", "filter_dashboard", "hide_on_camera"]
       membership: "Many-to-many by project.id, ordered per space. A project in several spaces renders under each. Dangling ids are normal and skipped silently."
       computed_home: "Projects with no membership group under a computed `Home` heading — never stored, not renameable/deletable, absent from every membership picker."
-      never: "A merged space board, a space route, per-space columns/labels, a space colour or letter badge, drag-changed membership, a stored Home, an add-only + beside the space name, activity dots on a rail row, a filter cleared because its control went off screen."
+      never: "A space route/screen, per-space columns/labels, a space colour or letter badge, drag-changed membership, a stored Home, an add-only + beside the space name, activity dots on a rail row, a filter cleared because its control went off screen."
       fields: "id, name, parentId (always null in v1), projectIds (membership AND per-space order), createdAt, deleted?, sensitive? — the last one is the space's own hide-on-camera flag, additive and deleted rather than written false so an older app version reads spaces.json unchanged."
       narrow_filter: "Below the rail's 1024px CONTAINER width the rail is absent and the same choice (Everything, each space, Home) opens as a BottomSheet from a control beside the dashboard search field. The selection survives the resize."
       evidence: ["src/shared/types.ts (Space)", "src/bun/spaces-data.ts", "src/mainview/components/SpacesRail.tsx", "src/mainview/components/SpaceGroupedProjects.tsx", "decisions/2026/08/14/spaces-group-projects-without-replacing-boards.md", "decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md"]
@@ -170,10 +170,11 @@ ux_architecture:
       status: "observed"
       evidence: ["src/mainview/state.ts (Route)", "src/mainview/components/GlobalHeader.tsx", "src/bun/application-menu.ts"]
     breadcrumbs:
-      purpose: "Show location: Dashboard > Project > Task. Project chevron opens a project switcher dropdown."
+      purpose: "Show location: Dashboard > Space? > Project > Task. The tail carries the switcher dropdown."
       rules:
         - "Text click navigates; a segment chevron toggles a switcher over that segment's object: project name -> project switcher, task #seq-N badge -> variant menu (SiblingPopover; chevron only when the group has >=2 live variants)."
         - "Breadcrumbs show place, not bulk actions."
+        - "A space on the route (routeSpaceId) renders as a PLAIN LINK level between home and the chip — no dropdown of its own, icon-only below md so the spine survives a phone, name masked when the space is sensitive. The chip names the trail's tail: the space on a space board, the project one level deeper."
         - "The task segment also carries the passive native_backend_mark (see identity_markers.native_backend_mark) — identity, not an action."
       status: "observed"
       evidence: ["src/mainview/components/GlobalHeader.tsx (BreadcrumbSegment, project switcher)"]

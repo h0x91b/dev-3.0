@@ -75,7 +75,7 @@ else, so do not compact them by deleting it.
 
 ## 2026-08-19 — A data-bearing menu row opens on hover, its flyout beside the menu — rule now lives in bible §12.6.
 ## 2026-08-17 — A Space filters the dashboard; it never becomes a place
-- **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, and **every space action behind one `…`**; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects).
+- **Rule:** Spaces group projects on the dashboard — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, every space action behind one `…`; no space route, no colour, no stored `Home` (computed from zero-membership projects). The merged-board half was superseded 2026-08-28 — bible §10 grouping row owns it now.
 - **Why:** `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
 
 ## 2026-08-21 — The dashboard's spaces surface is calm, container-gated, and stream-safe
@@ -650,3 +650,8 @@ Folded: role → Tailwind token, no `<Button variant>` API — owned by `PRODUCT
 ## 2026-05-29 — Initial manifest derived from repository
 
 Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `ux-architecture.yaml` `routes`.
+
+## 2026-09-01 — The space is a level of the trail, not a remembered mode
+- **Rule:** A space on the route renders as a plain-link crumb between home and the chip (`dev-3.0 / AI / Nanochat`), icon-only below `md`; the tail always carries the switcher — bible §Breadcrumbs.
+- **Why:** A project in two spaces cannot say which one the user came through, so the trail states it instead of the chip silently swapping names; rejected a global "last active space" (breaks Back/Forward) and a dropdown on the space crumb (two switchers, one trail).
+- Status: observed. `GlobalHeader.tsx`, `decisions/2026/09/01/space-rides-into-a-task-by-reducer-inheritance.md`.

@@ -41,8 +41,25 @@ Two pieces, both narrow:
 on a multi-project board?" moved to a new, narrower `boardSpaceId` — a full-page task
 route carries a space but renders no board.
 
-`GlobalHeader` is untouched: the breadcrumb chip keeps naming the project once a task is
-open (`GlobalHeader.tsx:425`), by the user's explicit call.
+### The trail shows the space; it does not imply it
+
+Carrying the space invisibly was not enough: the chip swapped between naming the space and
+naming the project depending on depth, so the level the user came through vanished the moment
+they opened a task. The space is now its own crumb between home and the chip
+(`dev-3.0 / AI / Nanochat`), a **plain link** to that space's board — never a second
+switcher, because only the trail's tail carries a dropdown. The chip still names the tail: the
+space on a space board (where a link would read as `AI / AI`), the project one level deeper.
+
+Two consequences worth naming. The unified-board button on the chip now appears wherever a
+project is the chip's subject, including with a task open, and a space already on the route is
+its single target, so it stops asking which space. And the crumb is icon-only below `md`, so
+four segments plus a task title cannot push the switcher or back/forward off a phone —
+bible §12's "the breadcrumb spine stays the touch nav backbone".
+
+This supersedes the bible's prohibitions on "a breadcrumb into a space" and "a merged space
+board" (§10 grouping row) and the matching `never` list in `ux-architecture.yaml`; both were
+written before the space board shipped on 2026-08-28 and were already false. Corrected in the
+same change, with a `UX_DECISIONS.md` entry.
 
 ## Risks
 

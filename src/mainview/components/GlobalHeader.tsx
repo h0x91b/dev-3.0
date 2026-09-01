@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStor
 import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Space, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderSpaces, spacesOfProject, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
-import type { Route } from "../state";
+import { routeSpaceId, type Route } from "../state";
 import { useT } from "../i18n";
 import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
 import { parseDisplayVersion } from "../../shared/update-channel";
@@ -102,6 +102,11 @@ interface BreadcrumbSegment {
 	badge?: string;
 	onClick?: () => void;
 	isProjectDropdown?: boolean;
+	/**
+	 * The space level: a plain link to that space's board, never a switcher. Only
+	 * the trail's tail carries a dropdown, and the space is never the tail here.
+	 */
+	spaceLink?: boolean;
 	/** Streamer mode blurs this crumb (a space name can be a client's name). */
 	masked?: boolean;
 	task?: Task;
@@ -372,15 +377,23 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
 	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
-	// ---- Zoom out: from a project's board to its space's unified board ----
-	// Only offered where it means something: on a project board (never on a space
-	// board, never on a task screen) whose project belongs to at least one space.
-	const routeSpace = route.screen === "project" ? route.spaceId ?? null : null;
-	const onProjectBoard = route.screen === "project" && !route.activeTaskId && !route.taskView && !routeSpace;
-	const zoomOutSpaces = currentProjectId && onProjectBoard
-		? orderSpaces(spacesOfProject(spacesFile.spaces, currentProjectId), spacesFile.order)
-		: [];
+	// ---- The space level of the trail, and the way up to it ----
+	// The space the user came THROUGH rides on the route (board and task routes
+	// alike), so the trail can state the level instead of implying it.
+	const routeSpace = routeSpaceId(route);
 	const currentSpace = routeSpace ? spacesFile.spaces.find((sp) => sp.id === routeSpace && !sp.deleted) ?? null : null;
+	/** The board whose SUBJECT is the space: there the chip names the space itself. */
+	const onSpaceBoard = !!currentSpace && route.screen === "project" && !route.activeTaskId && !route.taskView;
+	/** The chip always names the trail's tail — the space above, a project here. */
+	const projectIsChipSubject = "projectId" in route && !onSpaceBoard;
+	// The unified-board control sits wherever a project is the chip's subject. A
+	// space already on the route is the single target, so it never asks; without
+	// one the project's own memberships are offered and several still ask.
+	const zoomOutSpaces = !currentProjectId || !projectIsChipSubject
+		? []
+		: currentSpace
+			? [currentSpace]
+			: orderSpaces(spacesOfProject(spacesFile.spaces, currentProjectId), spacesFile.order);
 
 	const zoomOutTo = useCallback((spaceId: string) => {
 		setShowSpacePicker(false);
@@ -419,10 +432,19 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			// Clickable when not already on the kanban board (no activeTaskId, not in task/activity view)
 			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
-			// A space board is about the space, so the crumb names it — a rename lands
-			// here and nowhere else, which is why a rename never moves the user. With a
-			// task open the crumb goes back to the project: that is the repo you act in.
-			const onSpaceBoard = currentSpace && route.screen === "project" && !route.activeTaskId && !route.taskView;
+			// A space board is about the space, so the chip names it — a rename lands
+			// here and nowhere else, which is why a rename never moves the user. One
+			// level deeper the chip names the project and the space walks in front of
+			// it as a plain link: the level the user came through, stated rather than
+			// remembered, which is what makes the way back up obvious.
+			if (currentSpace && !onSpaceBoard) {
+				segments.push({
+					label: currentSpace.name,
+					spaceLink: true,
+					onClick: () => zoomOutTo(currentSpace.id),
+					masked: isSpaceSensitive(currentSpace, sensitiveProjectIds),
+				});
+			}
 			segments.push({
 				label: onSpaceBoard ? currentSpace.name : projectDisplayName(project, t("ops.boardName")),
 				isProjectDropdown: true,
@@ -789,6 +811,19 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 									</div>
 								)}
 							</div>
+						) : seg.spaceLink ? (
+							// Icon-only below `md`: the trail must not push the project chip
+							// or back/forward off a phone. No tooltip on purpose — a hover
+							// card would print a masked client's name straight onto camera.
+							<button
+								onClick={seg.onClick}
+								data-testid="breadcrumb-space"
+								aria-label={t("spaces.crumbOpenBoard", { name: seg.label })}
+								className="header-anim flex items-center gap-1.5 min-w-0 flex-shrink max-md:min-h-[44px] max-md:px-1 text-fg-3 hover:text-fg transition-colors"
+							>
+								<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0" />
+								<span className={`truncate max-md:hidden ${seg.masked ? MASK_CLASS : ""}`}>{seg.label}</span>
+							</button>
 						) : seg.onClick ? (
 							<button
 								onClick={seg.onClick}
