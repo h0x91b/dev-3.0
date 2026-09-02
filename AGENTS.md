@@ -117,13 +117,13 @@ If the rewrite feels too large to finish now, that is a signal to narrow the cha
 
 **The one carve-out is on-disk state**, where other installed versions of the app read the same files — there [On-disk data layout](#on-disk-data-layout--hard-invariants-mandatory) governs and its N-2 readability requirement wins. That is a data-format promise to other *processes*, not a deprecation policy for code.
 
-## Parallelism — TeamCreate when you have it, within limits
+## Parallelism — prefer TeamCreate, within limits
 
-When spawning agents for research, investigation, or parallel work, **prefer `TeamCreate` if it is in your tool list** — team members run as independent peers with full tool access and show up as real peers in the dev3 UI. It is not a given: in Claude Code it is an opt-in feature (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, wired in `src/shared/agent-hooks.ts`), and other harnesses do not have it at all. Check before you plan around it.
+When spawning agents for research, investigation, or parallel work, **prefer `TeamCreate`** — team members run as independent peers with full tool access and show up as real peers in the dev3 UI. Every Claude Code launch from dev3 has it: `CLAUDE_DEFAULT_ENV` in `src/bun/agents.ts` sets `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` for all Claude presets. Other harnesses (Codex, Gemini, Cursor Agent) have no equivalent, so there the list below starts at `Workflow` / `Agent`.
 
 Pick the mechanism by what is actually available and how wide the fan-out is:
 
-- **`TeamCreate`, up to 5 members** — first choice when present. Above 5 the team view becomes unreadable in the GUI, so never exceed it.
+- **`TeamCreate`, up to 5 members** — the default for multi-agent work under Claude Code. Above 5 the team view becomes unreadable in the GUI, so never exceed it.
 - **Wider than 5, or a deterministic multi-stage pipeline** — use `Workflow` (or plain `Agent` fan-out) instead of stuffing more members into a team. Breadth belongs in a workflow, not in the team panel.
 - **`Agent`** — correct when `TeamCreate` is not in your toolset at all, for a sub-agent spawned by a team member for its own internal sub-task, or for one-off delegation that doesn't need peers.
 - **No delegation** — work so trivial (single file read, single grep) that `Read` / `Grep` / `Glob` beats any agent.
