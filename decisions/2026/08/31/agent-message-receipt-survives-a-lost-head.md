@@ -1,5 +1,11 @@
 # A long agent message carries a receipt, because we cannot promise it arrives whole
 
+> Superseded on 2026-09-02 by
+> [`decisions/2026/09/02/receipt-arms-at-the-pty-chunk-boundary.md`](../../09/02/receipt-arms-at-the-pty-chunk-boundary.md):
+> the mechanism was found (Claude Code drops the folded first ~1 KiB pty chunk at submit), so the
+> receipt now arms at 1 000 bytes of the typed envelope rather than 1 500 bytes of body. The
+> receipt design itself — a copy on disk, named on the last line — stands.
+
 ## Context
 
 Issue #1608 (@yhattav, dev3 v1.35.1, tmux, macOS): roughly one in three `dev3 message`

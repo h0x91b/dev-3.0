@@ -49,9 +49,16 @@ vi.mock("../logger", () => ({
 import { holdMessageForAgentPane } from "../agent-prompt";
 import { sendMessageImmediately } from "../scheduled-message-scheduler";
 import { writeAgentMessageReceipt } from "../agent-message-spill";
+import { wrapAgentMessage } from "../../shared/agent-message-envelope";
+import { utf8Length } from "../../shared/pane-input";
 import { AGENT_MESSAGE_RECEIPT_KEEP, AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES, type Task } from "../../shared/types";
 
 const SOURCE = { taskId: "sender-1234", seq: 7, title: "Sender", projectId: "proj-1" };
+
+/** Bytes of the envelope `body` would be typed in, before any receipt line is added. */
+function typedBytes(body: string, subject: string): number {
+	return utf8Length(wrapAgentMessage(body, SOURCE, "proj-1", subject));
+}
 
 function task(): Task {
 	return {
@@ -122,6 +129,39 @@ describe("a long agent message carries a receipt the lost head cannot take with 
 		expect(existsSync(join(taskRoot, "messages", "receipts"))).toBe(false);
 	});
 
+	// The receiver's input layer chunks what is TYPED — header included — so the gate has to
+	// read the envelope. A body under the threshold is still exposed once its header pushes
+	// the delivery past one pty read (anthropics/claude-code#90910: the cut is at byte 1022).
+	it("arms on the typed envelope, not the body: a short body under a long header still gets one", async () => {
+		const subject = "a report whose header alone eats a good part of the first read";
+		const text = body(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES - 200);
+		expect(utf8Length(text)).toBeLessThan(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES);
+		expect(typedBytes(text, subject)).toBeGreaterThanOrEqual(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES);
+
+		await sendMessageImmediately(task(), text, null, SOURCE, { subject });
+
+		const path = /<full-copy>(.+)<\/full-copy>/.exec(deliveredPrompt())?.[1] ?? "";
+		expect(path).not.toBe("");
+		expect(readFileSync(path, "utf8")).toBe(text);
+	});
+
+	it("a delivery that fits one pty read is never at risk, so it carries no receipt", async () => {
+		const subject = "short";
+		const text = body(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES - 400);
+		expect(typedBytes(text, subject)).toBeLessThan(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES);
+
+		await sendMessageImmediately(task(), text, null, SOURCE, { subject });
+
+		expect(deliveredPrompt()).not.toContain("<full-copy>");
+		expect(existsSync(join(taskRoot, "messages", "receipts"))).toBe(false);
+	});
+
+	it("the threshold sits at the pty chunk size, so the whole vulnerable range is covered", () => {
+		// Field measurement: the first read ends at byte 1022 on macOS. Anything typed past
+		// it is a second chunk, and the fold-and-drop happens only when there IS a second chunk.
+		expect(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES).toBeLessThanOrEqual(1022);
+	});
+
 	it("writes nothing for a human's own message — only agent traffic is wrapped", async () => {
 		await sendMessageImmediately(task(), body(3_000), null, null, { subject: "typed by the user" });
 
@@ -134,13 +174,13 @@ describe("the receipts directory is bounded, not accumulating", () => {
 	it(`keeps the newest ${AGENT_MESSAGE_RECEIPT_KEEP} and deletes the rest`, async () => {
 		const dir = join(taskRoot, "messages", "receipts");
 		for (let i = 0; i < AGENT_MESSAGE_RECEIPT_KEEP + 12; i += 1) {
-			await writeAgentMessageReceipt(task(), `${i}:${"x".repeat(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES)}`);
+			await writeAgentMessageReceipt(task(), `${i}: a body`, AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES);
 		}
 		expect(readdirSync(dir).length).toBe(AGENT_MESSAGE_RECEIPT_KEEP);
 	});
 
 	it("does not reach the spill files: they live outside the receipts directory", async () => {
-		await writeAgentMessageReceipt(task(), "y".repeat(AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES));
+		await writeAgentMessageReceipt(task(), "a body", AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES);
 		const [name] = readdirSync(join(taskRoot, "messages", "receipts"));
 		expect(name).toMatch(/^message-/);
 		// The spill path is `<root>/messages/message-*.md`; pruning only ever lists

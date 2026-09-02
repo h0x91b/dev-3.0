@@ -90,15 +90,19 @@ async function pruneReceipts(dir: string): Promise<void> {
  * The text is still typed in full; this is the copy the receiver falls back to when what
  * reached it is not what was sent. Delivery into a terminal ends in an agent CLI's input
  * layer, which dev3 does not own, and issue #1608 is a report of a head arriving missing
- * from one — so every body big enough to be at risk keeps a copy the receiver can name.
+ * from one — so every delivery big enough to be at risk keeps a copy the receiver can name.
+ *
+ * `typedBytes` is the size of what will actually be typed — the envelope around `body`,
+ * measured before the receipt line is added — because the receiver's input layer sees
+ * the envelope, not the body: a short body under a long header is exposed all the same.
  *
  * Bounded, not accumulating: the newest {@link AGENT_MESSAGE_RECEIPT_KEEP} survive and the
  * directory dies with the task. Best-effort by design — a receipt that could not be
  * written must never cost the message itself, so a failure is logged and delivery goes on.
  */
-export async function writeAgentMessageReceipt(task: Task, text: string): Promise<string | null> {
-	const bytes = utf8Length(text);
-	if (bytes < AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES) return null;
+export async function writeAgentMessageReceipt(task: Task, body: string, typedBytes: number): Promise<string | null> {
+	if (typedBytes < AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES) return null;
+	const bytes = utf8Length(body);
 	try {
 		const project = await data.getProject(task.projectId);
 		// A stamp alone collides when two peers report in the same millisecond, and the
@@ -107,7 +111,7 @@ export async function writeAgentMessageReceipt(task: Task, text: string): Promis
 		const dir = messageReceiptDir(taskDir(project, task));
 		const path = `${dir}/message-${stamp}.md`;
 		await mkdir(dir, { recursive: true });
-		await writeFile(path, text, "utf8");
+		await writeFile(path, body, "utf8");
 		await pruneReceipts(dir);
 		return path;
 	} catch (err) {

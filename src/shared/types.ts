@@ -2702,14 +2702,20 @@ export const MAX_SCHEDULED_MESSAGE_LENGTH = 80_000;
 export const AGENT_MESSAGE_SPILL_THRESHOLD_BYTES = 4_000;
 
 /**
- * UTF-8 bytes of message body above which a copy is kept on disk as well — the
- * message's receipt, named at the END of the envelope so a lost head cannot take the
- * way back with it (issue #1608). Below it the body still travels as text alone.
+ * UTF-8 bytes of TYPED text (the whole envelope, not the body) from which a copy is
+ * kept on disk as well — the message's receipt, named at the END of the envelope so a
+ * lost head cannot take the way back with it (issue #1608). Below it the message
+ * travels as text alone.
  *
- * 1 500 because that is where the field report starts: every truncated arrival in
- * #1608 was over roughly 1.5 KB, and shorter messages arrived whole.
+ * 1 000 because the receiving CLI reads a pty about 1 KiB at a time: a delivery longer
+ * than one read arrives in several chunks, Claude Code folds the first into a
+ * `[Pasted text #N]` attachment, and that attachment is intermittently dropped at
+ * submit (anthropics/claude-code#90910 — the cut lands at byte 1022 every time). What
+ * fits one read is never folded, so the receipt arms exactly where the exposure begins.
+ * Measured on the envelope because that is what the pty sees; a 300-byte header on a
+ * 800-byte body is already two reads.
  */
-export const AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES = 1_500;
+export const AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES = 1_000;
 
 /**
  * How many receipts one task keeps. Writing the newest deletes the oldest beyond this,
