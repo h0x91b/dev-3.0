@@ -31,6 +31,7 @@ vi.mock("../rpc", () => ({
 			consumePendingNotificationNav: vi.fn().mockResolvedValue(null),
 			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
+			setWindowTitleContext: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			pullProjectMain: vi.fn(),
@@ -3003,6 +3004,38 @@ describe("App keyboard shortcuts", () => {
 
 			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 			expect(api.request.respondToAgentLaunchRequest).not.toHaveBeenCalled();
+		});
+	});
+
+	// The route context reaches two places: this window's tab title, and the host,
+	// which turns it into the native window title — the only way to tell several
+	// windows apart in Mission Control.
+	describe("window title", () => {
+		// App captures whatever document.title holds at mount as the base title, so
+		// a previous test's title would otherwise become this one's suffix.
+		beforeEach(() => {
+			document.title = "dev-3.0";
+		});
+
+		it("reports the project name on a board route", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+
+			expect(document.title).toBe("Alpha · dev-3.0");
+			expect(api.request.setWindowTitleContext).toHaveBeenCalledWith({ context: "Alpha" });
+		});
+
+		it("reports no context on the dashboard", async () => {
+			await renderApp();
+
+			expect(document.title).toBe("dev-3.0");
+			expect(api.request.setWindowTitleContext).toHaveBeenCalledWith({ context: null });
 		});
 	});
 });

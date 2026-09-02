@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getISOWeek, formatDateTime, makeTitle } from "../app-utils";
+import { getISOWeek, formatDateTime, makeTitle, composeWindowTitle } from "../app-utils";
 
 describe("getISOWeek", () => {
 	it("returns week 1 for Jan 1 2024 (Monday)", () => {
@@ -97,5 +97,23 @@ describe("makeTitle", () => {
 		expect(makeTitle("1.2.3", "now", "prod")).toBe("dev-3.0 v1.2.3 [now]");
 		expect(makeTitle("1.2.3", "now", "stable")).toBe("dev-3.0 v1.2.3 [now]");
 		expect(makeTitle("1.2.3", "now", undefined)).toBe("dev-3.0 v1.2.3 [now]");
+	});
+});
+
+describe("composeWindowTitle", () => {
+	it("puts the route context in front of the base title", () => {
+		expect(composeWindowTitle("dev-3.0 v1.2.3 [now]", "Fix auth race")).toBe(
+			"Fix auth race · dev-3.0 v1.2.3 [now]",
+		);
+	});
+
+	it("keeps the base title alone when there is no context", () => {
+		expect(composeWindowTitle("dev-3.0 v1.2.3 [now]", null)).toBe("dev-3.0 v1.2.3 [now]");
+		expect(composeWindowTitle("dev-3.0", undefined)).toBe("dev-3.0");
+		expect(composeWindowTitle("dev-3.0", "   ")).toBe("dev-3.0");
+	});
+
+	it("trims a padded context", () => {
+		expect(composeWindowTitle("dev-3.0", "  My Project  ")).toBe("My Project · dev-3.0");
 	});
 });

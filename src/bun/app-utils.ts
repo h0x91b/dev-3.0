@@ -37,3 +37,13 @@ export const formatDateTime = (d: Date) => {
 /** Builds the window title string, marking non-stable channels (see above). */
 export const makeTitle = (version: string, dt: string, buildChannel?: string) =>
 	`${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version} [${dt}]`;
+
+/**
+ * Prefixes a window's base title with the route context the renderer reports
+ * (task or project name, or the streamer-mode placeholder). The context goes
+ * first because Mission Control and the Window menu truncate the tail.
+ */
+export const composeWindowTitle = (base: string, context: string | null | undefined) => {
+	const trimmed = context?.trim();
+	return trimmed ? `${trimmed} · ${base}` : base;
+};

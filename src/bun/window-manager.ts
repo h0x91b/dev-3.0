@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
+import { composeWindowTitle } from "./app-utils";
 import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, offscreenFrameClamp, type DisplayLike, type Rect } from "./window-state";
 import { isFreshStartMode } from "./fresh-start";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
@@ -138,11 +139,25 @@ export interface CreateAppWindowOptions {
  * close handlers don't need to do that themselves.
  */
 export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
+	// Each window titles itself: the renderer reports its own route context, and
+	// only the window that sent it may be retitled. The shared `handlers` object
+	// cannot do that (it has no idea which window called), hence the per-window
+	// override below over a back-reference filled in right after creation.
+	let self: BrowserWindow | null = null;
+	const setWindowTitleContext = ({ context }: { context: string | null }): void => {
+		if (!self) return;
+		try {
+			self.setTitle(composeWindowTitle(opts.title, context));
+		} catch (err) {
+			log.debug("setTitle failed", { error: String(err) });
+		}
+	};
+
 	const rpc = BrowserView.defineRPC<AppRPCSchema>({
 		maxRequestTime: opts.maxRequestTime ?? 120_000,
 		handlers: {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			requests: opts.handlers as any,
+			requests: { ...opts.handlers, setWindowTitleContext } as any,
 			messages: {},
 		},
 	});
@@ -190,6 +205,8 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	// bundle's own icon already reaches the dock and the launcher.
 	applyWindowsWindowIcon(win.ptr as unknown as number);
 
+	self = win;
+
 	const id = ++seq;
 	const entry: WindowEntry = { window: win, id };
 	windows.add(entry);
@@ -203,6 +220,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	});
 
 	win.on("close", () => {
+		self = null; // a late title report must not touch a closed window
 		windows.delete(entry);
 		if (focusedWindow === win) {
 			focusedWindow = firstWindow();

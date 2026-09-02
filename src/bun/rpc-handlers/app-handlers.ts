@@ -106,6 +106,15 @@ async function setWindowForeground(params: { focused: boolean }): Promise<void> 
 	setAppForeground(params.focused);
 }
 
+/**
+ * Titling a window is per-window work, so `window-manager` overrides this in each
+ * window's own RPC instance. This entry exists for the remote transport, whose
+ * browser clients report a context they already applied to their own tab title.
+ */
+async function setWindowTitleContext(_params: { context: string | null }): Promise<void> {
+	// Intentionally empty — see above.
+}
+
 /** The renderer gates transient notifications while terminal immersive fullscreen owns the screen. */
 async function setTerminalFocusHandler(params: { active: boolean }): Promise<void> {
 	setTerminalFocus(params.active);
@@ -1052,6 +1061,7 @@ export const appHandlers = {
 	openNewWindow,
 	hideApp,
 	setWindowForeground,
+	setWindowTitleContext,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
 	setStreamerPrivacy: setStreamerPrivacyHandler,

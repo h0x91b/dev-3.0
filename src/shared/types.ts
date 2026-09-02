@@ -5533,6 +5533,17 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			/**
+			 * Renderer reports the route context (task / project name, or the
+			 * streamer-mode placeholder) so the native window title names what the
+			 * window shows — the only way to tell several windows apart. Handled per
+			 * window in `window-manager`; a no-op for remote browser clients, which
+			 * already own their own tab title.
+			 */
+			setWindowTitleContext: {
+				params: { context: string | null };
+				response: void;
+			};
+			/**
 			 * Renderer tells the backend when terminal immersive fullscreen owns the
 			 * screen so agent notifications can queue until the user exits.
 			 */

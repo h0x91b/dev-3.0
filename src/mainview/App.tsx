@@ -658,7 +658,9 @@ function App() {
 	}, [state.route]);
 
 	// Drive document.title from the current route so the browser tab shows the
-	// project/task name — the only orientation cue in remote (browser) mode.
+	// project/task name — the only orientation cue in remote (browser) mode. The
+	// same context also goes to the host, which titles this window natively (the
+	// only way to tell several windows apart in Mission Control / Window menu).
 	// Streamer mode locks every project the user flagged `sensitive`: it cannot be
 	// entered, so a stray click during a recording cannot expose it.
 	const streamerModeOn = useStreamerMode();
@@ -679,20 +681,21 @@ function App() {
 		const { route } = state;
 		if (!baseTitleRef.current) baseTitleRef.current = document.title;
 		const base = baseTitleRef.current || "dev-3.0";
-		let prefix = "";
+		let context: string | null = null;
 		// A tab title cannot be blurred (CSS reaches the document, not the chrome),
 		// so a sensitive project's context is replaced rather than masked.
 		const locked = isRouteLocked(route);
 		if (locked) {
-			prefix = `${t("streamer.privateTitle")} · `;
+			context = t("streamer.privateTitle");
 		} else if (route.screen === "project" || route.screen === "project-terminal" || route.screen === "project-settings") {
 			const project = state.projects.find((p) => p.id === route.projectId);
-			if (project) prefix = `${project.name} · `;
+			if (project) context = project.name;
 		} else if (route.screen === "task") {
 			const task = state.currentProjectTasks.find((task) => task.id === route.taskId);
-			if (task) prefix = `${getTaskTitle(task)} · `;
+			if (task) context = getTaskTitle(task);
 		}
-		document.title = prefix ? `${prefix}${base}` : base;
+		document.title = context ? `${context} · ${base}` : base;
+		void api.request.setWindowTitleContext?.({ context })?.catch?.(() => { /* best-effort */ });
 	}, [state.route, state.currentProjectTasks, state.projects, isRouteLocked, t]);
 
 	// Route persistence is enabled only after the initial restore attempt has

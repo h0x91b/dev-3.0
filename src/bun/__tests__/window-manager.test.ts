@@ -14,9 +14,13 @@ type FakeWindow = {
 	setFrame: ReturnType<typeof vi.fn>;
 	isFullScreen: ReturnType<typeof vi.fn>;
 	setFullScreen: ReturnType<typeof vi.fn>;
+	setTitle: ReturnType<typeof vi.fn>;
 	focus: ReturnType<typeof vi.fn>;
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
+	/** The RPC request handlers this window's own rpc instance was built with. */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	rpcRequests: Record<string, (...args: any[]) => any>;
 	frame?: { x: number; y: number; width: number; height: number };
 };
 
@@ -37,13 +41,17 @@ vi.mock("electrobun/bun", () => {
 		setFrame: ReturnType<typeof vi.fn>;
 		isFullScreen: ReturnType<typeof vi.fn>;
 		setFullScreen: ReturnType<typeof vi.fn>;
+		setTitle: ReturnType<typeof vi.fn>;
 		focus: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		rpcRequests: Record<string, (...args: any[]) => any>;
 		frame?: { x: number; y: number; width: number; height: number };
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		constructor(opts?: any) {
 			this.frame = opts?.frame;
+			this.rpcRequests = opts?.rpc?.__requests ?? {};
 			const fakeSend: Record<string, ReturnType<typeof vi.fn>> = {};
 			const handlers: Record<string, () => void> = {};
 			this.webview = {
@@ -66,6 +74,7 @@ vi.mock("electrobun/bun", () => {
 			});
 			this.isFullScreen = vi.fn(() => false);
 			this.setFullScreen = vi.fn();
+			this.setTitle = vi.fn();
 			this.focus = vi.fn();
 			this.on = vi.fn((name: string, handler: () => void) => {
 				handlers[name] = handler;
@@ -76,7 +85,10 @@ vi.mock("electrobun/bun", () => {
 	}
 	return {
 		BrowserView: {
-			defineRPC: vi.fn(() => ({ setTransport: vi.fn() })),
+			// __requests exposes the per-window request handlers to the test; the
+			// real defineRPC keeps them private inside the transport.
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			defineRPC: vi.fn((opts: any) => ({ setTransport: vi.fn(), __requests: opts?.handlers?.requests ?? {} })),
 		},
 		BrowserWindow: FakeBrowserWindow,
 		Screen: {
@@ -223,6 +235,45 @@ describe("window-manager", () => {
 		expect(secondWin.frame?.y).toBeLessThanOrEqual(54);
 		// x must not exceed wa.width - window.width (= 1920 - 1824 = 96)
 		expect(secondWin.frame?.x).toBeLessThanOrEqual(96);
+	});
+
+	it("titles only the window whose renderer reported the context", () => {
+		spawn();
+		spawn();
+
+		const [first, second] = createdWindows;
+		second.rpcRequests.setWindowTitleContext({ context: "Fix auth race" });
+
+		expect(second.setTitle).toHaveBeenCalledWith("Fix auth race · dev-3.0");
+		expect(first.setTitle).not.toHaveBeenCalled();
+	});
+
+	it("falls back to the bare base title when the route has no context", () => {
+		spawn();
+		const [win] = createdWindows;
+
+		win.rpcRequests.setWindowTitleContext({ context: null });
+
+		expect(win.setTitle).toHaveBeenCalledWith("dev-3.0");
+	});
+
+	it("ignores a title report that arrives after the window closed", () => {
+		spawn();
+		const [win] = createdWindows;
+		win.handlers.close?.();
+
+		expect(() => win.rpcRequests.setWindowTitleContext({ context: "Late" })).not.toThrow();
+		expect(win.setTitle).not.toHaveBeenCalled();
+	});
+
+	it("survives a setTitle that throws (window torn down natively)", () => {
+		spawn();
+		const [win] = createdWindows;
+		win.setTitle.mockImplementation(() => {
+			throw new Error("window is gone");
+		});
+
+		expect(() => win.rpcRequests.setWindowTitleContext({ context: "Boom" })).not.toThrow();
 	});
 
 	it("invokes onClosed with the remaining window count", () => {
