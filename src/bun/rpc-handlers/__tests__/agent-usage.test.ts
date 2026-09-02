@@ -36,7 +36,7 @@ describe("buildClaudeUsageDays", () => {
 		expect(day1.inputTokens).toBe(1_000_000);
 		expect(day1.outputTokens).toBe(1_000_000);
 		expect(day1.cacheReadInputTokens).toBe(500_000);
-		expect(day1.costUsd).toBeCloseTo(30 + 0.25, 6); // +0.5/M * 0.5M cache read
+		expect(day1.costUsd).toBeCloseTo(30 + 0.125, 6); // +0.25/M * 0.5M cache read (Opus 4.8 published rate)
 		expect(day1.fullyPriced).toBe(true);
 		expect(day1.source).toBe("claude");
 
