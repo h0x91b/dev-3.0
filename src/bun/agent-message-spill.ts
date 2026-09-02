@@ -1,10 +1,10 @@
 /**
  * Long agent messages become a file plus a pointer.
  *
- * A pane is typed into, not written to, and the program reading it takes about one
+ * A pane is pasted into, not written to, and the program reading it takes about one
  * KiB per read; a delivery longer than that arrives in pieces, and Claude Code
  * intermittently loses the first piece on submit (issue #1608) — see
- * `AGENT_MESSAGE_SPILL_THRESHOLD_BYTES`. Rather than type a body that can half-arrive,
+ * `AGENT_MESSAGE_SPILL_THRESHOLD_BYTES`. Rather than paste a body that can half-arrive,
  * anything longer than one read is written next to the task and the agent is told to
  * read it.
  */

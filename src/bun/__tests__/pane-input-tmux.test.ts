@@ -315,12 +315,21 @@ describe("one stage still fits what each backend can physically carry", () => {
 	 */
 	const TMUX_COMMAND_BYTES = 16_344;
 
+	/** `paste-buffer -d -p -b dev3-paste-<uuid> -t %999`, the widest a literal chunk gets. */
+	const PASTE_COMMAND = `paste-buffer -d -p -b dev3-paste-${"x".repeat(36)} -t %999`.length;
+
+	// Text no longer rides the command list at all: it goes in on its own `set-buffer`
+	// command, and the guarded list only names the buffer. Two commands, two ceilings.
+	it("keeps the buffer load that carries the text inside tmux's command-length ceiling", () => {
+		const load = `set-buffer -b dev3-paste-${"x".repeat(36)} -- `.length + PANE_INPUT_LIMITS.maxStageBytes;
+		expect(load).toBeLessThan(TMUX_COMMAND_BYTES);
+		expect(load).toBeLessThan(MAX_ARG_STRLEN);
+	});
+
 	it("keeps the worst-case guarded tmux command inside tmux's own command-length ceiling", () => {
-		const chunkPrefix = "send-keys -t %999 -H ".length;
 		const guard = "if-shell -t %999 -F ".length + 160;
 		const worstCaseCommand =
-			PANE_INPUT_LIMITS.maxStageBytes * 3 +
-			PANE_INPUT_LIMITS.maxSteps * chunkPrefix +
+			PANE_INPUT_LIMITS.maxSteps * PASTE_COMMAND +
 			PANE_INPUT_LIMITS.maxSteps * " ; ".length +
 			"display-message -p dev3-pane-input-sent".length +
 			guard;
@@ -328,16 +337,14 @@ describe("one stage still fits what each backend can physically carry", () => {
 	});
 
 	it("keeps the worst-case tmux argv element and the native frame inside their ceilings", () => {
-		// EVERY piece shares one argv element: the hex (3 bytes per byte of text), one
-		// `send-keys -t %NNN -H ` prefix per chunk, the ` ; ` joins, and the marker command.
-		// The per-chunk shape is measured against the real encoder in tmux client.test.ts.
-		const chunkPrefix = "send-keys -t %999 -H ".length;
+		// The command list shares ONE argv element: a `paste-buffer` per chunk, the ` ; `
+		// joins, and the marker command. The per-chunk shape is measured against the real
+		// encoder in tmux client.test.ts.
 		const joins = PANE_INPUT_LIMITS.maxSteps * " ; ".length;
 		const marker = "display-message -p dev3-pane-input-sent".length;
-		const worstCaseArgv =
-			PANE_INPUT_LIMITS.maxStageBytes * 3 + PANE_INPUT_LIMITS.maxSteps * chunkPrefix + joins + marker;
-		expect(worstCaseArgv).toBeLessThan(MAX_ARG_STRLEN);
-		// Base64 is 4 bytes out per 3 in; the frame also carries its JSON envelope.
+		expect(PANE_INPUT_LIMITS.maxSteps * PASTE_COMMAND + joins + marker).toBeLessThan(MAX_ARG_STRLEN);
+		// Native writes the bytes straight to the PTY; base64 is 4 bytes out per 3 in, and
+		// the frame also carries its JSON envelope.
 		const worstCaseFrame = Math.ceil(PANE_INPUT_LIMITS.maxStageBytes / 3) * 4;
 		expect(worstCaseFrame).toBeLessThan(NATIVE_FRAME_BYTES);
 	});

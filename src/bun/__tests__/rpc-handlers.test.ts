@@ -7745,12 +7745,20 @@ describe("handlers.rebaseTaskViaAgent", () => {
 	}
 
 	/**
-	 * The literal text one guarded send put into the pane. The adapter sends text as
-	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 * The literal text one guarded send put into the pane. Text rides a tmux paste buffer,
+	 * so reading it back means resolving each `paste-buffer -b <name>` against the
+	 * `set-buffer` that loaded it.
 	 */
 	function typedText(args: string[] | undefined): string {
-		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
-		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+		const loaded = new Map(
+			mockSpawn.mock.calls
+				.map((c) => c[0] as string[])
+				.filter((argv) => argv[3] === "set-buffer")
+				.map((argv) => [argv[5] as string, argv[7] as string] as const),
+		);
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+			.map((match) => loaded.get(match[1] as string) ?? "")
+			.join("");
 	}
 
 	/**
@@ -7844,12 +7852,20 @@ describe("handlers.commitTaskViaAgent", () => {
 	}
 
 	/**
-	 * The literal text one guarded send put into the pane. The adapter sends text as
-	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 * The literal text one guarded send put into the pane. Text rides a tmux paste buffer,
+	 * so reading it back means resolving each `paste-buffer -b <name>` against the
+	 * `set-buffer` that loaded it.
 	 */
 	function typedText(args: string[] | undefined): string {
-		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
-		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+		const loaded = new Map(
+			mockSpawn.mock.calls
+				.map((c) => c[0] as string[])
+				.filter((argv) => argv[3] === "set-buffer")
+				.map((argv) => [argv[5] as string, argv[7] as string] as const),
+		);
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+			.map((match) => loaded.get(match[1] as string) ?? "")
+			.join("");
 	}
 
 	/**
@@ -9455,23 +9471,23 @@ describe("handlers.spawnBugHuntersInTask", () => {
 
 	interface GuardedSend {
 		pane: string;
-		/** The literal text this send puts into the pane, decoded from its `-H` hex. */
+		/** The literal text this send puts into the pane, read back from its paste buffer. */
 		text: string;
 		/** The key names this send presses. */
 		keys: string[];
 		exitCode: number;
 	}
 
-	function parseGuardedCommands(commandList: string): { text: string; keys: string[] } {
+	/** Text rides a paste buffer, so `buffers` is what turns a buffer name back into it. */
+	function parseGuardedCommands(commandList: string, buffers: Map<string, string>): { text: string; keys: string[] } {
 		let text = "";
 		const keys: string[] = [];
 		for (const command of commandList.split(" ; ")) {
-			const hex = command.split(" -H ")[1];
-			if (hex !== undefined) {
-				text += Buffer.from(hex.split(" ").join(""), "hex").toString("utf8");
+			const parts = command.split(" ");
+			if (parts[0] === "paste-buffer") {
+				text += buffers.get(parts[parts.indexOf("-b") + 1] ?? "") ?? "";
 				continue;
 			}
-			const parts = command.split(" ");
 			if (parts[0] === "send-keys") keys.push(...parts.slice(3));
 		}
 		return { text, keys };
@@ -9497,12 +9513,17 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		const opened: string[] = [];
 		const killed: string[] = [];
 		const sends: GuardedSend[] = [];
+		const buffers = new Map<string, string>();
 		const reply = (stdout: string, exitCode = 0) => ({
 			stderr: enc.encode(""),
 			stdout: enc.encode(stdout),
 			exited: Promise.resolve(exitCode),
 		});
 		mockSpawn.mockImplementation((args: string[]) => {
+			if (args[3] === "set-buffer") {
+				buffers.set(args[5] as string, args[7] as string);
+				return reply("");
+			}
 			if (args.includes("split-window")) {
 				const pane = paneIds[i++] ?? `%99`;
 				opened.push(pane);
@@ -9520,7 +9541,7 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			if (guardIndex >= 0) {
 				const pane = args[guardIndex + 2];
 				const exitCode = (opts.sendFails ?? []).includes(pane) ? 1 : 0;
-				sends.push({ pane, ...parseGuardedCommands(args[guardIndex + 5] ?? ""), exitCode });
+				sends.push({ pane, ...parseGuardedCommands(args[guardIndex + 5] ?? "", buffers), exitCode });
 				if (exitCode !== 0) return reply("", exitCode);
 				// No marker on stdout is how tmux reports "the guard was false".
 				return reply((opts.guardRefuses ?? []).includes(pane) ? "" : "dev3-pane-input-sent\n");
@@ -13711,12 +13732,20 @@ describe("handlers.createPullRequest", () => {
 	}
 
 	/**
-	 * The literal text one guarded send put into the pane. The adapter sends text as
-	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 * The literal text one guarded send put into the pane. Text rides a tmux paste buffer,
+	 * so reading it back means resolving each `paste-buffer -b <name>` against the
+	 * `set-buffer` that loaded it.
 	 */
 	function typedText(args: string[] | undefined): string {
-		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
-		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+		const loaded = new Map(
+			mockSpawn.mock.calls
+				.map((c) => c[0] as string[])
+				.filter((argv) => argv[3] === "set-buffer")
+				.map((argv) => [argv[5] as string, argv[7] as string] as const),
+		);
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+			.map((match) => loaded.get(match[1] as string) ?? "")
+			.join("");
 	}
 
 	/**
@@ -13928,7 +13957,7 @@ describe("handlers.createPullRequest", () => {
 
 		const sends = guardedSends();
 		expect(sends).toHaveLength(2);
-		expect(sends[0]?.join(" ")).toContain("send-keys -t %5 -H");
+		expect(sends[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %5 Enter");
 	});
 
@@ -13952,7 +13981,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %5 -H");
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
 	});
 
 	it("routes to the live agent pane when the Codex main pane id is not persisted", async () => {
@@ -13973,7 +14002,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %7 -H");
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %7/);
 	});
 
 	it("routes a legacy Codex main pane before a focused shell split", async () => {
@@ -13991,7 +14020,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %5 -H");
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
 	});
 
 	// A registered agent pane that no longer exists must not hijack the routing —
@@ -14009,7 +14038,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %3/);
 	});
 
 	it("throws when the task has no worktree", async () => {

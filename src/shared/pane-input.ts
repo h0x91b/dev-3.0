@@ -98,10 +98,12 @@ export const PANE_INPUT_LIMITS = {
 	/**
 	 * UTF-8 bytes of ONE coalesced stage, sized by the TIGHTER of two backend limits and
 	 * rejected rather than split. tmux binds: a whole command line rides ONE imsg frame of
-	 * 16 KiB (measured: 16 344 bytes accepted, 16 345 answered `command too long`), and
-	 * `send-keys -H` spends 3 bytes per byte of text — so ~5 100 bytes, and the guard plus
-	 * the command list take the rest. Native is far looser: a 64 KiB host frame with the
-	 * payload base64-encoded. Anything larger belongs in a file, not in a pane.
+	 * 16 KiB (measured: 16 344 bytes accepted, 16 345 answered `command too long`). Text
+	 * now travels through `set-buffer` at one byte per byte rather than the three that
+	 * `send-keys -H` spent, so this ceiling has grown a lot of headroom it does not use;
+	 * it stays where it is because nothing has measured what an agent CLI does with a
+	 * 15 KB paste. Native is far looser: a 64 KiB host frame with the payload
+	 * base64-encoded. Anything larger belongs in a file, not in a pane.
 	 */
 	maxStageBytes: 5_000,
 	/**
