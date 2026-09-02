@@ -69,8 +69,12 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	{ match: (id) => id.includes("gpt-5-codex-mini"), rate: { input: 0.25, output: 2, cacheRead: 0.025 } },
 	{ match: (id) => id.includes("gpt-5-codex") || id === "gpt-5", rate: { input: 1.25, output: 10, cacheRead: 0.125 } },
 	// --- Anthropic / Claude ---
-	// Fable 5 and Fable 5.1 share the tier: "fable-5" also matches "fable-5-1".
+	// Fable 5.1 / Mythos 5.1: same $10 / $50 tier as Fable 5, but cache reads
+	// dropped to $0.25 (Fable 5 keeps the default $1). Must precede the "fable-5" row.
+	{ match: (id) => id.includes("fable-5-1") || id.includes("mythos-5-1"), rate: { input: 10, output: 50, cacheRead: 0.25 } },
 	{ match: (id) => id.includes("fable-5") || id.includes("mythos-5") || id.includes("mythos-preview"), rate: { input: 10, output: 50 } },
+	// Opus 4.8 reads cache at $0.25; the rest of the 4.5 – 4.8 tier at the default $0.50
+	{ match: (id) => id.includes("opus-4-8"), rate: { input: 5, output: 25, cacheRead: 0.25 } },
 	// Current Opus tier (4.5 – 4.8): $5 / $25
 	{ match: (id) => /opus-4-[5678]/.test(id), rate: { input: 5, output: 25 } },
 	// Legacy Opus (4.0 / 4.1 / 3): $15 / $75

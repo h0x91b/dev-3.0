@@ -3,7 +3,7 @@ import { computeTokenCostUsd, resolveModelRate, totalTokens, type TokenCounts } 
 describe("resolveModelRate", () => {
 	it("prices current Opus tier (4.5–4.8) at $5/$25 with derived cache rates", () => {
 		const rate = resolveModelRate("claude-opus-4-8");
-		expect(rate).toEqual({ input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 });
+		expect(rate).toEqual({ input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.25 });
 	});
 
 	it("prices Opus 5 at the current Opus tier via the generic opus fallback", () => {
@@ -28,8 +28,10 @@ describe("resolveModelRate", () => {
 	});
 
 	it("prices Fable 5 at $10/$50", () => {
-		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50 });
-		expect(resolveModelRate("claude-fable-5-1[1m]")).toMatchObject({ input: 10, output: 50 });
+		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1 });
+		expect(resolveModelRate("claude-fable-5-1[1m]")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25 });
+		expect(resolveModelRate("claude-mythos-5-1")).toMatchObject({ cacheRead: 0.25 });
+		expect(resolveModelRate("claude-opus-5")).toMatchObject({ cacheRead: 0.5 });
 	});
 
 	it("prices the open-source models dev3 recommends, by their OpenRouter slug", () => {
@@ -90,8 +92,8 @@ describe("computeTokenCostUsd", () => {
 			cacheCreation1hInputTokens: 1_000_000,
 		};
 		const { costUsd } = computeTokenCostUsd("claude-opus-4-8", tokens);
-		// 1M @ 6.25 (5m write) + 1M @ 10 (1h write) + 1M @ 0.5 (read) = 16.75
-		expect(costUsd).toBeCloseTo(16.75, 6);
+		// 1M @ 6.25 (5m write) + 1M @ 10 (1h write) + 1M @ 0.25 (read) = 16.5
+		expect(costUsd).toBeCloseTo(16.5, 6);
 	});
 
 	it("falls back to the 5m rate for undifferentiated cache-creation tokens", () => {
