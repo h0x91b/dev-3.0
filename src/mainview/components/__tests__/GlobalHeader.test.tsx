@@ -510,7 +510,94 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		it("stays flat when no space holds a visible project", async () => {
 			const menu = await openSwitcher();
 			expect(within(menu).queryByText("Home")).not.toBeInTheDocument();
-			expect(within(menu).getAllByRole("button")).toHaveLength(3);
+			// The search row's ⌘K button is not a project row — count the rows only.
+			expect(within(menu).getAllByTestId("switcher-row")).toHaveLength(3);
+		});
+	});
+
+	describe("project switcher search", () => {
+		const project4: Project = { ...project2, id: "p4", name: "Project Delta" };
+
+		function withSpaces() {
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [
+					{ id: "sp_dev", name: "Dev Space", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 },
+				],
+				order: ["sp_dev"],
+			});
+		}
+
+		async function openSwitcher() {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			return { user, menu, navigate };
+		}
+
+		/** Row labels, read off textContent — a matched row splits its name per char. */
+		function rowNames(menu: HTMLElement) {
+			return within(menu)
+				.getAllByTestId("switcher-row")
+				.map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
+		}
+
+		it("filters the rows down to the typed match", async () => {
+			const { user, menu } = await openSwitcher();
+			await user.type(screen.getByTestId("project-switcher-search"), "delta");
+			expect(rowNames(menu)).toEqual(["Project Delta"]);
+		});
+
+		it("surfaces a space's members when the space name is typed", async () => {
+			withSpaces();
+			const { user, menu } = await openSwitcher();
+			await within(menu).findByText("Dev Space");
+			await user.type(screen.getByTestId("project-switcher-search"), "dev space");
+			// Alpha and Beta are the members; Delta belongs to no space.
+			expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta"]);
+		});
+
+		it("drops a space group that has no match left", async () => {
+			withSpaces();
+			const { user, menu } = await openSwitcher();
+			await within(menu).findByText("Dev Space");
+			await user.type(screen.getByTestId("project-switcher-search"), "delta");
+			expect(within(menu).queryByText("Dev Space")).not.toBeInTheDocument();
+		});
+
+		it("says so when nothing matches", async () => {
+			const { user, menu } = await openSwitcher();
+			await user.type(screen.getByTestId("project-switcher-search"), "zzzz");
+			expect(within(menu).queryAllByTestId("switcher-row")).toHaveLength(0);
+			expect(within(menu).getByText("No matching projects")).toBeInTheDocument();
+		});
+
+		it("opens the highlighted match on Enter", async () => {
+			const { user, navigate } = await openSwitcher();
+			const input = screen.getByTestId("project-switcher-search");
+			await user.type(input, "beta");
+			await user.type(input, "{Enter}");
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2" });
+		});
+
+		it("walks the rows with the arrow keys", async () => {
+			const { user, navigate } = await openSwitcher();
+			const input = screen.getByTestId("project-switcher-search");
+			await user.type(input, "{ArrowDown}{Enter}");
+			// Row 0 is Alpha; one step down lands on Beta.
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2" });
+		});
+
+		it("hands off to the ⌘K palette and closes the menu", async () => {
+			const onPalette = vi.fn();
+			window.addEventListener("menu:open-project-switch", onPalette);
+			const { user } = await openSwitcher();
+			await user.click(screen.getByTestId("project-switcher-palette-hint"));
+			window.removeEventListener("menu:open-project-switch", onPalette);
+			expect(onPalette).toHaveBeenCalled();
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 		});
 	});
 
