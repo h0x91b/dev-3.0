@@ -18,6 +18,14 @@ export { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../shar
 
 const log = createLogger("agent-skills");
 
+/**
+ * Two descriptions on purpose. For Codex and the generic agents the SKILL.md IS
+ * the protocol, so loading it is mandatory. A dev3-launched Claude already has
+ * the protocol in its system prompt and the SessionStart hook has set the status,
+ * so telling it to invoke the skill anyway costs a tool call that buys nothing.
+ */
+const CLAUDE_SKILL_DESCRIPTION = "Refreshes live dev3 task state (status, current task). Trigger: PWD is inside ~/.dev3.0/worktrees/ (the dev-3.0 managed path; other worktrees do NOT qualify). If your system prompt already has the 'dev3 — Task Lifecycle Protocol' section, dev3 launched you and you do NOT need to invoke this — follow that section. Invoke only when that section is missing.";
+
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
 // ---- Claude Code skill (uses !`command` injection for zero tool calls at startup) ----
@@ -37,7 +45,7 @@ export function buildClaudeSkillContent(dialect: HookCliDialect = hookCliDialect
 	const captureStderr = dialect.posixShell ? " 2>&1" : "";
 	return `---
 name: dev3
-description: "${SKILL_DESCRIPTION}"
+description: "${CLAUDE_SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 

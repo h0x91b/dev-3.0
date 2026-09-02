@@ -78,7 +78,7 @@ describe("COORDINATOR_PROMPT", () => {
 	// delivery seam sees, so his turn carries no block at all.
 	it("warns that the user's own message brings no board", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/user typing to you directly brings NO block/);
-		expect(COORDINATOR_PROMPT).toMatch(/re-read the board before you answer him/);
+		expect(COORDINATOR_PROMPT).toMatch(/re-read the board before you answer/);
 	});
 
 	it("keeps the long-turn and no-harness fallbacks", () => {
@@ -90,6 +90,10 @@ describe("COORDINATOR_PROMPT", () => {
 	// is actually doing, and conflating the two would retire it by accident.
 	it("keeps peek as the way to see what a child is doing", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/`dev3 peek` is still the only way/);
+	});
+
+	it("never assumes the user's gender — it ships to every install as the default", () => {
+		expect(COORDINATOR_PROMPT).not.toMatch(/\b(he|him|his|she|her|hers)\b/i);
 	});
 
 	it("is English-only, so a locale file can never half-translate a behavioural rule", () => {
@@ -129,6 +133,17 @@ describe("DEFAULT_PR_REVIEW_PROMPT", () => {
 
 	it("says what to do when there is no pull request to number", () => {
 		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/No pull request\?.*branch name/s);
+	});
+
+	it("ranks findings in the same three buckets the overview counts", () => {
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("blocker, worth fixing,");
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("nitpick");
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("`file:line`");
+	});
+
+	it("keeps the review off GitHub and puts it in a note that outlives the worktree", () => {
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("never on GitHub");
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 note add");
 	});
 
 	it("is English-only, for the same reason the coordinator prompt is", () => {
