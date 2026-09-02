@@ -558,9 +558,10 @@ const COMMANDS: CommandHelp[] = [
 		name: "show-artifact",
 		summary: "Surface a task-bound HTML artifact in the running app.",
 		subcommands: [],
-		usage: 'dev3 show-artifact <file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
+		usage: 'dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
 		details: [
-			"--assets <paths...>   Copy local CSS, classic JS, and raster assets; all following paths belong to the artifact until the next flag.",
+			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, and raster file under it.",
+			"--assets <paths...>   Name local CSS, classic JS, and raster assets by hand; all following paths belong to the artifact until the next flag.",
 			"--title <text>        Viewer title (defaults to the HTML filename).",
 			"--artifact-id <slug>  Group versions under a stable id, so re-wording the title does not fork a second artifact.",
 			"--new                 Publish a separate artifact instead of a new version of the matching one.",

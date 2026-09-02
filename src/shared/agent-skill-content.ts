@@ -189,12 +189,12 @@ const SKILL_ARTIFACTS = `
 
 Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or demo usually means a **dev3 HTML artifact** — not Claude Artifacts — whenever an interactive visual fits. Do not override explicit meanings: Claude Artifacts, CI/build artifacts, package outputs, files for another system.
 
-\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is a pristine task-local starter (\`dev3 artifact-template\` copies it in if the variable is missing; never invent a different template). The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the reference, \`index.html\` + \`report.js\` the edit surface, \`app.css\` + \`app.js\` the stable shell, \`dev3-icon.png\` the brand asset.
+\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is a pristine task-local starter (\`dev3 artifact-template\` copies it in if the variable is missing; never invent a different template). The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` the depth behind it, \`index.html\` + \`report.js\` the edit surface, \`app.css\` + \`app.js\` the stable shell, \`dev3-icon.png\` the brand asset.
 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` — never edit the pristine source.
-2. Read the copied \`AUTHORING.md\`, then edit only \`index.html\` and \`report.js\` unless the format itself must change. Do not read the shell files for ordinary reports.
-3. Keep content and data local; external chart/UI libraries and live \`fetch\`/WebSocket are allowed as \`AUTHORING.md\` documents.
-4. \`dev3 show-artifact ./dev3-artifact-report/index.html --assets ./dev3-artifact-report/app.css ./dev3-artifact-report/report.js ./dev3-artifact-report/app.js ./dev3-artifact-report/dev3-icon.png --title "Report title"\` — spell each asset path out in full, report-specific ones before \`--title\`. Every local asset must be listed there, live beside or below the HTML file, and keep its relative path.
+2. Read the copied \`AUTHORING.md\` (the card), then edit only \`index.html\` and \`report.js\` unless the format itself must change. Open a \`REFERENCE.md\` section only when the report needs it. Do not read the shell files for ordinary reports.
+3. Keep content and data local; external chart/UI libraries and live \`fetch\`/WebSocket are allowed as \`REFERENCE.md\` documents.
+4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit: \`index.html\` plus every CSS, JS, and image under it. Keep assets beside or below the HTML with relative paths; only a file outside the directory goes after \`--assets\`.
 
 Re-running \`show-artifact\` **updates** the report: the same \`--title\` (or an explicit \`--artifact-id <slug>\`, which survives re-wording) adds a VERSION to the row the user already has. Revise by publishing again, never by inventing \`report-v2.html\`; \`--new\` only for a genuinely different report that happens to share a title.
 
@@ -209,7 +209,7 @@ Pull the user back deliberately — enough that they never miss something needin
 - \`dev3 attention "reason"\` — red badge on the card until the user opens the task (reasons accumulate, up to 5). Default for anything that needs them. \`--clear\` lowers it the moment the cause is resolved and they never came; a badge outliving its cause trains them to ignore badges.
 - \`dev3 notify "message" [--level info|success|error] [--duration <seconds>]\` — clickable in-app toast (ephemeral, 2s–30s). \`--desktop\` instead sends a native OS notification that shows even when the app is backgrounded; never combine the two flags.
 - \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts); files are copied into the worktree and **each \`--caption\` annotates the image it immediately follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, put them in front of the user rather than describing them or leaving a path to open.
-- \`dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]\` — **show an interactive HTML artifact** (see the artifacts section above).
+- \`dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]\` — **show an interactive HTML artifact** (see the artifacts section above).
 - \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`). Check BEFORE pinging.
 
 MUST ping, one per logical event and never per step: **blocked** → \`attention "the question"\`; **finished** something important → \`notify --level success\`; something **broke** → \`notify --level error\`; an **image worth seeing** or an interactive report → proactive \`show-image\` / \`show-artifact\`. SHOULD, only on long runs when the user likely stepped away: a major milestone, or a go/no-go before a risky action. Never ping per-step progress, routine tool calls, or anything already on screen.

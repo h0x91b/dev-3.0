@@ -120,16 +120,35 @@
     window.addEventListener("resize", applyStickyOffset);
   }
 
-  // Report code owns sorting; the shell owns only the visible sort state, so
-  // every artifact shows which column is sorted and in which direction.
+  // A `<table data-sortable>` sorts its own rows in place, so a report whose
+  // rows live in the markup needs no JavaScript at all. The `data-sort` value
+  // of a cell wins over its text, so "1.2 GB" can still order numerically.
+  function sortRowsInPlace(table, heading, direction) {
+    const index = [...heading.parentElement.children].indexOf(heading);
+    const key = (row) => {
+      const cell = row.children[index];
+      return cell ? cell.dataset.sort ?? cell.textContent.trim() : "";
+    };
+    table.querySelectorAll("tbody").forEach((body) => {
+      [...body.rows]
+        .sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true, sensitivity: "base" }) * direction)
+        .forEach((row) => body.appendChild(row));
+    });
+  }
+
+  // The shell owns the visible sort state, so every artifact shows which column
+  // is sorted and in which direction; report code owns the data unless the
+  // table asked the shell to sort its rows.
   function initializeSortIndicators() {
     document.querySelectorAll("thead").forEach((head) => {
       const headings = [...head.querySelectorAll("th[data-sort]")];
       if (!headings.length) return;
+      const table = head.closest("table");
       const mark = (heading) => {
         const next = heading.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
         headings.forEach((item) => item.removeAttribute("aria-sort"));
         heading.setAttribute("aria-sort", next);
+        if (table?.hasAttribute("data-sortable")) sortRowsInPlace(table, heading, next === "ascending" ? 1 : -1);
       };
       headings.forEach((heading) => {
         heading.addEventListener("click", () => mark(heading));

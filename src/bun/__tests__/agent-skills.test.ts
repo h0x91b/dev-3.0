@@ -90,9 +90,9 @@ describe("dev3 skill content", () => {
 			}
 			expect(skill).toContain("Do not read the shell files for ordinary reports");
 			expect(skill).toContain("Claude Artifacts");
-			expect(skill).toContain(
-				'dev3 show-artifact ./dev3-artifact-report/index.html --assets ./dev3-artifact-report/app.css ./dev3-artifact-report/report.js ./dev3-artifact-report/app.js ./dev3-artifact-report/dev3-icon.png --title "Report title"',
-			);
+			// The directory form: one path, every asset under it rides along.
+			expect(skill).toContain('dev3 show-artifact ./dev3-artifact-report --title "Report title"');
+			expect(skill).not.toContain("./dev3-artifact-report/index.html --assets");
 			expect(skill).not.toContain("--images");
 		}
 	});

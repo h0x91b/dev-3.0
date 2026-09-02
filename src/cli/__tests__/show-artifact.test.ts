@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CliResponse } from "../../shared/types";
@@ -60,6 +60,40 @@ describe("show-artifact", () => {
 			assetPaths: [CSS, JS, PNG],
 			title: "Metrics",
 		});
+	});
+
+	it("publishes a report directory as index.html plus every asset under it", async () => {
+		const report = join(DIR, "report-dir");
+		mkdirSync(join(report, "shots"), { recursive: true });
+		mkdirSync(join(report, "node_modules"), { recursive: true });
+		writeFileSync(join(report, "index.html"), "<!doctype html><h1>Report</h1>");
+		writeFileSync(join(report, "app.css"), "body{}");
+		writeFileSync(join(report, "report.js"), "1");
+		writeFileSync(join(report, "shots", "after.png"), "PNG");
+		writeFileSync(join(report, "index.zip"), "not an asset");
+		writeFileSync(join(report, "notes.md"), "not an asset");
+		writeFileSync(join(report, "node_modules", "x.js"), "never");
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([report, "--title", "Dir"], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
+			htmlPath: join(report, "index.html"),
+			assetPaths: [join(report, "app.css"), join(report, "report.js"), join(report, "shots", "after.png")],
+			title: "Dir",
+		}));
+	});
+
+	it("lets an explicit --assets list override the directory walk, and refuses a directory without index.html", async () => {
+		const report = join(DIR, "report-dir-2");
+		mkdirSync(report, { recursive: true });
+		writeFileSync(join(report, "index.html"), "<!doctype html>");
+		writeFileSync(join(report, "app.css"), "body{}");
+		writeFileSync(join(report, "unused.js"), "1");
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([report, "--assets", join(report, "app.css")], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ assetPaths: [join(report, "app.css")] }));
+		const empty = join(DIR, "empty-dir");
+		mkdirSync(empty, { recursive: true });
+		await expect(handleShowArtifact([empty], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 	});
 
 	it("supports an artifact with no local assets", async () => {

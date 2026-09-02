@@ -1,5 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { extname, resolve as resolvePath } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { extname, join, resolve as resolvePath } from "node:path";
 import {
 	MAX_SHARED_ARTIFACT_ASSET_BYTES,
 	MAX_SHARED_ARTIFACT_ASSETS,
@@ -21,7 +21,31 @@ function nextValue(argv: string[], index: number, flag: string): { value: string
 	return { value: resolveValue(next), index: index + 1 };
 }
 
-/** `dev3 show-artifact report.html --assets app.css app.js chart.png --title "Report"`. */
+/**
+ * A report directory publishes as a unit: every CSS, classic JavaScript and
+ * raster file under it is an asset, so the author names one path instead of
+ * five. Only a directory is walked — a bare `.html` in a worktree root must not
+ * slurp the repository around it.
+ */
+function collectDirectoryAssets(dir: string, htmlPath: string): string[] {
+	const found: string[] = [];
+	const walk = (current: string) => {
+		for (const entry of readdirSync(current, { withFileTypes: true })) {
+			if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+			const full = join(current, entry.name);
+			if (entry.isDirectory()) walk(full);
+			else if (entry.isFile() && full !== htmlPath && ASSET_EXTS.has(extname(entry.name).slice(1).toLowerCase())) found.push(full);
+		}
+	};
+	walk(dir);
+	return found.sort();
+}
+
+/**
+ * `dev3 show-artifact ./report-dir --title "Report"` publishes `index.html` plus
+ * every asset under the directory; `dev3 show-artifact report.html --assets
+ * app.css chart.png` names them by hand.
+ */
 export async function handleShowArtifact(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
 	let html = "";
 	let collectingAssets = false;
@@ -63,12 +87,18 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 		else exitUsage(`Unexpected path: ${token}. Put local assets after --assets.`);
 	}
 
-	if (!html) exitUsage('Usage: dev3 show-artifact <file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
-	const htmlPath = resolvePath(process.cwd(), html);
+	if (!html) exitUsage('Usage: dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
+	let htmlPath = resolvePath(process.cwd(), html);
+	if (existsSync(htmlPath) && statSync(htmlPath).isDirectory()) {
+		const indexPath = join(htmlPath, "index.html");
+		if (!existsSync(indexPath) || !statSync(indexPath).isFile()) exitUsage(`No index.html in ${html} — pass the .html file directly.`);
+		if (!assets.length) assets.push(...collectDirectoryAssets(htmlPath, indexPath));
+		htmlPath = indexPath;
+	}
 	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`HTML file not found: ${html}`);
 	if (extname(htmlPath).toLowerCase() !== ".html") exitUsage(`Artifact must be an .html file: ${html}`);
 	if (statSync(htmlPath).size > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage("HTML artifact is too large (max 5 MB)");
-	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets (max ${MAX_SHARED_ARTIFACT_ASSETS})`);
+	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets: ${assets.length} (max ${MAX_SHARED_ARTIFACT_ASSETS}). Publish the .html file with an explicit --assets list.`);
 
 	const assetPaths = assets.map((path) => {
 		const absolute = resolvePath(process.cwd(), path);

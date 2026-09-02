@@ -1,0 +1,3 @@
+Short: Artifact starter is now a written report
+
+The dev3 HTML artifact starter is now the skeleton of a written report (verdict KPIs, summary, a self-sorting findings table, numbered steps, one chart, a decision) instead of a dashboard demo, and the shell styles the plain HTML a report is made of — code, kbd, mark, blockquote, details, callouts, steps, screenshot figures, before/after pairs, legends, progress bars — so an author never writes a style block. `AUTHORING.md` shrank to a one-screen card with a class cheat sheet and the depth moved to `REFERENCE.md`, tables align text by default with `.num` for numbers, and `dev3 show-artifact ./dev3-artifact-report` publishes a whole report directory without listing every asset.

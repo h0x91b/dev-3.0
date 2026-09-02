@@ -2,6 +2,7 @@ export const ARTIFACT_TEMPLATE_VERSION = 1;
 
 export const ARTIFACT_TEMPLATE_FILES = [
 	"AUTHORING.md",
+	"REFERENCE.md",
 	"index.html",
 	"report.js",
 	"app.css",

@@ -1,5 +1,4 @@
 import {
-	existsSync,
 	mkdtempSync,
 	mkdirSync,
 	readdirSync,
@@ -50,6 +49,7 @@ describe("artifact template provisioning", () => {
 		writeFileSync(join(sourceDir, "app.css"), "css");
 		writeFileSync(join(sourceDir, "app.js"), "js");
 		writeFileSync(join(sourceDir, "AUTHORING.md"), "Authoring guide");
+		writeFileSync(join(sourceDir, "REFERENCE.md"), "Reference");
 		writeFileSync(join(sourceDir, "dev3-icon.png"), "png");
 
 		const result = ensureArtifactTemplate(project("/repo"), task(), {
@@ -77,6 +77,7 @@ describe("artifact template provisioning", () => {
 			["app.css", "css"],
 			["app.js", "js"],
 			["AUTHORING.md", "guide"],
+			["REFERENCE.md", "reference"],
 			["dev3-icon.png", "png"],
 		]) {
 			writeFileSync(join(sourceDir, name), body);
@@ -137,6 +138,7 @@ describe("artifact template provisioning", () => {
 		writeFileSync(join(sourceDir, "app.css"), "css");
 		writeFileSync(join(sourceDir, "app.js"), "js");
 		writeFileSync(join(sourceDir, "AUTHORING.md"), "Authoring guide");
+		writeFileSync(join(sourceDir, "REFERENCE.md"), "Reference");
 
 		expect(() => ensureArtifactTemplate(project("/repo"), task(), { sourceDir, taskContainerDir })).toThrow(
 			/Bundled dev3 artifact template is missing dev3-icon\.png/,
@@ -150,9 +152,12 @@ describe("bundled artifact starter contract", () => {
 	const cssPath = join(sourceDir, "app.css");
 	const appPath = join(sourceDir, "app.js");
 	const reportPath = join(sourceDir, "report.js");
+	const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+	const reference = readFileSync(join(sourceDir, "REFERENCE.md"), "utf8");
+	// The card plus the depth behind it: what an author can reach without opening the shell.
+	const docs = guide + reference;
 
 	it("keeps the provisioned file inventory and model-facing guide synchronized", () => {
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 		expect(readdirSync(sourceDir).sort()).toEqual([...ARTIFACT_TEMPLATE_FILES].sort());
 		for (const file of ARTIFACT_TEMPLATE_FILES) expect(guide).toContain(`\`${file}\``);
 		expect(guide).toContain('cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report');
@@ -160,7 +165,33 @@ describe("bundled artifact starter contract", () => {
 		expect(guide).toContain("For most reports, edit only `index.html` and `report.js`");
 		expect(guide).toContain("Do not read or edit `app.css` or `app.js`");
 		expect(guide).toContain("--assets");
-		expect(guide).not.toContain("--images");
+		expect(docs).not.toContain("--images");
+	});
+
+	// The agent reads the card before writing a single line of report, so the card
+	// is the token budget: everything the depth needs lives in REFERENCE.md, and
+	// the card only points at its sections.
+	it("keeps the card small and points at the reference for depth", () => {
+		expect(statSync(join(sourceDir, "AUTHORING.md")).size).toBeLessThan(8_000);
+		expect(guide).toContain('dev3 show-artifact ./dev3-artifact-report --title "Report title"');
+		expect(guide).toContain("## When the report needs more — `REFERENCE.md`");
+		for (const section of [
+			"## Panels, spacing, and width",
+			"## Color tokens",
+			"## Text size",
+			"## Publishing and assets",
+			"## Network access and external libraries",
+			"## Charts (Apache ECharts from cdnjs)",
+			"## Navigation and form controls",
+			"## Menus, dropdowns, and anything that opens over the report",
+			"## Tables",
+			"### Dense evidence tables",
+			"## Print and PDF",
+			"## Asking the user something (`window.dev3.sendToAgent`)",
+			"## Contracts to preserve",
+		]) {
+			expect(reference).toContain(section);
+		}
 	});
 
 	it("keeps report authoring separate from the stable visual shell", () => {
@@ -168,7 +199,6 @@ describe("bundled artifact starter contract", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
 		const report = readFileSync(reportPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 
 		expect(html).toContain('<link rel="stylesheet" href="app.css"');
 		expect(html).toContain('<script src="app.js" data-dev3-artifact-shell></script>');
@@ -177,81 +207,158 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain("--dev3-surface-base");
 		expect(app).toContain("function dev3Chart");
 		expect(app).toContain("window.dev3Artifact");
-		expect(app).not.toContain("report.velocity");
-		expect(app).not.toContain("scenarioRadar");
+		expect(app).not.toContain("trendChart");
 		expect(report).toContain("const report =");
-		expect(report).toContain("scenarioRadar");
-		expect(guide).toContain("For most reports, edit only `index.html` and `report.js`");
-		expect(guide).toContain("Do not read or edit `app.css` or `app.js`");
-		expect(statSync(htmlPath).size).toBeLessThan(15_000);
-		expect(statSync(reportPath).size).toBeLessThan(15_000);
+		expect(report).toContain('document.getElementById("trendChart")');
+		// A written report deletes most of the starter; what it deletes is the budget.
+		expect(statSync(htmlPath).size).toBeLessThan(9_000);
+		expect(statSync(reportPath).size).toBeLessThan(2_000);
 	});
 
-	it("ships the branded responsive interactive starter and authoring guide", () => {
-		expect(existsSync(htmlPath)).toBe(true);
+	// The starter is the skeleton of a written report — the shape 80% of real
+	// artifacts take — not a dashboard the author has to gut. It keeps exactly one
+	// chart so the chart contract stays live.
+	it("ships a document-first starter with the branding, controls and one chart", () => {
 		const html = readFileSync(htmlPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+		const report = readFileSync(reportPath, "utf8");
 
 		expect(html).toContain('data-dev3-artifact-template="v1"');
-		expect(html).toContain("DEV3 ARTIFACT · OPERATIONS");
+		expect(html).toContain('<main class="app doc">');
+		expect(html).toContain("DEV3 ARTIFACT · REPORT");
 		expect(html).toContain("Built with dev3 Artifacts");
 		expect(html).toContain('src="dev3-icon.png"');
 		expect(html).toContain("◐ Auto");
 		expect(app).toContain("☀ Light");
 		expect(app).toContain("☾ Dark");
 		expect(html).toContain('class="section-nav print-hidden"');
-		expect(html).toContain('href="#charts"');
+		expect(html).toContain('href="#findings"');
 		expect(app).toContain("function initializeNavigation");
 		expect(app).toContain('setAttribute("aria-current", "location")');
 		expect(css).toContain("prefers-color-scheme");
 		expect(app).toContain("dev3-artifact-theme");
 		expect(css).toContain("@media (max-width: 560px)");
-		expect(html).toContain("<form");
-		expect(html).toContain("data-ui-select");
-		expect(html).toContain("data-ui-slider");
-		expect(html).toContain('type="radio"');
+		// Every document primitive the cheat sheet promises appears once in the skeleton.
+		for (const snippet of [
+			'<p class="prose">',
+			'<div class="callout good">',
+			'<span class="callout-title">',
+			'<ol class="steps">',
+			"<pre><code>",
+			"<kbd>",
+			"<mark>",
+			"<details><summary>",
+			"<table data-sortable>",
+			'<th data-sort tabindex="0">',
+			'class="num"',
+			'<span class="pill danger">',
+			'class="chart-host" id="trendChart"',
+			'figure class="shot"',
+			'class="pair"',
+		]) {
+			expect(html).toContain(snippet);
+		}
+		// No form controls in the skeleton, so no Choices / noUiSlider tags to load for nothing;
+		// the shell still enhances them and the reference carries the tags to paste.
+		expect(html).not.toContain("data-ui-select");
+		expect(html).not.toContain("choices.js");
 		expect(app).toContain("function enhanceControls");
 		expect(app).toContain("window.Choices");
 		expect(app).toContain("window.noUiSlider");
-		expect(html).toContain('id="velocityChart"');
-		expect(html).toContain('id="pipelinePie"');
-		expect(html).toContain('id="capabilityRadar"');
-		expect(html).toContain('id="galleryChart"');
-		const report = readFileSync(reportPath, "utf8");
-		for (const type of ["heatmap", "sankey", "sunburst", "gauge"]) expect(report).toContain(`${type}:`);
-		expect(html).toContain("data-sort");
-		expect(guide).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
-		expect(guide).toContain("dev3 show-artifact");
-		expect(guide).toContain("Print and PDF");
-		expect(guide).toContain("Apache ECharts");
-		expect(guide).toContain("window.dev3Artifact.asset()");
-		expect(guide).toContain("`.chart()`");
-		expect(guide).toContain("Dense evidence tables");
-		expect(guide).toContain("`evidence-data.js`");
+		expect(reference).toContain('data-dev3-vendor="choices.js@11.2.3"');
+		expect(reference).toContain('data-dev3-vendor="nouislider@15.8.1"');
+		expect(report).toContain('type: "bar"');
+		expect(docs).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
+		expect(docs).toContain("dev3 show-artifact");
+		expect(docs).toContain("Print and PDF");
+		expect(docs).toContain("Apache ECharts");
+		expect(docs).toContain("window.dev3Artifact.asset()");
+		expect(docs).toContain("`.chart()`");
+		expect(docs).toContain("Dense evidence tables");
+		expect(docs).toContain("`evidence-data.js`");
 		expect(css).toContain(".evidence-table-scroll");
 		expect(css).toContain(".evidence-table .sig");
 		expect(css).toContain(".evidence-table tr.regime td");
 	});
 
+	// Plain HTML a written report is made of, each styled by the shell so an author
+	// never opens a <style> block: 59 of 306 real reports had one, inventing
+	// .shot, .callout, .steps, .legend, .progress over and over.
+	it("styles the document primitives a written report is made of", () => {
+		const css = readFileSync(cssPath, "utf8");
+		for (const selector of [
+			"code, kbd {",
+			"pre {",
+			"pre code {",
+			"blockquote {",
+			"details {",
+			"summary {",
+			"mark {",
+			"h3 {",
+			"h4 {",
+			"ul, ol {",
+			".callout {",
+			".callout.good {",
+			".callout.warn {",
+			".callout.bad {",
+			".callout-title {",
+			".steps {",
+			".steps > li::before {",
+			"figure.shot img, figure.shot video {",
+			"figure.shot figcaption {",
+			".pair {",
+			".legend {",
+			".swatch {",
+			".progress {",
+			".progress > span {",
+			".pill.danger {",
+			".pill.muted {",
+			"th.num, td.num {",
+		]) {
+			expect(css).toContain(selector);
+		}
+		// Text is the default in every table; numbers opt in. The old ledger default
+		// right-aligned prose and cost one report 31 `.wrap` classes.
+		expect(css).toContain(".evidence-table th, .evidence-table td { padding: 6px 9px; text-align: left;");
+		expect(css).toContain(".evidence-table .num { text-align: right; }");
+		expect(css).not.toContain("text-align: right; font-size: .65625rem");
+		// A code block wraps; a scroller would be the pattern the table rules forbid.
+		expect(css).toMatch(/pre \{[^}]*white-space: pre-wrap/);
+		// A document takes a page width and drops it for a dashboard.
+		expect(css).toContain(".app.doc { width: min(100%, 960px); }");
+		expect(guide).toContain('<div class="callout good">');
+		expect(guide).toContain('<ol class="steps">');
+		expect(guide).toContain("`.prose`");
+	});
+
+	it("sorts a data-sortable table's rows in the shell so a static report needs no JavaScript", () => {
+		const app = readFileSync(appPath, "utf8");
+		expect(app).toContain("function sortRowsInPlace");
+		expect(app).toContain('table?.hasAttribute("data-sortable")');
+		expect(app).toContain("cell.dataset.sort ?? cell.textContent.trim()");
+		expect(docs).toContain("`<table data-sortable>`");
+	});
+
 	// Each of these was described in prose and cost an author a debug loop, because
 	// the wrong form fails without an error: an unwrapped token renders nothing, an
 	// id string throws from minified ECharts, a runtime src resolves to nothing in
-	// the sandbox. Prose is not enough — the guide has to show the call.
+	// the sandbox. Prose is not enough — the docs have to show the call.
 	it("shows the exact call for every form that fails silently when written wrong", () => {
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 		const app = readFileSync(appPath, "utf8");
 
-		expect(guide).toContain("background: rgb(var(--dev3-surface-raised));");
-		expect(guide).toContain("rgb(var(--dev3-accent) / .18)");
-		expect(guide).toContain("box-shadow: 0 8px 24px rgb(var(--dev3-shadow) / .35);");
-		expect(guide).toContain('dev3Artifact.chart(document.getElementById("velocityChart"), () => ({');
-		expect(guide).toContain("velocity.update();");
-		expect(guide).toContain("velocity.remount();");
-		expect(guide).toContain('dev3Artifact.asset("shots/run-42.png")');
+		expect(docs).toContain("background: rgb(var(--dev3-surface-raised));");
+		expect(docs).toContain("rgb(var(--dev3-accent) / .18)");
+		expect(docs).toContain("box-shadow: 0 8px 24px rgb(var(--dev3-shadow) / .35);");
+		expect(docs).toContain('dev3Artifact.chart(document.getElementById("velocityChart"), () => ({');
+		expect(docs).toContain("velocity.update();");
+		expect(docs).toContain("velocity.remount();");
+		expect(docs).toContain('dev3Artifact.asset("shots/run-42.png")');
+		// The card itself carries the two traps every chart hits.
+		expect(guide).toContain("Pass the **element**, never its id");
+		expect(guide).toContain("take **no arguments**");
 
-		// The shell has to back every form the guide promises.
+		// The shell has to back every form the docs promise.
 		expect(app).toContain("asset: assetUrl");
 		expect(app).toContain("needs an element, not an id");
 		expect(app).toContain("takes no arguments");
@@ -261,7 +368,6 @@ describe("bundled artifact starter contract", () => {
 		const html = readFileSync(htmlPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 
 		expect(html).toContain('class="segmented text-size"');
 		expect(html).toContain('data-font-step="-1"');
@@ -276,8 +382,8 @@ describe("bundled artifact starter contract", () => {
 		expect(app).toContain("FONT_SCALE_STEPS");
 		expect(app).toContain("function scaleOptionFonts");
 		expect(app).toContain("dev3-artifact-font-scale");
-		expect(guide).toContain("## Text size");
-		expect(guide).toContain("dev3Artifact.scaleFont(px)");
+		expect(reference).toContain("## Text size");
+		expect(reference).toContain("dev3Artifact.scaleFont(px)");
 	});
 
 	it("loads versioned cdnjs primitives without brittle integrity hashes", () => {
@@ -294,30 +400,28 @@ describe("bundled artifact starter contract", () => {
 		// Offline degradation: charts show a notice instead of throwing.
 		expect(app).toContain("chart-unavailable");
 
-		expect(html).toContain('data-dev3-vendor="choices.js@11.2.3"');
-		expect(html).toContain('href="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.css"');
-		expect(html).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.js"');
-		expect(html).toContain('data-dev3-vendor="nouislider@15.8.1"');
-		expect(html).toContain('href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.css"');
-		expect(html).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js"');
+		// The control libraries moved to the reference as paste-in tags, pinned the same way.
+		expect(reference).toContain('href="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.css"');
+		expect(reference).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.js"');
+		expect(reference).toContain('href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.css"');
+		expect(reference).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js"');
 		expect(html).not.toContain("integrity=");
 		expect(html).not.toContain("crossorigin=");
+		expect(reference).not.toContain("integrity=");
 	});
 
 	it("uses the full width of a wide monitor while prose keeps a measure", () => {
 		const css = readFileSync(cssPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 
 		expect(css).toContain("width: min(100%, clamp(1180px, 88vw, 1840px))");
 		expect(css).toContain(".prose { max-width: 72ch; }");
 		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }");
 		expect(css).toContain("@media (min-width: 1500px)");
-		expect(guide).toContain("`.prose`");
+		expect(docs).toContain("`.prose`");
 	});
 
 	it("gives an unsized dashboard panel the whole row instead of a 1/12 sliver", () => {
 		const css = readFileSync(cssPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 
 		// span 12 would overflow the narrow and print grids, which have fewer columns.
 		expect(css).toContain(".dashboard-grid > * { min-width: 0; grid-column: 1 / -1; }");
@@ -327,14 +431,13 @@ describe("bundled artifact starter contract", () => {
 		for (const span of [3, 4, 5, 6, 7, 8, 9]) {
 			expect(spanBlock).toContain(`.dashboard-grid > .span-${span} { grid-column: span ${span}; }`);
 		}
-		expect(guide).toContain("`.dashboard-grid` is a 12-column grid");
-		expect(guide).toContain("`span-3` … `span-9`");
+		expect(reference).toContain("`.dashboard-grid` is a 12-column grid");
+		expect(reference).toContain("`span-3` … `span-9`");
 	});
 
 	it("gives every table zebra rows, row hover, column rules, and a pinned header", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 
 		expect(css).toContain("th:not(:last-child), td:not(:last-child) { border-inline-end:");
 		expect(css).toContain("tbody tr:nth-child(even) { --dev3-row-tint:");
@@ -347,13 +450,12 @@ describe("bundled artifact starter contract", () => {
 		expect(app).toContain("--dev3-table-head-top");
 		expect(app).toContain("function initializeSortIndicators");
 		expect(app).toContain('setAttribute("aria-sort", next)');
-		expect(guide).toContain("## Tables");
+		expect(reference).toContain("## Tables");
 	});
 
 	it("stacks a table into labelled lines instead of scrolling it sideways", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 		const stackedBlock = css.slice(css.indexOf("@container dev3-table"));
 		const printBlock = css.slice(css.indexOf("@media print"));
 
@@ -386,7 +488,7 @@ describe("bundled artifact starter contract", () => {
 		// of that mutation is the div — the added subtree has to be inspected too.
 		expect(app).toContain("function recordTouchesTable");
 		expect(app).toContain('node.matches("table") || node.querySelector("table")');
-		expect(guide).toContain("No table scrolls sideways");
+		expect(reference).toContain("No table scrolls sideways");
 	});
 
 	it("keeps dense-table significance markers typographic", () => {
@@ -401,22 +503,18 @@ describe("bundled artifact starter contract", () => {
 	it("uses native chart drawing motion and safe dropdown state precedence", () => {
 		const app = readFileSync(appPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");
-		const report = readFileSync(reportPath, "utf8");
-		const periodHandler = report.match(/document\.getElementById\("periods"\)[\s\S]*?\n  \}\);/)?.[0] || "";
 
 		expect(app).not.toContain("function revealChart");
 		expect(app).not.toContain("is-revealing");
 		expect(css).not.toContain("chart-curtain");
-		expect(periodHandler).toContain("velocityChart.remount()");
+		expect(reference).toContain("calls `remount()` on the chart");
 		expect(css).toContain(".choices__item--choice.is-selected");
 		expect(css).toContain(".choices__item--selectable.is-highlighted");
 	});
 
 	it("opens every menu and dropdown in the browser top layer instead of stacking guesses", () => {
-		const html = readFileSync(htmlPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
-		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
 		const printBlock = css.slice(css.indexOf("@media print"));
 
 		// A hand-rolled absolute panel is clipped by the card around it, so the
@@ -445,11 +543,11 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain(".popover:not([data-open]) { display: none; }");
 		expect(printBlock).toContain(".popover, [popover] { display: none !important; }");
 
-		// The starter demonstrates the pattern where it used to break: inside a card.
-		expect(html).toContain('data-popover-trigger="runsMenu"');
-		expect(html).toContain('<div class="popover" id="runsMenu">');
-		expect(guide).toContain("Never hand-roll `position: absolute` + `z-index`");
-		expect(guide).toContain("dev3Artifact.popover(panel, triggerElement)");
+		// The reference shows the pattern where it used to break: a menu inside a card.
+		expect(reference).toContain('data-popover-trigger="runsMenu"');
+		expect(reference).toContain('<div class="popover" id="runsMenu">');
+		expect(docs).toContain("Never hand-roll `position: absolute` + `z-index`");
+		expect(reference).toContain("dev3Artifact.popover(panel, triggerElement)");
 	});
 
 	it("keeps the selected theme and report structure in print output", () => {
@@ -507,11 +605,10 @@ describe("bundled artifact starter contract", () => {
 		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
 		// The shell stylesheet and script are not part of the authoring surface, so
 		// their budgets only have to stay far below an inlined library — these are
-		// ~25x under one, and both sat at 98%+ of the previous caps before the
-		// responsive-table work, which left no room for any real change. The CSS
-		// cap moved again for the gold/viz palette and the tone classes.
-		expect(statSync(cssPath).size).toBeLessThan(44_000);
-		expect(statSync(appPath).size).toBeLessThan(33_000);
-		expect(statSync(reportPath).size).toBeLessThan(15_000);
+		// ~20x under one. The CSS cap moved for the document primitives (code,
+		// callouts, steps, figures) that replaced the <style> blocks authors wrote.
+		expect(statSync(cssPath).size).toBeLessThan(50_000);
+		expect(statSync(appPath).size).toBeLessThan(34_000);
+		expect(statSync(reportPath).size).toBeLessThan(2_000);
 	});
 });

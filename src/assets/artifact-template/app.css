@@ -49,6 +49,10 @@
        readable measure through .prose instead of the container. */
     .app { display: flex; width: min(100%, clamp(1180px, 88vw, 1840px)); flex-direction: column; gap: 14px; margin: auto; }
     .prose { max-width: 72ch; }
+    /* A document is read top to bottom, so it takes a page width and lets prose
+       and tables share one edge; a dashboard drops `.doc` and gets the monitor. */
+    .app.doc { width: min(100%, 960px); }
+    .doc .prose { max-width: 88ch; }
     .muted, .section-copy { max-width: 90ch; }
     .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
     .topbar { justify-content: space-between; gap: 20px; margin-bottom: 6px; }
@@ -605,10 +609,11 @@
     /* Kept as the table's query container; it deliberately does not scroll. */
     .evidence-table-scroll { max-width: 100%; }
     .evidence-table { width: 100%; font-variant-numeric: tabular-nums; }
-    .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: right; font-size: .65625rem; }
+    .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: left; font-size: .65625rem; }
+    .evidence-table .num { text-align: right; }
     .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: .59375rem; }
-    /* The row's identity reads as a label, not as one more number. */
-    .evidence-table th:first-child, .evidence-table td:first-child { border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
+    /* The row's identity carries its own rule so the eye finds the label first. */
+    .evidence-table th:first-child, .evidence-table td:first-child { border-inline-end-color: rgb(var(--dev3-border)); }
     .evidence-table th.grp { border-left: 1px solid rgb(var(--dev3-border)); text-align: center; color: rgb(var(--dev3-text-secondary)); }
     .evidence-table .sep { border-left: 1px solid rgb(var(--dev3-border)); }
     .evidence-table .day { color: rgb(var(--dev3-text-primary)); font-weight: 650; }
@@ -617,10 +622,10 @@
     .evidence-table .flat, .evidence-table .dim { color: rgb(var(--dev3-text-muted)); }
     /* "Notable", never "good": emphasis takes the brand hue, not a verdict one. */
     .evidence-table .sig { color: rgb(var(--dev3-gold-ink)); font-weight: 700; }
-    .evidence-table .wrap { text-align: left; line-height: 1.45; }
+    .evidence-table .wrap { line-height: 1.45; }
     .evidence-table tr.regime td { border-top: 2px solid rgb(var(--dev3-accent) / .55); }
     .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-gold) / .5); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
-    .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; }
+    .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; white-space: nowrap; }
     .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
     .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
     .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }
@@ -629,6 +634,56 @@
     .bar-cell { display: flex; align-items: center; gap: 9px; }
     .mini-track { width: 4.75rem; height: 6px; overflow: hidden; border-radius: 99px; background: rgb(var(--dev3-border)); }
     .mini-fill { height: 100%; border-radius: 99px; background: rgb(var(--dev3-tone, var(--dev3-accent))); }
+    .pill.danger { color: rgb(var(--dev3-danger)); background: rgb(var(--dev3-danger) / .12); }
+    .pill.muted { color: rgb(var(--dev3-text-secondary)); background: rgb(var(--dev3-text-primary) / .07); }
+    /* ---- document primitives -------------------------------------------------
+       Plain HTML a written report is made of, so an author writes a tag or one
+       class and never a <style> block. Every hue comes through the tone or the
+       semantic tokens, which is what keeps light, dark and print correct. */
+    p, ul, ol, pre, blockquote, figure, details, .callout, .pair { margin: .6rem 0; }
+    .card > :is(p, ul, ol, pre, blockquote, figure, details, .callout, .pair):first-child { margin-top: 0; }
+    .card > :is(p, ul, ol, pre, blockquote, figure, details, .callout, .pair, table):last-child { margin-bottom: 0; }
+    h3 { margin: 1rem 0 .4rem; font-size: .875rem; font-weight: 700; }
+    h4 { margin: .8rem 0 .3rem; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    ul, ol { padding-inline-start: 1.3rem; }
+    li { margin: .2rem 0; }
+    li::marker { color: rgb(var(--dev3-text-muted)); }
+    a { color: rgb(var(--dev3-accent)); }
+    code, kbd, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code, kbd { padding: .1em .4em; border-radius: 5px; background: rgb(var(--dev3-text-primary) / .08); font-size: .875em; }
+    kbd { border: 1px solid rgb(var(--dev3-border)); border-bottom-width: 2px; background: rgb(var(--dev3-surface-elevated)); }
+    /* pre-wrap, never a scroller: a long command still fits a phone and a page. */
+    pre { padding: 12px 14px; border: 1px solid rgb(var(--dev3-border)); border-radius: 12px; background: rgb(var(--dev3-surface-base)); font-size: .75rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre code { padding: 0; background: transparent; font-size: inherit; }
+    mark { padding: 0 .2em; border-radius: 3px; background: rgb(var(--dev3-gold) / .3); color: inherit; }
+    blockquote { padding: 6px 14px; border-inline-start: 3px solid rgb(var(--dev3-tone, var(--dev3-gold))); color: rgb(var(--dev3-text-secondary)); }
+    hr { margin: 14px 0; border: 0; border-top: 1px solid rgb(var(--dev3-border)); }
+    details { padding: 10px 14px; border: 1px solid rgb(var(--dev3-border)); border-radius: 12px; background: rgb(var(--dev3-surface-base) / .5); }
+    summary { cursor: pointer; font-weight: 650; }
+    details[open] > summary { margin-bottom: 8px; }
+    /* A callout asserts something: a tone for emphasis, a semantic class for a verdict. */
+    .callout { padding: 12px 14px; border-inline-start: 3px solid rgb(var(--dev3-tone, var(--dev3-accent))); border-radius: 0 12px 12px 0; background: rgb(var(--dev3-tone, var(--dev3-accent)) / .08); }
+    .callout.good { --dev3-tone: var(--dev3-success); }
+    .callout.warn { --dev3-tone: var(--dev3-warning); }
+    .callout.bad { --dev3-tone: var(--dev3-danger); }
+    .callout-title { display: block; margin-bottom: 3px; color: rgb(var(--dev3-tone, var(--dev3-accent))); font-size: .6875rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+    /* Numbered steps: an <ol class="steps">, nothing else to write. */
+    .steps { display: grid; gap: 10px; padding: 0; counter-reset: dev3-step; list-style: none; }
+    .steps > li { position: relative; margin: 0; padding-inline-start: 2.25rem; }
+    .steps > li::before { position: absolute; top: -.1em; left: 0; display: grid; width: 1.6rem; height: 1.6rem; place-items: center; border-radius: 50%; background: rgb(var(--dev3-tone, var(--dev3-accent)) / .14); color: rgb(var(--dev3-tone, var(--dev3-accent))); content: counter(dev3-step); counter-increment: dev3-step; font-size: .75rem; font-weight: 750; }
+    /* A screenshot with its caption; `.pair` puts two side by side (before / after). */
+    figure.shot img, figure.shot video { display: block; max-width: 100%; border: 1px solid rgb(var(--dev3-border)); border-radius: 12px; box-shadow: 0 10px 30px rgb(var(--dev3-shadow) / .12); }
+    figure.shot figcaption { margin-top: 6px; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
+    figure.shot figcaption strong { color: rgb(var(--dev3-text-primary)); }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .pair > figure { margin: 0; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
+    .swatch { display: inline-block; width: .75em; height: .75em; margin-inline-end: .35em; border-radius: 3px; background: rgb(var(--dev3-tone, var(--dev3-accent))); vertical-align: -.05em; }
+    /* A bar filled from `--value` (`style="--value: 62%"`), colored by the tone. */
+    .progress { height: 8px; overflow: hidden; border-radius: 99px; background: rgb(var(--dev3-border)); }
+    .progress > span { display: block; width: var(--value, 0%); height: 100%; border-radius: 99px; background: rgb(var(--dev3-tone, var(--dev3-accent))); }
+    /* Text is the table default; a numeric column opts in with `.num`. */
+    th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .toast {
       position: fixed;
       z-index: var(--dev3-z-toast);
@@ -679,6 +734,7 @@
       .controls { grid-template-columns: 1fr; }
       .field.full { grid-column: auto; }
       .choice-grid { grid-template-columns: 1fr; }
+      .pair { grid-template-columns: 1fr; }
       .table-tools { align-items: stretch; flex-direction: column; }
       .table-tools input { width: 100%; }
       .evidence-group-head, .evidence-toolbar { align-items: stretch; flex-direction: column; }
@@ -695,7 +751,7 @@
       thead { display: none; }
       table, tbody { display: block; }
       tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px 16px; border-top: 1px solid rgb(var(--dev3-border)); }
-      tbody th, tbody td { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
+      tbody th, tbody td, tbody td.num { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
       /* The shell copies thead text onto each cell, so authors write no labels. */
       tbody td[data-dev3-label]::before {
         display: block;
