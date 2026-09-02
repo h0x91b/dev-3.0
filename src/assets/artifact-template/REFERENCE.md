@@ -2,7 +2,7 @@
 
 `AUTHORING.md` is the card; this file is the depth behind it. Read the section the report needs, not the file.
 
-## Panels, spacing, and width
+## Panels, spacing, and padding
 
 `main.app` spaces its direct children for you, so stacked panels never touch. Add sections as top-level siblings of `.app` and do not hand-add vertical margins between them. Nest a group of panels inside `<div class="stack">` when they belong together; use `.grid`, `.dashboard-grid`, or `.evidence-book` for column layouts.
 
@@ -10,7 +10,7 @@
 
 `.dashboard-grid` is a 12-column grid. A panel inside it takes the whole row unless you give it a width, so a card you drop in never collapses into a sliver. To put panels side by side add `span-3` … `span-9` (`<article class="card section span-6">`); the widths apply above 900px and every panel goes full width below that and in print.
 
-`main.app.doc` is the document width (960px): prose and tables share one edge. Without `doc` the container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because those panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
+The container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because the panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
 
 ## Color tokens
 
@@ -47,7 +47,7 @@ Three families, and mixing them is the mistake this section exists to prevent.
 
 ### Tones — a hue per panel, without writing a color
 
-Add `tone-1` … `tone-6` (or `tone-gold`) to any element and everything under it that reads `--dev3-tone` picks up that hue: the KPI card's top rail, its section heading marker, `.pill.tone`, `.callout`, `.steps` numbers, `.swatch`, `.progress`, `.mini-fill`, and `.evidence-marker`. Drop the class and each falls back to its default — accent for the rail, gold for the heading marker.
+Add `tone-1` … `tone-6` (or `tone-gold`) to any element and everything under it that reads `--dev3-tone` picks up that hue: the KPI card's top rail, its section heading marker, `.pill.tone`, `.mini-fill`, and `.evidence-marker`. Drop the class and each falls back to its default — accent for the rail, gold for the heading marker.
 
 ```html
 <article class="card kpi tone-5">…</article>
@@ -93,7 +93,7 @@ It is safe everywhere: with no viewer map (file://, the extracted ZIP) it return
 
 Artifacts render in a sandboxed opaque-origin iframe with network access open. CDN libraries, fonts, `fetch()`, and WebSockets may reach the user's services or the dev3 dev server, but the target must accept a `null` origin (CORS). Prefer familiar, narrowly scoped libraries from cdnjs when they remove report-specific code, and pin the exact version in the URL. Do not add `integrity` hashes: CDN byte changes must not brick an otherwise compatible artifact. Keep report content and data local; analytics and trackers are not allowed.
 
-The shell knows Apache ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1 by their pinned cdnjs URLs (the tags are in § Charts and § Navigation and form controls). Do not replace their versions or reproduce their behavior in report code. All three degrade safely when offline: charts show a notice, while selects and ranges remain native controls.
+The starter already pins Apache ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1 in their URLs. Do not replace their tags or reproduce their behavior in report code. All three degrade safely when offline: charts show a notice, while selects and ranges remain native controls.
 
 ## Charts (Apache ECharts from cdnjs)
 
@@ -146,7 +146,7 @@ Local fragment links are real navigation. Put them in `.section-nav`, give every
 <section class="section-anchor" id="results"><h2>Results</h2></section>
 ```
 
-Form controls are enhanced by two pinned CDN libraries the starter does not load by default. Add both tags when the report has a select or a slider — the stylesheets in `<head>`, the scripts before `app.js`:
+Form controls are enhanced by two pinned CDN libraries the starter already loads; these are the tags, should a report that removed them need them back — the stylesheets in `<head>`, the scripts before `app.js`:
 
 ```html
 <link data-dev3-vendor="choices.js@11.2.3" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.css" referrerpolicy="no-referrer">
@@ -195,7 +195,7 @@ Style overlays only through `.popover`, `.popover-title`, and plain `button`/`a`
 
 ## Tables
 
-Every table gets its reading aids from the shell: alternating row tint, a full-row hover highlight, a vertical rule between cells, tabular figures, and a header that stays visible while the rows scroll. Do not re-implement any of it in report code, and do not add per-row background styles. Text is the default alignment; a numeric column takes `class="num"` on its `th` and `td`.
+Every table gets its reading aids from the shell: alternating row tint, a full-row hover highlight, a vertical rule between cells, tabular figures, and a header that stays visible while the rows scroll. Do not re-implement any of it in report code, and do not add per-row background styles.
 
 Mark a sortable heading with `data-sort` plus `tabindex="0"`; the shell maintains `aria-sort` and renders the ascending/descending caret. On a `<table data-sortable>` the shell also reorders the rows itself, comparing each cell's `data-sort` value or, without one, its text (numeric-aware). Leave `data-sortable` off when report code renders the rows from data and sorts them itself. A heading without `data-sort` renders as a plain label with no pointer cursor. A search box and a filter select belong in `.table-tools` inside the `.section-head.table-head`; report code filters the rows.
 

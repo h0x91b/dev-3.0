@@ -3,101 +3,133 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Report title</title>
+  <title>Agent Operations Cockpit</title>
+  <link data-dev3-vendor="choices.js@11.2.3" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.css" referrerpolicy="no-referrer">
+  <link data-dev3-vendor="nouislider@15.8.1" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.css" referrerpolicy="no-referrer">
   <link rel="stylesheet" href="app.css" data-dev3-artifact-shell>
 </head>
-<!--
-  Cheat sheet — everything below is already styled, write the tag or class and no CSS:
-    layout     main.app.doc (page width; drop `doc` for a wide dashboard) · .card · .card.section · .card.table-card · .dashboard-grid > .span-3…span-9 · .kpis
-    text       <p class="prose"> · h2.section-title · h3 · h4 · ul/ol · <pre><code> · <code> · <kbd> · <mark> · blockquote · details/summary
-    blocks     .callout[.good|.warn|.bad] + .callout-title · ol.steps · figure.shot > img + figcaption · .pair (two figures side by side) · .legend + .swatch · .progress > span style="--value:62%"
-    tables     <table data-sortable> + th[data-sort tabindex=0] sorts itself · td.num for numbers · .evidence-table for dense ledgers · cell classes .good .bad .sig .dim · tr.total
-    color      tone-1…tone-6 / tone-gold on any card, pill or callout · .pill.success|warning|danger|muted|tone · never a hex, never a px font size
-    charts     <div class="chart-host" id="…"> + dev3Artifact.chart(el, () => option) in report.js — see REFERENCE.md
--->
 <body>
-  <main class="app doc">
+  <main class="app">
     <header class="topbar">
       <div class="brand">
         <img src="dev3-icon.png" alt="dev3 logo">
         <div>
-          <div class="eyebrow">DEV3 ARTIFACT · REPORT</div>
-          <h1>Report title</h1>
-          <div class="muted">One line on what was done and for whom.</div>
+          <div class="eyebrow">DEV3 ARTIFACT · OPERATIONS</div>
+          <h1>Agent Operations Cockpit</h1>
+          <div class="muted">Model throughput, risk, and delivery before launching the next swarm.</div>
         </div>
       </div>
       <div class="actions">
-        <span class="status"><span class="dot"></span>Verdict in one word</span>
+        <span class="status"><span class="dot"></span>Live data</span>
         <div class="segmented text-size" role="group" aria-label="Text size">
           <button type="button" data-font-step="-1" title="Smaller text" aria-label="Smaller text">A−</button>
           <button class="text-size-value" id="fontScaleValue" type="button" data-font-step="0" title="Reset text size to 100%" aria-label="Reset text size">100%</button>
           <button type="button" data-font-step="1" title="Larger text" aria-label="Larger text">A+</button>
         </div>
         <button class="ghost" id="artifactTheme" type="button" title="Theme: Follow host">◐ Auto</button>
+        <button class="ghost" id="refresh" type="button">↻ Refresh</button>
+        <button class="primary" id="runTop" type="button">Run scenario</button>
       </div>
     </header>
 
     <nav class="section-nav print-hidden" aria-label="Report sections">
-      <a href="#summary">Summary</a>
-      <a href="#findings">Findings</a>
-      <a href="#evidence">Evidence</a>
-      <a href="#decision">Decision</a>
+      <a href="#overview">Overview</a>
+      <a href="#charts">Charts</a>
+      <a href="#scenario">Scenario</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#runs">Runs</a>
     </nav>
 
-    <section class="grid kpis">
-      <article class="card kpi tone-1"><div class="kpi-top"><span>Files touched</span></div><div class="kpi-value">7</div><div class="trend">+219 / −0 lines</div></article>
-      <article class="card kpi tone-gold"><div class="kpi-top"><span>Worth fixing</span></div><div class="kpi-value">2</div><div class="trend warn">both latent, both proven</div></article>
-      <article class="card kpi tone-5"><div class="kpi-top"><span>Blockers</span></div><div class="kpi-value">0</div><div class="trend">none</div></article>
+    <section class="grid kpis section-anchor" id="overview">
+      <h2 class="sr-only">Overview</h2>
+      <!-- tone-N gives each card its own hue from the viz ramp; drop the class and
+           the rail falls back to the accent. -->
+      <article class="card kpi tone-5"><div class="kpi-top"><span>Tasks shipped</span><span>↗</span></div><div class="kpi-value" id="shipped">128</div><div class="trend" id="shippedTrend">+18.4% vs previous</div></article>
+      <article class="card kpi tone-1"><div class="kpi-top"><span>Agent success</span><span>◎</span></div><div class="kpi-value" id="success">94.2%</div><div class="trend">+3.1 points</div></article>
+      <article class="card kpi tone-2"><div class="kpi-top"><span>Median cycle</span><span>◷</span></div><div class="kpi-value" id="cycle">22m</div><div class="trend">8m faster</div></article>
+      <article class="card kpi tone-4"><div class="kpi-top"><span>Review queue</span><span>◇</span></div><div class="kpi-value" id="queue">7</div><div class="trend warn" id="queueTrend">2 need attention</div></article>
     </section>
 
-    <section class="card section section-anchor" id="summary">
-      <div class="section-head"><div><h2 class="section-title">Headline as a statement, not a topic</h2><div class="section-copy">One line of context under it</div></div></div>
-      <p class="prose">Two or three sentences a reader who forgot this task can follow. Name every object once: <code>resolveSession()</code> in <code>src/example.ts:42</code>, the <kbd>⌘K</kbd> shortcut, the <mark>one number that matters</mark>.</p>
-      <div class="callout good"><span class="callout-title">Verified</span>Ran the suite and clicked through the flow. A <code>.callout</code> takes <code>good</code>, <code>warn</code>, <code>bad</code>, or a <code>tone-N</code> class.</div>
-    </section>
-
-    <section class="card table-card section-anchor" id="findings">
-      <div class="section-head table-head"><div><h2 class="section-title">Findings, ranked</h2><div class="section-copy">Click a heading to sort — the shell sorts a <code>data-sortable</code> table by itself</div></div></div>
-      <table data-sortable>
-        <thead><tr><th data-sort tabindex="0">Severity</th><th data-sort tabindex="0">Where</th><th>What is wrong</th><th>What to do</th><th class="num" data-sort tabindex="0">Lines</th></tr></thead>
-        <tbody>
-          <tr><td data-sort="1"><span class="pill danger">blocker</span></td><td><code>src/auth.ts:42</code></td><td>Token expiry is never checked, so an expired token still opens the account.</td><td>Check <code>exp</code> before <code>verify()</code>.</td><td class="num">3</td></tr>
-          <tr><td data-sort="2"><span class="pill warning">worth fixing</span></td><td><code>src/db.ts:88</code></td><td>One query per user inside a loop.</td><td>Collapse into one <code>IN (…)</code>.</td><td class="num">12</td></tr>
-          <tr><td data-sort="3"><span class="pill muted">nitpick</span></td><td><code>README.md</code></td><td>Command example still names the old flag.</td><td>Replace <code>--images</code> with <code>--assets</code>.</td><td class="num">1</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="dashboard-grid section-anchor" id="evidence">
-      <article class="card section span-7 tone-2">
-        <div class="section-head"><div><h2 class="section-title">What I did, in order</h2><div class="section-copy">An <code>ol.steps</code>; a command goes in <code>pre</code></div></div></div>
-        <ol class="steps">
-          <li>Reproduced the bug on a clean checkout.</li>
-          <li>Ran the narrowest suite around the change:<pre><code>bun run test -- src/__tests__/auth.test.ts</code></pre></li>
-          <li>Confirmed the fix in the browser — see the screenshot on the right.</li>
-        </ol>
-        <details><summary>What I did not look at</summary><ul><li>Windows — no machine.</li><li>The renderer suites — unrelated to this change.</li></ul></details>
+    <section class="dashboard-grid section-anchor" id="charts">
+      <article class="card section velocity-panel tone-1">
+        <div class="section-head">
+          <div><h2 class="section-title">Delivery velocity</h2><div class="section-copy">Completed tasks and predicted capacity</div></div>
+          <div class="segmented" id="periods"><button type="button" data-period="7">7d</button><button type="button" class="active" data-period="30">30d</button><button type="button" data-period="90">90d</button></div>
+        </div>
+        <div class="chart-host" id="velocityChart" role="img"></div>
       </article>
-      <article class="card section span-5 tone-4">
-        <div class="section-head"><div><h2 class="section-title">Failures per run</h2><div class="section-copy">One chart; delete the panel and its block in <code>report.js</code> if the report has none</div></div></div>
-        <div class="chart-host" id="trendChart" role="img"></div>
-        <!-- A screenshot: <figure class="shot"><img src="shots/after.png" alt="…"><figcaption><strong>After.</strong> Caption.</figcaption></figure>
-             Before / after: <div class="pair"><figure class="shot">…</figure><figure class="shot">…</figure></div>
-             List the image files after --assets when publishing, or publish the whole directory. -->
+
+      <article class="card section pie-panel tone-3">
+        <div class="section-head"><div><h2 class="section-title">Pipeline health</h2><div class="section-copy">Current task distribution</div></div></div>
+        <div class="chart-host" id="pipelinePie" role="img"></div>
+      </article>
+
+      <article class="card section radar-panel tone-5">
+        <div class="section-head"><div><h2 class="section-title">Capability profile</h2><div class="section-copy">Current scenario against the delivery target</div></div></div>
+        <div class="chart-host" id="capabilityRadar" role="img"></div>
+      </article>
+
+      <article class="card section scenario-panel section-anchor tone-2" id="scenario">
+        <div class="section-head"><div><h2 class="section-title">Scenario builder</h2><div class="section-copy">Tune the next agent run</div></div></div>
+        <form id="scenarioForm" class="controls">
+          <div class="field"><label for="workflow">Workflow</label><select id="workflow" data-ui-select><option>Feature delivery</option><option>Bug hunt</option><option>PR review</option><option>Research sprint</option></select></div>
+          <div class="field"><label for="agents">Agents</label><select id="agents" data-ui-select><option>3 agents</option><option selected>5 agents</option><option>8 agents</option><option>12 agents</option></select></div>
+          <div class="field full"><label for="risk">Risk tolerance <output id="riskValue" for="risk">6 / 10</output></label><input id="risk" type="range" min="1" max="10" value="6" data-ui-slider data-unit=" / 10" data-pips="4"><div class="range-label"><span>Conservative</span><span>Aggressive</span></div></div>
+          <label class="check field full"><input id="experiments" type="checkbox" checked> Include experimental agent presets</label>
+          <fieldset class="option-group field full"><legend>Review mode</legend><div class="choice-grid"><label class="check"><input type="radio" name="reviewMode" value="automatic" checked> Automatic</label><label class="check"><input type="radio" name="reviewMode" value="manual"> Manual</label></div></fieldset>
+          <label class="switch field full"><input type="checkbox" checked><span aria-hidden="true"></span> Auto-refresh forecasts</label>
+          <div class="form-actions field full"><button type="reset">Reset</button><button class="primary" type="submit">Simulate</button></div>
+        </form>
       </article>
     </section>
 
-    <section class="card section section-anchor tone-gold" id="decision">
-      <div class="section-head"><div><h2 class="section-title">Decision</h2></div></div>
-      <p class="prose">What is decided, what needs the reader's call, or <em>nothing to decide — just logging where we are</em>. End here; never on a recap.</p>
+    <section class="card section section-anchor tone-6" id="gallery">
+      <div class="section-head">
+        <div><h2 class="section-title">Chart gallery</h2><div class="section-copy">More ECharts types through the same bridge — keep what fits your report, delete the rest</div></div>
+        <div class="segmented" id="galleryTabs">
+          <button type="button" class="active" data-gallery="heatmap">Heatmap</button>
+          <button type="button" data-gallery="sankey">Sankey</button>
+          <button type="button" data-gallery="sunburst">Sunburst</button>
+          <button type="button" data-gallery="gauge">Gauge</button>
+        </div>
+      </div>
+      <div class="chart-host" id="galleryChart" role="img"></div>
     </section>
 
-    <footer class="dev3-footer"><span><strong>Built with dev3 Artifacts</strong> · interactive reports that travel with the task</span><span>Template v1</span></footer>
+    <section class="card table-card section-anchor" id="runs">
+      <div class="section-head table-head">
+        <div><h2 class="section-title">Recent agent runs</h2><div class="section-copy">Click a column heading to sort</div></div>
+        <div class="table-tools">
+          <input id="search" type="search" placeholder="Search runs…">
+          <select id="statusFilter" aria-label="Filter by status" data-ui-select><option value="all">All statuses</option><option value="Shipped">Shipped</option><option value="Review">Review</option><option value="Running">Running</option></select>
+          <!-- A menu inside a card: the shell lifts it into the top layer, so the
+               card's overflow and the sticky table header cannot clip it. -->
+          <div class="popover-anchor">
+            <button type="button" data-popover-trigger="runsMenu">Export <span class="popover-caret" aria-hidden="true">▾</span></button>
+            <div class="popover" id="runsMenu">
+              <div class="popover-title">Export runs</div>
+              <button type="button" data-export="csv">Copy as CSV</button>
+              <button type="button" data-export="markdown">Copy as Markdown</button>
+              <hr>
+              <button type="button" data-export="print">Open print view</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <table><thead><tr><th data-sort="name" tabindex="0">Run</th><th data-sort="status" tabindex="0">Status</th><th data-sort="agent" tabindex="0">Agent</th><th data-sort="progress" tabindex="0">Progress</th><th data-sort="cycle" tabindex="0">Cycle</th></tr></thead><tbody id="runRows"></tbody></table>
+      <div class="empty" id="empty" hidden>No matching runs.</div>
+    </section>
+    <footer class="dev3-footer"><span><strong>Built with dev3 Artifacts</strong> · interactive reports that travel with the task</span><span>Template v1 · portable bundle</span></footer>
   </main>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite">Scenario recalculated.</div>
 
-  <!-- Apache ECharts 6.1.0 (Apache-2.0) from cdnjs. Keep the versioned src as-is while the report has a chart; delete it with the last chart. -->
+  <!-- Apache ECharts 6.1.0 (Apache-2.0) from cdnjs. Keep the versioned src exactly as-is.
+       Charts degrade to a notice while offline.
+       Extra libraries / fetch integrations are allowed too — see AUTHORING.md "Network access". -->
   <script data-dev3-vendor="echarts@6.1.0" src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" referrerpolicy="no-referrer"></script>
+  <script data-dev3-vendor="choices.js@11.2.3" src="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.js" referrerpolicy="no-referrer"></script>
+  <script data-dev3-vendor="nouislider@15.8.1" src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js" referrerpolicy="no-referrer"></script>
+
   <script src="app.js" data-dev3-artifact-shell></script>
   <script src="report.js"></script>
 </body>

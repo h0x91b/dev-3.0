@@ -133,7 +133,7 @@ describe.skipIf(!browser)("artifact starter through file://", () => {
 					document.body.dataset.choiceHighlightedLightSafe = contrast(document.getElementById("choice-highlighted")) >= 4.5;
 					document.documentElement.dataset.theme = "dark";
 					Element.prototype.scrollIntoView = () => {};
-					const chartsLink = document.querySelector('.section-nav a[href="#findings"]');
+					const chartsLink = document.querySelector('.section-nav a[href="#charts"]');
 					chartsLink.click();
 					document.body.dataset.navCurrent = chartsLink.getAttribute("aria-current") || "";
 					document.body.dataset.navFocus = document.activeElement.textContent.trim();
@@ -148,14 +148,13 @@ describe.skipIf(!browser)("artifact starter through file://", () => {
 		expect(output).toContain('data-file-protocol="file:"');
 		expect(output).toContain('data-css-loaded="true"');
 		expect(output).toContain('data-nav-current="location"');
-		expect(output).toContain('data-nav-focus="Findings, ranked"');
-		expect(output).toContain('data-nav-hash="#findings"');
+		expect(output).toContain('data-nav-focus="Delivery velocity"');
+		expect(output).toContain('data-nav-hash="#charts"');
 		expect(output).toContain('data-choice-selected-safe="true"');
 		expect(output).toContain('data-choice-highlighted-safe="true"');
 		expect(output).toContain('data-choice-selected-light-safe="true"');
 		expect(output).toContain('data-choice-highlighted-light-safe="true"');
-		// The findings rows are static markup, so a rendered row proves the document itself, not report.js.
-		expect(output).toContain("Token expiry is never checked");
+		expect(output).toContain("Artifact workspace");
 		// Must outlast every browser attempt above, or vitest kills the retry.
 	}, BROWSER_TIMEOUTS_MS.reduce((sum, ms) => sum + ms, 10_000));
 });
