@@ -171,8 +171,8 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
  *
  * Two stages rather than one, because Claude Code's input layer reads a fast
  * "text Enter" as a single paste — newline included — and never submits. The
- * text is a text step, so the tmux adapter sends it with `-l` and a prompt whose
- * content reads like a key name (`C-c`, `Escape`) is typed rather than pressed.
+ * text is a text step, so the tmux adapter pastes it from a buffer and a prompt whose
+ * content reads like a key name (`C-c`, `Escape`) is delivered rather than pressed.
  */
 function agentPromptStages(prompt: string): PaneInputStage[] {
 	return [

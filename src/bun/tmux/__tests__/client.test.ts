@@ -509,7 +509,7 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		);
 		const [[name, text]] = loadedBuffers(spawnFn);
 		expect(text).toBe("hi");
-		expect(argv[8]).toBe(`paste-buffer -d -p -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`);
+		expect(argv[8]).toBe(`paste-buffer -d -p -r -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`);
 		expect(result).toEqual({ sent: true });
 	});
 
@@ -519,7 +519,20 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 	it("pastes with -p so a bracketed-paste app receives one atomic paste", async () => {
 		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
 		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "a long message" }] });
-		expect(guardedArgv(spawnFn)[8]).toContain("paste-buffer -d -p -b ");
+		expect(guardedArgv(spawnFn)[8]).toContain("paste-buffer -d -p -r -b ");
+	});
+
+	// Without `-r`, tmux replaces every LF in the buffer with CR (measured on 3.6a:
+	// `41 0a 42` typed arrives as A LF B, pasted without `-r` as A CR B). An app that
+	// never asked for DEC 2004 gets no brackets and reads CR as submit, so a multi-line
+	// prompt would submit itself one line at a time.
+	it("keeps newlines as newlines in a multi-line prompt", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		const prompt = "first line\nsecond line\nthird line";
+		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: prompt }] });
+
+		expect(loadedBuffers(spawnFn)[0][1]).toBe(prompt);
+		expect(guardedArgv(spawnFn)[8]).toContain(" -r ");
 	});
 
 	// The text rides argv, so no tmux-level quoting exists to get wrong: text that looks
@@ -545,7 +558,7 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ keys: ["Left", "Left"] }, { literal: "x" }] });
 		const [[name]] = loadedBuffers(spawnFn);
 		expect(guardedArgv(spawnFn)[8]).toBe(
-			`send-keys -t %3 Left Left ; paste-buffer -d -p -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`,
+			`send-keys -t %3 Left Left ; paste-buffer -d -p -r -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`,
 		);
 	});
 

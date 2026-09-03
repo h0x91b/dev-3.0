@@ -32,21 +32,24 @@ Measured on tmux 3.6a and Claude Code 2.1.258, bottom up.
 
 `TmuxClient.sendKeysGuarded` no longer types literal text. Each literal chunk is loaded
 into its own `set-buffer -b dev3-paste-<uuid> -- <text>` (argv, so no quoting and no hex)
-and the guarded command list pastes it with `paste-buffer -d -p -b <name> -t <pane>`.
+and the guarded command list pastes it with `paste-buffer -d -p -r -b <name> -t <pane>`.
 `-p` wraps the payload in bracketed paste **only when the running app asked for DEC 2004**,
 so an agent CLI takes one message as one atomic paste while a plain shell still receives
 plain text. Key steps still go through `send-keys`, and the guard, the marker and the
 verdicts are untouched.
 
+`-r` is not optional. Without it tmux replaces every LF in the buffer with a CR — measured on
+3.6a against a raw-mode reader: `send-keys -H 41 0a 42` delivers `A LF B`, `paste-buffer -d -p`
+delivers `A CR B`, and `-r` delivers `A LF B` again. Claude Code does not care (both forms fold
+into one attachment, verified against a live 2.1.259 pane), but `-p` brackets only when the app
+asked for DEC 2004, and an app that did not gets bare CRs, which a TUI reads as submit while LF
+means insert-newline. `-r` keeps the byte stream identical to what `send-keys -H` delivered, so
+Codex, Gemini and Cursor Agent see no change at all.
+
 Buffer names are per-send because tmux buffers are server-wide; `-d` drops the buffer on a
 successful paste and a `finally` deletes anything a refused guard left behind, so a message
 body never lingers where `show-buffer` can read it. That cleanup is deliberately not
 awaited — it must not extend a send that is already hanging.
-
-`AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES` drops from 1 500 to 512. The old number came from
-where the field reports started, not from where the risk starts: body plus envelope crosses
-the first ~1 KB chunk boundary near 600 bytes, and two of the four reported losses were
-under 1 500, so they arrived mangled with no `<full-copy>` path back to the text.
 
 Verified end to end through the patched client: `sendKeysGuarded` driving a real tmux pane
 running real Claude Code delivered a 3 163-byte envelope whole, the agent echoed its first
@@ -75,3 +78,29 @@ refused (stale server token) put zero bytes in the pane and left no buffer behin
 - **Lower the spill threshold so more messages become a file pointer.** Trades a truncation
   bug for making the receiver open a file for ordinary-length messages — the opposite of
   what the report asked for.
+
+## What the rebase onto #1634 changed
+
+Written after the branch was rebased on `5a7dd9fa6`, which spills any message past 1 000 bytes of
+typed envelope to a file and deletes the `<full-copy>` receipt outright.
+
+- The receipt-threshold change this branch originally carried is gone, along with the constant it
+  tuned: there is no receipt left to arm. `src/shared/types.ts`,
+  `src/bun/agent-message-spill.ts` and `src/bun/__tests__/agent-message-receipt.test.ts` now
+  follow main.
+- The two changes remain complementary. The spill bounds what is ever typed; this branch makes
+  what IS typed arrive as one paste. Neither makes the other redundant, because the spill still
+  types a pointer and a short envelope, and those still cross the composer.
+- `-r` was added, with the LF/CR reasoning above and a multi-line test in
+  `src/bun/tmux/__tests__/client.test.ts`; nothing covered multi-line text before.
+- `timeoutMs` is now a budget for the whole send rather than per tmux command: `set-buffer` and
+  the guarded paste are two commands, and spending the full budget on each let one stage run past
+  the deadline its caller computed.
+
+## Still unproven
+
+Whether the bracketed paste actually defeats the drop. An n=30 comparison against the unpatched
+path returned a null result — the unpatched arm did not fail either, on a fresh receiver — so
+there is no measurement either way. The change stands on the mechanism (upstream
+anthropics/claude-code#90910 drops a `[Pasted text]` attachment; one paste is one attachment)
+rather than on a measured rate.

@@ -315,8 +315,8 @@ describe("one stage still fits what each backend can physically carry", () => {
 	 */
 	const TMUX_COMMAND_BYTES = 16_344;
 
-	/** `paste-buffer -d -p -b dev3-paste-<uuid> -t %999`, the widest a literal chunk gets. */
-	const PASTE_COMMAND = `paste-buffer -d -p -b dev3-paste-${"x".repeat(36)} -t %999`.length;
+	/** `paste-buffer -d -p -r -b dev3-paste-<uuid> -t %999`, the widest a literal chunk gets. */
+	const PASTE_COMMAND = `paste-buffer -d -p -r -b dev3-paste-${"x".repeat(36)} -t %999`.length;
 
 	// Text no longer rides the command list at all: it goes in on its own `set-buffer`
 	// command, and the guarded list only names the buffer. Two commands, two ceilings.

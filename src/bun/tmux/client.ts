@@ -573,6 +573,11 @@ export class TmuxClient {
 	 * paste ONLY when the running app asked for it (DEC 2004), so the app takes it as one
 	 * atomic paste and a plain shell still receives plain text. `set-buffer` also carries
 	 * the text through argv instead of hex, so no tmux quoting can go wrong either.
+	 *
+	 * `-r` because paste-buffer otherwise replaces every LF with CR. An app that did not
+	 * ask for DEC 2004 gets no brackets and reads a bare CR as submit, so a multi-line
+	 * prompt would submit itself line by line; `-r` keeps the bytes identical to what
+	 * `send-keys -H` delivered.
 	 */
 	async sendKeysGuarded(
 		opts: {
@@ -598,7 +603,7 @@ export class TmuxClient {
 			if ("literal" in chunk) {
 				const name = `dev3-paste-${randomUUID()}`;
 				buffers.push({ name, literal: chunk.literal });
-				return `paste-buffer -d -p -b ${name} -t ${opts.pane}`;
+				return `paste-buffer -d -p -r -b ${name} -t ${opts.pane}`;
 			}
 			for (const key of chunk.keys) {
 				if (!/^[A-Za-z][A-Za-z-]*$/.test(key)) throw new Error(`unsafe tmux key name: ${key}`);
@@ -621,17 +626,24 @@ export class TmuxClient {
 			guard,
 			[...commands, `display-message -p ${GUARDED_SEND_MARKER}`].join(" ; "),
 		];
-		const bounds = { timeoutMs: opts.timeoutMs, signal: opts.signal };
+		// One send is now several tmux commands, so `timeoutMs` is the budget for ALL of
+		// them: spending it whole on each would let one stage run past the deadline its
+		// caller computed from the program's own budget.
+		const startedAt = Date.now();
+		const bounds = () =>
+			opts.timeoutMs === undefined
+				? { signal: opts.signal }
+				: { timeoutMs: Math.max(1, opts.timeoutMs - (Date.now() - startedAt)), signal: opts.signal };
 		let pasted = false;
 		try {
 			// Loading a buffer touches no pane, so it stays outside the guard; the paste that
 			// does touch the pane is inside it. `--` because a message may well start with a dash.
 			for (const buffer of buffers) {
 				const load = ["set-buffer", "-b", buffer.name, "--", buffer.literal];
-				const loaded = await this.run(opts.socket, load, bounds);
+				const loaded = await this.run(opts.socket, load, bounds());
 				if (loaded.exitCode !== 0) throw new TmuxError(load, loaded.exitCode, loaded.stderr);
 			}
-			const result = await this.run(opts.socket, args, bounds);
+			const result = await this.run(opts.socket, args, bounds());
 			if (result.exitCode !== 0) throw new TmuxError(args, result.exitCode, result.stderr);
 			pasted = result.stdout.includes(GUARDED_SEND_MARKER);
 			return { sent: pasted };

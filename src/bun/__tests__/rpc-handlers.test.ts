@@ -7756,7 +7756,7 @@ describe("handlers.rebaseTaskViaAgent", () => {
 				.filter((argv) => argv[3] === "set-buffer")
 				.map((argv) => [argv[5] as string, argv[7] as string] as const),
 		);
-		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -r -b (\S+)/g)]
 			.map((match) => loaded.get(match[1] as string) ?? "")
 			.join("");
 	}
@@ -7863,7 +7863,7 @@ describe("handlers.commitTaskViaAgent", () => {
 				.filter((argv) => argv[3] === "set-buffer")
 				.map((argv) => [argv[5] as string, argv[7] as string] as const),
 		);
-		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -r -b (\S+)/g)]
 			.map((match) => loaded.get(match[1] as string) ?? "")
 			.join("");
 	}
@@ -13743,7 +13743,7 @@ describe("handlers.createPullRequest", () => {
 				.filter((argv) => argv[3] === "set-buffer")
 				.map((argv) => [argv[5] as string, argv[7] as string] as const),
 		);
-		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -b (\S+)/g)]
+		return [...(args?.join(" ") ?? "").matchAll(/paste-buffer -d -p -r -b (\S+)/g)]
 			.map((match) => loaded.get(match[1] as string) ?? "")
 			.join("");
 	}
@@ -13957,7 +13957,7 @@ describe("handlers.createPullRequest", () => {
 
 		const sends = guardedSends();
 		expect(sends).toHaveLength(2);
-		expect(sends[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
+		expect(sends[0]?.join(" ")).toMatch(/paste-buffer -d -p -r -b \S+ -t %5/);
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %5 Enter");
 	});
 
@@ -13981,7 +13981,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -r -b \S+ -t %5/);
 	});
 
 	it("routes to the live agent pane when the Codex main pane id is not persisted", async () => {
@@ -14002,7 +14002,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %7/);
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -r -b \S+ -t %7/);
 	});
 
 	it("routes a legacy Codex main pane before a focused shell split", async () => {
@@ -14020,7 +14020,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %5/);
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -r -b \S+ -t %5/);
 	});
 
 	// A registered agent pane that no longer exists must not hijack the routing —
@@ -14038,7 +14038,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -b \S+ -t %3/);
+		expect(guardedSends()[0]?.join(" ")).toMatch(/paste-buffer -d -p -r -b \S+ -t %3/);
 	});
 
 	it("throws when the task has no worktree", async () => {
