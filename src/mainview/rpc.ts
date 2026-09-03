@@ -173,13 +173,19 @@ interface ApiShape {
 	request: RequestProxy;
 }
 
-const RPC_TIMEOUT_MS = 120_000;
+// 6 minutes. Governs every renderer→host request on both transports. It is a
+// last-resort "give up" backstop, not the liveness detector — the bridge
+// watchdog (4s ping) and the browser socket-close handler catch a dead
+// connection in seconds. The one thing that legitimately runs long is a fresh
+// clone (cloneAndAddProject): a large repo on a slow network routinely blew
+// past the old 2-minute cap, so the whole cap is tripled.
+const RPC_TIMEOUT_MS = 360_000;
 
 // Wrap api.request to enrich timeout errors with the method name.
 // Electrobun rejects with a generic "RPC request timed out." — no indication
 // of which method failed.  This proxy catches that and re-throws with context
 // so the unhandled-rejection tracker (analytics.ts) and console show something
-// actionable like: 'RPC "getBranchStatus" timed out (120 000 ms)'.
+// actionable like: 'RPC "getBranchStatus" timed out (360 000 ms)'.
 function enrichRequest(rawRequest: RequestProxy): RequestProxy {
 	return new Proxy(rawRequest, {
 		get(target: RequestProxy, prop: string | symbol, receiver: unknown) {
@@ -205,7 +211,7 @@ function enrichRequest(rawRequest: RequestProxy): RequestProxy {
 // function is never called.
 // Liveness-probe timing for the bridge watchdog. The ping races a short timeout
 // (independent of RPC_TIMEOUT_MS) so a jammed socket is detected in seconds, not
-// the 2-minute request timeout.
+// the full request timeout.
 const PING_TIMEOUT_MS = 4_000;
 const PING_INTERVAL_MS = 30_000;
 const RELOAD_MIN_GAP_MS = 30_000;
