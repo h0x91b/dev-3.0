@@ -67,6 +67,30 @@ describe("ScheduledMessagesChip", () => {
 		expect(mockedApi.request.cancelScheduledMessage).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", messageId: "m1" });
 	});
 
+	it("leads with the subject and keeps the body on hover", async () => {
+		renderChip(makeTask([
+			{
+				id: "m1",
+				text: "a very long agent body nobody reads in a popover",
+				subject: "PR 1577 merged, main green",
+				at: new Date(Date.now() + 600_000).toISOString(),
+				target: { kind: "agent" },
+			},
+		]));
+		await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+		const line = screen.getByText("PR 1577 merged, main green");
+		expect(line.getAttribute("title")).toBe("a very long agent body nobody reads in a popover");
+		expect(screen.queryByText("a very long agent body nobody reads in a popover")).toBeNull();
+	});
+
+	it("falls back to the body when nothing carried a subject", async () => {
+		renderChip(makeTask([
+			{ id: "m1", text: "continue", at: new Date(Date.now() + 600_000).toISOString(), target: { kind: "agent" } },
+		]));
+		await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+		expect(screen.getByText("continue")).toBeTruthy();
+	});
+
 	it("sends the soonest message immediately from the popover", async () => {
 		renderChip(makeTask([
 			{ id: "m1", text: "continue", at: new Date(Date.now() + 600_000).toISOString(), target: { kind: "agent" } },

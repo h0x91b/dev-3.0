@@ -143,7 +143,10 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 				>
 					{sorted.map((m) => (
 						<div key={m.id} className="px-3 py-1.5">
-							<div className="text-xs text-fg-2 truncate" title={m.text}>{m.text}</div>
+							{/* The sender's own one-liner, which is what the subject exists for: the
+							    head of an agent's body is the envelope naming itself. Body on hover,
+							    and it is the whole line for anything queued without a subject. */}
+							<div className="text-xs text-fg-2 truncate" title={m.text}>{m.subject ?? m.text}</div>
 							<div className="mt-1 flex items-center justify-between gap-2">
 								<span className="text-dense text-fg-3">
 									{formatCountdown(new Date(m.at).getTime() - Date.now())}
