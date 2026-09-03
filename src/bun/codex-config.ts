@@ -358,6 +358,18 @@ function stableStringify(value: unknown): string {
  * thing raw-text editing exists to avoid.
  */
 function removeProjectBlocks(content: string, targets: Set<string>): string {
+	return removeTableBlocks(content, (line) => {
+		const projectPath = projectPathFromHeader(line);
+		return projectPath != null && targets.has(projectPath);
+	});
+}
+
+/**
+ * Drop every table whose header the predicate selects, along with its
+ * sub-tables' lines. Shared by the `[projects."…"]` and `[mcp_servers.…]`
+ * pruners; see `removeProjectBlocks` for why trailing comments are held back.
+ */
+function removeTableBlocks(content: string, isTarget: (headerLine: string) => boolean): string {
 	const out: string[] = [];
 	let removing = false;
 	let trailingBlanks = 0;
@@ -373,8 +385,7 @@ function removeProjectBlocks(content: string, targets: Set<string>): string {
 		const trimmed = line.trim();
 		const isHeader = trimmed.startsWith("[") && trimmed.endsWith("]");
 		if (isHeader) {
-			const projectPath = projectPathFromHeader(line);
-			if (projectPath != null && targets.has(projectPath)) {
+			if (isTarget(line)) {
 				if (removing) {
 					pending = []; // between two removed blocks — nothing to re-attach to
 				} else {
@@ -464,6 +475,104 @@ export function pruneCodexProjectEntries(
 	}
 
 	log.info("Pruned dev3 trust entries from Codex config.toml", { entries: targets.size });
+	return stripped;
+}
+
+/**
+ * Keys that describe how to reach an MCP server. Codex accepts a stdio server
+ * (`command`) or a streamable-HTTP one (`url`); everything else in the body —
+ * `tools`, `enabled` — is metadata and does NOT satisfy its transport check.
+ * Anything unrecognized counts as a transport so an unknown-but-valid server
+ * definition is never deleted.
+ */
+const MCP_NON_TRANSPORT_KEYS = new Set(["tools", "enabled"]);
+
+interface CodexMcpConfig {
+	mcp_servers?: Record<string, Record<string, unknown> | undefined>;
+}
+
+/** Server names whose body in this TOML text declares a transport. */
+export function codexServersWithTransport(content: string | null): Set<string> {
+	const names = new Set<string>();
+	if (content == null) return names;
+	let parsed: CodexMcpConfig;
+	try {
+		parsed = load(content) as CodexMcpConfig;
+	} catch {
+		return names;
+	}
+	for (const [name, body] of Object.entries(parsed.mcp_servers ?? {})) {
+		if (body != null && Object.keys(body).some((key) => !MCP_NON_TRANSPORT_KEYS.has(key))) {
+			names.add(name);
+		}
+	}
+	return names;
+}
+
+/** The server name an `[mcp_servers.…]` header (or a sub-table of one) names. */
+function mcpServerNameFromHeader(line: string): string | null {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith("[") || !trimmed.endsWith("]") || trimmed.startsWith("[[")) return null;
+	const segments = splitTomlKeyPath(trimmed.slice(1, -1));
+	if (segments == null || segments.length < 2 || segments[0] !== "mcp_servers") return null;
+	return segments[1];
+}
+
+/**
+ * Drop `[mcp_servers.<name>.…]` tables that carry no transport anywhere in the
+ * effective config. Codex persists per-tool approvals into the ACTIVE profile
+ * file as `[mcp_servers.<name>.tools.<tool>]`; when the server's body later
+ * disappears, that leftover table has no `command`/`url` and Codex refuses to
+ * load the file at all ("invalid transport"), so the task dies at launch —
+ * theme-dependent, because only the profile the user ran accumulated it
+ * (issue #1640). `definedElsewhere` carries the servers the main `config.toml`
+ * defines: those bodies rescue the tools table, so it stays.
+ *
+ * Fails closed exactly like `pruneCodexProjectEntries`: unparsable input, an
+ * unparsable result, or any collateral change returns the original text.
+ */
+export function pruneOrphanedMcpServers(
+	content: string,
+	definedElsewhere: ReadonlySet<string> = new Set(),
+): string {
+	let parsed: CodexMcpConfig;
+	try {
+		parsed = load(content) as CodexMcpConfig;
+	} catch {
+		return content;
+	}
+
+	const withTransport = codexServersWithTransport(content);
+	const targets = new Set(
+		Object.keys(parsed.mcp_servers ?? {}).filter(
+			(name) => !withTransport.has(name) && !definedElsewhere.has(name),
+		),
+	);
+	if (targets.size === 0) return content;
+
+	const stripped = removeTableBlocks(content, (line) => {
+		const name = mcpServerNameFromHeader(line);
+		return name != null && targets.has(name);
+	});
+
+	let after: CodexMcpConfig;
+	try {
+		after = load(stripped) as CodexMcpConfig;
+	} catch {
+		log.warn("Pruning orphaned Codex MCP entries would break the file, leaving it alone");
+		return content;
+	}
+
+	const expected = { ...parsed, mcp_servers: { ...(parsed.mcp_servers ?? {}) } };
+	for (const target of targets) delete expected.mcp_servers[target];
+	if (Object.keys(expected.mcp_servers).length === 0) delete (expected as CodexMcpConfig).mcp_servers;
+
+	if (stableStringify(after) !== stableStringify(expected)) {
+		log.warn("Pruning orphaned Codex MCP entries changed unrelated config, leaving it alone");
+		return content;
+	}
+
+	log.info("Pruned orphaned Codex MCP server entries", { servers: [...targets].join(", ") });
 	return stripped;
 }
 
@@ -1398,13 +1507,16 @@ function ensureProfileSettings(
 /**
  * Patch a per-profile Codex config file (profile-v2 style: one file per
  * profile under `~/.codex/<name>.config.toml`). Upserts root-level key/value
- * pairs while preserving any other content the user may have added.
+ * pairs while preserving any other content the user may have added, and drops
+ * the orphaned `[mcp_servers.*.tools]` tables Codex leaves behind (issue #1640).
  */
 export function ensureCodexProfileFile(
 	content: string | null,
 	settings: Record<string, string>,
+	definedElsewhere: ReadonlySet<string> = new Set(),
 ): string {
 	let result = content ?? "";
+	if (result !== "") result = pruneOrphanedMcpServers(result, definedElsewhere);
 	for (const [key, value] of Object.entries(settings)) {
 		result = upsertRootLine(result, key, value);
 	}
@@ -1450,6 +1562,25 @@ export function ensureCodexConfigFile(homePath: string): void {
 	}
 
 	if (!syntax.profileV2) return;
+	ensureCodexProfileFiles(homePath);
+}
+
+/**
+ * Write the dev3 settings into every managed per-profile file and repair the
+ * orphaned MCP tables Codex accumulates there. Runs at startup and again before
+ * every Codex spawn (`ensureCodexTrust`): the orphan appears DURING a session,
+ * when the user approves a tool and the server later leaves the config, so a
+ * startup-only repair would still let the next launch die (issue #1640).
+ */
+export function ensureCodexProfileFiles(homePath: string): void {
+	let mainConfigServers: ReadonlySet<string> = new Set();
+	try {
+		mainConfigServers = codexServersWithTransport(
+			readFileSync(join(homePath, ".codex", "config.toml"), "utf-8"),
+		);
+	} catch {
+		// No main config (or unreadable) — nothing defines a server elsewhere.
+	}
 
 	for (const profileName of MANAGED_DEV3_PROFILES) {
 		const profilePath = join(homePath, ".codex", `${profileName}.config.toml`);
@@ -1461,7 +1592,7 @@ export function ensureCodexConfigFile(homePath: string): void {
 				// Per-profile file doesn't exist yet — will create.
 			}
 
-			const updated = ensureCodexProfileFile(existing, DEV3_PROFILE_SETTINGS);
+			const updated = ensureCodexProfileFile(existing, DEV3_PROFILE_SETTINGS, mainConfigServers);
 			if (updated !== existing) {
 				writeFileSync(profilePath, updated, "utf-8");
 				log.info("Codex per-profile config patched", { path: profilePath });

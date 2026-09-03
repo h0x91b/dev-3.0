@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
 	ensureCodexConfig,
+	codexServersWithTransport,
 	ensureCodexProfileFile,
 	getCodexSyntaxForVersion,
+	pruneOrphanedMcpServers,
 	parseCodexVersion,
 	pickCodexProfileLaunchFlag,
 	tomlBasicString,
@@ -634,6 +636,98 @@ sandbox_mode = "workspace-write"
 			expect(result.match(/^web_search\s*=/gm)).toHaveLength(1);
 			expect(result).toContain('web_search = "live"');
 			expect(result).not.toContain('web_search = "disabled"');
+		});
+
+		it("drops an orphaned approval table that would break the launch (issue #1640)", () => {
+			const existing = `web_search = "live"
+
+[mcp_servers."mcp-s".tools.search]
+approval_mode = "approve"
+`;
+			const result = ensureCodexProfileFile(existing, { web_search: '"live"' });
+			expect(result).not.toContain("mcp_servers");
+			expect(result).toContain('web_search = "live"');
+		});
+
+		it("keeps an approval table whose server the main config defines", () => {
+			const existing = `[mcp_servers.mcp-s.tools.search]
+approval_mode = "approve"
+`;
+			const result = ensureCodexProfileFile(existing, {}, new Set(["mcp-s"]));
+			expect(result).toContain("[mcp_servers.mcp-s.tools.search]");
+		});
+	});
+
+	describe("pruneOrphanedMcpServers", () => {
+		it("removes a server whose body carries no transport", () => {
+			const content = `[mcp_servers.x]
+enabled = true
+
+[mcp_servers.x.tools.t]
+approval_mode = "approve"
+`;
+			expect(pruneOrphanedMcpServers(content)).not.toContain("mcp_servers");
+		});
+
+		it("keeps a stdio server and its approvals", () => {
+			const content = `[mcp_servers.x]
+command = "echo"
+
+[mcp_servers.x.tools.t]
+approval_mode = "approve"
+`;
+			expect(pruneOrphanedMcpServers(content)).toBe(content);
+		});
+
+		it("keeps an http server declared by url", () => {
+			const content = `[mcp_servers.x]
+url = "https://example.com/mcp"
+`;
+			expect(pruneOrphanedMcpServers(content)).toBe(content);
+		});
+
+		it("prunes only the orphan, leaving neighbours untouched", () => {
+			const content = `model = "gpt-5.4"
+
+[mcp_servers.good]
+command = "echo"
+
+[mcp_servers.gone.tools.t]
+approval_mode = "approve"
+
+[tui]
+theme = "dark"
+`;
+			const result = pruneOrphanedMcpServers(content);
+			expect(result).toContain("[mcp_servers.good]");
+			expect(result).not.toContain("gone");
+			expect(result).toContain('model = "gpt-5.4"');
+			expect(result).toContain("[tui]");
+		});
+
+		it("leaves unparsable content alone", () => {
+			const content = "this is = = not toml\n";
+			expect(pruneOrphanedMcpServers(content)).toBe(content);
+		});
+	});
+
+	describe("codexServersWithTransport", () => {
+		it("reports only servers that declare a transport", () => {
+			const content = `[mcp_servers.a]
+command = "echo"
+
+[mcp_servers.b]
+url = "https://example.com/mcp"
+
+[mcp_servers.c.tools.t]
+approval_mode = "approve"
+`;
+			expect([...codexServersWithTransport(content)].sort()).toEqual(["a", "b"]);
+		});
+
+		it("returns an empty set for null or unparsable content", () => {
+			expect(codexServersWithTransport(null).size).toBe(0);
+			expect(codexServersWithTransport("= =\n").size).toBe(0);
 		});
 	});
 });

@@ -7,7 +7,7 @@ import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
-import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
+import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride } from "./executable";
 import { DEV3_HOME } from "./paths";
 // Writer and pruner share one path constant: whatever registers an entry must
@@ -1027,15 +1027,19 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 
 		if (content != null) backupUnparsableCodexConfig(CODEX_CONFIG, content);
 
+		const codexVersion = getCodexVersionCached();
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved], {
-			codexVersion: getCodexVersionCached(),
+			codexVersion,
 		});
-		if (updated === content) {
-			return;
+		if (updated !== content) {
+			writeFileSync(CODEX_CONFIG, updated, "utf-8");
+			log.info("Registered worktree as trusted in ~/.codex/config.toml", { path: resolved });
 		}
 
-		writeFileSync(CODEX_CONFIG, updated, "utf-8");
-		log.info("Registered worktree as trusted in ~/.codex/config.toml", { path: resolved });
+		// Repairs the orphaned `[mcp_servers.*.tools]` tables Codex writes into the
+		// active profile during a session — they make the NEXT launch fail with
+		// "invalid transport" (issue #1640).
+		if (getCodexSyntaxForVersion(codexVersion).profileV2) ensureCodexProfileFiles(home);
 	} catch (err) {
 		// Non-fatal — worst case the user sees the trust dialog
 		log.warn("Failed to register Codex worktree trust", { error: String(err) });
