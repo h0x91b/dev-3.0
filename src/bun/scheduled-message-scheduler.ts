@@ -14,8 +14,7 @@ import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
-import { utf8Length } from "../shared/pane-input";
-import { spillOversizedAgentMessage, writeAgentMessageReceipt } from "./agent-message-spill";
+import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
@@ -55,13 +54,6 @@ function messagePreview(text: string): string {
 	return oneLine.length > 60 ? `${oneLine.slice(0, 59)}…` : oneLine;
 }
 
-/** The envelope for agent traffic, carrying a receipt when the typed text is long enough to be at risk. */
-async function wrapWithReceipt(task: Task, body: string, source: AgentMessageSource, subject?: string): Promise<string> {
-	const bare = wrapAgentMessage(body, source, task.projectId, subject);
-	const receiptPath = await writeAgentMessageReceipt(task, body, utf8Length(bare));
-	return receiptPath ? wrapAgentMessage(body, source, task.projectId, subject, receiptPath) : bare;
-}
-
 /**
  * Resolve the delivery target and type the text into it, then submit it.
  * `agent` resolves the live agent pane dynamically; `pane` targets a concrete
@@ -78,12 +70,11 @@ async function wrapWithReceipt(task: Task, body: string, source: AgentMessageSou
  */
 async function deliverToTarget(task: Task, message: ScheduledMessage, hold: boolean): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
-	// card chip that previews it) keeps the plain text the sender wrote.
-	// A long delivery also lands on disk, and the envelope names that copy at its very
-	// end — the one position a lost head cannot take with it (issue #1608). Sized on the
-	// envelope as it would be typed, since that is what the receiver's input layer chunks.
-	// Only agent traffic: a human watching the pane sees what happened to his own message.
-	const text = message.source ? await wrapWithReceipt(task, message.text, message.source, message.subject) : message.text;
+	// card chip that previews it) keeps the plain text the sender wrote. The spill
+	// already measured this exact envelope at queue time, so it fits one pty read.
+	const text = message.source
+		? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
+		: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message
 	// reaching one ends on a fresh board snapshot — once per burst, built when the
@@ -288,7 +279,11 @@ export async function scheduleMessage(
 	}
 	// Spilled at queue time, not at delivery: the queue lives in tasks.json, and 20
 	// pending messages of the full allowed length would put megabytes in there.
-	const { text, spilledPath } = await spillOversizedAgentMessage(task, validated);
+	const { text, spilledPath } = await spillOversizedAgentMessage(
+		task,
+		validated,
+		input.source ? { source: input.source, subject: input.subject } : null,
+	);
 	const at = new Date(input.at);
 	if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) {
 		throw new Error("Scheduled message time must be in the future");
@@ -354,7 +349,11 @@ export async function sendMessageImmediately(
 	if (isTerminal(task.status)) {
 		throw new Error("Cannot send a message to a completed or cancelled task");
 	}
-	const { text: payload, spilledPath } = await spillOversizedAgentMessage(task, trimmed);
+	const { text: payload, spilledPath } = await spillOversizedAgentMessage(
+		task,
+		trimmed,
+		source ? { source, subject: opts.subject } : null,
+	);
 	const message: ScheduledMessage = {
 		id: "",
 		text: payload,

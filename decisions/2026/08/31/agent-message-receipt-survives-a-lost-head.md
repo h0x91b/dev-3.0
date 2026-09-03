@@ -1,10 +1,12 @@
 # A long agent message carries a receipt, because we cannot promise it arrives whole
 
-> Superseded on 2026-09-02 by
-> [`decisions/2026/09/02/receipt-arms-at-the-pty-chunk-boundary.md`](../../09/02/receipt-arms-at-the-pty-chunk-boundary.md):
-> the mechanism was found (Claude Code drops the folded first ~1 KiB pty chunk at submit), so the
-> receipt now arms at 1 000 bytes of the typed envelope rather than 1 500 bytes of body. The
-> receipt design itself — a copy on disk, named on the last line — stands.
+> Superseded on 2026-09-03 by
+> [`decisions/2026/09/03/spill-at-the-pty-chunk-boundary.md`](../../09/03/spill-at-the-pty-chunk-boundary.md):
+> the mechanism was found (Claude Code drops the folded first ~1 KiB pty chunk at submit), so
+> nothing longer than one pty read is typed at all any more. **The receipt described here no
+> longer exists** — `writeAgentMessageReceipt`, `AGENT_MESSAGE_RECEIPT_*` and the `<full-copy>`
+> tag are deleted; the spill file is the only copy, and it is now the normal path for a long
+> message rather than a fallback.
 
 ## Context
 

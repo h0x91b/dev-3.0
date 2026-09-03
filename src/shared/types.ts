@@ -2692,37 +2692,20 @@ export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
 export const MAX_SCHEDULED_MESSAGE_LENGTH = 80_000;
 
 /**
- * UTF-8 bytes of message body that still travel as typed text. Past this the
- * body is written to a file and the agent receives that path inside the same
- * envelope. Sized by what tmux can physically accept: its client↔server frame is
- * 16 KiB, `send-keys -H` spends 3 bytes per byte of text, and the envelope plus
- * the guarded command list eat the rest — see
- * `decisions/2026/08/10/spill-oversized-agent-messages-to-a-file.md`.
- */
-export const AGENT_MESSAGE_SPILL_THRESHOLD_BYTES = 4_000;
-
-/**
- * UTF-8 bytes of TYPED text (the whole envelope, not the body) from which a copy is
- * kept on disk as well — the message's receipt, named at the END of the envelope so a
- * lost head cannot take the way back with it (issue #1608). Below it the message
- * travels as text alone.
+ * UTF-8 bytes of TYPED text — the whole envelope, header included, not the body —
+ * that still go into a pane as text. Past this the body is written to a file and the
+ * agent is typed a short pointer to it inside the same envelope.
  *
- * 1 000 because the receiving CLI reads a pty about 1 KiB at a time: a delivery longer
- * than one read arrives in several chunks, Claude Code folds the first into a
- * `[Pasted text #N]` attachment, and that attachment is intermittently dropped at
- * submit (anthropics/claude-code#90910 — the cut lands at byte 1022 every time). What
- * fits one read is never folded, so the receipt arms exactly where the exposure begins.
- * Measured on the envelope because that is what the pty sees; a 300-byte header on a
- * 800-byte body is already two reads.
+ * 1 000 because the receiving CLI reads its pty about 1 KiB at a time (the cut lands
+ * at byte 1 022 every time it was measured): a delivery longer than one read arrives
+ * in several chunks, Claude Code folds the first into a `[Pasted text #N]` attachment
+ * and intermittently drops that attachment at submit — the head of the message is
+ * gone and nothing says so (issue #1608, anthropics/claude-code#90910). What fits one
+ * read is never split, so nothing typed may exceed it. Measured on the envelope
+ * because that is what the pty sees; a 300-byte header on an 800-byte body is
+ * already two reads. See `decisions/2026/09/03/spill-at-the-pty-chunk-boundary.md`.
  */
-export const AGENT_MESSAGE_RECEIPT_THRESHOLD_BYTES = 1_000;
-
-/**
- * How many receipts one task keeps. Writing the newest deletes the oldest beyond this,
- * so a long-lived coordinator receiving thousands of reports holds a bounded directory
- * rather than a growing one. Everything older is already in the project's message log.
- */
-export const AGENT_MESSAGE_RECEIPT_KEEP = 50;
+export const AGENT_MESSAGE_SPILL_THRESHOLD_BYTES = 1_000;
 
 /** Raster image extensions accepted by `dev3 show-image` (lowercase, no dot).
  * SVG is excluded on purpose — an inline data-URI SVG in the webview is an XSS

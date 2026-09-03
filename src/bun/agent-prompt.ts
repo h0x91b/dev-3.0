@@ -1,5 +1,5 @@
 import type { PaneSessionEntry, Task } from "../shared/types";
-import type { PaneInputOutcome, PaneInputStage } from "../shared/pane-input";
+import { type PaneInputOutcome, type PaneInputStage, utf8Length } from "../shared/pane-input";
 import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
 import type { AgentPromptEpilogue } from "./agent-prompt-delivery";
 import { sendPaneInput } from "./pane-input";
@@ -226,11 +226,22 @@ function holdAgentMessageForPane(
 				}
 				return text.status === "delivered";
 			},
+			bytes: utf8Length(prompt),
 			...(epilogue
 				? {
-					epilogue: async () => {
+					epilogue: async (budgetBytes) => {
 						const trailer = await epilogue();
 						if (!trailer) return false;
+						if (utf8Length(trailer) > budgetBytes) {
+							// A board that does not fit would split the turn, and the piece the
+							// receiver drops is the first one — the messages, not the snapshot.
+							log.info("board trailer dropped: it would push the turn past one terminal read", {
+								...context,
+								trailerBytes: String(utf8Length(trailer)),
+								budgetBytes: String(budgetBytes),
+							});
+							return false;
+						}
 						const sent = await sendPaneInput(
 							task,
 							paneId,

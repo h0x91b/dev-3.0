@@ -23,7 +23,7 @@ const OTHER = agentMessageHoldKey("tmux", "task-1", "%2");
 
 /** A message whose text lands and whose Enter is recorded, both as spies. */
 function message() {
-	return { deliver: vi.fn<() => boolean>(() => true), submit: vi.fn<() => void>() };
+	return { deliver: vi.fn<() => boolean>(() => true), bytes: 0, submit: vi.fn<() => void>() };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -55,6 +55,7 @@ describe("holdAgentMessage — the idle window", () => {
 				order.push(text);
 				return true;
 			}),
+			bytes: 0,
 			submit: vi.fn<() => void>(() => void order.push(`submit:${text}`)),
 		}));
 		for (const item of held) {
@@ -248,7 +249,7 @@ describe("flushHeldAgentMessagesForTask — the user submitted his own line", ()
 describe("holdAgentMessage — failures", () => {
 	it("sends no Enter when no text landed", async () => {
 		const submit = vi.fn();
-		holdAgentMessage(KEY, { deliver: () => false, submit }, {});
+		holdAgentMessage(KEY, { deliver: () => false, bytes: 0, submit }, {});
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(submit).not.toHaveBeenCalled();
 		expect(pendingAgentMessageHoldCount()).toBe(0);
@@ -256,8 +257,8 @@ describe("holdAgentMessage — failures", () => {
 
 	it("still submits the burst when one text of it failed", async () => {
 		const submit = vi.fn();
-		holdAgentMessage(KEY, { deliver: () => Promise.reject(new Error("pane died")), submit: vi.fn() }, {});
-		holdAgentMessage(KEY, { deliver: () => true, submit }, {});
+		holdAgentMessage(KEY, { deliver: () => Promise.reject(new Error("pane died")), bytes: 0, submit: vi.fn() }, {});
+		holdAgentMessage(KEY, { deliver: () => true, bytes: 0, submit }, {});
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(submit).toHaveBeenCalledTimes(1);
 	});
@@ -267,6 +268,7 @@ describe("holdAgentMessage — failures", () => {
 			KEY,
 			{
 				deliver: () => true,
+				bytes: 0,
 				submit: () => {
 					throw new Error("pane died");
 				},
@@ -278,8 +280,71 @@ describe("holdAgentMessage — failures", () => {
 	});
 
 	it("survives a submit that rejects", async () => {
-		holdAgentMessage(KEY, { deliver: () => true, submit: () => Promise.reject(new Error("pane died")) }, {});
+		holdAgentMessage(KEY, { deliver: () => true, bytes: 0, submit: () => Promise.reject(new Error("pane died")) }, {});
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pendingAgentMessageHoldCount()).toBe(0);
+	});
+});
+
+// The receiving CLI chunks what ONE pty read hands it, not what one paste contained,
+// so three envelopes released together are one stream to it and its FIRST chunk is the
+// piece that gets dropped (issue #1608). Per-message spilling cannot see that; the
+// release has to. Remove the sum check in `burstFitCount` and every case here fails.
+describe("a burst stays inside one terminal read", () => {
+	/** A message of `bytes` typed bytes, recording the order of its delivery and Enter. */
+	function sized(name: string, bytes: number, order: string[]) {
+		return {
+			deliver: vi.fn<(separator: string) => boolean>(() => {
+				order.push(name);
+				return true;
+			}),
+			bytes,
+			submit: vi.fn<() => void>(() => void order.push(`enter:${name}`)),
+		};
+	}
+
+	it("splits three 600-byte messages into three turns, in arrival order", async () => {
+		const order: string[] = [];
+		for (const item of [sized("a", 600, order), sized("b", 600, order), sized("c", 600, order)]) {
+			holdAgentMessage(KEY, item, {});
+		}
+
+		await vi.runAllTimersAsync();
+
+		// Never two messages in one turn: 600 + 600 is already past the 1 000-byte cap.
+		expect(order).toEqual(["a", "enter:c", "b", "enter:c", "c", "enter:c"]);
+	});
+
+	it("keeps a burst that fits in ONE turn with a single Enter", async () => {
+		const order: string[] = [];
+		for (const item of [sized("a", 300, order), sized("b", 300, order), sized("c", 300, order)]) {
+			holdAgentMessage(KEY, item, {});
+		}
+
+		await vi.runAllTimersAsync();
+
+		// 300 + 2 + 300 + 2 + 300 = 904 bytes, so the whole burst is one agent turn.
+		expect(order).toEqual(["a", "b", "c", "enter:c"]);
+	});
+
+	it("still sends a message that alone fills the read, rather than holding it forever", async () => {
+		const order: string[] = [];
+		holdAgentMessage(KEY, sized("huge", 5_000, order), {});
+
+		await vi.runAllTimersAsync();
+
+		expect(order).toEqual(["huge", "enter:huge"]);
+	});
+
+	it("offers the trailer only what is left of the read after the messages", async () => {
+		const order: string[] = [];
+		const budgets: number[] = [];
+		const first = sized("a", 400, order);
+		holdAgentMessage(KEY, { ...first, epilogue: (budget) => { budgets.push(budget); return true; } }, {});
+
+		await vi.runAllTimersAsync();
+
+		// 1 000 − 400 typed − 2 for the blank line before the board.
+		expect(budgets).toEqual([598]);
 	});
 });

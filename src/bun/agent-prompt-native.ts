@@ -32,6 +32,7 @@
  */
 
 import type { Task } from "../shared/types";
+import { utf8Length } from "../shared/pane-input";
 import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
 import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
@@ -117,6 +118,9 @@ function performNativeDelivery(
 				// there is — the same assumption the held CR has always been sent on.
 				return true;
 			},
+			// The native arm folds its trailer into `prompt` before it gets here, so this
+			// is the whole cost of the message; the burst cap applies the same way.
+			bytes: utf8Length(prompt),
 			// The same gap a hand-off leaves: a CR written straight after the last paste
 			// is read as part of it, and the burst never gets submitted.
 			submit: () => scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId }),

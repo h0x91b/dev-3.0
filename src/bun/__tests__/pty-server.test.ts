@@ -1354,7 +1354,7 @@ describe("noteHumanTerminalInput", () => {
 	const session = { taskId: TASK } as any;
 
 	function heldMessage() {
-		const item = { deliver: vi.fn<() => boolean>(() => true), submit: vi.fn<() => void>() };
+		const item = { deliver: vi.fn<() => boolean>(() => true), bytes: 0, submit: vi.fn<() => void>() };
 		holdAgentMessage(agentMessageHoldKey("tmux", TASK, "%1"), item, {});
 		return item;
 	}

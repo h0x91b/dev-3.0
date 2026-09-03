@@ -118,7 +118,7 @@ describe("an immediate send", () => {
 		expect(rows[0]?.bodyKind).toBe("spill-pointer");
 		expect(rows[0]?.spillPath).toContain("/messages/message-");
 		// The row carries the pointer the pane got, not the 5 KB body.
-		expect(rows[0]?.body).toContain("too large to type");
+		expect(rows[0]?.body).toContain("longer than one terminal read");
 	});
 });
 

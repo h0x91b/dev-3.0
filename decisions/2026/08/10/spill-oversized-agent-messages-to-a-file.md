@@ -1,5 +1,12 @@
 # Spill oversized agent messages to a file
 
+> Amended on 2026-09-03 by
+> [`decisions/2026/09/03/spill-at-the-pty-chunk-boundary.md`](../../09/03/spill-at-the-pty-chunk-boundary.md):
+> the spill seam and the file layout below still stand, but the threshold is no longer 4 000 bytes
+> of body sized against tmux's frame — it is **1 000 bytes of the typed envelope**, sized against
+> one pty read on the receiving side (issue #1608). tmux's 16 KiB frame remains the reason
+> `PANE_INPUT_LIMITS` is what it is.
+
 ## Context
 
 `dev3 message` accepted up to 10 000 characters, but a message well under that died with

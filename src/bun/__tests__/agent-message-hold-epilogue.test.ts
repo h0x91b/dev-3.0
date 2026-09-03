@@ -33,6 +33,7 @@ function recorder() {
 	const message = (name: string, epilogue?: string) => ({
 		deliver: () => { order.push(name); return true; },
 		...(epilogue ? { epilogue: () => { order.push(epilogue); return true; } } : {}),
+		bytes: 0,
 		submit: () => { order.push("enter"); },
 	});
 	return { order, message };
@@ -78,6 +79,7 @@ describe("held message epilogue", () => {
 		holdAgentMessage(KEY, {
 			deliver: () => { order.push("msg"); return true; },
 			epilogue: () => { throw new Error("board unavailable"); },
+			bytes: 0,
 			submit: () => { order.push("enter"); },
 		}, {});
 
@@ -92,6 +94,7 @@ describe("held message epilogue", () => {
 		holdAgentMessage(KEY, {
 			deliver: () => false,
 			epilogue: () => { order.push("board"); return true; },
+			bytes: 0,
 			submit: () => { order.push("enter"); },
 		}, {});
 
