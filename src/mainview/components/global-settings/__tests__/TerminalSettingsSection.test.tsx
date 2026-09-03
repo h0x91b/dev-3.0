@@ -10,6 +10,8 @@ import {
 	DEFAULT_TERMINAL_FONT_SIZE,
 	getTerminalFontFamily,
 	getTerminalFontSize,
+	REFERENCE_TERMINAL_FONT,
+	terminalFontStack,
 } from "../../../terminal-font";
 
 vi.mock("../TerminalBackendSetting", () => ({ default: () => null }));
@@ -267,9 +269,26 @@ describe("terminal font controls", () => {
 		const user = userEvent.setup();
 		await user.click(screen.getByText(COMPARE));
 
-		await user.click(screen.getByText("Iosevka Term"));
+		// Read the label out of the registry rather than spelling it: the labels are
+		// wording, and this test is about the row committing its family.
+		const target = BUNDLED_TERMINAL_FONTS.find((f) => f.family === "IosevkaTerm Nerd Font Mono")!;
+		await user.click(screen.getByText(target.label));
 
 		expect(getTerminalFontFamily()).toBe("IosevkaTerm Nerd Font Mono");
+	});
+
+	it("offers unpatched JetBrains Mono as its own row, not only the Nerd Font one", async () => {
+		// The #1625 complaint: the picker labelled the patched face "JetBrains Mono", so
+		// asking for the upstream typeface silently handed over the Nerd Font instead.
+		renderFontSection();
+		const user = userEvent.setup();
+		await user.click(screen.getByText(COMPARE));
+
+		await user.click(screen.getByText("JetBrains Mono"));
+
+		expect(getTerminalFontFamily()).toBe("JetBrains Mono");
+		// The Nerd Font stays in the tail, so an icon glyph the plain face lacks still resolves.
+		expect(terminalFontStack()).toContain(REFERENCE_TERMINAL_FONT);
 	});
 
 	it("marks the current font as chosen rather than leaving the group unset", async () => {

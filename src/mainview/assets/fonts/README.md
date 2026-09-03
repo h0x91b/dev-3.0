@@ -1,13 +1,22 @@
 # Bundled terminal fonts
 
-The 15 Nerd Fonts the terminal font picker offers (Settings → Terminal). Each file is the
-Regular weight of that family's fixed-advance `NerdFontMono` face, converted to woff2 from
-the [Nerd Fonts v3.5.1](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
+The fonts the terminal font picker offers (Settings → Terminal). Fifteen of them are Nerd
+Fonts: the Regular weight of that family's fixed-advance `NerdFontMono` face, converted to
+woff2 from the [Nerd Fonts v3.5.1](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
 release. `JetBrainsMonoNerdFontMono-Bold.woff2` is the one bold face, because `font-mono`
 uses that family for app chrome as well.
 
 The `Propo` and non-`Mono` variants are deliberately absent: they are not fixed-advance and
 cannot hold a terminal grid.
+
+**`JetBrainsMono-Regular.woff2` is the exception — the only unpatched face here**, converted
+from the upstream [JetBrains Mono v2.304](https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304)
+release. A Nerd Font is a third-party patch that adds thousands of icon glyphs, and the
+picker used to label the patched face "JetBrains Mono", so nobody could ask for the plain
+typeface (issue #1625). Its metrics are byte-identical to the patched face — same
+`unitsPerEm`, advance, ascent, descent, cap and x-height — so the two differ only in which
+glyphs exist. Every stack still ends in the Nerd Font, so an icon the plain face lacks
+falls through to it rather than rendering as a box.
 
 **Replacing a file means re-measuring its width.** Every family carries a `scale` in
 `src/mainview/terminal-font.ts` that keeps its cell inside the reference font's cell — see
@@ -16,7 +25,9 @@ cannot hold a terminal grid.
 ## Licenses
 
 `licenses/<Family>.txt` is the upstream license for each bundled family, copied verbatim
-from the Nerd Fonts repository at v3.5.1. All fifteen permit redistribution:
+from the Nerd Fonts repository at v3.5.1. All of them permit redistribution, and
+`licenses/JetBrainsMono.txt` (SIL OFL 1.1) covers the unpatched face as well as the patched
+one — it is the same upstream project:
 
 | License | Families |
 |---|---|
@@ -27,7 +38,8 @@ from the Nerd Fonts repository at v3.5.1. All fifteen permit redistribution:
 
 | Family | Face bundled | License file |
 |---|---|---|
-| JetBrains Mono | `JetBrainsMonoNerdFontMono` (Regular + Bold) | `licenses/JetBrainsMono.txt` |
+| JetBrains Mono Nerd Font | `JetBrainsMonoNerdFontMono` (Regular + Bold) | `licenses/JetBrainsMono.txt` |
+| JetBrains Mono (unpatched) | `JetBrainsMono-Regular` | `licenses/JetBrainsMono.txt` |
 | Meslo LG S | `MesloLGSNerdFontMono` | `licenses/Meslo.txt` |
 | Hack | `HackNerdFontMono` | `licenses/Hack.txt` |
 | Fira Code | `FiraCodeNerdFontMono` | `licenses/FiraCode.txt` |

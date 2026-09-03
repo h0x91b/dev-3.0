@@ -43,26 +43,32 @@ export interface BundledTerminalFont {
 
 /**
  * The fonts shipped inside the app, in descending order of real-world popularity
- * (Homebrew cask installs, 30 days to 2026-08-25). Every one of them is a
- * `NerdFontMono` face — the fixed-advance variant — because the proportional and
- * `Propo` variants do not hold a terminal grid.
+ * (Homebrew cask installs, 30 days to 2026-08-25). All but one are a `NerdFontMono`
+ * face — the fixed-advance variant — because the proportional and `Propo` variants
+ * do not hold a terminal grid.
+ *
+ * **Every label names the face it actually is.** A Nerd Font is a third-party patch
+ * of an upstream family with thousands of icon glyphs added, and labelling one
+ * "JetBrains Mono" told the user they had picked the upstream typeface when they had
+ * not — issue #1625. Unpatched JetBrains Mono now ships beside it as its own option.
  */
 export const BUNDLED_TERMINAL_FONTS: readonly BundledTerminalFont[] = [
-	{ family: REFERENCE_TERMINAL_FONT, label: "JetBrains Mono", scale: 1 },
-	{ family: "MesloLGS Nerd Font Mono", label: "Meslo LG S", scale: 0.9966 },
-	{ family: "Hack Nerd Font Mono", label: "Hack", scale: 0.9966 },
-	{ family: "FiraCode Nerd Font Mono", label: "Fira Code", scale: 0.975 },
-	{ family: "BlexMono Nerd Font Mono", label: "IBM Plex Mono", scale: 1 },
-	{ family: "SauceCodePro Nerd Font Mono", label: "Source Code Pro", scale: 1 },
-	{ family: "0xProto Nerd Font Mono", label: "0xProto", scale: 0.9677 },
-	{ family: "CaskaydiaMono Nerd Font Mono", label: "Cascadia Mono", scale: 1 },
-	{ family: "DroidSansM Nerd Font Mono", label: "Droid Sans Mono", scale: 0.9998 },
-	{ family: "GoMono Nerd Font Mono", label: "Go Mono", scale: 0.9998 },
-	{ family: "ComicShannsMono Nerd Font Mono", label: "Comic Shanns Mono", scale: 1 },
-	{ family: "CaskaydiaCove Nerd Font Mono", label: "Cascadia Code", scale: 1 },
-	{ family: "Iosevka Nerd Font Mono", label: "Iosevka", scale: 1 },
-	{ family: "IosevkaTerm Nerd Font Mono", label: "Iosevka Term", scale: 1 },
-	{ family: "FiraMono Nerd Font Mono", label: "Fira Mono", scale: 1 },
+	{ family: REFERENCE_TERMINAL_FONT, label: "JetBrains Mono Nerd Font", scale: 1 },
+	{ family: "JetBrains Mono", label: "JetBrains Mono", scale: 1 },
+	{ family: "MesloLGS Nerd Font Mono", label: "Meslo LG S Nerd Font", scale: 0.9966 },
+	{ family: "Hack Nerd Font Mono", label: "Hack Nerd Font", scale: 0.9966 },
+	{ family: "FiraCode Nerd Font Mono", label: "Fira Code Nerd Font", scale: 0.975 },
+	{ family: "BlexMono Nerd Font Mono", label: "IBM Plex Mono Nerd Font", scale: 1 },
+	{ family: "SauceCodePro Nerd Font Mono", label: "Source Code Pro Nerd Font", scale: 1 },
+	{ family: "0xProto Nerd Font Mono", label: "0xProto Nerd Font", scale: 0.9677 },
+	{ family: "CaskaydiaMono Nerd Font Mono", label: "Cascadia Mono Nerd Font", scale: 1 },
+	{ family: "DroidSansM Nerd Font Mono", label: "Droid Sans Mono Nerd Font", scale: 0.9998 },
+	{ family: "GoMono Nerd Font Mono", label: "Go Mono Nerd Font", scale: 0.9998 },
+	{ family: "ComicShannsMono Nerd Font Mono", label: "Comic Shanns Mono Nerd Font", scale: 1 },
+	{ family: "CaskaydiaCove Nerd Font Mono", label: "Cascadia Code Nerd Font", scale: 1 },
+	{ family: "Iosevka Nerd Font Mono", label: "Iosevka Nerd Font", scale: 1 },
+	{ family: "IosevkaTerm Nerd Font Mono", label: "Iosevka Term Nerd Font", scale: 1 },
+	{ family: "FiraMono Nerd Font Mono", label: "Fira Mono Nerd Font", scale: 1 },
 ];
 
 let currentFamily = DEFAULT_TERMINAL_FONT_FAMILY;

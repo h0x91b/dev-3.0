@@ -61,7 +61,11 @@ export default function TerminalFontGallery({
 							<span className={`text-sm font-semibold ${selected ? "text-accent" : "text-fg"}`}>
 								{font.label}
 							</span>
-							<span className="text-fg-muted text-micro">{font.family}</span>
+							{/* The CSS family, for anyone matching this against their own config —
+							    skipped when it is the label already, as it is for unpatched faces. */}
+							{font.family !== font.label && (
+								<span className="text-fg-muted text-micro">{font.family}</span>
+							)}
 							{font.family === REFERENCE_TERMINAL_FONT && (
 								<span className="text-fg-3 text-micro">{t("settings.terminalFontReference")}</span>
 							)}

@@ -23,8 +23,20 @@ html {
 /* ---- Bundled terminal fonts ----
    The 15 most-installed Nerd Fonts, Regular weight only; bold is synthesized.
    Only the reference font ships a real Bold, because `font-mono` uses it for app
-   chrome too. Every face is the fixed-advance `NerdFontMono` variant — see
-   terminal-font.ts for why, and for the per-font width normalization. */
+   chrome too. Every Nerd Font face is the fixed-advance `NerdFontMono` variant —
+   see terminal-font.ts for why, and for the per-font width normalization.
+
+   Plus unpatched JetBrains Mono, the only non-Nerd face here: the Nerd Font
+   variant carries thousands of extra icon glyphs the upstream family does not,
+   and someone who wants the plain typeface had no way to ask for it. Its metrics
+   are identical to the patched face (issue #1625). */
+@font-face {
+	font-family: 'JetBrains Mono';
+	src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
 @font-face {
 	font-family: 'JetBrainsMono Nerd Font Mono';
 	src: url('./assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
