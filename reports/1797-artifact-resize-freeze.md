@@ -102,3 +102,9 @@ Inspection of installed `electrobun/dist/api/browser/index.ts` established that 
 A rebuilt remote app did write opt-in traces to the real daily log under bun PID 85232, covering render, write, selection, OSC8, ANSI and underline paths. Counts are saved in `1797-evidence/trace-sink-validation.json`. The first TypeScript check found test-only use of Array.at against the ES2020 target; replaced it with indexed access, then lint and 33 tests passed. Added native transport tests are included in final validation.
 
 Final instrumentation validation: `bun run lint` passed; 35 tests passed across five suites including native transport. Both test servers and owned browser sessions are stopped. The diagnostic change must be built/launched before the console flag has any effect; it does not modify the installed canary app.
+
+## Second user-reported incident: closing the artifact
+
+At 01:47 on 2026-09-05 the user reported that closing an artifact occupying roughly half the window froze the old installed app. The daily log confirms heartbeat lost at 01:46:14.136 under bun PID 67244, quietForMs=9653, terminals=1, frameErrorPanes=0, active task=818c6734, project=6e50abef. Last heartbeat was approximately 01:46:04.483. Replacement bun PID 71486 began receiving heartbeat at 01:46:21.427; no frozen-process sample was captured before restart. This was not the instrumented build.
+
+Closing the panel changes terminal geometry too, so terminal refit/redraw remains a shared trigger candidate. Artifact native-view teardown is an additional candidate; this observation alone does not distinguish them. If teardown stalls before the refit callback, the new terminal trace may not arm. The user will next reproduce closing the artifact in the instrumented worktree build.
