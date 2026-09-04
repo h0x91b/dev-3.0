@@ -1,5 +1,15 @@
 # Dead tmux sockets are detected by connecting to them, not by reading `ps`
 
+> **Corrected on 2026-09-04 by `decisions/2026/09/04/measure-command-output-before-asserting-on-it.md`.**
+> The decision below stands. Two factual claims in its Investigation and Risks do not:
+> a live tmux server does NOT appear as the single word `tmux` — measured on macOS 15 /
+> tmux 3.6 and Ubuntu 24.04 / tmux 3.4, the daemonised server keeps the full argv of the
+> command that started it, `-L <socket>` included, and tmux's own
+> `display-message -p '#{pid}'` confirms that the live app server is one of those long
+> `-L dev3 …` lines, not a bare `tmux`. Consequently `terminal-e2e-guard.ts` was never
+> blind to a leaked server in CI; it matched one as an *unattributable* survivor. It now
+> also probes the socket, which is the check that does not depend on a process title.
+
 ## Context
 
 tmux leaves its socket FILE on disk when the server dies, and `kill-server` does

@@ -7,11 +7,12 @@
  * three OS processes, ownership-verified teardown. Until now they only ran when a
  * human remembered, so reviewers kept having to mark those claims unverified.
  *
- * On top of running them this wrapper enforces the two properties a human eye used
- * to supply: nothing of ours survives the run (no tmux server, no native host, no
- * shell) and nothing of ours is left in the temp dir. Both FAIL the run — they are
- * never merely logged. The verdict logic is `src/bun/terminal-e2e-guard.ts`, unit
- * tested so the gate cannot silently stop detecting.
+ * On top of running them this wrapper enforces the three properties a human eye used
+ * to supply: no process of ours survives the run (no native host, no shell, no tmux
+ * client), no tmux server is still listening on one of our sockets, and nothing of
+ * ours is left in the temp dir. All three FAIL the run — they are never merely
+ * logged. The verdict logic is `src/bun/terminal-e2e-guard.ts`, unit tested so the
+ * gate cannot silently stop detecting.
  *
  * Usage:
  *   bun scripts/run-terminal-e2e.ts             # every script
@@ -30,6 +31,8 @@ import {
 	isClean,
 	isOurProcess,
 	isOurTempEntry,
+	isOurTmuxSocket,
+	liveTmuxServerSockets,
 	parseProcessTable,
 	processKeys,
 	renderEvidence,
@@ -40,6 +43,8 @@ import {
 	type E2eResult,
 	type E2eTier,
 } from "../src/bun/terminal-e2e-guard";
+import { tmuxSocketDir } from "../src/bun/tmux/socket-files";
+import { probeSocketLiveness } from "../src/bun/tmux/socket-sweep";
 
 /** One script may not outlive this; a hang must fail the job, not occupy the runner. */
 const PER_SCRIPT_TIMEOUT_MS = 300_000;
@@ -88,7 +93,26 @@ function liveOurTempEntries(): Set<string> {
 	}
 }
 
-function main(): void {
+/**
+ * Socket names with a live tmux server behind them. The socket directory is
+ * `/tmp/tmux-<uid>` — NOT under `os.tmpdir()` on macOS and only a subdirectory of it on
+ * Linux, so the temp-dir check above can never see any of this.
+ */
+async function liveOurTmuxServers(): Promise<Set<string>> {
+	const dir = tmuxSocketDir();
+	let names: string[];
+	try {
+		names = readdirSync(dir).filter(isOurTmuxSocket);
+	} catch {
+		return new Set();
+	}
+	const probed = await Promise.all(
+		names.map(async (name) => ({ name, liveness: await probeSocketLiveness(join(dir, name)) })),
+	);
+	return new Set(liveTmuxServerSockets(probed));
+}
+
+async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const setArg = args.find((arg) => arg.startsWith("--set="))?.slice("--set=".length) ?? args[args.indexOf("--set") + 1];
 	const tier: E2eTier | "all" = setArg === "fast" || setArg === "full" ? setArg : "all";
@@ -104,8 +128,12 @@ function main(): void {
 	const baselineProcesses = liveOurProcesses(baselineSnapshot);
 	const baselineAmbiguous = liveAmbiguousProcesses(baselineSnapshot);
 	const baselineTemp = liveOurTempEntries();
+	const baselineServers = await liveOurTmuxServers();
 	console.log(`Repo root:  ${footprint.repoRoot}`);
-	console.log(`Baseline:   ${baselineProcesses.size} ours, ${baselineAmbiguous.size} unattributable, CI=${IN_CI}`);
+	console.log(
+		`Baseline:   ${baselineProcesses.size} ours, ${baselineAmbiguous.size} unattributable, ` +
+			`${baselineServers.size} live tmux server(s) on e2e sockets, CI=${IN_CI}`,
+	);
 
 	const results: E2eResult[] = [];
 	for (const script of selected) {
@@ -126,15 +154,18 @@ function main(): void {
 		let orphans = survivors(baselineProcesses, liveOurProcesses());
 		let ambiguous = survivors(baselineAmbiguous, liveAmbiguousProcesses());
 		let tempLeaks = survivors(baselineTemp, liveOurTempEntries());
-		if (orphans.length > 0 || ambiguous.length > 0 || tempLeaks.length > 0) {
+		let serverLeaks = survivors(baselineServers, await liveOurTmuxServers());
+		if (orphans.length > 0 || ambiguous.length > 0 || tempLeaks.length > 0 || serverLeaks.length > 0) {
 			console.log(`  settling ${SETTLE_MS} ms before judging survivors…`);
 			sleep(SETTLE_MS);
 			const stillOurs = liveOurProcesses();
 			const stillAmbiguous = liveAmbiguousProcesses();
 			const stillTemp = liveOurTempEntries();
+			const stillServers = await liveOurTmuxServers();
 			orphans = orphans.filter((entry) => stillOurs.has(entry));
 			ambiguous = ambiguous.filter((entry) => stillAmbiguous.has(entry));
 			tempLeaks = tempLeaks.filter((entry) => stillTemp.has(entry));
+			serverLeaks = serverLeaks.filter((entry) => stillServers.has(entry));
 		}
 
 		for (const orphan of orphans) console.error(`  ORPHAN PROCESS: ${orphan.replace("\t", " ")}`);
@@ -143,6 +174,12 @@ function main(): void {
 		}
 		for (const leak of tempLeaks) {
 			console.error(`  ${IN_CI ? "LEFTOVER TEMP DIR:" : AMBIGUOUS_LOCAL_WARNING} temp dir ${leak}`);
+		}
+		for (const socket of serverLeaks) {
+			console.error(
+				`  ${IN_CI ? "LEAKED TMUX SERVER:" : AMBIGUOUS_LOCAL_WARNING} live tmux server on socket ${socket} ` +
+					`(clear with \`tmux -L ${socket} kill-server\`)`,
+			);
 		}
 
 		const result: E2eResult = {
@@ -153,6 +190,7 @@ function main(): void {
 			orphans,
 			ambiguous,
 			tempLeaks,
+			serverLeaks,
 		};
 		results.push(result);
 
@@ -189,7 +227,9 @@ function main(): void {
 		console.error(`\n${failed.length} script(s) did not pass cleanly: ${failed.map((result) => result.name).join(", ")}`);
 		process.exit(1);
 	}
-	console.log("Every script passed, no orphan process survived, no temp dir was left behind.");
+	console.log(
+		"Every script passed, no orphan process survived, no tmux server is still listening, no temp dir was left behind.",
+	);
 }
 
-main();
+await main();

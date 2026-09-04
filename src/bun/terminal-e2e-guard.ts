@@ -6,6 +6,28 @@
  *
  * The runner shell lives in `scripts/run-terminal-e2e.ts`.
  */
+import type { SocketLiveness } from "./tmux/socket-files";
+
+/**
+ * WHY A LEAKED tmux SERVER IS JUDGED BY ITS SOCKET, NOT BY ITS PROCESS TITLE.
+ *
+ * A tmux server's ps line is whatever the platform lets tmux make it, and the three
+ * answers are all different. MEASURED 2026-09-04:
+ *
+ *   macOS 15 / tmux 3.6   `ps -o pid=,ppid=,command=` → `84620 1 tmux -L dev3-live-guarded-84602 -f … new-session -d …`
+ *   Ubuntu 24.04 / tmux 3.4  same command             → ` 272 1 tmux -L dev3-live-guarded-42 new-session -d -s repro sleep 300`
+ *   Ubuntu 24.04 / tmux 3.4  `ps -o comm=`            → ` 272 tmux: server`
+ *
+ * So on both platforms the daemonised server (ppid 1) KEEPS the argv of the command
+ * that started it, socket name included — which is why the ps path below does catch a
+ * leaked server. The `tmux: server (<path>)` proctitle exists only where the OS has
+ * setproctitle(3), and even on Linux it reaches `comm=` only, without the path.
+ *
+ * That makes the ps match a lucky property of one build on one platform, not a
+ * guarantee. The socket answers the same question directly and portably: a connect()
+ * either finds a server listening or does not. Both checks run — ps for clients and
+ * for a server whose argv still names us, the socket probe as argv-independent proof.
+ */
 
 /**
  * `fast` exists so narrowing the gate is a one-word change with a visible name,
@@ -93,6 +115,31 @@ export const OUR_TEMP_PREFIXES: readonly string[] = [
 	"d3or-",
 ];
 
+/**
+ * Socket names only the gated scripts mint. `dev3-live-guarded-<pid>` is the one the
+ * suite creates today; the prefix covers the `-no-such-server` variant it derives.
+ *
+ * The app's own socket is named exactly `dev3`, and `dev3-e2e-*` belongs to the vitest
+ * suites rather than this gate — neither is matched, so a live app server and another
+ * suite's leak are never blamed on a script here.
+ */
+export const OUR_TMUX_SOCKET_PREFIXES: readonly string[] = ["dev3-live-"];
+
+export function isOurTmuxSocket(name: string): boolean {
+	return OUR_TMUX_SOCKET_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+/**
+ * Socket names with a tmux server still listening on them. `dead` and `unknown` are both
+ * excluded: tmux never unlinks its own socket file, so a dead one proves only that a
+ * server existed, and an unreadable one proves nothing at all.
+ */
+export function liveTmuxServerSockets(
+	sockets: readonly { readonly name: string; readonly liveness: SocketLiveness }[],
+): string[] {
+	return sockets.filter((s) => isOurTmuxSocket(s.name) && s.liveness === "listening").map((s) => s.name);
+}
+
 export interface ProcessEntry {
 	readonly pid: number;
 	readonly command: string;
@@ -109,6 +156,13 @@ export interface E2eResult {
 	/** Native hosts with no e2e marker — a leak in CI, merely reported on a dev machine. */
 	readonly ambiguous: readonly string[];
 	readonly tempLeaks: readonly string[];
+	/**
+	 * Socket names of tmux servers still LISTENING after the run — a leaked server,
+	 * proven by a connect probe instead of by tmux's process title. Judged like
+	 * {@link tempLeaks}: a socket name carries no repo path, so it can never be
+	 * attributed to one run among several on a shared machine.
+	 */
+	readonly serverLeaks: readonly string[];
 }
 
 export function selectScripts(tier: E2eTier | "all"): readonly E2eScript[] {
@@ -174,7 +228,7 @@ export function verdictOf(result: E2eResult, inCi: boolean): "FAILED" | "ORPHANE
 	if (!result.ok) return "FAILED";
 	if (result.orphans.length > 0) return "ORPHANED";
 	if (inCi && result.ambiguous.length > 0) return "ORPHANED";
-	if (inCi && result.tempLeaks.length > 0) return "LEAKED";
+	if (inCi && (result.serverLeaks.length > 0 || result.tempLeaks.length > 0)) return "LEAKED";
 	return "passed";
 }
 
@@ -185,12 +239,12 @@ export function isClean(result: E2eResult, inCi: boolean): boolean {
 /** Whether a survivor should stop the run: attributable always, unattributable only in CI. */
 export function shouldStop(result: E2eResult, inCi: boolean): boolean {
 	if (result.orphans.length > 0) return true;
-	return inCi && (result.ambiguous.length > 0 || result.tempLeaks.length > 0);
+	return inCi && (result.ambiguous.length > 0 || result.tempLeaks.length > 0 || result.serverLeaks.length > 0);
 }
 
 /** Anything worth writing down, whether or not it failed the run. */
 export function hasSurvivors(result: E2eResult): boolean {
-	return result.orphans.length + result.ambiguous.length + result.tempLeaks.length > 0;
+	return result.orphans.length + result.ambiguous.length + result.tempLeaks.length + result.serverLeaks.length > 0;
 }
 
 /**
@@ -210,6 +264,11 @@ export function renderEvidence(results: readonly E2eResult[], inCi: boolean): st
 		lines.push(`## test:${result.name} — ${verdict} (${(result.ms / 1000).toFixed(1)} s, CI=${inCi})`);
 		for (const orphan of result.orphans) lines.push(`orphan (attributable): ${orphan.replace("\t", " ")}`);
 		for (const host of result.ambiguous) lines.push(`orphan (unattributable): ${host.replace("\t", " ")}`);
+		// Named with the command that clears it: a leaked server needs `kill-server`, a
+		// leftover directory needs `rm -rf`, and the evidence file is read without context.
+		for (const socket of result.serverLeaks) {
+			lines.push(`live tmux server on socket: ${socket} — clear with \`tmux -L ${socket} kill-server\``);
+		}
 		for (const leak of result.tempLeaks) lines.push(`leftover temp dir: ${leak}`);
 		lines.push("");
 	}
