@@ -1108,9 +1108,32 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(mergedCodex.configurations.some((config) => interimIds.includes(config.id))).toBe(false);
 	});
 
+	it("upgrades the previous Codex default to Astra Medium and puts Astra first", () => {
+		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
+		const stored: CodingAgent[] = [{
+			...codex,
+			configurations: [
+				codex.configurations.find((config) => config.model === "gpt-5.6-sol")!,
+				{
+					id: "codex-default", name: "GPT-5.6 Luna Bypass [X-High] — Default",
+					model: "gpt-5.6-luna", version: 9,
+					additionalArgs: ["-c", 'model_reasoning_effort="xhigh"'],
+				},
+			],
+		}];
+		const updated = applyLayoutResync(mergeWithDefaults(stored))
+			.find((agent) => agent.id === "builtin-codex")!;
+		expect(updated.configurations[0].id).toBe(updated.defaultConfigId);
+		expect(updated.configurations[0].model).toBe("gpt-6-astra");
+		expect(updated.configurations[0].additionalArgs).toContain('model_reasoning_effort="medium"');
+		expect(updated.configurations.find((config) => config.id === "codex-5.6-luna-xhigh-bypass")?.model)
+			.toBe("gpt-5.6-luna");
+	});
+
 	it("ships canonical model labels on every Codex preset", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const expectedLabels: Record<string, string> = {
+			"gpt-6-astra": "GPT-6 Astra",
 			"gpt-5.6-sol": "GPT-5.6 Sol",
 			"gpt-5.6-terra": "GPT-5.6 Terra",
 			"gpt-5.6-luna": "GPT-5.6 Luna",

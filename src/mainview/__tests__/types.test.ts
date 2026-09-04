@@ -393,34 +393,38 @@ describe("DEFAULT_AGENTS", () => {
 		}
 	});
 
-	it("uses Luna X-High bypass as the default Codex configuration", () => {
+	it("uses Astra Medium bypass as the default Codex configuration", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const cfg = codex!.configurations.find((c) => c.id === "codex-default");
 		expect(cfg).toBeDefined();
-		expect(cfg!.name).toBe("GPT-5.6 Luna Bypass [X-High] — Default");
-		expect(cfg!.model).toBe("gpt-5.6-luna");
+		expect(cfg!.name).toBe("GPT-6 Astra Bypass [Medium] — Default");
+		expect(cfg!.model).toBe("gpt-6-astra");
 		expect(cfg!.additionalArgs).toContain("--sandbox");
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
-		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="xhigh"');
+		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="medium"');
 		expect(cfg!.additionalArgs).not.toContain('default_permissions="dev3"');
 	});
 
-	it("prioritizes Luna and keeps Terra at the end of the Codex presets", () => {
+	it("prioritizes Astra ahead of the existing Codex model tiers", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const modelOrder = codex!.configurations
 			.map((config) => config.model)
 			.filter((model, index, models) => model != null && models.indexOf(model) === index);
-		expect(modelOrder).toEqual(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
+		expect(modelOrder).toEqual(["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
 
 		const modesFor = (model: string) => codex!.configurations
 			.filter((config) => config.model === model)
 			.map((config) => config.modeLabel);
+		expect(modesFor("gpt-6-astra")).toEqual([
+			"Bypass [Medium] — Default", "Bypass [Low]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
+			"Standard [Medium]", "Standard [Low]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
+		]);
 		expect(modesFor("gpt-5.6-luna")).toEqual([
-			"Bypass [X-High] — Default",
+			"Bypass [X-High]",
 			"Bypass [Max]", "Bypass [High]", "Bypass [Medium]",
 			"Standard [Medium]", "Standard [High]",
 		]);
