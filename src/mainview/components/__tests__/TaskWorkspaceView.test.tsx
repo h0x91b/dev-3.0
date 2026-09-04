@@ -1,7 +1,7 @@
 import { useEffect, type ReactElement } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Project, SharedArtifact, Task } from "../../../shared/types";
+import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import type { Route } from "../../state";
 import { RouteHost } from "../../test-utils/route-host";
@@ -63,15 +63,6 @@ vi.mock("../TaskDiffViewer", () => ({
 	),
 }));
 
-vi.mock("../TaskArtifactViewer", () => ({
-	default: ({ artifacts, onClose }: { artifacts: SharedArtifact[]; onClose: () => void }) => (
-		<div data-testid="artifact-workspace">
-			{artifacts[0]?.title}
-			<button onClick={onClose}>Close Artifact</button>
-		</div>
-	),
-}));
-
 const project: Project = {
 	id: "p1",
 	name: "Test Project",
@@ -103,18 +94,6 @@ const task: Task = {
 	updatedAt: "2025-06-15T12:00:00Z",
 };
 
-const artifact: SharedArtifact = {
-	id: "artifact-1",
-	kind: "html",
-	title: "Metrics",
-	name: "metrics.html",
-	storedPath: "/tmp/shared-artifacts/artifact-1/metrics.html",
-	originalPath: "/tmp/metrics.html",
-	bytes: 10,
-	createdAt: 1,
-	assets: [],
-};
-
 const TASK_ROUTE: Route = { screen: "task", projectId: "p1", taskId: "t1" };
 
 // The inline diff lives on the route, so the view is driven by the real reducer
@@ -127,49 +106,6 @@ const renderWorkspace = (element: ReactElement) => {
 	};
 };
 
-function mockPointerCapture(separator: HTMLElement) {
-	const setPointerCapture = vi.fn();
-	const releasePointerCapture = vi.fn();
-	Object.defineProperties(separator, {
-		setPointerCapture: { value: setPointerCapture },
-		releasePointerCapture: { value: releasePointerCapture },
-		hasPointerCapture: { value: () => true },
-	});
-	return { releasePointerCapture, setPointerCapture };
-}
-
-function expectArtifactResizeFinished(
-	separator: HTMLElement,
-	releasePointerCapture: ReturnType<typeof vi.fn>,
-	expectedWidth: string,
-) {
-	expect(releasePointerCapture).toHaveBeenCalledWith(7);
-	expect(separator).toHaveAttribute("aria-valuenow", expectedWidth);
-	expect(screen.queryByTestId("artifact-resize-shield")).not.toBeInTheDocument();
-	expect(document.body.style.cursor).toBe("");
-	expect(document.body.style.userSelect).toBe("");
-}
-
-function startArtifactResize() {
-	renderWorkspace(
-		<TaskWorkspaceView
-			projectId="p1"
-			taskId="t1"
-			tasks={[task]}
-			projects={[project]}
-			route={TASK_ROUTE}
-			navigate={vi.fn()}
-			dispatch={vi.fn()}
-			artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
-		/>,
-	);
-
-	const separator = screen.getByRole("separator", { name: "Resize artifact panel" });
-	const { releasePointerCapture } = mockPointerCapture(separator);
-	fireEvent.pointerDown(separator, { pointerId: 7, clientX: 900 });
-	return { releasePointerCapture, separator };
-}
-
 describe("TaskWorkspaceView", () => {
 	beforeEach(() => {
 		mountLog.length = 0;
@@ -177,7 +113,6 @@ describe("TaskWorkspaceView", () => {
 		getTasksMock.mockReset();
 		getTasksMock.mockResolvedValue([]);
 		exitCopyModeAllPanesMock.mockClear();
-		localStorage.removeItem("dev3-artifact-panel-width");
 	});
 
 	// Regression: the fullscreen task view can be entered for a task whose
@@ -317,8 +252,11 @@ describe("TaskWorkspaceView", () => {
 		expect(document.activeElement).toBe(screen.getByTestId("terminal-view"));
 	});
 
-	it("shows a task artifact beside the terminal and closes it independently", async () => {
-		const onClose = vi.fn();
+	// Artifacts are a popup hosted by App, never a pane sibling. The workspace
+	// therefore has no drag-resizable split at all — the resize path that could
+	// wedge the UI does not exist to be reached.
+	// decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md
+	it("has no resizable split beside the terminal", () => {
 		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
@@ -328,68 +266,10 @@ describe("TaskWorkspaceView", () => {
 				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
-				artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
-				onCloseArtifactViewer={onClose}
 			/>,
 		);
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
-		expect(screen.getByTestId("artifact-workspace")).toHaveTextContent("Metrics");
-		const separator = screen.getByRole("separator", { name: "Resize artifact panel" });
-		expect(separator).toHaveClass("w-[7px]");
-		expect(screen.getByTestId("artifact-resize-grip")).toHaveClass("w-[3px]");
-		expect(separator).toHaveAttribute("aria-valuenow", "560");
-		separator.focus();
-		await userEvent.keyboard("{ArrowLeft}");
-		expect(separator).toHaveAttribute("aria-valuenow", "584");
-		const { releasePointerCapture, setPointerCapture } = mockPointerCapture(separator);
-		fireEvent.pointerDown(separator, { pointerId: 7, clientX: 900 });
-		expect(setPointerCapture).toHaveBeenCalledWith(7);
-		expect(screen.getByTestId("artifact-resize-shield")).toBeInTheDocument();
-		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
-		// Dragging must not resize the panel yet — only the ghost line follows.
-		expect(screen.getByTestId("artifact-resize-ghost")).toBeInTheDocument();
-		expect(separator).toHaveAttribute("aria-valuenow", "584");
-		fireEvent.pointerUp(separator, { pointerId: 7, clientX: 850 });
-		expectArtifactResizeFinished(separator, releasePointerCapture, "634");
-		await userEvent.click(screen.getByText("Close Artifact"));
-		expect(onClose).toHaveBeenCalledOnce();
-	});
-
-	it("finishes artifact resizing when pointer release misses the separator", () => {
-		const { releasePointerCapture, separator } = startArtifactResize();
-		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
-		fireEvent.pointerUp(window, { pointerId: 7, clientX: 850 });
-
-		expectArtifactResizeFinished(separator, releasePointerCapture, "610");
-	});
-
-	it("finishes artifact resizing when pointer cancellation misses the separator", () => {
-		const { releasePointerCapture, separator } = startArtifactResize();
-		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
-		fireEvent.pointerCancel(window, { pointerId: 7, clientX: 850 });
-
-		expectArtifactResizeFinished(separator, releasePointerCapture, "610");
-	});
-
-	it("finishes artifact resizing when the window loses focus", () => {
-		const { releasePointerCapture, separator } = startArtifactResize();
-		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
-		fireEvent.blur(window);
-
-		expectArtifactResizeFinished(separator, releasePointerCapture, "610");
-	});
-
-	it("finishes artifact resizing when the document becomes hidden", () => {
-		const visibilityState = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-		try {
-			const { releasePointerCapture, separator } = startArtifactResize();
-			fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
-			fireEvent(document, new Event("visibilitychange"));
-
-			expectArtifactResizeFinished(separator, releasePointerCapture, "610");
-		} finally {
-			visibilityState.mockRestore();
-		}
+		expect(screen.queryAllByRole("separator")).toHaveLength(0);
 	});
 
 	// Regression test for the `key={taskId}` prop on TaskTerminal in

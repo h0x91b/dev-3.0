@@ -1,5 +1,7 @@
 # 120 — Task-bound HTML artifacts
 
+> Superseded in part on 2026-09-05 by `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`: the artifact no longer opens in a resizable docked workspace — it is a popup lightbox hosted by App, and the resize path is deleted.
+
 ## Context
 
 Agents can already surface raster output through `dev3 show-image`, but interactive reports had to be described in text or run as a separate web project. The new artifact must look native inside dev3, remain portable, support relative image assets, and work identically in Electrobun and remote/browser mode.

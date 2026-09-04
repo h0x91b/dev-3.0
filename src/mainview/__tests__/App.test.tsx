@@ -132,7 +132,6 @@ vi.mock("../components/ProjectView", () => ({
 		activeTaskId?: string;
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
-		artifactViewer?: { artifacts: Array<{ title?: string }>; index: number } | null;
 	}) => (
 		<div
 			data-testid="project-screen"
@@ -140,9 +139,6 @@ vi.mock("../components/ProjectView", () => ({
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
-			data-artifact-count={String(props.artifactViewer?.artifacts.length ?? 0)}
-			data-artifact-index={String(props.artifactViewer?.index ?? -1)}
-			data-artifact-title={props.artifactViewer?.artifacts[props.artifactViewer.index]?.title ?? ""}
 		/>
 	),
 }));
@@ -1122,7 +1118,9 @@ describe("App keyboard shortcuts", () => {
 			createdAt: 0,
 		});
 
-		it("hosts a standalone artifact overlay itself instead of handing it to the workspace pane", async () => {
+		// The viewer is a popup App owns, never a surface handed down to a screen —
+		// decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md.
+		it("hosts the artifact popup itself, over whichever screen is open", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
@@ -1131,13 +1129,15 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			act(() => {
 				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-					detail: { taskId: "t-archived", projectId: "p1", artifacts: [artifact("a")], index: 0, standalone: true },
+					detail: { taskId: "t-archived", projectId: "p1", artifacts: [artifact("a")], index: 0 },
 				}));
 			});
 
-			expect(await screen.findByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true");
-			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-count", "0");
-			expect(screen.queryByTestId("artifact-viewer-fullscreen")).toBeNull();
+			const card = await screen.findByTestId("artifact-viewer");
+			expect(card).toHaveAttribute("data-fullscreen", "false");
+			expect(card.parentElement).toHaveClass("fixed", "inset-0");
+			expect(screen.getByTestId("artifact-viewer-fullscreen")).toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
 		});
 
 		it("replaces an open viewer with the latest artifact even when the window loses focus", async () => {
@@ -1152,7 +1152,7 @@ describe("App keyboard shortcuts", () => {
 					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a"), artifact("b")], index: 1 },
 				}));
 			});
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-title", "Artifact b"));
+			await waitFor(() => expect(screen.getByText("Artifact b")).toBeInTheDocument());
 			expect(api.request.markTaskSharedItemsRead).toHaveBeenCalledWith({
 				projectId: "p1",
 				taskId: "t-artifact",
@@ -1174,9 +1174,8 @@ describe("App keyboard shortcuts", () => {
 				});
 
 				await waitFor(() => {
-					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-count", "3");
-					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-index", "2");
-					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-title", "Artifact c");
+					expect(screen.getByText("Artifact c")).toBeInTheDocument();
+					expect(screen.getByText("3 / 3")).toBeInTheDocument();
 				});
 			} finally {
 				hasFocus.mockRestore();

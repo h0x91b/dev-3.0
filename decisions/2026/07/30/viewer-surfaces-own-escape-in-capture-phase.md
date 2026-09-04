@@ -1,5 +1,7 @@
 # 181 — Viewer surfaces own Escape in the capture phase
 
+> Superseded in part on 2026-09-05 by `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`: the artifact viewer is no longer a docked panel and no longer gates Escape on focus — as a modal lightbox it hands Escape to the overlay-layer stack, like the image viewer.
+
 ## Context
 
 Escape while the artifact viewer (`TaskArtifactViewer`) or the image lightbox

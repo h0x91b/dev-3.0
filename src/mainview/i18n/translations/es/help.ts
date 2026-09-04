@@ -208,7 +208,7 @@ const help = {
 		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco.",
 	"help.viewer.artifact.title": "Artefacto",
 	"help.viewer.artifact.body":
-		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado junto a la terminal. Cambia su tamaño, ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes).",
+		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado y abierto como una ventana emergente sobre la tarea, igual que las imágenes. Ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes). Escape lo cierra.",
 
 	// ── Terminal ──
 	"help.terminal.quickShell.title": "Terminal del proyecto",

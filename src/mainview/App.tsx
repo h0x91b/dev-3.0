@@ -413,9 +413,10 @@ function App() {
 	// vanish on the same tick. It only ever grows while the viewer stays open.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
-	// `standalone` requests come from surfaces with no workspace pane to dock into
-	// (the archived task modal) and are hosted as an overlay here instead.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; standalone?: boolean } | null>(null);
+	// Lightbox for artifacts an agent surfaced via `dev3 show-artifact`. Hosted
+	// here — never inside a task pane — so every surface that can open one (task
+	// workspace, archived task modal, a toast) gets the identical popup.
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -1796,9 +1797,7 @@ function App() {
 			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId;
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-				// An already-open standalone overlay keeps its host; it has no pane to dock into.
-				const standalone = alreadyOpenForTask ? artifactViewerRef.current?.standalone : undefined;
-				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1, standalone });
+				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
 			}
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
@@ -1817,17 +1816,16 @@ function App() {
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, taskStatus, projectId, artifacts, index, standalone } = (e as CustomEvent).detail as {
+			const { taskId, taskStatus, projectId, artifacts, index } = (e as CustomEvent).detail as {
 				taskId: string;
 				taskStatus?: TaskStatus;
 				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
-				standalone?: boolean;
 			};
 			if (!taskId || !projectId || !artifacts?.length) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-			setArtifactViewer({ taskId, taskStatus, artifacts, index: index ?? artifacts.length - 1, standalone });
+			setArtifactViewer({ taskId, taskStatus, artifacts, index: index ?? artifacts.length - 1 });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -3320,9 +3318,8 @@ function App() {
 					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!.requestId, approved, launch)}
 				/>
 			)}
-			{artifactViewer?.standalone && (
+			{artifactViewer && (
 				<TaskArtifactViewer
-					standalone
 					taskId={artifactViewer.taskId}
 					taskStatus={artifactViewer.taskStatus}
 					artifacts={artifactViewer.artifacts}
@@ -3416,8 +3413,6 @@ function App() {
 				immersive
 				isTerminalFullscreen
 				onToggleTerminalFullscreen={toggleTerminalImmersive}
-				artifactViewer={null}
-				onCloseArtifactViewer={closeArtifactViewer}
 				skipCopyModeReset={skipTerminalCopyReset}
 				openUnresolvedComments={route.screen === "task" ? route.openUnresolvedComments : undefined}
 			/>
@@ -3457,8 +3452,6 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
-						artifactViewer={artifactViewer?.standalone ? null : artifactViewer}
-						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
@@ -3488,8 +3481,6 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
-						artifactViewer={artifactViewer?.standalone ? null : artifactViewer}
-						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}

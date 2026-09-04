@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { Project, SharedArtifact, Task } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -19,8 +19,6 @@ interface TaskWorkspaceViewProps {
 	navigate: (route: Route) => void;
 	dispatch: Dispatch<AppAction>;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
-	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
-	onCloseArtifactViewer?: () => void;
 	immersive?: boolean;
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
@@ -37,8 +35,6 @@ function TaskWorkspaceView({
 	navigate,
 	dispatch,
 	navigationGuardRef,
-	artifactViewer,
-	onCloseArtifactViewer,
 	immersive = false,
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
@@ -119,8 +115,6 @@ function TaskWorkspaceView({
 					inlineDiffRequest={inlineDiff.request}
 					onCloseInlineDiff={inlineDiff.close}
 					navigationGuardRef={navigationGuardRef}
-					artifactViewer={artifactViewer}
-					onCloseArtifactViewer={onCloseArtifactViewer}
 					skipCopyModeReset={skipCopyModeReset}
 				/>
 			</div>

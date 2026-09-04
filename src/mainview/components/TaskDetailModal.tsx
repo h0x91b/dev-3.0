@@ -807,7 +807,7 @@ function ArchivedView({
 
 						{/* What the agent shared — the usual reason to reopen a finished
 						    task, so it gets a signal above the fold like a live task has. */}
-						<TaskArtifacts task={task} projectId={project.id} standalone />
+						<TaskArtifacts task={task} projectId={project.id} />
 						<TaskSharedImages task={task} projectId={project.id} />
 					</div>
 

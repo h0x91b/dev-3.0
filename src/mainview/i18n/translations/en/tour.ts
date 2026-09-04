@@ -36,7 +36,7 @@ const tour = {
 		"This starts the sandbox's own server on a port dev-3.0 keeps for this task, so you can open the page in a browser and watch it change. Press play, then come back here.",
 	"tour.firstTask.artifact.title": "The agent's own report",
 	"tour.firstTask.artifact.body":
-		"Agents can publish a page of their own — here it is, with the button before and after. It stays with the task, so you can reopen it later.",
+		"Agents can publish a page of their own — here it is, open over the task. Close it and the terminal is right where you left it; the report stays with the task, so you can reopen it later.",
 	"tour.firstTask.review.title": "Read it before you keep it",
 	"tour.firstTask.review.body":
 		"This row shows the branch and what changed on it. Open the diff, and merge only once you like what you see.",
