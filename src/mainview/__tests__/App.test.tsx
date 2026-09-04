@@ -1226,7 +1226,7 @@ describe("App keyboard shortcuts", () => {
 
 			expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
 			await userEvent.click(
-				await screen.findByRole("button", { name: "#7 Coordinator → #42 Receiver — “check the payload”" }),
+				await screen.findByRole("button", { name: "#7 Coordinator → #42 Receiver — check the payload" }),
 			);
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");

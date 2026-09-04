@@ -89,7 +89,7 @@ const common = {
 	"toast.source.update": "Обновление",
 	"toast.source.dashboard": "Дашборд",
 	"toast.source.terminal": "Терминал",
-	"toast.agentMessage": "«{preview}»",
+	"toast.agentMessage": "{preview}",
 	"toast.dismiss": "Закрыть",
 	"toast.clearAll": "Убрать все",
 	"common.close": "Закрыть",
