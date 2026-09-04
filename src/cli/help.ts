@@ -101,6 +101,9 @@ const COMMANDS: CommandHelp[] = [
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined. Drive it with `dev3 message`.",
+					"--handoff-file <path> Append this file's text to the handoff note the new agent",
+					"                      receives, for standing instructions you would otherwise",
+					"                      message by hand. Launches only; unreadable/empty exits 3.",
 				],
 			},
 			{
@@ -134,7 +137,11 @@ const COMMANDS: CommandHelp[] = [
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" asks the user for approval; "cancelled" is forbidden via CLI.',
 					"Starting SOMEONE ELSE'S task (--task <other> + an active status) also asks",
-					"the user, who picks the agent; exit 10 if they decline.",
+					"the user, who picks the agent; exit 10 if they decline. The task it starts is",
+					"told by default to report back as a file and message you only the path.",
+					"--handoff-file <path>    Append this file's text to that handoff note, for",
+					"                         standing instructions you would otherwise message by",
+					"                         hand. Only read when the move becomes a launch.",
 				],
 			},
 			{

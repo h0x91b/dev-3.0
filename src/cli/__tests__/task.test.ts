@@ -1,3 +1,6 @@
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleTask } from "../commands/task";
 import type { CliContext } from "../context";
@@ -1698,6 +1701,35 @@ describe("task move — agent asking to start another task", () => {
 		expect(stdoutOutput).toContain("variant #3  dev3 message --task 33333333");
 		// Never hand back the shared seq as an address for a live group.
 		expect(stdoutOutput).not.toContain('--task seq:77 "your message"');
+	});
+
+	describe("--handoff-file", () => {
+		it("sends the file's text so the launched agent gets it without a second message", async () => {
+			const path = join(tmpdir(), `dev3-handoff-${Date.now()}.md`);
+			writeFileSync(path, "  Report to Seq 1141 only.\n", "utf8");
+			mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] }));
+
+			await handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": path }), SOCKET, CTX);
+
+			expect(mockSend.mock.calls[0]![2]!.handoffNote).toBe("Report to Seq 1141 only.");
+			rmSync(path, { force: true });
+		});
+
+		it("fails on the launcher's own terminal when the file cannot be read", async () => {
+			await expect(
+				handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": "/nope/missing.md" }), SOCKET, CTX),
+			).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain("cannot read");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		it("omits the note entirely when the flag is absent", async () => {
+			mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] }));
+
+			await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("handoffNote");
+		});
 	});
 
 	it("keeps the agent's OWN status move on the fast path", async () => {

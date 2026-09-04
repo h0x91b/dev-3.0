@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
@@ -32,6 +34,27 @@ function parseTypeFlag(raw: string): TaskType | null {
 	const normalized = normalizeTaskType(value);
 	if (!normalized) exitUsage(`--type must be one of ${TASK_TYPES.join(", ")} or standard (got "${raw}")`);
 	return normalized;
+}
+
+/**
+ * Read `--handoff-file <path>`: the launcher's own standing instructions, appended
+ * to the handoff note every task it starts receives. The file is read HERE rather
+ * than server-side so a wrong path fails on the launcher's own terminal instead of
+ * silently reaching nobody. Absent flag ⇒ undefined, and the child gets the default
+ * note alone.
+ */
+function readHandoffFile(args: ParsedArgs): string | undefined {
+	const raw = args.flags["handoff-file"]?.trim();
+	if (!raw) return undefined;
+	const path = resolve(raw);
+	let text: string;
+	try {
+		text = readFileSync(path, "utf8");
+	} catch {
+		exitUsage(`--handoff-file: cannot read ${path}`);
+	}
+	if (!text.trim()) exitUsage(`--handoff-file: ${path} is empty`);
+	return text.trim();
 }
 
 function formatDate(iso: string): string {
@@ -172,7 +195,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -193,7 +216,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
-		return createScratchAndRun(projectId, socketPath, context);
+		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args));
+	}
+	if (args.flags["handoff-file"] !== undefined) {
+		exitUsage("--handoff-file only applies to a launch: `task create --scratch --run` or `task move --status in-progress`.");
 	}
 
 	const prFlag = args.flags.pr?.trim();
@@ -419,6 +445,7 @@ async function createScratchAndRun(
 	projectId: string,
 	socketPath: string,
 	context: CliContext | null,
+	handoffNote?: string,
 ): Promise<void> {
 	if (!context?.taskId) {
 		exitUsage("Run this from inside a task worktree — the new scratch task reports back to yours.");
@@ -429,6 +456,7 @@ async function createScratchAndRun(
 		resp = await sendRequest(socketPath, "task.createScratchAndRun", {
 			projectId,
 			sourceTaskId: context.taskId,
+			...(handoffNote ? { handoffNote } : {}),
 		}, { timeoutMs: LAUNCH_APPROVAL_TIMEOUT_MS });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
@@ -515,7 +543,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
-		"id", "task", "task-id", "project", "status", "if-status", "if-status-not",
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file",
 		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
 	]);
 	const taskId = resolveTaskId(args, context);
@@ -554,6 +582,10 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// to know which one: moving somebody else's task into a running column is a
 	// launch, and a launch needs the user's approval and agent pick.
 	if (context?.taskId) params.sourceTaskId = context.taskId;
+	// Only used when this move turns out to be a launch; a same-task status move
+	// carries it and the server ignores it.
+	const handoffNote = readHandoffFile(args);
+	if (handoffNote) params.handoffNote = handoffNote;
 
 	// The approval dialog can sit open for minutes, so a move that might turn
 	// into one waits on the long timeout. A silent move still answers instantly.

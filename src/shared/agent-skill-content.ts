@@ -250,7 +250,7 @@ const SKILL_SCRATCH_TASK = `
 
 A title starting with \`Scratch — \` (e.g. \`Scratch — 14:32\`) means the user clicked "Scratch Task": no initial instruction, the \`description\` is only the placeholder title. It launches parked in **Has Questions** on purpose — nothing is expected of you until someone writes, and you must not move it out of that column yourself. Greet in one short line and ask what they want. Their answer IS the task description: set a real title, overview and labels, then proceed.
 
-If a peer **agent** started you instead, your first message says so and names the task — report progress and results back with the \`dev3 message --task seq:<N> --subject "..."\` command in that message, and treat its instructions as your description.
+If a peer **agent** started you instead, your first message says so, names the task, and names the directory for your reports. Your description is the brief; you own the how. Write progress and the final result as a file there and send only its absolute path plus one line on what it is, with the \`dev3 message --task seq:<N> --subject "..."\` command in that message. Questions go straight in a message.
 `;
 
 const SKILL_PEEK = `
@@ -271,7 +271,7 @@ You may ask the user to set another task running; you never launch anything your
 - **An existing To Do task** → \`dev3 task move --task seq:<N> --status in-progress\`. Not your task, so the ordinary board move becomes an approval request.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. A scratch task has **no prompt by design** — it starts idle and you drive it with messages.
 
-It **inherits your priority** unless it has its own, and the dialog lets the user change that band; you never pass one. On approval you get its \`seq\` and the command to talk to it, and it is told you started it. **Declined** → exit code 10, nothing launched: ask what to change rather than retrying. **Timeout** → the dialog may still be open, so it may start without you hearing back. An unanswered dialog **approves itself after a few minutes** (5 by default, configurable, switchable off), so wait — a second request joins the first and does NOT restart its clock.
+It **inherits your priority** unless it has its own, and the dialog lets the user change that band; you never pass one. On approval you get its \`seq\` and the command to talk to it. By default it is already told you started it, that its description is the brief, and to report back as a file and message you only that path — never send that instruction by hand. Standing rules of your own go in \`--handoff-file <path>\` on either command. **Declined** → exit code 10, nothing launched: ask what to change rather than retrying. **Timeout** → the dialog may still be open, so it may start without you hearing back. An unanswered dialog **approves itself after a few minutes** (5 by default, configurable, switchable off), so wait — a second request joins the first and does NOT restart its clock.
 
 Use it when work genuinely belongs in its own session (a parallel investigation, a long build, an isolated experiment). Never to escape your own scope, never several at once — each interrupts the user.
 

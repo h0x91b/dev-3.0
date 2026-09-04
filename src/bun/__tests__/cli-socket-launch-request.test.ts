@@ -260,6 +260,35 @@ describe("task.move — agent-initiated launch approval", () => {
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			childTaskId: TARGET_ID,
 			source: expect.objectContaining({ seq: 3 }),
+			// No --handoff-file: the child still gets dev3's own default note.
+			launcherNote: null,
+		}));
+	});
+
+	it("passes the launcher's --handoff-file text through to the child's note", async () => {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+			handoffNote: "Report to Seq 1141 only.",
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		resolveAgentRequest(payload.requestId as string, {
+			approved: true,
+			launch: { variants: [{ agentId: null, configId: null }] },
+		});
+		await respPromise;
+
+		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
+			launcherNote: "Report to Seq 1141 only.",
 		}));
 	});
 
