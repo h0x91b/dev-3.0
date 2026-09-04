@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleDevServer } from "../commands/dev-server";
 import type { CliContext } from "../context";
 import type { DevServerStatus, CliResponse } from "../../shared/types";
+import { parseArgs } from "../args";
 
 vi.mock("../socket-client", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../socket-client")>()),
@@ -50,6 +51,7 @@ const STATUS: DevServerStatus = {
 	devPorts: [{ port: 5173, pid: 81298, processName: "bun" }],
 	publishedPorts: [],
 	portConflicts: [],
+	extraEnvKeys: [],
 	resourceUsage: { cpu: 3.1, rss: 104857600 },
 };
 
@@ -575,5 +577,105 @@ describe("dev-server errors", () => {
 			handleDevServer("explode", { positional: [], flags: {} }, SOCKET, CTX),
 		).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Unknown subcommand: dev-server explode");
+	});
+});
+
+describe("dev-server --env", () => {
+	it("passes every --env pair to devServer.start", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("start", parseArgs(["--env", "DEV3_QA_SCOPE=seeded", "--env", "DEBUG=1"]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			env: { DEV3_QA_SCOPE: "seeded", DEBUG: "1" },
+		}, { retryEmptyResponse: true });
+	});
+
+	it("passes --env to devServer.restart too", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("restart", parseArgs(["--env", "DEV3_QA_SCOPE=virgin"]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			env: { DEV3_QA_SCOPE: "virgin" },
+		}, { retryEmptyResponse: true });
+	});
+
+	it("sends no env key at all when --env is absent, so a restart reuses the last set", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("restart", parseArgs([]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		}, { retryEmptyResponse: true });
+	});
+
+	// The one thing the CLI must never be able to do: move the server off the
+	// port `--wait` is about to poll.
+	it("refuses to override an assigned port and starts nothing", async () => {
+		await expect(
+			handleDevServer("start", parseArgs(["--env", "DEV3_PORT0=1"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_21");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("DEV3_PORT0");
+	});
+
+	it("refuses a malformed pair and starts nothing", async () => {
+		await expect(
+			handleDevServer("start", parseArgs(["--env", "DEV3_QA_SCOPE"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_21");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("expected KEY=VALUE");
+	});
+
+	it("refuses a bare --env with no argument", async () => {
+		await expect(
+			handleDevServer("start", parseArgs(["--env"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_21");
+		expect(stderrOutput).toContain("--env needs a KEY=VALUE argument");
+	});
+
+	it("rejects --env on stop and status, which have no run to configure", async () => {
+		await expect(
+			handleDevServer("stop", parseArgs(["--env", "A=1"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("takes no --env");
+	});
+
+	// Names only: a value can be a token, and this output lands in transcripts.
+	it("prints the extra env key names without their values", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, extraEnvKeys: ["DEV3_QA_SCOPE", "SECRET_TOKEN"] }));
+
+		await handleDevServer("status", parseArgs([]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Extra Env:");
+		expect(stdoutOutput).toContain("DEV3_QA_SCOPE, SECRET_TOKEN");
+	});
+
+	it("omits the Extra Env line for an ordinary start", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("status", parseArgs([]), SOCKET, CTX);
+
+		expect(stdoutOutput).not.toContain("Extra Env:");
+	});
+
+	// --wait polls status every 500ms; re-sending a possibly-secret value on each
+	// poll is pointless, so the env goes with the start request only.
+	it("does not repeat the env on the --wait status polls", async () => {
+		// Ready on an assigned port right away, so the wait returns on its first poll.
+		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] }));
+
+		await handleDevServer("start", parseArgs(["--wait", "--env", "SECRET_TOKEN=abc"]), SOCKET, CTX);
+
+		const statusCall = mockSend.mock.calls.find(([, method]) => method === "devServer.status");
+		expect(statusCall).toBeDefined();
+		expect(statusCall?.[2]).toEqual({ taskId: CTX.taskId, projectId: CTX.projectId });
 	});
 });

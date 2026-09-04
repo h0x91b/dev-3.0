@@ -1,17 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Project, Task } from "../../shared/types";
 
-// Self-hosted dev-server guard (issues #910/#920): when dev-3.0's own devScript
-// (`bun run dev`) boots a dev3 app instance INSIDE the task's dev tmux session,
-// that guest instance can end up serving `devServer.stop`/`restart` for the very
-// session that hosts it. The verified teardown SIGTERMs the session's full
-// process tree — including the serving process — so the RPC reply was never
-// written ("Empty response from server", then refused reconnects). The guard:
-//   - stop:   reply first with the projected stopped state, tear down after the
-//             reply has flushed (deferred);
-//   - restart/start-over-running: refuse with a clear error — a guest cannot
-//             outlive the teardown that a restart of its own host requires.
-
+/**
+ * Where a caller's `--env` lands in the dev-server pane's environment, and how a
+ * restart keeps it.
+ *
+ * The precedence is asserted at the CALL SITE — the `envGroups` array
+ * `runDevServer` hands to `buildDevServerScript` — not on the script builder,
+ * which cannot know what order the handler passes them in. Later group wins, so
+ * the order IS the rule: project config < caller `--env` < lifecycle DEV3_* <
+ * assigned ports. A caller that could move `DEV3_PORT0` would break `--wait`.
+ */
 // ---- Mocks ----
 
 vi.mock("node:fs", () => ({
@@ -182,15 +181,38 @@ vi.mock("../dev-server-env-store", () => ({
 	clearDevServerEnv: vi.fn(),
 }));
 
+
+vi.mock("../dev-server-script", () => ({
+	buildDevServerScript: vi.fn(() => "#!/bin/bash\n"),
+}));
+
+// An in-memory stand-in for the on-disk store, so the handler's own read/save/
+// clear ordering is what the restart tests exercise.
+vi.mock("../dev-server-env-store", () => {
+	const saved = new Map<string, Record<string, string>>();
+	return {
+		saveDevServerEnv: vi.fn((taskId: string, env: Record<string, string>) => {
+			if (Object.keys(env).length === 0) saved.delete(taskId);
+			else saved.set(taskId, env);
+		}),
+		readDevServerEnv: vi.fn((taskId: string) => saved.get(taskId) ?? {}),
+		clearDevServerEnv: vi.fn((taskId: string) => { saved.delete(taskId); }),
+		__saved: saved,
+	};
+});
+
 import * as data from "../data";
-import { clearPortDataForTask } from "../port-scanner";
-import { terminatePidsVerified } from "../process-reaper";
+import { buildDevServerScript } from "../dev-server-script";
+import { clearDevServerEnv, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
+import * as portPool from "../port-pool";
+import { buildTaskLifecycleEnv } from "../rpc-handlers/shared-pure";
+import { resolveOperationalProjectConfig } from "../rpc-handlers/settings-config";
 
-const { stopDevServer, restartDevServer, runDevServer } = await import("../rpc-handlers/tmux-pty");
-
-// ---- Fixtures ----
+const { runDevServer, restartDevServer, stopDevServer } = await import("../rpc-handlers/tmux-pty");
 
 const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
+const PROJECT_ENV = { SHARED: "from-project", PROJECT_ONLY: "1" };
+const LIFECYCLE_ENV = { SHARED: "from-lifecycle", DEV3_TASK_ID: TASK_ID, DEV3_WORKTREE_ROOT: "/tmp/wt" };
 
 function makeProject(): Project {
 	return {
@@ -215,79 +237,119 @@ function makeTask(): Task {
 	} as unknown as Task;
 }
 
-const REAL_DEV3_TASK_ID = process.env.DEV3_TASK_ID;
+/** The groups `runDevServer` passed, in order, from the last build. */
+function lastEnvGroups(): Record<string, string>[] {
+	const calls = vi.mocked(buildDevServerScript).mock.calls;
+	return calls[calls.length - 1][0].envGroups;
+}
+
+/** What the pane actually sees: later group wins, exactly as the exports do. */
+function effectiveEnv(): Record<string, string> {
+	return Object.assign({}, ...lastEnvGroups());
+}
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	delete process.env.DEV3_TASK_ID;
+	vi.mocked(clearDevServerEnv)(TASK_ID);
 	vi.mocked(data.getProject).mockResolvedValue(makeProject());
 	vi.mocked(data.getTask).mockResolvedValue(makeTask());
+	vi.mocked(resolveOperationalProjectConfig).mockResolvedValue({
+		devScript: "bun run dev",
+		portCount: 1,
+		env: PROJECT_ENV,
+	} as unknown as Awaited<ReturnType<typeof resolveOperationalProjectConfig>>);
+	vi.mocked(buildTaskLifecycleEnv).mockReturnValue(LIFECYCLE_ENV);
+	vi.mocked(portPool.getPortAssignments).mockReturnValue([50001]);
+	vi.mocked(portPool.buildPortEnv).mockImplementation((ports: number[]) => ({ DEV3_PORT0: String(ports[0]) }));
 });
 
-afterEach(() => {
-	if (REAL_DEV3_TASK_ID === undefined) {
-		delete process.env.DEV3_TASK_ID;
-	} else {
-		process.env.DEV3_TASK_ID = REAL_DEV3_TASK_ID;
-	}
-	vi.useRealTimers();
-});
+describe("dev-server --env precedence", () => {
+	it("puts the caller's env after the project config and before lifecycle and ports", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { SHARED: "from-caller", MINE: "yes" } });
 
-describe("stopDevServer — self-hosted guard", () => {
-	it("replies before teardown when this instance is hosted by the target task", async () => {
-		vi.useFakeTimers();
-		process.env.DEV3_TASK_ID = TASK_ID;
-
-		const status = await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
-		// The reply is built and returned WITHOUT reaping anything — reaping the
-		// dev session's tree would SIGTERM this very process mid-request.
-		expect(status.running).toBe(false);
-		expect(terminatePidsVerified).not.toHaveBeenCalled();
-		expect(clearPortDataForTask).not.toHaveBeenCalled();
-
-		// Teardown still happens — deferred until after the reply has flushed.
-		await vi.advanceTimersByTimeAsync(2000);
-		expect(terminatePidsVerified).toHaveBeenCalledWith([123], expect.anything());
-		expect(clearPortDataForTask).toHaveBeenCalledWith(TASK_ID);
+		expect(lastEnvGroups()).toEqual([
+			PROJECT_ENV,
+			{ SHARED: "from-caller", MINE: "yes" },
+			LIFECYCLE_ENV,
+			{ DEV3_PORT0: "50001" },
+		]);
 	});
 
-	it("tears down synchronously (verified) when serving another task's stop", async () => {
-		process.env.DEV3_TASK_ID = "99999999-9999-9999-9999-999999999999";
+	it("lets the caller override a project env entry", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { PROJECT_ONLY: "overridden" } });
 
-		const status = await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
-		expect(status.taskId).toBe(TASK_ID);
-		expect(terminatePidsVerified).toHaveBeenCalled();
-		expect(clearPortDataForTask).toHaveBeenCalledWith(TASK_ID);
+		expect(effectiveEnv().PROJECT_ONLY).toBe("overridden");
 	});
 
-	it("tears down synchronously when not launched from any task context", async () => {
-		const status = await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+	it("never lets the caller move the task's identity", async () => {
+		await runDevServer({
+			taskId: TASK_ID,
+			projectId: "proj-1",
+			env: { SHARED: "from-caller", DEV3_TASK_ID: "someone-else" },
+		});
 
-		expect(status.taskId).toBe(TASK_ID);
-		expect(terminatePidsVerified).toHaveBeenCalled();
+		expect(effectiveEnv().SHARED).toBe("from-lifecycle");
+		expect(effectiveEnv().DEV3_TASK_ID).toBe(TASK_ID);
 	});
-});
 
-describe("restartDevServer — self-hosted guard", () => {
-	it("refuses to restart its own host session with a clear error", async () => {
-		process.env.DEV3_TASK_ID = TASK_ID;
+	// The one that would break `--wait`: it polls for a listener on DEV3_PORT0.
+	it("never lets the caller move an assigned port", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_PORT0: "1" } });
 
-		await expect(
-			restartDevServer({ taskId: TASK_ID, projectId: "proj-1" }),
-		).rejects.toThrow(/cannot restart itself/);
-		expect(terminatePidsVerified).not.toHaveBeenCalled();
+		expect(effectiveEnv().DEV3_PORT0).toBe("50001");
+		// Dropped outright rather than merely outranked — it never reaches a group.
+		expect(lastEnvGroups()[1]).toEqual({});
+	});
+
+	it("passes an empty caller group for an ordinary start", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(lastEnvGroups()[1]).toEqual({});
 	});
 });
 
-describe("runDevServer — self-hosted guard", () => {
-	it("refuses start-over-running for its own host session instead of killing itself", async () => {
-		process.env.DEV3_TASK_ID = TASK_ID;
+describe("dev-server --env across a restart", () => {
+	it("remembers the env of the last start", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
+		expect(saveDevServerEnv).toHaveBeenCalledWith(TASK_ID, { DEV3_QA_SCOPE: "seeded" });
+		expect(readDevServerEnv(TASK_ID)).toEqual({ DEV3_QA_SCOPE: "seeded" });
+	});
 
-		await expect(
-			runDevServer({ taskId: TASK_ID, projectId: "proj-1" }),
-		).rejects.toThrow(/hosts the dev3 app instance/);
-		expect(terminatePidsVerified).not.toHaveBeenCalled();
+	// The UI's Restart button and a bare `dev3 dev-server restart` both land here.
+	it("a restart with no env reuses the last start's env", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
+
+		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(lastEnvGroups()[1]).toEqual({ DEV3_QA_SCOPE: "seeded" });
+	});
+
+	it("a restart with --env replaces it", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
+
+		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "virgin" } });
+
+		expect(lastEnvGroups()[1]).toEqual({ DEV3_QA_SCOPE: "virgin" });
+	});
+
+	it("a stop clears it, so the next plain start does not inherit it", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
+
+		await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+		expect(readDevServerEnv(TASK_ID)).toEqual({});
+
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+		expect(lastEnvGroups()[1]).toEqual({});
+	});
+
+	// A plain `start` defines its configuration whole — inheriting silently is
+	// exactly the trap the `.dev3/config.local.json` recipe had.
+	it("a plain start after an --env start clears the stored env", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
+
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(readDevServerEnv(TASK_ID)).toEqual({});
+		expect(lastEnvGroups()[1]).toEqual({});
 	});
 });

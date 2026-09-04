@@ -150,3 +150,27 @@ describe("resolveFileArgs", () => {
 		expect(result.flags.description).toBe("");
 	});
 });
+
+describe("parseArgs repeated flags", () => {
+	// `flags` cannot express a repeatable flag: the last value wins. `repeated`
+	// keeps every occurrence so `dev3 dev-server start --env A=1 --env B=2` works.
+	it("records every occurrence of a flag in order", () => {
+		const result = parseArgs(["--env", "A=1", "--env", "B=2"]);
+		expect(result.repeated?.env).toEqual(["A=1", "B=2"]);
+		expect(result.flags.env).toBe("B=2");
+	});
+
+	it("records --key=value occurrences too", () => {
+		expect(parseArgs(["--env=A=1", "--env=B=2"]).repeated?.env).toEqual(["A=1", "B=2"]);
+	});
+
+	// A bare `--env` with nothing after it parses as the boolean "true"; the
+	// dev-server command turns that into its own usage error.
+	it("records a valueless flag as \"true\"", () => {
+		expect(parseArgs(["--env"]).repeated?.env).toEqual(["true"]);
+	});
+
+	it("leaves a single occurrence as a one-element list", () => {
+		expect(parseArgs(["--wait", "--timeout", "5"]).repeated).toEqual({ wait: ["true"], timeout: ["5"] });
+	});
+});

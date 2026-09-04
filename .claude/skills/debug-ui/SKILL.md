@@ -77,22 +77,31 @@ runs; reach for the scoped board when the QA would touch real tasks, real accoun
 — creating or launching a task from the New Task dialog counts.
 
 The switch is an env var the `dev` script reads (`DEV3_QA_SCOPE`, see `scripts/dev.ts` and
-`scripts/qa-scope.ts`), and the dev-server takes project env from `.dev3/config.local.json`
-(gitignored, this worktree only). So the scoped board is **the same dev-server**, with one file
-in front of it:
+`scripts/qa-scope.ts`), and the dev-server passes caller-supplied variables straight through. So
+the scoped board is **the same dev-server**, one flag longer:
 
 ```bash
-mkdir -p .dev3
-printf '{ "env": { "DEV3_QA_SCOPE": "seeded" } }\n' > .dev3/config.local.json   # or "virgin"
-dev3 dev-server start --wait          # boots the throwaway board on the same DEV3_PORT0
+dev3 dev-server start --wait --env DEV3_QA_SCOPE=seeded    # or virgin
 ```
 
 `seeded` = one fixture project, zero tasks; `virgin` = completely empty home, the first-run state.
 Steps 1, 3 and 4 of the flow above are unchanged — same port, same access code, same `stop`. The
 dev-server pane prints the scoped `DEV3_HOME` and an `rm -rf` reset line; the scoped root is stable
-per worktree, so a restart reuses the same board. Delete `.dev3/config.local.json` (and restart)
-when a later check needs the real board again. Verified 2026-09-01: the QA Fixture board came up on
-`DEV3_PORT0` with the ordinary `dev-web-access-code` token.
+per worktree, so the board survives a restart.
+
+Three things worth knowing about the flag:
+
+- **A plain `dev3 dev-server restart` stays on the scoped board** — a restart with no `--env`
+  reuses the last start's env, which is also what the Dev Server button in the task UI does.
+- **A plain `dev3 dev-server start` goes back to the real board.** A start defines its
+  configuration whole, and a `stop` clears the remembered env — so there is nothing to delete
+  and nothing left to forget about.
+- **`dev3 dev-server status` names the extra keys** (names only, never values), so you can see at
+  a glance which board the running server is on.
+
+Do **not** put `DEV3_QA_SCOPE` in `.dev3/config.local.json`. That was the old recipe and its trap
+is exactly what the flag removes: the file also reaches the agent sessions of this worktree, and a
+forgotten one silently boots the next QA run on the throwaway board.
 
 **What it does NOT isolate** — name these rather than assuming a clean room: the tmux socket
 directory (only `TMUX_TMPDIR` moves it, and dev3 sets it nowhere), the PowerShell history file on

@@ -267,6 +267,17 @@ async function resolveTaskAcrossProjects(taskId: string, variantIndex?: number):
 }
 
 /**
+ * A socket param carrying a flat string map, or undefined when the caller sent
+ * nothing. `devServer.start`'s `env` uses it; the handler sanitizes what comes
+ * out, so this only has to reject shapes that are not a map at all.
+ */
+function readEnvParam(params: Record<string, unknown>): Record<string, string> | undefined {
+	const raw = params.env;
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	return Object.fromEntries(Object.entries(raw as Record<string, unknown>).map(([k, v]) => [k, String(v)]));
+}
+
+/**
  * `opts.variantIndex` is `dev3 message --variant <i>` and only that: no other
  * command accepts the flag, so every other caller resolves exactly as before.
  */
@@ -1952,7 +1963,7 @@ const handlers: Record<string, Handler> = {
 
 	"devServer.start": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return runDevServer({ taskId: task.id, projectId: project.id });
+		return runDevServer({ taskId: task.id, projectId: project.id, env: readEnvParam(params) });
 	},
 
 	"devServer.stop": async (params) => {
@@ -1962,7 +1973,7 @@ const handlers: Record<string, Handler> = {
 
 	"devServer.restart": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return restartDevServer({ taskId: task.id, projectId: project.id });
+		return restartDevServer({ taskId: task.id, projectId: project.id, env: readEnvParam(params) });
 	},
 
 	"devServer.status": async (params) => {

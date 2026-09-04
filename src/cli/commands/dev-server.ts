@@ -1,4 +1,6 @@
 import type { CliResponse, DevServerStatus } from "../../shared/types";
+import { CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID } from "../../shared/cli-exit-codes";
+import { parseDevServerEnvPair } from "../../shared/dev-server-env";
 import { isInstanceLossError, sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -60,7 +62,41 @@ function asStatus(data: unknown): DevServerStatus {
 		devPorts: raw.devPorts ?? [],
 		publishedPorts: raw.publishedPorts ?? [],
 		portConflicts: raw.portConflicts ?? [],
+		extraEnvKeys: raw.extraEnvKeys ?? [],
 	};
+}
+
+/**
+ * Collect every `--env KEY=VALUE`. A rejected pair aborts the whole command with
+ * its own exit code: starting the server minus one variable would look like a
+ * success and boot the wrong configuration.
+ *
+ * Later wins on a repeated key, matching how a shell treats two assignments.
+ */
+function collectEnvFlag(args: ParsedArgs, action: string): Record<string, string> | undefined {
+	const raw = args.repeated?.env;
+	if (!raw || raw.length === 0) return undefined;
+	const env: Record<string, string> = {};
+	for (const item of raw) {
+		if (item === "true") {
+			exitError(
+				`--env needs a KEY=VALUE argument`,
+				`Example: dev3 dev-server ${action} --env DEV3_QA_SCOPE=seeded`,
+				CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID,
+			);
+		}
+		const parsed = parseDevServerEnvPair(item);
+		if ("error" in parsed) {
+			exitError(
+				`--env rejected: ${parsed.error}`,
+				"Nothing was started. dev3 sets PATH, HOME, SHELL, DEV3_TASK_ID, DEV3_WORKTREE_ROOT\n"
+				+ "and every DEV3_PORT* itself — those cannot be overridden.",
+				CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID,
+			);
+		}
+		env[parsed.key] = parsed.value;
+	}
+	return env;
 }
 
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
@@ -125,6 +161,11 @@ function printStatusDetails(status: DevServerStatus): void {
 		// otherwise it is noise on every ordinary dev server.
 		...(status.publishedPorts.length > 0
 			? [["Published Ports:", formatPortInfos(status.publishedPorts)] as [string, string]]
+			: []),
+		// Names only. A value passed with --env can be a token, and this output ends
+		// up in transcripts, screenshots and CI logs.
+		...(status.extraEnvKeys.length > 0
+			? [["Extra Env:", status.extraEnvKeys.join(", ")] as [string, string]]
 			: []),
 	];
 
@@ -264,6 +305,13 @@ async function runAction(
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 
+	if (action === "start" || action === "restart") {
+		const env = collectEnvFlag(args, action);
+		if (env) params.env = env;
+	} else if (args.repeated?.env) {
+		exitUsage(`dev-server ${action} takes no --env (only start and restart do)`);
+	}
+
 	// stop/restart tear the dev tmux session down; the app can drop this in-flight
 	// connection mid-handoff and close it with no reply ("Empty response"). Every
 	// devServer.* op is idempotent (start/restart re-kill any live session first;
@@ -280,7 +328,10 @@ async function runAction(
 	printStatusDetails(status);
 
 	if ((action === "start" || action === "restart") && args.flags.wait !== undefined) {
-		await waitForDevServerReady(socketRef, params, parseWaitTimeout(args));
+		// Poll without `env`: the values are already delivered, and re-sending a
+		// possibly-secret value on every 500ms status read buys nothing.
+		const { env: _env, ...statusParams } = params;
+		await waitForDevServerReady(socketRef, statusParams, parseWaitTimeout(args));
 	}
 }
 

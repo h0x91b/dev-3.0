@@ -10,6 +10,8 @@ import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearDevServerSummaryForTask, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, schedulePortScanSoon, waitForPortsFree } from "../port-scanner";
 import { classifyAgainstStartSnapshot, clearDevServerStart, mergePortInfos, recordDevServerStart } from "../dev-server-ports";
+import { clearDevServerEnv, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
+import { sanitizeDevServerEnv } from "../../shared/dev-server-env";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
 import { throughputSnapshot } from "../pty-throughput";
@@ -390,6 +392,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			devPorts: [],
 			publishedPorts: [],
 			portConflicts: [],
+			extraEnvKeys: Object.keys(readDevServerEnv(task.id)).sort(),
 			tmuxError: err.message,
 		};
 	}
@@ -457,6 +460,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		devPorts,
 		publishedPorts,
 		portConflicts,
+		extraEnvKeys: Object.keys(readDevServerEnv(task.id)).sort(),
 		resourceUsage,
 	};
 }
@@ -1078,10 +1082,17 @@ export function cleanupTaskTmuxState(taskId: string): void {
 	devViewerPaneIds.delete(taskId);
 }
 
-export async function runDevServer(params: { taskId: string; projectId: string; opId?: string }): Promise<DevServerStatus> {
+/**
+ * `env` is the caller's own extra environment (`dev3 dev-server start --env
+ * KEY=VALUE`). Absent means "no extra env for this run" and CLEARS whatever the
+ * previous run stored — a start defines its configuration whole. Only
+ * `restartDevServer` carries the previous set forward.
+ */
+export async function runDevServer(params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string> }): Promise<DevServerStatus> {
 	// Echo the renderer's correlation id so a click that never reached a handler is
 	// distinguishable from one that did (seq 1407).
-	log.info("→ runDevServer", params);
+	// Values redacted: an extra env pair can carry a secret and this log is a file.
+	log.info("→ runDevServer", { ...params, env: params.env ? Object.keys(params.env).sort() : undefined });
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -1089,6 +1100,11 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 
 		if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		// Never trust the caller: `devServer.start` is reachable from the CLI, the
+		// renderer, and any other socket client, and only the CLI validates.
+		const callerEnv = sanitizeDevServerEnv(params.env);
+		saveDevServerEnv(task.id, callerEnv);
 
 		const native = taskTerminalBackendIdentity(task) === "native";
 		const devSession = devServerSessionName(task.id);
@@ -1150,6 +1166,12 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 			devScript: resolved.devScript,
 			envGroups: [
 				resolved.env ?? {},
+				// The caller's own env, so it can override a project `env` entry it
+				// disagrees with — and no more than that. It sits BEFORE the two groups
+				// below deliberately: neither the task's identity nor its assigned ports
+				// may be moved from outside, or `--wait` polls a port the server was
+				// told not to bind.
+				callerEnv,
 				// Same workspace env the setup/cleanup hooks get, so a devScript can
 				// reference root-resolved hooks ("$DEV3_PROJECT_PATH/...") too.
 				buildTaskLifecycleEnv(project, task, task.worktreePath),
@@ -1295,6 +1317,9 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const taskSession = taskSessionName(task.id);
 		const native = taskTerminalBackendIdentity(task) === "native";
+		// The run is over, so its extra env is too — a later plain `start` must not
+		// silently inherit it. `restartDevServer` reads the store before it calls us.
+		clearDevServerEnv(task.id);
 		// The pane border only exists to title the tmux viewer split.
 		const clearPaneBorder = () =>
 			native
@@ -1337,8 +1362,14 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 // tearing down, avoiding redraw glitches in the viewer pane.
 const DEV_SERVER_RESTART_DELAY_MS = 250;
 
-export async function restartDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
-	log.info("→ restartDevServer", params);
+/**
+ * `env` replaces the extra env of the run being restarted; omitting it REUSES
+ * that run's env. This is what makes the UI's Restart button (and a bare `dev3
+ * dev-server restart`) come back on the same configuration instead of quietly
+ * dropping to the project defaults.
+ */
+export async function restartDevServer(params: { taskId: string; projectId: string; env?: Record<string, string> }): Promise<DevServerStatus> {
+	log.info("→ restartDevServer", { ...params, env: params.env ? Object.keys(params.env).sort() : undefined });
 	if (isSelfHostedByTask(params.taskId)) {
 		// A self-hosted instance cannot outlive the teardown a restart requires —
 		// the start half would never run (this was the "restart left the server
@@ -1351,9 +1382,12 @@ export async function restartDevServer(params: { taskId: string; projectId: stri
 			+ "\"dev3 dev-server stop\" followed by \"dev3 dev-server start\".",
 		);
 	}
+	// Read before the stop: `stopDevServer` clears the store, so a bare restart
+	// must capture the previous run's env first.
+	const env = params.env ?? readDevServerEnv(params.taskId);
 	await stopDevServer(params);
 	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_RESTART_DELAY_MS));
-	const status = await runDevServer(params);
+	const status = await runDevServer({ ...params, env });
 	log.info("← restartDevServer done");
 	return status;
 }

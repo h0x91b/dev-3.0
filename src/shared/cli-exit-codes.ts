@@ -19,6 +19,7 @@ export const CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED = 17;
 export const CLI_EXIT_CODE_TASK_REF_UNRESOLVED = 18;
 export const CLI_EXIT_CODE_EVENT_CURSOR_INVALID = 19;
 export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 20;
+export const CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID = 21;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -141,5 +142,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_NO_PROJECT_FOR_CWD,
 		description:
 			"`dev3 import` was run in a directory no registered dev3 project owns. A conversation can only be imported into the project that owns the directory it ran in, so the project has to be added to the board first — there is deliberately no flag to import it somewhere else. The message names the directory checked, and says something more useful than 'add the repository' for the two directories agents actually live in: a dev3 worktree (whose conversation is already a task) and a virtual board's working dir (which has no repository at all).",
+	},
+	{
+		constant: "CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID",
+		code: CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID,
+		description:
+			"`dev3 dev-server start --env` / `restart --env` was given something it will not pass to the devScript, and NOTHING was started or restarted: an argument that is not `KEY=VALUE`, a key that is not a valid environment variable name, or one of the names dev3 owns (`PATH`, `HOME`, `SHELL`, `DEV3_TASK_ID`, `DEV3_WORKTREE_ROOT`, any `DEV3_PORT*`). A silently dropped pair is worse than a refusal — the server would come up on the wrong configuration and look correct. Distinct from exit 3 so a caller can tell a rejected variable from a misspelled command.",
 	},
 ] as const;

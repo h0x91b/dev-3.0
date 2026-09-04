@@ -3804,6 +3804,13 @@ export interface DevServerStatus {
 	 * only as a downstream 502.
 	 */
 	portConflicts: PortInfo[];
+	/**
+	 * Names of the caller-supplied variables this dev server was started with
+	 * (`dev3 dev-server start --env KEY=VALUE`), sorted. **Names only, never
+	 * values** — a value can be a token, and this status is printed by the CLI,
+	 * pushed to the renderer and written to logs. Empty for an ordinary start.
+	 */
+	extraEnvKeys: string[];
 	resourceUsage?: ResourceUsage;
 	/**
 	 * Set only when the live state could not be read because tmux itself failed
@@ -4814,8 +4821,12 @@ export type AppRPCSchema = {
 			// what makes "the handler was never entered" provable: the renderer traces
 			// the id when it sends, the handler traces it when it runs, so a request
 			// that died in the bridge shows up as an id with only one side (seq 1407).
+			// `env` is caller-supplied extra environment for the devScript. It loses
+			// to the lifecycle DEV3_* vars and the assigned ports, and dev3-owned
+			// names are dropped outright (see `sanitizeDevServerEnv`). Omitting it on
+			// a start clears whatever the previous run was given.
 			runDevServer: {
-				params: { taskId: string; projectId: string; opId?: string };
+				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string> };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
@@ -4826,8 +4837,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; opId?: string };
 				response: DevServerStatus;
 			};
+			// Omitting `env` REUSES the extra env of the run being restarted, which is
+			// what keeps the UI's Restart button on the same configuration.
 			restartDevServer: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; env?: Record<string, string> };
 				response: DevServerStatus;
 			};
 			getDevServerStatus: {

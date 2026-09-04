@@ -1,5 +1,9 @@
 # A QA app instance is scoped by redirecting DEV3_HOME, not by suppressing prompts
 
+> Amended on 2026-09-04 by `decisions/2026/09/04/dev-server-caller-env.md`: inside a task the
+> scoped board is now reached with `dev3 dev-server start --env DEV3_QA_SCOPE=seeded`, not with a
+> `DEV3_QA_SCOPE` entry in `.dev3/config.local.json`. Everything else below still holds.
+
 ## Context
 
 An app instance started for browser verification (`bun run dev`, or a task's dev-server)
@@ -41,8 +45,8 @@ user home itself, with a reasoned allowlist for the cases that legitimately want
 
 `bun run dev --qa[=seeded|virgin]` (or `DEV3_QA_SCOPE`) points the launched app at a throwaway
 root under the OS temp dir (`scripts/qa-scope.ts`). Inside a task the env-var form is the one to
-use: `DEV3_QA_SCOPE` in `.dev3/config.local.json` `env` makes `dev3 dev-server start` boot the
-scoped board itself, so QA never has to start the app outside the dev-server (`/debug-ui`). `seeded` writes one throwaway git project and
+use: `dev3 dev-server start --wait --env DEV3_QA_SCOPE=seeded` boots the scoped board itself, so
+QA never has to start the app outside the dev-server (`/debug-ui`). `seeded` writes one throwaway git project and
 no tasks; `virgin` writes nothing, which is the state a brand-new user is in. Opt-in only — the
 plain `bun run dev` keeps showing the real board.
 
