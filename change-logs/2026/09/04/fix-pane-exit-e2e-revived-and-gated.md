@@ -1,0 +1,1 @@
+The `test:pane-e2e` pane-exit reconciliation suite died at import time because its preload mocked `agents.ts` and `data.ts` with hand-listed exports that had since fallen behind the real modules. The mocks now spread the real module and override only what the test needs, and the script joined the live terminal e2e CI gate so it can never rot unnoticed again.

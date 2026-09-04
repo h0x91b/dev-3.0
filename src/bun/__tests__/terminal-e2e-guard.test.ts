@@ -55,6 +55,7 @@ describe("the gated script list", () => {
 			"native-owner-routing-e2e",
 			"native-multipane-e2e",
 			"native-message-e2e",
+			"pane-e2e",
 		]);
 	});
 

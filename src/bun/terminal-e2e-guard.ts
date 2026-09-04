@@ -30,6 +30,7 @@ export const TERMINAL_E2E_SCRIPTS: readonly E2eScript[] = [
 	{ name: "native-owner-routing-e2e", tier: "fast", proves: "cross-process routing never invokes tmux" },
 	{ name: "native-multipane-e2e", tier: "fast", proves: "multi-pane lifecycle tears down every owned process tree" },
 	{ name: "native-message-e2e", tier: "fast", proves: "CLI message delivery leaves the tmux surface byte-identical" },
+	{ name: "pane-e2e", tier: "fast", proves: "pane-exit reconciliation through the real launchTaskPty flow on a live tmux server" },
 ];
 
 /**
@@ -43,6 +44,7 @@ export const OUR_PROCESS_PATTERNS: readonly RegExp[] = [
 	/dev3-pane-input(-owner)?-e2e-/,
 	/dev3-native-registry-e2e-/,
 	/dev3-native-message-e2e-/,
+	/dev3-e2e-/,
 	/dev3-multipane-e2e-/,
 	/dev3-live-/,
 	/[/\\]d3or-/,
@@ -89,6 +91,7 @@ export const OUR_TEMP_PREFIXES: readonly string[] = [
 	"dev3-pane-input-owner-e2e-",
 	"dev3-native-registry-e2e-",
 	"dev3-native-message-e2e-",
+	"dev3-e2e-",
 	"dev3-multipane-e2e-",
 	"d3or-",
 ];
