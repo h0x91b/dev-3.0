@@ -821,21 +821,29 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
-			// --- GPT-5.6 Luna (fast/affordable: practical default through max reasoning) ---
+			// --- GPT-6 Astra ---
 			{
 				id: "codex-default",
-				name: "GPT-5.6 Luna Bypass [X-High] — Default",
-				model: "gpt-5.6-luna",
-				groupLabel: "GPT-5.6 Luna",
-				modeLabel: "Bypass [X-High] — Default",
-				version: 9,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="xhigh"'],
+				name: "GPT-6 Astra Bypass [Medium] — Default",
+				model: "gpt-6-astra",
+				groupLabel: "GPT-6 Astra",
+				modeLabel: "Bypass [Medium] — Default",
+				version: 10,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
+			...createCodexReasoningPresets(
+				"gpt-6-astra",
+				"GPT-6 Astra",
+				"codex-6-astra",
+				["low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// --- GPT-5.6 Luna (fast/affordable) ---
 			...createCodexReasoningPresets(
 				"gpt-5.6-luna",
 				"GPT-5.6 Luna",
 				"codex-5.6-luna",
-				["max", "high", "medium"],
+				["xhigh", "max", "high", "medium"],
 				["medium", "high"],
 			),
 			// --- GPT-5.6 Sol (frontier: everyday through deeper reasoning) ---
