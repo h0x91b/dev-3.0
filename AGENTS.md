@@ -56,7 +56,7 @@ The app runs as the **Electrobun desktop** shell **and** as a **headless remote 
 - Errors / info / success → the toast service (`src/mainview/toast.tsx`, `toast.error()/info()/success()`).
 - Anything richer → a regular React modal (see existing `*Modal.tsx` components).
 
-**Exception — genuinely OS-level chrome, not dialogs:** `Utils.showNotification` (Notification Center) and the native macOS menu bar (`application-menu.ts`) are allowed (they no-op / are absent in browser mode). Any *dialog* triggered from a menu action must be routed to the renderer via a push message and shown as React UI.
+**Exception — genuinely OS-level chrome, not dialogs:** `Utils.showNotification` (Notification Center) and the native macOS menu bar (`src/shared/application-menu.ts`) are allowed (they no-op / are absent in browser mode). Any *dialog* triggered from a menu action must be routed to the renderer via a push message and shown as React UI.
 
 ## Telemetry — anonymous always, opt-out always respected (MANDATORY)
 
@@ -228,7 +228,7 @@ Rules:
 
 ## Decision records
 
-Non-obvious architectural decisions, hacks, and workarounds go in `decisions/YYYY/MM/DD/short-slug.md` — dated directories exactly like `change-logs/`, plus a descriptive slug, e.g. `decisions/2026/08/06/worktree-branch-cleanup.md`. They record **why**, not just what, for future agents and humans.
+Non-obvious architectural decisions, hacks, and workarounds go in `decisions/YYYY/MM/DD/short-slug.md` — dated directories exactly like `change-logs/`, plus a descriptive slug, e.g. `decisions/2026/08/06/doctor-worktrees-only-sanctioned-deletion.md`. They record **why**, not just what, for future agents and humans.
 
 **Never number a record.** Sequential numbering cannot survive parallel agents: everyone branches off the same `main`, sees the same highest number, and picks it. Before this rule, 98 numbers were shared by two to seven records each — the number was not an identity. The **slug is the identity** and has never collided; the date only sorts. All the old `NNN-slug.md` records were moved into the tree once, and [`decisions/README.md`](decisions/README.md) maps every old name to its new path so existing citations still resolve.
 

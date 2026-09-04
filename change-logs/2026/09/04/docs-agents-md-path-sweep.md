@@ -1,0 +1,1 @@
+Swept every file-path reference in AGENTS.md and docs/agents/ against the repo and fixed the two that no longer resolved: the decision-record example now names a record that exists, and the native menu bar is qualified as src/shared/application-menu.ts rather than a bare filename a reader would look for in src/bun.
