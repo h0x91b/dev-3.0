@@ -69,7 +69,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: bun install
+        uses: ./.github/actions/bun-install
 
       - name: Save node_modules cache
         if: steps.cache-deps.outputs.cache-hit != 'true'

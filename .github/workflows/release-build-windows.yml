@@ -96,7 +96,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: bun install --frozen-lockfile
+        uses: ./.github/actions/bun-install
+        with:
+          frozen-lockfile: "true"
 
       - name: Save node_modules cache
         if: steps.cache-deps.outputs.cache-hit != 'true'

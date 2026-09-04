@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const script = resolve(repoRoot, ".github/actions/bun-install/install-with-retry.sh");
-const buildYml = resolve(repoRoot, ".github/workflows/build.yml");
+const workflowsDir = resolve(repoRoot, ".github/workflows");
+
+const workflows = readdirSync(workflowsDir)
+	.filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
+	.sort()
+	.map((name) => ({ name, lines: readFileSync(join(workflowsDir, name), "utf8").split("\n") }));
 
 /**
  * Runs the real retry script against a FAKE `bun` on PATH, so the retry path is
@@ -109,31 +114,62 @@ describe("CI bun install retry", () => {
 	});
 });
 
-describe("build.yml installs through the retry action", () => {
-	const yaml = () => readFileSync(buildYml, "utf8");
+/** Every `uses: ./.github/actions/bun-install` step, and whether it asked for a frozen lockfile. */
+function actionSites() {
+	const sites: { file: string; line: number; frozen: boolean }[] = [];
+	for (const { name, lines } of workflows) {
+		lines.forEach((line, index) => {
+			if (!/uses:\s*\.\/\.github\/actions\/bun-install\s*$/.test(line.trim())) return;
+			// The step's own `with:` block runs until the next `- ` step at any indent.
+			let frozen = false;
+			for (let i = index + 1; i < lines.length; i++) {
+				const next = lines[i].trim();
+				if (next.startsWith("- ")) break;
+				if (/^frozen-lockfile:\s*"true"$/.test(next)) frozen = true;
+			}
+			sites.push({ file: name, line: index + 1, frozen });
+		});
+	}
+	return sites;
+}
 
+describe("every CI workflow installs through the retry action", () => {
 	it("has install sites to check at all", () => {
-		expect(yaml().match(/\.github\/actions\/bun-install/g)?.length ?? 0).toBeGreaterThan(0);
-	});
-
-	it("keeps the frozen-lockfile install frozen", () => {
-		// terminal_e2e installed with --frozen-lockfile; routing it through the action
-		// must not quietly relax that into a lockfile-updating install.
-		expect(yaml().match(/frozen-lockfile: "true"/g)).toHaveLength(1);
+		expect(actionSites().length).toBeGreaterThan(0);
 		expect(readFileSync(resolve(repoRoot, ".github/actions/bun-install/action.yml"), "utf8")).toContain(
 			"install-with-retry.sh",
 		);
 	});
 
-	it("never calls bun install directly", () => {
-		const direct = yaml()
-			.split("\n")
-			.map((line, index) => ({ line: line.trim(), number: index + 1 }))
-			.filter(({ line }) => /^(run:\s*)?bun install\b/.test(line) || /^-?\s*run:\s*bun install\b/.test(line));
+	it("never calls bun install directly in any workflow", () => {
+		const direct: string[] = [];
+		for (const { name, lines } of workflows) {
+			lines.forEach((raw, index) => {
+				const line = raw.trim();
+				if (/^(-?\s*run:\s*)?bun install\b/.test(line)) direct.push(`${name}:${index + 1} ${line}`);
+			});
+		}
 
 		expect(
-			direct.map(({ line, number }) => `build.yml:${number} ${line}`),
-			"A bare `bun install` in build.yml dies on a transient registry tarball failure and fails an unrelated PR. Fix: use `- uses: ./.github/actions/bun-install`.",
+			direct,
+			"A bare `bun install` dies on a transient registry tarball failure and fails the whole run — that is how release v1.51.2 lost its five platform builds. Fix: use `- uses: ./.github/actions/bun-install`.",
 		).toEqual([]);
+	});
+
+	it("keeps every install that was frozen frozen", () => {
+		// Routing a site through the action must never quietly relax `--frozen-lockfile`
+		// into a lockfile-updating install. A NEW site defaults to needing frozen: if it
+		// genuinely must not be, add it here deliberately.
+		const unfrozen = actionSites()
+			.filter((site) => !site.frozen)
+			.map((site) => site.file);
+
+		expect(unfrozen).toEqual([
+			"build.yml",
+			"build.yml",
+			"build.yml",
+			"release-build-linux.yml",
+			"release-build-macos.yml",
+		]);
 	});
 });
