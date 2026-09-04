@@ -79,7 +79,7 @@ Commands:
   dev3 conversations handoff [--for claude|codex]  Retell this conversation as one message for another agent
   dev3 import [--json]                  Put the Claude Code conversation you are running inside onto the board as a task
                                          (takes nothing: the working directory picks the project, CLAUDE_CODE_SESSION_ID picks the conversation)
-  dev3 dev-server start [task-id]       Start a task dev server
+  dev3 dev-server start [task-id] [--env KEY=VALUE ...]  Start a task dev server (--env is repeatable, passed to the devScript)
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
   dev3 dev-server status [task-id]      Show task dev server status

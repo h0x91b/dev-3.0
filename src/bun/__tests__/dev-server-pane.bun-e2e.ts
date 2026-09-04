@@ -63,6 +63,8 @@ writeFileSync(
 		`writeFileSync(${JSON.stringify(RECORD)}, JSON.stringify({`,
 		"  seq: process.env.DEV3_TASK_SEQ ?? null,",
 		"  project: process.env.DEV3_PROBE_PROJECT_VAR ?? null,",
+		"  caller: process.env.DEV3_PROBE_CALLER_VAR ?? null,",
+		"  overridden: process.env.DEV3_PROBE_OVERRIDDEN ?? null,",
 		"  port: process.env.DEV3_PORT0 ?? null,",
 		"  cwd: process.cwd(),",
 		"}));",
@@ -87,7 +89,11 @@ async function runWrapper(exitCode: number): Promise<{ code: number; output: str
 		buildDevServerScript({
 			devScript: `bun ${PROBE} ${exitCode}`,
 			envGroups: [
-				{ DEV3_PROBE_PROJECT_VAR: "from the project config" },
+				{ DEV3_PROBE_PROJECT_VAR: "from the project config", DEV3_PROBE_OVERRIDDEN: "from the project config" },
+				// `dev3 dev-server start --env KEY=VALUE`. Its position between the
+				// project block and the task/port blocks IS the precedence rule, and
+				// only executing the wrapper proves the dialect writes it that way.
+				{ DEV3_PROBE_CALLER_VAR: "from --env", DEV3_PROBE_OVERRIDDEN: "from --env" },
 				{ DEV3_TASK_SEQ: "1546", DEV3_WORKTREE_PATH: root.replaceAll("\\", "/") },
 				{ DEV3_PORT0: "51730" },
 			],
@@ -124,6 +130,14 @@ try {
 			check(
 				record.project === "from the project config",
 				`the project env block reached the command (${record.project})`,
+			);
+			check(
+				record.caller === "from --env",
+				`the caller env block reached the command (${record.caller})`,
+			);
+			check(
+				record.overridden === "from --env",
+				`the caller env block overrides the project config (${record.overridden})`,
 			);
 			check(record.port === "51730", `the port env block reached the command (DEV3_PORT0=${record.port})`);
 		}

@@ -5,6 +5,16 @@ import { INSTANCE_FLAG } from "../shared/cli-instance";
 export interface ParsedArgs {
 	flags: Record<string, string>;
 	positional: string[];
+	/**
+	 * Every occurrence of each flag, in order — `flags` keeps only the last one.
+	 * Used by `dev3 dev-server start --env A=1 --env B=2`.
+	 *
+	 * Optional because a hand-built `ParsedArgs` (every test fixture, and any
+	 * caller that synthesises one) has nothing to repeat. `parseArgs` always
+	 * fills it, so a command reading a repeatable flag must go through
+	 * `parseArgs` rather than a literal, or it sees no repeats at all.
+	 */
+	repeated?: Record<string, string[]>;
 }
 
 /**
@@ -42,22 +52,28 @@ export function extractInstanceFlag(args: string[]): { rest: string[]; value: st
 
 export function parseArgs(args: string[]): ParsedArgs {
 	const flags: Record<string, string> = {};
+	const repeated: Record<string, string[]> = {};
 	const positional: string[] = [];
+
+	const record = (key: string, value: string): void => {
+		flags[key] = value;
+		(repeated[key] ??= []).push(value);
+	};
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
 		if (arg.startsWith("--")) {
 			const eqIdx = arg.indexOf("=");
 			if (eqIdx !== -1) {
-				flags[arg.slice(2, eqIdx)] = arg.slice(eqIdx + 1);
+				record(arg.slice(2, eqIdx), arg.slice(eqIdx + 1));
 			} else {
 				const key = arg.slice(2);
 				const next = args[i + 1];
 				if (next !== undefined && !next.startsWith("--")) {
-					flags[key] = next;
+					record(key, next);
 					i++;
 				} else {
-					flags[key] = "true";
+					record(key, "true");
 				}
 			}
 		} else {
@@ -65,7 +81,7 @@ export function parseArgs(args: string[]): ParsedArgs {
 		}
 	}
 
-	return { flags, positional };
+	return { flags, positional, repeated };
 }
 
 /**
@@ -81,6 +97,9 @@ export function resolveFileArgs(args: ParsedArgs): ParsedArgs {
 			Object.entries(args.flags).map(([key, value]) => [key, resolveValue(value)]),
 		),
 		positional: args.positional.map(resolveValue),
+		repeated: Object.fromEntries(
+			Object.entries(args.repeated ?? {}).map(([key, values]) => [key, values.map(resolveValue)]),
+		),
 	};
 }
 

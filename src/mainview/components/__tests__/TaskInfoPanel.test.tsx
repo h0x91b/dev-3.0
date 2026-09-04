@@ -198,6 +198,7 @@ const defaultDevServerStatus: DevServerStatus = {
 	devPorts: [],
 	publishedPorts: [],
 	portConflicts: [],
+	extraEnvKeys: [],
 };
 
 function renderPanel(
