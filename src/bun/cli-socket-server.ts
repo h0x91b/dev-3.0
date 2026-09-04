@@ -333,6 +333,16 @@ async function resolveAgentMessageSource(
 	};
 }
 
+/**
+ * The launcher's standing handoff text, as the CLI read it out of `--handoff-file`.
+ * Only reaches a child when the request actually turns into a launch — a plain
+ * board move carries it and ignores it.
+ */
+function launcherHandoffNote(params: Record<string, unknown>): string | null {
+	const raw = typeof params.handoffNote === "string" ? params.handoffNote.trim() : "";
+	return raw ? raw : null;
+}
+
 /** {@link seqIsShared} against a project's live task list; pessimistic if it cannot be read. */
 async function isSeqSharedOnBoard(project: Project, task: Task): Promise<boolean> {
 	try {
@@ -391,6 +401,8 @@ async function requestAgentLaunchApproval(opts: {
 	task: Task;
 	targetStatus: TaskStatus;
 	requester: AgentMessageSource;
+	/** The launcher's standing text, already read from its `--handoff-file`. */
+	launcherNote?: string | null;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	const push = getPushMessage();
@@ -450,7 +462,12 @@ async function requestAgentLaunchApproval(opts: {
 	// variant gets its own note — each one is a separate agent that has to know
 	// who started it.
 	for (const child of launched) {
-		void deliverLaunchHandoff({ projectId: project.id, childTaskId: child.id, source: requester });
+		void deliverLaunchHandoff({
+			projectId: project.id,
+			childTaskId: child.id,
+			source: requester,
+			launcherNote: opts.launcherNote ?? null,
+		});
 	}
 
 	// Read the board AFTER the launch: launching with variants mints the siblings
@@ -832,6 +849,7 @@ const handlers: Record<string, Handler> = {
 			task,
 			targetStatus: "in-progress",
 			requester,
+			launcherNote: launcherHandoffNote(params),
 		});
 		// A declined scratch task has no reason to exist — it was created only to
 		// have something for the dialog to launch. Leaving it would litter To Do
@@ -1609,7 +1627,13 @@ const handlers: Record<string, Handler> = {
 		const requester = await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
 		if (requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot })) {
-			return requestAgentLaunchApproval({ project, task, targetStatus: builtinStatus, requester });
+			return requestAgentLaunchApproval({
+				project,
+				task,
+				targetStatus: builtinStatus,
+				requester,
+				launcherNote: launcherHandoffNote(params),
+			});
 		}
 
 		return moveTask({

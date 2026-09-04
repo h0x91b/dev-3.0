@@ -1,5 +1,6 @@
 import { type AgentMessageSource, getTaskTitle } from "../shared/types";
 import * as data from "./data";
+import { taskDir } from "./git";
 import { createLogger } from "./logger";
 import { sendMessageImmediately } from "./scheduled-message-scheduler";
 // Push via the barrel, not ./rpc-handlers/shared — see the note in
@@ -12,14 +13,38 @@ const log = createLogger("agent-launch-handoff");
 const POLL_INTERVAL_MS = 1_000;
 const MAX_WAIT_MS = 120_000;
 
+/** Where a launched agent is told to write its reports, inside its own task dir. */
+export function handoffReportsDir(project: Parameters<typeof taskDir>[0], task: Parameters<typeof taskDir>[1]): string {
+	return `${taskDir(project, task)}/reports`;
+}
+
 /**
  * The note an agent-launched task receives as its first message. The cross-task
  * envelope already carries the sender's `seq` and the reply command, so the body
- * only has to establish that a peer agent — not the human — started this task.
+ * only establishes who started this task and how to answer.
+ *
+ * File-based reporting is the DEFAULT, not a coordinator's private convention:
+ * a report is long, and a long body typed into a pane can lose its head
+ * (issue #1608), while a path is a handful of bytes that always arrives whole.
+ * Before this, every coordinator sent the same instruction by hand after every
+ * single launch.
+ *
+ * `launcherNote` is the launcher's own standing text (`--handoff-file`), appended
+ * verbatim — it never replaces the default above it.
  */
-export const HANDOFF_MESSAGE =
-	"You were started by the agent working on the task above, not by a human. " +
-	"Report your progress, questions, and final result back to it with the reply command below.";
+export function buildHandoffMessage(reportsDir: string, launcherNote?: string | null): string {
+	const parts = [
+		"You were started by the agent working on the task above, not by a human. " +
+		"Your task description is the brief; you own how to carry it out.",
+		`Report progress and your final result as a FILE under ${reportsDir}/ , then message back ` +
+		"only its absolute path plus one line saying what it is — a short message always arrives whole, " +
+		"a long one can lose its head. Questions and one-line status still go straight in a message, " +
+		"with the reply command below.",
+	];
+	const note = launcherNote?.trim();
+	if (note) parts.push(`Standing instructions from your launcher:\n${note}`);
+	return parts.join("\n\n");
+}
 
 /**
  * The subject of that note. Fixed, and not a guess about anyone's content: dev3
@@ -40,6 +65,8 @@ export async function deliverLaunchHandoff(opts: {
 	projectId: string;
 	childTaskId: string;
 	source: AgentMessageSource;
+	/** The launcher's standing text, read from its `--handoff-file`. */
+	launcherNote?: string | null;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
 }): Promise<boolean> {
@@ -61,7 +88,8 @@ export async function deliverLaunchHandoff(opts: {
 				// Not held: this is the first thing a just-booted agent hears, into a pane
 				// nobody has typed into yet. Waiting for it to "go quiet" would leave the
 				// child sitting idle for the whole window with the launcher watching.
-				await sendMessageImmediately(task, HANDOFF_MESSAGE, null, opts.source, {
+				const body = buildHandoffMessage(handoffReportsDir(project, task), opts.launcherNote);
+				await sendMessageImmediately(task, body, null, opts.source, {
 					hold: false,
 					subject: HANDOFF_SUBJECT,
 				});
