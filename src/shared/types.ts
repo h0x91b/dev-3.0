@@ -5662,7 +5662,6 @@ export type AppRPCSchema = {
 			};
 		};
 		messages: {
-			terminalFreezeTrace: Record<string, string | number | boolean | null>;
 			taskUpdated: { projectId: string; task: Task };
 			projectUpdated: { project: Project };
 			spacesUpdated: { file: SpacesFile };

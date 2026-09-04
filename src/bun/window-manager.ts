@@ -7,7 +7,6 @@ import { isFreshStartMode } from "./fresh-start";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
 
 const log = createLogger("window-manager");
-const rendererTraceLog = createLogger("renderer");
 
 type WindowEntry = { window: BrowserWindow; id: number };
 
@@ -159,9 +158,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		handlers: {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			requests: { ...opts.handlers, setWindowTitleContext } as any,
-			messages: {
-				terminalFreezeTrace: (event) => rendererTraceLog.info("[freeze-trace] boundary", event),
-			},
+			messages: {},
 		},
 	});
 

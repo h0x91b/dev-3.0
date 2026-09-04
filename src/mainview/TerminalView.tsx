@@ -35,7 +35,6 @@ import { session } from "./terminal-session-stats";
 import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { createTerminalFreezeTrace } from "./terminal-freeze-trace";
-import { sendTerminalFreezeTrace } from "./terminal-freeze-transport";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { installGlyphAtlas, type GlyphAtlasHandle } from "./terminal-glyph-atlas";
 import { getScrollThreshold } from "./scroll-speed";
@@ -666,9 +665,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// field reports name. Attached to every error payload below.
 		const trail = createBreadcrumbTrail();
 		const freezeTrace = createTerminalFreezeTrace((event) => {
-			sendTerminalFreezeTrace({ taskId: taskId.slice(0, 8), ...event }, () => {
-				logDiagnostic("freeze-trace", "info", String(event.phase), event);
-			});
+			logDiagnostic("freeze-trace", "info", String(event.phase), event);
 		});
 		let lastDpr = window.devicePixelRatio;
 		// Owned by this effect run, so a terminal that never opened cannot decrement

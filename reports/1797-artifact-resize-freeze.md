@@ -108,3 +108,15 @@ Final instrumentation validation: `bun run lint` passed; 35 tests passed across 
 At 01:47 on 2026-09-05 the user reported that closing an artifact occupying roughly half the window froze the old installed app. The daily log confirms heartbeat lost at 01:46:14.136 under bun PID 67244, quietForMs=9653, terminals=1, frameErrorPanes=0, active task=818c6734, project=6e50abef. Last heartbeat was approximately 01:46:04.483. Replacement bun PID 71486 began receiving heartbeat at 01:46:21.427; no frozen-process sample was captured before restart. This was not the instrumented build.
 
 Closing the panel changes terminal geometry too, so terminal refit/redraw remains a shared trigger candidate. Artifact native-view teardown is an additional candidate; this observation alone does not distinguish them. If teardown stalls before the refit callback, the new terminal trace may not arm. The user will next reproduce closing the artifact in the instrumented worktree build.
+
+## Diagnostic regression: native Bun crashes, 01:48–01:49
+
+This section supersedes the direct-native-transport recommendation above. The user enabled the trace in the native worktree build and reported immediate process crashes. Right-hand dev-server pane captured Bun 1.3.14 panic: `Segmentation fault at address 0x100000000`, child signal 5, script exit 133. Unlike the original renderer-only freeze, the bun process died.
+
+macOS reports `bun-2026-09-05-014825.ips` (capture 01:48:18.9857) and `bun-2026-09-05-014916.ips` (capture 01:49:16.3637) both identify faulting thread 6, named Worker, with Bun/JSC addresses rather than symbolicated application JS. The second process had run for 26,907 ms and reported RSS/peak 0.61 GB. No native bridge function is symbolicated in these reports; attribution to the new delivery path is a candidate based on the controlled enablement, not a fully established Bun root cause.
+
+For bun PID 75541, 183 native trace records reached the daily log: one arm, 91 begins, 91 matching ends, zero unmatched operations. The last completed operation was strip-osc52. Thus this run neither captures a terminal operation stuck forever nor establishes the original artifact-freeze cause. Summary: `1797-evidence/native-trace-crash-summary.json`.
+
+Removed the direct `__electrobunBunBridge` sender and its host message handler entirely. Both platforms now use the existing diagnostic RPC request; max spans reduced to 300 per refit (still a ten-second window). Existing stored debug flags remain understood. The normal desktop RPC's encryption await can strand the latest marker on a JS wedge, so live Inspector pause/sample is required for final attribution. This intentionally favors removing the suspected instrumentation crash path over an unverified synchronous marker guarantee.
+
+Recovery validation: TypeScript and 33 focused tests pass. Native user reproduction is still needed to establish whether removing the direct bridge eliminates the diagnostic crash; passing unit tests cannot make that claim.

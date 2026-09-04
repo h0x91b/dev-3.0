@@ -13,7 +13,7 @@ export function createTerminalFreezeTrace(
 ): TerminalFreezeTrace {
 	const now = options.now ?? (() => performance.now());
 	const windowMs = options.windowMs ?? 10_000;
-	const maxSpans = options.maxSpans ?? 2_000;
+	const maxSpans = options.maxSpans ?? 300;
 	const traceId = crypto.randomUUID();
 	let capture = 0;
 	let spanId = 0;
