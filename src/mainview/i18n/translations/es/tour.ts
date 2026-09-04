@@ -36,7 +36,7 @@ const tour = {
 		"Esto arranca el servidor del sandbox en un puerto que dev-3.0 reserva para esta tarea, así puedes abrir la página en el navegador y verla cambiar. Pulsa play y vuelve aquí.",
 	"tour.firstTask.artifact.title": "El informe del propio agente",
 	"tour.firstTask.artifact.body":
-		"Los agentes pueden publicar una página propia: aquí está, con el botón antes y después. Se queda con la tarea, así que puedes reabrirla más tarde.",
+		"Los agentes pueden publicar una página propia: aquí está, sobre la tarea. Ciérrala y la terminal sigue donde la dejaste; el informe se queda con la tarea, así que puedes reabrirlo más tarde.",
 	"tour.firstTask.review.title": "Léelo antes de quedártelo",
 	"tour.firstTask.review.body":
 		"Esta fila muestra la rama y lo que cambió en ella. Abre el diff y fusiona solo cuando te guste lo que ves.",

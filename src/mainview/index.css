@@ -843,10 +843,9 @@ html[data-image-viewer="open"] [data-terminal="true"] {
 	visibility: hidden;
 }
 
-/* Fullscreen HTML artifacts use the same WKWebView overlay workaround. In the
-   docked split the terminal stays visible; only fullscreen hides its WebGL
-   plane so it cannot paint over the artifact iframe. */
-html[data-artifact-viewer="fullscreen"] [data-terminal="true"] {
+/* The HTML artifact lightbox is the same modal card over the same scrim, so it
+   needs the identical workaround — whether or not it is expanded fullscreen. */
+html[data-artifact-viewer="open"] [data-terminal="true"] {
 	visibility: hidden;
 }
 

@@ -190,14 +190,24 @@ describe("TaskArtifactViewer", () => {
 		}
 	});
 
-	it("does not consume terminal shortcuts until focus enters the viewer", async () => {
+	// The lightbox is modal, so it owns Escape wherever focus sits — including on
+	// the terminal behind the scrim, which the user cannot reach anyway.
+	it("owns Escape while open, whatever holds focus", async () => {
 		const onClose = vi.fn();
 		render(<I18nProvider><button type="button">Terminal</button><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toBeInTheDocument());
 		screen.getByRole("button", { name: "Terminal" }).focus();
 		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
+	it("closes when the scrim behind the card is clicked, but not the card itself", async () => {
+		const onClose = vi.fn();
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		const card = await screen.findByTestId("artifact-viewer");
+		await userEvent.click(card);
 		expect(onClose).not.toHaveBeenCalled();
-		screen.getByTestId("artifact-viewer-close").focus();
-		fireEvent.keyDown(window, { key: "Escape" });
+		await userEvent.click(card.parentElement as HTMLElement);
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
@@ -249,14 +259,10 @@ describe("TaskArtifactViewer", () => {
 		window.dispatchEvent(event);
 	}
 
-	it("opens find on ⌘F only once focus is inside the viewer, and searches the sandboxed document", async () => {
+	it("opens find on ⌘F while the lightbox is open, and searches the sandboxed document", async () => {
 		const { frame, postMessage } = await openFind();
 
 		screen.getByRole("button", { name: "Terminal" }).focus();
-		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
-		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
-
-		screen.getByTestId("artifact-viewer-close").focus();
 		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
 		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
 
@@ -377,11 +383,31 @@ describe("TaskArtifactViewer", () => {
 		createObjectURL.mockRestore();
 		click.mockRestore();
 	});
-	describe("standalone overlay", () => {
-		it("opens as an overlay with no fullscreen toggle to dock back with", async () => {
-			render(<I18nProvider><TaskArtifactViewer standalone taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
-			await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true"));
-			expect(screen.queryByTestId("artifact-viewer-fullscreen")).toBeNull();
+	describe("lightbox", () => {
+		// The popup replaced a docked, drag-resizable panel; there is no dock to go
+		// back to, so it always opens windowed with the fullscreen toggle available.
+		// decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md
+		it("opens windowed over a scrim, with a fullscreen toggle", async () => {
+			render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+			const card = await screen.findByTestId("artifact-viewer");
+			expect(card).toHaveAttribute("data-fullscreen", "false");
+			expect(card).toHaveAttribute("aria-modal", "true");
+			expect(card.parentElement).toHaveClass("fixed", "inset-0");
+			expect(screen.getByTestId("artifact-viewer-fullscreen")).toBeInTheDocument();
+			expect(document.documentElement).toHaveAttribute("data-artifact-viewer", "open");
+		});
+
+		it("unwinds fullscreen before closing on Escape", async () => {
+			const onClose = vi.fn();
+			render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+			await screen.findByTestId("artifact-viewer");
+			await userEvent.click(screen.getByTestId("artifact-viewer-fullscreen"));
+			expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true");
+			fireEvent.keyDown(window, { key: "Escape" });
+			expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "false");
+			expect(onClose).not.toHaveBeenCalled();
+			fireEvent.keyDown(window, { key: "Escape" });
+			expect(onClose).toHaveBeenCalledOnce();
 		});
 
 		it("wins Escape against the modal that opened it", async () => {
@@ -390,7 +416,7 @@ describe("TaskArtifactViewer", () => {
 			function ModalWithViewer() {
 				// Registers its capture-phase Escape FIRST, like the archived task modal.
 				useEscapeKey(onCloseModal);
-				return <TaskArtifactViewer standalone taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onCloseViewer} />;
+				return <TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={onCloseViewer} />;
 			}
 			render(<I18nProvider><ModalWithViewer /></I18nProvider>);
 			await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toBeInTheDocument());

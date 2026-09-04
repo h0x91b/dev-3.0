@@ -568,19 +568,20 @@ ux_architecture:
       status: "observed"
       observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
       evidence: ["decisions/2026/07/02/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/2026/04/16/worktree-uploaded-dnd-files.md"]
-    task_artifact_workspace:
-      purpose: "Task-bound interactive HTML output surfaced via dev3 show-artifact; docked beside the terminal, horizontally resizable, and fullscreen on demand."
+    task_artifact_viewer:
+      purpose: "Task-bound interactive HTML surfaced via dev3 show-artifact; the image viewer's popup lightbox, fullscreen on demand."
       feature_class: ["object_action", "data_visualization", "notification"]
-      reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button", "archived_task_modal:shared-outputs row (opens the standalone overlay -- no workspace pane exists)"]
-      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; picker in the header, newest on open)", "theme_sync", "resize", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery"]
+      reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button", "archived_task_modal:shared-outputs row"]
+      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; picker in the header, newest on open)", "theme_sync", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "parent_dom_or_rpc_access", "native_dialog"]
-      find_in_content: "Floating bar over the iframe (top-right); Cmd/Ctrl+F is the primary trigger while focus is inside the viewer, plus exactly ONE earned magnifier icon in the header that toggles it (explicit bible-section-10/11 exception -- the search field itself never moves into the header). The parent cannot reach the opaque-origin document, so query/step are postMessage'd to an injected script owning highlighting and scroll, reporting {matches,index} back. Registered in keymap.ts."
+      find_in_content: "Floating bar over the iframe (top-right); Cmd/Ctrl+F is the primary trigger while the modal lightbox is open, plus exactly ONE earned magnifier icon in the header that toggles it (explicit bible-section-10/11 exception -- the search field itself never moves into the header). The parent cannot reach the opaque-origin document, so query/step are postMessage'd to an injected script owning highlighting and scroll, reporting {matches,index} back. Registered in keymap.ts."
       security: "iframe sandbox=allow-scripts without allow-same-origin is the security boundary; local CSS (including @import chains), classic JS and raster references are rewritten to data URLs in the rendered srcdoc. CSP deliberately permits all origins plus data/blob/file/views schemes, inline/eval runtimes, fetch and WebSockets so artifact integrations need no policy tuning. Scripts still originate from null and can self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary."
-      layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
-      standalone_overlay: "Opened from a surface with no workspace pane (the archived task modal) the viewer is hosted by App.tsx as a fixed z-[70] overlay: fullscreen is forced, its toggle dropped, Escape closes outright. It registers in the overlay-layer stack so the modal underneath does not consume the Escape first."
+      layout: "Centred fixed z-[70] card on a scrim, ~90% of the viewport, hosted by App.tsx for every entry point -- never a pane sibling, so nothing behind it is relaid out. Narrow needs no special case."
+      escape: "Overlay-layer stack, one layer per press: find bar -> fullscreen -> close. That is what wins Escape against the archived task modal underneath."
+      no_focus_trap: "The one divergence from the image lightbox: an artifact may draw a form the user sends to the agent, and the opaque-origin iframe is not in the trap tabbable set, so a trap would put it out of keyboard reach."
       export: "No assets -> HTML download. Any --assets files -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."
       open_in_external_browser: "One neutral external-link icon in the viewer header, grouped with download (the hand-off pair). Desktop hands the stored HTML path to the OS default browser via RPC (relative assets resolve on disk); browser/remote opens a blob URL of the composed document in a new tab, synchronously inside the click so popup blockers allow it. Failure is a toast, never a native dialog. No keyboard shortcut."
-      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/2026/07/09/task-html-artifacts.md"]
+      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskImageViewer.tsx", "src/bun/shared-artifacts.ts", "decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md"]
 
   action_types:
     primary_action:
@@ -858,7 +859,7 @@ ux_architecture:
       hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
       toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
       task_image_viewer: { narrow: "lightbox is full-bleed; filmstrip -> bottom horizontal-scroll strip; image area is live-content -> axis-arbitrated horizontal swipe + visible prev/next + dots (swipe never the only way); touch entry = inspector badge (>=44px) + palette action (native menu absent in remote). Clamp inner panels to max-w-[calc(100vw-2rem)]; prefers-reduced-motion snaps.", status: proposed }
-      task_artifact_workspace: { narrow: "one-at-a-time: artifact replaces terminal content until closed; header actions remain touch reachable; fullscreen is unchanged", status: observed, evidence: "TaskWorkspacePane.tsx useNarrowViewport, TaskArtifactViewer.tsx" }
+      task_artifact_viewer: { narrow: "no special case -- the card fills a small viewport; header actions stay touch reachable", status: observed, evidence: "TaskArtifactViewer.tsx" }
     navigation_touch:
       problem: "Keyboard-first nav is DEAD on touch (Cmd+K/Cmd+Shift+P palettes, Cmd+1..9, Cmd+/ hint overlay) and the native application menu is ABSENT in remote/browser mode."
       backbone: "breadcrumb spine stays the touch nav backbone (logo->dashboard, project->board, chevron->switcher, back/forward). Keep reachable (>=44px targets, right-0 dropdown fallback, not pushed off-screen by long task titles)."

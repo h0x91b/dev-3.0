@@ -11,6 +11,11 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-05 — HTML artifacts open as a popup, not a resizable panel
+- **Rule:** an artifact opens in the same App-hosted lightbox as an image (scrim, ~90% card, fullscreen toggle, overlay-layer Escape); the task workspace has no drag-resizable split — bible §3 + §12.3, yaml `surfaces.task_artifact_viewer`.
+- **Why:** resizing the docked panel relaid out the artifact iframe and refit the terminal beside it and could freeze the whole UI, so the surface was deleted rather than repaired; rejected keeping the panel with the drag handle removed, which leaves two viewer shapes for no gain.
+- **Status:** Implemented. Evidence: `TaskArtifactViewer.tsx`, `TaskWorkspacePane.tsx`, `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.
+
 ## 2026-09-03 — Touch scrollback return is a floating button
 
 One round floating button over the canvas, only while that pane is scrolled up, touch only; never a key-bar, composer or pane-bar slot — yaml `terminal_scrollback_return`. Why: `decisions/2026/09/03/touch-scroll-to-latest-button.md`.
@@ -133,8 +138,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Why:** `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
 
 ## 2026-08-08 — An archived task reaches its images and artifacts as enumerated rows
-- **Rule:** the archived (completed/cancelled) task modal lists every `dev3 show-image` image and `dev3 show-artifact` artifact as its own clickable row above Notes (`SharedOutputsList.tsx`); rows open the App-hosted viewers at their own index, the artifact viewer as a standalone overlay — bible §3 + yaml; yaml `task_image_viewer.reached_from`.
-- **Why:** `decisions/2026/08/08/archived-task-shared-outputs.md`.
+- Rule lives in bible §3 and yaml `task_image_viewer.reached_from`; why in `decisions/2026/08/08/archived-task-shared-outputs.md` (its standalone-overlay half superseded 2026-09-05).
 
 ## 2026-08-08 — On a phone the memory readout folds into the kebab like everything else
 
@@ -242,9 +246,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 
 ## 2026-07-29 — Artifact bundles separate authoring from the stable shell
 
-- **Rule:** A task artifact is an HTML entrypoint plus explicit local CSS/classic-JS/raster assets; agents normally edit only `index.html` and `report.js`, while the opaque-origin iframe sandbox provides isolation and CSP stays permissive for artifact runtimes.
-- **Why:** The single 800-line file forced agents to consume formatting code for content-only work; restrictive per-capability CSP repeatedly broke legitimate local and CDN assets without strengthening the sandbox boundary.
-- **Status:** Implemented. Evidence: `shared-artifacts.ts`, `artifactDocument.ts`, `artifact-template/AUTHORING.md`, decision 179. Supersedes the 2026-07-09 entry's security/export details.
+- Rule lives in yaml `surfaces.task_artifact_viewer.security`; why in `decisions/2026/07/30/multifile-artifact-bundles.md`. Supersedes the 2026-07-09 entry's security/export details.
 
 ## 2026-07-28 — A lifecycle split-control counts as ONE task-card inline action
 

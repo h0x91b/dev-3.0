@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type Dispatch, type MutableRefObject } from "react";
-import type { DevServerSummary, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
+import type { DevServerSummary, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
 import { useSpaces } from "../useSpaces";
 import { toast } from "../toast";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
@@ -44,8 +44,6 @@ interface ProjectViewProps {
 	activeTaskId?: string;
 	taskView?: boolean;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
-	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
-	onCloseArtifactViewer?: () => void;
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
 	skipCopyModeReset?: boolean;
@@ -68,8 +66,6 @@ function ProjectView({
 	activeTaskId,
 	taskView,
 	navigationGuardRef,
-	artifactViewer,
-	onCloseArtifactViewer,
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
 	skipCopyModeReset,
@@ -255,8 +251,6 @@ function ProjectView({
 				inlineDiffRequest={inlineDiff.request}
 				onCloseInlineDiff={inlineDiff.close}
 				navigationGuardRef={navigationGuardRef}
-				artifactViewer={artifactViewer}
-				onCloseArtifactViewer={onCloseArtifactViewer}
 				skipCopyModeReset={skipCopyModeReset}
 			/>
 		) : (

@@ -69,13 +69,13 @@ describe("SharedOutputsList", () => {
 		expect(detail.images).toHaveLength(3);
 	});
 
-	it("asks for a standalone artifact overlay — the archived modal has no workspace pane", async () => {
+	it("opens the artifact popup at the clicked row", async () => {
 		const spy = vi.fn();
 		window.addEventListener("dev3:openArtifactViewer", spy);
 		renderList({ sharedArtifacts: [artifact("a"), artifact("b")] });
 		await userEvent.click(screen.getAllByTestId("shared-artifact-link")[1]);
 		window.removeEventListener("dev3:openArtifactViewer", spy);
-		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ index: 1, standalone: true });
+		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "task-1", projectId: "project-1", index: 1 });
 	});
 
 	it("leads with artifacts — the deliverable outranks the screenshots", () => {

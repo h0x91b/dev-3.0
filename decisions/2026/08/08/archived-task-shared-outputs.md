@@ -1,5 +1,7 @@
 # Archived tasks list their shared images and artifacts, and Escape unwinds through the layer stack
 
+> Superseded in part on 2026-09-05 by `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`: the artifact viewer has no docked mode and no `standalone` prop left; every entry point now opens the same App-hosted popup, so the two Escape paths described here collapsed into the layer stack alone.
+
 ## Context
 
 A completed task's `sharedImages` / `sharedArtifacts` survive the worktree — both live under

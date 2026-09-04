@@ -365,7 +365,6 @@ const common = {
 	"artifactViewer.messageFailed": "No se pudo enviar al agente",
 	"artifactViewer.loadFailed": "Artefacto no disponible",
 	"artifactViewer.loading": "Cargando artefacto…",
-	"artifactViewer.resize": "Cambiar el ancho del panel de artefactos",
 	"artifactViewer.themeMode": "Tema del artefacto: {mode}",
 	"artifactViewer.themeFollow": "Seguir dev3",
 	"artifactViewer.themeLight": "Claro",

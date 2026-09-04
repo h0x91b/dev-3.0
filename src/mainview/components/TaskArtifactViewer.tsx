@@ -24,13 +24,6 @@ interface TaskArtifactViewerProps {
 	taskId: string;
 	/** Status of the owning task, when the host knows it. Terminal → no send channel. */
 	taskStatus?: TaskStatus;
-	/**
-	 * Overlay-only host: opened from a surface with no workspace pane to dock into
-	 * (the archived task modal). Locks the overlay layout, drops the fullscreen
-	 * toggle, and lets Escape close outright — un-fullscreening would render the
-	 * docked panel into nothing.
-	 */
-	standalone?: boolean;
 }
 
 type ArtifactThemeMode = "follow" | "light" | "dark";
@@ -67,12 +60,25 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
 	return /\.[a-z0-9]+$/i.test(base) ? base : `${base}.${ext}`;
 }
 
-export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, taskStatus, standalone = false }: TaskArtifactViewerProps) {
+/**
+ * Windowed lightbox for artifacts an agent surfaced via `dev3 show-artifact` —
+ * the exact container `TaskImageViewer` uses for images: a centred modal card
+ * filling ~90% of the viewport over a scrim, with a fullscreen toggle for
+ * edge-to-edge viewing. It is deliberately NOT a docked, drag-resizable panel:
+ * resizing relaid out the iframe and refit the terminal on every pointer move
+ * and could wedge the whole UI (see
+ * `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`).
+ *
+ * While open it marks <html data-artifact-viewer="open">, which hides the
+ * ghostty WebGL terminal behind it (index.css) — in WKWebView that canvas is
+ * promoted to a hardware overlay plane painting ABOVE any DOM scrim.
+ */
+export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, taskStatus }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
 	const [error, setError] = useState(false);
-	const [fullscreen, setFullscreen] = useState(standalone);
+	const [fullscreen, setFullscreen] = useState(false);
 	const [downloading, setDownloading] = useState(false);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -81,7 +87,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [matches, setMatches] = useState<number | null>(null);
 	const [activeIndex, setActiveIndex] = useState(-1);
 	const frameRef = useRef<ArtifactFrameHandle>(null);
-	const viewerRef = useRef<HTMLElement>(null);
+	const viewerRef = useRef<HTMLDivElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
 	const searchBarRef = useRef<ArtifactSearchBarHandle | null>(null);
 	const searchToggleRef = useRef<HTMLButtonElement>(null);
@@ -306,11 +312,12 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		return () => observer.disconnect();
 	}, [sendTheme]);
 
+	// Hide the WebGL terminal behind the lightbox (see the component docstring).
 	useEffect(() => {
-		if (!fullscreen) return;
-		document.documentElement.setAttribute("data-artifact-viewer", "fullscreen");
-		return () => document.documentElement.removeAttribute("data-artifact-viewer");
-	}, [fullscreen]);
+		const el = document.documentElement;
+		el.setAttribute("data-artifact-viewer", "open");
+		return () => el.removeAttribute("data-artifact-viewer");
+	}, []);
 
 	const go = useCallback((delta: number) => {
 		// Drop the version pick with the artifact: paging back to an artifact must
@@ -320,65 +327,58 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		setIndex((value) => Math.max(0, Math.min(artifacts.length - 1, value + delta)));
 	}, [artifacts.length]);
 
-	// Capture phase + stopPropagation: the App-level Escape handler is a plain
-	// window bubble listener registered at root mount, so it runs BEFORE any nested
-	// surface's and would navigate out of the whole task workspace instead of just
-	// closing this viewer. The open viewer owns the keys it handles (decision 181).
+	// Capture phase + stopPropagation: this lightbox is a modal that owns the
+	// keyboard while open, and the App-level handler is registered first and would
+	// otherwise navigate out of the task workspace behind it (decision 181).
 	useEffect(() => {
 		function onKey(event: KeyboardEvent) {
-			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
-			if (event.key === "Escape") {
-				// Standalone hands the unwind to the overlay-layer stack instead.
-				if (standalone) return;
-				event.preventDefault();
-				event.stopPropagation();
-				// Escape unwinds one layer at a time: search → fullscreen → viewer.
-				if (searchOpen) closeSearch();
-				else if (fullscreen) setFullscreen(false);
-				else onClose();
-			} else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-				// While searching, arrows belong to the query caret, not to history.
-				if (searchOpen) return;
-				event.preventDefault();
-				event.stopPropagation();
-				go(event.key === "ArrowLeft" ? -1 : 1);
-			}
+			if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+			// While searching, arrows belong to the query caret, not to history.
+			if (searchOpen) return;
+			event.preventDefault();
+			event.stopPropagation();
+			go(event.key === "ArrowLeft" ? -1 : 1);
 		}
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
-	}, [fullscreen, go, onClose, searchOpen, closeSearch, standalone]);
+	}, [go, searchOpen]);
 
-	// A standalone overlay sits on top of the archived task modal, whose
-	// capture-phase Escape listener was registered first and stops immediate
-	// propagation — a private listener here would never run and the modal
-	// underneath would close instead. The layer stack fixes the unwind order.
+	// Escape is owned by the overlay-layer stack, not by a listener of our own: a
+	// modal that opened this lightbox (the archived task modal) registered its
+	// capture-phase Escape first and stops immediate propagation, so a private
+	// listener here would never run and the modal underneath would close instead.
+	// Registering as a layer puts us at the top of that unwind order, one layer
+	// per press: search → fullscreen → viewer.
 	const dismissRef = useRef<() => void>(() => {});
-	dismissRef.current = () => { if (searchOpen) closeSearch(); else onClose(); };
+	dismissRef.current = () => {
+		if (searchOpen) closeSearch();
+		else if (fullscreen) setFullscreen(false);
+		else onClose();
+	};
 	useEffect(() => {
-		if (!standalone) return;
 		const el = viewerRef.current;
 		if (!el) return;
 		return registerOverlayLayer(el, () => dismissRef.current());
-	// The section element identity is stable for the viewer's lifetime.
+	// The card element identity is stable for the viewer's lifetime.
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [standalone]);
+	}, []);
 
-	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. Gated on focus being inside
-	// this viewer so the browser's native find keeps working everywhere else in
-	// remote mode. Focus sitting *inside* the iframe is handled by the injected
-	// script, which posts `dev3-artifact-find-open` instead.
+	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. The lightbox is modal, so
+	// while it is open the shortcut is unconditionally ours; the browser's native
+	// find keeps working everywhere else in remote mode because nothing else
+	// mounts this listener. Focus sitting *inside* the iframe is handled by the
+	// injected script, which posts `dev3-artifact-find-open` instead.
 	useEffect(() => {
 		function onFindShortcut(event: KeyboardEvent) {
 			const combo = isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 			if (!combo || event.shiftKey || event.altKey || event.code !== "KeyF") return;
-			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
 			event.preventDefault();
 			event.stopPropagation();
 			openSearch();
 		}
 		window.addEventListener("keydown", onFindShortcut, { capture: true });
 		return () => window.removeEventListener("keydown", onFindShortcut, { capture: true });
-	}, [fullscreen, openSearch]);
+	}, [openSearch]);
 
 	if (!current) return null;
 
@@ -424,120 +424,128 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const themeIcon = themeMode === "follow" ? "◐" : themeMode === "light" ? "" : "";
 
 	return (
-		<section
-			ref={viewerRef}
-			data-testid="artifact-viewer"
-			data-fullscreen={fullscreen ? "true" : "false"}
-			aria-label={t("artifactViewer.regionLabel")}
-			className={fullscreen
-				? "fixed inset-0 z-[70] flex min-h-0 flex-col bg-base"
-				: "flex h-full min-h-0 w-full flex-col bg-base border-l border-edge"}
+		<div
+			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "px-[5vw] py-[5vh]"}`}
+			onClick={onClose}
 		>
-			<header className="relative flex flex-shrink-0 items-center gap-2 border-b border-edge bg-raised px-3 py-2">
-				<div className="min-w-0 flex-1">
-					<div className="truncate text-sm font-medium text-fg">{current.title}</div>
-					<div className="truncate text-micro text-fg-muted">{current.name}</div>
-				</div>
-				<HelpSpot topicId="viewer.artifact" />
-				{group && (
-					<ArtifactVersionPicker
-						artifact={group}
-						selected={selectedVersion}
-						onSelect={(version) => setPick({ id: group.id, version })}
-					/>
-				)}
-				{artifacts.length > 1 && (
-					<>
-						<button type="button" className={iconButton} disabled={index === 0} onClick={() => go(-1)} aria-label={t("artifactViewer.previous")}><span style={{ fontFamily: ICON }}></span></button>
-						<span className="font-mono text-xs text-fg-3 tabular-nums">{index + 1} / {artifacts.length}</span>
-						<button type="button" className={iconButton} disabled={index === artifacts.length - 1} onClick={() => go(1)} aria-label={t("artifactViewer.next")}><span style={{ fontFamily: ICON }}></span></button>
-					</>
-				)}
-				<button
-					type="button"
-					ref={searchToggleRef}
-					data-testid="artifact-viewer-search"
-					className={`${iconButton} ${searchOpen ? "bg-accent/10 text-accent" : ""}`}
-					onClick={() => (searchOpen ? closeSearch() : openSearch())}
-					aria-label={searchLabel}
-					aria-pressed={searchOpen}
-					title={searchLabel}
-				><span style={{ fontFamily: ICON }}>{"\uf002"}</span></button>
-				<button
-					type="button"
-					data-testid="artifact-viewer-theme"
-					className={`${iconButton} ${themeMode === "follow" ? "" : "bg-accent/10 text-accent"}`}
-					onClick={cycleTheme}
-					aria-label={themeLabel}
-					title={themeLabel}
-				><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
-				<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={current.bundlePath ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
-				<button
-					type="button"
-					data-testid="artifact-viewer-open-browser"
-					className={iconButton}
-					disabled={!srcDoc}
-					onClick={openInBrowser}
-					aria-label={t("artifactViewer.openInBrowser")}
-					title={t("artifactViewer.openInBrowser")}
-				><span style={{ fontFamily: ICON }}>{""}</span></button>
-				{!standalone && (
+			<div
+				ref={viewerRef}
+				role="dialog"
+				aria-modal="true"
+				data-testid="artifact-viewer"
+				data-fullscreen={fullscreen ? "true" : "false"}
+				data-tour-anchor="task.artifact"
+				aria-label={t("artifactViewer.regionLabel")}
+				tabIndex={-1}
+				onClick={(event) => event.stopPropagation()}
+				className={`relative flex min-h-0 flex-col overflow-hidden bg-base outline-none ${fullscreen
+					? "h-full w-full rounded-none"
+					: "h-full w-full max-w-[2400px] max-h-[1600px] rounded-2xl border border-edge shadow-2xl"}`}
+			>
+				<header className="relative flex flex-shrink-0 items-center gap-2 border-b border-edge bg-raised px-3 py-2">
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-sm font-medium text-fg">{current.title}</div>
+						<div className="truncate text-micro text-fg-muted">{current.name}</div>
+					</div>
+					<HelpSpot topicId="viewer.artifact" />
+					{group && (
+						<ArtifactVersionPicker
+							artifact={group}
+							selected={selectedVersion}
+							onSelect={(version) => setPick({ id: group.id, version })}
+						/>
+					)}
+					{artifacts.length > 1 && (
+						<>
+							<button type="button" className={iconButton} disabled={index === 0} onClick={() => go(-1)} aria-label={t("artifactViewer.previous")}><span style={{ fontFamily: ICON }}></span></button>
+							<span className="font-mono text-xs text-fg-3 tabular-nums">{index + 1} / {artifacts.length}</span>
+							<button type="button" className={iconButton} disabled={index === artifacts.length - 1} onClick={() => go(1)} aria-label={t("artifactViewer.next")}><span style={{ fontFamily: ICON }}></span></button>
+						</>
+					)}
+					<button
+						type="button"
+						ref={searchToggleRef}
+						data-testid="artifact-viewer-search"
+						className={`${iconButton} ${searchOpen ? "bg-accent/10 text-accent" : ""}`}
+						onClick={() => (searchOpen ? closeSearch() : openSearch())}
+						aria-label={searchLabel}
+						aria-pressed={searchOpen}
+						title={searchLabel}
+					><span style={{ fontFamily: ICON }}>{"\uf002"}</span></button>
+					<button
+						type="button"
+						data-testid="artifact-viewer-theme"
+						className={`${iconButton} ${themeMode === "follow" ? "" : "bg-accent/10 text-accent"}`}
+						onClick={cycleTheme}
+						aria-label={themeLabel}
+						title={themeLabel}
+					><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
+					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={current.bundlePath ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
+					<button
+						type="button"
+						data-testid="artifact-viewer-open-browser"
+						className={iconButton}
+						disabled={!srcDoc}
+						onClick={openInBrowser}
+						aria-label={t("artifactViewer.openInBrowser")}
+						title={t("artifactViewer.openInBrowser")}
+					><span style={{ fontFamily: ICON }}>{""}</span></button>
 					<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
+					<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
+				</header>
+				{pendingDraft && !draftIsHere && !draftDismissed && (
+					<div
+						role="status"
+						aria-live="polite"
+						data-testid="artifact-draft-notice"
+						className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-edge bg-raised px-3 py-2 text-xs text-fg-2"
+					>
+						<span className="min-w-0 flex-1">{t("artifactViewer.draftKept", { version: pendingDraft.version })}</span>
+						<button
+							type="button"
+							data-testid="artifact-draft-restore"
+							className="rounded-md px-2 py-1 font-medium text-accent transition-colors hover:bg-elevated-hover hover:text-accent-emphasis"
+							onClick={() => setPick({ id: pendingDraft.artifactId, version: pendingDraft.version })}
+						>{t("artifactViewer.draftBack", { version: pendingDraft.version })}</button>
+						<button
+							type="button"
+							data-testid="artifact-draft-dismiss"
+							className="rounded-md px-2 py-1 text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
+							onClick={() => setDraftDismissed(true)}
+							aria-label={t("artifactViewer.draftDismiss")}
+							title={t("artifactViewer.draftDismiss")}
+						><span style={{ fontFamily: ICON }}></span></button>
+					</div>
 				)}
-				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
-			</header>
-			{pendingDraft && !draftIsHere && !draftDismissed && (
-				<div
-					role="status"
-					aria-live="polite"
-					data-testid="artifact-draft-notice"
-					className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-edge bg-raised px-3 py-2 text-xs text-fg-2"
-				>
-					<span className="min-w-0 flex-1">{t("artifactViewer.draftKept", { version: pendingDraft.version })}</span>
-					<button
-						type="button"
-						data-testid="artifact-draft-restore"
-						className="rounded-md px-2 py-1 font-medium text-accent transition-colors hover:bg-elevated-hover hover:text-accent-emphasis"
-						onClick={() => setPick({ id: pendingDraft.artifactId, version: pendingDraft.version })}
-					>{t("artifactViewer.draftBack", { version: pendingDraft.version })}</button>
-					<button
-						type="button"
-						data-testid="artifact-draft-dismiss"
-						className="rounded-md px-2 py-1 text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
-						onClick={() => setDraftDismissed(true)}
-						aria-label={t("artifactViewer.draftDismiss")}
-						title={t("artifactViewer.draftDismiss")}
-					><span style={{ fontFamily: ICON }}></span></button>
+				<div className="relative min-h-0 flex-1 bg-base">
+					{searchOpen && srcDoc && !error && (
+						<ArtifactSearchBar
+							ref={searchBarRef}
+							query={query}
+							onQueryChange={setQuery}
+							matches={matches}
+							activeIndex={activeIndex}
+							onStep={step}
+							onClose={closeSearch}
+						/>
+					)}
+					{error ? (
+						<div className="flex h-full items-center justify-center px-6 text-center text-sm text-danger">{t("artifactViewer.loadFailed")}</div>
+					) : srcDoc ? (
+						<ArtifactFrame
+							ref={frameRef}
+							title={current.title}
+							transport={transport}
+							document={srcDoc}
+							onReady={() => { sendTheme(); restoreDraft(); }}
+							onMessage={onFrameMessage}
+							className="h-full w-full border-0 bg-base"
+						/>
+					) : (
+						<div className="flex h-full items-center justify-center text-sm text-fg-3">{t("artifactViewer.loading")}</div>
+					)}
 				</div>
-			)}
-			<div className="relative min-h-0 flex-1 bg-base">
-				{searchOpen && srcDoc && !error && (
-					<ArtifactSearchBar
-						ref={searchBarRef}
-						query={query}
-						onQueryChange={setQuery}
-						matches={matches}
-						activeIndex={activeIndex}
-						onStep={step}
-						onClose={closeSearch}
-					/>
-				)}
-				{error ? (
-					<div className="flex h-full items-center justify-center px-6 text-center text-sm text-danger">{t("artifactViewer.loadFailed")}</div>
-				) : srcDoc ? (
-					<ArtifactFrame
-						ref={frameRef}
-						title={current.title}
-						transport={transport}
-						document={srcDoc}
-						onReady={() => { sendTheme(); restoreDraft(); }}
-						onMessage={onFrameMessage}
-						className="h-full w-full border-0 bg-base"
-					/>
-				) : (
-					<div className="flex h-full items-center justify-center text-sm text-fg-3">{t("artifactViewer.loading")}</div>
-				)}
-			</div>
-		</section>
+				</div>
+		</div>
 	);
 }
