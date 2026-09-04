@@ -880,12 +880,20 @@ describe("task move", () => {
 		).rejects.toThrow("EXIT_3");
 	});
 
-	it("blocks cancelled status (destroys worktree)", async () => {
+	// `cancelled` is never a direct move either — it detours through the same
+	// approval dialog as `completed` (covered in its own describe below).
+	it("does not send a plain task.move for cancelled", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false }));
+
 		await expect(
 			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Cannot move to");
-		expect(mockSend).not.toHaveBeenCalled();
+		).rejects.toThrow("EXIT_22");
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"task.requestCancellation",
+			{ taskId: "aaaaaaaa" },
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
 	});
 
 	it("exits on server error (e.g. invalid transition)", async () => {
@@ -1014,6 +1022,56 @@ describe("task move --status completed", () => {
 		);
 
 		expect(stdoutOutput).toBe("{}");
+	});
+});
+
+// ─── task move --status cancelled (agent cancellation request) ──────────────
+// Same approval contract as `completed`, its own method and its own exit code:
+// "the work landed" and "the work is garbage" must not be one answer.
+
+describe("task move --status cancelled", () => {
+	it("sends task.requestCancellation with the long approval timeout", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "cancelled" } }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"task.requestCancellation",
+			{ taskId: "aaaaaaaa" },
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+		expect(stderrOutput).toContain("requires user approval");
+		expect(stdoutOutput).toContain("User approved");
+		expect(stdoutOutput).toContain("moved to Cancelled");
+	});
+
+	it("exits with code 22 when the user declines", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false }));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
+		).rejects.toThrow("EXIT_22");
+		expect(stderrOutput).toContain("User declined the cancellation request");
+		expect(stderrOutput).toContain("session stays alive");
+	});
+
+	it("exits with a hint when the approval wait times out", async () => {
+		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("Timed out waiting for the user's decision");
+	});
+
+	it("exits on server error", async () => {
+		mockSend.mockResolvedValue(errResp("Task is already cancelled"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("Task is already cancelled");
 	});
 });
 

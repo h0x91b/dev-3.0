@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -12,10 +12,9 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
 import { handleTasks } from "./tasks";
 
-// Statuses that destroy the worktree + terminal are not directly reachable via
-// CLI. `completed` is special-cased: it becomes a blocking approval request the
-// user answers in the app. `cancelled` stays fully forbidden — an agent must
-// not be able to silently kill its own session.
+// Statuses that destroy the worktree + terminal are never a direct CLI move.
+// Both become a blocking approval request the user answers in the app, so an
+// agent can neither complete nor kill its own session silently.
 const DESTRUCTIVE_STATUSES: TaskStatus[] = ["completed", "cancelled"];
 const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.includes(s));
 
@@ -437,6 +436,58 @@ async function requestCompletion(
 }
 
 /**
+ * `dev3 task move --status cancelled`: ask the user to throw this task away.
+ * Mirrors {@link requestCompletion} — same blocking approval dialog, same
+ * 10-minute wait — with its own exit code, because "the work landed" and "the
+ * work is garbage" are answers an agent must be able to tell apart.
+ */
+async function requestCancellation(
+	taskId: string,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+): Promise<void> {
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	process.stderr.write(
+		"Cancelling a task throws its work away — branch, worktree and everything uncommitted in it — so it requires user approval.\n" +
+		"Waiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n",
+	);
+
+	let resp: CliResponse;
+	try {
+		resp = await sendRequest(socketPath, "task.requestCancellation", params, {
+			timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
+		});
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			exitError(
+				"Timed out waiting for the user's decision",
+				"The approval dialog may still be open in the app — if the user approves later, the task will be cancelled and this session will be destroyed.",
+			);
+		}
+		throw err;
+	}
+	if (!resp.ok) exitError(resp.error || "Failed to request task cancellation");
+
+	const result = resp.data as { approved: boolean; task?: Task };
+	if (!result.approved) {
+		exitError(
+			"User declined the cancellation request",
+			"The task keeps its current status and this session stays alive.\nAsk the user what they want done with it instead of retrying.",
+			CLI_EXIT_CODE_CANCELLATION_DECLINED,
+		);
+	}
+
+	process.stdout.write(
+		`User approved — task ${(result.task?.id ?? taskId).slice(0, 8)} moved to Cancelled.\n` +
+		"This worktree and terminal session are being destroyed now.\n",
+	);
+}
+
+/**
  * `dev3 task create --scratch --run`: ask the user to spin up a throwaway peer
  * agent. Blocks on the same approval dialog as an agent-initiated launch; the
  * app discards the placeholder task if the user declines.
@@ -553,13 +604,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const newStatus = args.flags.status;
 	if (!newStatus) {
-		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` (asks the user for approval); or a custom column ID (see \`dev3 current\`)`);
-	}
-	if (newStatus === "cancelled") {
-		exitError(
-			`Cannot move to "cancelled" via CLI`,
-			`This status destroys the worktree and terminal session.\nUse the desktop app UI to mark tasks as cancelled.`,
-		);
+		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` and \`cancelled\` (both ask the user for approval); or a custom column ID (see \`dev3 current\`)`);
 	}
 	// Non-built-in values may be custom column IDs — let the server validate
 
@@ -571,6 +616,13 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// app and blocks until they answer (or the wait times out).
 	if (newStatus === "completed") {
 		return requestCompletion(taskId, args, socketPath, context, codexStopHook);
+	}
+
+	// `cancelled` is the same deal, and the dialog behind it is deliberately a
+	// red one: cancelling is an agent throwing its own task away, not reporting
+	// it done.
+	if (newStatus === "cancelled") {
+		return requestCancellation(taskId, args, socketPath, context);
 	}
 
 	const params: Record<string, unknown> = { taskId, newStatus };

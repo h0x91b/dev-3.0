@@ -148,6 +148,44 @@ describe("confirm service", () => {
 		expect(cancelBtn).toHaveFocus();
 	});
 
+	// A red confirm button inside otherwise-accent chrome reads as the ordinary
+	// agent prompt. The danger tone has to reach the dialog's own frame, its
+	// badge and the subject card, or the "don't destroy this by accident" signal
+	// is only on the button the user is already reaching for.
+	it("paints the whole dialog danger for tone: danger", async () => {
+		renderHost();
+		act(() => {
+			void confirm({
+				title: "Agent asks to cancel",
+				message: "M",
+				confirmLabel: "Cancel task",
+				agentInitiated: true,
+				danger: true,
+				tone: "danger",
+				info: { title: "Junk task" },
+			});
+		});
+
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.className).toContain("border-danger");
+		expect(dialog.className).not.toContain("border-accent/40");
+		expect(screen.getByRole("heading", { name: "Agent asks to cancel" }).className).toContain("text-danger");
+		expect(screen.getByText("AI agent request").className).toContain("text-danger");
+		expect(screen.getByText("Junk task").className).toContain("text-danger");
+		expect(screen.getByTestId("confirm-accept").className).toContain("bg-danger");
+	});
+
+	it("keeps the accent chrome for an agent confirm with no danger tone", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Agent asks", message: "M", confirmLabel: "Confirm", agentInitiated: true });
+		});
+
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.className).toContain("border-accent/40");
+		expect(dialog.className).not.toContain("border-danger");
+	});
+
 	it("renders the info subject card with title and body", async () => {
 		renderHost();
 		act(() => {

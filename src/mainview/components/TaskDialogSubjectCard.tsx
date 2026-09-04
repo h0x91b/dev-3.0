@@ -23,9 +23,10 @@ export interface TaskDialogSubjectCardProps {
 	labels?: Label[];
 	/**
 	 * `accent` tints the whole card (the dialog is *about* this task);
-	 * `neutral` steps back when the dialog's own content already carries accent.
+	 * `neutral` steps back when the dialog's own content already carries accent;
+	 * `danger` marks the task the dialog is about to destroy.
 	 */
-	tone?: "accent" | "neutral";
+	tone?: "accent" | "neutral" | "danger";
 	/** Makes the title a button — e.g. to open the task. */
 	onTitleClick?: () => void;
 }
@@ -47,11 +48,17 @@ function TaskDialogSubjectCard({
 	tone = "accent",
 	onTitleClick,
 }: TaskDialogSubjectCardProps) {
-	const neutral = tone === "neutral";
 	const hasIdentityRow = Boolean(seqLabel || projectName || priority);
+	const iconClass = tone === "neutral" ? "text-fg-3" : tone === "danger" ? "text-danger" : "text-accent";
+	const titleClass = tone === "neutral" ? "text-fg" : tone === "danger" ? "text-danger" : "text-accent";
+	const toneClasses = tone === "neutral"
+		? "bg-elevated/70 border-edge"
+		: tone === "danger"
+			? "bg-danger/10 border-danger/40"
+			: "bg-accent/10 border-accent/30";
 
 	return (
-		<div className={`rounded-xl border px-4 py-3 ${neutral ? "bg-elevated/70 border-edge" : "bg-accent/10 border-accent/30"}`}>
+		<div className={`rounded-xl border px-4 py-3 ${toneClasses}`}>
 			{hasIdentityRow && (
 				<div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-2 text-fg-3 text-xs">
 					{seqLabel && <span className="font-mono text-fg-2">{`#${seqLabel}`}</span>}
@@ -73,7 +80,7 @@ function TaskDialogSubjectCard({
 			)}
 			<div className="flex items-start gap-2">
 				<span
-					className={`${neutral ? "text-fg-3" : "text-accent"} text-base-lg leading-snug`}
+					className={`${iconClass} text-base-lg leading-snug`}
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0AE2}"}
@@ -86,12 +93,12 @@ function TaskDialogSubjectCard({
 						type="button"
 						onClick={onTitleClick}
 						aria-label={title}
-						className={`${neutral ? "text-fg" : "text-accent"} min-w-0 rounded-sm text-left text-base-lg font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
+						className={`${titleClass} min-w-0 rounded-sm text-left text-base-lg font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
 					>
 						{title}
 					</button>
 				) : (
-					<div className={`${neutral ? "text-fg" : "text-accent"} text-base-lg font-semibold leading-snug`}>
+					<div className={`${titleClass} text-base-lg font-semibold leading-snug`}>
 						{title}
 					</div>
 				)}

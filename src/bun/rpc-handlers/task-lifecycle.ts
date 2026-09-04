@@ -1,4 +1,4 @@
-import type { AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -927,6 +927,24 @@ async function respondToAgentCompletionRequest(params: { requestId: string; appr
 	}
 }
 
+/** Cancellation dialogs still waiting for an answer — replayed like the completion ones. */
+async function listPendingCancellationRequests(): Promise<AgentCancellationRequest[]> {
+	return listPendingAgentRequests("cancel").map((r) => ({
+		requestId: r.requestId,
+		taskId: r.taskId,
+		projectId: r.projectId,
+		taskTitle: r.dialog.taskTitle,
+		subject: r.dialog.subject,
+	}));
+}
+
+async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved });
+	if (!known) {
+		log.debug("respondToAgentCancellationRequest: request expired or unknown", { requestId: params.requestId });
+	}
+}
+
 /**
  * Renderer answers an `agentLaunchRequested` dialog. On approval it hands back
  * the agent/config/account the user picked in the dialog; the waiting CLI
@@ -1197,6 +1215,8 @@ export const taskLifecycleHandlers = {
 	startScheduledLaunchNow,
 	listPendingCompletionRequests,
 	respondToAgentCompletionRequest,
+	listPendingCancellationRequests,
+	respondToAgentCancellationRequest,
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,
 	getTaskTerminalBackend,

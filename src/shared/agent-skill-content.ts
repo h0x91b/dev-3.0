@@ -125,7 +125,7 @@ const SKILL_COMPLETION_REQUEST = `
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
 - **Timeout** → the dialog may still be open; a later approval completes and destroys it.
 
-**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is safely preserved in the destination the task requires — usually a PR merged into \`main\`, but possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` stays fully forbidden via CLI.
+**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is safely preserved in the destination the task requires — usually a PR merged into \`main\`, but possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` asks the same way.
 
 ${skillPrLinkInstruction()}
 `;

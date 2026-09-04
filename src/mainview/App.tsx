@@ -69,6 +69,7 @@ import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
+import { unsavedWorkWarning } from "./utils/confirmTaskCompletion";
 import { createAgentRequestAbort } from "./utils/agentRequestAbort";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
@@ -650,6 +651,7 @@ function App() {
 	// Completion dialogs this window already has on screen, so the push and the
 	// on-connect replay of the same request cannot stack two confirms.
 	const completionDialogsShowingRef = useRef<Set<string>>(new Set());
+	const cancellationDialogsShowingRef = useRef<Set<string>>(new Set());
 
 	// Latest route mirror — async event handlers read this to make routing decisions
 	// without re-subscribing every navigation.
@@ -2057,6 +2059,86 @@ function App() {
 		}).catch((err) => console.error("listPendingCompletionRequests failed:", err));
 
 		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+	}, [dispatch, navigate, t]);
+
+	// Agent-initiated CANCELLATION requests. Same blocked-CLI contract as the
+	// completion effect above, deliberately its own dialog: cancelling throws the
+	// worktree and everything uncommitted in it away, so the prompt is red from
+	// border to badge, Cancel is autofocused, and the local git check is streamed
+	// in with the confirm button gated until it settles — a mis-click cannot get
+	// past a warning that has not arrived yet.
+	useEffect(() => {
+		const showing = cancellationDialogsShowingRef.current;
+
+		async function showCancellationDialog(request: {
+			requestId: string;
+			taskId: string;
+			projectId: string;
+			taskTitle: string;
+			subject?: TaskDialogSubject;
+		}) {
+			const { requestId, taskId, projectId, taskTitle, subject } = request;
+			if (showing.has(requestId)) return;
+			showing.add(requestId);
+			let approved = false;
+			const abort = createAgentRequestAbort(requestId);
+			try {
+				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
+				approved = await confirm({
+					title: t("app.agentCancellationTitle"),
+					message: t("app.agentCancellationMessage"),
+					info: taskDialogInfoFromSubject(taskTitle, subject),
+					confirmLabel: t("app.agentCancellationConfirm"),
+					cancelLabel: t("app.agentCancellationCancel"),
+					danger: true,
+					tone: "danger",
+					agentInitiated: true,
+					deferred: {
+						pending: t("task.checkingBranchState"),
+						unknown: t("task.branchStateUnknown"),
+						gateConfirm: true,
+						promise: unsaved.then((status) => unsavedWorkWarning(status, t)),
+					},
+					signal: abort.signal,
+				});
+			} catch (err) {
+				console.error("[App] confirm (agent-cancellation) failed:", err);
+			} finally {
+				abort.cleanup();
+				showing.delete(requestId);
+			}
+			if (abort.signal.aborted) return;
+			if (approved) {
+				// Leave the task's view BEFORE the worktree is destroyed, same as the
+				// completion path.
+				const openMode = getTaskOpenMode();
+				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
+				if (dest) navigate(dest);
+				dispatch({ type: "clearBell", taskId });
+				trackEvent("task_moved", { to_status: "cancelled", agent_requested: true });
+			}
+			api.request.respondToAgentCancellationRequest({ requestId, approved }).catch((err) =>
+				console.error("respondToAgentCancellationRequest failed:", err),
+			);
+		}
+
+		function onAgentCancellationRequested(e: Event) {
+			void showCancellationDialog((e as CustomEvent).detail);
+		}
+		window.addEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
+
+		// Replayed for the same reason as the completion dialogs: the push is
+		// one-shot and an agent's retry joins the pending request.
+		api.request.listPendingCancellationRequests({}).then(async (pending) => {
+			if (pending.length === 0) return;
+			if (!await whenConfirmHostMounted()) {
+				console.error("[App] pending cancellation dialogs skipped — ConfirmHost never mounted");
+				return;
+			}
+			for (const request of pending) void showCancellationDialog(request);
+		}).catch((err) => console.error("listPendingCancellationRequests failed:", err));
+
+		return () => window.removeEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
 	}, [dispatch, navigate, t]);
 
 	// An agent wants to set another task running. Queued, never stacked: two
