@@ -140,7 +140,7 @@ jobs:
       # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
       # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
       - name: Install dependencies
-        run: bun install
+        uses: ./.github/actions/bun-install
 
       # Pinned model-catalog proxy sidecar (decisions/2026/08/15/model-catalog-and-model-roles.md).
       # Fetching is gated on a recorded pin: a pinned target that 404s or whose

@@ -10,8 +10,9 @@ inputs:
 runs:
   using: composite
   steps:
-    # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
-    # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
+    # The action adds no caching of its own: measured, a posix cache hit restored in 7s where
+    # `bun install` takes 5s. The call sites where the install really is slow (Windows, ~255s)
+    # keep their own actions/cache restore step around this one.
     - name: Install dependencies
       shell: bash
       env:
