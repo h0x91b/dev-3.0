@@ -1,0 +1,4 @@
+"{\"duration\":8989.800000190735,\"resizes\":20,\"loads\":0,\"srcMutations\":0,\"sameFrame\":true,\"maxGap\":22.699999809265137,\"p95\":13.400000095367432,\"frames\":1011,\"long\":[],\"width\":\"360\"}"
+
+"{\"duration\":9378.900000095367,\"resizes\":20,\"loads\":0,\"srcMutations\":0,\"sameFrame\":true,\"maxGap\":22.59999990463257,\"p95\":13.699999809265137,\"frames\":1050,\"long\":[],\"width\":\"360\"}"
+

@@ -4,7 +4,7 @@ import { useT } from "./i18n";
 import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
-import { debugLog } from "./debug-log";
+import { debugLog, debugEnabled } from "./debug-log";
 import { encodeResizeSequence } from "../shared/resize-protocol";
 import {
 	claimMessage,
@@ -34,6 +34,8 @@ import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
 import { session } from "./terminal-session-stats";
 import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
+import { createTerminalFreezeTrace } from "./terminal-freeze-trace";
+import { sendTerminalFreezeTrace } from "./terminal-freeze-transport";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { installGlyphAtlas, type GlyphAtlasHandle } from "./terminal-glyph-atlas";
 import { getScrollThreshold } from "./scroll-speed";
@@ -663,6 +665,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// invisible in the log otherwise, and they are the only trigger candidates the
 		// field reports name. Attached to every error payload below.
 		const trail = createBreadcrumbTrail();
+		const freezeTrace = createTerminalFreezeTrace((event) => {
+			sendTerminalFreezeTrace({ taskId: taskId.slice(0, 8), ...event }, () => {
+				logDiagnostic("freeze-trace", "info", String(event.phase), event);
+			});
+		});
 		let lastDpr = window.devicePixelRatio;
 		// Owned by this effect run, so a terminal that never opened cannot decrement
 		// the session count on cleanup.
@@ -811,6 +818,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// frame or notice that the loop stopped. Installed last, disposed first.
 			if (term.renderer) {
 				renderGuardRef.current = installRenderGuard(term.renderer, {
+					trace: (render) => freezeTrace.run("render", render, { cols: term.cols, rows: term.rows }),
 					onFrame: (durationMs) => latency.noteFrame(durationMs),
 					onFrameError: (error, consecutive) => {
 						if (disposed) return;
@@ -896,7 +904,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			linkUnderlines = installFilePathUnderlines({
 				term,
 				container: containerRef.current,
-				linksForRows: filePathLinks.linksForRows,
+				linksForRows: (rows) => freezeTrace.run("links-for-rows", () => filePathLinks!.linksForRows(rows), { rowCount: rows.length }),
+				trace: (draw) => freezeTrace.run("underlines", draw, { cols: term.cols, rows: term.rows }),
 			});
 
 			// ghostty marks the container contenteditable="true", so ANY focus on
@@ -1159,6 +1168,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// and call term.resize directly, which carries no such drop window.
 			function refitToContainer() {
 				if (disposed) return;
+				if (debugEnabled("freeze")) freezeTrace.arm({
+					cols: term.cols, rows: term.rows, dpr: window.devicePixelRatio,
+					containerWidth: containerRef.current?.clientWidth ?? 0,
+					containerHeight: containerRef.current?.clientHeight ?? 0,
+				});
 				// An observer does not own the PTY, so it must not reflow the stream to
 				// its own width: those bytes were laid out for the writer's geometry and
 				// every line reaching the right edge would wrap in the wrong place.
@@ -1172,7 +1186,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				const pty = ptyGeometryRef.current;
 				if (pty && nativeRoleRef.current === "observer") {
 					try {
-						term.resize(pty.cols, pty.rows);
+						freezeTrace.run("resize-observer", () => term.resize(pty.cols, pty.rows), { cols: pty.cols, rows: pty.rows });
 						trail.note("resize-observer", `${pty.cols}x${pty.rows}`);
 					} catch (err) {
 						if (!disposed) {
@@ -1188,7 +1202,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// exactly the blind spot behind the "terminal shows nothing after a
 				// resolution change" reports. Disposal still throws, and stays silent.
 				try {
-					dims = fitAddon.proposeDimensions();
+					dims = freezeTrace.run("propose-dimensions", () => fitAddon!.proposeDimensions());
 				} catch (err) {
 					if (!disposed) {
 						logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err), trail: trail.format() });
@@ -1198,7 +1212,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}
 				if (!dims) return;
 				try {
-					term.resize(dims.cols, dims.rows);
+					freezeTrace.run("resize", () => term.resize(dims!.cols, dims!.rows), { cols: dims.cols, rows: dims.rows });
 					trail.note("resize", `${dims.cols}x${dims.rows}`);
 				} catch (err) {
 					if (!disposed) {
@@ -1748,20 +1762,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (disposed || !batchTerm) return;
 			// OSC 8 URIs are unrecoverable from the terminal after the write, so
 			// capture them from the raw stream (replays included) before filtering.
-			osc8Tracker.feed(data);
+			freezeTrace.run("osc8-feed", () => osc8Tracker.feed(data), { length: data.length });
 			// The filter carries an incomplete CSI across calls, so chunking is safe.
-			const batch = themeFilter(data, resolvedThemeRef.current);
+			const batch = freezeTrace.run("theme-filter", () => themeFilter(data, resolvedThemeRef.current), { length: data.length });
 			if (!batch) return;
 			try {
 				const startedAt = performance.now();
-				batchTerm.write(batch);
+				freezeTrace.run("write", () => batchTerm!.write(batch), { length: batch.length, cols: batchTerm.cols, rows: batchTerm.rows, fromSocket });
 				latency.noteWrite(performance.now() - startedAt);
 				if (fromSocket) releaseSyncGate();
 				// Drop any stale selection left floating over the
 				// just-repainted cells when the app owns the screen
 				// (alt-screen or primary+mouse-tracking); ghostty-web
 				// won't do it on its own.
-				clearStaleSelectionOnWrite(batchTerm);
+				freezeTrace.run("clear-selection", () => clearStaleSelectionOnWrite(batchTerm!));
 				// ghostty-web never fires onRender, so the write is
 				// the "content changed" signal for the link underlines.
 				linkUnderlines?.requestRedraw();
@@ -1918,12 +1932,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					if (typeof event.data === "string") {
 						// A native session frames every message with a watermark header; a
 						// tmux session sends bare terminal text and never enters this branch.
-						const native = decodeNativeStreamMessage(event.data);
+						const native = freezeTrace.run("decode-native-message", () => decodeNativeStreamMessage(event.data), { length: event.data.length });
 						if (native) {
 							handleNativeFrame(native.header, native.payload);
 							return;
 						}
-						const cleaned = event.data.replace(OSC52_RE, "");
+						const cleaned = freezeTrace.run("strip-osc52", () => event.data.replace(OSC52_RE, ""), { length: event.data.length });
 						if (cleaned) {
 							noteSocketBytes(cleaned.length);
 							latency.noteBytes(cleaned.length);

@@ -7,6 +7,19 @@ describe("renderer debug channels", () => {
 		localStorage.removeItem("dev3-debug");
 	});
 
+	it("requires explicit opt-in for freeze tracing in a normal app build", () => {
+		vi.stubEnv("MODE", "production");
+		vi.stubEnv("VITEST", "");
+		try {
+			expect(debugEnabled("terminal")).toBe(true);
+			expect(debugEnabled("freeze")).toBe(false);
+			localStorage.setItem("dev3-debug", "terminal,rpc,boot,freeze");
+			expect(debugEnabled("freeze")).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("knows it is under test", () => {
 		expect(underTest()).toBe(true);
 	});
