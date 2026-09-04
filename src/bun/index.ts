@@ -39,7 +39,7 @@ import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook, pushToBrowserClients } from "./remote-access-server";
+import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
@@ -50,7 +50,8 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
+import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
+import { pushEverywhere } from "./push-targets";
 import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync, writeSync } from "node:fs";
@@ -495,11 +496,11 @@ await openMainWindow();
 log.info("Main window created");
 readiness.arm();
 
-// Wire push messages: every open renderer window + any connected browser clients.
+// Wire push messages. Every push in this file goes through `pushEverywhere`, so
+// an open window and an attached browser always hear the same events.
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
-	broadcastToAllWindows(name, payload);
-	pushToBrowserClients(name, payload);
+	pushEverywhere(name, payload);
 });
 
 // Initialize the backend gate before background pollers and CLI requests can
@@ -516,10 +517,7 @@ if (loadSettingsSync().dimInactivePanes === false) {
 // `exposedPortsChanged` rides its own hook because port-tunnels lives below
 // rpc-handlers — same broadcast target as above.
 import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
-	setPortTunnelsPushHook((name, payload) => {
-		broadcastToAllWindows(name, payload);
-		pushToBrowserClients(name, payload);
-	});
+	setPortTunnelsPushHook(pushEverywhere);
 }).catch((err) => log.warn("port-tunnels push hook setup failed", { error: String(err) }));
 
 // Start remote access server (serves UI + RPC + PTY proxy on LAN).
@@ -530,8 +528,7 @@ import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
 // Electrobun kills the worker outright a millisecond after the window appeared.
 // A failure here is a failure of remote access ALONE; it never costs the app.
 setRemoteAccessStatusHook((status) => {
-	broadcastToAllWindows("remoteAccessStatusChanged", status);
-	pushToBrowserClients("remoteAccessStatusChanged", status);
+	pushEverywhere("remoteAccessStatusChanged", status);
 });
 await startRemoteAccessServerGuarded({
 	rpcHandler: async (method: string, params: any) => {
@@ -584,7 +581,7 @@ setNativeDevServerProbe(async (task, socket) => {
 startPortScanPoller(
 	(name, payload) => {
 		try {
-			broadcastToAllWindows(name, payload);
+			pushEverywhere(name, payload);
 		} catch (err) {
 			log.error("Failed to push port update", { error: String(err) });
 		}
@@ -603,7 +600,7 @@ startDisplayWatch({
 // Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
 startResourceMonitor((name, payload) => {
 	try {
-		broadcastToAllWindows(name, payload);
+		pushEverywhere(name, payload);
 	} catch (err) {
 		log.error("Failed to push resource usage update", { error: String(err) });
 	}
@@ -643,7 +640,7 @@ setTimeout(() => {
 // Start background agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits)
 startRateLimitMonitor((name, payload) => {
 	try {
-		broadcastToAllWindows(name, payload);
+		pushEverywhere(name, payload);
 	} catch (err) {
 		log.error("Failed to push rate-limit update", { error: String(err) });
 	}
@@ -672,19 +669,21 @@ startScheduledMessageScheduler();
 const { startFocusTracker, stopFocusTracker } = await import("./focus-tracker");
 startFocusTracker();
 
-// Wire PTY death notifications
+// Wire PTY death notifications. This is what replaces a dead terminal with the
+// "session ended" screen, so it has to reach an attached browser too — without it
+// a phone keeps rendering a terminal that exited minutes ago.
 setOnPtyDied((sessionKey) => {
 	try {
 		if (sessionKey.startsWith("project-")) {
 			const projectId = sessionKey.slice(8);
-			log.info("Project terminal died, notifying renderer", { projectId: projectId.slice(0, 8) });
-			broadcastToAllWindows("projectPtyDied", { projectId });
+			log.info("Project terminal died, notifying clients", { projectId: projectId.slice(0, 8) });
+			pushEverywhere("projectPtyDied", { projectId });
 		} else {
-			log.info("PTY died, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			broadcastToAllWindows("ptyDied", { taskId: sessionKey });
+			log.info("PTY died, notifying clients", { taskId: sessionKey.slice(0, 8) });
+			pushEverywhere("ptyDied", { taskId: sessionKey });
 		}
 	} catch (err) {
-		log.error("Failed to notify renderer about PTY death", {
+		log.error("Failed to notify clients about PTY death", {
 			sessionKey: sessionKey.slice(0, 8),
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
@@ -751,8 +750,7 @@ setOnOsc52Copy((payload) => {
 	// Still forward to renderer (diagnostics) and remote browser clients
 	// (where the user's clipboard is the browser, not the host).
 	try {
-		broadcastToAllWindows("osc52Clipboard", payload);
-		pushToBrowserClients("osc52Clipboard", payload);
+		pushEverywhere("osc52Clipboard", payload);
 	} catch (err) {
 		log.error("Failed to forward OSC 52 clipboard payload", {
 			taskId: payload.taskId.slice(0, 8),
@@ -939,7 +937,7 @@ Electrobun.events.on("reopen", () => {
 
 // Helper to push update progress to the renderer
 const sendUpdateProgress = (status: string, progress?: number) => {
-	broadcastToAllWindows("updateDownloadProgress", { status, progress });
+	pushEverywhere("updateDownloadProgress", { status, progress });
 };
 
 // --- Menu Event Handlers ---
@@ -999,7 +997,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				// of downloading the same tar again (issue #1072).
 				if (isUpdateAlreadyReady(result.version)) {
 					sendUpdateProgress("idle");
-					broadcastToAllWindows("updateAvailable", {
+					pushEverywhere("updateAvailable", {
 						version: result.version,
 						changelog: result.changelog,
 						reminder: true,
@@ -1009,7 +1007,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				sendUpdateProgress("downloading", 0);
 				const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 				if (dlResult.ok) {
-					broadcastToAllWindows("updateAvailable", { version: result.version, changelog: result.changelog });
+					pushEverywhere("updateAvailable", { version: result.version, changelog: result.changelog });
 				} else {
 					sendUpdateProgress("error");
 					sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: dlResult.error || "Download failed" });
@@ -1073,7 +1071,7 @@ startAutoCheck(
 		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
-			broadcastToAllWindows("updateAvailable", { version, changelog });
+			pushEverywhere("updateAvailable", { version, changelog });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
 			sendUpdateProgress("error");
@@ -1082,7 +1080,7 @@ startAutoCheck(
 	sendUpdateProgress,
 	(version, changelog) => {
 		log.info("Re-prompting for the downloaded update", { version });
-		broadcastToAllWindows("updateAvailable", { version, changelog, reminder: true });
+		pushEverywhere("updateAvailable", { version, changelog, reminder: true });
 	},
 );
 
