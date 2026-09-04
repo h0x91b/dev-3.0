@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-03 — Touch scrollback return is a floating button
+
+One round floating button over the canvas, only while that pane is scrolled up, touch only; never a key-bar, composer or pane-bar slot — yaml `terminal_scrollback_return`. Why: `decisions/2026/09/03/touch-scroll-to-latest-button.md`.
+
 ## 2026-08-30 — Sidebar rows carry the task_card PR badge cluster
 
 `surfaces.sidebar` may render `git_status_badge` — the shared `TaskPrBadges` component, leading the row's signals line, without the board's discovery poll. Why: `decisions/2026/08/30/sidebar-pr-badge-without-discovery-poll.md`.
@@ -653,5 +657,4 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 
 ## 2026-09-01 — The space is a level of the trail, not a remembered mode
 - **Rule:** A space on the route renders as a plain-link crumb between home and the chip (`dev-3.0 / AI / Nanochat`), icon-only below `md`; the tail always carries the switcher — bible §Breadcrumbs.
-- **Why:** A project in two spaces cannot say which one the user came through, so the trail states it instead of the chip silently swapping names; rejected a global "last active space" (breaks Back/Forward) and a dropdown on the space crumb (two switchers, one trail).
-- Status: observed. `GlobalHeader.tsx`, `decisions/2026/09/01/space-rides-into-a-task-by-reducer-inheritance.md`.
+- **Why:** `decisions/2026/09/01/space-rides-into-a-task-by-reducer-inheritance.md`. Status: observed, `GlobalHeader.tsx`.

@@ -253,6 +253,7 @@ const terminal = {
 	"terminal.composerCollapse": "Свернуть редактор",
 	"terminal.composerScheduleLater": "Отправить позже",
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
+	"terminal.scrollToLatest": "К последнему выводу",
 	"terminal.backspace": "Удалить слева",
 
 	// File path links in terminal output (Cmd/Ctrl+Click)

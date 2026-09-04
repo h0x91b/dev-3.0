@@ -30,10 +30,14 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
+const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom: vi.fn() };
+let terminalViewOnScrolledIntoHistory: ((scrolledUp: boolean) => void) | undefined;
+
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl, onReady }: { ptyUrl: string; onReady?: (h: unknown) => void }) => {
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void }) => {
+		terminalViewOnScrolledIntoHistory = onScrolledIntoHistory;
 		if (onReady) {
-			setTimeout(() => onReady({ sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn() }), 0);
+			setTimeout(() => onReady(terminalViewMockHandle), 0);
 		}
 		return <div data-testid="terminal-view">{ptyUrl}</div>;
 	},
@@ -704,6 +708,36 @@ describe("TaskTerminal", () => {
 			});
 		});
 	});
+	describe("scroll-to-latest button (touch)", () => {
+		async function renderTouchTerminal() {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
+			await act(async () => { renderTerminal(); });
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+		}
+
+		it("appears only while the pane is scrolled into history and jumps back on tap", async () => {
+			setTouchDevice(true);
+			await renderTouchTerminal();
+			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
+
+			act(() => { terminalViewOnScrolledIntoHistory?.(true); });
+			const btn = screen.getByTestId("scroll-to-latest");
+			await userEvent.click(btn);
+			expect(terminalViewMockHandle.scrollToBottom).toHaveBeenCalledTimes(1);
+
+			act(() => { terminalViewOnScrolledIntoHistory?.(false); });
+			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
+		});
+
+		it("never renders on a pointer device — a click on the canvas already leaves copy-mode there", async () => {
+			setTouchDevice(false);
+			await renderTouchTerminal();
+			act(() => { terminalViewOnScrolledIntoHistory?.(true); });
+			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
+		});
+	});
+
 	// A failed setupScript leaves a live shell in the pane, so nothing else here
 	// reads as broken. Which offer the pane may make depends on whether the agent
 	// was already running when setup failed — see `setupFailedAgentRunning`.

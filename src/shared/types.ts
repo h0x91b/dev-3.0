@@ -5217,6 +5217,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: { panesExited: number };
 			};
+			tmuxPanesInMode: {
+				params: { taskId: string };
+				response: { inMode: boolean };
+			};
 			tmuxSearchUpdate: {
 				params: { taskId: string; query: string; paneId?: string };
 				response: { paneId: string | null; matches: number };

@@ -14,7 +14,8 @@
  * 10. MobilePaneCarousel used for native on narrow viewport.
  */
 
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Task, Project } from "../../../shared/types";
 import type { TaskPaneState } from "../../../shared/task-panes";
@@ -39,10 +40,28 @@ vi.mock("../../rpc", () => ({
 }));
 
 // TerminalView is a complex WebSocket component; stub it to a simple <div>.
+// The scroll signal and the handle are captured per pty-url (one per pane) so a
+// test can raise "scrolled up" on one pane and assert on another.
+const paneScrollSignals = new Map<string, (scrolledUp: boolean) => void>();
+const paneScrollToBottom = new Map<string, ReturnType<typeof vi.fn>>();
+
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl }: { ptyUrl: string }) => (
-		<div data-testid="terminal-view" data-pty-url={ptyUrl} />
-	),
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: {
+		ptyUrl: string;
+		onReady?: (handle: unknown) => void;
+		onScrolledIntoHistory?: (scrolledUp: boolean) => void;
+	}) => {
+		if (onScrolledIntoHistory) paneScrollSignals.set(ptyUrl, onScrolledIntoHistory);
+		if (onReady && !paneScrollToBottom.has(ptyUrl)) {
+			const scrollToBottom = vi.fn();
+			paneScrollToBottom.set(ptyUrl, scrollToBottom);
+			setTimeout(() => onReady({
+				sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(),
+				focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom,
+			}), 0);
+		}
+		return <div data-testid="terminal-view" data-pty-url={ptyUrl} />;
+	},
 }));
 
 // Other complex sub-components
@@ -143,6 +162,10 @@ function renderTaskTerminal(task: Task, narrow = false) {
 
 beforeEach(() => {
 	mockNarrow = false;
+	// Per-pane stubs are module-level: a stale entry makes the mock skip onReady
+	// for a pty-url an earlier test already used, so the handle never arrives.
+	paneScrollSignals.clear();
+	paneScrollToBottom.clear();
 	vi.mocked(api.request.getPtyUrl).mockReset();
 	vi.mocked(api.request.getPanePtyUrl).mockReset();
 	vi.mocked(api.request.taskPaneState).mockReset();
@@ -185,6 +208,35 @@ describe("TaskTerminal (native multi-pane)", () => {
 		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
 		renderTaskTerminal(NATIVE_TASK);
 		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(2));
+	});
+
+	// The signal is keyed per pane: a boolean let a background pane's scroll-up
+	// put the button on the FOCUSED pane, so a tap scrolled a pane already live.
+	it("shows scroll-to-latest only for the focused pane that is scrolled up", async () => {
+		const originalTouch = Object.getOwnPropertyDescriptor(Navigator.prototype, "maxTouchPoints");
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+		try {
+			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
+			renderTaskTerminal(NATIVE_TASK);
+			await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(2));
+			await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+
+			const url = (paneId: string) => `ws://localhost:9999?session=${TASK_ID}~${paneId}`;
+			// pane-1 is active (makeNativePaneState puts focus on the first pane).
+			act(() => { paneScrollSignals.get(url("pane-2"))?.(true); });
+			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
+
+			act(() => { paneScrollSignals.get(url("pane-1"))?.(true); });
+			await userEvent.click(screen.getByTestId("scroll-to-latest"));
+			expect(paneScrollToBottom.get(url("pane-1"))).toHaveBeenCalledTimes(1);
+			expect(paneScrollToBottom.get(url("pane-2"))).not.toHaveBeenCalled();
+
+			act(() => { paneScrollSignals.get(url("pane-1"))?.(false); });
+			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
+		} finally {
+			if (originalTouch) Object.defineProperty(Navigator.prototype, "maxTouchPoints", originalTouch);
+			else Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
+		}
 	});
 
 	it("renders six TerminalViews for a native task with 6 panes", async () => {

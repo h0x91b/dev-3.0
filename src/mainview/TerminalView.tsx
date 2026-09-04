@@ -271,6 +271,8 @@ export interface TerminalHandle {
 	blur: () => void;
 	/** Native backend only: take the writer lease from whoever holds it. No-op on tmux. */
 	claimWriter: () => void;
+	/** Return to the live tail: leave tmux copy-mode, or scroll ghostty's own buffer to the bottom. */
+	scrollToBottom: () => void;
 }
 
 /** Set once the user has seen the one-time "select text to copy" hint toast. */
@@ -300,9 +302,20 @@ interface TerminalViewProps {
 	 * the ⌨ raw toggle on ExtraKeyBar flips this off for direct typing.
 	 */
 	touchComposeMode?: boolean;
+	/**
+	 * Fires when the pane enters or leaves scrolled-into-history (tmux copy-mode
+	 * after a wheel-up / drag, or ghostty `viewportY > 0`). Hosts render the
+	 * touch scroll-to-latest button from it, and pass it ONLY on touch input:
+	 * its presence is what arms the copy-mode poll, so a pointer host (where a
+	 * click already leaves copy-mode) costs no tmux calls at all.
+	 */
+	onScrolledIntoHistory?: (scrolledUp: boolean) => void;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode }: TerminalViewProps) {
+/** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
+const COPY_MODE_POLL_MS = 1500;
+
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -353,6 +366,64 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	// jump to live output. Remember when that mode may be active so the next
 	// plain click can return to live input without requiring Escape.
 	const tmuxCopyModeMayBeActiveRef = useRef(false);
+	// Scrolled-into-history signal for the host (touch scroll-to-latest button).
+	// tmux cannot tell us when a swipe reaching the bottom ended copy-mode, so
+	// while the flag is up we poll pane_in_mode and drop it when tmux did.
+	const onScrolledIntoHistoryRef = useRef(onScrolledIntoHistory);
+	onScrolledIntoHistoryRef.current = onScrolledIntoHistory;
+	const scrolledIntoHistoryRef = useRef(false);
+	const copyModePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const stopCopyModePoll = useCallback(() => {
+		if (copyModePollRef.current) clearInterval(copyModePollRef.current);
+		copyModePollRef.current = null;
+	}, []);
+	const setScrolledIntoHistory = useCallback((scrolledUp: boolean) => {
+		if (!scrolledUp) stopCopyModePoll();
+		if (scrolledIntoHistoryRef.current === scrolledUp) return;
+		scrolledIntoHistoryRef.current = scrolledUp;
+		onScrolledIntoHistoryRef.current?.(scrolledUp);
+	}, [stopCopyModePoll]);
+	const markTmuxCopyModeMayBeActive = useCallback(() => {
+		tmuxCopyModeMayBeActiveRef.current = true;
+		// No host listening (pointer input) → no signal and no poll. The flag above
+		// still matters: it is what the desktop click-to-leave-copy-mode path reads.
+		if (!onScrolledIntoHistoryRef.current) return;
+		setScrolledIntoHistory(true);
+		if (copyModePollRef.current) return;
+		copyModePollRef.current = setInterval(() => {
+			api.request.tmuxPanesInMode({ taskId }).then(({ inMode }) => {
+				if (inMode || !tmuxCopyModeMayBeActiveRef.current) return;
+				tmuxCopyModeMayBeActiveRef.current = false;
+				setScrolledIntoHistory(false);
+			}).catch(() => {
+				// Best effort — a missing session just leaves the button until the next tick.
+			});
+		}, COPY_MODE_POLL_MS);
+	}, [setScrolledIntoHistory, taskId]);
+	useEffect(() => stopCopyModePoll, [stopCopyModePoll]);
+	// A cancel already on the wire. Held so a second send inside that round trip
+	// awaits the SAME request instead of reading the already-cleared flag and
+	// taking the synchronous path — its keys would still land in copy-mode.
+	const copyModeExitRef = useRef<Promise<void> | null>(null);
+	/** True while a scroll-up is unresolved: either the flag is up or a cancel is in flight. */
+	const copyModePending = useCallback(
+		() => tmuxCopyModeMayBeActiveRef.current || copyModeExitRef.current !== null,
+		[],
+	);
+	/** Leave tmux copy-mode if a scroll may have entered it; resolves once tmux has been told. */
+	const exitCopyModeIfNeeded = useCallback((): Promise<void> => {
+		if (copyModeExitRef.current) return copyModeExitRef.current;
+		if (!tmuxCopyModeMayBeActiveRef.current) return Promise.resolve();
+		tmuxCopyModeMayBeActiveRef.current = false;
+		setScrolledIntoHistory(false);
+		const pending = api.request.exitCopyModeAllPanes({ taskId })
+			.then(() => undefined)
+			// Best effort — the pane may already have returned to live input.
+			.catch(() => undefined)
+			.finally(() => { copyModeExitRef.current = null; });
+		copyModeExitRef.current = pending;
+		return pending;
+	}, [setScrolledIntoHistory, taskId]);
 	const mouseGestureDraggedRef = useRef(false);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
@@ -1227,8 +1298,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								}
 							}));
 
+							// ghostty's own scrollback (native backend / tmux without mouse mode).
+							termSubs.push(term.onScroll(() => {
+								if (disposed) return;
+								try {
+									if (term.viewportY > 0) setScrolledIntoHistory(true);
+									else if (!tmuxCopyModeMayBeActiveRef.current) setScrolledIntoHistory(false);
+								} catch { /* disposed */ }
+							}));
+
 							// Expose terminal handle for external input (ExtraKeyBar, TerminalComposer)
 							onReady?.({
+								scrollToBottom: () => {
+									void exitCopyModeIfNeeded();
+									try { term.scrollToBottom(); } catch { /* disposed */ }
+									setScrolledIntoHistory(false);
+								},
 								claimWriter: () => {
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(claimMessage());
@@ -1241,9 +1326,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								},
 								// ghostty's paste() wraps in \x1b[200~…\x1b[201~ only when the
 								// running app enabled DEC 2004 and routes through onData → WS.
-								paste: (data: string) => { try { term.paste(data); } catch { /* disposed */ } },
+								// Text typed while the pane sits in tmux copy-mode would be eaten as
+								// copy-mode keys, so a pending scroll-up is cleared first (async only
+								// when there is something to clear — the common path stays sync).
+								paste: (data: string) => {
+									const run = () => { try { term.paste(data); } catch { /* disposed */ } };
+									if (copyModePending()) void exitCopyModeIfNeeded().then(run);
+									else run();
+								},
 								submit: (data: string) => {
-									submitPastedText(data, {
+									const run = () => submitPastedText(data, {
 										paste: (value) => term.paste(value),
 										sendInput: (value) => {
 											if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1252,6 +1344,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 										},
 										hasBracketedPaste: () => term.hasBracketedPaste(),
 									});
+									if (copyModePending()) void exitCopyModeIfNeeded().then(run);
+									else run();
 								},
 								// In browser mode focus the hidden textarea directly: term.focus()
 								// lands on ghostty's container div, which never summons the OSK.
@@ -1362,7 +1456,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					const [col, row] = cellCoords(e);
 					sgrMouse(btn | altBit(e), col, row, false);
 					if (btn === 0 && mouseGestureDraggedRef.current) {
-						tmuxCopyModeMayBeActiveRef.current = true;
+						markTmuxCopyModeMayBeActive();
 					}
 				} catch { /* disposed */ }
 			}
@@ -1508,7 +1602,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					const lines = Math.trunc(scrollAccumulator / threshold);
 					if (lines !== 0) {
 						scrollAccumulator -= lines * threshold;
-						if (lines < 0) tmuxCopyModeMayBeActiveRef.current = true;
+						if (lines < 0) markTmuxCopyModeMayBeActive();
 						const direction: 1 | -1 = lines < 0 ? -1 : 1;
 						// Paced and sent as one write — an unpaced flick overruns the
 						// PTY's 1022-byte read window and TUIs paste the sliced tail
@@ -2509,12 +2603,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			mouseGestureDraggedRef.current = false;
 			return;
 		}
-		if (!tmuxCopyModeMayBeActiveRef.current) return;
-
-		tmuxCopyModeMayBeActiveRef.current = false;
-		api.request.exitCopyModeAllPanes({ taskId }).catch(() => {
-			// Best effort — the pane may already have returned to live input.
-		});
+		void exitCopyModeIfNeeded();
 	}
 
 	return (

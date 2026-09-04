@@ -333,6 +333,14 @@ ux_architecture:
       responsive: "Narrow (<768) falls to MobilePaneCarousel — one pane at a time, no dividers (there is no visible boundary to grab)."
       status: "observed"
       evidence: ["src/mainview/components/TaskTerminal.tsx", "src/mainview/components/NativePaneDividers.tsx", "src/shared/split-tree.ts", "src/bun/rpc-handlers/task-panes.ts"]
+    terminal_scrollback_return:
+      purpose: "Return a scrolled-up pane to its live tail; touch has no gesture."
+      allowed: ["conditional_floating_button", "jump_to_tail"]
+      forbidden: ["permanent_chrome", "extra_key_bar_slot", "composer_icon_slot", "pane_bar_slot"]
+      visibility: "Only while THAT pane is scrolled up, keyed per pane (tmux: copy-mode flag + tmuxPanesInMode poll; native: viewportY > 0). Touch only: a pointer click already leaves copy-mode."
+      action: "48px round accent button bottom-right over the canvas; TerminalHandle.scrollToBottom. Composer send exits copy-mode first."
+      status: "observed"
+      evidence: ["src/mainview/components/ScrollToLatestButton.tsx"]
     terminal_immersive_fullscreen:
       purpose: "Ephemeral task-bound terminal workspace for focused tmux work."
       allowed: ["task_terminal", "tmux_windows_and_panes", "dev3_brand", "exit_fullscreen"]

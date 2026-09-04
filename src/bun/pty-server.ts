@@ -231,12 +231,26 @@ export function setOnOsc52Copy(fn: (payload: { taskId: string; text: string; len
 
 
 /** Compute the tmux session name for a given session key and type. */
+/** Session-key prefix the renderer uses for a project (quick shell) terminal. */
+export const PROJECT_SESSION_KEY_PREFIX = "project-";
+
 function computeTmuxSessionName(key: string, type: PtySessionType): string {
 	if (type === "project") {
-		const projectId = key.startsWith("project-") ? key.slice(8) : key;
+		const projectId = key.startsWith(PROJECT_SESSION_KEY_PREFIX)
+			? key.slice(PROJECT_SESSION_KEY_PREFIX.length)
+			: key;
 		return projectTerminalSessionName(projectId);
 	}
 	return taskSessionName(key);
+}
+
+/**
+ * Does this session key address a project (quick shell) terminal rather than a
+ * task? Keeps key-shape knowledge here, with the rest of the naming: a project
+ * key has no dev-server sibling and no `dev3-<short>` task session.
+ */
+export function isProjectSessionKey(key: string): boolean {
+	return getSessionType(key) === "project" || key.startsWith(PROJECT_SESSION_KEY_PREFIX);
 }
 
 export function createSession(

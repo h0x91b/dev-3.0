@@ -52,6 +52,7 @@ function makeHandle(): TerminalHandle {
 		focus: vi.fn(),
 		blur: vi.fn(),
 	claimWriter: vi.fn(),
+		scrollToBottom: vi.fn(),
 	};
 }
 

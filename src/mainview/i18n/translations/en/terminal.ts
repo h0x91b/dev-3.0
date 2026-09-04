@@ -243,6 +243,7 @@ const terminal = {
 	"terminal.composerCollapse": "Collapse editor",
 	"terminal.composerScheduleLater": "Send later",
 	"terminal.rawKeyboard": "Direct keyboard input",
+	"terminal.scrollToLatest": "Back to latest output",
 	"terminal.backspace": "Backspace",
 
 	// File path links in terminal output (Cmd/Ctrl+Click)
