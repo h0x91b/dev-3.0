@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TmuxSessionManager from "../TmuxSessionManager";
 import { I18nProvider } from "../../i18n";
@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			listTmuxSessions: vi.fn(() => Promise.resolve([])),
 			killTmuxSession: vi.fn(() => Promise.resolve()),
+			setResourceMonitorBoost: vi.fn(() => Promise.resolve()),
 		},
 	},
 }));
@@ -350,6 +351,110 @@ describe("TmuxSessionManager", () => {
 			await user.unhover(row);
 			await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
 			expect(screen.getByText("Fix some bug")).toBeInTheDocument();
+		});
+	});
+
+	describe("sorting and the live readout", () => {
+		function heavy(over: Partial<TmuxSessionInfo> & { name: string }): TmuxSessionInfo {
+			return {
+				cwd: "/w",
+				createdAt: 1700000000,
+				windowCount: 1,
+				isCleanup: false,
+				projectId: "a1c9fe4e-full-uuid",
+				...over,
+			};
+		}
+
+		/** Session names in the order the popover renders them. */
+		function renderedOrder(): string[] {
+			return [...document.querySelectorAll("[data-session-name]")].map(
+				(el) => el.getAttribute("data-session-name") ?? "",
+			);
+		}
+
+		const bigRam: TmuxSessionInfo = heavy({
+			name: "dev3-11111111",
+			taskTitle: "Big RAM",
+			taskId: "11111111-full-uuid",
+			resourceUsage: { rss: 4 * 1024 * 1024 * 1024, cpu: 1 },
+		});
+		const bigCpu: TmuxSessionInfo = heavy({
+			name: "dev3-22222222",
+			taskTitle: "Big CPU",
+			taskId: "22222222-full-uuid",
+			resourceUsage: { rss: 512 * 1024 * 1024, cpu: 90 },
+		});
+		const unmeasured: TmuxSessionInfo = heavy({
+			name: "dev3-pt-a1c9fe4e",
+			isProjectTerminal: true,
+			projectName: "dev-3.0",
+			createdAt: 1700009999,
+		});
+
+		beforeEach(() => localStorage.clear());
+
+		async function openWith(sessions: TmuxSessionInfo[]) {
+			mockedApi.request.listTmuxSessions.mockResolvedValue(sessions);
+			const user = userEvent.setup();
+			renderManager();
+			await waitFor(() => expect(screen.getByText(String(sessions.length))).toBeInTheDocument());
+			await user.click(screen.getByLabelText("tmux Sessions"));
+			await waitFor(() => expect(renderedOrder().length).toBe(sessions.length));
+			return user;
+		}
+
+		it("sorts by memory by default, heaviest first", async () => {
+			await openWith([bigCpu, bigRam]);
+			expect(renderedOrder()).toEqual([bigRam.name, bigCpu.name]);
+		});
+
+		it("re-sorts by CPU when the CPU button is pressed", async () => {
+			const user = await openWith([bigRam, bigCpu]);
+			await user.click(screen.getByRole("button", { name: "CPU" }));
+			expect(renderedOrder()).toEqual([bigCpu.name, bigRam.name]);
+		});
+
+		it("keeps the chosen sort across a remount", async () => {
+			const user = await openWith([bigRam, bigCpu]);
+			await user.click(screen.getByRole("button", { name: "CPU" }));
+			expect(localStorage.getItem("dev3-tmux-session-sort")).toBe("cpu");
+
+			cleanup();
+			await openWith([bigRam, bigCpu]);
+			expect(renderedOrder()).toEqual([bigCpu.name, bigRam.name]);
+		});
+
+		it("puts a session with no reading below every measured one", async () => {
+			await openWith([unmeasured, bigCpu, bigRam]);
+			expect(renderedOrder()).toEqual([bigRam.name, bigCpu.name, unmeasured.name]);
+		});
+
+		it("asks the backend for its fast tick while open and releases it on close", async () => {
+			const user = await openWith([bigRam]);
+			expect(mockedApi.request.setResourceMonitorBoost).toHaveBeenCalledWith({ active: true });
+
+			await user.click(screen.getByLabelText("tmux Sessions"));
+			await waitFor(() =>
+				expect(mockedApi.request.setResourceMonitorBoost).toHaveBeenCalledWith({ active: false }),
+			);
+		});
+
+		it("patches a pushed usage update in place and re-sorts on it", async () => {
+			await openWith([bigRam, bigCpu]);
+			expect(renderedOrder()).toEqual([bigRam.name, bigCpu.name]);
+
+			// bigCpu's tree grows past bigRam's between two ticks.
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:resourceUsageUpdated", {
+						detail: { taskId: "22222222", usage: { rss: 9 * 1024 * 1024 * 1024, cpu: 90 } },
+					}),
+				);
+			});
+
+			await waitFor(() => expect(renderedOrder()).toEqual([bigCpu.name, bigRam.name]));
+			expect(screen.getByText("9.0 GB")).toBeInTheDocument();
 		});
 	});
 });

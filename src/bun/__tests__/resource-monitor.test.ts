@@ -49,7 +49,7 @@ vi.mock("../port-scanner", async (importActual) => {
 	};
 });
 
-import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources, getSystemMemorySnapshot } from "../resource-monitor";
+import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources, getSystemMemorySnapshot, boostResourceMonitor, clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
 import { spawn } from "../spawn";
 import { getAllSessionPanePids, clearProcessInfoCache } from "../port-scanner";
 import { probeMemoryFacts } from "../system-memory-probe";
@@ -277,6 +277,96 @@ describe("resource-monitor poller", () => {
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
 		expect(push).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("resource-monitor fast tick (boost)", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mockSpawn.mockReset();
+		mockGetAllSessionPanePids.mockReset();
+		mockProbe.mockReset();
+		mockProbe.mockResolvedValue(null);
+		mockLoadProjects.mockResolvedValue([]);
+		mockLoadTasks.mockResolvedValue([]);
+		clearProcessInfoCache();
+		clearResourceMonitorBoost();
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({ "dev3-abc12345": [100] }));
+		mockSpawn.mockReturnValue(makeProc("  100     1   204800   5.2\n"));
+	});
+
+	afterEach(() => {
+		stopResourceMonitor();
+		vi.useRealTimers();
+	});
+
+	it("ticks every 2s while boosted, and pulls the first tick forward", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+
+		// Pulled forward: no waiting out the remainder of the slow interval.
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(mockSpawn).toHaveBeenCalledTimes(3);
+	});
+
+	it("re-reads the process table instead of the shared 5s cache", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+
+		// Three ticks inside the 5s TTL: served from the cache they would be one ps.
+		await vi.advanceTimersByTimeAsync(4_100);
+		expect(mockSpawn.mock.calls.length).toBeGreaterThanOrEqual(3);
+	});
+
+	it("lapses back to the slow tick when nobody renews it", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+
+		// 15s TTL elapsed → the tick after it schedules the slow interval again.
+		await vi.advanceTimersByTimeAsync(16_000);
+		const afterLapse = mockSpawn.mock.calls.length;
+
+		await vi.advanceTimersByTimeAsync(2_500);
+		expect(mockSpawn).toHaveBeenCalledTimes(afterLapse);
+		expect(isResourceMonitorBoosted()).toBe(false);
+	});
+
+	it("stays boosted while renewed", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+		for (let i = 0; i < 6; i++) {
+			await vi.advanceTimersByTimeAsync(5_000);
+			boostResourceMonitor();
+		}
+		expect(isResourceMonitorBoosted()).toBe(true);
+		// 30s at 2s beats 30s at 10s by an order of magnitude — the point of the boost.
+		expect(mockSpawn.mock.calls.length).toBeGreaterThan(10);
+	});
+
+	it("drops the boost when the watcher goes away", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+		await vi.advanceTimersByTimeAsync(0);
+		clearResourceMonitorBoost();
+		expect(isResourceMonitorBoosted()).toBe(false);
+
+		// One already-scheduled fast tick may still land; after it, the cadence is slow.
+		await vi.advanceTimersByTimeAsync(2_100);
+		const afterPending = mockSpawn.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(mockSpawn).toHaveBeenCalledTimes(afterPending);
+	});
+
+	it("forgets the boost when the monitor stops", async () => {
+		startResourceMonitor(vi.fn());
+		boostResourceMonitor();
+		stopResourceMonitor();
+		expect(isResourceMonitorBoosted()).toBe(false);
 	});
 });
 

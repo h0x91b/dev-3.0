@@ -352,6 +352,7 @@ vi.mock("bun:ffi", () => ({
 }));
 
 import * as data from "../data";
+import { clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
@@ -8657,6 +8658,22 @@ describe("handlers.listTmuxSessions", () => {
 		const result = await handlers.listTmuxSessions();
 		expect(result).toHaveLength(1);
 		expect(result[0].taskTitle).toBe("Auto-generated title");
+	});
+});
+
+// ================================================================
+// handlers.setResourceMonitorBoost
+// ================================================================
+
+describe("handlers.setResourceMonitorBoost", () => {
+	afterEach(() => clearResourceMonitorBoost());
+
+	it("turns the fast resource tick on and off", async () => {
+		await handlers.setResourceMonitorBoost({ active: true });
+		expect(isResourceMonitorBoosted()).toBe(true);
+
+		await handlers.setResourceMonitorBoost({ active: false });
+		expect(isResourceMonitorBoosted()).toBe(false);
 	});
 });
 

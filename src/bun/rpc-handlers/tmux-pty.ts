@@ -13,7 +13,7 @@ import { classifyAgainstStartSnapshot, clearDevServerStart, mergePortInfos, reco
 import { clearDevServerEnv, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
 import { sanitizeDevServerEnv } from "../../shared/dev-server-env";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
-import { getResourceUsage } from "../resource-monitor";
+import { boostResourceMonitor, clearResourceMonitorBoost, getResourceUsage } from "../resource-monitor";
 import { throughputSnapshot } from "../pty-throughput";
 import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -2100,6 +2100,16 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	return sessions;
 }
 
+/**
+ * Renewed on a heartbeat while the tmux sessions popover is open, cleared when
+ * it closes. See the boost's own TTL — this handler never has to be trusted to
+ * send the `false`.
+ */
+async function setResourceMonitorBoost(params: { active: boolean }): Promise<void> {
+	if (params.active) boostResourceMonitor();
+	else clearResourceMonitorBoost();
+}
+
 async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 	log.info("→ killTmuxSession", { sessionName: params.sessionName });
 	if (!params.sessionName.startsWith("dev3-")) {
@@ -3402,6 +3412,7 @@ export const tmuxPtyHandlers = {
 	getTaskPorts,
 	getPortAllocations,
 	listTmuxSessions,
+	setResourceMonitorBoost,
 	killTmuxSession,
 	tmuxLayout,
 	tmuxWindowNavigate,

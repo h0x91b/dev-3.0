@@ -20,6 +20,41 @@ interface TmuxSessionManagerProps {
 }
 
 const SESSION_REFRESH_FRESH_MS = 5000;
+/** Renewal cadence for the backend's fast resource tick — well inside its TTL. */
+const BOOST_HEARTBEAT_MS = 5000;
+/** Session list (not the numbers — those arrive as pushes) while the popover is open. */
+const OPEN_LIST_REFRESH_MS = 5000;
+
+type SortKey = "memory" | "cpu";
+
+const SORT_STORAGE_KEY = "dev3-tmux-session-sort";
+
+function readStoredSort(): SortKey {
+	try {
+		return localStorage.getItem(SORT_STORAGE_KEY) === "cpu" ? "cpu" : "memory";
+	} catch {
+		return "memory";
+	}
+}
+
+/**
+ * Heaviest first on the chosen metric. Sessions with no reading at all — project
+ * terminals, a task whose first resource tick has not landed — keep their
+ * newest-first order below the measured ones rather than claiming a zero.
+ */
+function sortSessions(sessions: TmuxSessionInfo[], key: SortKey): TmuxSessionInfo[] {
+	const metric = (s: TmuxSessionInfo) =>
+		key === "cpu" ? s.resourceUsage?.cpu : s.resourceUsage?.rss;
+	return [...sessions].sort((a, b) => {
+		const av = metric(a);
+		const bv = metric(b);
+		if (av === undefined && bv === undefined) return b.createdAt - a.createdAt;
+		if (av === undefined) return 1;
+		if (bv === undefined) return -1;
+		if (bv !== av) return bv - av;
+		return b.createdAt - a.createdAt;
+	});
+}
 
 function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerProps) {
 	const t = useT();
@@ -31,6 +66,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	const [popoverVisible, setPopoverVisible] = useState(false);
 	const [copiedName, setCopiedName] = useState<string | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
+	const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
 	/**
 	 * Hover opens the menu flyout, a click PINS it: without the distinction the
 	 * click that follows a hover-open would immediately close the panel again.
@@ -89,6 +125,61 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	useEffect(() => {
 		if (popoverOpen) void fetchSessions();
 	}, [popoverOpen, fetchSessions]);
+
+	/**
+	 * While the list is on screen the readout goes live: the backend's resource
+	 * monitor drops from a 10 s to a 2 s tick and pushes each task's numbers as
+	 * they move. The boost is renewed on a heartbeat and lapses by itself, so a
+	 * browser tab closed in remote mode cannot leave the fast tick running.
+	 */
+	useEffect(() => {
+		const setBoost = api.request.setResourceMonitorBoost;
+		if (!popoverOpen || typeof setBoost !== "function") return;
+		let stopped = false;
+		const renew = () => {
+			if (!stopped) void setBoost({ active: true }).catch(() => {});
+		};
+		renew();
+		const heartbeat = setInterval(renew, BOOST_HEARTBEAT_MS);
+		// The pushes carry the numbers; this only catches sessions appearing or dying.
+		const listTimer = setInterval(() => { void fetchSessions({ force: true }); }, OPEN_LIST_REFRESH_MS);
+		return () => {
+			stopped = true;
+			clearInterval(heartbeat);
+			clearInterval(listTimer);
+			void setBoost({ active: false }).catch(() => {});
+		};
+	}, [popoverOpen, fetchSessions]);
+
+	// Live numbers, patched in place: re-sorting on every tick is deliberate —
+	// the list is a "what is eating the machine" view, so the heaviest stays on top.
+	useEffect(() => {
+		if (!popoverOpen) return;
+		function onUsage(e: Event) {
+			const detail = (e as CustomEvent<{ taskId: string; usage: { cpu: number; rss: number } }>).detail;
+			if (!detail?.taskId) return;
+			setSessions((prev) => {
+				let changed = false;
+				const next = prev.map((session) => {
+					if (session.taskId?.slice(0, 8) !== detail.taskId) return session;
+					changed = true;
+					return { ...session, resourceUsage: detail.usage };
+				});
+				return changed ? next : prev;
+			});
+		}
+		window.addEventListener("rpc:resourceUsageUpdated", onUsage);
+		return () => window.removeEventListener("rpc:resourceUsageUpdated", onUsage);
+	}, [popoverOpen]);
+
+	function handleSortChange(key: SortKey) {
+		setSortKey(key);
+		try {
+			localStorage.setItem(SORT_STORAGE_KEY, key);
+		} catch {
+			/* a private window may refuse storage; the choice still applies this session */
+		}
+	}
 
 	// Refresh when any task is updated (e.g. title renamed)
 	useEffect(() => {
@@ -253,6 +344,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	}
 
 	const count = sessions.length;
+	const sortedSessions = sortSessions(sessions, sortKey);
 
 	const glyph = (
 		<span
@@ -367,6 +459,42 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 							</div>
 						</div>
 
+						{/* Sort control + live indicator */}
+						{count > 0 && (
+							<div className="flex items-center justify-between gap-2 px-4 py-1.5 border-b border-edge/50">
+								<div className="flex items-center gap-1.5">
+									<span className="text-nano uppercase tracking-wide text-fg-muted">
+										{t("tmuxSessions.sortLabel")}
+									</span>
+									<div role="group" aria-label={t("tmuxSessions.sortLabel")} className="flex items-center gap-0.5 bg-raised rounded-md p-0.5">
+										{([
+											["memory", "tmuxSessions.sortByMemory"],
+											["cpu", "tmuxSessions.sortByCpu"],
+										] as const).map(([key, labelKey]) => (
+											<button
+												key={key}
+												onClick={() => handleSortChange(key)}
+												aria-pressed={sortKey === key}
+												className={`text-dense px-2 py-0.5 rounded transition-colors ${
+													sortKey === key
+														? "bg-accent/20 text-accent font-medium"
+														: "text-fg-3 hover:text-fg hover:bg-elevated"
+												}`}
+											>
+												{t(labelKey)}
+											</button>
+										))}
+									</div>
+								</div>
+								<Tooltip content={t("tmuxSessions.liveHint")}>
+									<span className="flex items-center gap-1 text-nano text-fg-muted">
+										<span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+										{t("tmuxSessions.live")}
+									</span>
+								</Tooltip>
+							</div>
+						)}
+
 						{/* Session list */}
 						<div className="flex-1 overflow-auto">
 							{sessions.length === 0 ? (
@@ -375,12 +503,13 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 									<p className="text-xs mt-1">{t("tmuxSessions.emptyHint")}</p>
 								</div>
 							) : (
-								sessions.map((session) => {
+								sortedSessions.map((session) => {
 									const isOrphaned = !session.isProjectTerminal && !session.isCleanup && !session.taskId;
 									const canNavigate = !!(session.isProjectTerminal ? session.projectId : (session.taskId && session.projectId));
 									return (
 										<div
 											key={session.name}
+											data-session-name={session.name}
 											role={canNavigate ? "button" : undefined}
 											tabIndex={canNavigate ? 0 : undefined}
 											className={`px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}

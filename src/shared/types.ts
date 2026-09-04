@@ -5060,6 +5060,15 @@ export type AppRPCSchema = {
 				params: void;
 				response: TmuxSessionInfo[];
 			};
+			/**
+			 * Ask the resource monitor for its fast tick while a surface shows CPU/RSS
+			 * live (the tmux sessions popover). Lapses on its own, so a watcher that
+			 * disappears — a closed browser tab in remote mode — cannot pin it on.
+			 */
+			setResourceMonitorBoost: {
+				params: { active: boolean };
+				response: void;
+			};
 			/** PTY read-vs-sent counters for the Debug → Terminal Performance overlay. */
 			terminalPtyStats: {
 				params: void;
