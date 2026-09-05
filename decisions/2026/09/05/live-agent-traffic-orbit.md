@@ -14,6 +14,8 @@ The approved visualization replaces the traffic log with a 3D project orbit and 
 
 `watchAgentMessageLog` in `src/bun/agent-message-log-watch.ts` lazily observes read projects and emits the same `agentMessageLogChanged` push for external writes. Metadata checks read no message bodies and unchanged files produce no push; native events complement them outside macOS, immediate writer pushes remain, and shutdown closes observers. Historical endpoints stay inspectable without dead navigation; preserve subject/body and retention evidence, dropping demo narratives and simulated actions.
 
+The all-project camera starts near the project with the most recorded attempts; other projects recede behind it instead of shrinking every node into a uniform grid. Task height and stems communicate spatial separation only, not a new metric. Physical WASD keys work over the map or its focused controls, excluding text-entry fields.
+
 ## Risks
 
 Dense graphs and unavailable WebGL must retain usable task/message lists, and reduced motion must suppress animation. A held record describes its original attempt rather than the current queue; a later message neither acknowledges nor resolves it. Filesystem notification availability varies; read retries reattach unavailable observers without altering shared log paths or formats.

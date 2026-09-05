@@ -69,8 +69,8 @@ export default function TrafficOrbit(props: Props) {
 	const updateScene = useRef<() => void>(() => {});
 	const fittedScope = useRef<string | null>(null);
 	const savedCamera = useRef<Camera>({
-		yaw: 0.03,
-		pitch: 0.78,
+		yaw: -0.16,
+		pitch: 0.52,
 		distance: 116,
 		target: [0, 0, 0],
 	});
@@ -123,6 +123,13 @@ export default function TrafficOrbit(props: Props) {
 		};
 		const goal: Camera = { ...camera, target: [...camera.target] };
 		const keys = new Set<string>();
+		const region = el.closest(".traffic-orbit")!;
+		let pointerInside = false;
+		let hovered: string | null = null;
+		const navigationKey = (event: KeyboardEvent) =>
+			/^Key[WASD]$/.test(event.code)
+				? event.code.slice(3).toLowerCase()
+				: event.key.toLowerCase();
 		const sig = new AbortController();
 		window.addEventListener(
 			"rpc:agentMessageLogChanged",
@@ -171,49 +178,42 @@ export default function TrafficOrbit(props: Props) {
 				(a, b) =>
 					Number(b === scope) - Number(a === scope) || a.localeCompare(b),
 			);
-			const columns = Math.ceil(Math.sqrt(projects.length));
-			const layouts = projects.map((id, index) => {
-				const scale =
-					(all && projects.length > 1) || (!all && id !== scope) ? 0.35 : 1;
-				const center: Vec3 = all
-					? [(index % columns) * 42, 0, Math.floor(index / columns) * 42]
-					: index === 0
+			const trafficWeight = (id: string) =>
+				records.reduce(
+					(count, record) =>
+						count +
+						Number(
+							record.row.toProjectId === id || record.row.fromProjectId === id,
+						),
+					0,
+				);
+			const primary = all
+				? [...projects].sort(
+						(a, b) => trafficWeight(b) - trafficWeight(a) || a.localeCompare(b),
+					)[0]
+				: scope;
+			const ordered = [
+				primary,
+				...projects.filter((id) => id !== primary),
+			].filter((id): id is string => !!id);
+			const layouts = ordered.map((id, index) => {
+				const scale = index === 0 ? 1 : 0.65;
+				const side = index % 2 ? -1 : 1;
+				const row = Math.floor((index - 1) / 2);
+				const center: Vec3 =
+					index === 0
 						? [0, 0, 0]
-						: [
-								70 + ((index - 1) % 3) * 42,
-								0,
-								Math.floor((index - 1) / 3) * 42,
-							];
+						: [side * (84 + (row % 2) * 18), -4 - row * 2, -56 - row * 72];
 				return { id, scale, center };
 			});
-			const extents = layouts.flatMap(({ center, scale }) => [
-				[center[0] - 43 * scale, center[2] - 43 * scale],
-				[center[0] + 43 * scale, center[2] + 43 * scale],
-			]);
-			if (extents.length) {
-				const left = Math.min(...extents.map((point) => point[0])),
-					right = Math.max(...extents.map((point) => point[0]));
-				const back = Math.min(...extents.map((point) => point[1])),
-					front = Math.max(...extents.map((point) => point[1]));
-				homeTarget = [(left + right) / 2, 0, (back + front) / 2];
-				homeDistance =
-					projects.length === 1
-						? 116
-						: Math.min(
-								380,
-								Math.max(
-									116,
-									((right - left) / Math.max(0.5, gl.w / gl.h)) * 1.8,
-									(front - back) * 1.7,
-								),
-							);
-			}
+			homeTarget = [0, 4, -8];
+			homeDistance = 125;
 			if (ready && fittedScope.current !== scope) {
 				fittedScope.current = scope;
 				camera.target = [...homeTarget];
 				Object.assign(camera, {
-					yaw: 0.03,
-					pitch: 0.78,
+					yaw: -0.16,
+					pitch: 0.52,
 					distance: homeDistance,
 				});
 				Object.assign(goal, camera, { target: [...homeTarget] });
@@ -222,15 +222,29 @@ export default function TrafficOrbit(props: Props) {
 			const ring = new MeshBuilder();
 			const ringColor = theme === "light" ? token("text-tertiary") : border;
 			for (const { id: projectId, center, scale } of layouts) {
-				ring.torus(...center, 43 * scale, theme === "light" ? 0.07 : 0.03, ringColor, 0.4);
-				ring.torus(center[0], -0.12, center[2], 42 * scale, theme === "light" ? 0.04 : 0.014, agent, 0.3);
+				ring.torus(
+					...center,
+					43 * scale,
+					theme === "light" ? 0.07 : 0.03,
+					ringColor,
+					0.4,
+				);
+				ring.torus(
+					center[0],
+					-0.12,
+					center[2],
+					42 * scale,
+					theme === "light" ? 0.04 : 0.014,
+					agent,
+					0.3,
+				);
 				const project = latest.current.projects?.find(
 					(project) => project.id === projectId,
 				);
 				if (project) {
 					const label = document.createElement("div");
-					label.className = "traffic-node-label streamer-private";
-					label.style.width = "170px";
+					label.className = "traffic-project-label streamer-private";
+
 					label.style.pointerEvents = "none";
 					label.hidden = true;
 					const title = document.createElement("strong");
@@ -271,13 +285,23 @@ export default function TrafficOrbit(props: Props) {
 						: 13 + ((seed >>> 16) % 2400) / 100;
 					const point: Vec3 = V.add(center, [
 						Math.cos(angle) * radius * scale,
-						(1 + (seed % 7) * 0.2) * scale,
+						(coordinator ? 10 : 3 + (seed % 11) * 0.75) * scale,
 						Math.sin(angle) * radius * scale,
 					]);
 					points.set(node.key, point);
+					ring.beam([point[0], center[1], point[2]], point, 0.025, border, 0.2);
+					ring.torus(
+						point[0],
+						center[1],
+						point[2],
+						coordinator ? 4 : 1.7,
+						0.035,
+						agent,
+						0.45,
+					);
 					const size =
-						scale *
-						(coordinator ? 2.65 : node.task?.status === "todo" ? 0.55 : 1.25);
+						Math.max(0.85, scale) *
+						(coordinator ? 3.3 : node.task?.status === "todo" ? 1.1 : 1.8);
 					const body = new MeshBuilder();
 					body.sphere(
 						0,
@@ -324,6 +348,14 @@ export default function TrafficOrbit(props: Props) {
 						label.append(role);
 					}
 					label.onclick = () => latest.current.onSelect(node.key);
+					label.onpointerenter = () => {
+						hovered = node.key;
+						dirty = true;
+					};
+					label.onpointerleave = () => {
+						hovered = null;
+						dirty = true;
+					};
 					layer.append(label);
 					nodes.push({ node, point, radius: size, mesh: mesh(body), label });
 				}
@@ -358,7 +390,7 @@ export default function TrafficOrbit(props: Props) {
 					pairs.add(pair);
 					wires.path(
 						path,
-						theme === "light" ? (active ? 0.11 : 0.07) : (active ? 0.065 : 0.025),
+						theme === "light" ? (active ? 0.11 : 0.07) : active ? 0.065 : 0.025,
 						color,
 						active ? 0.7 : 0.35,
 						record.row.status !== "delivered",
@@ -419,8 +451,8 @@ export default function TrafficOrbit(props: Props) {
 			home: () => {
 				camera.target = [...homeTarget];
 				Object.assign(goal, {
-					yaw: 0.03,
-					pitch: 0.78,
+					yaw: -0.16,
+					pitch: 0.52,
 					distance: homeDistance,
 					target: [...homeTarget],
 				});
@@ -434,6 +466,37 @@ export default function TrafficOrbit(props: Props) {
 			startX: number;
 			startY: number;
 		} | null = null;
+		const hitAt = (event: PointerEvent) => {
+			const bounds = el.getBoundingClientRect();
+			return nodes
+				.map((node) => ({ node, p: gl.project(node.point) }))
+				.filter(
+					({ node, p }) =>
+						p.visible &&
+						Math.hypot(
+							p.x - event.clientX + bounds.left,
+							p.y - event.clientY + bounds.top,
+						) < Math.max(14, (node.radius * gl.h) / p.depth),
+				)
+				.sort((a, b) => a.p.depth - b.p.depth)[0]?.node;
+		};
+		region.addEventListener(
+			"pointerenter",
+			() => {
+				pointerInside = true;
+			},
+			{ signal: sig.signal },
+		);
+		region.addEventListener(
+			"pointerleave",
+			() => {
+				pointerInside = false;
+				hovered = null;
+				keys.clear();
+				dirty = true;
+			},
+			{ signal: sig.signal },
+		);
 		el.addEventListener(
 			"pointerdown",
 			(event) => {
@@ -452,7 +515,15 @@ export default function TrafficOrbit(props: Props) {
 		el.addEventListener(
 			"pointermove",
 			(event) => {
-				if (!drag) return;
+				if (!drag) {
+					const next = hitAt(event)?.node.key ?? null;
+					if (hovered !== next) {
+						hovered = next;
+						dirty = true;
+					}
+					el.style.cursor = next ? "pointer" : "grab";
+					return;
+				}
 				drag.moved ||=
 					Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >
 					5;
@@ -471,19 +542,8 @@ export default function TrafficOrbit(props: Props) {
 			"pointerup",
 			(event) => {
 				if (drag && !drag.moved) {
-					const bounds = el.getBoundingClientRect();
-					const hit = nodes
-						.map((node) => ({ node, p: gl.project(node.point) }))
-						.filter(
-							({ node, p }) =>
-								p.visible &&
-								Math.hypot(
-									p.x - event.clientX + bounds.left,
-									p.y - event.clientY + bounds.top,
-								) < Math.max(12, (node.radius * gl.h) / p.depth),
-						)
-						.sort((a, b) => a.p.depth - b.p.depth)[0];
-					if (hit) latest.current.onSelect(hit.node.node.key);
+					const hit = hitAt(event);
+					if (hit) latest.current.onSelect(hit.node.key);
 				}
 				drag = null;
 			},
@@ -504,15 +564,22 @@ export default function TrafficOrbit(props: Props) {
 			},
 			{ passive: false, signal: sig.signal },
 		);
-		el.addEventListener(
+		window.addEventListener(
 			"keydown",
 			(event) => {
 				if (
-					["w", "a", "s", "d"].includes(event.key.toLowerCase()) &&
+					(pointerInside || region.contains(document.activeElement)) &&
+					!(
+						event.target instanceof Element &&
+						event.target.closest(
+							'input, textarea, select, [contenteditable="true"], [role="combobox"]',
+						)
+					) &&
+					["w", "a", "s", "d"].includes(navigationKey(event)) &&
 					!event.metaKey &&
 					!event.ctrlKey
 				) {
-					keys.add(event.key.toLowerCase());
+					keys.add(navigationKey(event));
 					event.preventDefault();
 					dirty = true;
 				}
@@ -521,10 +588,10 @@ export default function TrafficOrbit(props: Props) {
 		);
 		window.addEventListener(
 			"keyup",
-			(event) => keys.delete(event.key.toLowerCase()),
+			(event) => keys.delete(navigationKey(event)),
 			{ signal: sig.signal },
 		);
-		el.addEventListener("blur", () => keys.clear(), { signal: sig.signal });
+		window.addEventListener("blur", () => keys.clear(), { signal: sig.signal });
 		el.addEventListener(
 			"webglcontextlost",
 			(event) => {
@@ -594,6 +661,9 @@ export default function TrafficOrbit(props: Props) {
 				Math.sin(camera.pitch) * camera.distance,
 				Math.cos(camera.yaw) * Math.cos(camera.pitch) * camera.distance,
 			]);
+			el.dataset.cameraTarget = camera.target
+				.map((value) => value.toFixed(3))
+				.join(",");
 			gl.begin(eye, camera.target);
 			gl.particles(stars);
 			const nodeMeshes = new Set(nodes.map((node) => node.mesh));
@@ -610,11 +680,11 @@ export default function TrafficOrbit(props: Props) {
 				label.hidden = !show;
 				if (show) {
 					label.style.transform = `translate(${x}px,${y}px)`;
-					occupied.push({ x, y });
 				}
 			}
 			for (const item of [...nodes].sort(
 				(a, b) =>
+					Number(b.node.key === hovered) - Number(a.node.key === hovered) ||
 					Number(b.node.key === latest.current.selected) -
 						Number(a.node.key === latest.current.selected) ||
 					Number(b.node.task?.taskType === "coordinator") -
@@ -627,6 +697,7 @@ export default function TrafficOrbit(props: Props) {
 					x = p.x - 95,
 					y = p.y + 18;
 				const relevant =
+					item.node.key === hovered ||
 					item.node.task?.status !== "todo" ||
 					item.node.key === latest.current.selected ||
 					item.node.task.taskType === "coordinator" ||
@@ -639,9 +710,11 @@ export default function TrafficOrbit(props: Props) {
 					x < gl.w - 195 &&
 					y > 52 &&
 					y < gl.h - 85 &&
-					!occupied.some(
-						(rect) => Math.abs(rect.x - x) < 200 && Math.abs(rect.y - y) < 58,
-					);
+					(item.node.key === hovered ||
+						!occupied.some(
+							(rect) => Math.abs(rect.x - x) < 200 && Math.abs(rect.y - y) < 58,
+						));
+				item.label.classList.toggle("is-hovered", item.node.key === hovered);
 				item.label.hidden = !show;
 				item.label.tabIndex = show ? 0 : -1;
 				if (show) {

@@ -627,3 +627,28 @@
 		margin-left: 0;
 	}
 }
+
+.traffic-project-label {
+	position: absolute;
+	padding: 5px 9px;
+	max-width: 170px;
+	font-size: 11px;
+	color: rgb(var(--text-secondary));
+	background: rgb(var(--surface-base) / 0.5);
+	border-radius: 6px;
+	text-wrap: balance;
+}
+.traffic-node-label {
+	box-shadow:
+		0 2px 5px rgb(0 0 0 / 0.12),
+		0 8px 24px rgb(0 0 0 / 0.18);
+	transition:
+		background-color 150ms,
+		box-shadow 150ms;
+}
+.traffic-node-label.is-hovered,
+.traffic-node-label:hover {
+	box-shadow:
+		0 0 0 1px rgb(var(--accent)),
+		0 8px 24px rgb(0 0 0 / 0.25);
+}
