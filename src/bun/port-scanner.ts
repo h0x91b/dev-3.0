@@ -47,7 +47,7 @@ export type ProcessInfoResult = {
 	cmdlines: Map<number, string>;
 };
 
-let _processInfoCache: { promise: Promise<ProcessInfoResult>; expiry: number } | null = null;
+let _processInfoCache: { promise: Promise<ProcessInfoResult>; startedAt: number } | null = null;
 
 /** Reset the process info cache. Exposed for test isolation. */
 export function clearProcessInfoCache(): void {
@@ -98,13 +98,19 @@ export function parseProcessInfoOutput(output: string): ProcessInfoResult {
  * Results are cached for PROCESS_INFO_CACHE_MS so that both pollers
  * (port-scanner and resource-monitor) share a single spawn per cycle.
  * The cache stores the promise, so concurrent callers share one spawn too.
+ *
+ * `maxAgeMs` lets a caller that needs fresher numbers than the shared TTL —
+ * the boosted resource-monitor tick behind the open tmux popover — bypass a
+ * cache entry older than it can live with, while still sharing the spawn with
+ * anyone polling in the same moment.
  */
-export function collectProcessInfo(): Promise<ProcessInfoResult> {
+export function collectProcessInfo(options?: { maxAgeMs?: number }): Promise<ProcessInfoResult> {
 	const now = Date.now();
-	if (_processInfoCache && now < _processInfoCache.expiry) return _processInfoCache.promise;
+	const maxAge = options?.maxAgeMs ?? PROCESS_INFO_CACHE_MS;
+	if (_processInfoCache && now - _processInfoCache.startedAt < maxAge) return _processInfoCache.promise;
 
 	const promise = runText(["ps", "-eo", "pid=,ppid=,rss=,%cpu=,args="]).then(parseProcessInfoOutput);
-	_processInfoCache = { promise, expiry: now + PROCESS_INFO_CACHE_MS };
+	_processInfoCache = { promise, startedAt: now };
 	return promise;
 }
 

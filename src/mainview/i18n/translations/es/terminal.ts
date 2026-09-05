@@ -181,6 +181,11 @@ const terminal = {
 	"tmuxSessions.killAllConfirmMessage_other": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
 	"tmuxSessions.killAllConfirmLabel": "Terminar todas las sesiones",
 	"tmuxSessions.refresh": "Actualizar",
+	"tmuxSessions.sortLabel": "Orden",
+	"tmuxSessions.sortByMemory": "Memoria",
+	"tmuxSessions.sortByCpu": "CPU",
+	"tmuxSessions.live": "en vivo",
+	"tmuxSessions.liveHint": "La CPU y la memoria se actualizan cada 2 segundos mientras esta lista está abierta.",
 
 	// Spawn Agent
 	"tmux.spawnExtraAgent": "+ agente",

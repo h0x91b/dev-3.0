@@ -181,6 +181,11 @@ const terminal = {
 	"tmuxSessions.killAllConfirmMessage_other": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
 	"tmuxSessions.killAllConfirmLabel": "Kill all sessions",
 	"tmuxSessions.refresh": "Refresh",
+	"tmuxSessions.sortLabel": "Sort",
+	"tmuxSessions.sortByMemory": "Memory",
+	"tmuxSessions.sortByCpu": "CPU",
+	"tmuxSessions.live": "live",
+	"tmuxSessions.liveHint": "CPU and memory refresh every 2 seconds while this list is open.",
 
 	// Spawn Agent
 	"tmux.spawnExtraAgent": "+ Agent",
