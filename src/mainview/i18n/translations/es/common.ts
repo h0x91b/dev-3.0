@@ -121,7 +121,7 @@ const common = {
 	"traffic.taskGone": "Esta tarea ya no existe — el mensaje queda, la tarea no",
 	"traffic.retentionEmpty": "El historial se guarda {days} días",
 
-	"traffic.orbit.name": "Órbita",
+	"traffic.orbit.name": "Experimento 1",
 	"traffic.orbit.live": "En directo",
 	"traffic.orbit.history": "Historial",
 	"traffic.orbit.resume": "Reanudar animación",

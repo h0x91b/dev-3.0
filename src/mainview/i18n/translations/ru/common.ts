@@ -127,7 +127,7 @@ const common = {
 	"traffic.taskGone": "Этой задачи больше нет — сообщение осталось, задача нет",
 	"traffic.retentionEmpty": "История хранится {days} дней",
 
-	"traffic.orbit.name": "Орбита",
+	"traffic.orbit.name": "Эксперимент 1",
 	"traffic.orbit.live": "В реальном времени",
 	"traffic.orbit.history": "История",
 	"traffic.orbit.resume": "Продолжить анимацию",

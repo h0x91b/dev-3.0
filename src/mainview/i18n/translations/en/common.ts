@@ -121,7 +121,7 @@ const common = {
 	"traffic.taskGone": "This task no longer exists — the message stays, the task does not",
 	"traffic.retentionEmpty": "History is kept for {days} days",
 
-	"traffic.orbit.name": "Orbit",
+	"traffic.orbit.name": "Experiment 1",
 	"traffic.orbit.live": "Live",
 	"traffic.orbit.history": "History",
 	"traffic.orbit.resume": "Resume animation",

@@ -16,6 +16,8 @@ The approved visualization replaces the traffic log with a 3D project orbit and 
 
 The all-project camera starts near the project with the most recorded attempts; other projects recede behind it instead of shrinking every node into a uniform grid. Task height and stems communicate spatial separation only, not a new metric. Physical WASD keys work over the map or its focused controls, excluding text-entry fields.
 
+The existing experimental agent-traffic toggle and the view badge are named Experiment 1. A second, simpler view and switching between views belong to a subsequent task; this change does not introduce a placeholder option.
+
 ## Risks
 
 Dense graphs and unavailable WebGL must retain usable task/message lists, and reduced motion must suppress animation. A held record describes its original attempt rather than the current queue; a later message neither acknowledges nor resolves it. Filesystem notification availability varies; read retries reattach unavailable observers without altering shared log paths or formats.
