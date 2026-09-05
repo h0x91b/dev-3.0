@@ -286,4 +286,56 @@ describe("dev3 events — argument guards", () => {
 		await handleEvents(args({ json: "true" }), SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput).olderThanWindow).toBe(5);
 	});
+
+	describe("movements are a filter, not a reshape", () => {
+		const moveEvent = () => event({
+			kind: "move",
+			id: "aaaa0001-1111-2222-3333-444444444444",
+			source: undefined,
+			movement: { kind: "status", from: "in-progress", to: "completed" },
+			text: "Agent is Working → Completed",
+		});
+
+		it("accepts --kind move and passes it to the app", async () => {
+			mockSend.mockResolvedValue(okResp(selection({ events: [moveEvent()] })));
+			await handleEvents(args({ kind: "move" }), SOCKET, CTX);
+			expect(mockSend.mock.calls[0]![2]!.kind).toBe("move");
+			expect(stdoutOutput).toContain("move");
+			expect(stdoutOutput).toContain("Agent is Working → Completed");
+		});
+
+		it("sends no kind at all when the caller did not filter", async () => {
+			mockSend.mockResolvedValue(okResp(selection()));
+			await handleEvents(args(), SOCKET, CTX);
+			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("kind");
+		});
+
+		// A cursor earned under a filter does not cover the kinds that filter hid.
+		it("warns that a filtered cursor only advances over that kind", async () => {
+			mockSend.mockResolvedValue(okResp(selection({ events: [moveEvent()] })));
+			await handleEvents(args({ kind: "move" }), SOCKET, CTX);
+			expect(stdoutOutput).toContain("the cursor below advances over move events ONLY");
+		});
+
+		it("stays silent about filtering when nothing was filtered", async () => {
+			mockSend.mockResolvedValue(okResp(selection()));
+			await handleEvents(args(), SOCKET, CTX);
+			expect(stdoutOutput).not.toContain("advances over");
+		});
+
+		// Retention loss is stated as a number: a trimmed log presented as complete
+		// is the same silent loss the cursor exists to prevent.
+		it("says how many movements the cap destroyed inside the range", async () => {
+			mockSend.mockResolvedValue(okResp(selection({ movementsEvicted: 7 })));
+			await handleEvents(args({ from: "2026-08-01" }), SOCKET, CTX);
+			expect(stdoutOutput).toContain("Retention loss: 7 movements were evicted");
+			expect(stdoutOutput).toContain("NOT complete");
+		});
+
+		it("says nothing about retention when the cap destroyed nothing in range", async () => {
+			mockSend.mockResolvedValue(okResp(selection({ movementsEvicted: 0 })));
+			await handleEvents(args({ from: "2026-08-01" }), SOCKET, CTX);
+			expect(stdoutOutput).not.toContain("Retention loss");
+		});
+	});
 });

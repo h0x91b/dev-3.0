@@ -15,8 +15,8 @@ import type { ParsedArgs } from "../args";
 import { resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
-/** v1 emits notes only; the flag exists so a v2 kind is a filter, not a reshape. */
-const VALID_KINDS = ["all", "note"] as const;
+/** `note` is something written down, `move` is the card changing column. */
+const VALID_KINDS = ["all", "note", "move"] as const;
 
 const TITLE_WIDTH = 34;
 const TEXT_WIDTH = 72;
@@ -59,7 +59,7 @@ function renderTable(events: BoardEvent[], multiProject: boolean): void {
 
 function renderFooter(
 	sel: EventSelection,
-	opts: { asked: string | null; resolved: string | null; limit: number; windowMs: number },
+	opts: { asked: string | null; resolved: string | null; limit: number; windowMs: number; kind: string },
 ): void {
 	const out = (line: string) => process.stdout.write(`${line}\n`);
 	out("");
@@ -85,6 +85,23 @@ function renderFooter(
 		out(
 			`Capped at --limit ${opts.limit}: ${sel.droppedNewer} NEWER event${sel.droppedNewer === 1 ? "" : "s"} not shown.` +
 			" The oldest were kept, so continuing from the cursor below leaves no hole.",
+		);
+	}
+
+	// Movements the per-task cap destroyed inside the answered range. Silence here
+	// would present a trimmed log as the whole history.
+	if (sel.movementsEvicted && sel.movementsEvicted > 0) {
+		out(
+			`Retention loss: ${sel.movementsEvicted} movement${sel.movementsEvicted === 1 ? "" : "s"} were evicted by the` +
+			" per-task cap and no longer exist. Some fall inside what you asked for — this range is NOT complete.",
+		);
+	}
+
+	// A cursor only ever covers the kinds the run that printed it looked at.
+	if (opts.kind !== "all") {
+		out(
+			`Filtered to --kind ${opts.kind}: the cursor below advances over ${opts.kind} events ONLY.` +
+			` Re-using it without --kind ${opts.kind} would skip the other kinds in the same span.`,
 		);
 	}
 
@@ -149,6 +166,7 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	const projectId = allProjects ? undefined : resolveProjectId(args.flags.project, context);
 
 	const params: Record<string, unknown> = { limit, cursor };
+	if (kind !== "all") params.kind = kind;
 	if (cursorId) params.cursorId = cursorId;
 	if (projectId) params.projectId = projectId;
 
@@ -181,6 +199,7 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 		resolved: selection.from ?? (cursor ? cursor.replace(/Z$/, "") : null),
 		limit,
 		windowMs: DEFAULT_EVENT_WINDOW_MS,
+		kind,
 	});
 }
 

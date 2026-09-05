@@ -82,8 +82,10 @@ degrading into a time window.
 - Two notes sharing a millisecond exactly would be indistinguishable to a cursor. None exist on the
   current board (0 of 1805), and the cap deliberately widens rather than splitting such a group, so
   the failure would be one repeated line rather than a skipped note.
-- v1 emits only `kind: "note"`. Board movements and completions are the natural v2; the `KIND`
-  column and the `--kind` filter exist so they arrive as a filter rather than a reformat.
+- v1 emitted only `kind: "note"`. Board movements landed on 2026-09-05 as the planned second kind,
+  through the `KIND` column and the `--kind` filter rather than a reformat — see
+  `decisions/2026/09/05/record-board-movements-because-nothing-retained-them.md`, which also records
+  why they had to be captured as they happen instead of reconstructed.
 
 ## Alternatives considered
 

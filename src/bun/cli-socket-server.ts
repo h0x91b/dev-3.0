@@ -5,10 +5,10 @@ import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
-import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent } from "../shared/board-events";
+import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { SharedImageError, saveSharedImage } from "./shared-images";
@@ -1185,7 +1185,14 @@ const handlers: Record<string, Handler> = {
 			? [await data.getProject(params.projectId as string)]
 			: [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 
+		const kind = (params.kind as BoardEventKind | undefined) ?? null;
+		const wantNotes = kind === null || kind === "note";
+		const wantMoves = kind === null || kind === "move";
+
 		const events: BoardEvent[] = [];
+		// Filled while scanning; resolved into a count once the cursor is known,
+		// because "was it inside what you asked for" needs that cursor.
+		const evictionProbes: Array<{ dropped: number; oldestRetained: string | null }> = [];
 		for (const project of projects) {
 			let tasks: Task[];
 			try {
@@ -1194,7 +1201,43 @@ const handlers: Record<string, Handler> = {
 				log.warn("events.list: skipping unreadable project", { projectId: project.id, error: String(err) });
 				continue;
 			}
+			const columnName = new Map((project.customColumns ?? []).map((col) => [col.id, col.name]));
+			// The board's own vocabulary, renames included — a reader recognises
+			// "Agent is Working", not the `in-progress` slug underneath it.
+			const statusLabel = (status: TaskStatus) =>
+				project.customStatusLabels?.[status] ?? STATUS_LABELS[status] ?? formatStatus(status);
 			for (const task of tasks) {
+				if (wantMoves) {
+					if (task.movementsDropped) {
+						const oldest = normalizeEventInstant(task.movements?.[0]?.at);
+						evictionProbes.push({ dropped: task.movementsDropped, oldestRetained: oldest });
+					}
+					for (const move of task.movements ?? []) {
+						const at = normalizeEventInstant(move.at);
+						if (!at) continue;
+						const movement = {
+							kind: move.kind,
+							...(move.from ? { from: move.from } : {}),
+							to: move.to,
+							fromColumn: move.fromColumnId ? columnName.get(move.fromColumnId) ?? null : null,
+							toColumn: move.toColumnId ? columnName.get(move.toColumnId) ?? null : null,
+						};
+						events.push({
+							kind: "move",
+							at,
+							id: move.id,
+							projectId: project.id,
+							projectName: project.name ?? "",
+							taskId: task.id,
+							seq: task.seq ?? null,
+							taskTitle: getTaskTitle(task),
+							taskStatus: task.status,
+							movement,
+							text: formatMovementText(movement, statusLabel),
+						});
+					}
+				}
+				if (!wantNotes) continue;
 				for (const note of task.notes ?? []) {
 					const at = normalizeEventInstant(note.createdAt) ?? normalizeEventInstant(task.createdAt);
 					if (!at) continue;
@@ -1222,14 +1265,25 @@ const handlers: Record<string, Handler> = {
 			? resolveEventIdPrefix(events, cursorId)
 			: (params.cursor as string | null | undefined) ?? null;
 
+		const now = Date.now();
+		// A task's evicted moves are all older than its oldest surviving one, so
+		// they only matter when even that survivor is newer than where the caller
+		// is reading from — then the gap is inside the answer.
+		const floor = cursor
+			?? new Date(now - ((params.windowMs as number | undefined) ?? DEFAULT_EVENT_WINDOW_MS)).toISOString();
+		const movementsEvicted = evictionProbes
+			.filter((p) => p.oldestRetained !== null && p.oldestRetained > floor)
+			.reduce((sum, p) => sum + p.dropped, 0);
+
 		return {
 			...selectEvents(events, {
 				cursor,
 				limit,
-				now: Date.now(),
+				now,
 				windowMs: params.windowMs as number | undefined,
 			}),
 			from: cursor ? cursor.replace(/Z$/, "") : null,
+			movementsEvicted,
 		};
 	},
 

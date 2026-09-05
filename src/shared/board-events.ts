@@ -1,11 +1,11 @@
-import type { NoteSource, TaskStatus } from "./types";
+import type { NoteSource, TaskMovementKind, TaskStatus } from "./types";
 
 /**
- * What kind of thing happened. v1 emits only "note"; the field exists so board
- * movements, task creation and completion can join later without reshaping the
- * line format callers already read.
+ * What kind of thing happened. `note` is something an agent or the user wrote
+ * down; `move` is the card changing its position on the board — created, a
+ * status change (completion and cancellation included), or a custom-column move.
  */
-export type BoardEventKind = "note";
+export type BoardEventKind = "note" | "move";
 
 /** One thing that happened on the board, addressable by a cursor. */
 export interface BoardEvent {
@@ -20,7 +20,16 @@ export interface BoardEvent {
 	seq: number | null;
 	taskTitle: string;
 	taskStatus: TaskStatus;
-	source: NoteSource;
+	/** Who wrote it. Notes only — a movement has no author the board records. */
+	source?: NoteSource;
+	/** Movements only: the structured move behind the rendered `text`. */
+	movement?: {
+		kind: TaskMovementKind;
+		from?: TaskStatus;
+		to: TaskStatus;
+		fromColumn?: string | null;
+		toColumn?: string | null;
+	};
 	text: string;
 }
 
@@ -40,6 +49,28 @@ export interface EventSelection {
 	 * an id would leave the caller with no position at all.
 	 */
 	from?: string | null;
+	/**
+	 * Movements the per-task cap destroyed on tasks whose oldest surviving move is
+	 * newer than the cursor — so some of them fell inside what was asked for and
+	 * can never be shown. Reported rather than hidden: a trimmed log presented as
+	 * a complete one is the same silent-loss failure a cursor exists to prevent.
+	 */
+	movementsEvicted?: number;
+}
+
+/**
+ * One line describing a move, in the same voice a note's body reads in. Column
+ * names win over the status they share, because "On hold" is what the board
+ * shows and the status underneath it is an implementation detail.
+ */
+export function formatMovementText(
+	movement: NonNullable<BoardEvent["movement"]>,
+	formatStatusLabel: (status: TaskStatus) => string,
+): string {
+	const where = (status: TaskStatus, column?: string | null) => column || formatStatusLabel(status);
+	const to = where(movement.to, movement.toColumn);
+	if (movement.kind === "created") return `created in ${to}`;
+	return `${where(movement.from ?? movement.to, movement.fromColumn)} → ${to}`;
 }
 
 /** Default look-back when the caller supplies no cursor. */

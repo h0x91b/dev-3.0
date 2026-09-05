@@ -317,3 +317,21 @@ describe("downgrade safety", () => {
 		expect(blob.completedDiffFileStats).toHaveLength(2);
 	});
 });
+
+// `history` is offloaded to the sidecar; `movements` deliberately is NOT, because
+// `dev3 events` reads every task's moves on every call and a sidecar would turn
+// that into one file read per task on the board.
+describe("movements stay in tasks.json", () => {
+	it("is not moved into the blob and not stripped from the task", () => {
+		const task = taskWithFileStats({
+			movements: [{ id: "aaaa0001", at: "2026-09-05T09:00:00.000Z", kind: "created", to: "todo" }],
+			movementsDropped: 3,
+		});
+
+		const split = splitTaskBlobs([task]);
+
+		expect(split.blobs[0].payload).not.toHaveProperty("movements");
+		expect(split.tasks[0].movements).toHaveLength(1);
+		expect(split.tasks[0].movementsDropped).toBe(3);
+	});
+});
