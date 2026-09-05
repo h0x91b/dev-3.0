@@ -55,26 +55,40 @@ beforeEach(() => {
 	mockedApi.request.getLowBatteryStatus.mockResolvedValue(makeStatus());
 });
 
-it("is on when the settings carry no opt-out", async () => {
-	renderSection({});
-
-	const toggle = screen.getByRole("switch", { name: "Low-battery answer format" });
-	expect(toggle).toHaveAttribute("aria-checked", "true");
-	await waitFor(() => expect(screen.getByText(/46f79bf8/)).toBeInTheDocument());
-});
-
-it("is off when the user opted out, and reports the opt-out upward", async () => {
-	const onToggle = renderSection({ lowBatteryDisabled: true });
+// The ruling that made this opt-in: nothing stored means the switch reads off, and
+// the row claims no install — the status lines only appear once it is on.
+it("is off when the settings carry no choice, and asks to be turned on", async () => {
+	const onToggle = renderSection({});
 
 	const toggle = screen.getByRole("switch", { name: "Low-battery answer format" });
 	expect(toggle).toHaveAttribute("aria-checked", "false");
+	expect(screen.queryByText(/46f79bf8/)).not.toBeInTheDocument();
 
 	await userEvent.click(toggle);
 	expect(onToggle).toHaveBeenCalledWith(true);
 });
 
+it("is off when the user explicitly turned it off", async () => {
+	renderSection({ lowBatteryEnabled: false });
+
+	expect(screen.getByRole("switch", { name: "Low-battery answer format" })).toHaveAttribute(
+		"aria-checked",
+		"false",
+	);
+});
+
+it("is on after an explicit opt-in, and names the upstream revision", async () => {
+	renderSection({ lowBatteryEnabled: true });
+
+	expect(screen.getByRole("switch", { name: "Low-battery answer format" })).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
+	await waitFor(() => expect(screen.getByText(/46f79bf8/)).toBeInTheDocument());
+});
+
 it("turning it off asks for a real uninstall", async () => {
-	const onToggle = renderSection({});
+	const onToggle = renderSection({ lowBatteryEnabled: true });
 
 	await userEvent.click(screen.getByRole("switch", { name: "Low-battery answer format" }));
 	expect(onToggle).toHaveBeenCalledWith(false);
@@ -84,7 +98,7 @@ it("says plainly when the user's own output style was left alone", async () => {
 	mockedApi.request.getLowBatteryStatus.mockResolvedValue(
 		makeStatus({ outcome: { kind: "user-style-kept", style: "Lazy Dzen" }, selectedStyle: "Lazy Dzen" }),
 	);
-	renderSection({});
+	renderSection({ lowBatteryEnabled: true });
 
 	await waitFor(() => expect(screen.getByText(/Lazy Dzen/)).toBeInTheDocument());
 	expect(screen.getByText(/left it alone/)).toBeInTheDocument();
@@ -95,7 +109,7 @@ it("offers a one-click switch, and only then changes the style", async () => {
 		makeStatus({ outcome: { kind: "user-style-kept", style: "Lazy Dzen" } }),
 	);
 	mockedApi.request.selectLowBatteryStyle.mockResolvedValue(makeStatus({ outcome: { kind: "selected" } }));
-	renderSection({});
+	renderSection({ lowBatteryEnabled: true });
 
 	const button = await screen.findByRole("button", { name: "Switch to Low Battery" });
 	expect(mockedApi.request.selectLowBatteryStyle).not.toHaveBeenCalled();
@@ -111,12 +125,12 @@ it("recognises an existing plugin install instead of claiming it installed one",
 	mockedApi.request.getLowBatteryStatus.mockResolvedValue(
 		makeStatus({ outcome: { kind: "already-on", style: "low-battery:Low Battery" } }),
 	);
-	renderSection({});
+	renderSection({ lowBatteryEnabled: true });
 
 	await waitFor(() => expect(screen.getByText(/no second copy/)).toBeInTheDocument());
 });
 
 it("is honest about the harnesses dev3 cannot switch the format on for", async () => {
-	renderSection({});
+	renderSection({ lowBatteryEnabled: true });
 	await waitFor(() => expect(screen.getByText(/Gemini, Zed and Copilot/)).toBeInTheDocument());
 });

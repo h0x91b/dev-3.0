@@ -809,24 +809,6 @@ function App() {
 		return () => window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
 	}, [navigate]);
 
-	// An upgrading user's agents suddenly answer in a different shape. Say it once,
-	// clickably, so it reads as a feature and turning it off costs one click. One-way:
-	// the flag is never written back to false.
-	useEffect(() => {
-		if (!settingsLoaded) return;
-		if (globalSettings.lowBatteryAnnounced || globalSettings.lowBatteryDisabled === true) return;
-		setGlobalSettings((prev) => {
-			if (prev.lowBatteryAnnounced) return prev;
-			const next = { ...prev, lowBatteryAnnounced: true };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
-		toast.info(t("settings.lowBatteryAnnounce"), {
-			source: "settings",
-			onClick: () => navigate({ screen: "settings", section: "agents", anchor: "low-battery" }),
-		});
-	}, [settingsLoaded, globalSettings.lowBatteryAnnounced, globalSettings.lowBatteryDisabled, navigate, t]);
-
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
 	// does: in a task view with split open-mode, land in the target's task view
 	// (no task selected); otherwise land on its Kanban board. Shared by the

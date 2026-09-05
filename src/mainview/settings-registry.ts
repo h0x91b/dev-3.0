@@ -354,7 +354,7 @@ export const SETTINGS_ENTRIES = [
 		titleKey: "settings.lowBattery",
 		descriptionKey: "settings.lowBatteryDesc",
 		anchor: "low-battery",
-		globalField: "lowBatteryDisabled",
+		globalField: "lowBatteryEnabled",
 		storage: "global",
 	},
 	{
@@ -556,7 +556,9 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"helpModeDiscovered",
 	// Which guided tours have already run. Progress, not a preference.
 	"completedTours",
-	// One-way "we told them the answer format changed" flag. Progress, not a preference.
+	// Legacy low-battery keys from the default-on era. Never read; kept on disk only
+	// so an older co-installed build keeps its own opt-out and announce flag.
+	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
@@ -605,6 +607,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"keyboardShortcuts",
 	"reviewModePrompt",
 	"coordinatorPrompt",
+	"lowBatteryEnabled",
 	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
 ] as const satisfies readonly (keyof GlobalSettings)[];

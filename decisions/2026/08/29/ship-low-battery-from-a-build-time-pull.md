@@ -1,5 +1,11 @@
 # Ship low-battery by pulling it from upstream at build time
 
+> Partly superseded on 2026-09-05 by `decisions/2026/09/05/low-battery-is-opt-in.md`:
+> low-battery is no longer on by default. Everything below about the build-time pull,
+> the install mechanics and the `outputStyle` rules still holds; every claim that dev3
+> installs it unless the user opts out does not — the setting is now `lowBatteryEnabled`
+> and an absent key installs nothing.
+
 ## Context
 
 `low-battery` is a set of answer-shaping rules living in `h0x91b/toolbelt-for-agents`.

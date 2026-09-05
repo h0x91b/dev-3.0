@@ -405,22 +405,35 @@ function checkHomebrew(deps: DoctorDeps, appVersion?: string, bundleExists?: boo
  */
 function checkLowBattery(deps: DoctorDeps): CheckResult {
 	const label = "low-battery";
-	const disabled = (() => {
+	const enabled = (() => {
 		try {
-			return (JSON.parse(deps.readFile(`${deps.home}/.dev3.0/settings.json`)) as { lowBatteryDisabled?: unknown })
-				.lowBatteryDisabled === true;
+			return (JSON.parse(deps.readFile(`${deps.home}/.dev3.0/settings.json`)) as { lowBatteryEnabled?: unknown })
+				.lowBatteryEnabled === true;
 		} catch {
-			return false; // absent or unreadable settings ⇒ the default, which is on
+			return false; // absent or unreadable settings ⇒ the default, which is off
 		}
 	})();
 	const revision = LOW_BATTERY_REVISION.slice(0, 8);
 
-	if (disabled) {
-		return { label, status: "ok", detail: `off in Settings (build carries upstream ${revision})` };
-	}
-
 	const styleFile = `${deps.home}/.claude/output-styles/${LOW_BATTERY_STYLE_FILE}`;
 	const skillFile = `${deps.home}/.agents/skills/low-battery/SKILL.md`;
+
+	if (!enabled) {
+		// A build from the default-on era may have left files behind. dev3 does not
+		// delete them on its own — an untouched `low-battery` dir may be the user's.
+		const leftovers = deps.existsSync(styleFile) || deps.existsSync(skillFile);
+		return {
+			label,
+			status: "ok",
+			detail: leftovers
+				? `off in Settings, but an earlier install is still on disk (build carries upstream ${revision})`
+				: `off in Settings (build carries upstream ${revision})`,
+			hints: leftovers
+				? ["Settings → Agents → Low-battery answer format: turn it on and off again to remove what dev3 wrote."]
+				: undefined,
+		};
+	}
+
 	const missing = [
 		deps.existsSync(styleFile) ? null : styleFile,
 		deps.existsSync(skillFile) ? null : skillFile,

@@ -1184,16 +1184,18 @@ export interface GlobalSettings {
 	 */
 	experimentalAgentTraffic?: boolean;
 	/**
-	 * Turn off the `low-battery` answer format dev3 ships (header block first,
-	 * decision last, tables over prose). Default off ⇒ low-battery is installed.
-	 * Setting it is a real uninstall: only what dev3 wrote is removed, never the
-	 * user's own output style, skills or instruction files.
+	 * Turn on the `low-battery` answer format dev3 ships (header block first,
+	 * decision last, tables over prose). Absent ⇒ off: dev3 installs nothing and
+	 * touches no output style until the user asks. Turning it off again is a real
+	 * uninstall of what dev3 wrote, never of the user's own style or skills.
+	 */
+	lowBatteryEnabled?: boolean;
+	/**
+	 * Legacy keys from when low-battery shipped on by default. Never read — kept on
+	 * disk so an older co-installed build still sees its own opt-out and its own
+	 * "already announced" flag instead of starting over.
 	 */
 	lowBatteryDisabled?: boolean;
-	/**
-	 * Set once the "the answer format changed" notice has been shown, so an
-	 * upgrading user is told about low-battery exactly once. One-way.
-	 */
 	lowBatteryAnnounced?: boolean;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus

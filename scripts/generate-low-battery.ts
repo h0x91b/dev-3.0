@@ -3,9 +3,10 @@
  * `src/shared/low-battery-content.generated.ts`. Runs before every build and in the
  * local dev loop, so a release and `bun run dev` carry byte-identical content.
  *
- * Fails loudly when upstream is unreachable: low-battery ships on by default, and a
- * release that silently lost it would advertise a feature it does not have. The
- * generated module is checked in, so tests and type-checking never need the network.
+ * Fails loudly when upstream is unreachable: the Settings toggle offers the rules and
+ * names the upstream revision, so a release that silently lost them would offer a
+ * feature it does not have. The generated module is checked in, so tests and
+ * type-checking never need the network.
  */
 
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
