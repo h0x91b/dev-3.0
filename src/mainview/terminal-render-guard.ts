@@ -34,6 +34,8 @@ type WrappedRenderer = GuardableRenderer & {
 };
 
 export interface RenderGuardOptions {
+	/** Optional diagnostic boundary around the synchronous render call. */
+	trace?: (render: () => void) => void;
 	/** A frame threw. `consecutive` counts frames that failed in a row. */
 	onFrameError: (error: unknown, consecutive: number) => void;
 	/** No frame arrived for `stallMs` while the document was visible. */
@@ -95,7 +97,9 @@ export function installRenderGuard(renderer: GuardableRenderer, opts: RenderGuar
 		) {
 			const startedAt = opts.onFrame ? performance.now() : 0;
 			try {
-				original.call(this, buffer, forceAll, viewportY, scrollbackProvider, scrollbarOpacity);
+				const render = () => original.call(this, buffer, forceAll, viewportY, scrollbackProvider, scrollbarOpacity);
+				if (opts.trace) opts.trace(render);
+				else render();
 				frames += 1;
 				consecutive = 0;
 				lastFrameAt = now();

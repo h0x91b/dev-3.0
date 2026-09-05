@@ -1,0 +1,1 @@
+Add opt-in local diagnostic traces around terminal resize, output processing, rendering, and link underlines. Bounded captures record operation boundaries and timings to help investigate renderer freezes without recording terminal content. Traces use the regular RPC transport; the experimental direct native bridge was removed after native Bun crashes during reproduction.
