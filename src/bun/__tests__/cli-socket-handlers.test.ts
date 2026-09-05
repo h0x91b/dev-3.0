@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type TaskMovement, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -4395,5 +4395,125 @@ describe("events.list — the board's memory channel", () => {
 		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
 
 		expect((resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n-ok"]);
+	});
+
+	describe("movements — the second kind", () => {
+		function move(id: string, at: string, extra: Partial<TaskMovement> = {}): TaskMovement {
+			return { id, at, kind: "status", from: "todo", to: "in-progress", ...extra };
+		}
+
+		// The point of the kind: a task that finished cannot message anyone, and the
+		// moves it made are as dead as its worktree unless they were recorded.
+		it("still reports a movement made by a task that has since completed", async () => {
+			vi.mocked(data.loadTasks).mockResolvedValue([
+				makeTask({
+					id: "t-done",
+					seq: 1675,
+					title: "Add board movements",
+					status: "completed",
+					movements: [
+						move("aaaa0001", "2026-08-29T10:00:00.000Z"),
+						move("aaaa0002", "2026-08-29T11:00:00.000Z", { from: "in-progress", to: "completed" }),
+					],
+				}),
+			]);
+
+			const resp = await handleRequest(makeRequest("events.list", { cursor: "2026-01-01T00:00:00.000Z", limit: 100 }));
+
+			const events = (resp.data as { events: Array<Record<string, unknown>> }).events;
+			expect(events.map((e) => e.id)).toEqual(["aaaa0001", "aaaa0002"]);
+			expect(events[1]).toMatchObject({
+				kind: "move",
+				seq: 1675,
+				taskTitle: "Add board movements",
+				taskStatus: "completed",
+				text: "Agent is Working → Completed",
+			});
+		});
+
+		it("separates the two kinds in both directions", async () => {
+			vi.mocked(data.loadTasks).mockResolvedValue([
+				makeTask({
+					id: "t1",
+					notes: [note("n1", "2026-08-29T10:00:00.000Z")],
+					movements: [move("aaaa0001", "2026-08-29T11:00:00.000Z")],
+				}),
+			]);
+			const read = async (kind?: string) =>
+				(await handleRequest(makeRequest("events.list", {
+					cursor: "2026-01-01T00:00:00.000Z",
+					limit: 100,
+					...(kind ? { kind } : {}),
+				}))).data as { events: Array<{ id: string; kind: string }> };
+
+			expect((await read()).events.map((e) => e.id)).toEqual(["n1", "aaaa0001"]);
+			expect((await read("note")).events.map((e) => e.id)).toEqual(["n1"]);
+			expect((await read("move")).events.map((e) => e.id)).toEqual(["aaaa0001"]);
+		});
+
+		it("advances over movements: same cursor, same board, nothing new", async () => {
+			const tasks = [makeTask({ id: "t1", movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z")] })];
+			vi.mocked(data.loadTasks).mockResolvedValue(tasks);
+
+			const first = await handleRequest(makeRequest("events.list", { cursor: "2026-01-01T00:00:00.000Z", limit: 100, kind: "move" }));
+			expect((first.data as { cursor: string }).cursor).toBe("2026-08-29T10:00:00.000");
+
+			const second = await handleRequest(makeRequest("events.list", { cursor: "2026-08-29T10:00:00.000Z", limit: 100, kind: "move" }));
+			expect((second.data as { events: unknown[] }).events).toHaveLength(0);
+
+			tasks[0] = makeTask({
+				id: "t1",
+				movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z"), move("aaaa0002", "2026-08-29T12:00:00.000Z")],
+			});
+			const third = await handleRequest(makeRequest("events.list", { cursor: "2026-08-29T10:00:00.000Z", limit: 100, kind: "move" }));
+			expect((third.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["aaaa0002"]);
+		});
+
+		it("names the custom column rather than the status hiding under it", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(
+				makeProject({ customColumns: [{ id: "col-hold", name: "On hold", color: "#fff", llmInstruction: "" }] }),
+			);
+			vi.mocked(data.loadProjects).mockResolvedValue([
+				makeProject({ customColumns: [{ id: "col-hold", name: "On hold", color: "#fff", llmInstruction: "" }] }),
+			]);
+			vi.mocked(data.loadTasks).mockResolvedValue([
+				makeTask({
+					id: "t1",
+					movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z", {
+						kind: "column", from: "todo", to: "todo", toColumnId: "col-hold",
+					})],
+				}),
+			]);
+
+			const resp = await handleRequest(makeRequest("events.list", { cursor: "2026-01-01T00:00:00.000Z", limit: 100 }));
+
+			expect((resp.data as { events: Array<{ text: string }> }).events[0].text).toBe("To Do → On hold");
+		});
+
+		// A trimmed log presented as complete is the same silent loss a cursor exists
+		// to prevent — so the count is reported, and only when it falls in range.
+		it("reports evicted movements when they fall inside the answered range", async () => {
+			vi.mocked(data.loadTasks).mockResolvedValue([
+				makeTask({ id: "t1", movementsDropped: 7, movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z")] }),
+			]);
+
+			const inRange = await handleRequest(makeRequest("events.list", { cursor: "2026-08-01T00:00:00.000Z", limit: 100 }));
+			expect((inRange.data as { movementsEvicted: number }).movementsEvicted).toBe(7);
+
+			// Reading from AFTER the oldest survivor: the evicted moves are older still,
+			// so they are outside what was asked for and must not be reported as a gap.
+			const afterwards = await handleRequest(makeRequest("events.list", { cursor: "2026-08-29T10:30:00.000Z", limit: 100 }));
+			expect((afterwards.data as { movementsEvicted: number }).movementsEvicted).toBe(0);
+		});
+
+		it("shows no movement at all for a task that predates the feature", async () => {
+			vi.mocked(data.loadTasks).mockResolvedValue([
+				makeTask({ id: "t-legacy", status: "completed", movedAt: "2026-08-29T10:00:00.000Z" }),
+			]);
+
+			const resp = await handleRequest(makeRequest("events.list", { cursor: "2026-01-01T00:00:00.000Z", limit: 100 }));
+
+			expect((resp.data as { events: unknown[] }).events).toEqual([]);
+		});
 	});
 });

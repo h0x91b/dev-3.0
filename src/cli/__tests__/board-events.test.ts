@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_EVENT_WINDOW_MS,
 	formatEventCursor,
+	formatMovementText,
 	isEventIdPrefix,
 	normalizeEventInstant,
 	parseEventCursor,
@@ -206,5 +207,31 @@ describe("event ids as a cursor", () => {
 		const fromInstant = selectEvents(all, { cursor: parseEventCursor("2026-08-29T09:00:00.000"), limit: 100, now: NOW });
 		expect(fromId.events.map((e) => e.id)).toEqual(fromInstant.events.map((e) => e.id));
 		expect(fromId.events).toHaveLength(2);
+	});
+});
+
+describe("formatMovementText", () => {
+	const label = (status: string) => ({ todo: "To Do", "in-progress": "Agent is Working", completed: "Completed" } as Record<string, string>)[status] ?? status;
+
+	it("reads creation as an arrival, with no arrow from nowhere", () => {
+		expect(formatMovementText({ kind: "created", to: "todo" }, label as never)).toBe("created in To Do");
+	});
+
+	it("reads a status change as one column to the next", () => {
+		expect(formatMovementText({ kind: "status", from: "in-progress", to: "completed" }, label as never))
+			.toBe("Agent is Working → Completed");
+	});
+
+	// The board shows "On hold"; the status underneath it is an implementation
+	// detail nobody recognises, so the column name wins on both sides.
+	it("prefers the custom column's name over the status it shares", () => {
+		expect(formatMovementText(
+			{ kind: "column", from: "todo", to: "todo", toColumn: "On hold" },
+			label as never,
+		)).toBe("To Do → On hold");
+		expect(formatMovementText(
+			{ kind: "column", from: "todo", to: "todo", fromColumn: "On hold" },
+			label as never,
+		)).toBe("On hold → To Do");
 	});
 });

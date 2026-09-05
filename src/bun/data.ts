@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
-import { DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
+import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
+import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
 	decodeTerminalBackend,
 	isTerminalBackendIdentity,
@@ -919,6 +919,13 @@ export async function addTask(
 			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
+		task.movements = [{
+			id: crypto.randomUUID(),
+			at: now,
+			kind: "created",
+			to: task.status,
+			toColumnId: task.customColumnId ?? null,
+		}];
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);
 
@@ -1251,8 +1258,32 @@ function applyTaskUpdate(
 	}
 
 	recordTitleOverviewHistory(tasks, idx, prevTitle, prevOverview, now);
+	if (renderedColumnChanged) {
+		recordTaskMovement(tasks, idx, {
+			id: crypto.randomUUID(),
+			at: now,
+			kind: statusChanged ? "status" : "column",
+			from: currentTask.status,
+			to: tasks[idx].status,
+			fromColumnId: currentTask.customColumnId ?? null,
+			toColumnId: tasks[idx].customColumnId ?? null,
+		});
+	}
 
 	return { task: tasks[idx], changed: true };
+}
+
+/**
+ * Append a movement to the task's log. Split out so both insert sites (creation
+ * and every rendered-column change) go through one capped writer.
+ */
+function recordTaskMovement(tasks: Task[], idx: number, movement: TaskMovement): void {
+	const { movements, dropped } = appendTaskMovement(tasks[idx].movements, movement);
+	tasks[idx] = {
+		...tasks[idx],
+		movements,
+		...(dropped > 0 ? { movementsDropped: (tasks[idx].movementsDropped ?? 0) + dropped } : {}),
+	};
 }
 
 /**
