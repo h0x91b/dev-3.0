@@ -56,6 +56,35 @@ synthesize a scroll under their handles. The range test is `intersectsNode`, not
 `contains`, because a range the browser anchored at a parent still covers our rows and
 must not read as "no selection".
 
+## Android: the platform selects, but offers no way to act on it
+
+Verified on a Chrome 124 emulator driven through `adb`: Android does the selecting
+correctly — word select, handles, and a handle drag that extends the range exactly —
+but never draws its floating Copy toolbar over these rows, so the user ends up holding
+a perfect selection with nothing to do with it. A plain `<pre>` in the same browser
+gets the toolbar immediately, so it is this page, not the browser.
+
+Four candidates were eliminated by experiment: `touch-action: none` (selection and
+drag both work with it), fullscreen, the canvas repainting every frame, and the
+container's `contenteditable` alone. The layer now carries `contenteditable="false"`
+— a non-editable island inside ghostty's editable container, which is semantically
+right for rows that are not editable text and leaves ghostty's focus and IME
+untouched — and that restores Chrome's selection-context UI, but still not the toolbar.
+
+So the toolbar is not what we depend on. dev3 already answers this everywhere else:
+selecting IS copying (`terminal.copyHint`). The layer emits a settled selection 250ms
+after the last change — a handle drag fires dozens of changes and each one would
+otherwise be a clipboard write — and `TerminalView` copies it with
+`writeClipboardText`. Deliberately NOT `copyTerminalSelection`: that RPC writes the
+HOST's clipboard, which is the wrong machine when the terminal is being read on a
+phone. No new control, so no complexity-budget spend and no second model for an
+action the product already has.
+
+Verified end to end on the emulator: long-press a word, then Android's own
+`KEYCODE_PASTE` into the composer returns that word. Remote mode is plain http, so
+`navigator.clipboard` does not exist and the copy runs through the documented
+`execCommand` fallback — which is the path this actually exercises.
+
 ## Risks
 
 The platform's selection UI cannot be reproduced in a headless browser, and neither
@@ -66,7 +95,9 @@ viewport is in the DOM, so a selection cannot run off-screen into scrollback: sc
 first, then select. The layer carries logical text, so a bidi viewport selects in
 logical rather than visual order. Alignment leans on the font measuring the same way
 for `measureText` as it does for ghostty's `charWidth`; a fallback font that does not
-would drift across a wide row. Font size and family are both live settings, so the
+would drift across a wide row. On Android the copy rides `execCommand` because remote
+mode is not a secure context; if a browser drops that fallback the copy goes with it.
+Only Chrome was testable — Samsung Internet is unverified. Font size and family are both live settings, so the
 layer re-reads them from `term.options` on every refresh rather than capturing them —
 a stale family measures a different advance than ghostty draws with.
 
