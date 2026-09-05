@@ -8,7 +8,7 @@ const log = createLogger("agent-requests");
  * Agent-initiated actions that need the user's explicit go-ahead before they
  * happen. Each kind blocks the requesting CLI until the user answers in the app.
  */
-export type AgentRequestKind = "complete" | "launch";
+export type AgentRequestKind = "complete" | "cancel" | "launch";
 
 export interface AgentRequestDecision {
 	approved: boolean;

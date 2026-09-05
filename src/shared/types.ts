@@ -2944,6 +2944,24 @@ export interface AgentCompletionRequest {
 }
 
 /**
+ * An agent asking the user for permission to CANCEL its own task — the payload
+ * of the `agentCancellationRequested` push, and of
+ * `listPendingCancellationRequests` for a renderer that connected after the
+ * push went out.
+ *
+ * Same shape as {@link AgentCompletionRequest}, deliberately its own type and
+ * its own channel: completion says the work landed, cancellation throws it away,
+ * and the dialog that asks must never be mistaken for the other one.
+ */
+export interface AgentCancellationRequest {
+	requestId: string;
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	subject: TaskDialogSubject;
+}
+
+/**
  * An agent asking the user to set ANOTHER task running — the payload of the
  * `agentLaunchRequested` push. Carries who asked (`requesterSeq`/`requesterTitle`)
  * so the dialog can name the agent, and the same read-only subject card the
@@ -5606,6 +5624,25 @@ export type AppRPCSchema = {
 				response: AgentCompletionRequest[];
 			};
 			/**
+			 * Renderer answers an `agentCancellationRequested` dialog. Approval makes
+			 * the blocked CLI request execute the move to `cancelled` — which throws
+			 * the worktree and everything uncommitted in it away; decline just
+			 * releases it with a refusal.
+			 */
+			respondToAgentCancellationRequest: {
+				params: { requestId: string; approved: boolean };
+				response: void;
+			};
+			/**
+			 * Cancellation dialogs still waiting for an answer, replayed for the same
+			 * reason as `listPendingCompletionRequests`: the push is one-shot and an
+			 * agent's retry joins the pending request instead of re-pushing it.
+			 */
+			listPendingCancellationRequests: {
+				params: Record<string, never>;
+				response: AgentCancellationRequest[];
+			};
+			/**
 			 * Renderer answers an `agentLaunchRequested` dialog. Approval hands back
 			 * the variants + priority the user composed, and the blocked CLI request
 			 * launches the task with them; decline releases it with a refusal.
@@ -5696,6 +5733,14 @@ export type AppRPCSchema = {
 			 * on `subject.overview`).
 			 */
 			agentCompletionRequested: AgentCompletionRequest;
+			/**
+			 * Emitted when an agent runs `dev3 task move --status cancelled` — an
+			 * agent cleaning up a task that should never have existed. The CLI blocks
+			 * on the user's decision; the renderer shows the danger-styled cancel
+			 * dialog (its own channel, so it can never be confused with the
+			 * completion one) and answers via `respondToAgentCancellationRequest`.
+			 */
+			agentCancellationRequested: AgentCancellationRequest;
 			/**
 			 * Emitted when an agent asks to set ANOTHER task running — either
 			 * `dev3 task move --task <other> --status <active>` or

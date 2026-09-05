@@ -20,6 +20,7 @@ export const CLI_EXIT_CODE_TASK_REF_UNRESOLVED = 18;
 export const CLI_EXIT_CODE_EVENT_CURSOR_INVALID = 19;
 export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 20;
 export const CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID = 21;
+export const CLI_EXIT_CODE_CANCELLATION_DECLINED = 22;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -148,5 +149,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID,
 		description:
 			"`dev3 dev-server start --env` / `restart --env` was given something it will not pass to the devScript, and NOTHING was started or restarted: an argument that is not `KEY=VALUE`, a key that is not a valid environment variable name, or one of the names dev3 owns (`PATH`, `HOME`, `SHELL`, `DEV3_TASK_ID`, `DEV3_WORKTREE_ROOT`, any `DEV3_PORT*`). A silently dropped pair is worse than a refusal — the server would come up on the wrong configuration and look correct. Distinct from exit 3 so a caller can tell a rejected variable from a misspelled command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_CANCELLATION_DECLINED",
+		code: CLI_EXIT_CODE_CANCELLATION_DECLINED,
+		description:
+			"`dev3 task move --status cancelled` asked the user for approval and the user declined. The task keeps its current status and the session stays alive. Distinct from exit 6 so an agent cleaning up after itself can tell a refused cancellation apart from a refused completion — the two ask for very different things, and only cancellation throws the work away.",
 	},
 ] as const;

@@ -59,6 +59,9 @@ vi.mock("../rpc", () => ({
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 			listPendingCompletionRequests: vi.fn().mockResolvedValue([]),
+			respondToAgentCancellationRequest: vi.fn().mockResolvedValue(undefined),
+			listPendingCancellationRequests: vi.fn().mockResolvedValue([]),
+			getUnsavedWork: vi.fn().mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false }),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
@@ -2900,6 +2903,97 @@ describe("App keyboard shortcuts", () => {
 				projectName: "dev-3.0",
 				priority: "P0",
 				labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
+			});
+		});
+	});
+
+	// Cancellation is deliberately NOT the completion dialog: it throws the work
+	// away, so it is red from border to badge and gates its confirm on the local
+	// git check.
+	describe("agent cancellation request dialog", () => {
+		// `mockResolvedValue` outlives `clearAllMocks`, so a pending list left
+		// behind here would draw a cancel dialog inside the next describe's tests.
+		afterEach(() => {
+			vi.mocked(api.request.listPendingCancellationRequests).mockResolvedValue([]);
+		});
+
+		const fireAgentCancellationRequested = (requestId: string, taskId: string, projectId: string) =>
+			act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:agentCancellationRequested", {
+						detail: { requestId, taskId, projectId, taskTitle: "Junk task" },
+					}),
+				);
+			});
+
+		it("responds with approved:true, navigates away, and asks with danger chrome", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCancellationRequested("req-c1", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
+					requestId: "req-c1",
+					approved: true,
+				});
+			});
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			// The move happens in the bun process, never here.
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+			const opts = vi.mocked(confirm).mock.calls[0][0];
+			expect(opts).toMatchObject({ agentInitiated: true, danger: true, tone: "danger" });
+			// The confirm button stays unavailable until the git check settles — a
+			// mis-click must not get past a warning that has not arrived yet.
+			expect(opts.deferred?.gateConfirm).toBe(true);
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("responds with approved:false and stays in place when declined", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCancellationRequested("req-c2", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
+					requestId: "req-c2",
+					approved: false,
+				});
+			});
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		it("draws a dialog for a cancellation pushed before this window existed", async () => {
+			vi.mocked(api.request.listPendingCancellationRequests).mockResolvedValue([
+				{ requestId: "req-c-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded junk", subject: undefined },
+			] as never);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
+					requestId: "req-c-orphan",
+					approved: false,
+				});
 			});
 		});
 	});

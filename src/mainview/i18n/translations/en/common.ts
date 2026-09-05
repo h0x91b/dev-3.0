@@ -24,6 +24,10 @@ const common = {
 	"app.agentCompletionMessage": "The AI agent working on this task reports it is fully done and asks to mark the task as completed.\n\nApproving will destroy the worktree and terminal session.",
 	"app.agentCompletionConfirm": "Complete task",
 	"app.agentCompletionCancel": "Keep session",
+	"app.agentCancellationTitle": "Agent requests cancellation",
+	"app.agentCancellationMessage": "The AI agent working on this task asks to CANCEL it — it says the task should not exist, so nothing here is worth keeping.\n\nThis is not completion. Approving throws the work away: the branch, the worktree and everything uncommitted in it are destroyed and cannot be recovered.",
+	"app.agentCancellationConfirm": "Cancel task and delete work",
+	"app.agentCancellationCancel": "Keep the task",
 
 	// An agent asking to start another task (or a throwaway scratch peer)
 	"agentLaunch.title": "Agent wants to start this task",

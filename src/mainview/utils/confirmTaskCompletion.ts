@@ -10,7 +10,7 @@ import type { TFunction } from "../i18n";
  * the local-only {@link UnsavedWork} the "pushed but unmerged" line is skipped,
  * because that work is already safe on the remote.
  */
-function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Project, t: TFunction): string[] {
+export function unsavedWorkWarnings(status: BranchStatus | UnsavedWork, t: TFunction): string[] {
 	const warnings: string[] = [];
 
 	if (status.insertions > 0 || status.deletions > 0) {
@@ -36,6 +36,23 @@ function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Pr
 	} else if (status.unpushed > 0) {
 		warnings.push(t.plural("task.warnUnpushed", status.unpushed));
 	}
+
+	return warnings;
+}
+
+/**
+ * The same list as one ready-to-render bullet block, or `null` when there is
+ * nothing to lose. For the dialogs that stream the local git check in while
+ * already on screen (the one-click complete, and the agent cancellation prompt,
+ * which has no `task`/`project` object at all — only the pushed subject).
+ */
+export function unsavedWorkWarning(status: BranchStatus | UnsavedWork, t: TFunction): string | null {
+	const warnings = unsavedWorkWarnings(status, t);
+	return warnings.length > 0 ? warnings.map((w) => `• ${w}`).join("\n") : null;
+}
+
+function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Project, t: TFunction): string[] {
+	const warnings = unsavedWorkWarnings(status, t);
 
 	// Pushed but unmerged (skip if content is already in base branch, e.g. squash/rebase merge)
 	if ("mergedByContent" in status && status.unpushed >= 0 && status.ahead > 0 && !status.mergedByContent) {
@@ -95,10 +112,7 @@ export async function confirmTaskCompletion(
 					pending: t("task.checkingBranchState"),
 					unknown: t("task.branchStateUnknown"),
 					gateConfirm: true,
-					promise: unsaved.then((status) => {
-						const warnings = gitWarnings(status, task, project, t);
-						return warnings.length > 0 ? warnings.map((w) => `• ${w}`).join("\n") : null;
-					}),
+					promise: unsaved.then((status) => unsavedWorkWarning(status, t)),
 				}
 				: undefined,
 		});

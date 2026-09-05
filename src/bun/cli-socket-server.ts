@@ -1695,6 +1695,39 @@ const handlers: Record<string, Handler> = {
 		return { approved: true, task: updated };
 	},
 
+	// Agent-initiated request to CANCEL a task — an agent cleaning up a task it
+	// should not have created. Same approval model as `task.requestCompletion`,
+	// deliberately a separate kind and a separate push: cancelling throws the
+	// work away, and the dialog asking for it must not look like the other one.
+	// Never auto-approved (no `autoApproveAfterMs`) — nobody loses a worktree to
+	// a dialog they never saw.
+	"task.requestCancellation": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		const push = getPushMessage();
+		if (!push) {
+			throw new Error("No app window is connected — cannot ask the user for approval");
+		}
+
+		const dialog = {
+			taskTitle: getTaskTitle(task),
+			subject: buildTaskDialogSubject(task, project),
+		};
+		const { requestId, decision, isNew } = createAgentRequest("cancel", task.id, project.id, { dialog });
+		if (isNew) {
+			push("agentCancellationRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
+		}
+
+		const { approved } = await decision;
+		if (!approved) {
+			return { approved: false };
+		}
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "cancelled" });
+		return { approved: true, task: updated };
+	},
+
 	// UI control: surface an in-app toast (or native OS notification) from the CLI.
 	"ui.notify": async (params) => {
 		const message = ((params.message as string) ?? "").trim();

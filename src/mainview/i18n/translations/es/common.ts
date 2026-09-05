@@ -24,6 +24,10 @@ const common = {
 	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
 	"app.agentCompletionConfirm": "Completar tarea",
 	"app.agentCompletionCancel": "Mantener sesión",
+	"app.agentCancellationTitle": "El agente solicita cancelar la tarea",
+	"app.agentCancellationMessage": "El agente de IA que trabaja en esta tarea pide CANCELARLA: considera que la tarea no debería existir y que aquí no hay nada que valga la pena conservar.\n\nEsto no es completar. Al aprobar se descarta el trabajo: la rama, el worktree y todo lo no confirmado en él se destruyen y no se pueden recuperar.",
+	"app.agentCancellationConfirm": "Cancelar tarea y borrar el trabajo",
+	"app.agentCancellationCancel": "Mantener la tarea",
 
 	// Un agente pide iniciar otra tarea (o una tarea scratch desechable)
 	"agentLaunch.title": "El agente quiere iniciar esta tarea",
