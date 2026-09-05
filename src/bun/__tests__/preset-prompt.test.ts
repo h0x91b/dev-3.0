@@ -92,6 +92,78 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/`dev3 peek` is still the only way/);
 	});
 
+	// `dev3 events` (Seq 1738) is a POSITION, not a feed: a coordinator that reads
+	// it as "the last couple of hours" loses exactly the stretch it was away for.
+	// Each assertion below pins one half of that contract.
+	it("makes the events read part of composing a status, with no timer behind it", () => {
+		expect(COORDINATOR_PROMPT).toContain("dev3 events");
+		expect(COORDINATOR_PROMPT).toMatch(/Read events BEFORE composing any substantive status/);
+		expect(COORDINATOR_PROMPT).toMatch(/never a timer, hook, wake-up or poll/);
+	});
+
+	it("starts from the saved cursor and advances only the one the run returned", () => {
+		expect(COORDINATOR_PROMPT).toContain("START AT YOUR SAVED CURSOR");
+		expect(COORDINATOR_PROMPT).toContain("dev3 events --from <cursor>");
+		expect(COORDINATOR_PROMPT).toContain("ADVANCE THE CURSOR ONLY AFTER CONSUMING WHAT CAME BACK");
+		expect(COORDINATOR_PROMPT).toMatch(/store the one the run returned, not one you composed/);
+	});
+
+	// The two ways a coordinator silently under-reads: bootstrapping without saying
+	// what was cut off, and papering over a lost cursor with a short window.
+	it("bootstraps a bounded window openly and refuses a relative window as a substitute", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/NO CURSOR YET\?/);
+		expect(COORDINATOR_PROMPT).toMatch(/bounded WINDOW, not a position/);
+		expect(COORDINATOR_PROMPT).toMatch(/rather than implying you read everything/);
+		expect(COORDINATOR_PROMPT).toContain("A LOST CURSOR IS NEVER REPLACED BY `--from 2h`");
+	});
+
+	// `dev3 note show` defaults to the CALLER's task, so an event's note needs the
+	// owning task named — without it a coordinator searches its own notes and gets
+	// "Note not found" for a note that exists.
+	it("drains every capped page and opens the notes that matter in full", () => {
+		expect(COORDINATOR_PROMPT).toContain("DRAIN THE PAGES");
+		expect(COORDINATOR_PROMPT).toMatch(/Capped at --limit[\s\S]*until nothing is capped/);
+		expect(COORDINATOR_PROMPT).toContain("dev3 note show <id> --task seq:");
+		// Scoped to NOTE rows: another kind's event id is not a note id at all.
+		expect(COORDINATOR_PROMPT).toMatch(/open a NOTE row in full/);
+		expect(COORDINATOR_PROMPT).toMatch(/another kind's id is not a note/);
+	});
+
+	it("never reports a failed read as a quiet board", () => {
+		expect(COORDINATOR_PROMPT).toContain("A FAILED READ IS NOT A QUIET BOARD");
+		expect(COORDINATOR_PROMPT).toMatch(/keep the old cursor/);
+	});
+
+	// Events and the board answer different questions. The prompt must not name the
+	// kinds itself: v1 records notes only, Seq 1675 is adding board movements, and a
+	// hardcoded list here would be false the day it lands — so it points at the CLI's
+	// own help, which is generated from the build the coordinator is actually running.
+	it("keeps events complementary to the board and sources the kinds from the CLI", () => {
+		expect(COORDINATOR_PROMPT).toContain("EVENTS AND THE BOARD ARE COMPLEMENTARY");
+		expect(COORDINATOR_PROMPT).toMatch(/`dev3 events --help` names the kinds this build records/);
+		expect(COORDINATOR_PROMPT).not.toMatch(/--kind (all|note|move)\b/);
+	});
+
+	it("bans repeating a status the user already has, acknowledgements included", () => {
+		expect(COORDINATOR_PROMPT).toContain("NEVER REPEAT A STATUS THE USER ALREADY HAS");
+		expect(COORDINATOR_PROMPT).toMatch(/a short acknowledgement included/);
+		expect(COORDINATOR_PROMPT).toMatch(/Cursors, page counts and opened notes stay in your reasoning/);
+	});
+
+	// This preamble is prepended to a coordinator task's DESCRIPTION, which travels
+	// on the command line for every agent that does not get a prompt file, so its
+	// length is launch capacity spent (`agent-command-line-budget.ts`) — and it is
+	// already over the 5 000-character reserve, which nothing enforces on input.
+	//
+	// 6 210 is not a round number: it is what this prompt measured BEFORE the events
+	// block was added. Adding the block cost 1 700 characters and the rest of the
+	// prompt was condensed to pay for all of them, so no coordinator task that
+	// launched before stops launching. The cap keeps that property: a new section
+	// is paid for out of existing prose, never out of the user's task description.
+	it("costs no more launch capacity than it did before the events block", () => {
+		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(6210);
+	});
+
 	it("never assumes the user's gender — it ships to every install as the default", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/\b(he|him|his|she|her|hers)\b/i);
 	});

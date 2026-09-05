@@ -1,5 +1,8 @@
 # Coordinator prompt: five headed blocks, a brief template, and "done" as a claim
 
+> Extended on 2026-09-05 by `decisions/2026/09/05/coordinator-reads-events-from-a-cursor.md`:
+> a sixth block (EVENTS) was added, so the prompt is no longer five headings.
+
 ## Context
 
 `COORDINATOR_PROMPT` (`src/shared/types.ts`) had grown to 17 ALL-CAPS rules in one flat
