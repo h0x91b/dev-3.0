@@ -2356,3 +2356,179 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 		expect(options.fontSize).toBe(20);
 	});
 });
+
+// ── Mobile text selection: the platform's own, over a real-DOM text layer ─────
+// The layer and the touch gestures live on the canvas ghostty appends to the
+// container, which the mocked `open` normally never creates — so this block
+// gives it one, and a touch device to install onto.
+describe("TerminalView – touch text layer", () => {
+	function touch(type: string, x: number, y: number, ended = false) {
+		const point = { clientX: x, clientY: y };
+		return Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+			touches: ended ? [] : [point],
+			changedTouches: [point],
+		});
+	}
+
+	async function renderOnTouchDevice() {
+		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
+			el.appendChild(document.createElement("canvas"));
+			el.appendChild(document.createElement("textarea"));
+		});
+		mockTermInstance.buffer.active = {
+			getLine: () => ({ isWrapped: false, length: 3, getCell: (x: number) => ({ getCode: () => "abc".charCodeAt(x) }) }),
+		} as never;
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const canvas = result.container.querySelector("canvas") as HTMLCanvasElement;
+		const layer = result.container.querySelector("[data-terminal-text-layer]") as HTMLElement;
+		const wheels: number[] = [];
+		canvas.addEventListener("wheel", (e) => wheels.push((e as WheelEvent).deltaY));
+		return { canvas, layer, wheels };
+	}
+
+	beforeEach(() => {
+		vi.spyOn(window, "matchMedia").mockImplementation(
+			(query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+		);
+	});
+	afterEach(() => {
+		mockTermInstance.open.mockReset();
+		mockTermInstance.buffer.active = mockBufferActive as never;
+		vi.restoreAllMocks();
+	});
+
+	it("installs a selectable text layer over the canvas on a touch device", async () => {
+		const { layer } = await renderOnTouchDevice();
+		expect(layer).toBeTruthy();
+		expect(layer.style.getPropertyValue("user-select")).toBe("text");
+		// The container stays unselectable, so a press off the glyphs selects nothing.
+		expect(layer.parentElement!.style.getPropertyValue("user-select")).toBe("none");
+	});
+
+	it("scrolls from a vertical drag on the layer, which is what a finger now hits", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
+
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+
+		expect(wheels.length).toBeGreaterThan(0);
+	});
+
+	// A long press hands the gesture to the OS. Scrolling under its handles would
+	// move the text out from under the selection the user is still adjusting.
+	it("stands down while the platform holds a selection", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false,
+			rangeCount: 1,
+			getRangeAt: () => ({ commonAncestorContainer: layer, intersectsNode: () => true }),
+		} as unknown as Selection);
+
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+
+		expect(wheels).toEqual([]);
+	});
+});
+
+// A touchscreen laptop reports maxTouchPoints > 0 but drives a mouse. The layer
+// is what a pointer lands on, so installing it there would take every click away
+// from ghostty — the primary pointer, not touch support, decides.
+describe("TerminalView – no text layer for a mouse-driven pointer", () => {
+	afterEach(() => {
+		mockTermInstance.open.mockReset();
+		vi.restoreAllMocks();
+	});
+
+	it("skips the layer when the primary pointer is fine, even with touch support", async () => {
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+		vi.spyOn(window, "matchMedia").mockImplementation(
+			(query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+		);
+		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
+			el.appendChild(document.createElement("canvas"));
+			el.appendChild(document.createElement("textarea"));
+		});
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" /></I18nProvider>);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+
+		expect(result.container.querySelector("[data-terminal-text-layer]")).toBeNull();
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
+	});
+});
+
+// The OS starts a selection on long press, but `selectionchange` is dispatched on
+// a task — so between the finger deciding and us hearing about it there is a
+// window where we still think we own the gesture. Scrolling the terminal there
+// drags the text out from under the handles the user is holding.
+describe("TerminalView – selection guard does not lag the OS", () => {
+	beforeEach(() => {
+		vi.spyOn(window, "matchMedia").mockImplementation(
+			(query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+		);
+	});
+	afterEach(() => {
+		mockTermInstance.open.mockReset();
+		mockTermInstance.buffer.active = mockBufferActive as never;
+		vi.restoreAllMocks();
+	});
+
+	it("stands down on a selection the selectionchange listener has not seen yet", async () => {
+		mockTermInstance.open.mockImplementation((el: HTMLElement) => {
+			el.appendChild(document.createElement("canvas"));
+			el.appendChild(document.createElement("textarea"));
+		});
+		mockTermInstance.buffer.active = {
+			getLine: () => ({ isWrapped: false, length: 3, getCell: (x: number) => ({ getCode: () => "abc".charCodeAt(x) }) }),
+		} as never;
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const canvas = result.container.querySelector("canvas") as HTMLCanvasElement;
+		const layer = result.container.querySelector("[data-terminal-text-layer]") as HTMLElement;
+		const wheels: number[] = [];
+		canvas.addEventListener("wheel", (e) => wheels.push((e as WheelEvent).deltaY));
+
+		// A live selection over the layer, with NO selectionchange delivered — the
+		// exact state Blink leaves us in for a frame or two.
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false,
+			rangeCount: 1,
+			getRangeAt: () => ({ commonAncestorContainer: layer, intersectsNode: () => true }),
+		} as unknown as Selection);
+		expect(layer.hasAttribute("data-selecting")).toBe(false);
+
+		const touch = (type: string, x: number, y: number) =>
+			Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+				touches: [{ clientX: x, clientY: y }],
+				changedTouches: [{ clientX: x, clientY: y }],
+			});
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+
+		expect(wheels).toEqual([]);
+	});
+});

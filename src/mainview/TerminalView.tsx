@@ -31,6 +31,7 @@ import {
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
+import { installTouchTextLayer, type TouchTextLayer } from "./terminal-touch-text-layer";
 import { session } from "./terminal-session-stats";
 import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
@@ -345,6 +346,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	/** Hides the cursor while input would not reach this terminal. */
 	const cursorGateRef = useRef<CursorVisibilityGate | null>(null);
 	const renderGuardRef = useRef<RenderGuard | null>(null);
+	const touchTextLayerRef = useRef<TouchTextLayer | null>(null);
 	/** Keeps block, box-drawing and powerline glyphs on the cell background's box. */
 	const glyphFitRef = useRef<GlyphCellFit | null>(null);
 	const glyphAtlasRef = useRef<GlyphAtlasHandle | null>(null);
@@ -659,6 +661,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 	useEffect(() => {
 		let disposed = false;
+		let textLayerFrame: number | null = null;
 		// The run-up to a crash: successful resizes, dpr flips and backgrounding are
 		// invisible in the log otherwise, and they are the only trigger candidates the
 		// field reports name. Attached to every error payload below.
@@ -811,7 +814,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// frame or notice that the loop stopped. Installed last, disposed first.
 			if (term.renderer) {
 				renderGuardRef.current = installRenderGuard(term.renderer, {
-					onFrame: (durationMs) => latency.noteFrame(durationMs),
+					onFrame: (durationMs) => {
+						latency.noteFrame(durationMs);
+						// ghostty-web never fires onRender, so the guard is the only
+						// per-frame signal the text layer can follow. Coalesced to one
+						// rebuild per animation frame; it no-ops mid-selection anyway.
+						if (touchTextLayerRef.current && textLayerFrame === null) {
+							textLayerFrame = requestAnimationFrame(() => {
+								textLayerFrame = null;
+								if (!disposed) touchTextLayerRef.current?.refresh();
+							});
+						}
+					},
 					onFrameError: (error, consecutive) => {
 						if (disposed) return;
 						if (consecutive === 1) {
@@ -915,6 +929,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// handling entirely; the pane carousel and our axis arbitration
 				// handle every gesture themselves.
 				containerRef.current.style.touchAction = "none";
+				// That same contenteditable makes an iOS long-press select the whole
+				// editable block — the entire terminal highlighted, and a Copy that
+				// yields a page archive rather than text. Nothing here is selectable;
+				// the touch text layer below is, and opts itself back in.
+				containerRef.current.style.setProperty("-webkit-user-select", "none");
+				containerRef.current.style.setProperty("user-select", "none");
 			}
 
 			// Stretch ghostty-web's hidden textarea over the canvas.
@@ -929,6 +949,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				hiddenTextarea.style.pointerEvents = "none";
 				hiddenTextarea.style.caretColor = "transparent";
 				hiddenTextarea.style.zIndex = "-1";
+				// The container's user-select:none above must not reach the IME buffer.
+				hiddenTextarea.style.setProperty("-webkit-user-select", "text");
+				hiddenTextarea.style.setProperty("user-select", "text");
 
 				// In browser mode, keep the textarea focused to prevent
 				// the mobile keyboard from dismissing. Re-focus on blur
@@ -1015,8 +1038,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// textarea.focus()), bypassing our compose-mode gating and summoning the
 			// OSK on every tap / pane-swipe. Capture-phase listeners on the container
 			// run BEFORE the canvas target listeners, so in compose mode we stop
-			// these events (real, browser-emulated after a tap, or synthesized by
-			// MobilePaneCarousel's selection-collapse) before ghostty sees them.
+			// these events (real or browser-emulated after a tap) before ghostty sees
+			// them.
 			if (!isElectrobun) {
 				const containerEl = containerRef.current;
 				const blockInComposeMode = (e: Event) => {
@@ -1034,15 +1057,60 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			//     raw mode — previously nothing scrolled the terminal on a phone.
 			//   • tap (raw mode) → mousedown+mouseup at the point, then focus the
 			//     hidden textarea (the user gesture that opens the mobile keyboard).
-			//   • horizontal drag (raw mode) → drag-selection via mouse translation.
-			//     Clearly-horizontal swipes are claimed earlier by MobilePaneCarousel
-			//     (ancestor, capture) to switch panes.
-			// Compose mode dispatches NO mouse events and never focuses: taps must
-			// neither summon the OSK nor start a tmux/SGR drag-selection —
+			//   • long press → NOT ours. The touch text layer below puts real text
+			//     over the canvas so iOS/Android run their own selection (handles,
+			//     magnifier, Copy callout); every handler here stands down while a
+			//     selection is live so a handle drag never scrolls or swipes.
+			//   • horizontal drag → the pane swipe MobilePaneCarousel claims earlier
+			//     (ancestor, capture).
+			// Compose mode otherwise dispatches NO mouse events and never focuses:
+			// taps must neither summon the OSK nor start a tmux/SGR drag —
 			// TerminalComposer owns text entry; the ⌨ raw toggle restores direct
 			// interaction.
 			const canvas = containerRef.current.querySelector("canvas");
 			if (canvas) {
+				// Real text over the canvas, so a long press gets the platform's own
+				// selection UI. Gated on a COARSE primary pointer, not merely on touch
+				// support: the layer is what a pointer lands on, so installing it on a
+				// touchscreen laptop would take every mouse click away from ghostty.
+				if (!isElectrobun && matchMedia("(pointer: coarse)").matches) {
+					touchTextLayerRef.current = installTouchTextLayer(
+						containerRef.current,
+						canvas,
+						term,
+						{
+							// Selecting IS copying in dev3 (see `terminal.copyHint`), and
+							// the touch layer is the one place that rule did not reach.
+							// Written from the renderer, not through
+							// `copyTerminalSelection`: that RPC lands on the HOST's
+							// clipboard, which is the wrong machine when the terminal is
+							// being read on a phone.
+							onSelectionSettled: (text) => {
+								if (disposed) return;
+								void writeClipboardText(text).then((method) => {
+									logCopyEvent(method === "failed" ? "warn" : "info", "touch selection copy result", {
+										method,
+										len: text.length,
+									});
+									if (method === "failed") return;
+									try {
+										if (localStorage.getItem(TERMINAL_COPY_HINT_SEEN_KEY)) return;
+										localStorage.setItem(TERMINAL_COPY_HINT_SEEN_KEY, "1");
+										toast.info(tRef.current("terminal.copyHint"), { durationMs: 8000, taskId });
+									} catch {
+										// localStorage unavailable — skip the hint, the copy still worked.
+									}
+								});
+							},
+						},
+					);
+					touchTextLayerRef.current.refresh();
+				}
+				// The layer sits ON TOP of the canvas, so it — not the canvas — is
+				// what a finger actually lands on once installed.
+				const textLayer = touchTextLayerRef.current;
+				const touchTarget: HTMLElement = textLayer?.element ?? canvas;
+				const selectionLive = () => textLayer?.hasSelection() ?? false;
 				const SCROLL_DECIDE_PX = 8; // movement before a drag locks scroll/select
 				let touchStartX = 0;
 				let touchStartY = 0;
@@ -1060,9 +1128,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					}));
 				}
 
-				canvas.addEventListener("touchstart", (e) => {
-					if (e.touches.length !== 1) {
-						touchGesture = "ignore"; // pinch / multi-touch is never ours
+				touchTarget.addEventListener("touchstart", (e) => {
+					if (e.touches.length !== 1 || selectionLive()) {
+						// Pinch / multi-touch is never ours, and neither is a touch
+						// that lands while the OS is dragging a selection handle.
+						touchGesture = "ignore";
 						return;
 					}
 					touchStartX = e.touches[0].clientX;
@@ -1071,8 +1141,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					touchGesture = null;
 				}, { passive: true });
 
-				canvas.addEventListener("touchmove", (e) => {
+				touchTarget.addEventListener("touchmove", (e) => {
 					if (touchGesture === "ignore" || e.touches.length !== 1) return;
+					// A selection that appeared mid-gesture is a long press the OS
+					// took over: drop the gesture rather than scroll under its handles.
+					if (selectionLive()) {
+						touchGesture = "ignore";
+						return;
+					}
 					const touch = e.touches[0];
 					if (touchGesture === null) {
 						const dx = touch.clientX - touchStartX;
@@ -1080,14 +1156,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						if (Math.abs(dy) > SCROLL_DECIDE_PX && Math.abs(dy) >= Math.abs(dx)) {
 							touchGesture = "scroll";
 						} else if (Math.abs(dx) > SCROLL_DECIDE_PX) {
-							if (touchComposeModeRef.current) {
-								// Horizontal in compose mode belongs to the pane swipe.
-								touchGesture = "ignore";
-								return;
-							}
-							touchGesture = "select";
-							// Anchor the selection where the finger first went down.
-							dispatchMouse("mousedown", touchStartX, touchStartY, 1);
+							// Horizontal belongs to the pane swipe.
+							touchGesture = "ignore";
+							return;
 						} else {
 							return;
 						}
@@ -1111,21 +1182,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								cancelable: true,
 							}));
 						}
-					} else if (touchGesture === "select") {
-						dispatchMouse("mousemove", touch.clientX, touch.clientY, 1);
 					}
 				}, { passive: true });
 
-				canvas.addEventListener("touchend", (e) => {
+				touchTarget.addEventListener("touchend", (e) => {
 					const gesture = touchGesture;
 					touchGesture = null;
 					if (e.changedTouches.length !== 1) return;
 					const touch = e.changedTouches[0];
-					if (gesture === "select") {
-						dispatchMouse("mouseup", touch.clientX, touch.clientY, 0);
-						return;
-					}
-					if (gesture === null && !touchComposeModeRef.current) {
+					// A tap that ends a selection is the OS dismissing it, not a click.
+					if (gesture === null && !touchComposeModeRef.current && !selectionLive()) {
 						// MobilePaneCarousel claims clearly-horizontal pane swipes in
 						// the capture phase and stops touchmove propagation, so a
 						// claimed swipe reaches us with the gesture still undecided.
@@ -1144,7 +1210,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					}
 				}, { passive: true });
 
-				canvas.addEventListener("touchcancel", () => {
+				touchTarget.addEventListener("touchcancel", () => {
 					touchGesture = null;
 				}, { passive: true });
 			}
@@ -2088,6 +2154,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			copyDiagnosticsRef.current = null;
 			renderGuardRef.current?.dispose();
 			renderGuardRef.current = null;
+			if (textLayerFrame !== null) cancelAnimationFrame(textLayerFrame);
+			textLayerFrame = null;
+			touchTextLayerRef.current?.dispose();
+			touchTextLayerRef.current = null;
 			cursorGateRef.current?.dispose();
 			cursorGateRef.current = null;
 			// Before the cell fit: this wrapper sits on top of it, and restoring the
