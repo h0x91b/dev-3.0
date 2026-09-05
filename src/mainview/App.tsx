@@ -1675,18 +1675,20 @@ function App() {
 				taskId,
 				onClick: () => openTaskFromNotification(taskId, projectId),
 			});
-			// The header readout and the traffic log read the persisted log, not this
-			// push — the row on disk carries the full body and the delivery verdict,
-			// which the preview does not. So the arrival only triggers a re-read.
-			// No reader while the beta is off, so no re-read either — the toast above
-			// is unaffected and keeps working exactly as before.
-			if (!getAgentTrafficEnabled()) return;
-			noteTrafficArrival(projectId);
-			if (fromProjectId && fromProjectId !== projectId) noteTrafficArrival(fromProjectId);
 		}
 		window.addEventListener("rpc:agentMessage", onAgentMessage);
 		return () => window.removeEventListener("rpc:agentMessage", onAgentMessage);
 	}, [openTaskFromNotification, t]);
+
+	useEffect(() => {
+		function onLogChanged(event: Event) {
+			if (!getAgentTrafficEnabled()) return;
+			const { projectId } = (event as CustomEvent<{ projectId: string }>).detail;
+			noteTrafficArrival(projectId);
+		}
+		window.addEventListener("rpc:agentMessageLogChanged", onLogChanged);
+		return () => window.removeEventListener("rpc:agentMessageLogChanged", onLogChanged);
+	}, []);
 
 	// Everything that opens the traffic log goes through one event: the header
 	// readout, the native View menu and the command palette all fire it.

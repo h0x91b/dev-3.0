@@ -1151,7 +1151,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								<MemoryHeadroomIndicator navigate={navigate} variant="menu" />
 								<AgentTrafficIndicator
 									projectId={currentProjectId}
-									navigate={navigate}
 									onOpenLog={() => {
 										setShowOverflowMenu(false);
 										window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
@@ -1233,7 +1232,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    a phone header (bible §5.9, §12.6). */}
 				<AgentTrafficIndicator
 					projectId={currentProjectId}
-					navigate={navigate}
 					onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
 				/>
 
@@ -1432,7 +1430,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					    takes the same shape as the rows below it, not the chip row above. */}
 					<AgentTrafficIndicator
 						projectId={currentProjectId}
-						navigate={navigate}
 						onOpenLog={() => {
 							setShowActionSheet(false);
 							window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));

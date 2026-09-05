@@ -1,19 +1,4 @@
-/**
- * The renderer's view of one project's agent-to-agent traffic.
- *
- * The durable half already exists: every `dev3 message` attempt is appended to
- * `~/.dev3.0/data/<slug>/messages/YYYY-MM-DD.jsonl` and read back through the
- * `readAgentMessageLog` RPC (30 days, newest first). Until now nothing in the UI
- * opened it — the only trace a human saw was a 30-second toast. This module is
- * the read model that the header readout and the traffic log share, so the two
- * can never disagree about who is talking to whom.
- *
- * Rows are the on-disk rows, unchanged. Everything this module adds is derived:
- * pairs, direction, and who owes an answer. No new field is invented, and in
- * particular there is no importance axis — a sender has no way to say "this one
- * matters", so the log never pretends one message outranks another. The one real
- * axis is the delivery verdict the row already carries.
- */
+/** Shared recipient-project log store for the header and live traffic surface. */
 
 import type { AgentMessageLogPage, AgentMessageLogRow } from "../shared/agent-message-log";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
@@ -101,10 +86,10 @@ export function isUnsettled(status: AgentPromptDeliveryStatus): boolean {
 export interface TrafficPair {
 	/** Stable key: the two task ids, ordered, so direction cannot split a pair. */
 	key: string;
-	/** Sender of the NEWEST message — the one that does not owe an answer. */
+	/** Sender of the newest recorded attempt. */
 	fromSeq: number | null;
 	fromTitle?: string;
-	/** Receiver of the newest message: whoever owes the next word. */
+	/** Receiver of the newest recorded attempt. */
 	toSeq: number;
 	toTitle?: string;
 	toTaskId: string;
@@ -127,6 +112,7 @@ export interface TrafficState {
 	hasMore: boolean;
 	loading: boolean;
 	loaded: boolean;
+	error?: boolean;
 }
 
 const EMPTY: TrafficState = {
@@ -145,16 +131,10 @@ function rowTime(row: AgentMessageLogRow): number {
 
 function pairKey(row: AgentMessageLogRow): string {
 	const from = row.fromTaskId ?? `seq:${row.fromSeq ?? "?"}`;
-	return [from, row.toTaskId].sort().join("|");
+	return [JSON.stringify([row.fromProjectId ?? row.toProjectId, from]), JSON.stringify([row.toProjectId, row.toTaskId])].sort().join("|");
 }
 
-/**
- * Fold rows into pairs, newest pair first.
- *
- * "Who waits on whom" needs no new data: whoever received the newest message is
- * the one that has not answered yet. That is the whole derivation, and it is why
- * the pair keeps the newest row rather than a summary of it.
- */
+/** Fold recorded attempts into pairs, newest first; direction does not imply a reply obligation. */
 export function derivePairs(rows: AgentMessageLogRow[]): TrafficPair[] {
 	const byKey = new Map<string, TrafficPair>();
 	for (const row of rows) {
@@ -201,18 +181,10 @@ const states = new Map<string, TrafficState>();
 const listeners = new Set<(projectId: string) => void>();
 const refetchTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
 
-/**
- * A live arrival refetches instead of being inserted from the push payload.
- *
- * The push carries only a clamped one-line preview, while the row on disk holds
- * the full body and the delivery verdict — inserting the preview would put a
- * shorter, statusless copy of the same message in the log. The refetch is
- * debounced because a burst of messages is one write per message, and it runs a
- * second time because the row is appended at the delivery OUTCOME while the push
- * fires as the text goes in: the first read can legitimately miss it.
- */
-const REFETCH_DEBOUNCE_MS = 400;
-const REFETCH_SETTLE_MS = 2_500;
+/** Durable append notifications coalesce bursts without polling or guessing delivery timing. */
+const REFETCH_DEBOUNCE_MS = 100;
+const requestedLimits = new Map<string, number>();
+const loadVersions = new Map<string, number>();
 
 export function getTrafficState(projectId: string | null | undefined): TrafficState {
 	if (!projectId) return EMPTY;
@@ -235,9 +207,14 @@ function patch(projectId: string, next: Partial<TrafficState>): void {
 
 export async function loadTraffic(projectId: string, limit = 500): Promise<void> {
 	if (!projectId) return;
-	patch(projectId, { loading: true });
+	const retainedLimit = Math.max(limit, requestedLimits.get(projectId) ?? 0);
+	requestedLimits.set(projectId, retainedLimit);
+	const version = (loadVersions.get(projectId) ?? 0) + 1;
+	loadVersions.set(projectId, version);
+	patch(projectId, { loading: true, error: false });
 	try {
-		const page: AgentMessageLogPage = await api.request.readAgentMessageLog({ projectId, limit });
+		const page: AgentMessageLogPage = await api.request.readAgentMessageLog({ projectId, limit: retainedLimit });
+		if (loadVersions.get(projectId) !== version) return;
 		patch(projectId, {
 			rows: page.rows,
 			oldestDay: page.oldestDay,
@@ -249,17 +226,17 @@ export async function loadTraffic(projectId: string, limit = 500): Promise<void>
 	} catch {
 		// A project with no traffic answers with an empty page, so a throw here is a
 		// transport failure: keep whatever was already shown rather than blanking it.
-		patch(projectId, { loading: false, loaded: true });
+		if (loadVersions.get(projectId) !== version) return;
+		patch(projectId, { loading: false, loaded: true, error: true });
 	}
 }
 
-/** Called when a message lands for this project (`rpc:agentMessage`). */
+/** Called after a durable append in this recipient project. */
 export function noteTrafficArrival(projectId: string): void {
 	if (!projectId) return;
 	for (const timer of refetchTimers.get(projectId) ?? []) clearTimeout(timer);
 	refetchTimers.set(projectId, [
 		setTimeout(() => void loadTraffic(projectId), REFETCH_DEBOUNCE_MS),
-		setTimeout(() => void loadTraffic(projectId), REFETCH_SETTLE_MS),
 	]);
 }
 
@@ -268,5 +245,7 @@ export function resetTrafficStore(): void {
 	for (const timers of refetchTimers.values()) for (const timer of timers) clearTimeout(timer);
 	refetchTimers.clear();
 	states.clear();
+	requestedLimits.clear();
+	loadVersions.clear();
 	listeners.clear();
 }

@@ -11,10 +11,14 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
-## 2026-09-05 — HTML artifacts open as a popup, not a resizable panel
-- **Rule:** an artifact opens in the same App-hosted lightbox as an image (scrim, ~90% card, fullscreen toggle, overlay-layer Escape); the task workspace has no drag-resizable split — bible §3 + §12.3, yaml `surfaces.task_artifact_viewer`.
-- **Why:** resizing the docked panel relaid out the artifact iframe and refit the terminal beside it and could freeze the whole UI, so the surface was deleted rather than repaired; rejected keeping the panel with the drag handle removed, which leaves two viewer shapes for no gain.
-- **Status:** Implemented. Evidence: `TaskArtifactViewer.tsx`, `TaskWorkspacePane.tsx`, `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.
+## 2026-09-05 — HTML artifacts open as a popup
+
+Artifacts use the App lightbox; the resizable task split is removed — bible §3 + §12.3, yaml `task_artifact_viewer`. Why: `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.
+
+## 2026-09-05 — Agent traffic becomes a live orbit
+
+The existing overlay owns the project orbit, accessible lists and inspector; real append events animate attempts without inventing workflow — bible §5.9. Why: `decisions/2026/09/05/live-agent-traffic-orbit.md`.
+
 
 ## 2026-09-03 — Touch scrollback return is a floating button
 
@@ -28,13 +32,9 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 
 - **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. **Why:** `decisions/2026/08/27/notification-preferences-settings-home.md`.
 
-## 2026-08-26 — A conditional header slot keys off data, not off being read
+2026-08-26 — Header presence follows data, unread is only the badge (§5.9). Why: `decisions/2026/08/26/header-slot-presence-follows-data-not-unread.md`.
 
-- **Rule:** the agent-traffic pill is present while the project has traffic; unread is only its badge, since hovering it is what marks the traffic seen. **Why:** `decisions/2026/08/26/header-slot-presence-follows-data-not-unread.md`.
-
-## 2026-08-25 — Agent traffic: a conditional header readout plus an overlay log
-
-- **Rule:** the readout's home is the kebab, never a phone bar (bar slot superseded 2026-08-26); the log is an overlay, never a ninth destination. **Why:** `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
+2026-08-25 — Traffic remains an overlay (§5.9); presentation superseded 2026-09-05. Why: `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
 
 ## 2026-08-25 — A self-previewing option list earns a disclosure, not a Settings category
 - **Rule:** the terminal font picker stays in Settings → Terminal behind a collapsed "Compare all N" disclosure of preview rows; no category of its own. **Why:** `decisions/2026/08/25/terminal-font-width-is-clamped-to-the-reference.md`.

@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
 import { buildApplicationMenu, isComingSoonAction } from "../../shared/application-menu";
 import { buildBrowserMenu } from "../components/AppMenuBar";
@@ -42,7 +43,7 @@ beforeEach(() => {
 function renderIndicator(variant: "bar" | "menu" | "sheet") {
 	return render(
 		<I18nProvider>
-			<AgentTrafficIndicator projectId="proj-1" navigate={() => {}} onOpenLog={() => {}} variant={variant} />
+			<AgentTrafficIndicator projectId="proj-1" onOpenLog={() => {}} variant={variant} />
 		</I18nProvider>,
 	);
 }
@@ -103,6 +104,23 @@ describe("agent-traffic feature flag", () => {
 		setAgentTrafficEnabledForTests(true);
 		renderIndicator("menu");
 		expect(screen.getByTestId("agent-traffic-menu-row")).toBeTruthy();
+	});
+
+	it.each(["menu", "sheet"] as const)("opens the replacement directly from the enabled %s entry", async (variant) => {
+		setAgentTrafficEnabledForTests(true);
+		const onOpenLog = vi.fn();
+		render(<I18nProvider><AgentTrafficIndicator projectId="proj-1" onOpenLog={onOpenLog} variant={variant} /></I18nProvider>);
+		await userEvent.click(screen.getByTestId(`agent-traffic-${variant === "menu" ? "menu" : "sheet"}-row`));
+		expect(onOpenLog).toHaveBeenCalledTimes(1);
+		expect(screen.queryByTestId("agent-traffic-popover")).toBeNull();
+	});
+
+	it("removes an existing entry when the beta is switched off", async () => {
+		setAgentTrafficEnabledForTests(true);
+		renderIndicator("menu");
+		expect(screen.getByTestId("agent-traffic-menu-row")).toBeTruthy();
+		act(() => syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: false }));
+		await waitFor(() => expect(screen.queryByTestId("agent-traffic-menu-row")).toBeNull());
 	});
 
 	it("hides the shortcut from the keymap listing while off", () => {
