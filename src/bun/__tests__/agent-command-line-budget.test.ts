@@ -5,6 +5,7 @@ import {
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
+import { COORDINATOR_PROMPT } from "../../shared/types";
 import { __setCodexProfileV2Override, resolveAgentCommand, type TemplateContext } from "../agents";
 import type { CodingAgent } from "../../shared/types";
 
@@ -115,6 +116,29 @@ describe("the whole Windows command line fits", () => {
 			}
 		});
 	}
+
+	// A preset preamble (`COORDINATOR_PROMPT`) is prepended to the task DESCRIPTION,
+	// so it spends the same line the protocol body does — and nothing enforces the
+	// reserve on input: no validation or truncation exists on `--description`, and
+	// the RPC handler only measures its length for telemetry. Adding the events
+	// block to that preamble therefore had to be paid for by condensing it, and this
+	// is the property that proves it was: on the agents that carry no protocol body
+	// inline, a coordinator task keeps AT LEAST the description room it had before.
+	//
+	// 26 536 characters is that measured baseline (gemini; the custom-agent adapter
+	// measured 26 525). Raw prompt length is only a proxy for it, because the launch
+	// dialect escapes quotes and backticks — measure the serialized line instead.
+	it("a coordinator task keeps the launch room it had before the events block", () => {
+		asPlatform("win32");
+		const coordinator = (brief: number) => ({
+			...fullSizeContext(),
+			taskDescription: `${COORDINATOR_PROMPT}\n\n${"x".repeat(brief)}`,
+		});
+		const fits = (command: string, brief: number) =>
+			resolveAgentCommand(agent(command), undefined, coordinator(brief)).length < WINDOWS_COMMAND_LINE_LIMIT;
+		expect(fits("gemini", 26536)).toBe(true);
+		expect(fits("some-custom-agent", 26525)).toBe(true);
+	});
 
 	it("the reserve is real: a task text this long is what the budget is for", () => {
 		expect(fullSizeContext().taskDescription.length * 2).toBeLessThanOrEqual(AGENT_COMMAND_LINE_RESERVE);
