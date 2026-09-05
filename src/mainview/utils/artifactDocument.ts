@@ -1,5 +1,5 @@
 import { artifactBridgeScript } from "./artifactBridge";
-import { artifactChannelScript, type ArtifactTransport } from "./artifactChannel";
+import { artifactChannelScript } from "./artifactChannel";
 
 interface ArtifactAssetPayload {
 	name: string;
@@ -21,9 +21,9 @@ function saveImageMenuScript(label: string): string {
 }
 
 /**
- * ⌘F find inside the artifact. The viewer cannot walk this document — opaque origin
- * in the iframe, another process in the webview — so it sends the query in over the
- * channel and reads {matches,index} back.
+ * ⌘F find inside the artifact. The viewer cannot walk this document — the iframe has
+ * an opaque origin — so it sends the query in over the channel and reads
+ * {matches,index} back.
  * Highlighting prefers the CSS Custom Highlight API because it paints without
  * touching the DOM (artifact scripts and layout stay intact); where it is missing we
  * fall back to selecting the active range, which every engine renders.
@@ -85,18 +85,14 @@ function rewriteAssetAttribute(
 /**
  * Prepare stored artifact HTML for the viewer. Relative local asset references are
  * replaced with copied data URLs so CSS, classic scripts, and raster images work
- * without giving the document an origin — true of both hosts: the opaque-origin
- * sandboxed iframe and the sandboxed `<electrobun-webview>` loaded from a string.
- *
- * `transport` only picks which channel the injected scripts talk over; the
- * document is otherwise identical, so an artifact behaves the same either way.
+ * inside the opaque-origin sandboxed iframe, which has no origin to resolve them
+ * against.
  */
 export function composeArtifactDocument(
 	source: string,
 	assets: ArtifactAssetPayload[],
 	saveImageLabel?: string,
 	canSendToAgent = false,
-	transport: ArtifactTransport = "frame",
 ): string {
 	const byName = new Map(assets.map((asset) => [asset.name, asset.dataUrl]));
 	const resolve = (url: string): string => {
@@ -128,7 +124,7 @@ export function composeArtifactDocument(
 	);
 
 	// The channel goes first: every other injected script reaches for it by name.
-	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${artifactChannelScript(transport)}${assetRuntimeScript(assets)}${findScript()}${artifactBridgeScript(canSendToAgent)}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
+	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactBridgeScript(canSendToAgent)}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
 	if (/<head(?:\s|>)/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${injected}`);
 	if (/<html(?:\s|>)/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`);
 	const body = html.replace(/<!doctype[^>]*>/i, "");
