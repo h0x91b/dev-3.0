@@ -2,7 +2,8 @@ import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task,
 import { LABEL_COLORS, appendTaskNote } from "../../shared/types";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
 import * as data from "../data";
-import { readAgentMessageLog as readMessageLog } from "../agent-message-log";
+import { messageLogDir, readAgentMessageLog as readMessageLog } from "../agent-message-log";
+import { watchAgentMessageLog } from "../agent-message-log-watch";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
 
@@ -316,6 +317,7 @@ async function deleteTaskNote(params: { taskId: string; projectId: string; noteI
  */
 async function readAgentMessageLog(params: { projectId: string; limit?: number }): Promise<AgentMessageLogPage> {
 	const project = await data.getProject(params.projectId);
+	watchAgentMessageLog(project.id, messageLogDir(project));
 	return readMessageLog(project, params.limit);
 }
 

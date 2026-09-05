@@ -1,281 +1,661 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMessageLogRow } from "../../../shared/agent-message-log";
-import { isUnsettled, type TrafficPair } from "../../agent-traffic";
-import { useT } from "../../i18n";
-import { api } from "../../rpc";
-import { useAgentTraffic } from "../../hooks/useAgentTraffic";
+import { getTaskOverview } from "../../../shared/types";
+import { markTrafficSeen } from "../../agent-traffic";
+import { useLocale, useT, type TranslationKey } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { useFocusTrap } from "../../utils/useFocusTrap";
-import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
+import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
-import { LedgerRow, PairRow } from "./TrafficRow";
+import Select from "../Select";
+import { AgentTrafficIcon } from "../HeaderIcons";
+import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
+import TrafficOrbit from "./TrafficOrbit";
+import { useTrafficData } from "./useTrafficData";
+import {
+	endpointKey,
+	trafficNodes,
+	trafficRecords,
+	nodeSeq,
+	fromKey,
+	toKey,
+	routeKey,
+	type TrafficRecord,
+} from "./traffic-model";
+import "./traffic-orbit.css";
 
-/**
- * Every message the project's agents typed into each other, newest first.
- *
- * **An overlay, not a destination.** The global-nav budget is eight and fully
- * spent (bible §4), and this is a log a user opens to answer one question and
- * then leaves — the same shape as the task-notes log: dialog on wide, the
- * mandated BottomSheet on narrow.
- *
- * Filters are only the two that real data supports: one pair, or only the
- * messages dev3 could not prove landed. There is deliberately no importance
- * filter — no sender can mark a message important, so a chatter/blocker split
- * would be the UI inventing a fact.
- */
-
-type Filter = "all" | "unsettled";
-
-interface AgentTrafficLogProps {
+interface Props {
 	projectId: string | null;
 	onClose: () => void;
 	onOpenTask: (taskId: string, projectId: string) => void;
 }
-
-export default function AgentTrafficLog({ projectId, onClose, onOpenTask }: AgentTrafficLogProps) {
-	const t = useT();
-	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const traffic = useAgentTraffic(projectId);
-	const [filter, setFilter] = useState<Filter>("all");
-	const [pairKey, setPairKey] = useState<string | null>(null);
-	// Which receivers still exist. History outlives tasks: 30 days of rows will name
-	// tasks the user has since deleted, and a row that navigates nowhere — closing
-	// the log and leaving the board unchanged — reads as the app being broken.
-	const [knownTasks, setKnownTasks] = useState<Set<string> | null>(null);
-
-	useEffect(() => {
-		if (!projectId) return;
-		let cancelled = false;
-		api.request
-			.getTasks({ projectId })
-			.then((tasks) => {
-				if (!cancelled) setKnownTasks(new Set(tasks.map((task) => task.id)));
-			})
-			.catch(() => {
-				// Unresolved: leave every row inert rather than promising navigation.
-				if (!cancelled) setKnownTasks(new Set());
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [projectId]);
-
-	const selectedPair = traffic.pairs.find((pair) => pair.key === pairKey) ?? null;
-	const rows = useMemo(() => {
-		const pairIds = selectedPair ? new Set([selectedPair.toTaskId, selectedPair.last.fromTaskId]) : null;
-		return traffic.rows.filter((row) => {
-			if (filter === "unsettled" && !isUnsettled(row.status)) return false;
-			if (!pairIds) return true;
-			return pairIds.has(row.toTaskId) && pairIds.has(row.fromTaskId);
-		});
-	}, [traffic.rows, filter, selectedPair]);
-
-	function togglePair(pair: TrafficPair) {
-		setPairKey((current) => (current === pair.key ? null : pair.key));
+const runtimeKeys = {
+	idle: "traffic.orbit.runtimeIdle",
+	preparing: "traffic.orbit.runtimePreparing",
+	running: "traffic.orbit.runtimeRunning",
+	"tearing-down": "traffic.orbit.runtimeTearingDown",
+} as const;
+const verdictKey = (status: string): TranslationKey => {
+	switch (status) {
+		case "delivered":
+			return "traffic.orbit.delivered";
+		case "held":
+			return "traffic.orbit.held";
+		case "unconfirmed":
+			return "traffic.orbit.unconfirmed";
+		case "not-delivered":
+			return "traffic.orbit.notDelivered";
+		default:
+			return "traffic.orbit.unknownDelivery";
 	}
+};
 
-	const title = selectedPair
-		? `#${selectedPair.fromSeq ?? "—"} ↔ #${selectedPair.toSeq}`
-		: t("traffic.logTitle");
+export default function AgentTrafficLog(props: Props) {
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const t = useT();
+	const body = <TrafficView {...props} />;
+	return narrow ? (
+		<BottomSheet
+			open
+			onClose={props.onClose}
+			title={t("traffic.label")}
+			testId="agent-traffic-log-sheet"
+		>
+			<div className="traffic-sheet">{body}</div>
+		</BottomSheet>
+	) : (
+		createPortal(
+			<TrafficDialog onClose={props.onClose}>{body}</TrafficDialog>,
+			document.body,
+		)
+	);
+}
 
-	const body = (
-		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex items-center gap-1.5 px-3 py-2 border-b border-edge">
-				<FilterChip active={filter === "all"} onClick={() => setFilter("all")} label={t("traffic.filter.all")} />
-				<FilterChip
-					active={filter === "unsettled"}
-					onClick={() => setFilter("unsettled")}
-					label={t("traffic.filter.unsettled")}
-				/>
-				<span className="ml-auto text-nano tabular-nums text-fg-muted">
-					{t("traffic.shownCount", { shown: String(rows.length), total: String(traffic.rows.length) })}
-				</span>
-			</div>
-
-			<div className="flex min-h-0 flex-1 flex-col md:flex-row">
-				{/* The pair index is a filter over the ledger beside it, not a second list
-				    of messages: one place owns the text. */}
-				{/* Stacked on narrow, the index and the ledger read as one list of
-				    near-duplicate rows without a rule between them. */}
-				<div className="md:w-64 shrink-0 border-b md:border-b-0 md:border-r border-edge bg-raised/40 md:bg-transparent overflow-y-auto max-h-40 md:max-h-none">
-					{traffic.pairs.map((pair) => (
-						<PairRow
-							key={pair.key}
-							pair={pair}
-							selected={pair.key === pairKey}
-							onSelect={togglePair}
-						/>
-					))}
-					{traffic.pairs.length === 0 && (
-						<div className="px-3 py-3 text-dense text-fg-muted">{t("traffic.empty")}</div>
-					)}
-				</div>
-
-				<div className="min-h-0 flex-1 overflow-y-auto">
-					{rows.length === 0 ? (
-						<div className="px-3 py-6 text-center text-dense text-fg-muted">
-							{traffic.loading ? t("traffic.loading") : t("traffic.noneMatch")}
-						</div>
-					) : (
-						<Ledger rows={rows} onOpenTask={onOpenTask} knownTasks={knownTasks} />
-					)}
-				</div>
-			</div>
-
-			{/* Trimmed history must read as trimmed, never as silence. */}
-			<div className="px-3 py-2 border-t border-edge text-nano text-fg-muted">
-				{traffic.oldestDay
-					? t("traffic.retention", { days: String(traffic.retentionDays), oldest: traffic.oldestDay })
-					: t("traffic.retentionEmpty", { days: String(traffic.retentionDays) })}
+function TrafficDialog({
+	children,
+	onClose,
+}: {
+	children: React.ReactNode;
+	onClose: () => void;
+}) {
+	const t = useT();
+	const ref = useFocusTrap<HTMLDivElement>();
+	useEscapeKey(onClose);
+	return (
+		<div
+			className="traffic-backdrop"
+			onMouseDown={(event) => {
+				if (event.target === event.currentTarget) onClose();
+			}}
+		>
+			<div
+				ref={ref}
+				tabIndex={-1}
+				role="dialog"
+				aria-modal="true"
+				aria-label={t("traffic.label")}
+				className="traffic-dialog"
+				data-testid="agent-traffic-log-dialog"
+			>
+				{children}
 			</div>
 		</div>
 	);
-
-	if (narrow) {
-		return (
-			<BottomSheet open onClose={onClose} title={title} testId="agent-traffic-log-sheet">
-				<div className="flex h-[70dvh] flex-col">{body}</div>
-			</BottomSheet>
-		);
-	}
-
-	return createPortal(
-		<LogDialog title={title} onClose={onClose}>
-			{body}
-		</LogDialog>,
-		document.body,
-	);
 }
 
-function Ledger({
-	rows,
-	onOpenTask,
-	knownTasks,
-}: {
-	rows: AgentMessageLogRow[];
-	onOpenTask: (taskId: string, projectId: string) => void;
-	/** Null until the project's tasks have been resolved. */
-	knownTasks: Set<string> | null;
-}) {
+function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const t = useT();
-	let day: string | null = null;
-	const out: React.ReactNode[] = [];
-	for (const [index, row] of rows.entries()) {
-		const rowDay = localDay(row.at);
-		if (rowDay !== day) {
-			day = rowDay;
-			out.push(
-				<div
-					key={`day-${rowDay}`}
-					className="sticky top-0 bg-overlay/95 px-3 py-1 text-nano uppercase tracking-wide text-fg-muted"
-				>
-					{dayLabel(rowDay, t)}
-				</div>,
-			);
-		}
-		// Two messages from one sender to one task in the same millisecond are a real
-		// case (a split reply arrives as three), so the index has to be part of the key.
-		const key = `${row.at}-${row.toTaskId}-${row.fromSeq ?? "x"}-${index}`;
-		const openable = knownTasks?.has(row.toTaskId) ?? false;
-		out.push(
-			openable ? (
-				<button
-					key={key}
-					type="button"
-					className="block w-full text-left hover:bg-elevated/60 transition-colors active:scale-[0.96]"
-					onClick={() => onOpenTask(row.toTaskId, row.toProjectId)}
-				>
-					<LedgerRow row={row} />
-				</button>
-			) : (
-				// The message stays readable; only the promise of navigation is withdrawn.
-				<div key={key} title={knownTasks ? t("traffic.taskGone") : undefined}>
-					<LedgerRow row={row} gone={Boolean(knownTasks)} />
-				</div>
+	const [locale] = useLocale();
+	const data = useTrafficData();
+	const [scope, setScope] = useState(projectId ?? "all");
+	const [selected, setSelected] = useState<string | null>(null);
+	const [recordKey, setRecordKey] = useState<string | null>(null);
+	const [pair, setPair] = useState<string | null>(null);
+	const [query, setQuery] = useState("");
+	const [filter, setFilter] = useState("all");
+	const [windowSize, setWindowSize] = useState("day");
+	const [until, setUntil] = useState<number | null>(null);
+	const [paused, setPaused] = useState(false);
+	const [tab, setTab] = useState("messages");
+	const now = Date.now();
+	const start =
+		windowSize === "hour"
+			? now - 3600000
+			: windowSize === "day"
+				? now - 86400000
+				: 0;
+	const scopedRows = useMemo(
+		() =>
+			data.rows.filter(
+				(row) =>
+					scope === "all" ||
+					row.toProjectId === scope ||
+					row.fromProjectId === scope,
 			),
+		[data.rows, scope],
+	);
+	const records = useMemo(() => trafficRecords(scopedRows), [scopedRows]);
+	const scopedTasks = useMemo(
+		() =>
+			data.tasks.filter(
+				(task) =>
+					(scope === "all" || task.projectId === scope) &&
+					task.status !== "completed" &&
+					task.status !== "cancelled",
+			),
+		[data.tasks, scope],
+	);
+	const allNodes = useMemo(
+		() => trafficNodes(data.tasks, scopedRows),
+		[data.tasks, scopedRows],
+	);
+	const nodeMap = useMemo(
+		() => new Map(allNodes.map((node) => [node.key, node])),
+		[allNodes],
+	);
+	const timeRows = useMemo(
+		() =>
+			records.filter(
+				({ row }) =>
+					Date.parse(row.at) >= start &&
+					Date.parse(row.at) <= (until ?? Infinity),
+			),
+		[records, start, until],
+	);
+	const visible = useMemo(
+		() =>
+			timeRows.filter(({ row }) => {
+				if (filter !== "all" && row.status !== filter) return false;
+				if (pair && routeKey(row) !== pair) return false;
+				if (selected && fromKey(row) !== selected && toKey(row) !== selected)
+					return false;
+				return `${row.subject ?? ""} ${row.body} ${row.fromSeq} ${row.toSeq} ${row.fromTitle ?? ""} ${row.toTitle ?? ""}`
+					.toLocaleLowerCase()
+					.includes(query.toLocaleLowerCase());
+			}),
+		[timeRows, filter, pair, selected, query],
+	);
+	const nodes = useMemo(() => {
+		const endpoints = new Set(
+			timeRows.flatMap(({ row }) => [fromKey(row), toKey(row)]),
+		);
+		return allNodes.filter(
+			(node) =>
+				(scope === "all" ||
+					node.projectId === scope ||
+					endpoints.has(node.key)) &&
+				(scopedTasks.some(
+					(task) => endpointKey(task.projectId, task.id) === node.key,
+				) ||
+					endpoints.has(node.key)),
+		);
+	}, [allNodes, timeRows, scope, scopedTasks]);
+	const selectedNode = selected ? nodeMap.get(selected) : undefined;
+	const record = records.find((record) => record.key === recordKey);
+	const taskList = nodes
+		.filter((node) =>
+			`${nodeSeq(node)} ${node.title}`
+				.toLocaleLowerCase()
+				.includes(query.toLocaleLowerCase()),
+		)
+		.sort(
+			(a, b) =>
+				Number(b.task?.taskType === "coordinator") -
+					Number(a.task?.taskType === "coordinator") ||
+				(b.seq ?? 0) - (a.seq ?? 0),
+		);
+	const oldest = Math.max(
+		start,
+		records.length
+			? Date.parse(records[records.length - 1].row.at)
+			: now - 3600000,
+	);
+	const format = (at: string | number) =>
+		new Date(at).toLocaleString(locale, {
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+		});
+	useEffect(() => {
+		markTrafficSeen();
+	}, []);
+	function select(key: string) {
+		setSelected(key);
+		setRecordKey(null);
+		setPair(null);
+	}
+	function clearSelection() {
+		setSelected(null);
+		setRecordKey(null);
+		setPair(null);
+	}
+	function rowButton(item: TrafficRecord) {
+		const row = item.row;
+		return (
+			<button
+				key={item.key}
+				className={`traffic-message ${recordKey === item.key ? "is-selected" : ""}`}
+				onClick={() => setRecordKey(item.key)}
+				data-testid="traffic-message-row"
+			>
+				<span className="traffic-message-meta">
+					<b>
+						{row.fromSeq === null ? "—" : `#${row.fromSeq}`} → #{row.toSeq}
+					</b>
+					<time dateTime={row.at}>{format(row.at)}</time>
+				</span>
+				<strong className="streamer-private">
+					{row.subject || row.body.slice(0, 100)}
+				</strong>
+				<span className={`traffic-verdict verdict-${row.status}`}>
+					{t(verdictKey(row.status))}
+				</span>
+			</button>
 		);
 	}
-	return <div>{out}</div>;
-}
-
-/** The row's LOCAL day. The on-disk day-files are local days too, so an ISO slice
- *  (which is UTC) would split one evening across two headings. */
-function localDay(at: string): string {
-	const date = new Date(at);
-	if (Number.isNaN(date.getTime())) return at.slice(0, 10);
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-/** Today and yesterday by name; anything older keeps its ISO day. */
-function dayLabel(day: string, t: ReturnType<typeof useT>): string {
-	const now = new Date();
-	const iso = (date: Date) =>
-		`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-	if (day === iso(now)) return t("traffic.today");
-	const yesterday = new Date(now);
-	yesterday.setDate(now.getDate() - 1);
-	if (day === iso(yesterday)) return t("traffic.yesterday");
-	return day;
-}
-
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
 	return (
-		<button
-			type="button"
-			aria-pressed={active}
-			onClick={onClick}
-			className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.96] ${
-				active ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
-			}`}
-		>
-			{label}
-		</button>
-	);
-}
-
-function LogDialog({
-	title,
-	onClose,
-	children,
-}: {
-	title: string;
-	onClose: () => void;
-	children: React.ReactNode;
-}) {
-	const t = useT();
-	const trapRef = useFocusTrap<HTMLDivElement>();
-	useEscapeKey(onClose);
-
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-			<div
-				ref={trapRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="agent-traffic-log-title"
-				tabIndex={-1}
-				data-testid="agent-traffic-log-dialog"
-				data-help-id="traffic.log"
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-4xl max-h-[calc(100dvh-4rem)] mx-4 flex flex-col overflow-hidden outline-none"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="px-5 py-3 border-b border-edge flex items-center justify-between gap-3">
-					<h2 id="agent-traffic-log-title" className="text-fg text-base font-semibold">
-						{title}
-					</h2>
+		<div className="traffic-view" data-help-id="traffic.log">
+			<span className="sr-only" role="status">
+				{t.plural("traffic.orbit.messageCount", visible.length)}
+			</span>
+			<header className="traffic-header">
+				<AgentTrafficIcon className="w-5 h-5 text-agent" />
+				<h2>{t("traffic.label")}</h2>
+				<span className="traffic-orbit-name">{t("traffic.orbit.name")}</span>
+				<div className="traffic-header-tail">
+					<span className="traffic-live" role="status">
+						{data.loading
+							? t("traffic.loading")
+							: until === null
+								? t("traffic.orbit.live")
+								: t("traffic.orbit.history")}
+					</span>
 					<button
-						type="button"
+						onClick={() => setPaused((value) => !value)}
+						aria-pressed={paused}
+					>
+						{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
+					</button>
+					<button
 						onClick={onClose}
 						aria-label={t("common.close")}
-						className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-elevated hover:text-fg transition-colors active:scale-[0.96]"
+						title={t("common.close")}
 					>
-						<span className="text-base leading-none">×</span>
+						×
 					</button>
 				</div>
-				{children}
+			</header>
+			<div className="traffic-toolbar">
+				<Select
+					value={scope}
+					onChange={(value) => {
+						setScope(value);
+						clearSelection();
+					}}
+					options={[
+						{ value: "all", label: t("traffic.orbit.allProjects") },
+						...data.projects.map((project) => ({
+							value: project.id,
+							label: project.name,
+						})),
+					]}
+					ariaLabel={t("traffic.orbit.project")}
+				/>
+				<input
+					type="search"
+					value={query}
+					onChange={(event) => setQuery(event.target.value)}
+					placeholder={t("traffic.orbit.search")}
+					aria-label={t("traffic.orbit.search")}
+				/>
+				<Select
+					value={filter}
+					onChange={setFilter}
+					options={[
+						{ value: "all", label: t("traffic.filter.all") },
+						...["delivered", "held", "unconfirmed", "not-delivered"].map(
+							(value) => ({ value, label: t(verdictKey(value)) }),
+						),
+					]}
+					ariaLabel={t("traffic.orbit.delivery")}
+				/>
 			</div>
+			<div className="traffic-summary">
+				<div>
+					<strong>
+						{data.projects.find((project) => project.id === scope)?.name ??
+							t("traffic.orbit.allProjects")}
+					</strong>
+					<p>{t("traffic.orbit.currentTasks")}</p>
+				</div>
+				<div className="traffic-stat">
+					<b>
+						{
+							nodes.filter((node) => node.task?.taskType === "coordinator")
+								.length
+						}
+					</b>
+					{t("traffic.orbit.coordinators")}
+				</div>
+				<div className="traffic-stat">
+					<b>{scopedTasks.length}</b>
+					{t("traffic.orbit.tasks")}
+				</div>
+				<div className="traffic-stat">
+					<b>{timeRows.length}</b>
+					{t("traffic.orbit.attempts")}
+				</div>
+			</div>
+			{data.error && (
+				<div className="traffic-error" role="alert">
+					{t("traffic.orbit.loadError")}{" "}
+					<button onClick={data.reload}>{t("traffic.orbit.retry")}</button>
+				</div>
+			)}
+			<div className="traffic-content">
+				<div className="traffic-main">
+					<TrafficOrbit
+						projects={data.projects}
+						scope={scope}
+						nodes={nodes}
+						records={visible}
+						selected={selected}
+						onSelect={select}
+						paused={paused || until !== null}
+						ready={!data.loading}
+					/>
+					<div className="traffic-timeline">
+						<div className="traffic-timeline-header">
+							<strong>
+								{until === null ? t("traffic.orbit.live") : format(until)}
+							</strong>
+							<span>{t("traffic.orbit.messageTimeline")}</span>
+							<Select
+								value={windowSize}
+								onChange={(value) => {
+									setWindowSize(value);
+									setUntil(null);
+								}}
+								options={[
+									{ value: "hour", label: t("traffic.orbit.hour") },
+									{ value: "day", label: t("traffic.orbit.day") },
+									{ value: "all", label: t("traffic.orbit.loadedHistory") },
+								]}
+								ariaLabel={t("traffic.orbit.timeWindow")}
+							/>
+							<button onClick={() => setUntil(null)}>
+								{t("traffic.orbit.now")}
+							</button>
+						</div>
+						<div className="traffic-ticks" aria-hidden="true">
+							{records
+								.filter((item) => Date.parse(item.row.at) >= oldest)
+								.map((item) => (
+									<i
+										key={item.key}
+										style={{
+											left: `${Math.max(0, Math.min(100, ((Date.parse(item.row.at) - oldest) / Math.max(1, now - oldest)) * 100))}%`,
+										}}
+									/>
+								))}
+						</div>
+						<input
+							type="range"
+							min={oldest}
+							max={now}
+							value={until ?? now}
+							onChange={(event) => setUntil(Number(event.target.value))}
+							aria-label={t("traffic.orbit.messageTimeline")}
+							aria-valuetext={
+								until === null ? t("traffic.orbit.live") : format(until)
+							}
+						/>
+						<div className="traffic-time-labels">
+							<span>{format(oldest)}</span>
+							<span>{t("traffic.orbit.currentTasks")}</span>
+							<span>{format(now)}</span>
+						</div>
+					</div>
+				</div>
+				<aside
+					className="traffic-inspector"
+					aria-label={t("traffic.orbit.inspector")}
+				>
+					{record ? (
+						<>
+							<div className="traffic-inspector-heading">
+								<h3>{t("traffic.orbit.message")}</h3>
+								<button onClick={() => setRecordKey(null)}>
+									{t("traffic.orbit.back")}
+								</button>
+							</div>
+							<div className="traffic-detail">
+								<b>
+									{record.row.fromSeq === null ? "—" : `#${record.row.fromSeq}`}{" "}
+									→ #{record.row.toSeq}
+								</b>
+								<h3 className="streamer-private">
+									{record.row.subject || t("traffic.orbit.noSubject")}
+								</h3>
+								<p className="streamer-private">
+									{[record.row.fromTitle, record.row.toTitle]
+										.filter(Boolean)
+										.join(" → ")}
+								</p>
+								<time>{format(record.row.at)}</time>
+								{record.row.kind === "scheduled" && (
+									<p>
+										{t("traffic.scheduled")}
+										{record.row.scheduledFor
+											? ` · ${format(record.row.scheduledFor)}`
+											: ""}
+									</p>
+								)}
+								<p className={`traffic-verdict verdict-${record.row.status}`}>
+									{t(verdictKey(record.row.status))}
+								</p>
+								<p>
+									{t(
+										record.row.status === "held"
+											? "traffic.orbit.heldExplanation"
+											: record.row.status === "delivered"
+												? "traffic.orbit.deliveredExplanation"
+												: record.row.status === "unconfirmed"
+													? "traffic.status.unconfirmed"
+													: record.row.status === "not-delivered"
+														? "traffic.status.notDelivered"
+														: "traffic.orbit.unknownDelivery",
+									)}
+								</p>
+								{record.row.reason && (
+									<p className="streamer-private">{record.row.reason}</p>
+								)}
+								{record.row.detail && (
+									<p className="streamer-private">{record.row.detail}</p>
+								)}
+								{record.row.bodyKind === "spill-pointer" && (
+									<p>{t("traffic.spilled")}</p>
+								)}
+								<pre className="traffic-body streamer-private">
+									{record.row.body}
+								</pre>
+								{record.row.spillPath && (
+									<code className="streamer-private">
+										{record.row.spillPath}
+									</code>
+								)}
+								<div className="traffic-detail-actions">
+									<button
+										onClick={() => {
+											setPair(routeKey(record.row));
+											setRecordKey(null);
+											setSelected(null);
+										}}
+									>
+										{t("traffic.orbit.showPair")}
+									</button>
+									{nodeMap.get(toKey(record.row))?.task ? (
+										<button
+											className="traffic-primary"
+											onClick={() =>
+												onOpenTask(record.row.toTaskId, record.row.toProjectId)
+											}
+										>
+											{t("traffic.orbit.openTask")}
+										</button>
+									) : (
+										<p>{t("traffic.taskGone")}</p>
+									)}
+								</div>
+							</div>
+						</>
+					) : (
+						<>
+							{selectedNode && (
+								<div className="traffic-detail traffic-task-detail">
+									<div className="traffic-inspector-heading">
+										<b>{nodeSeq(selectedNode)}</b>
+										<button onClick={clearSelection}>
+											{t("traffic.orbit.clear")}
+										</button>
+									</div>
+									<h3 className="streamer-private">
+										{selectedNode.title || t("traffic.orbit.historical")}
+									</h3>
+									{selectedNode.task ? (
+										<>
+											<p>
+												{getStatusLabel(
+													selectedNode.task.status,
+													t,
+													data.projects.find(
+														(project) => project.id === selectedNode.projectId,
+													),
+												)}
+												{selectedNode.task.taskType === "coordinator"
+													? ` · ${t("traffic.orbit.coordinator")}`
+													: ""}
+											</p>
+											{selectedNode.task.runtimeState && (
+												<p title={t("traffic.orbit.runtimeHelp")}>
+													{t(
+														runtimeKeys[selectedNode.task.runtimeState.runtime],
+													)}
+												</p>
+											)}
+											{selectedNode.task.hibernated && (
+												<p>{t("task.hibernatedBadge")}</p>
+											)}
+											{selectedNode.task.draft && <p>{t("task.draftBadge")}</p>}
+											<p className="streamer-private">
+												{getTaskOverview(selectedNode.task) ||
+													t("traffic.orbit.noOverview")}
+											</p>
+											<button
+												className="traffic-primary"
+												onClick={() =>
+													onOpenTask(selectedNode.id, selectedNode.projectId)
+												}
+											>
+												{t("traffic.orbit.openTask")}
+											</button>
+										</>
+									) : (
+										<p>{t("traffic.taskGone")}</p>
+									)}
+								</div>
+							)}
+							<div className="traffic-inspector-heading">
+								<div className="traffic-tabs">
+									<button
+										aria-pressed={tab === "messages"}
+										onClick={() => setTab("messages")}
+									>
+										{t("traffic.orbit.messages")}
+									</button>
+									<button
+										aria-pressed={tab === "tasks"}
+										onClick={() => setTab("tasks")}
+									>
+										{t("traffic.orbit.tasks")}
+									</button>
+								</div>
+								{pair && (
+									<button onClick={clearSelection}>
+										{t("traffic.orbit.clear")}
+									</button>
+								)}
+							</div>
+							<div className="traffic-list">
+								{tab === "messages" ? (
+									visible.length ? (
+										visible.map(rowButton)
+									) : (
+										<p className="traffic-empty">
+											{data.loading
+												? t("traffic.loading")
+												: t("traffic.noneMatch")}
+										</p>
+									)
+								) : (
+									taskList.map((node) => (
+										<button
+											key={node.key}
+											className={`traffic-task-row ${node.key === selected ? "is-selected" : ""}`}
+											onClick={() => select(node.key)}
+										>
+											<b>{nodeSeq(node)}</b>
+											<span className="streamer-private">
+												{node.title || t("traffic.orbit.historical")}
+											</span>
+											<small>
+												{node.task?.taskType === "coordinator"
+													? t("traffic.orbit.coordinator")
+													: node.task
+														? getStatusLabel(
+																node.task.status,
+																t,
+																data.projects.find(
+																	(project) => project.id === node.projectId,
+																),
+															)
+														: t("traffic.orbit.historical")}
+											</small>
+										</button>
+									))
+								)}
+							</div>
+						</>
+					)}
+				</aside>
+			</div>
+			<footer className="traffic-statusbar">
+				<span>
+					{data.oldestDay
+						? t("traffic.retention", {
+								days: String(data.retentionDays),
+								oldest: data.oldestDay,
+							})
+						: t("traffic.retentionEmpty", {
+								days: String(data.retentionDays),
+							})}{" "}
+					·{" "}
+					{t("traffic.shownCount", {
+						shown: String(visible.length),
+						total: String(records.length),
+					})}
+					{data.hasMore ? ` · ${t("traffic.orbit.partial")}` : ""}
+				</span>
+				{data.hasMore && (
+					<button onClick={data.loadMore} disabled={data.loading}>
+						{t("traffic.orbit.loadMore")}
+					</button>
+				)}
+				<span>{t("traffic.orbit.edgesHelp")}</span>
+			</footer>
 		</div>
 	);
 }

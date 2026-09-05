@@ -232,7 +232,7 @@ const tips = {
 	"tip.spaceSearch.title": "Jump by space, not project",
 	"tip.spaceSearch.body": "⌘K matches space names too — type a space to list its projects, and filter tasks anywhere with `space:\"Client X\"`.",
 	"tip.agentTrafficLog.title": "Read what your agents said",
-	"tip.agentTrafficLog.body": "Press \u21e7\u2318M for the traffic log: 30 days of every message your agents typed into each other.",
+	"tip.agentTrafficLog.body": "Press ⇧⌘M for live traffic from the last 24 hours; change the time window to explore older messages.",
 	"tip.continueInAnotherAgent.title": "Switch agents mid-task",
 	"tip.continueInAnotherAgent.body": "In + Agent, tick “Continue this task’s conversation” — the new agent gets a retelling of the session so far and picks the work up.",
 	"tip.remoteSelfUpdate.title": "Remote boxes self-update",

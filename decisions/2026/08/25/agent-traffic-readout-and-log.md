@@ -1,3 +1,5 @@
+Superseded on 2026-09-05 by `decisions/2026/09/05/live-agent-traffic-orbit.md`: the live orbit replaces the log, removes reply obligations and refreshes from durable append pushes.
+
 # Agent traffic: a conditional header readout plus an overlay log
 
 ## Context

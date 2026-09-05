@@ -1,11 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentMessageLogPage, AgentMessageLogRow } from "../../shared/agent-message-log";
 import { I18nProvider } from "../i18n";
-import { resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
+import { noteTrafficArrival, resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 import AgentTrafficLog from "../components/agent-traffic/AgentTrafficLog";
+import { api } from "../rpc";
+
+vi.mock("../components/agent-traffic/TrafficOrbit", () => ({ default: () => <div aria-label="Project traffic map" /> }));
 
 const page: { value: AgentMessageLogPage } = {
 	value: { rows: [], oldestDay: null, retentionDays: 30, hasMore: false },
@@ -17,8 +20,11 @@ vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			readAgentMessageLog: vi.fn(() => Promise.resolve(page.value)),
-			// The log resolves which receivers still exist before promising navigation.
-			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id) => ({ id })))),
+			getProjects: vi.fn(() => Promise.resolve([{ id: "proj-1", name: "Project One" }])),
+			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id, index) => ({
+				id, projectId: "proj-1", seq: (index + 1) * 11, title: id === "task-a" ? "Coordinator" : id === "task-b" ? "Worker" : "Other worker",
+				status: "in-progress", taskType: id === "task-a" ? "coordinator" : null, overview: "Current task overview",
+			})))),
 		},
 	},
 }));
@@ -47,6 +53,7 @@ function setPage(rows: AgentMessageLogRow[], over: Partial<AgentMessageLogPage> 
 }
 
 beforeEach(() => {
+	vi.clearAllMocks();
 	resetTrafficStore();
 	resetTrafficSeen();
 	setPage([]);
@@ -69,7 +76,7 @@ function withUnread() {
 function renderIndicator() {
 	return render(
 		<I18nProvider>
-			<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} />
+			<AgentTrafficIndicator projectId="proj-1" onOpenLog={vi.fn()} />
 		</I18nProvider>,
 	);
 }
@@ -103,93 +110,19 @@ describe("AgentTrafficIndicator (bar)", () => {
 		expect(pill.getAttribute("aria-label")).toContain("2");
 	});
 
-	// Looking is reading, so opening the panel retires the badge. The pill itself is
-	// not affected — that coupling is exactly what made it vanish under the cursor.
-	it("drops only its badge when the traffic is read, not itself", async () => {
-		withUnread();
-		setPage([row()]);
-		renderIndicator();
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
-		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("1");
-
-		await userEvent.keyboard("{Escape}");
-		await waitFor(() => expect(screen.queryByTestId("agent-traffic-popover")).toBeNull());
-		expect(screen.getByTestId("agent-traffic-indicator")).toBeTruthy();
-	});
-
-	it("opens a panel listing each pair, and offers the log", async () => {
+	it("opens the live surface directly and clears only the unread badge", async () => {
 		withUnread();
 		setPage([row()]);
 		const onOpenLog = vi.fn();
-		render(
-			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={onOpenLog} />
-			</I18nProvider>,
-		);
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
-		expect(screen.getAllByTestId("traffic-pair-row")).toHaveLength(1);
-
-		await userEvent.click(screen.getByTestId("traffic-open-log"));
-		expect(onOpenLog).toHaveBeenCalled();
-	});
-
-	// The one line a pair row has is the reason subjects exist: the head of a body
-	// is the sender naming itself and its task, which the row already shows.
-	it("shows the subject in the pair row, not the head of the body", async () => {
-		withUnread();
-		setPage([row({ subject: "PR 1577 merged, main green", body: "Seq 11 -> Coordinator: PR 1577 has merged…" })]);
-		render(
-			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} />
-			</I18nProvider>,
-		);
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		const pairRow = await screen.findByTestId("traffic-pair-row");
-		expect(pairRow.textContent).toContain("PR 1577 merged, main green");
-		expect(pairRow.textContent).not.toContain("Seq 11 -> Coordinator");
-	});
-
-	it("falls back to the body for a row written before subjects existed", async () => {
-		withUnread();
-		setPage([row({ body: "rebase before you push" })]);
-		render(
-			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} />
-			</I18nProvider>,
-		);
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		expect((await screen.findByTestId("traffic-pair-row")).textContent).toContain("rebase before you push");
-	});
-
-	// ⇧⌘M / the View menu / the palette open the log without going through the
-	// panel, and the panel is portaled above the dialog — it used to hang over the
-	// log it had just handed off to.
-	it("closes its panel when the log is opened from anywhere else", async () => {
-		withUnread();
-		setPage([row()]);
-		renderIndicator();
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
-		window.dispatchEvent(new CustomEvent("open-agent-traffic-log"));
-		await waitFor(() => expect(screen.queryByTestId("agent-traffic-popover")).toBeNull());
-	});
-
-	// The click goes where the answer is owed — the receiver's task, whose pane holds
-	// the text — not to the sender that is already done talking.
-	it("navigates to the task that owes the answer", async () => {
-		withUnread();
-		setPage([row()]);
-		const navigate = vi.fn();
-		render(
-			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={navigate} onOpenLog={vi.fn()} />
-			</I18nProvider>,
-		);
-		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
-		await userEvent.click(screen.getByTestId("traffic-pair-row"));
-		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "proj-1", activeTaskId: "task-b" });
+		render(<I18nProvider><AgentTrafficIndicator projectId="proj-1" onOpenLog={onOpenLog} /></I18nProvider>);
+		const pill = await screen.findByTestId("agent-traffic-indicator");
+		expect(pill.textContent).toContain("1");
+		await userEvent.click(pill);
+		expect(onOpenLog).toHaveBeenCalledTimes(1);
+		expect(screen.queryByTestId("agent-traffic-popover")).toBeNull();
+		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("1");
+		expect(pill.getAttribute("aria-haspopup")).toBe("dialog");
+		expect(pill.getAttribute("title")).toBe("Open agent traffic");
 	});
 });
 
@@ -197,7 +130,7 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 	function renderRow(variant: "menu" | "sheet" = "menu") {
 		return render(
 			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} variant={variant} />
+				<AgentTrafficIndicator projectId="proj-1" onOpenLog={vi.fn()} variant={variant} />
 			</I18nProvider>,
 		);
 	}
@@ -256,83 +189,154 @@ function renderLog(onOpenTask = vi.fn()) {
 	);
 }
 
-describe("AgentTrafficLog", () => {
-	it("lists every message, not just the live ones", async () => {
+async function choose(label: string, option: string) {
+	await userEvent.click(screen.getByRole("combobox", { name: label }));
+	await userEvent.click(await screen.findByRole("option", { name: option }));
+}
+
+async function messageRows(count: number) {
+	await waitFor(() => expect(screen.getAllByTestId("traffic-message-row")).toHaveLength(count));
+	return screen.getAllByTestId("traffic-message-row");
+}
+
+describe("AgentTrafficLog live orbit", () => {
+	it("shows persisted traffic from the last 24 hours immediately, with older history available", async () => {
 		setPage([
-			row({ at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), body: "last week" }),
-			row({ body: "just now" }),
+			row({ at: new Date(Date.now() - 5 * 86400000).toISOString(), subject: "Five days ago" }),
+			row({ at: new Date(Date.now() - 20 * 3600000).toISOString(), subject: "Earlier today" }),
 		]);
 		renderLog();
-		await waitFor(() => expect(screen.getAllByTestId("traffic-ledger-row")).toHaveLength(2));
+		expect((await messageRows(1))[0].textContent).toContain("Earlier today");
+		expect(screen.getByRole("combobox", { name: "Time window" }).textContent).toContain("Last 24 hours");
+		await choose("Time window", "Loaded history");
+		expect((await messageRows(2)).some(element => element.textContent?.includes("Five days ago"))).toBe(true);
 	});
 
-	// The one honest filter: the delivery verdict is recorded per row. There is
-	// deliberately no importance filter, because no sender can set importance.
-	it("filters down to messages dev3 could not prove landed", async () => {
-		setPage([row({ status: "delivered" }), row({ status: "unconfirmed", body: "maybe lost" })]);
+	it.each([
+		["delivered", "Delivered"], ["held", "Held"], ["unconfirmed", "Unconfirmed"], ["not-delivered", "Not delivered"],
+	] as const)("retains and filters the %s delivery verdict", async (status, label) => {
+		setPage(["delivered", "held", "unconfirmed", "not-delivered"].map((value) => row({ status: value as AgentMessageLogRow["status"], subject: `${value} attempt` })));
 		renderLog();
-		await waitFor(() => expect(screen.getAllByTestId("traffic-ledger-row")).toHaveLength(2));
-		await userEvent.click(screen.getByText("Unproven only"));
-		const rows = screen.getAllByTestId("traffic-ledger-row");
-		expect(rows).toHaveLength(1);
-		expect(rows[0].textContent).toContain("maybe lost");
+		await messageRows(4);
+		await choose("Delivery status", label);
+		const [message] = await messageRows(1);
+		expect(message.textContent).toContain(`${status} attempt`);
+		await userEvent.click(message);
+		const inspector = screen.getByRole("complementary", { name: "Task and message details" });
+		expect(within(inspector).getByText(label)).toBeTruthy();
+		if (status === "delivered") expect(inspector.textContent).toContain("not a read receipt");
+		if (status === "held") expect(inspector.textContent).toContain("does not show whether it is still queued");
 	});
 
-	it("narrows the ledger to one pair, and back again", async () => {
-		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, body: "other pair" })]);
+	it("selects one pair from message details and clears the filter", async () => {
+		setPage([row({ subject: "First pair" }), row({ toTaskId: "task-c", toSeq: 33, subject: "Other pair" })]);
 		renderLog();
-		await waitFor(() => expect(screen.getAllByTestId("traffic-pair-row")).toHaveLength(2));
-		await userEvent.click(screen.getAllByTestId("traffic-pair-row")[0]);
-		expect(screen.getAllByTestId("traffic-ledger-row")).toHaveLength(1);
-		await userEvent.click(screen.getAllByTestId("traffic-pair-row")[0]);
-		expect(screen.getAllByTestId("traffic-ledger-row")).toHaveLength(2);
+		await userEvent.click((await messageRows(2))[0]);
+		await userEvent.click(screen.getByRole("button", { name: "Show this pair" }));
+		expect(await messageRows(1)).toHaveLength(1);
+		await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+		await messageRows(2);
 	});
 
-	// Trimmed history has to read as trimmed. Without this line a 30-day window
-	// looks like "the agents never spoke before that day".
-	it("states the retention window and the oldest day still on disk", async () => {
-		setPage([row()]);
+	it("states retention and the oldest stored day, including partial-page evidence", async () => {
+		setPage([row()], { hasMore: true });
 		renderLog();
 		expect(await screen.findByText(/2026-08-01/)).toBeTruthy();
+		expect(screen.getByText(/30 days/)).toBeTruthy();
+		expect(screen.getByText(/Older rows remain to be loaded/)).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "Load older messages" }));
+		await waitFor(() => expect(api.request.readAgentMessageLog).toHaveBeenCalledWith({ projectId: "proj-1", limit: 1000 }));
 	});
 
-	it("leads a ledger row with the subject and keeps the whole body under it", async () => {
-		setPage([row({ subject: "shard 3 done, 0 failures", body: "the full body, never clamped for looks" })]);
+	it("leads with the full subject and reveals the full stored body on selection", async () => {
+		const subject = "A complete subject that must remain readable without an ellipsis";
+		const body = "The complete stored body. ".repeat(80);
+		setPage([row({ subject, body })]);
 		renderLog();
-		const ledger = await screen.findByTestId("traffic-ledger-row");
-		expect(ledger.textContent).toContain("shard 3 done, 0 failures");
-		expect(ledger.textContent).toContain("the full body, never clamped for looks");
-		expect(ledger.textContent!.indexOf("shard 3 done")).toBeLessThan(ledger.textContent!.indexOf("the full body"));
+		const [message] = await messageRows(1);
+		expect(message.textContent).toContain(subject);
+		await userEvent.click(message);
+		expect(screen.getByRole("heading", { name: subject })).toBeTruthy();
+		expect(document.querySelector("pre")?.textContent).toBe(body);
 	});
 
-	// A body too large to type never had text to show; the row must say that rather
-	// than render an empty message.
-	it("names a spilled body instead of showing nothing", async () => {
-		setPage([row({ bodyKind: "spill-pointer", body: "", spillPath: "/tmp/spill.txt" })]);
+	it("falls back to the body for pre-subject rows", async () => {
+		setPage([row({ body: "Legacy message body" })]);
 		renderLog();
-		expect(await screen.findByText(/written to a file/i)).toBeTruthy();
+		expect((await messageRows(1))[0].textContent).toContain("Legacy message body");
 	});
 
-	// A 30-day log outlives tasks. A row that closes the log and changes nothing
-	// reads as a broken app, so the row keeps its text and drops its click.
-	it("does not promise navigation to a task that no longer exists", async () => {
+	it("exposes spilled body evidence in message details", async () => {
+		setPage([row({ subject: "Large report", bodyKind: "spill-pointer", body: "Read the report file", spillPath: "/tmp/spill.txt" })]);
+		renderLog();
+		await userEvent.click((await messageRows(1))[0]);
+		expect(screen.getByText(/written to a file/i)).toBeTruthy();
+		expect(screen.getByText("/tmp/spill.txt")).toBeTruthy();
+	});
+
+	it("keeps removed task messages inspectable without promising navigation", async () => {
 		knownTaskIds.value = ["task-a"];
 		setPage([row()]);
 		const onOpenTask = vi.fn();
 		renderLog(onOpenTask);
-		const ledger = await screen.findByTestId("traffic-ledger-row");
-		await waitFor(() => expect(ledger.getAttribute("data-gone")).toBe("true"));
-		expect(ledger.textContent).toContain("rebase before you push");
-		await userEvent.click(ledger);
+		await userEvent.click((await messageRows(1))[0]);
+		expect(screen.getByText(/This task no longer exists/)).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
+		expect(document.querySelector("pre")?.textContent).toBe("rebase before you push");
 		expect(onOpenTask).not.toHaveBeenCalled();
 	});
 
-	it("opens the receiving task from a ledger row", async () => {
+	it("opens the receiver only from its explicit action, not message selection", async () => {
 		setPage([row()]);
 		const onOpenTask = vi.fn();
 		renderLog(onOpenTask);
-		await waitFor(() => expect(screen.getAllByTestId("traffic-ledger-row")).toHaveLength(1));
-		await userEvent.click(screen.getAllByTestId("traffic-ledger-row")[0]);
+		await userEvent.click((await messageRows(1))[0]);
+		expect(onOpenTask).not.toHaveBeenCalled();
+		await userEvent.click(await screen.findByRole("button", { name: "Open task" }));
 		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
+	});
+
+	it("offers task inspection and navigation without WebGL", async () => {
+		setPage([row()]);
+		const onOpenTask = vi.fn();
+		renderLog(onOpenTask);
+		await messageRows(1);
+		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
+		await userEvent.click(await screen.findByRole("button", { name: /#22 Worker/ }));
+		expect(screen.getByText("Current task overview")).toBeTruthy();
+		expect(onOpenTask).not.toHaveBeenCalled();
+		await userEvent.click(screen.getByRole("button", { name: "Open task" }));
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
+	});
+
+	it("adds pushed durable traffic without reopening or losing the search", async () => {
+		setPage([row({ subject: "Report baseline" })]);
+		renderLog();
+		await messageRows(1);
+		await userEvent.type(screen.getByRole("searchbox"), "Report");
+		setPage([...page.value.rows, row({ subject: "Report arrived" })]);
+		act(() => noteTrafficArrival("proj-1"));
+		await messageRows(2);
+		expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("Report");
+	});
+
+	it("shows a load error and recovers on retry", async () => {
+		vi.mocked(api.request.getProjects).mockRejectedValueOnce(new Error("offline"));
+		setPage([row({ subject: "Recovered report" })]);
+		renderLog();
+		expect(await screen.findByRole("alert")).toHaveTextContent("Some traffic data could not be loaded");
+		await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+		expect((await messageRows(1))[0].textContent).toContain("Recovered report");
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("removes navigation when a task is deleted while its details stay open", async () => {
+		setPage([row()]);
+		renderLog();
+		await userEvent.click((await messageRows(1))[0]);
+		expect(await screen.findByRole("button", { name: "Open task" })).toBeTruthy();
+		act(() => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "proj-1", taskId: "task-b" } })));
+		expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
+		expect(screen.getByText(/This task no longer exists/)).toBeTruthy();
 	});
 });

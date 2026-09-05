@@ -9,6 +9,9 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+const push = vi.hoisted(() => vi.fn());
+vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => push }));
+
 import type { Project } from "../../shared/types";
 import {
 	AGENT_MESSAGE_LOG_MAX_ROW_BYTES,
@@ -48,6 +51,7 @@ function makeRow(overrides: Partial<AgentMessageLogInput> = {}): AgentMessageLog
 
 beforeEach(() => {
 	resetAgentMessageLogPruneState();
+	push.mockReset();
 	rmSync(messageLogDir(project), { recursive: true, force: true });
 });
 
@@ -204,6 +208,7 @@ describe("retention", () => {
 		const expired = new Date(now.getTime() - 400 * 24 * 60 * 60 * 1000);
 		appendAgentMessageLog(project, makeRow({ body: "ancient" }), expired);
 		resetAgentMessageLogPruneState();
+	push.mockReset();
 		appendAgentMessageLog(project, makeRow({ body: "today" }), now);
 		expect(readAgentMessageLog(project).rows.map((r) => r.body)).toEqual(["today"]);
 	});
@@ -214,5 +219,26 @@ describe("retention", () => {
 		writeFileSync(`${messageLogDir(project)}/README.txt`, "hands off");
 		expect(pruneAgentMessageLog(project, new Date(2027, 0, 1))).toBe(1);
 		expect(readFileSync(`${messageLogDir(project)}/README.txt`, "utf8")).toBe("hands off");
+	});
+});
+
+
+describe("durable append notifications", () => {
+	it.each(["delivered", "held", "unconfirmed", "not-delivered"] as const)("announces %s only after its row is readable", (status) => {
+		push.mockImplementation((name, payload) => {
+			expect(name).toBe("agentMessageLogChanged");
+			expect(payload).toEqual({ projectId: project.id });
+			expect(readAgentMessageLog(project).rows[0].status).toBe(status);
+		});
+		appendAgentMessageLog(project, makeRow({ status }));
+		expect(push).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not announce an append that failed", () => {
+		mkdirSync(messageLogDir(project), { recursive: true });
+		const now = new Date(2026, 7, 23);
+		mkdirSync(`${messageLogDir(project)}/2026-08-23.jsonl`);
+		appendAgentMessageLog(project, makeRow(), now);
+		expect(push).not.toHaveBeenCalled();
 	});
 });

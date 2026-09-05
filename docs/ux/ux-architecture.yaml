@@ -211,8 +211,8 @@ ux_architecture:
         status: "observed"
       agent_traffic_readout:
         budget: 1
-        spec: "PRESENCE IS THE DATA, THE BADGE IS THE UNREAD COUNT — never one question. The labelled kebab row is always present; the bar pill sits immediately right of the three dots while the project's agents have messaged each other at all, absent where they never have (conditional, unlike the permanent ambient_resource_readout). Never key presence off unread — hovering marks it seen, and that shipped once as a pill retiring under the pointer. Unread counts from the last look (per-browser stamp, first look stamps itself, badge caps at 9+). Violet --agent (identity, never severity); text-warning only when an unread message has no proof of delivery. The panel lists pairs unfiltered by recency (receiver of the newest message = the one that owes an answer); a row navigates to that RECEIVER. Never invents an importance axis — no sender can set one."
-        narrow: "NEVER on the bar. The kebab bottom sheet is the only mobile entry, as a LABELLED row (an unnamed glyph is unfindable among the sheet's numbers); >=44px; panel renders as BottomSheet."
+        spec: "Presence follows recorded traffic; unread is only the per-browser badge (first look initializes it, cap 9+). The labelled kebab row remains available; the conditional bar pill opens the live orbit directly. Never key presence off unread. Violet --agent denotes identity, not severity; warning requires an unread unproven delivery. No reply obligation is inferred from the newest recipient."
+        narrow: "NEVER on the bar. The labelled kebab row opens the same overlay as a BottomSheet; >=44px target."
         flag: "experimentalAgentTraffic (Settings -> System -> Advanced Experience), default OFF, and off leaves NO trace: no kebab row, pill, keymap listing, menu row, palette command or tip. A greyed row is a trace."
         status: "proposed"
       ambient_resource_readout:
@@ -272,12 +272,12 @@ ux_architecture:
       status: "observed"
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     agent_traffic_log:
-      purpose: "Every dev3 message the project's agents typed into each other, newest first."
-      allowed: ["read_history", "pair_filter", "delivery_status_filter", "open_receiving_task"]
-      forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter"]
-      narrow_form: "bottom_sheet"   # wide renders the same content as a centered dialog
-      entry_point: "The header agent_traffic_readout panel, Shift+Cmd/Ctrl+M, View menu, command palette. NOT a nav destination — the 8-destination budget is spent, and this is a log opened to answer one question."
-      note: "Reads the log that already existed on disk (data/<slug>/messages/*.jsonl, 30 days, readAgentMessageLog RPC) with no UI at all. A row leads with the stored `subject` (mandatory `--subject`, 80-char cap, never truncated); older rows fall back to the body head. Filters are ONLY what the data supports: one pair, or messages whose delivery was never proven — an importance/blocker filter would invent a fact no sender can set. Trimmed history must read as trimmed: the footer names the retention window and the oldest day still on disk. Behind experimentalAgentTraffic, default off."
+      purpose: "Live project orbit of recorded message attempts, with accessible lists and a selection inspector."
+      allowed: ["orbit_visualization", "task_message_inspector", "search", "loaded_history_window", "delivery_status_filter", "open_existing_task"]
+      forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter", "inferred_reply_obligation"]
+      narrow_form: "bottom_sheet"
+      entry_point: "Direct header pill click, labelled kebab row, Shift+Cmd/Ctrl+M, View menu, command palette; one overlay, no separate old log or ninth destination."
+      note: "Writer pushes plus lazy Bun filesystem observers cover mixed-version appends; no renderer polling, shutdown closes observers. Finite pulses: delivered travels, other verdicts stay at sender; text/static cues remain distinct. Show active tasks plus selected-history endpoints with current role/state, no dead navigation. Search/time windows filter loaded messages, never past task state. Complete subjects (older rows: body head), retention, oldest day and partial-page limits remain visible. Lists preserve inspection without WebGL; reduced motion suppresses animation. No inferred ownership, merge order/approval, authored stories or demo actions. Behind experimentalAgentTraffic, default off."
       evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."

@@ -5804,6 +5804,8 @@ export type AppRPCSchema = {
 			 * the receiver, whose terminal now holds the text. Sole emitter:
 			 * `pushAgentMessage` in `src/bun/rpc-handlers/shared.ts`.
 			 */
+			/** A durable append completed; refresh the recipient project log, including failed attempts. */
+			agentMessageLogChanged: { projectId: string };
 			agentMessage: {
 				/** Receiving task — the click target, and the inbox that got the text. */
 				taskId: string;

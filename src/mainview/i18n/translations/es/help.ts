@@ -239,10 +239,10 @@ const help = {
 	"help.field.streamerMode.title": "Oculta datos privados en directo",
 	"help.field.streamerMode.body":
 		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
-	"help.header.agentTraffic.title": "Tráfico de agentes: quién habla y quién debe responder",
-	"help.header.agentTraffic.body": "El glifo aparece solo mientras tus agentes se han escrito en la última hora. El número cuenta parejas activas; ábrelo para verlas, y quien recibió el último mensaje es quien aún no ha respondido.",
-	"help.traffic.log.title": "Todos los mensajes que tus agentes se escribieron",
-	"help.traffic.log.body": "Todo el historial que dev3 guardó, lo más reciente primero: un toast dura 30 segundos, esto dura 30 días. Elige una pareja a la izquierda para leer solo esa conversación, y «Solo sin confirmar» muestra los mensajes cuya entrega dev3 no pudo probar.",
+	"help.header.agentTraffic.title": "Tráfico de agentes: sigue sus conversaciones",
+	"help.header.agentTraffic.body": "Selecciona el icono morado de mensajes o pulsa ⇧⌘M para abrir la órbita en vivo. Empieza con las últimas 24 horas; el contador muestra los mensajes sin leer.",
+	"help.traffic.log.title": "Explora el tráfico de agentes en vivo",
+	"help.traffic.log.body": "Selecciona una tarea o un mensaje para consultar su estado de entrega registrado. Cambia el periodo o carga mensajes anteriores, conservados durante 30 días. La línea temporal filtra mensajes; las columnas de tareas siguen mostrando el estado actual.",
 	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
 	"help.header.connectionQuality.title": "Qué tan lenta es esta conexión",
 	"help.header.connectionQuality.body":

@@ -659,6 +659,8 @@ const handlers: Record<string, Handler> = {
 			} else if (event === "projectUpdated" && projectId) {
 				const project = await data.getProject(projectId);
 				localPush("projectUpdated", { project });
+			} else if (event === "agentMessageLogChanged" && projectId) {
+				localPush("agentMessageLogChanged", { projectId });
 			} else if (event === "spacesUpdated") {
 				// Re-read locally: the identity-checked cache sees the peer's write.
 				const file = await loadSpacesFile();

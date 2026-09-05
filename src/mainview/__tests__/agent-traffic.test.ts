@@ -40,8 +40,7 @@ describe("derivePairs", () => {
 		expect(pairs[0].count).toBe(2);
 	});
 
-	// "Who owes an answer" is derived, never stored: whoever RECEIVED the newest
-	// message is the one that has not replied.
+	// Direction describes the newest attempt, not a reply obligation.
 	it("points at the receiver of the newest message", () => {
 		const pairs = derivePairs([
 			row({ at: new Date(NOW - 60_000).toISOString() }),
@@ -81,6 +80,11 @@ describe("derivePairs", () => {
 			row({ at: new Date(NOW - 1000).toISOString(), status: "unconfirmed" }),
 		]);
 		expect(pairs[0].unsettled).toBe(true);
+	});
+
+	it("does not merge equal task ids from different projects", () => {
+		const pairs = derivePairs([row(), row({ fromProjectId: "other", toProjectId: "other" })]);
+		expect(pairs).toHaveLength(2);
 	});
 
 	it("sorts the newest pair first", () => {
