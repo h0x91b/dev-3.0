@@ -177,7 +177,7 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
-	installAgentSkills({ configureCodex: false, lowBattery: loadSettingsSync().lowBatteryDisabled !== true });
+	installAgentSkills({ configureCodex: false, lowBattery: loadSettingsSync().lowBatteryEnabled });
 
 	// Append ~/.dev3.0/bin to the user's shell rc files (idempotent).
 	// This makes `dev3` available in all terminals, not just worktree tmux

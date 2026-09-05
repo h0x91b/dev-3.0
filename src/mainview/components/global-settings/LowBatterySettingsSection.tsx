@@ -7,9 +7,9 @@ import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
 
 /**
- * The one switch for the low-battery answer format. The row does more than toggle:
- * when the user already had their own Claude Code output style, dev3 leaves it
- * selected, and the row has to say so — "on by default" must not quietly lie.
+ * The one switch for the low-battery answer format, off until the user turns it on.
+ * The row does more than toggle: when the user already had their own Claude Code
+ * output style, dev3 leaves it selected, and the row has to say so.
  */
 export default function LowBatterySettingsSection({
 	t,
@@ -21,7 +21,7 @@ export default function LowBatterySettingsSection({
 	onToggle: (enabled: boolean) => void;
 }) {
 	const [status, setStatus] = useState<LowBatteryStatus | null>(null);
-	const enabled = globalSettings.lowBatteryDisabled !== true;
+	const enabled = globalSettings.lowBatteryEnabled === true;
 
 	const refresh = useCallback(() => {
 		api.request.getLowBatteryStatus().then(setStatus).catch(() => setStatus(null));

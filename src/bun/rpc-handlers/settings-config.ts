@@ -242,11 +242,13 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// Apply the low-battery toggle straight away — a switch that only takes effect
 	// after an app restart does not mean what its label says. Flipping it off is a
 	// real uninstall of what dev3 wrote, so it must not wait either.
-	if ((stored.lowBatteryDisabled === true) !== (next.lowBatteryDisabled === true)) {
+	if ((stored.lowBatteryEnabled === true) !== (next.lowBatteryEnabled === true)) {
 		try {
 			// The installer owns both halves: the skill/style files and the always-on
-			// line inside dev3's managed block in ~/.agents/AGENTS.md.
-			installAgentSkills({ lowBattery: next.lowBatteryDisabled !== true });
+			// line inside dev3's managed block in ~/.agents/AGENTS.md. An explicit
+			// false here is a real uninstall, which is why the flag is passed, not
+			// left undefined.
+			installAgentSkills({ lowBattery: next.lowBatteryEnabled === true });
 		} catch (err) {
 			log.warn("Failed to apply the low-battery toggle (non-fatal)", { error: String(err) });
 		}
@@ -663,7 +665,7 @@ async function setFeatureFlags(params: { flags: Record<string, boolean> }): Prom
 
 async function getLowBatteryStatus(): Promise<LowBatteryStatus> {
 	const settings = await loadSettings();
-	return lowBatteryStatus(homedir(), settings.lowBatteryDisabled !== true);
+	return lowBatteryStatus(homedir(), settings.lowBatteryEnabled === true);
 }
 
 /** The user kept their own output style and then asked for low-battery anyway.

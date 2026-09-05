@@ -46,6 +46,8 @@ function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 		readFile: (p) => {
 			if (p === PLIST) return plistWithVersion("1.30.0");
 			if (p === CLAUDE_SETTINGS) return JSON.stringify({ outputStyle: "Low Battery" });
+			// low-battery is opt-in, so a healthy install of it is one that asked for it.
+			if (p === SETTINGS) return JSON.stringify({ lowBatteryEnabled: true });
 			throw new Error(`ENOENT: ${p}`);
 		},
 		exec: (cmd, args) => {
@@ -114,11 +116,37 @@ describe("dev3 doctor — collectChecks", () => {
 		const base = healthyDeps();
 		const deps = healthyDeps({
 			existsSync: (p) => p !== LOW_BATTERY_STYLE && p !== LOW_BATTERY_SKILL && base.existsSync(p),
-			readFile: (p) => (p === SETTINGS ? JSON.stringify({ lowBatteryDisabled: true }) : base.readFile(p)),
+			readFile: (p) => (p === SETTINGS ? JSON.stringify({ lowBatteryEnabled: false }) : base.readFile(p)),
 		});
 		const check = byLabel(collectChecks(deps), "low-battery");
 		expect(check.status).toBe("ok");
 		expect(check.detail).toContain("off in Settings");
+	});
+
+	// No key at all is the default, and the default is off — never "on but broken".
+	it("reads a settings file with no low-battery key as off", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			existsSync: (p) => p !== LOW_BATTERY_STYLE && p !== LOW_BATTERY_SKILL && base.existsSync(p),
+			readFile: (p) => (p === SETTINGS ? JSON.stringify({}) : base.readFile(p)),
+		});
+		const check = byLabel(collectChecks(deps), "low-battery");
+		expect(check.status).toBe("ok");
+		expect(check.detail).toContain("off in Settings");
+		expect(check.hints).toBeUndefined();
+	});
+
+	// Upgraders from the default-on era keep the files: dev3 does not delete them on
+	// its own, so doctor has to say they are there and how to remove them.
+	it("names an earlier install left on disk while the setting is off", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			readFile: (p) => (p === SETTINGS ? JSON.stringify({}) : base.readFile(p)),
+		});
+		const check = byLabel(collectChecks(deps), "low-battery");
+		expect(check.status).toBe("ok");
+		expect(check.detail).toContain("still on disk");
+		expect(check.hints?.[0]).toContain("turn it on and off again");
 	});
 
 	it("fails when the data dir is missing", () => {

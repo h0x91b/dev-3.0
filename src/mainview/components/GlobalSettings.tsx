@@ -590,8 +590,9 @@ function GlobalSettings({
 
 	const handleLowBatteryToggle = useCallback(
 		(enabled: boolean) => {
-			// Stored as an opt-OUT, so an older settings.json with no key reads as on.
-			persistSettingChange({ lowBatteryDisabled: enabled ? undefined : true });
+			// Stored as an opt-IN, and the explicit `false` is kept: "I turned it off"
+			// is a choice, and it is what makes the next start uninstall what dev3 wrote.
+			persistSettingChange({ lowBatteryEnabled: enabled });
 		},
 		[persistSettingChange],
 	);

@@ -1398,9 +1398,10 @@ export interface InstallAgentSkillsOptions {
 	/** Skip Codex config patching when the caller has not resolved the user PATH yet. */
 	configureCodex?: boolean;
 	/**
-	 * Ship the low-battery answer format. On by default, so an older `settings.json`
-	 * with no such key reads as on. `false` is a real uninstall, not a skipped
-	 * install: the skill dirs, the style file and the always-on line all go.
+	 * Ship the low-battery answer format. Tri-state on purpose: `true` installs,
+	 * `false` is a real uninstall (skill dirs, style file, always-on line), and
+	 * omitted means "the user has not chosen" — dev3 installs nothing and deletes
+	 * nothing, because a `low-battery` skill dir may be the user's own.
 	 */
 	lowBattery?: boolean;
 }
@@ -1560,12 +1561,13 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 		}
 	}
 
-	const lowBattery = options.lowBattery !== false;
-	applyLowBattery(home, lowBattery);
+	// No choice stored ⇒ touch nothing on disk. dev3's own managed block still
+	// drops the always-on line, because that block is dev3's to rewrite.
+	if (options.lowBattery !== undefined) applyLowBattery(home, options.lowBattery);
 
 	cleanupLegacyGeminiSkillDuplicates(home);
 	installOpenAiMetadata(home);
-	installAgentsMd(lowBattery);
+	installAgentsMd(options.lowBattery === true);
 	ensureClaudeSettings(home);
 	if (options.configureCodex !== false) {
 		ensureCodexConfigFile(home);
