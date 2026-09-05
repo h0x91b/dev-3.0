@@ -70,13 +70,32 @@ export function terminalTextSelectionLive(root: ParentNode): boolean {
 	return !!layer && selectionTouches(layer);
 }
 
+export interface TouchTextLayerOptions {
+	/**
+	 * A selection over these rows stopped changing. Fires on the settle, not on
+	 * every change: a handle drag emits dozens of changes and each one would be a
+	 * clipboard write.
+	 */
+	onSelectionSettled?: (text: string) => void;
+}
+
+/** How long a selection must hold still before it counts as the user's answer. */
+const SETTLE_MS = 250;
+
 export function installTouchTextLayer(
 	container: HTMLElement,
 	canvas: HTMLCanvasElement,
 	term: TouchTextLayerTerminal,
+	options: TouchTextLayerOptions = {},
 ): TouchTextLayer {
 	const element = document.createElement("div");
 	element.setAttribute("data-terminal-text-layer", "true");
+	// A non-editable island inside the container ghostty marks contenteditable.
+	// These rows are not editable text, and Blink hands an editable selection a
+	// different (here: absent) selection UI. Scoped to the layer on purpose —
+	// the container keeps its editable state, so ghostty's focus and IME are
+	// untouched.
+	element.setAttribute("contenteditable", "false");
 	Object.assign(element.style, {
 		position: "absolute",
 		margin: "0",
@@ -166,11 +185,40 @@ export function installTouchTextLayer(
 		rowPool.length = term.rows;
 	}
 
+	// Android offers no way to act on the selection it just made: the platform
+	// draws handles but never the Copy toolbar over these rows, so a user gets a
+	// perfect selection and nothing to do with it. dev3 already answers this on
+	// desktop — selecting IS copying — so the same rule carries the touch layer,
+	// and no button has to exist.
+	let settleTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastEmitted = "";
+
+	function onSelectionChange() {
+		if (settleTimer !== null) clearTimeout(settleTimer);
+		settleTimer = setTimeout(() => {
+			settleTimer = null;
+			if (!hasLiveSelection()) {
+				lastEmitted = "";
+				return;
+			}
+			const text = document.getSelection()?.toString() ?? "";
+			if (!text || text === lastEmitted) return;
+			lastEmitted = text;
+			options.onSelectionSettled?.(text);
+		}, SETTLE_MS);
+	}
+
+	if (options.onSelectionSettled) {
+		document.addEventListener("selectionchange", onSelectionChange);
+	}
+
 	return {
 		element,
 		refresh,
 		hasSelection: hasLiveSelection,
 		dispose() {
+			if (settleTimer !== null) clearTimeout(settleTimer);
+			document.removeEventListener("selectionchange", onSelectionChange);
 			element.remove();
 			rowPool.length = 0;
 		},

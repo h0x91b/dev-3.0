@@ -1078,6 +1078,31 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						containerRef.current,
 						canvas,
 						term,
+						{
+							// Selecting IS copying in dev3 (see `terminal.copyHint`), and
+							// the touch layer is the one place that rule did not reach.
+							// Written from the renderer, not through
+							// `copyTerminalSelection`: that RPC lands on the HOST's
+							// clipboard, which is the wrong machine when the terminal is
+							// being read on a phone.
+							onSelectionSettled: (text) => {
+								if (disposed) return;
+								void writeClipboardText(text).then((method) => {
+									logCopyEvent(method === "failed" ? "warn" : "info", "touch selection copy result", {
+										method,
+										len: text.length,
+									});
+									if (method === "failed") return;
+									try {
+										if (localStorage.getItem(TERMINAL_COPY_HINT_SEEN_KEY)) return;
+										localStorage.setItem(TERMINAL_COPY_HINT_SEEN_KEY, "1");
+										toast.info(tRef.current("terminal.copyHint"), { durationMs: 8000, taskId });
+									} catch {
+										// localStorage unavailable — skip the hint, the copy still worked.
+									}
+								});
+							},
+						},
 					);
 					touchTextLayerRef.current.refresh();
 				}
