@@ -199,3 +199,94 @@ describe("terminal touch text layer", () => {
 		expect(terminalTextSelectionLive(document)).toBe(false);
 	});
 });
+
+// Android draws handles over these rows but never a Copy toolbar, so the platform
+// gives no way to act on the selection it just made. dev3's existing answer is that
+// selecting IS copying; these cover carrying that rule to touch without turning a
+// handle drag into dozens of clipboard writes.
+describe("terminal touch text layer – auto-copy on a settled selection", () => {
+	function mountWithCopy(rows: string[]) {
+		const settled: string[] = [];
+		const container = document.createElement("div");
+		const canvas = document.createElement("canvas");
+		container.appendChild(canvas);
+		document.body.appendChild(container);
+		const term = makeTerm(rows);
+		const layer = installTouchTextLayer(container, canvas, term, {
+			onSelectionSettled: (text) => settled.push(text),
+		});
+		return { container, layer, settled };
+	}
+
+	function selectText(node: Node, text: string) {
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false,
+			rangeCount: 1,
+			toString: () => text,
+			getRangeAt: () => ({ commonAncestorContainer: node, intersectsNode: () => true }),
+		} as unknown as Selection);
+	}
+
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it("copies once the selection stops changing", () => {
+		const m = mountWithCopy(["hello world"]);
+		m.layer.refresh();
+
+		selectText(m.layer.element, "hello");
+		document.dispatchEvent(new Event("selectionchange"));
+		expect(m.settled).toEqual([]);   // nothing yet — still moving
+		vi.advanceTimersByTime(300);
+
+		expect(m.settled).toEqual(["hello"]);
+		m.layer.dispose();
+		m.container.remove();
+	});
+
+	// A handle drag fires selectionchange per pixel. One clipboard write, not thirty.
+	it("collapses a whole drag into a single copy of the final range", () => {
+		const m = mountWithCopy(["hello world"]);
+		m.layer.refresh();
+
+		for (const t of ["h", "he", "hel", "hell", "hello"]) {
+			selectText(m.layer.element, t);
+			document.dispatchEvent(new Event("selectionchange"));
+			vi.advanceTimersByTime(50);
+		}
+		vi.advanceTimersByTime(300);
+
+		expect(m.settled).toEqual(["hello"]);
+		m.layer.dispose();
+		m.container.remove();
+	});
+
+	it("stays quiet for a selection that is not over the terminal", () => {
+		const m = mountWithCopy(["hello world"]);
+		m.layer.refresh();
+
+		vi.spyOn(document, "getSelection").mockReturnValue({
+			isCollapsed: false, rangeCount: 1, toString: () => "elsewhere",
+			getRangeAt: () => ({ commonAncestorContainer: document.body, intersectsNode: () => false }),
+		} as unknown as Selection);
+		document.dispatchEvent(new Event("selectionchange"));
+		vi.advanceTimersByTime(300);
+
+		expect(m.settled).toEqual([]);
+		m.layer.dispose();
+		m.container.remove();
+	});
+
+	it("stops copying after dispose", () => {
+		const m = mountWithCopy(["hello world"]);
+		m.layer.refresh();
+		m.layer.dispose();
+		m.container.remove();
+
+		selectText(m.layer.element, "hello");
+		document.dispatchEvent(new Event("selectionchange"));
+		vi.advanceTimersByTime(300);
+
+		expect(m.settled).toEqual([]);
+	});
+});
