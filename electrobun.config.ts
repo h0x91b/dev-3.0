@@ -43,7 +43,7 @@ export default {
 	app: {
 		name: "dev-3.0",
 		identifier: "dev3.electrobun.dev",
-		version: "1.51.2",
+		version: "1.51.3",
 		// Inbound deep links: `dev3://task/<id>`, `dev3://project/<id>`,
 		// `dev3://new-task?project=<id>&text=<…>`. Electrobun writes CFBundleURLTypes
 		// into Info.plist; macOS only registers it when the app lives in
