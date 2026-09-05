@@ -46,7 +46,7 @@ function fakeWindow(opts: { framed?: boolean } = {}): FakeWindow {
 	// The viewer's frame: a distinct parent that collects what the bridge posts.
 	const parent = { postMessage: (message: Sent) => win.sent.push(message) };
 	(win as { parent?: unknown }).parent = opts.framed === false ? win : parent;
-	installArtifactChannel(win as unknown as Parameters<typeof installArtifactChannel>[0], "frame");
+	installArtifactChannel(win as unknown as Parameters<typeof installArtifactChannel>[0]);
 	return win;
 }
 

@@ -1,5 +1,12 @@
 # Render the artifact viewer in an `<electrobun-webview>`, not an iframe
 
+> **Superseded on 2026-09-05 by `decisions/2026/09/05/artifact-viewer-back-in-the-page.md`:**
+> the separate webview host, the transport picker and the overlay-mask machinery
+> were all deleted. The artifact is a sandboxed `srcdoc` iframe again on every
+> platform. The measurements below still stand as measurements — the process
+> isolation was real — but nothing in the code does this any more, and the
+> containment it bought is gone.
+
 ## Context
 
 Three hard UI freezes on 2026-08-30 (10:48, 13:51, 16:46), all with an artifact

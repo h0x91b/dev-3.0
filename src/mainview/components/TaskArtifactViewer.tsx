@@ -12,7 +12,6 @@ import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
-import { artifactTransport } from "../utils/artifactTransport";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
@@ -93,9 +92,6 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const searchToggleRef = useRef<HTMLButtonElement>(null);
 	// Guards against out-of-order replies from the document while typing fast.
 	const searchTokenRef = useRef(0);
-	// Fixed for this window: which host renders the artifact, and therefore which
-	// channel the composed document must carry. See utils/artifactTransport.ts.
-	const [transport] = useState(artifactTransport);
 	const group = artifacts[index];
 	// Keyed by artifact id rather than reset in an effect: an artifact the user
 	// just opened has no pick, so it renders its newest version on the first
@@ -157,11 +153,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			.then((payload) => {
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current, transport));
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
-	}, [current, t, transport]);
+	}, [current, t]);
 
 	const postToFrame = useCallback((message: Record<string, unknown>) => {
 		frameRef.current?.post(message);
@@ -535,7 +531,6 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 						<ArtifactFrame
 							ref={frameRef}
 							title={current.title}
-							transport={transport}
 							document={srcDoc}
 							onReady={() => { sendTheme(); restoreDraft(); }}
 							onMessage={onFrameMessage}
