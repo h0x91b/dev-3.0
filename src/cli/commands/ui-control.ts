@@ -9,6 +9,19 @@ import { parseNotificationDuration } from "../../shared/duration";
 const NOTIFY_MAX_LEN = 500;
 
 /**
+ * The harness session that ran this command, when the environment names one.
+ *
+ * Measured, not assumed: a Claude Code sub-agent inherits its parent's
+ * `CLAUDE_CODE_SESSION_ID` verbatim, so this separates two agent sessions in one
+ * task but never a sub-agent from its parent. Every other harness leaves it
+ * unset, and unset stays unset — a guessed sender is worse than a missing one.
+ */
+function callerSessionId(): string | null {
+	const raw = (process.env.CLAUDE_CODE_SESSION_ID ?? "").trim();
+	return raw ? raw : null;
+}
+
+/**
  * Deliver the same in-app toast to every OTHER live dev3 instance, best-effort.
  *
  * A toast is presentation with no persisted state, so a second delivery costs
@@ -21,10 +34,13 @@ const NOTIFY_MAX_LEN = 500;
 async function fanOutToast(primarySocketPath: string, params: Record<string, unknown>): Promise<number> {
 	const others = allLiveSocketPaths().filter((path) => path !== primarySocketPath);
 	if (!others.length) return 0;
+	// `fanout` tells the receiving app this is the same notification arriving a
+	// second time, so only the primary writes it to the notification log.
+	const fanoutParams = { ...params, fanout: true };
 	const results = await Promise.all(
 		others.map(async (path) => {
 			try {
-				return (await sendRequest(path, "ui.notify", params)).ok;
+				return (await sendRequest(path, "ui.notify", fanoutParams)).ok;
 			} catch {
 				return false;
 			}
@@ -79,6 +95,11 @@ export async function handleNotify(
 	const params: Record<string, unknown> = { message, level };
 	if (durationMs !== undefined) params.durationMs = durationMs;
 	if (desktop) params.desktop = true;
+	// Who sent it, for the notification log. The worktree the command ran in is a
+	// different fact from the task it points at (`--task <other>`), so both travel.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
+	const sessionId = callerSessionId();
+	if (sessionId) params.sourceSessionId = sessionId;
 
 	if (rawTaskId) {
 		params.taskId = expandShortId(rawTaskId, context);

@@ -237,6 +237,15 @@ export function isNotificationSuppressed(): boolean {
 	return notificationSuppressionSources.size > 0;
 }
 
+/**
+ * Which modes are currently holding notifications back, in a stable order.
+ * `isNotificationSuppressed` answers whether; the notification log records why.
+ */
+export function activeNotificationSuppression(): NotificationSuppressionSource[] {
+	const order: NotificationSuppressionSource[] = ["focusMode", "terminalImmersive"];
+	return order.filter((source) => notificationSuppressionSources.has(source));
+}
+
 function flushQueuedNotifications(): void {
 	if (isNotificationSuppressed() || queuedTerminalNotifications.length === 0) return;
 
