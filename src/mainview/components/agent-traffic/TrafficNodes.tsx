@@ -204,6 +204,7 @@ export default function TrafficNodes({
 		(instant = false) => fitNodes(scene.placed, 0.85, instant),
 		[fitNodes, scene.placed],
 	);
+	const resizeFollow = useRef<(() => void) | null>(null);
 	const fitRef = useRef(fit);
 	fitRef.current = fit;
 	const previousScope = useRef(scope);
@@ -217,13 +218,15 @@ export default function TrafficNodes({
 	useLayoutEffect(() => {
 		if (!frame.current) return;
 		const observer = new ResizeObserver(() => {
-			if (overviewMode.current) fitRef.current(true);
+			if (resizeFollow.current) resizeFollow.current();
+			else if (overviewMode.current) fitRef.current(true);
 		});
 		observer.observe(frame.current);
 		return () => observer.disconnect();
 	}, []);
 	const focus = useCallback(
 		(key: string) => {
+			cancelAnimationFrame(camera.current);
 			setFollow(false);
 			overviewMode.current = false;
 			const node = nodeByKey.get(key);
@@ -268,7 +271,7 @@ export default function TrafficNodes({
 	}, [pendingFocus, nodeByKey]);
 	const exchange = useCallback(
 		(record: TrafficRecord) => {
-			const viewport = frame.current?.getBoundingClientRect();
+			const viewport = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
 			const recipient = nodeByKey.get(toKey(record.row));
 			const sender = nodeByKey.get(fromKey(record.row) ?? "");
 			if (!viewport?.width || !viewport.height || !recipient) return;
@@ -305,16 +308,14 @@ export default function TrafficNodes({
 	launchRef.current = launch;
 	const exchangeRef = useRef(exchange);
 	exchangeRef.current = exchange;
+	resizeFollow.current = follow && ready && followedRecord ? () => exchange(followedRecord) : null;
 	useEffect(() => {
 		setFlights([]);
 		if (!playback?.current) return;
 		launchRef.current(playback.current);
 	}, [playback?.revision, replaying]);
 	useEffect(() => {
-		if (!follow) {
-			cancelAnimationFrame(camera.current);
-			return;
-		}
+		if (!follow) return;
 		if (!ready) return;
 		const event =
 			playback?.current ?? playback?.events[playback.events.length - 1];
@@ -698,7 +699,7 @@ export default function TrafficNodes({
 				<button
 					className={follow ? "is-active" : ""}
 					aria-pressed={follow}
-					onClick={() => setFollow((value) => !value)}
+					onClick={() => follow ? manual() : setFollow(true)}
 				>
 					<TrafficIcon name="follow" />
 					{t("traffic.nodes.follow")}

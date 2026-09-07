@@ -10,9 +10,11 @@ The reference uses a single 500ms glide to the pair. The extra close-up in the p
 
 ## Decision
 
-`TrafficNodes.exchange` uses the existing interruptible camera glide to one `frameExchange` target. The target is centered between card centers, with symmetric bounds containing both cards and the entire obstacle-avoiding route. No destination or stopped-message zoom remains. Faster playback shortens the glide to its event interval.
+`TrafficNodes.exchange` uses the existing interruptible camera glide to one `frameExchange` target. The target is centered between card centers, with symmetric bounds containing both cards and the entire obstacle-avoiding route. No destination or stopped-message zoom remains. Faster playback shortens the glide to its event interval. Follow recalculates on viewport resize using layout dimensions, so a BottomSheet entrance transform cannot distort the camera bounds.
 
 `nodes-layout.ts` uses five columns, expanding to six above 24 active workers. Message labels remain outside the transformed scene with 13px subject text and 11px direction text; flight capsules retain their screen size.
+
+Manual cancellation belongs in the initiating handler, before Fit/Focus starts its own glide. A later Follow-off effect would cancel that new movement as well.
 
 ## Risks
 

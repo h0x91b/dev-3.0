@@ -844,6 +844,17 @@ it("Follow settles once on the pair and holds the same framing for its reply", a
 		removeListener: () => {},
 		dispatchEvent: () => false,
 	}));
+	const size = { width: 1400, height: 640 };
+	const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => size.width);
+	const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => size.height);
+	let resize: ResizeObserverCallback | undefined;
+	vi.stubGlobal("ResizeObserver", class {
+		constructor(callback: ResizeObserverCallback) { resize = callback; }
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	});
+
 	let clock = 0,
 		sequence = 0;
 	const frames = new Map<number, FrameRequestCallback>();
@@ -906,12 +917,28 @@ it("Follow settles once on the pair and holds the same framing for its reply", a
 		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
 		advance(1600);
 		expect(stage.style.transform).toBe(settled);
+		size.width = 900;
+		size.height = 360;
+		act(() => resize?.([], {} as ResizeObserver));
+		advance(600);
+		expect(stage.style.transform).not.toBe(settled);
+		const resized = stage.style.transform;
+		fireEvent.click(screen.getByRole("button", { name: "Fit everything on screen" }));
+		advance(600);
+		expect(stage.style.transform).not.toBe(resized);
+		expect(screen.getByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "false");
+		fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+		advance(600);
 		fireEvent.click(screen.getByRole("button", { name: "Follow" }));
 		const manual = stage.style.transform;
+		size.width = 800;
+		act(() => resize?.([], {} as ResizeObserver));
 		advance(2000);
 		expect(stage.style.transform).toBe(manual);
 	} finally {
 		rendered.unmount();
+		clientWidth.mockRestore();
+		clientHeight.mockRestore();
 		media.mockRestore();
 		time.mockRestore();
 		rect.mockRestore();
