@@ -247,7 +247,9 @@
 .traffic-node-stamp {
 	position: absolute;
 	right: -22px;
-	top: 16px;
+	/* Low, across the footer line: a stamp over the title would cost the card the
+	   one thing it is there to say. */
+	bottom: 10px;
 	z-index: 1;
 	transform: rotate(-9deg);
 	padding: 3px 34px;
