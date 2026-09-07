@@ -6,6 +6,7 @@ interface PlaybackState {
 	events: TrafficRecord[] | null;
 	index: number;
 	playing: boolean;
+	ended: boolean;
 	revision: number;
 }
 
@@ -27,6 +28,7 @@ export function useTrafficPlayback(
 		events: null,
 		index: -1,
 		playing: false,
+		ended: false,
 		revision: 0,
 	});
 	const active = enabled && state.scopeKey === scopeKey;
@@ -42,6 +44,7 @@ export function useTrafficPlayback(
 				events: null,
 				index: -1,
 				playing: false,
+				ended: false,
 			}));
 		}
 	}, [enabled, scopeKey, state.scopeKey]);
@@ -53,7 +56,7 @@ export function useTrafficPlayback(
 				if (!previous.playing || !previous.events) return previous;
 				const next = previous.index + 1;
 				if (next >= previous.events.length)
-					return { ...previous, playing: false };
+					return { ...previous, playing: false, ended: true };
 				return {
 					...previous,
 					index: next,
@@ -82,6 +85,7 @@ export function useTrafficPlayback(
 				index: next,
 				revision: previous.revision + 1,
 				playing: resume,
+				ended: false,
 			};
 		});
 	}
@@ -91,6 +95,7 @@ export function useTrafficPlayback(
 		current: index >= 0 ? (events[index] ?? null) : null,
 		index,
 		playing,
+		ended: active && state.ended,
 		speed,
 		revision: state.revision,
 		setSpeed(value: number) {
@@ -117,6 +122,7 @@ export function useTrafficPlayback(
 				events: null,
 				index: -1,
 				playing: false,
+				ended: false,
 			}));
 		},
 	};

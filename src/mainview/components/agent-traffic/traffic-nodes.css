@@ -98,6 +98,26 @@
 .traffic-nodes-scene {
 	transform-origin: 0 0;
 }
+.traffic-project-group {
+	position: absolute;
+	border: 1px solid rgb(var(--border-default) / 0.4);
+	border-radius: 18px;
+	background: rgb(var(--surface-raised) / 0.25);
+	pointer-events: none;
+}
+.traffic-project-heading {
+	position: absolute;
+	top: 20px;
+	left: 24px;
+	transform-origin: top left;
+	font-size: 13px;
+	font-weight: 600;
+	color: rgb(var(--text-secondary));
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .traffic-nodes-wires {
 	overflow: visible;
 	pointer-events: none;

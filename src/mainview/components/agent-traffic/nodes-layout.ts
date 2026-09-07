@@ -41,6 +41,7 @@ export interface PlacedEdge {
 export interface TrafficScene {
 	placed: PlacedNode[];
 	edges: PlacedEdge[];
+	groups: { projectId: string; x: number; y: number; width: number; height: number }[];
 	width: number;
 	height: number;
 	/** How many tasks each collapsible band holds, shown or not. */
@@ -114,7 +115,12 @@ export function layoutTraffic(
 			const set = partners.get(self) ?? new Set<string>();
 			set.add(other);
 			partners.set(self, set);
-			messages.set(self, (messages.get(self) ?? 0) + pair.messages);
+		}
+	}
+
+	for (const { row } of records) {
+		for (const key of new Set([fromKey(row), toKey(row)])) {
+			if (key && byKey.has(key)) messages.set(key, (messages.get(key) ?? 0) + 1);
 		}
 	}
 
@@ -124,16 +130,19 @@ export function layoutTraffic(
 	);
 	const parked = sorted.filter((node) => node.task?.hibernated === true);
 	const awake = sorted.filter((node) => !node.task?.hibernated);
-	const active = awake.filter((node) => partners.has(node.key));
-	const quiet = awake.filter((node) => !partners.has(node.key));
-	const normalCount = active.filter((node) => node.task?.taskType !== "coordinator").length;
-	const columns = normalCount > 24 ? 6 : 5;
-	const gridWidth = columns * (CARD_WIDTH + GAP_X) - GAP_X;
+	const active = awake.filter((node) => messages.has(node.key));
+	const quiet = awake.filter((node) => !messages.has(node.key));
 	const placed: PlacedNode[] = [];
 	const positions = new Map<string, PlacedNode>();
-	let cursorY = 0;
+	const groups: TrafficScene["groups"] = [];
+	const visible = [...active, ...(options.showQuiet ? quiet : []), ...(options.showParked ? parked : [])];
+	const projectIds = [...new Set(visible.map(node => node.projectId))].sort();
+	const grouped = projectIds.length > 1;
 	let width = 0;
 	let height = 0;
+	let groupX = 0;
+	let groupY = 0;
+	let groupRowHeight = 0;
 	const place = (node: TrafficNode, x: number, y: number) => {
 		const coordinator = node.task?.taskType === "coordinator";
 		const position: PlacedNode = {
@@ -150,21 +159,55 @@ export function layoutTraffic(
 		width = Math.max(width, x + position.width);
 		height = Math.max(height, y + position.height + 28);
 	};
-	const band = (members: TrafficNode[]) => {
-		const coordinators = members.filter((node) => node.task?.taskType === "coordinator");
-		const normal = members.filter((node) => node.task?.taskType !== "coordinator");
-		for (const node of coordinators) {
-			place(node, (gridWidth - COORDINATOR_WIDTH) / 2, cursorY);
-			cursorY += COORDINATOR_STEP;
+	projectIds.forEach((projectId, projectIndex) => {
+		const projectActive = active.filter(node => node.projectId === projectId);
+		const projectQuiet = quiet.filter(node => node.projectId === projectId);
+		const projectParked = parked.filter(node => node.projectId === projectId);
+		const normalCount = projectActive.filter(node => node.task?.taskType !== "coordinator").length;
+		const columns = normalCount > 24 ? 6 : 5;
+		const bands = [projectActive, ...(options.showQuiet ? [projectQuiet] : []), ...(options.showParked ? [projectParked] : [])];
+		const occupiedColumns = grouped
+			? Math.min(columns, Math.max(...bands.map(members => members.filter(node => node.task?.taskType !== "coordinator").length)))
+			: columns;
+		const workerWidth = occupiedColumns ? occupiedColumns * (CARD_WIDTH + GAP_X) - GAP_X : 0;
+		const hasCoordinator = bands.some(members => members.some(node => node.task?.taskType === "coordinator"));
+		const gridWidth = Math.max(workerWidth, hasCoordinator ? COORDINATOR_WIDTH : 0);
+		const workerOffset = grouped ? (gridWidth - workerWidth) / 2 : 0;
+		const offsetX = grouped ? groupX + 32 : 0;
+		const offsetY = grouped ? groupY + 96 : 0;
+		let cursorY = 0;
+		let contentHeight = 0;
+		const add = (node: TrafficNode, x: number, y: number) => {
+			place(node, offsetX + x, offsetY + y);
+			contentHeight = Math.max(contentHeight, y + (node.task?.taskType === "coordinator" ? COORDINATOR_HEIGHT : CARD_HEIGHT) + 28);
+		};
+		const band = (members: TrafficNode[]) => {
+			const coordinators = members.filter(node => node.task?.taskType === "coordinator");
+			const normal = members.filter(node => node.task?.taskType !== "coordinator");
+			for (const node of coordinators) {
+				add(node, (gridWidth - COORDINATOR_WIDTH) / 2, cursorY);
+				cursorY += COORDINATOR_STEP;
+			}
+			normal.forEach((node, index) => {
+				add(node, workerOffset + (index % columns) * (CARD_WIDTH + GAP_X), cursorY + Math.floor(index / columns) * ROW_STEP);
+			});
+			cursorY += Math.ceil(normal.length / columns) * ROW_STEP;
+		};
+		for (const members of bands) band(members);
+		if (grouped) {
+			const group = { projectId, x: groupX, y: groupY, width: gridWidth + 64, height: contentHeight + 128 };
+			groups.push(group);
+			width = Math.max(width, group.x + group.width);
+			height = Math.max(height, group.y + group.height);
+			groupRowHeight = Math.max(groupRowHeight, group.height);
+			if (projectIndex % 2 === 0) groupX += group.width + 160;
+			else {
+				groupX = 0;
+				groupY += groupRowHeight + 160;
+				groupRowHeight = 0;
+			}
 		}
-		normal.forEach((node, index) => {
-			place(node, (index % columns) * (CARD_WIDTH + GAP_X), cursorY + Math.floor(index / columns) * ROW_STEP);
-		});
-		cursorY += Math.ceil(normal.length / columns) * ROW_STEP;
-	};
-	band(active);
-	if (options.showQuiet) band(quiet);
-	if (options.showParked) band(parked);
+	});
 
 	const edges: PlacedEdge[] = [];
 	const route = createTrafficRouter(placed);
@@ -178,7 +221,7 @@ export function layoutTraffic(
 		edges.push({ key, ...pair, points });
 	}
 	return {
-		placed, edges,
+		placed, edges, groups,
 		width: Math.max(width, CARD_WIDTH),
 		height: Math.max(height, CARD_HEIGHT),
 		quietCount: quiet.length,
@@ -190,10 +233,11 @@ export function layoutTraffic(
 function wire(a: PlacedNode, b: PlacedNode): { x: number; y: number }[] {
 	if (Math.abs(a.y - b.y) < 30) {
 		const right = b.x > a.x;
-		return [
-			{ x: a.x + (right ? a.width : 0), y: a.y + a.height * 0.52 },
-			{ x: b.x + (right ? 0 : b.width), y: b.y + b.height * 0.52 },
-		];
+		const start = { x: a.x + (right ? a.width : 0), y: a.y + a.height * 0.52 };
+		const end = { x: b.x + (right ? 0 : b.width), y: b.y + b.height * 0.52 };
+		if (start.y === end.y) return [start, end];
+		const middle = (start.x + end.x) / 2;
+		return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end];
 	}
 	const down = b.y > a.y;
 	const [top, bottom] = down ? [a, b] : [b, a];

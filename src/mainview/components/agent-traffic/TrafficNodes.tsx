@@ -60,6 +60,7 @@ interface Flight {
 	started: number;
 }
 const FLIGHT_MS = 1400;
+const FOLLOW_IDLE_MS = 3500;
 const LINGER_MS = 900;
 const MIN_SCALE = 0.14;
 const MAX_SCALE = 2.2;
@@ -178,17 +179,14 @@ export default function TrafficNodes({
 	);
 	useEffect(() => () => cancelAnimationFrame(camera.current), []);
 	const fitNodes = useCallback(
-		(targets: PlacedNode[], maximum: number, instant = false) => {
-			const box = frame.current?.getBoundingClientRect();
-			if (!box?.width || !box.height || !targets.length) return;
+		(targets: Pick<PlacedNode, "x" | "y" | "width" | "height">[], maximum: number, instant = false) => {
+			const box = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
+			if (!box.width || !box.height || !targets.length) return;
 			const left = Math.min(...targets.map((p) => p.x)) - 70;
 			const top = Math.min(...targets.map((p) => p.y)) - 86;
 			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
 			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
-			const scale = Math.max(
-				MIN_SCALE,
-				Math.min(maximum, (box.width - 52) / width, (box.height - 80) / height),
-			);
+			const scale = Math.min(maximum, (box.width - 52) / width, (box.height - 80) / height);
 			move(
 				{
 					scale,
@@ -201,8 +199,8 @@ export default function TrafficNodes({
 		[move],
 	);
 	const fit = useCallback(
-		(instant = false) => fitNodes(scene.placed, 0.85, instant),
-		[fitNodes, scene.placed],
+		(instant = false) => fitNodes(scene.groups.length ? scene.groups : scene.placed, 0.85, instant),
+		[fitNodes, scene.placed, scene.groups],
 	);
 	const resizeFollow = useRef<(() => void) | null>(null);
 	const fitRef = useRef(fit);
@@ -214,7 +212,7 @@ export default function TrafficNodes({
 			overviewMode.current = true;
 		}
 		if (ready && overviewMode.current) fitRef.current(true);
-	}, [ready, scope, scene.placed.length, showQuiet, showParked]);
+	}, [ready, scope, scene.placed, showQuiet, showParked]);
 	useLayoutEffect(() => {
 		if (!frame.current) return;
 		const observer = new ResizeObserver(() => {
@@ -292,11 +290,9 @@ export default function TrafficNodes({
 		(record: TrafficRecord) => {
 			const from = fromKey(record.row),
 				to = toKey(record.row);
-			if (!from || reduced || paused) return;
-			const edge = edgeByKey.get([from, to].sort().join("|"));
-			if (!edge) return;
-			const points =
-				edge.from === from ? edge.points : [...edge.points].reverse();
+			if (paused) return;
+			const edge = from && edgeByKey.get([from, to].sort().join("|"));
+			const points = edge ? (edge.from === from ? edge.points : [...edge.points].reverse()) : [];
 			setFlights((current) => [
 				...current.slice(-19),
 				{ record, points, started: Date.now() },
@@ -308,7 +304,10 @@ export default function TrafficNodes({
 	launchRef.current = launch;
 	const exchangeRef = useRef(exchange);
 	exchangeRef.current = exchange;
-	resizeFollow.current = follow && ready && followedRecord ? () => exchange(followedRecord) : null;
+	resizeFollow.current = follow && ready ? () => {
+		if (overviewMode.current || !followedRecord) fitRef.current(true);
+		else exchange(followedRecord);
+	} : null;
 	useEffect(() => {
 		setFlights([]);
 		if (!playback?.current) return;
@@ -319,7 +318,12 @@ export default function TrafficNodes({
 		if (!ready) return;
 		const event =
 			playback?.current ?? playback?.events[playback.events.length - 1];
-		if (event) exchangeRef.current(event);
+		if (event && (replaying || Date.now() - Date.parse(event.row.at) < FOLLOW_IDLE_MS)) {
+			exchangeRef.current(event);
+		} else {
+			overviewMode.current = true;
+			fitRef.current();
+		}
 	}, [
 		playback?.revision,
 		playback?.events[playback.events.length - 1]?.key,
@@ -328,6 +332,7 @@ export default function TrafficNodes({
 		ready,
 		followRequest,
 		reduced,
+		scene,
 	]);
 	const previousPlayback = useRef({ playing: false, revision: 0 });
 	useEffect(() => {
@@ -347,6 +352,19 @@ export default function TrafficNodes({
 			revision: playback?.revision ?? 0,
 		};
 	}, [paused, reduced, playback?.playing, playback?.revision]);
+	useEffect(() => {
+		if (!follow || !ready || (replaying && !playback?.playing && !playback?.ended)) return;
+		const latest = playback?.events[playback.events.length - 1];
+		const delay = playback?.ended || !latest ? 0 : replaying ? FOLLOW_IDLE_MS :
+			Math.max(0, FOLLOW_IDLE_MS - (Date.now() - Date.parse(latest.row.at)));
+		const timer = setTimeout(() => {
+			overviewMode.current = true;
+			fitRef.current();
+		}, delay);
+		return () => clearTimeout(timer);
+	}, [follow, ready, replaying, playback?.playing, playback?.ended, playback?.revision,
+		playback?.events[playback.events.length - 1]?.key, followRequest]);
+
 	useEffect(() => {
 		if (!ready) return;
 		const current = new Set(layoutRecords.map((record) => record.key));
@@ -405,14 +423,16 @@ export default function TrafficNodes({
 		});
 	};
 	const drag = useRef<{ id: number; x: number; y: number } | null>(null);
-	const active = playback?.current ?? flights[flights.length - 1]?.record;
+	const active = playback?.ended ? undefined : playback?.current ?? flights[flights.length - 1]?.record;
 	const activeFrom = active && fromKey(active.row),
 		activeTo = active && toKey(active.row);
 	const activeEdge =
 		activeFrom && activeTo
 			? edgeByKey.get([activeFrom, activeTo].sort().join("|"))
 			: undefined;
-	const labelPoint = activeEdge && pointAt(activeEdge.points, 0.5);
+	const activeRecipient = activeTo ? nodeByKey.get(activeTo) : undefined;
+	const labelPoint = activeEdge ? pointAt(activeEdge.points, 0.5) : activeRecipient ?
+		{ x: activeRecipient.x + activeRecipient.width / 2, y: activeRecipient.y } : undefined;
 	const detail =
 		view.scale < 0.36 ? "cell" : view.scale < 0.7 ? "compact" : "full";
 	const visiblePairs = new Map<
@@ -491,6 +511,13 @@ export default function TrafficNodes({
 					transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
 				}}
 			>
+				{scene.groups.map(group => (
+					<div key={group.projectId} className="traffic-project-group" style={{ left: group.x, top: group.y, width: group.width, height: group.height }}>
+						<div className="traffic-project-heading" style={{ transform: `scale(${1 / view.scale})`, width: Math.max(40, (group.width - 48) * view.scale) }}>
+							{projectById.get(group.projectId)?.name ?? t("traffic.orbit.project")}
+						</div>
+					</div>
+				))}
 				<svg
 					className="traffic-nodes-wires"
 					width={scene.width}
@@ -522,6 +549,7 @@ export default function TrafficNodes({
 						);
 					})}
 					{flights.map((flight) => {
+						if (reduced || !flight.points.length) return null;
 						const status = flight.record.row.status;
 						const stop =
 							status === "held" ? 0.52 : status === "not-delivered" ? 0.7 : 1;
@@ -607,6 +635,7 @@ export default function TrafficNodes({
 					}}
 				>
 					<small>
+						{projectById.get(active.row.toProjectId)?.name} ·{" "}
 						{active.row.fromSeq == null ? "—" : `#${active.row.fromSeq}`} → #
 						{active.row.toSeq} ·{" "}
 						{t(

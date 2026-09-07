@@ -66,6 +66,7 @@ describe("traffic playback", () => {
 		expect(result.current.playing).toBe(true);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.playing).toBe(false);
+		expect(result.current.ended).toBe(true);
 		expect(vi.getTimerCount()).toBe(0);
 		act(() => vi.advanceTimersByTime(22000));
 		expect(result.current.index).toBe(2);
@@ -76,6 +77,7 @@ describe("traffic playback", () => {
 		act(() => result.current.playPause());
 		act(() => vi.advanceTimersByTime(1000));
 		act(() => result.current.playPause());
+		expect(result.current.ended).toBe(false);
 		expect(vi.getTimerCount()).toBe(0);
 		act(() => vi.advanceTimersByTime(10000));
 		expect(result.current.current).toBe(first);

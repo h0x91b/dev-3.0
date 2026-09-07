@@ -30,6 +30,10 @@ const page: { value: AgentMessageLogPage } = {
 	value: { rows: [], oldestDay: null, retentionDays: 30, hasMore: false },
 };
 
+const projectFixtures = { value: [{ id: "proj-1", name: "Project One" }] };
+const additionalTasks: { value: Record<string, unknown>[] } = { value: [] };
+const projectPages: { value: Record<string, AgentMessageLogPage> } = { value: {} };
+
 const knownTaskIds: { value: string[] } = {
 	value: ["task-a", "task-b", "task-c"],
 };
@@ -44,18 +48,18 @@ const settings: { value: Record<string, unknown> } = { value: {} };
 vi.mock("../rpc", () => ({
 	api: {
 		request: {
-			readAgentMessageLog: vi.fn(() => Promise.resolve(page.value)),
+			readAgentMessageLog: vi.fn(({ projectId }: { projectId: string }) => Promise.resolve(projectPages.value[projectId] ?? page.value)),
 			getGlobalSettings: vi.fn(() => Promise.resolve(settings.value)),
 			saveGlobalSettings: vi.fn((next: Record<string, unknown>) => {
 				settings.value = next;
 				return Promise.resolve();
 			}),
 			getProjects: vi.fn(() =>
-				Promise.resolve([{ id: "proj-1", name: "Project One" }]),
+				Promise.resolve(projectFixtures.value),
 			),
-			getTasks: vi.fn(() =>
+			getTasks: vi.fn(({ projectId }: { projectId: string }) =>
 				Promise.resolve(
-					knownTaskIds.value.map((id, index) => ({
+					projectId !== "proj-1" ? additionalTasks.value.filter(task => task.projectId === projectId) : knownTaskIds.value.map((id, index) => ({
 						id,
 						projectId: "proj-1",
 						seq: (index + 1) * 11,
@@ -110,6 +114,9 @@ function setPage(
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	projectFixtures.value = [{ id: "proj-1", name: "Project One" }];
+	additionalTasks.value = [];
+	projectPages.value = {};
 	resetTrafficStore();
 	resetTrafficSeen();
 	setPage([]);
@@ -256,11 +263,11 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 	});
 });
 
-function renderLog(onOpenTask = vi.fn()) {
+function renderLog(onOpenTask = vi.fn(), projectId: string | null = "proj-1") {
 	return render(
 		<I18nProvider>
 			<AgentTrafficLog
-				projectId="proj-1"
+				projectId={projectId}
 				onClose={vi.fn()}
 				onOpenTask={onOpenTask}
 			/>
@@ -943,5 +950,61 @@ it("Follow settles once on the pair and holds the same framing for its reply", a
 		time.mockRestore();
 		rect.mockRestore();
 		vi.unstubAllGlobals();
+	}
+});
+
+
+it("All Projects replays a senderless message in another project and reveals its recipient", async () => {
+	projectFixtures.value.push({ id: "proj-2", name: "Project Two" });
+	additionalTasks.value = [{ id: "task-b", projectId: "proj-2", seq: 3, title: "Other project receiver", status: "in-progress" }];
+	setPage([row({ at: new Date(Date.now() - 60000).toISOString(), subject: "First project message" })]);
+	projectPages.value["proj-2"] = {
+		...page.value,
+		rows: [row({ fromTaskId: null, fromSeq: null, toTaskId: "task-b", toSeq: 3,
+			toProjectId: "proj-2", subject: "Senderless second project message" })],
+	};
+	renderLog(vi.fn(), null);
+	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
+	await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").some(card => card.textContent?.includes("#3"))).toBe(true));
+	expect(screen.getAllByTestId("traffic-node-card").some(card => card.textContent?.includes("#22"))).toBe(true);
+	expect([...document.querySelectorAll(".traffic-project-heading")].map(el => el.textContent)).toEqual(["Project One", "Project Two"]);
+	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+	await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+	const active = document.querySelectorAll(".traffic-node-card.is-lit");
+	expect(active).toHaveLength(1);
+	expect(active[0].textContent).toContain("Other project receiver");
+	expect(document.querySelector(".traffic-edge-subject")?.textContent).toContain("Senderless second project message");
+	expect(document.querySelector(".traffic-wire.is-active")).toBeNull();
+});
+
+it("Follow returns to overview after live inactivity and replay completion but keeps a manual pause", async () => {
+	vi.useFakeTimers();
+	const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1400);
+	const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(640);
+	const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 640));
+	setPage([row({ subject: "Current pair" }), row({ toTaskId: "task-c", toSeq: 33, at: new Date(Date.now() - 60000).toISOString() })]);
+	const rendered = renderLog();
+	try {
+		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		const stage = screen.getByTestId("traffic-node-scene");
+		const pair = stage.style.transform;
+		act(() => vi.advanceTimersByTime(3600));
+		const overview = stage.style.transform;
+		expect(overview).not.toBe(pair);
+		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+		const paused = stage.style.transform;
+		act(() => vi.advanceTimersByTime(10000));
+		expect(stage.style.transform).toBe(paused);
+		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+		act(() => vi.advanceTimersByTime(2200));
+		act(() => vi.advanceTimersByTime(2200));
+		act(() => vi.advanceTimersByTime(1));
+		expect(stage.style.transform).toBe(overview);
+		expect(document.querySelector(".traffic-edge-subject")).toBeNull();
+	} finally {
+		rendered.unmount();
+		width.mockRestore(); height.mockRestore(); rect.mockRestore();
+		vi.useRealTimers();
 	}
 });

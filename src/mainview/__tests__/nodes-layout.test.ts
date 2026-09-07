@@ -345,4 +345,119 @@ describe("obstacle-aware traffic routing", () => {
 		const route = createTrafficRouter([source, blocker, target]);
 		expect(route([{ x: 100, y: 52 }, { x: 304, y: 52 }], source, target)).toBeNull();
 	});
+
+	describe("project grouping", () => {
+		const projectTasks = (projectId: string) => [
+			task("hub", 10, { projectId, taskType: "coordinator" }),
+			task("worker", 1, { projectId }),
+			task("quiet", 0, { projectId }),
+			task("parked", 2, { projectId, hibernated: true }),
+		];
+		const projectRows = (projectId: string) => [
+			row("hub", "worker", { fromProjectId: projectId, toProjectId: projectId }),
+			row("hub", "parked", { fromProjectId: projectId, toProjectId: projectId }),
+		];
+
+		it("keeps each project's coordinator and bands inside separate blocks", () => {
+			const tasks = ["z", "a", "m"].flatMap(projectTasks);
+			const rows = ["m", "z", "a"].flatMap(projectRows);
+			const result = scene(tasks, rows);
+			expect(result.groups.map(group => group.projectId)).toEqual(["a", "m", "z"]);
+			expect(result.groups[0].y).toBe(result.groups[1].y);
+			expect(result.groups[1].x).toBeGreaterThan(result.groups[0].x + result.groups[0].width);
+			expect(result.groups[2].x).toBe(0);
+			expect(result.groups[2].y).toBeGreaterThan(Math.max(...result.groups.slice(0, 2).map(group => group.y + group.height)));
+			for (const group of result.groups) {
+				const cards = result.placed.filter(card => card.node.projectId === group.projectId);
+				expect(cards).toHaveLength(4);
+				const hub = cards.find(card => card.node.id === "hub")!;
+				for (const card of cards) {
+					expect(card.x).toBeGreaterThanOrEqual(group.x);
+					expect(card.y).toBeGreaterThanOrEqual(group.y + 96);
+					expect(card.x + card.width).toBeLessThanOrEqual(group.x + group.width);
+					expect(card.y + card.height).toBeLessThanOrEqual(group.y + group.height);
+					if (card !== hub) expect(card.y).toBeGreaterThan(hub.y);
+				}
+			}
+			const reversed = scene([...tasks].reverse(), [...rows].reverse());
+			expect(reversed.groups).toEqual(result.groups);
+			expect(reversed.placed.map(({ node, x, y }) => [node.key, x, y])).toEqual(result.placed.map(({ node, x, y }) => [node.key, x, y]));
+			assertClear(result);
+		});
+
+		it("chooses five or six worker columns independently for each project", () => {
+			const tasks = [...projectTasks("a"), ...projectTasks("b"), ...Array.from({ length: 25 }, (_, i) => task(`extra${i}`, i + 20, { projectId: "a" })), ...Array.from({ length: 4 }, (_, i) => task(`extraB${i}`, i + 20, { projectId: "b" }))];
+			const rows = [...projectRows("a"), ...projectRows("b"), ...tasks.filter(task => task.id.startsWith("extra")).map(task => row("hub", task.id, { fromProjectId: task.projectId, toProjectId: task.projectId }))];
+			const result = scene(tasks, rows);
+			expect(result.groups[0].width - result.groups[1].width).toBe(352);
+			const workers = result.placed.filter(card => card.node.projectId === "a" && !card.hub && !card.parked && card.messages > 0);
+			const firstY = Math.min(...workers.map(card => card.y));
+			expect(workers.filter(card => card.y === firstY)).toHaveLength(6);
+			assertClear(result);
+		});
+
+		it("compacts a one-task project beside a coordinator and five workers", () => {
+			const tasks = [task("solo", 1, { projectId: "a" }), task("hub", 1, { projectId: "b", taskType: "coordinator" }),
+				...Array.from({ length: 5 }, (_, i) => task(`worker${i}`, i + 2, { projectId: "b" }))];
+			const rows = [row("", "solo", { fromTaskId: null, fromSeq: null, toProjectId: "a" }),
+				...tasks.filter(task => task.id.startsWith("worker")).map(task => row("hub", task.id, { fromProjectId: "b", toProjectId: "b" }))];
+			const result = collapsed(tasks, rows);
+			expect(result.groups[0].width).toBe(300 + 64);
+			expect(result.groups[1].width).toBe(5 * 352 - 52 + 64);
+			const workers = result.placed.filter(card => card.node.id.startsWith("worker"));
+			expect(new Set(workers.map(card => card.y)).size).toBe(1);
+			const hub = result.placed.find(card => card.node.id === "hub")!;
+			expect(hub.x + hub.width / 2).toBe((Math.min(...workers.map(card => card.x)) + Math.max(...workers.map(card => card.x + card.width))) / 2);
+			assertClear(result);
+		});
+
+		it("centers a coordinator above a single worker without clipping its block", () => {
+			const result = scene([...projectTasks("a"), ...projectTasks("b")], [...projectRows("a"), ...projectRows("b")]);
+			for (const group of result.groups) {
+				expect(group.width).toBe(370 + 64);
+				const hub = result.placed.find(card => card.node.projectId === group.projectId && card.node.id === "hub")!;
+				const worker = result.placed.find(card => card.node.projectId === group.projectId && card.node.id === "worker")!;
+				expect(hub.x + hub.width / 2).toBe(worker.x + worker.width / 2);
+				expect(hub.x).toBeGreaterThanOrEqual(group.x);
+				expect(hub.x + hub.width).toBeLessThanOrEqual(group.x + group.width);
+			}
+			assertClear(result);
+		});
+
+		it("keeps a single project's coordinates free of group padding", () => {
+			const result = scene(projectTasks("p"), projectRows("p"));
+			expect(result.groups).toEqual([]);
+			expect(result.placed.find(card => card.node.id === "hub")).toMatchObject({ x: 669, y: 0 });
+			expect(result.placed.find(card => card.node.id === "worker")).toMatchObject({ x: 0, y: 340 });
+			expect(result.placed.find(card => card.node.id === "quiet")).toMatchObject({ x: 0, y: 700 });
+			expect(result.placed.find(card => card.node.id === "parked")).toMatchObject({ x: 0, y: 1060 });
+		});
+
+		it("routes cross-project exchanges around cards including different-height ports", () => {
+			const tasks = [...projectTasks("a"), ...Array.from({ length: 6 }, (_, i) => task(`b${i}`, i, { projectId: "b" }))];
+			const crossRows = tasks.filter(task => task.projectId === "b").map(task => row("hub", task.id, { fromProjectId: "a", toProjectId: "b" }));
+			const result = scene(tasks, [...projectRows("a"), ...crossRows]);
+			expect(result.edges).toHaveLength(8);
+			const sender = result.placed.find(card => card.node.key === endpointKey("a", "hub"))!;
+			const recipient = result.placed.find(card => card.node.key === endpointKey("b", "b0"))!;
+			const edge = result.edges.find(edge => edge.to === recipient.node.key)!;
+			expect(edge.points[0]).toEqual({ x: sender.x + sender.width, y: sender.y + sender.height * .52 });
+			expect(edge.points[edge.points.length - 1]).toEqual({ x: recipient.x, y: recipient.y + recipient.height * .52 });
+			assertClear(result);
+		});
+
+		it("keeps single-ended recipients visible and counts every attempt once", () => {
+			const tasks = [task("a", 1), task("b", 1, { projectId: "q" })];
+			const rows = [row("", "a", { fromTaskId: null, fromSeq: null }),
+				row("a", "a"), row("", "b", { fromTaskId: null, fromSeq: null, toProjectId: "q" })];
+			const result = collapsed(tasks, rows);
+			expect(result.placed).toHaveLength(2);
+			expect(result.groups).toHaveLength(2);
+			expect(result.quietCount).toBe(0);
+			expect(result.edges).toHaveLength(0);
+			expect(result.placed.find(card => card.node.id === "a")).toMatchObject({ messages: 2, partners: 0 });
+			expect(result.placed.find(card => card.node.id === "b")).toMatchObject({ messages: 1, partners: 0 });
+		});
+	});
+
 });
