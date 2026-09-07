@@ -105,6 +105,39 @@ describe("TaskArtifactViewer presentation", () => {
 		expect(document.documentElement).not.toHaveAttribute("data-artifact-viewer");
 	});
 
+	// Leaving the task takes the dock with it. Offscreen is what stops that from
+	// turning the panel into a popup over an unrelated board.
+	it("waits hidden when its task leaves the screen, and comes back loaded", async () => {
+		const onClose = vi.fn();
+		// One stable list across rerenders — a fresh array is a new artifact to the
+		// viewer and would legitimately re-fetch, hiding the point of this test.
+		const list = [artifact()];
+		mountDock();
+		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		await screen.findByTestId("artifact-viewer");
+		await waitFor(() => expect(mockedApi.request.readArtifactContent).toHaveBeenCalledTimes(1));
+
+		act(() => setArtifactDock(null));
+		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} offscreen onClose={onClose} /></I18nProvider>);
+
+		const hidden = screen.getByTestId("artifact-viewer");
+		expect(hidden).toHaveAttribute("data-presentation", "offscreen");
+		expect(screen.getByTestId("artifact-viewer-offscreen")).toHaveAttribute("hidden");
+		// Owns nothing while hidden: no modal role, no blanked terminal, no Escape.
+		expect(hidden).not.toHaveAttribute("aria-modal");
+		expect(document.documentElement).not.toHaveAttribute("data-artifact-viewer");
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).not.toHaveBeenCalled();
+
+		const slot = mountDock();
+		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} onClose={onClose} /></I18nProvider>);
+
+		const viewer = screen.getByTestId("artifact-viewer");
+		expect(viewer).toHaveAttribute("data-presentation", "docked");
+		expect(slot.contains(viewer)).toBe(true);
+		expect(mockedApi.request.readArtifactContent).toHaveBeenCalledTimes(1);
+	});
+
 	it("docked, Escape only closes while focus is inside the panel", async () => {
 		const onClose = vi.fn();
 		mountDock();

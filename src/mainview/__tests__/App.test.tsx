@@ -1221,7 +1221,10 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
-			await screen.findByTestId("artifact-viewer");
+			const card = await screen.findByTestId("artifact-viewer");
+			// A popup, never hidden: a viewer that never had a pane has no task screen
+			// to wait for, so hiding it would swallow the artifact outright.
+			expect(card).toHaveAttribute("data-presentation", "popup");
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
 		});
 
@@ -1248,6 +1251,117 @@ describe("App keyboard shortcuts", () => {
 			const card = await screen.findByTestId("artifact-viewer");
 			expect(card).toHaveAttribute("data-presentation", "popup");
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
+		});
+
+		// The bug this guards: leaving the task used to clear the docking slot, and the
+		// same viewer re-hosted itself as a centred popup over whatever board came
+		// next — decisions/2026/09/07/docked-artifact-waits-offscreen.md.
+		it("hides a docked viewer when the route leaves its task, and brings it back", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			// Explicit: an earlier test in this file leaves the popup preference on.
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			});
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], index: 0 },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "t-other", projectId: "p1" },
+				}));
+			});
+
+			const card = await screen.findByTestId("artifact-viewer");
+			await waitFor(() => expect(card).toHaveAttribute("data-presentation", "offscreen"));
+			expect(screen.getByTestId("artifact-viewer-offscreen")).toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
+
+			// Still mounted, so coming back re-hosts the very same viewer.
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "t-artifact", projectId: "p1" },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
+			expect(screen.getByTestId("artifact-viewer")).not.toHaveAttribute("data-presentation", "offscreen");
+			expect(screen.queryByTestId("artifact-viewer-offscreen")).not.toBeInTheDocument();
+		});
+
+		// The popup is what the user asked for, and a paneless surface has nothing to
+		// go back to — neither hides when the route moves on.
+		it("keeps a popup-preference viewer on screen after leaving the task", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				openArtifactsInPopup: true,
+			});
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], index: 0 },
+				}));
+			});
+			await screen.findByTestId("artifact-viewer");
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "t-other", projectId: "p1" },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-other"));
+			expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-presentation", "popup");
+		});
+
+		it("keeps a paneless viewer on screen after leaving the task", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			// Explicit: an earlier test in this file leaves the popup preference on.
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			});
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], index: 0, paneless: true },
+				}));
+			});
+			await screen.findByTestId("artifact-viewer");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "t-other", projectId: "p1" },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-other"));
+			expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-presentation", "popup");
 		});
 	});
 

@@ -1,5 +1,9 @@
 # The artifact panel is the default again; the popup becomes one opt-in setting
 
+Amended on 2026-09-07 by `decisions/2026/09/07/docked-artifact-waits-offscreen.md`: "no slot means
+popup" no longer covers a route change. A viewer that opened docked and whose task the route left
+renders hidden instead; only a genuinely paneless entry point still falls back to the popup.
+
 ## Context
 
 `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md` (PR #1656) deleted the docked,
