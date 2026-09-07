@@ -15,6 +15,8 @@ const page: { value: AgentMessageLogPage } = {
 };
 
 const knownTaskIds: { value: string[] } = { value: ["task-a", "task-b", "task-c"] };
+/** Per-task extras a test needs on top of the default fixture (status, hibernated). */
+const taskExtras: { value: Record<string, Record<string, unknown>> } = { value: {} };
 
 /** Stands in for the settings file: what a fresh install has is an empty object. */
 const settings: { value: Record<string, unknown> } = { value: {} };
@@ -32,6 +34,7 @@ vi.mock("../rpc", () => ({
 			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id, index) => ({
 				id, projectId: "proj-1", seq: (index + 1) * 11, title: id === "task-a" ? "Coordinator" : id === "task-b" ? "Worker" : "Other worker",
 				status: "in-progress", taskType: id === "task-a" ? "coordinator" : null, overview: "Current task overview",
+				...(taskExtras.value[id] ?? {}),
 			})))),
 		},
 	},
@@ -67,6 +70,7 @@ beforeEach(() => {
 	setPage([]);
 	settings.value = {};
 	knownTaskIds.value = ["task-a", "task-b", "task-c"];
+	taskExtras.value = {};
 	// The feature ships off; these tests describe it switched on. The off state has
 	// its own suite in agent-traffic-flag.test.tsx.
 	setAgentTrafficEnabledForTests(true);
@@ -433,6 +437,46 @@ describe("AgentTrafficLog presentation picker", () => {
 		await userEvent.click(card as HTMLElement);
 		await messageRows(1);
 		expect(nodeCards().map((node) => (node as HTMLElement).style.left)).toEqual(before);
+	});
+
+	// The user's own board is mostly parked and mostly finished; both states have to
+	// read off the card without opening anything.
+	it("greys hibernated cards, puts them last, and stamps finished ones", async () => {
+		taskExtras.value = {
+			"task-b": { status: "completed" },
+			"task-c": { hibernated: true },
+		};
+		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
+		renderLog();
+		await messageRows(2);
+		await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
+		const cards = nodeCards() as HTMLElement[];
+		const asleep = cards.find((card) => card.textContent?.includes("#33")) as HTMLElement;
+		const done = cards.find((card) => card.textContent?.includes("#22")) as HTMLElement;
+		expect(asleep.className).toContain("is-parked");
+		expect(done.className).toContain("is-completed");
+		expect(done.textContent).toContain("Completed");
+		// Last band: nothing sits below a hibernated card.
+		for (const other of cards.filter((card) => card !== asleep)) {
+			expect(parseFloat(asleep.style.top)).toBeGreaterThan(parseFloat(other.style.top));
+		}
+	});
+
+	// The board census was the complaint: 43 cards, four wires. What is left out is
+	// named on a chip and one click brings it back.
+	it("leaves silent and hibernated tasks off the stage until asked", async () => {
+		taskExtras.value = { "task-c": { hibernated: true } };
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		expect(nodeCards()).toHaveLength(2);
+		const parkedToggle = screen.getByTestId("traffic-nodes-parked-toggle");
+		expect(parkedToggle).toHaveAttribute("aria-pressed", "false");
+		expect(parkedToggle.textContent).toContain("1");
+		await userEvent.click(parkedToggle);
+		expect(nodeCards()).toHaveLength(3);
+		await userEvent.click(parkedToggle);
+		expect(nodeCards()).toHaveLength(2);
 	});
 
 	it("selecting a card in Experiment 2 drives the shared inspector", async () => {

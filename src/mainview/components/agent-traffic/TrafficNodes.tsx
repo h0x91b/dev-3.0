@@ -76,7 +76,13 @@ export default function TrafficNodes({
 	const statusColors = useStatusColors();
 	const reduced = useReducedMotion();
 	const frame = useRef<HTMLDivElement>(null);
-	const scene = useMemo(() => layoutTraffic(nodes, layoutRecords), [nodes, layoutRecords]);
+	// Both off: the stage opens on the conversation, not on a census of the board.
+	const [showQuiet, setShowQuiet] = useState(false);
+	const [showParked, setShowParked] = useState(false);
+	const scene = useMemo(
+		() => layoutTraffic(nodes, layoutRecords, { showQuiet, showParked }),
+		[nodes, layoutRecords, showQuiet, showParked],
+	);
 	const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
 	const [flights, setFlights] = useState<Flight[]>([]);
 	const [arrivals, setArrivals] = useState<Record<string, number>>({});
@@ -109,11 +115,11 @@ export default function TrafficNodes({
 	// Refit when the surface first has content, and whenever the scope changes the
 	// scene wholesale — never on every new message, which would yank the view.
 	useLayoutEffect(() => {
-		const key = `${scope ?? "all"}:${scene.placed.length}`;
+		const key = `${scope ?? "all"}:${scene.placed.length}:${showQuiet}:${showParked}`;
 		if (!ready || !scene.placed.length || fitted.current === key) return;
 		fitted.current = key;
 		fit();
-	}, [fit, ready, scope, scene.placed.length]);
+	}, [fit, ready, scope, scene.placed.length, showQuiet, showParked]);
 
 	// Messages that appeared since the last render take off; the very first render
 	// only records what already exists, so opening the view is not a fireworks show.
@@ -299,8 +305,34 @@ export default function TrafficNodes({
 			</div>
 			{!scene.placed.length && (
 				<p className="traffic-nodes-empty">
-					{ready ? t("traffic.noneMatch") : t("traffic.loading")}
+					{ready ? t("traffic.nodes.noTraffic") : t("traffic.loading")}
 				</p>
+			)}
+			{/* Nothing is hidden silently: the counts say what is not drawn, and one
+			    click draws it. */}
+			{(scene.quietCount > 0 || scene.parkedCount > 0) && (
+				<div className="traffic-nodes-bands">
+					{scene.quietCount > 0 && (
+						<button
+							type="button"
+							aria-pressed={showQuiet}
+							data-testid="traffic-nodes-quiet-toggle"
+							onClick={() => setShowQuiet((value) => !value)}
+						>
+							{t.plural("traffic.nodes.quietCount", scene.quietCount)}
+						</button>
+					)}
+					{scene.parkedCount > 0 && (
+						<button
+							type="button"
+							aria-pressed={showParked}
+							data-testid="traffic-nodes-parked-toggle"
+							onClick={() => setShowParked((value) => !value)}
+						>
+							{t.plural("traffic.nodes.parkedCount", scene.parkedCount)}
+						</button>
+					)}
+				</div>
 			)}
 			<div className="traffic-camera-controls">
 				<button onClick={() => zoom(1 / 1.25)} aria-label={t("traffic.nodes.zoomOut")}>
@@ -340,13 +372,23 @@ function Card({
 	const { node } = placed;
 	const coordinator = node.task?.taskType === "coordinator";
 	const overview = node.task ? getTaskOverview(node.task) : "";
+	// Finished work needs a verdict you can read at a glance, not just a coloured
+	// hairline: a card that is done should never look like one still running.
+	const finished =
+		node.task?.status === "completed"
+			? "completed"
+			: node.task?.status === "cancelled"
+				? "cancelled"
+				: null;
 	return (
 		<button
 			type="button"
 			data-testid="traffic-node-card"
 			className={`traffic-node-card ${coordinator ? "is-coordinator" : ""} ${
 				selected ? "is-selected" : ""
-			} ${dim ? "is-dim" : ""} ${lit ? "is-lit" : ""}`}
+			} ${dim ? "is-dim" : ""} ${lit ? "is-lit" : ""} ${
+				placed.parked ? "is-parked" : ""
+			} ${finished ? `is-${finished}` : ""}`}
 			style={{
 				left: placed.x,
 				top: placed.y,
@@ -369,10 +411,17 @@ function Card({
 				{overview || t("traffic.orbit.noOverview")}
 			</span>
 			<span className="traffic-node-foot">
-				{placed.messages
-					? t.plural("traffic.orbit.messageCount", placed.messages)
-					: t("traffic.nodes.quiet")}
+				{placed.parked
+					? t("task.hibernatedBadge")
+					: placed.messages
+						? t.plural("traffic.orbit.messageCount", placed.messages)
+						: t("traffic.nodes.quiet")}
 			</span>
+			{finished && (
+				<span className="traffic-node-stamp">
+					{t(finished === "completed" ? "status.completed" : "status.cancelled")}
+				</span>
+			)}
 		</button>
 	);
 }

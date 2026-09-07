@@ -17,6 +17,8 @@ export interface PlacedNode {
 	messages: number;
 	/** Rendered as the hub of its group: a coordinator, or the busiest node in it. */
 	hub: boolean;
+	/** Hibernated: parked in the band at the bottom, greyed, out of the conversation. */
+	parked: boolean;
 }
 
 export interface PlacedEdge {
@@ -37,6 +39,16 @@ export interface TrafficScene {
 	edges: PlacedEdge[];
 	width: number;
 	height: number;
+	/** How many tasks each collapsible band holds, shown or not. */
+	quietCount: number;
+	parkedCount: number;
+}
+
+export interface SceneOptions {
+	/** Draw the tasks that exchanged nothing in this window. Off by default. */
+	showQuiet?: boolean;
+	/** Draw the hibernated band. Off by default. */
+	showParked?: boolean;
 }
 
 interface PairState {
@@ -92,12 +104,27 @@ function pairs(records: TrafficRecord[]): Map<string, PairState> {
  * with everyone it talked to laid out in rows beneath it. Tasks nobody messaged
  * form a trailing quiet band, because a node with no wire has no place in a
  * conversation and hiding it would misreport who is on the board.
+ *
+ * **Hibernated tasks sink to a band of their own at the very bottom**, out of
+ * every group even when they did exchange messages. On a real board most tasks
+ * are parked, and mixed into the conversation they bury the handful that is
+ * actually running — the same reason the Kanban sinks them below every live P4.
+ * Their wires still draw, so the history stays honest; they just stop competing.
+ *
+ * **Both trailing bands are collapsed by default.** A 43-task board with four
+ * messages rendered 43 cards and four wires: a census of the board, not its
+ * traffic. The counts are still reported so the view can say what it is not
+ * drawing — hiding a task silently is the failure this surface must not have.
  */
 export function layoutTraffic(
 	nodes: TrafficNode[],
 	records: TrafficRecord[],
+	options: SceneOptions = {},
 ): TrafficScene {
 	const byKey = new Map(nodes.map((node) => [node.key, node]));
+	const parked = new Set(
+		nodes.filter((node) => node.task?.hibernated === true).map((node) => node.key),
+	);
 	const state = pairs(records);
 	const partners = new Map<string, Set<string>>();
 	const messages = new Map<string, number>();
@@ -117,6 +144,7 @@ export function layoutTraffic(
 	const connected = new Map<string, Set<string>>();
 	for (const pair of state.values()) {
 		if (!byKey.has(pair.from) || !byKey.has(pair.to)) continue;
+		if (parked.has(pair.from) || parked.has(pair.to)) continue;
 		for (const [self, other] of [
 			[pair.from, pair.to],
 			[pair.to, pair.from],
@@ -161,7 +189,8 @@ export function layoutTraffic(
 		}
 		groups.push(group);
 	}
-	const quiet = nodes.filter((node) => !seen.has(node.key));
+	const quiet = nodes.filter((node) => !seen.has(node.key) && !parked.has(node.key));
+	const asleep = nodes.filter((node) => parked.has(node.key));
 
 	const positions = new Map<string, { x: number; y: number }>();
 	const placed: PlacedNode[] = [];
@@ -179,6 +208,7 @@ export function layoutTraffic(
 			partners: partners.get(key)?.size ?? 0,
 			messages: messages.get(key) ?? 0,
 			hub,
+			parked: parked.has(key),
 		});
 		width = Math.max(width, x + CARD_WIDTH);
 	};
@@ -202,17 +232,21 @@ export function layoutTraffic(
 		});
 		cursorY += (rows + 1) * (CARD_HEIGHT + GAP_Y);
 	}
-	quiet.forEach((node, index) => {
-		place(
-			node.key,
-			(index % ROW_WIDTH) * step,
-			cursorY + Math.floor(index / ROW_WIDTH) * (CARD_HEIGHT + GAP_Y),
-			false,
-		);
-	});
-	if (quiet.length) {
-		cursorY += Math.ceil(quiet.length / ROW_WIDTH) * (CARD_HEIGHT + GAP_Y);
-	}
+	const band = (members: TrafficNode[]) => {
+		members.forEach((node, index) => {
+			place(
+				node.key,
+				(index % ROW_WIDTH) * step,
+				cursorY + Math.floor(index / ROW_WIDTH) * (CARD_HEIGHT + GAP_Y),
+				false,
+			);
+		});
+		if (members.length) {
+			cursorY += Math.ceil(members.length / ROW_WIDTH) * (CARD_HEIGHT + GAP_Y);
+		}
+	};
+	if (options.showQuiet) band(quiet);
+	if (options.showParked) band(asleep);
 
 	const edges: PlacedEdge[] = [];
 	for (const [key, pair] of state) {
@@ -236,6 +270,8 @@ export function layoutTraffic(
 		edges,
 		width: Math.max(width, step),
 		height: Math.max(cursorY - GAP_Y, CARD_HEIGHT),
+		quietCount: quiet.length,
+		parkedCount: asleep.length,
 	};
 }
 

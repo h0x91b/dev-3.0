@@ -9,16 +9,19 @@ import {
 } from "../components/agent-traffic/nodes-layout";
 import { endpointKey, trafficNodes, trafficRecords } from "../components/agent-traffic/traffic-model";
 
-function task(id: string, seq: number, coordinator = false): Task {
+function task(id: string, seq: number, over: Partial<Task> = {}): Task {
 	return {
 		id,
 		projectId: "p",
 		seq,
 		title: id,
 		status: "in-progress",
-		taskType: coordinator ? "coordinator" : null,
+		taskType: null,
+		...over,
 	} as unknown as Task;
 }
+const coordinator = (id: string, seq: number) => task(id, seq, { taskType: "coordinator" });
+const parked = (id: string, seq: number) => task(id, seq, { hibernated: true });
 
 function row(from: string, to: string, over: Partial<AgentMessageLogRow> = {}): AgentMessageLogRow {
 	return {
@@ -39,13 +42,22 @@ function row(from: string, to: string, over: Partial<AgentMessageLogRow> = {}): 
 	};
 }
 
+/** Bands expanded, which is what the band-specific assertions are about. */
 function scene(tasks: Task[], rows: AgentMessageLogRow[]) {
+	return layoutTraffic(trafficNodes(tasks, rows), trafficRecords(rows), {
+		showQuiet: true,
+		showParked: true,
+	});
+}
+
+/** What the stage actually opens with. */
+function collapsed(tasks: Task[], rows: AgentMessageLogRow[]) {
 	return layoutTraffic(trafficNodes(tasks, rows), trafficRecords(rows));
 }
 
 describe("layoutTraffic", () => {
 	it("leads a conversation with its coordinator and hangs the rest below", () => {
-		const tasks = [task("a", 11, true), task("b", 22), task("c", 33)];
+		const tasks = [coordinator("a", 11), task("b", 22), task("c", 33)];
 		const { placed, edges } = scene(tasks, [row("a", "b"), row("a", "c")]);
 		const hub = placed.find((node) => node.hub);
 		expect(hub?.node.id).toBe("a");
@@ -86,8 +98,55 @@ describe("layoutTraffic", () => {
 		expect(edges.every((edge) => ![edge.from, edge.to].includes(endpointKey("p", "z")))).toBe(true);
 	});
 
+
+
+	// A 43-task board with four messages drew 43 cards and four wires — a census of
+	// the board, not its traffic. Both trailing bands now start collapsed, and the
+	// counts are still reported so the view can say what it is not drawing.
+	it("opens on the conversation alone, but counts what it left out", () => {
+		const tasks = [coordinator("a", 11), task("b", 22), task("quiet", 44), parked("z", 99)];
+		const scene = collapsed(tasks, [row("a", "b")]);
+		expect(scene.placed.map((node) => node.node.id).sort()).toEqual(["a", "b"]);
+		expect(scene.quietCount).toBe(1);
+		expect(scene.parkedCount).toBe(1);
+	});
+
+	// A wire whose far end is not drawn would dangle into nothing.
+	it("drops a wire whose endpoint sits in a collapsed band", () => {
+		expect(collapsed([coordinator("a", 11), parked("z", 99)], [row("a", "z")]).edges).toHaveLength(0);
+	});
+
+	// On a real board most tasks are parked. Mixed into the conversation they bury
+	// the handful that is actually running, so they get a band of their own.
+	it("sinks hibernated tasks below everything, even ones that messaged", () => {
+		const tasks = [coordinator("a", 11), task("b", 22), parked("z", 99)];
+		const { placed } = scene(tasks, [row("a", "b"), row("a", "z")]);
+		const asleep = placed.find((node) => node.node.id === "z");
+		expect(asleep?.parked).toBe(true);
+		for (const other of placed.filter((node) => node.node.id !== "z")) {
+			expect(asleep?.y).toBeGreaterThan(other.y);
+			expect(other.parked).toBe(false);
+		}
+	});
+
+	// The wire survives the move: the history is still true, the card just stops
+	// competing for attention.
+	it("still draws a hibernated task's wires from its band", () => {
+		const { edges } = scene([coordinator("a", 11), parked("z", 99)], [row("a", "z")]);
+		expect(edges).toHaveLength(1);
+	});
+
+	// A parked task must never become the hub of a group it was pulled out of.
+	it("never makes a hibernated task a hub", () => {
+		const tasks = [task("a", 11), task("b", 22), parked("z", 99)];
+		const { placed } = scene(tasks, [row("z", "a"), row("z", "b"), row("a", "b")]);
+		expect(placed.find((node) => node.hub)?.node.id).not.toBe("z");
+	});
+
 	it("never overlaps two cards", () => {
-		const tasks = Array.from({ length: 9 }, (_, index) => task(`t${index}`, index + 1, index === 0));
+		const tasks = Array.from({ length: 9 }, (_, index) =>
+			index === 0 ? coordinator("t0", 1) : task(`t${index}`, index + 1),
+		);
 		const { placed } = scene(
 			tasks,
 			tasks.slice(1).map((other) => row("t0", other.id)),
