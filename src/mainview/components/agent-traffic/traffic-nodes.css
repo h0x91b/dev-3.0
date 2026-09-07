@@ -9,10 +9,20 @@
 	touch-action: none;
 	cursor: grab;
 	isolation: isolate;
-	/* Dragging the stage is a pan, never a text selection — and ⌘A used to paint
-	   every card blue. The inspector next door stays selectable. */
+}
+
+/* Chrome is not content. Dragging the stage is a pan, and ⌘A used to paint the
+   whole overlay blue — headings, counters, timeline labels and every card. Only
+   what a reader would actually copy stays selectable: the message inspector and
+   the search box. */
+.traffic-view {
 	user-select: none;
 	-webkit-user-select: none;
+}
+.traffic-inspector,
+.traffic-view input {
+	user-select: text;
+	-webkit-user-select: text;
 }
 .traffic-nodes:active {
 	cursor: grabbing;
