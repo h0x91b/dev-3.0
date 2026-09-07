@@ -337,7 +337,7 @@ Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskI
 
 ### 5.9 Agent traffic — `Observed`
 
-Purple control: read-only stage/lists/inspector overlay, not a destination.
+Read-only stage/lists/inspector overlay, not a destination.
 
 - **Two presentations, one feature.** Experiment 2 (Coordination, default) and 1 (orbit) share data/filters/selection.
   A toolbar radiogroup selects one mounted stage.
@@ -353,9 +353,9 @@ Purple control: read-only stage/lists/inspector overlay, not a destination.
   Stable grid positions never imply parentage. Quiet/hibernated bands have counted disclosure;
   hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
 - **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
-  Replay restarts, Live exits. Freeze events during replay. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
-  Follow sits with zoom/fit; Focus frames one card from details. Manual navigation stops Follow.
-  Lists open on request/selection; all controls support keyboard/touch.
+  Replay restarts; Live exits. Freeze replay events. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
+  Follow defaults on, showing the latest exchange in 24h; manual navigation stops it. Focus frames a card.
+  Lists open on request. The period picker selects local calendar days; auto-load history to that day.
 - **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
   mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany
   recorded attempts only. Held/failed flights stop short; static verdict text distinguishes outcomes.

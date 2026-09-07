@@ -6,11 +6,17 @@ import TrafficIcon from "./TrafficIcon";
 type Props = {
 	playback: ReturnType<typeof useTrafficPlayback>;
 	windowControl: ReactNode;
+	historical?: boolean;
+	loading?: boolean;
+	onLive?: () => void;
 	onInspect: (key: string) => void;
 };
 export default function TrafficPlayback({
 	playback: p,
 	windowControl,
+	historical = false,
+	loading = false,
+	onLive,
 	onInspect,
 }: Props) {
 	const t = useT();
@@ -43,7 +49,7 @@ export default function TrafficPlayback({
 					<span className="streamer-private">
 						{event?.row.subject ||
 							event?.row.body.slice(0, 120) ||
-							t("traffic.noneMatch")}
+							t(loading ? "traffic.loading" : "traffic.noneMatch")}
 					</span>
 				</button>
 				<span className="traffic-event-counter">
@@ -131,8 +137,8 @@ export default function TrafficPlayback({
 				<div className="traffic-replay-window">{windowControl}</div>
 				<button
 					type="button"
-					className={p.index < 0 ? "is-active" : ""}
-					onClick={p.live}
+					className={p.index < 0 && !historical ? "is-active" : ""}
+					onClick={onLive ?? p.live}
 				>
 					{t("traffic.orbit.live")}
 				</button>

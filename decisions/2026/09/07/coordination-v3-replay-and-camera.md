@@ -12,7 +12,7 @@ Coordination v3 uses a stable three-column grid, larger cards with overview text
 
 `TrafficNodes.tsx` and `nodes-layout.ts` follow v3's geometry, semantic zoom, directional capsules and 500ms camera movement. `TrafficPlayback.tsx` and `useTrafficPlayback.ts` replay only existing recorded messages, freezing the sequence while live data continues arriving. The last event receives a full dwell; changing presentation or scope releases playback timers.
 
-The node inspector opens on demand. Follow is with zoom/fit; explicit Replay restores Follow and task details expose Focus. Current completed/cancelled labels remain visible and hibernated tasks stay grey in a lower band; replay reveals its parked endpoints without changing task state. Route verdicts/counts follow the replay cursor while geometry stays stable.
+The node inspector opens on demand. Follow is with zoom/fit; explicit Replay restores Follow and task details expose Focus. Current completed/cancelled labels remain visible and hibernated tasks stay grey in a lower band; replay reveals its parked endpoints without changing task state. Route verdicts/counts follow the replay cursor while geometry stays stable. Follow initially frames the latest exchange in the last 24 hours; the bottom period picker selects local calendar days and loads through their start. Calendar bounds use consecutive local midnights, preserving 23/25-hour days, and Live restores the rolling 24-hour view.
 
 ## Risks
 

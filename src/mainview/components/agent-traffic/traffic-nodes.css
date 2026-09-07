@@ -836,3 +836,118 @@
 .traffic-sheet:has(.traffic-view[data-experiment="2"]) {
 	height: calc(85dvh - 80px);
 }
+
+.traffic-period-trigger {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 34px;
+	padding: 6px 10px;
+	border-radius: 7px;
+	border: 1px solid rgb(var(--border-default) / 0.6);
+	background: rgb(var(--surface-elevated) / 0.65);
+	color: rgb(var(--text-secondary));
+	font-size: 12px;
+	white-space: nowrap;
+}
+.traffic-period-trigger span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.traffic-calendar-popover {
+	position: fixed;
+	z-index: 9999;
+	width: 320px;
+	max-height: calc(100dvh - 24px);
+	overflow-y: auto;
+	border-radius: 12px;
+	background: rgb(var(--surface-raised));
+	color: rgb(var(--text-primary));
+	box-shadow:
+		0 1px 3px rgb(0 0 0 / 0.12),
+		0 10px 40px rgb(0 0 0 / 0.22),
+		inset 0 0 0 1px rgb(var(--border-default) / 0.4);
+}
+.traffic-calendar {
+	padding: 14px;
+	color: rgb(var(--text-primary));
+}
+.traffic-calendar button {
+	cursor: pointer;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: inherit;
+	font-size: 12px;
+	min-height: 36px;
+}
+.traffic-calendar button:hover:not(:disabled) {
+	background: rgb(var(--surface-elevated));
+}
+.traffic-calendar button[aria-pressed="true"] {
+	background: rgb(var(--accent-fill));
+	color: white;
+}
+.traffic-calendar button:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+.traffic-calendar button:focus-visible,
+.traffic-period-trigger:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 2px;
+}
+.traffic-calendar-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid rgb(var(--border-default) / 0.4);
+}
+.traffic-calendar-presets button {
+	padding: 6px 9px;
+}
+.traffic-calendar-month {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 0;
+}
+.traffic-calendar-month strong {
+	font-size: 13px;
+	text-transform: capitalize;
+}
+.traffic-calendar-month button {
+	width: 36px;
+	font-size: 22px;
+}
+.traffic-calendar-weekdays,
+.traffic-calendar-days {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 4px;
+	text-align: center;
+}
+.traffic-calendar-weekdays {
+	color: rgb(var(--text-tertiary));
+	font-size: 11px;
+	margin-bottom: 6px;
+}
+.traffic-calendar-days button[aria-current="date"] {
+	box-shadow: inset 0 0 0 1px rgb(var(--accent));
+}
+@media (max-width: 900px) {
+	.traffic-period-trigger {
+		min-height: 44px;
+	}
+}
+@media (max-width: 699px) {
+	.traffic-calendar button {
+		min-height: 44px;
+	}
+}
+.traffic-calendar button[aria-pressed="true"]:hover {
+	background: rgb(var(--accent-fill-hover));
+	color: white;
+}

@@ -1,4 +1,5 @@
 const paths = {
+	calendar: "M5 5h14v16H5ZM8 2v6M16 2v6M5 11h14",
 	play: "m8 5 11 7-11 7Z",
 	pause: "M8 5v14M16 5v14",
 	previous: "m17 5-9 7 9 7ZM5 5v14",

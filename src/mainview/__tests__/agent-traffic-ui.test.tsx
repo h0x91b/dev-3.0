@@ -298,9 +298,15 @@ describe("AgentTrafficLog live orbit", () => {
 		renderLog();
 		expect((await messageRows(1))[0].textContent).toContain("Earlier today");
 		expect(
-			screen.getByRole("combobox", { name: "Time window" }).textContent,
+			screen.getByRole("button", { name: "Time window: Last 24 hours" })
+				.textContent,
 		).toContain("Last 24 hours");
-		await choose("Time window", "Loaded history");
+		await userEvent.click(
+			screen.getByRole("button", { name: "Time window: Last 24 hours" }),
+		);
+		await userEvent.click(
+			screen.getByRole("button", { name: "Loaded history" }),
+		);
 		expect(
 			(await messageRows(2)).some((element) =>
 				element.textContent?.includes("Five days ago"),
@@ -773,9 +779,56 @@ it("Focus reveals a hibernated task selected from the task list without waking i
 	await userEvent.click(screen.getByRole("button", { name: "Focus" }));
 	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(3);
 	expect(
-		screen.getAllByTestId("traffic-node-card").find((el) => el.classList.contains("is-parked")),
+		screen
+			.getAllByTestId("traffic-node-card")
+			.find((el) => el.classList.contains("is-parked")),
 	).toBeTruthy();
 	expect(
 		screen.getByRole("button", { name: "Follow" }).getAttribute("aria-pressed"),
 	).toBe("false");
+});
+
+it("selects a full local calendar day, then Live restores 24h and Follow", async () => {
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
+	const yesterday = new Date(today);
+	yesterday.setDate(yesterday.getDate() - 1);
+	const earlier = new Date(yesterday);
+	earlier.setMilliseconds(-1);
+	setPage([
+		row({ at: new Date().toISOString(), subject: "Current exchange" }),
+		row({ at: yesterday.toISOString(), subject: "Midnight yesterday" }),
+		row({
+			at: new Date(today.getTime() - 1).toISOString(),
+			subject: "End of yesterday",
+		}),
+		row({ at: earlier.toISOString(), subject: "Outside selected day" }),
+	]);
+	renderLog();
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled(),
+	);
+	await userEvent.click(screen.getByRole("button", { name: "Follow" }));
+	await userEvent.click(
+		screen.getByRole("button", { name: "Time window: Last 24 hours" }),
+	);
+	await userEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+	expect(
+		(await messageRows(2)).map((el) => el.textContent).join(" "),
+	).toContain("Midnight yesterday");
+	expect(
+		(await messageRows(2)).map((el) => el.textContent).join(" "),
+	).not.toContain("Current exchange");
+	expect(screen.getByRole("button", { name: "Follow" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	await userEvent.click(screen.getByRole("button", { name: "Live" }));
+	expect(
+		screen.getByRole("button", { name: "Time window: Last 24 hours" }),
+	).toBeTruthy();
+	expect(screen.getByRole("button", { name: "Follow" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
 });

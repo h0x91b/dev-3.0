@@ -14,6 +14,8 @@ import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
 import TrafficPlayback from "./TrafficPlayback";
+import TrafficPeriodPicker from "./TrafficPeriodPicker";
+import { isCalendarDay, trafficPeriodBounds } from "./traffic-period";
 import TrafficIcon from "./TrafficIcon";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
@@ -181,7 +183,11 @@ function ExperimentPicker({
 function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
-	const data = useTrafficData();
+	const [windowSize, setWindowSize] = useState("day");
+	const now = Date.now();
+	const { start, end } = trafficPeriodBounds(windowSize, now);
+	const calendarDay = isCalendarDay(windowSize);
+	const data = useTrafficData(calendarDay ? start : undefined);
 	const { experiment, choose } = useTrafficExperiment();
 	const [scope, setScope] = useState(projectId ?? "all");
 	const [selected, setSelected] = useState<string | null>(null);
@@ -189,7 +195,6 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const [pair, setPair] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState("all");
-	const [windowSize, setWindowSize] = useState("day");
 	const [until, setUntil] = useState<number | null>(null);
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
@@ -198,13 +203,6 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const [showFilters, setShowFilters] = useState(false);
 	const [focusRequest, setFocusRequest] = useState(0);
 	const [followRequest, setFollowRequest] = useState(0);
-	const now = Date.now();
-	const start =
-		windowSize === "hour"
-			? now - 3600000
-			: windowSize === "day"
-				? now - 86400000
-				: 0;
 	const scopedRows = useMemo(
 		() =>
 			data.rows.filter(
@@ -239,10 +237,11 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			records.filter(
 				({ row }) =>
 					Date.parse(row.at) >= start &&
+					Date.parse(row.at) < end &&
 					Date.parse(row.at) <=
 						(experiment === "1" ? (until ?? Infinity) : Infinity),
 			),
-		[records, start, until, experiment],
+		[records, start, end, until, experiment],
 	);
 	const replayRecords = useMemo(
 		() =>
@@ -419,9 +418,13 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 				<h2>{t("traffic.label")}</h2>
 				<div className="traffic-header-tail">
 					<span className="traffic-live" role="status">
-						{data.loading
+						{data.loading || data.historyLoading
 							? t("traffic.loading")
-							: (experiment === "2" ? playback.index < 0 : until === null)
+							: (
+										experiment === "2"
+											? playback.index < 0 && !calendarDay
+											: until === null
+								  )
 								? t("traffic.orbit.live")
 								: t("traffic.orbit.history")}
 					</span>
@@ -458,7 +461,13 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 				</div>
 			</header>
 			<div className="traffic-toolbar">
-				<ExperimentPicker value={experiment} onChange={choose} />
+				<ExperimentPicker
+					value={experiment}
+					onChange={(value) => {
+						choose(value);
+						if (value === "1" && calendarDay) setWindowSize("day");
+					}}
+				/>
 				{experiment === "2" && narrowControls ? (
 					<button onClick={() => setShowFilters(true)}>
 						{t("traffic.replay.filters")}
@@ -551,21 +560,27 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					)}
 					{experiment === "2" ? (
 						<TrafficPlayback
+							loading={data.loading || data.historyLoading}
 							playback={playback}
 							onInspect={(key) => {
 								setRecordKey(key);
 								setShowInspector(true);
 							}}
+							historical={calendarDay}
+							onLive={() => {
+								setWindowSize("day");
+								setFollowRequest((value) => value + 1);
+								playback.live();
+							}}
 							windowControl={
-								<Select
+								<TrafficPeriodPicker
 									value={windowSize}
-									onChange={setWindowSize}
-									options={[
-										{ value: "hour", label: t("traffic.orbit.hour") },
-										{ value: "day", label: t("traffic.orbit.day") },
-										{ value: "all", label: t("traffic.orbit.loadedHistory") },
-									]}
-									ariaLabel={t("traffic.orbit.timeWindow")}
+									retentionDays={data.retentionDays}
+									onChange={(value) => {
+										setWindowSize(value);
+										clearSelection();
+										setFollowRequest((request) => request + 1);
+									}}
 								/>
 							}
 						/>

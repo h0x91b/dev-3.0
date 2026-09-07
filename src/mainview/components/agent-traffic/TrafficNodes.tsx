@@ -291,8 +291,18 @@ export default function TrafficNodes({
 		launchRef.current(playback.current);
 	}, [playback?.revision, replaying]);
 	useEffect(() => {
-		if (follow && playback?.current) exchangeRef.current(playback.current);
-	}, [playback?.revision, replaying, follow]);
+		if (!follow || !ready) return;
+		const event =
+			playback?.current ?? playback?.events[playback.events.length - 1];
+		if (event) exchangeRef.current(event);
+	}, [
+		playback?.revision,
+		playback?.events[playback.events.length - 1]?.key,
+		replaying,
+		follow,
+		ready,
+		followRequest,
+	]);
 	const previousPlayback = useRef({ playing: false, revision: 0 });
 	useEffect(() => {
 		const previous = previousPlayback.current;
