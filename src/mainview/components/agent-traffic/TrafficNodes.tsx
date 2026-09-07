@@ -29,6 +29,7 @@ import {
 } from "./traffic-model";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
+import { frameExchange, frameRecipient, followView } from "./traffic-camera";
 
 interface Props {
 	projects?: {
@@ -84,6 +85,7 @@ export default function TrafficNodes({
 	const frame = useRef<HTMLDivElement>(null);
 	const [showQuiet, setShowQuiet] = useState(false);
 	const [showParked, setShowParked] = useState(false);
+	const [follow, setFollow] = useState(true);
 	const [pendingFocus, setPendingFocus] = useState<string | null>(null);
 	const replaying = !!playback && playback.index >= 0;
 	const replayKeys = new Set(
@@ -94,8 +96,17 @@ export default function TrafficNodes({
 				])
 			: [],
 	);
+	const followedRecord = follow
+		? (playback?.current ?? playback?.events[playback.events.length - 1])
+		: undefined;
 	const replayParked = nodes.some(
-		(node) => node.task?.hibernated && replayKeys.has(node.key),
+		(node) =>
+			node.task?.hibernated &&
+			(replayKeys.has(node.key) ||
+				(followedRecord &&
+					[fromKey(followedRecord.row), toKey(followedRecord.row)].includes(
+						node.key,
+					))),
 	);
 	const scene = useMemo(
 		() =>
@@ -108,7 +119,6 @@ export default function TrafficNodes({
 	const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
 	const viewRef = useRef(view);
 	viewRef.current = view;
-	const [follow, setFollow] = useState(true);
 	useEffect(() => {
 		if (followRequest) setFollow(true);
 	}, [followRequest]);
@@ -146,6 +156,7 @@ export default function TrafficNodes({
 		(target: View, instant = false) => {
 			cancelAnimationFrame(camera.current);
 			if (instant || reduced) {
+				viewRef.current = target;
 				setView(target);
 				return;
 			}
@@ -256,15 +267,54 @@ export default function TrafficNodes({
 			focusRef.current(pendingFocus);
 	}, [pendingFocus, nodeByKey]);
 	const exchange = useCallback(
-		(record: TrafficRecord) => {
+		(record: TrafficRecord, animate = false) => {
+			const viewport = frame.current?.getBoundingClientRect();
+			const recipient = nodeByKey.get(toKey(record.row));
+			const sender = nodeByKey.get(fromKey(record.row) ?? "");
+			if (!viewport?.width || !viewport.height || !recipient) return;
 			overviewMode.current = false;
-			const targets = [fromKey(record.row), toKey(record.row)].flatMap((key) =>
-				key && nodeByKey.has(key) ? [nodeByKey.get(key)!] : [],
+			const edge =
+				sender &&
+				edgeByKey.get([sender.node.key, recipient.node.key].sort().join("|"));
+			const route = edge
+				? edge.from === fromKey(record.row)
+					? edge.points
+					: [...edge.points].reverse()
+				: [];
+			const stopped =
+				record.row.status === "held"
+					? 0.52
+					: record.row.status === "not-delivered"
+						? 0.7
+						: null;
+			const destination = frameRecipient(
+				viewport,
+				recipient,
+				stopped !== null && route.length ? pointAt(route, stopped) : undefined,
 			);
-			fitNodes(targets, 1.03);
+			if (!animate || reduced || !sender || !route.length) {
+				move(destination, reduced);
+				return;
+			}
+			cancelAnimationFrame(camera.current);
+			const from = viewRef.current;
+			const wide = frameExchange(viewport, [sender, recipient], route);
+			const start = performance.now();
+			const duration = playback?.playing
+				? Math.min(1500, 990 / playback.speed)
+				: 1500;
+			const tick = (at: number) => {
+				const progress = Math.min(1, (at - start) / duration);
+				const next = followView(from, wide, destination, progress);
+				viewRef.current = next;
+				setView(next);
+				if (progress < 1) camera.current = requestAnimationFrame(tick);
+			};
+			camera.current = requestAnimationFrame(tick);
 		},
-		[nodeByKey, fitNodes],
+		[nodeByKey, edgeByKey, move, reduced, playback?.playing, playback?.speed],
 	);
+
 	const launch = useCallback(
 		(record: TrafficRecord) => {
 			const from = fromKey(record.row),
@@ -291,10 +341,14 @@ export default function TrafficNodes({
 		launchRef.current(playback.current);
 	}, [playback?.revision, replaying]);
 	useEffect(() => {
-		if (!follow || !ready) return;
+		if (!follow) {
+			cancelAnimationFrame(camera.current);
+			return;
+		}
+		if (!ready) return;
 		const event =
 			playback?.current ?? playback?.events[playback.events.length - 1];
-		if (event) exchangeRef.current(event);
+		if (event) exchangeRef.current(event, !!playback?.current);
 	}, [
 		playback?.revision,
 		playback?.events[playback.events.length - 1]?.key,
@@ -302,6 +356,7 @@ export default function TrafficNodes({
 		follow,
 		ready,
 		followRequest,
+		reduced,
 	]);
 	const previousPlayback = useRef({ playing: false, revision: 0 });
 	useEffect(() => {
@@ -312,8 +367,10 @@ export default function TrafficNodes({
 			(previous.playing &&
 				!playback?.playing &&
 				previous.revision === playback?.revision)
-		)
+		) {
 			setFlights([]);
+			cancelAnimationFrame(camera.current);
+		}
 		previousPlayback.current = {
 			playing: !!playback?.playing,
 			revision: playback?.revision ?? 0,
@@ -323,14 +380,17 @@ export default function TrafficNodes({
 		if (!ready) return;
 		const current = new Set(layoutRecords.map((record) => record.key));
 		if (known.current && !replaying && !paused) {
+			let newest: TrafficRecord | undefined;
 			for (const record of layoutRecords)
 				if (
 					!known.current.has(record.key) &&
 					Date.now() - Date.parse(record.row.at) < 10000
 				) {
 					launchRef.current(record);
-					if (follow) exchangeRef.current(record);
+					if (!newest || Date.parse(record.row.at) > Date.parse(newest.row.at))
+						newest = record;
 				}
+			if (follow && newest) exchangeRef.current(newest, true);
 		}
 		known.current = current;
 	}, [layoutRecords, ready, paused, replaying, follow]);

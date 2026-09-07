@@ -1,3 +1,4 @@
+import { createTrafficRouter } from "./nodes-routing";
 import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-model";
 
 /** Card footprint and the gaps between cards, in scene units (= CSS px at scale 1). */
@@ -166,11 +167,15 @@ export function layoutTraffic(
 	if (options.showParked) band(parked);
 
 	const edges: PlacedEdge[] = [];
+	const route = createTrafficRouter(placed);
 	for (const [key, pair] of state) {
 		const a = positions.get(pair.from);
 		const b = positions.get(pair.to);
 		if (!a || !b) continue;
-		edges.push({ key, ...pair, points: wire(a, b) });
+		const points = route(wire(a, b), a, b);
+		// A blocked endpoint never gets an unsafe straight-line fallback.
+		if (!points) continue;
+		edges.push({ key, ...pair, points });
 	}
 	return {
 		placed, edges,

@@ -7,6 +7,7 @@ import {
 	pointAt,
 	wirePath,
 } from "../components/agent-traffic/nodes-layout";
+import { createTrafficRouter } from "../components/agent-traffic/nodes-routing";
 import { endpointKey, trafficNodes, trafficRecords } from "../components/agent-traffic/traffic-model";
 
 function task(id: string, seq: number, over: Partial<Task> = {}): Task {
@@ -226,5 +227,112 @@ describe("wire geometry", () => {
 	it("clamps a progress value that ran past its flight", () => {
 		expect(pointAt(points, 2)).toEqual({ x: 200, y: 200 });
 		expect(pointAt(points, -1)).toEqual({ x: 0, y: 0 });
+	});
+});
+
+
+describe("obstacle-aware traffic routing", () => {
+	function assertClear(result: ReturnType<typeof scene>) {
+		for (const edge of result.edges) {
+			for (let index = 1; index < edge.points.length; index++) {
+				const a = edge.points[index - 1], b = edge.points[index];
+				expect(a.x === b.x || a.y === b.y).toBe(true);
+				for (const card of result.placed) {
+					const endpoint = card.node.key === edge.from || card.node.key === edge.to;
+					const pad = endpoint ? 0 : 14;
+					const left = card.x - pad, right = card.x + card.width + pad;
+					const top = card.y - pad, bottom = card.y + card.height + pad;
+					const crossing = a.x === b.x
+						? a.x > left && a.x < right && Math.max(a.y, b.y) > top && Math.min(a.y, b.y) < bottom
+						: a.y > top && a.y < bottom && Math.max(a.x, b.x) > left && Math.min(a.x, b.x) < right;
+					if (crossing) throw new Error(`${edge.from} → ${edge.to} crosses ${card.node.id}`);
+				}
+			}
+		}
+	}
+
+	it("routes a same-row exchange around the intervening card", () => {
+		const tasks = [task("a", 1), task("b", 2), task("c", 3)];
+		const result = scene(tasks, [row("a", "b"), row("a", "c")]);
+		expect(result.edges).toHaveLength(2);
+		const edge = result.edges.find(edge => edge.to === endpointKey("p", "c"))!;
+		expect(edge.points.length).toBeGreaterThan(2);
+		assertClear(result);
+	});
+
+	it("routes a coordinator exchange past several occupied rows", () => {
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 12 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map(t => row("hub", t.id)));
+		expect(result.edges).toHaveLength(12);
+		assertClear(result);
+	});
+
+	it("preserves sender direction when a reply needs a detour", () => {
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 12 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map(t => row(t.id, "hub")));
+		expect(result.edges).toHaveLength(12);
+		const hub = result.placed.find(p => p.node.id === "hub")!;
+		for (const edge of result.edges) {
+			const sender = result.placed.find(p => p.node.key === edge.from)!;
+			expect(edge.points[0]).toEqual({ x: sender.x + sender.width / 2, y: sender.y });
+			expect(edge.points[edge.points.length - 1]).toEqual({ x: hub.x + hub.width / 2, y: hub.y + hub.height });
+		}
+		assertClear(result);
+	});
+
+	it("keeps dense traffic clear of active, completed, quiet and parked cards", () => {
+		const tasks = Array.from({ length: 100 }, (_, i) => i < 2 ? coordinator(`t${i}`, i) :
+			task(`t${i}`, i, { hibernated: i >= 80, status: i % 7 === 0 ? "completed" : "in-progress" }));
+		const rows = tasks.slice(1, 90).flatMap((t, i) => [row("t0", t.id), row(t.id, `t${(i * 17 + 7) % 90}`)]).filter(r => r.fromTaskId !== r.toTaskId);
+		const result = scene(tasks, rows);
+		const pairs = new Set(rows.map(r => [r.fromTaskId, r.toTaskId].sort().join("|")));
+		expect(result.edges).toHaveLength(pairs.size);
+		expect(result.placed).toHaveLength(100);
+		assertClear(result);
+	});
+
+	it("finds a deterministic shortest Manhattan detour", () => {
+		const source = { x: 0, y: 0, width: 100, height: 100 };
+		const obstacle = { x: 152, y: 0, width: 100, height: 100 };
+		const target = { x: 304, y: 0, width: 100, height: 100 };
+		const route = createTrafficRouter([source, obstacle, target]);
+		const preferred = [{ x: 100, y: 52 }, { x: 304, y: 52 }];
+		const points = route(preferred, source, target)!;
+		expect(points).not.toBeNull();
+		expect(route(preferred, source, target)).toEqual(points);
+		const length = points.slice(1).reduce((total, p, i) => total + Math.abs(p.x - points[i].x) + Math.abs(p.y - points[i].y), 0);
+		expect(length).toBe(204 + 2 * 74);
+	});
+
+	it("keeps the rendered rounded corners clear of every card", () => {
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 9 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map(t => row("hub", t.id)));
+		for (const edge of result.edges) {
+			let cursor = edge.points[0];
+			for (const command of wirePath(edge.points).matchAll(/([MLQ])([^MLQ]+)/g)) {
+				const values = command[2].trim().split(/\s+/).map(Number);
+				if (command[1] !== "Q") { cursor = { x: values[0], y: values[1] }; continue; }
+				const [cx, cy, x, y] = values;
+				for (let step = 0; step <= 20; step++) {
+					const t = step / 20, inverse = 1 - t;
+					const point = { x: inverse * inverse * cursor.x + 2 * inverse * t * cx + t * t * x,
+						y: inverse * inverse * cursor.y + 2 * inverse * t * cy + t * t * y };
+					for (const card of result.placed) {
+						const pad = card.node.key === edge.from || card.node.key === edge.to ? 0 : 14;
+						if (point.x > card.x - pad && point.x < card.x + card.width + pad &&
+							point.y > card.y - pad && point.y < card.y + card.height + pad) throw new Error(`Rounded route intersects ${card.node.id}`);
+					}
+				}
+				cursor = { x, y };
+			}
+		}
+	});
+
+	it("omits a route whose sender port is obstructed instead of crossing a card", () => {
+		const source = { x: 0, y: 0, width: 100, height: 100 };
+		const blocker = { x: 105, y: 0, width: 100, height: 100 };
+		const target = { x: 304, y: 0, width: 100, height: 100 };
+		const route = createTrafficRouter([source, blocker, target]);
+		expect(route([{ x: 100, y: 52 }, { x: 304, y: 52 }], source, target)).toBeNull();
 	});
 });

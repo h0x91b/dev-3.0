@@ -719,7 +719,7 @@ describe("Coordination replay controls", () => {
 	});
 });
 
-it("replay reveals its hibernated endpoint and never uses a future delivery verdict", async () => {
+it("Follow reveals its hibernated endpoint and replay never uses a future delivery verdict", async () => {
 	taskExtras.value = { "task-b": { hibernated: true } };
 	setPage([
 		row({ subject: "Later failure", status: "not-delivered" }),
@@ -739,7 +739,7 @@ it("replay reveals its hibernated endpoint and never uses a future delivery verd
 		screen
 			.queryAllByTestId("traffic-node-card")
 			.some((card) => card.textContent?.includes("#22")),
-	).toBe(false);
+	).toBe(true);
 	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
 	expect(
 		screen
@@ -831,4 +831,87 @@ it("selects a full local calendar day, then Live restores 24h and Follow", async
 		"aria-pressed",
 		"true",
 	);
+});
+
+it("Follow changes zoom through a flight and reverses its framing for a reply", async () => {
+	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+		matches: false,
+		media: query,
+		onchange: null,
+		addEventListener: () => {},
+		removeEventListener: () => {},
+		addListener: () => {},
+		removeListener: () => {},
+		dispatchEvent: () => false,
+	}));
+	let clock = 0,
+		sequence = 0;
+	const frames = new Map<number, FrameRequestCallback>();
+	const time = vi.spyOn(performance, "now").mockImplementation(() => clock);
+	const rect = vi
+		.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+		.mockReturnValue({
+			x: 0,
+			y: 0,
+			left: 0,
+			top: 0,
+			right: 1400,
+			bottom: 640,
+			width: 1400,
+			height: 640,
+			toJSON: () => ({}),
+		});
+	vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+		frames.set(++sequence, callback);
+		return sequence;
+	});
+	vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+	const advance = (ms: number) => {
+		clock += ms;
+		act(() => {
+			const pending = [...frames.values()];
+			frames.clear();
+			pending.forEach((callback) => callback(clock));
+		});
+	};
+	setPage([
+		row({
+			fromTaskId: "task-b",
+			toTaskId: "task-a",
+			fromSeq: 22,
+			toSeq: 11,
+			subject: "Reply",
+		}),
+		row({ at: new Date(Date.now() - 60000).toISOString(), subject: "Request" }),
+	]);
+	const rendered = renderLog();
+	try {
+		await waitFor(() =>
+			expect(
+				screen.getByRole("button", { name: /^Replay$/ }),
+			).not.toBeDisabled(),
+		);
+		advance(600);
+		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+		advance(750);
+		const stage = screen.getByTestId("traffic-node-scene");
+		const wide = stage.style.transform;
+		advance(800);
+		const close = stage.style.transform;
+		expect(close).not.toBe(wide);
+		expect(close).toContain("scale(1.12)");
+		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+		advance(1600);
+		expect(stage.style.transform).not.toBe(close);
+		fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+		const manual = stage.style.transform;
+		advance(2000);
+		expect(stage.style.transform).toBe(manual);
+	} finally {
+		rendered.unmount();
+		media.mockRestore();
+		time.mockRestore();
+		rect.mockRestore();
+		vi.unstubAllGlobals();
+	}
 });

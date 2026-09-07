@@ -1,3 +1,5 @@
+Superseded in part on 2026-09-07 by `decisions/2026/09/07/traffic-obstacle-routing-and-follow.md`: Follow now frames the route then its destination; routes avoid every card.
+
 # Coordination v3 replay and camera
 
 ## Context

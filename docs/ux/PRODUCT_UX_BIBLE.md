@@ -350,12 +350,12 @@ Read-only stage/lists/inspector overlay, not a destination.
   Trap/restore focus, Escape dismisses; preserve entries.
 - **Identity, not ownership.** Active/history endpoints use real identity, role,
   current column/runtime and overview. Seq is display only; historical nodes have no dead links.
-  Stable grid positions never imply parentage. Quiet/hibernated bands have counted disclosure;
+  Stable grid; wires avoid cards, never imply parentage. Quiet/hibernated bands have counted disclosure;
   hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
 - **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
   Replay restarts; Live exits. Freeze replay events. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
-  Follow defaults on, showing the latest exchange in 24h; manual navigation stops it. Focus frames a card.
-  Lists open on request. The period picker selects local calendar days; auto-load history to that day.
+  Follow defaults on/24h: frame the route, then zoom to its destination. Manual stops it; Focus frames a card.
+  Lists on request; calendar days auto-load local history.
 - **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
   mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany
   recorded attempts only. Held/failed flights stop short; static verdict text distinguishes outcomes.
