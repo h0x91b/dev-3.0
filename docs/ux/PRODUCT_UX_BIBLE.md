@@ -335,40 +335,37 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 
 Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
-### 5.9 Agent traffic — two presentations — `Observed`
+### 5.9 Agent traffic — `Observed`
 
-The purple header control opens one live overlay: a stage, task/message lists and a selection
-inspector. Not a destination.
+Purple control: read-only stage/lists/inspector overlay, not a destination.
 
-- **Two presentations, one feature.** The stage is Experiment 2 (flat card graph, default) or
-  Experiment 1 (3D orbit), on a radiogroup leading the toolbar. They share data, selection, filters
-  and timeline; only one mounts. No stored pick means the default, never Experiment 1 — the feature
-  gate records nothing about presentation.
-- **Beta, off by default, off means invisible.** Settings → System → Advanced Experience gates the
-  control, kebab row, `⇧⌘M`, View menu, palette command and tip; no greyed-out trace, and picking a
-  presentation never enables it.
-- **Presence follows data; the badge follows unread.** The kebab row stays; the pill appears while
-  the project has recorded traffic, never keyed to unread alone. Unread reads the per-browser
-  last-look stamp, initializes on first look, caps at `9+`.
-- **Direct entry, responsive overlay.** Clicking the pill opens it; on narrow only the kebab entry
-  remains. BottomSheet there, dialog on wide, with focus trapping, Escape dismissal and focus
-  restoration. Keep the shortcut/menu/palette entries.
-- **Project grouping, not ownership.** Show active tasks and selected-history endpoints, not the
-  whole archive. Use real identity, role, current column/runtime and overview; keep positions put.
-  Historical endpoints stay readable without dead links; seq is display only.
-- **Live attempts, not read receipts.** Writer pushes and lazy Bun fs observers cover durable
-  appends, older installs included; no polling, observers close at shutdown.
-  Each new attempt may pulse once along its route, verdict-coloured. Keep distinct verdict text and
-  static cues; held proves no queue state. Motion never claims reading, and respects reduced motion.
-- **Inspect before navigating.** A node or message opens the inspector; its explicit task action
-  opens an existing task; the lists keep this without WebGL. Search, delivery filters and the
-  history window belong inside the overlay, not the global header.
-- **History is messages; task state is current.** Time filtering never reconstructs past columns,
-  runtime or PR checks. Show retention, oldest day, page limits. Subjects stay complete; old rows
-  fall back to their body head. Keep spill-pointer and delivery proof.
-- **No invented workflow.** The last recipient owes no inferred reply. Do not derive importance,
-  ownership, merge order, narratives or progress. No composer, terminal, import/export or synthetic
-  queue belongs in this read-only surface.
+- **Two presentations, one feature.** Experiment 2 (Coordination, default) and 1 (orbit) share data/filters/selection.
+  A toolbar radiogroup selects one mounted stage.
+  Absent preference means 2; the feature flag records no presentation choice.
+- **Beta, off by default.** Settings → System → Advanced Experience gates the pill, kebab row,
+  `⇧⌘M`, View menu, palette and tip. Off leaves no trace; presentation selection never enables it.
+- **Presence follows data; the badge follows unread.** Kebab persists; the desktop pill requires project traffic,
+  even when read. Per-browser last-look initializes on first look; unread caps at `9+`.
+- **Direct, responsive entry.** Pill click opens a dialog (2 fills it); narrow uses kebab/BottomSheet.
+  Trap/restore focus, Escape dismisses; preserve entries.
+- **Identity, not ownership.** Active/history endpoints use real identity, role,
+  current column/runtime and overview. Seq is display only; historical nodes have no dead links.
+  Stable grid positions never imply parentage. Quiet/hibernated bands have counted disclosure;
+  hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
+- **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
+  Replay restarts, Live exits. Freeze events during replay. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
+  Follow sits with zoom/fit; Focus frames one card from details. Manual navigation stops Follow.
+  Lists open on request/selection; all controls support keyboard/touch.
+- **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
+  mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany
+  recorded attempts only. Held/failed flights stop short; static verdict text distinguishes outcomes.
+  Neither means read/queued. Reduced motion stops flights/glides.
+- **Inspect before navigating.** Nodes/messages open details; only the explicit task action navigates.
+  Lists work without WebGL. Search, delivery filters and history windows stay inside this overlay.
+- **History is messages; task state is current.** Never reconstruct past columns, runtime or PR checks.
+  Show retention, oldest day and page limits. Preserve complete subjects (old rows use body head),
+  spill pointers and delivery proof. No inferred replies, importance, ownership, merge order,
+  narratives or progress; no composer, terminal, import/export or synthetic queue.
 
 Evidence: `agent-traffic/`, `agent-traffic.ts`, `shared/agent-message-log.ts`.
 

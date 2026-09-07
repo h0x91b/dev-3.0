@@ -1,3 +1,5 @@
+Superseded in part on 2026-09-07 by `decisions/2026/09/07/coordination-v3-replay-and-camera.md`: node geometry, semantic zoom and replay/camera behavior now follow Coordination v3; the feature gate and presentation preference remain unchanged.
+
 # Two agent-traffic presentations, defaulting to the node graph
 
 ## Context

@@ -56,7 +56,7 @@ function collapsed(tasks: Task[], rows: AgentMessageLogRow[]) {
 }
 
 describe("layoutTraffic", () => {
-	it("leads a conversation with its coordinator and hangs the rest below", () => {
+	it("places the coordinator above the reference card grid", () => {
 		const tasks = [coordinator("a", 11), task("b", 22), task("c", 33)];
 		const { placed, edges } = scene(tasks, [row("a", "b"), row("a", "c")]);
 		const hub = placed.find((node) => node.hub);
@@ -67,12 +67,23 @@ describe("layoutTraffic", () => {
 		expect(edges).toHaveLength(2);
 	});
 
-	// No coordinator on the board is normal; the busiest task leads instead so the
-	// graph still reads as a conversation rather than a scatter of cards.
-	it("falls back to the busiest task when nothing is a coordinator", () => {
+	it("keeps ordinary tasks in a stable grid without assigning a coordinator", () => {
 		const tasks = [task("a", 11), task("b", 22), task("c", 33)];
-		const { placed } = scene(tasks, [row("b", "a"), row("b", "c")]);
-		expect(placed.find((node) => node.hub)?.node.id).toBe("b");
+		const first = scene(tasks, [row("b", "a"), row("b", "c")]);
+		const next = scene([...tasks].reverse(), [row("c", "a"), row("c", "b")]);
+		expect(first.placed.every((node) => !node.hub)).toBe(true);
+		expect(first.placed.map(({ node, x, y }) => [node.id, x, y])).toEqual(
+			next.placed.map(({ node, x, y }) => [node.id, x, y]),
+		);
+		expect(new Set(first.placed.map((node) => node.y)).size).toBe(1);
+	});
+
+	it("uses overview-sized cards and a wider coordinator", () => {
+		const { placed } = scene([coordinator("a", 11), task("b", 22)], [row("a", "b")]);
+		expect(placed[0]).toMatchObject({ width: 370, height: 183 });
+		expect(placed[1]).toMatchObject({ width: CARD_WIDTH, height: CARD_HEIGHT });
+		expect(CARD_WIDTH).toBe(300);
+		expect(CARD_HEIGHT).toBe(222);
 	});
 
 	it("counts a pair once however many attempts it carries", () => {
@@ -143,23 +154,47 @@ describe("layoutTraffic", () => {
 		expect(placed.find((node) => node.hub)?.node.id).not.toBe("z");
 	});
 
-	it("never overlaps two cards", () => {
-		const tasks = Array.from({ length: 9 }, (_, index) =>
-			index === 0 ? coordinator("t0", 1) : task(`t${index}`, index + 1),
+	it.each([9, 16, 28, 100])("never overlaps cards on a %i-task board", (count) => {
+		const tasks = Array.from({ length: count }, (_, index) =>
+			index < 3 ? coordinator(`t${index}`, index + 1) : task(`t${index}`, index + 1),
 		);
-		const { placed } = scene(
-			tasks,
-			tasks.slice(1).map((other) => row("t0", other.id)),
-		);
+		const { placed, width, height } = scene(tasks, tasks.slice(1).map((other) => row("t0", other.id)));
 		for (const a of placed) {
+			expect(a.x).toBeGreaterThanOrEqual(0);
+			expect(a.x + a.width).toBeLessThanOrEqual(width);
+			expect(a.y + a.height).toBeLessThanOrEqual(height);
 			for (const b of placed) {
 				if (a === b) continue;
-				const apart =
-					Math.abs(a.x - b.x) >= CARD_WIDTH || Math.abs(a.y - b.y) >= CARD_HEIGHT;
+				const apart = a.x + a.width <= b.x || b.x + b.width <= a.x ||
+					a.y + a.height <= b.y || b.y + b.height <= a.y;
 				expect(apart).toBe(true);
 			}
 		}
 	});
+
+	it("starts an upward reply at its sender and ends at the coordinator", () => {
+		const { placed, edges } = scene([coordinator("a", 11), task("b", 22)], [row("b", "a")]);
+		const sender = placed.find((node) => node.node.id === "b")!;
+		const recipient = placed.find((node) => node.node.id === "a")!;
+		expect(pointAt(edges[0].points, 0)).toEqual({ x: sender.x + sender.width / 2, y: sender.y });
+		expect(pointAt(edges[0].points, 1)).toEqual({ x: recipient.x + recipient.width / 2, y: recipient.y + recipient.height });
+	});
+
+	it("connects neighboring cards at their facing sides in the recorded direction", () => {
+		const { placed, edges } = scene([task("a", 11), task("b", 22)], [row("b", "a")]);
+		const [recipient, sender] = placed;
+		expect(edges[0].points).toEqual([
+			{ x: sender.x, y: sender.y + sender.height * 0.52 },
+			{ x: recipient.x + recipient.width, y: recipient.y + recipient.height * 0.52 },
+		]);
+	});
+
+	it("keeps completed endpoints in their conversation with their board status", () => {
+		const { placed, edges } = collapsed([coordinator("a", 11), task("done", 22, { status: "completed" })], [row("done", "a")]);
+		expect(placed.find((node) => node.node.id === "done")?.node.task?.status).toBe("completed");
+		expect(edges).toHaveLength(1);
+	});
+
 });
 
 describe("wire geometry", () => {

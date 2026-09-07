@@ -1,3 +1,3 @@
-Short: Agent traffic gets a flat node view
+Short: Replay traffic on connected cards
 
-Agent traffic now opens as Experiment 2: a flat graph of task cards wired to whoever they messaged, with messages travelling the wires as they land. Experiment 1, the 3D orbit, is still there — a picker at the left of the traffic toolbar switches between them and remembers your choice. The Settings toggle still decides whether agent traffic exists at all.
+Agent traffic defaults to Experiment 2, matching the Coordination concept with a card grid, message replay, speed and step controls, and Follow/Focus camera navigation. Completed tasks stay marked and hibernated tasks remain grey; the inspector opens when needed. Experiment 1's planets remain available in the presentation picker, and the separate Settings toggle still controls the whole feature.

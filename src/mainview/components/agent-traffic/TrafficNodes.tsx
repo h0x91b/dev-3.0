@@ -1,67 +1,68 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { getTaskOverview } from "../../../shared/types";
 import { useT } from "../../i18n";
 import { getStatusLabel } from "../../utils/statusLabel";
-import { useStatusColors } from "../../hooks/useStatusColors";
+import {
+	useStatusColors,
+	useStatusColorsInk,
+} from "../../hooks/useStatusColors";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import {
-	CARD_HEIGHT,
-	CARD_WIDTH,
 	layoutTraffic,
 	pointAt,
 	wirePath,
 	type PlacedNode,
 } from "./nodes-layout";
-import { fromKey, nodeSeq, toKey, type TrafficNode, type TrafficRecord } from "./traffic-model";
+import {
+	fromKey,
+	nodeSeq,
+	toKey,
+	type TrafficNode,
+	type TrafficRecord,
+} from "./traffic-model";
+import type { useTrafficPlayback } from "./useTrafficPlayback";
+import TrafficIcon from "./TrafficIcon";
 
 interface Props {
-	projects?: { id: string; name: string }[];
+	projects?: {
+		id: string;
+		name: string;
+		customStatusLabels?: Record<string, string>;
+	}[];
 	scope?: string;
 	nodes: TrafficNode[];
 	records: TrafficRecord[];
-	/**
-	 * What the layout is built from: the time window before search, delivery and
-	 * selection filters narrow it. Positions must not move when the user selects a
-	 * card or types in the search box — a graph that re-arranges under the pointer
-	 * is unreadable, and the bible's "keep positions stable" rule says so.
-	 */
 	layoutRecords: TrafficRecord[];
 	selected: string | null;
 	onSelect: (key: string) => void;
 	paused: boolean;
 	ready: boolean;
+	playback?: ReturnType<typeof useTrafficPlayback>;
+	focusRequest?: number;
+	followRequest?: number;
 }
-
-/** How long a message takes to cross its wire, and how long arrival stays lit. */
-const FLIGHT_MS = 1400;
-const ARRIVAL_MS = 2200;
-/** Below these zoom levels a card sheds its body, then everything but its colour. */
-const COMPACT_BELOW = 0.62;
-const CELL_BELOW = 0.34;
-const MIN_SCALE = 0.14;
-const MAX_SCALE = 1.8;
-const PADDING = 48;
-/** Auto-fit never shrinks past readable cards; the user pans instead. */
-const FIT_FLOOR = 0.55;
-
+interface View {
+	x: number;
+	y: number;
+	scale: number;
+}
 interface Flight {
-	id: string;
+	record: TrafficRecord;
 	points: { x: number; y: number }[];
 	started: number;
-	status: string;
-	arrival: string;
 }
+const FLIGHT_MS = 1400;
+const LINGER_MS = 900;
+const MIN_SCALE = 0.14;
+const MAX_SCALE = 2.2;
 
-/**
- * Experiment 2: agent traffic as a flat graph of task cards.
- *
- * The same data and the same selection contract as the orbit next to it — this
- * is a second presentation, not a second feature. What it trades is depth for
- * legibility: cards keep their titles and overviews at reading size, wires say
- * who talks to whom, and a message is a dot that visibly crosses one of them.
- *
- * All motion is derived from `records`, so pausing, filtering or scrubbing the
- * timeline in the parent silences it without a second subscription anywhere.
- */
 export default function TrafficNodes({
 	nodes,
 	records,
@@ -72,126 +73,284 @@ export default function TrafficNodes({
 	ready,
 	scope,
 	projects,
+	playback,
+	focusRequest,
+	followRequest,
 }: Props) {
 	const t = useT();
-	const statusColors = useStatusColors();
+	const colors = useStatusColors();
+	const ink = useStatusColorsInk();
 	const reduced = useReducedMotion();
 	const frame = useRef<HTMLDivElement>(null);
-	const projectById = useMemo(
-		() => new Map((projects ?? []).map((project) => [project.id, project])),
-		[projects],
-	);
-	// Both off: the stage opens on the conversation, not on a census of the board.
 	const [showQuiet, setShowQuiet] = useState(false);
 	const [showParked, setShowParked] = useState(false);
-	const scene = useMemo(
-		() => layoutTraffic(nodes, layoutRecords, { showQuiet, showParked }),
-		[nodes, layoutRecords, showQuiet, showParked],
+	const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+	const replaying = !!playback && playback.index >= 0;
+	const replayKeys = new Set(
+		replaying
+			? playback.events.flatMap((record) => [
+					fromKey(record.row),
+					toKey(record.row),
+				])
+			: [],
 	);
-	const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
+	const replayParked = nodes.some(
+		(node) => node.task?.hibernated && replayKeys.has(node.key),
+	);
+	const scene = useMemo(
+		() =>
+			layoutTraffic(nodes, layoutRecords, {
+				showQuiet,
+				showParked: showParked || replayParked,
+			}),
+		[nodes, layoutRecords, showQuiet, showParked, replayParked],
+	);
+	const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
+	const viewRef = useRef(view);
+	viewRef.current = view;
+	const [follow, setFollow] = useState(true);
+	useEffect(() => {
+		if (followRequest) setFollow(true);
+	}, [followRequest]);
 	const [flights, setFlights] = useState<Flight[]>([]);
-	const [arrivals, setArrivals] = useState<Record<string, number>>({});
-	const [, setTick] = useState(0);
-	const fitted = useRef<string | null>(null);
+	const [now, setNow] = useState(Date.now());
+	const camera = useRef<number>(0);
+	const overviewMode = useRef(true);
 	const known = useRef<Set<string> | null>(null);
 	const edgeByKey = useMemo(
 		() => new Map(scene.edges.map((edge) => [edge.key, edge])),
 		[scene.edges],
 	);
-
-	const fit = useCallback(() => {
-		const box = frame.current?.getBoundingClientRect();
-		if (!box || !box.width || !box.height) return;
-		const scale = Math.max(
-			FIT_FLOOR,
-			Math.min(
-				1,
-				(box.width - PADDING) / scene.width,
-				(box.height - PADDING) / scene.height,
-			),
-		);
-		setView({
-			scale,
-			x: (box.width - scene.width * scale) / 2,
-			y: (box.height - scene.height * scale) / 2,
-		});
-	}, [scene.width, scene.height]);
-
-	// Refit when the surface first has content, and whenever the scope changes the
-	// scene wholesale — never on every new message, which would yank the view.
+	const nodeByKey = useMemo(
+		() => new Map(scene.placed.map((node) => [node.node.key, node])),
+		[scene.placed],
+	);
+	const projectById = useMemo(
+		() => new Map((projects ?? []).map((project) => [project.id, project])),
+		[projects],
+	);
+	const latest = useMemo(() => {
+		const result = new Map<string, TrafficRecord>();
+		for (const record of records)
+			for (const key of [fromKey(record.row), toKey(record.row)]) {
+				if (
+					key &&
+					(!result.has(key) ||
+						Date.parse(result.get(key)!.row.at) < Date.parse(record.row.at))
+				)
+					result.set(key, record);
+			}
+		return result;
+	}, [records]);
+	const move = useCallback(
+		(target: View, instant = false) => {
+			cancelAnimationFrame(camera.current);
+			if (instant || reduced) {
+				setView(target);
+				return;
+			}
+			const start = performance.now();
+			const from = viewRef.current;
+			const tick = (at: number) => {
+				const progress = Math.min(1, (at - start) / 500);
+				const ease = progress * progress * (3 - 2 * progress);
+				setView({
+					x: from.x + (target.x - from.x) * ease,
+					y: from.y + (target.y - from.y) * ease,
+					scale: from.scale + (target.scale - from.scale) * ease,
+				});
+				if (progress < 1) camera.current = requestAnimationFrame(tick);
+			};
+			camera.current = requestAnimationFrame(tick);
+		},
+		[reduced],
+	);
+	useEffect(() => () => cancelAnimationFrame(camera.current), []);
+	const fitNodes = useCallback(
+		(targets: PlacedNode[], maximum: number, instant = false) => {
+			const box = frame.current?.getBoundingClientRect();
+			if (!box?.width || !box.height || !targets.length) return;
+			const left = Math.min(...targets.map((p) => p.x)) - 70;
+			const top = Math.min(...targets.map((p) => p.y)) - 86;
+			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
+			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
+			const scale = Math.max(
+				MIN_SCALE,
+				Math.min(maximum, (box.width - 52) / width, (box.height - 80) / height),
+			);
+			move(
+				{
+					scale,
+					x: box.width / 2 - (left + width / 2) * scale,
+					y: box.height / 2 - (top + height / 2) * scale,
+				},
+				instant,
+			);
+		},
+		[move],
+	);
+	const fit = useCallback(
+		(instant = false) => fitNodes(scene.placed, 0.85, instant),
+		[fitNodes, scene.placed],
+	);
+	const fitRef = useRef(fit);
+	fitRef.current = fit;
+	const previousScope = useRef(scope);
 	useLayoutEffect(() => {
-		const key = `${scope ?? "all"}:${scene.placed.length}:${showQuiet}:${showParked}`;
-		if (!ready || !scene.placed.length || fitted.current === key) return;
-		fitted.current = key;
-		fit();
-	}, [fit, ready, scope, scene.placed.length, showQuiet, showParked]);
-
-	// Messages that appeared since the last render take off; the very first render
-	// only records what already exists, so opening the view is not a fireworks show.
+		if (scope !== previousScope.current) {
+			previousScope.current = scope;
+			overviewMode.current = true;
+		}
+		if (ready && overviewMode.current) fitRef.current(true);
+	}, [ready, scope, scene.placed.length, showQuiet, showParked]);
+	useLayoutEffect(() => {
+		if (!frame.current) return;
+		const observer = new ResizeObserver(() => {
+			if (overviewMode.current) fitRef.current(true);
+		});
+		observer.observe(frame.current);
+		return () => observer.disconnect();
+	}, []);
+	const focus = useCallback(
+		(key: string) => {
+			setFollow(false);
+			overviewMode.current = false;
+			const node = nodeByKey.get(key);
+			if (node) {
+				const box = frame.current?.getBoundingClientRect();
+				if (box) {
+					const scale = Math.max(
+						MIN_SCALE,
+						Math.min(
+							1.12,
+							(box.width - 52) / node.width,
+							(box.height - 96) / node.height,
+						),
+					);
+					move({
+						scale,
+						x: box.width / 2 - (node.x + node.width / 2) * scale,
+						y: box.height / 2 - (node.y + node.height / 2) * scale,
+					});
+				}
+				setPendingFocus(null);
+			} else {
+				setPendingFocus(key);
+				setShowQuiet(true);
+				setShowParked(true);
+			}
+		},
+		[nodeByKey, move],
+	);
+	const focusRef = useRef(focus);
+	focusRef.current = focus;
+	const handledFocus = useRef(focusRequest);
 	useEffect(() => {
-		const current = new Set(records.map((record) => record.key));
-		if (known.current === null) {
-			known.current = current;
-			return;
+		if (focusRequest !== handledFocus.current) {
+			handledFocus.current = focusRequest;
+			if (selected) focusRef.current(selected);
 		}
-		if (paused || reduced) {
-			known.current = current;
-			return;
-		}
-		const started = Date.now();
-		const fresh: Flight[] = [];
-		const landed: Record<string, number> = {};
-		for (const record of records) {
-			if (known.current.has(record.key)) continue;
-			const from = fromKey(record.row);
-			const to = toKey(record.row);
-			if (!from) continue;
+	}, [focusRequest, selected]);
+	useEffect(() => {
+		if (pendingFocus && nodeByKey.has(pendingFocus))
+			focusRef.current(pendingFocus);
+	}, [pendingFocus, nodeByKey]);
+	const exchange = useCallback(
+		(record: TrafficRecord) => {
+			overviewMode.current = false;
+			const targets = [fromKey(record.row), toKey(record.row)].flatMap((key) =>
+				key && nodeByKey.has(key) ? [nodeByKey.get(key)!] : [],
+			);
+			fitNodes(targets, 1.03);
+		},
+		[nodeByKey, fitNodes],
+	);
+	const launch = useCallback(
+		(record: TrafficRecord) => {
+			const from = fromKey(record.row),
+				to = toKey(record.row);
+			if (!from || reduced || paused) return;
 			const edge = edgeByKey.get([from, to].sort().join("|"));
-			if (!edge) continue;
-			const forward = edge.from === from;
-			fresh.push({
-				id: `${record.key}:${started}`,
-				points: forward ? edge.points : [...edge.points].reverse(),
-				started,
-				status: record.row.status,
-				arrival: to,
-			});
-			landed[to] = started + FLIGHT_MS;
+			if (!edge) return;
+			const points =
+				edge.from === from ? edge.points : [...edge.points].reverse();
+			setFlights((current) => [
+				...current.slice(-19),
+				{ record, points, started: Date.now() },
+			]);
+		},
+		[edgeByKey, reduced, paused],
+	);
+	const launchRef = useRef(launch);
+	launchRef.current = launch;
+	const exchangeRef = useRef(exchange);
+	exchangeRef.current = exchange;
+	useEffect(() => {
+		setFlights([]);
+		if (!playback?.current) return;
+		launchRef.current(playback.current);
+	}, [playback?.revision, replaying]);
+	useEffect(() => {
+		if (follow && playback?.current) exchangeRef.current(playback.current);
+	}, [playback?.revision, replaying, follow]);
+	const previousPlayback = useRef({ playing: false, revision: 0 });
+	useEffect(() => {
+		const previous = previousPlayback.current;
+		if (
+			paused ||
+			reduced ||
+			(previous.playing &&
+				!playback?.playing &&
+				previous.revision === playback?.revision)
+		)
+			setFlights([]);
+		previousPlayback.current = {
+			playing: !!playback?.playing,
+			revision: playback?.revision ?? 0,
+		};
+	}, [paused, reduced, playback?.playing, playback?.revision]);
+	useEffect(() => {
+		if (!ready) return;
+		const current = new Set(layoutRecords.map((record) => record.key));
+		if (known.current && !replaying && !paused) {
+			for (const record of layoutRecords)
+				if (
+					!known.current.has(record.key) &&
+					Date.now() - Date.parse(record.row.at) < 10000
+				) {
+					launchRef.current(record);
+					if (follow) exchangeRef.current(record);
+				}
 		}
 		known.current = current;
-		if (!fresh.length) return;
-		setFlights((current) => [...current, ...fresh]);
-		setArrivals((current) => ({ ...current, ...landed }));
-	}, [records, edgeByKey, paused, reduced]);
-
-	// One loop for every dot in the air; it stops itself the moment none is left.
+	}, [layoutRecords, ready, paused, replaying, follow]);
 	useEffect(() => {
 		if (!flights.length) return;
 		let raf = 0;
-		const run = () => {
-			const now = Date.now();
+		const tick = () => {
+			const at = Date.now();
+			setNow(at);
 			setFlights((current) =>
-				current.filter((flight) => now - flight.started < FLIGHT_MS),
+				current.filter((flight) => at - flight.started < FLIGHT_MS + LINGER_MS),
 			);
-			setArrivals((current) => {
-				const next = Object.fromEntries(
-					Object.entries(current).filter(([, at]) => now - at < ARRIVAL_MS),
-				);
-				return Object.keys(next).length === Object.keys(current).length
-					? current
-					: next;
-			});
-			setTick((value) => value + 1);
-			raf = requestAnimationFrame(run);
+			raf = requestAnimationFrame(tick);
 		};
-		raf = requestAnimationFrame(run);
+		raf = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(raf);
 	}, [flights.length]);
-
-	const zoom = useCallback((factor: number, anchor?: { x: number; y: number }) => {
+	const manual = () => {
+		cancelAnimationFrame(camera.current);
+		overviewMode.current = false;
+		setFollow(false);
+	};
+	const zoom = (factor: number, anchor?: { x: number; y: number }) => {
+		manual();
+		const box = frame.current?.getBoundingClientRect();
 		setView((current) => {
-			const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, current.scale * factor));
-			const box = frame.current?.getBoundingClientRect();
+			const scale = Math.max(
+				MIN_SCALE,
+				Math.min(MAX_SCALE, current.scale * factor),
+			);
 			const point = anchor ?? {
 				x: (box?.width ?? 0) / 2,
 				y: (box?.height ?? 0) / 2,
@@ -203,29 +362,44 @@ export default function TrafficNodes({
 				y: point.y - (point.y - current.y) * ratio,
 			};
 		});
-	}, []);
-
-	// Which pairs survive the parent's filters right now: everything else stays in
-	// place and fades, so the shape of the conversation is never redrawn.
-	const live = useMemo(() => {
-		const keys = new Set<string>();
-		for (const { row } of records) {
-			const from = fromKey(row);
-			if (from) keys.add([from, toKey(row)].sort().join("|"));
-		}
-		return keys;
-	}, [records]);
+	};
 	const drag = useRef<{ id: number; x: number; y: number } | null>(null);
-	const detail = view.scale < CELL_BELOW ? "cell" : view.scale < COMPACT_BELOW ? "compact" : "full";
-	const now = Date.now();
-
+	const active = playback?.current ?? flights[flights.length - 1]?.record;
+	const activeFrom = active && fromKey(active.row),
+		activeTo = active && toKey(active.row);
+	const activeEdge =
+		activeFrom && activeTo
+			? edgeByKey.get([activeFrom, activeTo].sort().join("|"))
+			: undefined;
+	const labelPoint = activeEdge && pointAt(activeEdge.points, 0.5);
+	const detail =
+		view.scale < 0.36 ? "cell" : view.scale < 0.7 ? "compact" : "full";
+	const visiblePairs = new Map<
+		string,
+		{ count: number; status: string; at: number }
+	>();
+	const messageCounts = new Map<string, number>();
+	for (const { row } of records) {
+		const from = fromKey(row),
+			to = toKey(row),
+			at = Date.parse(row.at);
+		for (const key of new Set([from, to]))
+			if (key) messageCounts.set(key, (messageCounts.get(key) ?? 0) + 1);
+		const key = [from, to].sort().join("|");
+		const previous = visiblePairs.get(key);
+		visiblePairs.set(key, {
+			count: (previous?.count ?? 0) + 1,
+			status: !previous || at >= previous.at ? row.status : previous.status,
+			at: Math.max(at, previous?.at ?? 0),
+		});
+	}
 	return (
 		<div
 			className="traffic-nodes"
 			ref={frame}
 			data-detail={detail}
+			data-follow={follow}
 			onWheel={(event) => {
-				event.preventDefault();
 				const box = frame.current?.getBoundingClientRect();
 				zoom(Math.exp(-event.deltaY / 420), {
 					x: event.clientX - (box?.left ?? 0),
@@ -233,17 +407,34 @@ export default function TrafficNodes({
 				});
 			}}
 			onPointerDown={(event) => {
-				if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
-				drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+				if (
+					event.button !== 0 ||
+					(event.target as HTMLElement).closest("button,input,select")
+				)
+					return;
+				manual();
+				drag.current = {
+					id: event.pointerId,
+					x: event.clientX,
+					y: event.clientY,
+				};
 				event.currentTarget.setPointerCapture(event.pointerId);
 			}}
 			onPointerMove={(event) => {
-				const active = drag.current;
-				if (!active || active.id !== event.pointerId) return;
-				const dx = event.clientX - active.x;
-				const dy = event.clientY - active.y;
-				drag.current = { ...active, x: event.clientX, y: event.clientY };
-				setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+				const previous = drag.current;
+				if (!previous || previous.id !== event.pointerId) return;
+				const dx = event.clientX - previous.x,
+					dy = event.clientY - previous.y;
+				drag.current = {
+					id: event.pointerId,
+					x: event.clientX,
+					y: event.clientY,
+				};
+				setView((current) => ({
+					...current,
+					x: current.x + dx,
+					y: current.y + dy,
+				}));
 			}}
 			onPointerUp={() => {
 				drag.current = null;
@@ -254,6 +445,7 @@ export default function TrafficNodes({
 		>
 			<div
 				className="traffic-nodes-scene"
+				data-testid="traffic-node-scene"
 				style={{
 					transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
 				}}
@@ -265,40 +457,53 @@ export default function TrafficNodes({
 					viewBox={`0 0 ${scene.width} ${scene.height}`}
 					aria-hidden="true"
 				>
-					{scene.brackets.map((bracket) => (
-						<rect
-							key={bracket.key}
-							className="traffic-bracket"
-							x={bracket.x}
-							y={bracket.y}
-							width={bracket.width}
-							height={bracket.height}
-							rx={14}
-						/>
-					))}
 					{scene.edges.map((edge) => {
-						const dim =
-							(selected !== null && edge.from !== selected && edge.to !== selected) ||
-							!live.has(edge.key);
+						const visiblePair = visiblePairs.get(edge.key);
+						if (replaying && !visiblePair) return null;
+						const count = visiblePair?.count ?? 0;
 						return (
 							<path
 								key={edge.key}
 								d={wirePath(edge.points)}
-								className={`traffic-wire verdict-${edge.status} ${dim ? "is-dim" : ""}`}
-								strokeWidth={Math.min(4.5, 1 + Math.log2(edge.messages + 1))}
+								className={`traffic-wire verdict-${visiblePair?.status ?? edge.status} ${!visiblePair ? "is-dim" : ""} ${activeEdge?.key === edge.key ? "is-active" : ""}`}
+								strokeWidth={
+									(count >= 8
+										? 4.2
+										: count >= 5
+											? 3.1
+											: count >= 3
+												? 2.25
+												: count === 2
+													? 1.65
+													: 1) / view.scale
+								}
 							/>
 						);
 					})}
 					{flights.map((flight) => {
-						const progress = (now - flight.started) / FLIGHT_MS;
-						const point = pointAt(flight.points, progress);
+						const status = flight.record.row.status;
+						const stop =
+							status === "held" ? 0.52 : status === "not-delivered" ? 0.7 : 1;
+						const elapsed = Math.max(0, now - flight.started);
+						const progress = Math.min(stop, elapsed / FLIGHT_MS);
+						const point = pointAt(flight.points, progress),
+							next = pointAt(flight.points, Math.min(1, progress + 0.001));
+						const angle =
+							(Math.atan2(next.y - point.y, next.x - point.x) * 180) / Math.PI;
 						return (
-							<circle
-								key={flight.id}
-								className={`traffic-flight verdict-${flight.status}`}
-								cx={point.x}
-								cy={point.y}
-								r={5}
+							<rect
+								key={`${flight.record.key}:${flight.started}`}
+								className={`traffic-flight verdict-${status}`}
+								x={-7 / view.scale}
+								y={-2 / view.scale}
+								width={14 / view.scale}
+								height={4 / view.scale}
+								rx={2 / view.scale}
+								opacity={Math.max(
+									0,
+									1 - Math.max(0, elapsed - FLIGHT_MS) / LINGER_MS,
+								)}
+								transform={`translate(${point.x},${point.y}) rotate(${angle})`}
 							/>
 						);
 					})}
@@ -308,65 +513,108 @@ export default function TrafficNodes({
 						<Card
 							key={placed.node.key}
 							placed={placed}
+							messageCount={messageCounts.get(placed.node.key) ?? 0}
 							selected={selected === placed.node.key}
-							dim={selected !== null && selected !== placed.node.key}
-							lit={arrivals[placed.node.key] !== undefined}
+							dim={
+								selected !== null &&
+								selected !== placed.node.key &&
+								!scene.edges.some(
+									(e) =>
+										(e.from === selected && e.to === placed.node.key) ||
+										(e.to === selected && e.from === placed.node.key),
+								)
+							}
+							active={
+								activeFrom === placed.node.key || activeTo === placed.node.key
+							}
+							scale={view.scale}
 							statusColor={
-								placed.node.task ? statusColors[placed.node.task.status] : undefined
+								placed.node.task ? colors[placed.node.task.status] : undefined
+							}
+							inkColor={
+								placed.node.task ? ink[placed.node.task.status] : undefined
 							}
 							project={projectById.get(placed.node.projectId)}
-							onSelect={onSelect}
+							latest={latest.get(placed.node.key)}
+							onSelect={(key) => {
+								manual();
+								onSelect(key);
+							}}
+							onFocus={focus}
 						/>
 					))}
 				</div>
 			</div>
+			{active && labelPoint && (
+				<div
+					className="traffic-edge-subject"
+					style={{
+						left: Math.max(
+							150,
+							Math.min(
+								(frame.current?.clientWidth ?? 1000) - 150,
+								view.x + labelPoint.x * view.scale,
+							),
+						),
+						top: Math.max(
+							65,
+							Math.min(
+								(frame.current?.clientHeight ?? 500) - 95,
+								view.y + labelPoint.y * view.scale - 25,
+							),
+						),
+					}}
+				>
+					<small>
+						{active.row.fromSeq == null ? "—" : `#${active.row.fromSeq}`} → #
+						{active.row.toSeq} ·{" "}
+						{t(
+							`traffic.orbit.${active.row.status === "not-delivered" ? "notDelivered" : active.row.status === "held" ? "held" : active.row.status === "unconfirmed" ? "unconfirmed" : "delivered"}`,
+						)}
+					</small>
+					<strong className="streamer-private">
+						{active.row.subject || active.row.body.slice(0, 120)}
+					</strong>
+				</div>
+			)}
 			{!scene.placed.length && (
 				<p className="traffic-nodes-empty">
 					{ready ? t("traffic.nodes.noTraffic") : t("traffic.loading")}
 				</p>
 			)}
-			{/* Nothing is hidden silently: the counts say what is not drawn, and one
-			    click draws it. */}
-			{(scene.quietCount > 0 || scene.parkedCount > 0) && (
-				<div className="traffic-nodes-bands">
-					{scene.quietCount > 0 && (
-						<button
-							type="button"
-							aria-pressed={showQuiet}
-							data-testid="traffic-nodes-quiet-toggle"
-							onClick={() => setShowQuiet((value) => !value)}
-						>
-							{t.plural("traffic.nodes.quietCount", scene.quietCount)}
-						</button>
-					)}
-					{scene.parkedCount > 0 && (
-						<button
-							type="button"
-							aria-pressed={showParked}
-							data-testid="traffic-nodes-parked-toggle"
-							onClick={() => setShowParked((value) => !value)}
-						>
-							{t.plural("traffic.nodes.parkedCount", scene.parkedCount)}
-						</button>
-					)}
-				</div>
-			)}
-			{/* The concept's minimap: where the pan is, on a board bigger than the
-			    pane. Hidden when everything already fits — a map of the whole visible
-			    thing is chrome for nothing. */}
-			{scene.placed.length > 0 && (
+			<div className="traffic-nodes-bands">
+				{scene.quietCount > 0 && (
+					<button
+						type="button"
+						aria-pressed={showQuiet}
+						data-testid="traffic-nodes-quiet-toggle"
+						onClick={() => setShowQuiet((value) => !value)}
+					>
+						{t.plural("traffic.nodes.quietCount", scene.quietCount)}
+					</button>
+				)}
+				{scene.parkedCount > 0 && (
+					<button
+						type="button"
+						aria-pressed={showParked || replayParked}
+						data-testid="traffic-nodes-parked-toggle"
+						onClick={() => setShowParked((value) => !value)}
+					>
+						{t.plural("traffic.nodes.parkedCount", scene.parkedCount)}
+					</button>
+				)}
+			</div>
+			{!!scene.placed.length && (
 				<div className="traffic-minimap" aria-hidden="true">
-					<svg viewBox={`0 0 ${scene.width} ${scene.height}`} preserveAspectRatio="xMidYMid meet">
-						{scene.placed.map((placed) => (
+					<svg viewBox={`0 0 ${scene.width} ${scene.height}`}>
+						{scene.placed.map((p) => (
 							<rect
-								key={placed.node.key}
-								className={`traffic-minimap-node ${placed.hub ? "is-hub" : ""} ${
-									selected === placed.node.key ? "is-selected" : ""
-								}`}
-								x={placed.x}
-								y={placed.y}
-								width={CARD_WIDTH}
-								height={CARD_HEIGHT}
+								key={p.node.key}
+								className={`traffic-minimap-node ${p.hub ? "is-hub" : ""} ${selected === p.node.key ? "is-selected" : ""}`}
+								x={p.x}
+								y={p.y}
+								width={p.width}
+								height={p.height}
 								rx={8}
 							/>
 						))}
@@ -378,58 +626,86 @@ export default function TrafficNodes({
 							height={(frame.current?.clientHeight ?? 0) / view.scale}
 						/>
 					</svg>
-					<span>{t.plural("traffic.nodes.nodeCount", scene.placed.length)}</span>
+					<span>
+						{t.plural("traffic.nodes.nodeCount", scene.placed.length)}
+					</span>
 				</div>
 			)}
 			<div className="traffic-camera-controls">
-				<button onClick={() => zoom(1 / 1.25)} aria-label={t("traffic.nodes.zoomOut")}>
-					−
+				<button
+					onClick={() => zoom(1 / 1.25)}
+					aria-label={t("traffic.nodes.zoomOut")}
+				>
+					<TrafficIcon name="minus" />
 				</button>
-				<span aria-hidden="true">{Math.round(view.scale * 100)}%</span>
-				<button onClick={() => zoom(1.25)} aria-label={t("traffic.nodes.zoomIn")}>
-					+
+				<span>{Math.round(view.scale * 100)}%</span>
+				<button
+					onClick={() => zoom(1.25)}
+					aria-label={t("traffic.nodes.zoomIn")}
+				>
+					<TrafficIcon name="plus" />
 				</button>
-				<button onClick={fit} aria-label={t("traffic.nodes.fit")}>
-					⤢
+				<button
+					onClick={() => {
+						manual();
+						overviewMode.current = true;
+						fit();
+					}}
+					aria-label={t("traffic.nodes.fit")}
+				>
+					<TrafficIcon name="fit" />
+				</button>
+				<button
+					className={follow ? "is-active" : ""}
+					aria-pressed={follow}
+					onClick={() => setFollow((value) => !value)}
+				>
+					<TrafficIcon name="follow" />
+					{t("traffic.nodes.follow")}
 				</button>
 			</div>
-			<p className="traffic-map-caption">
-				<span>{t("traffic.nodes.legend")}</span>
-			</p>
+			<p className="traffic-map-caption">{t("traffic.nodes.legend")}</p>
 		</div>
 	);
 }
 
 function Card({
 	placed,
+	messageCount,
 	selected,
 	dim,
-	lit,
+	active,
+	scale,
 	statusColor,
+	inkColor,
 	project,
+	latest,
 	onSelect,
+	onFocus,
 }: {
 	placed: PlacedNode;
+	messageCount: number;
 	selected: boolean;
 	dim: boolean;
-	lit: boolean;
+	active: boolean;
+	scale: number;
 	statusColor?: string;
-	project?: { id: string; name: string; customStatusLabels?: Record<string, string> };
+	inkColor?: string;
+	project?: {
+		id: string;
+		name: string;
+		customStatusLabels?: Record<string, string>;
+	};
+	latest?: TrafficRecord;
 	onSelect: (key: string) => void;
+	onFocus: (key: string) => void;
 }) {
 	const t = useT();
 	const { node } = placed;
-	const coordinator = node.task?.taskType === "coordinator";
-	// Finished work needs a verdict you can read at a glance, not just a coloured
-	// hairline: a card that is done should never look like one still running.
 	const finished =
-		node.task?.status === "completed"
-			? "completed"
-			: node.task?.status === "cancelled"
-				? "cancelled"
-				: null;
-	// One line under the title, the way the approved concept carries it: where the
-	// task stands, not a paragraph. The overview belongs to the inspector.
+		node.task?.status === "completed" || node.task?.status === "cancelled"
+			? node.task.status
+			: null;
 	const state = placed.parked
 		? t("task.hibernatedBadge")
 		: node.task
@@ -439,38 +715,64 @@ function Card({
 		<button
 			type="button"
 			data-testid="traffic-node-card"
-			className={`traffic-node-card ${coordinator ? "is-coordinator" : ""} ${
-				selected ? "is-selected" : ""
-			} ${dim ? "is-dim" : ""} ${lit ? "is-lit" : ""} ${
-				placed.parked ? "is-parked" : ""
-			} ${finished ? `is-${finished}` : ""}`}
+			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""}`}
 			style={{
 				left: placed.x,
 				top: placed.y,
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				width: placed.width,
+				height: placed.height,
 				["--node-status" as string]: statusColor ?? "rgb(var(--text-tertiary))",
+				["--node-ink" as string]: inkColor ?? "rgb(var(--text-tertiary))",
+				["--node-inverse" as string]: 1 / scale,
 			}}
+			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}`}
 			aria-pressed={selected}
 			onClick={() => onSelect(node.key)}
+			onDoubleClick={() => onFocus(node.key)}
 		>
-			<span className="traffic-node-head">
-				<i className="traffic-node-dot" aria-hidden="true" />
-				<b>{nodeSeq(node)}</b>
-				{coordinator && <em>{t("traffic.orbit.coordinator")}</em>}
-				{placed.messages > 0 && (
-					<span className="traffic-node-count">{placed.messages}</span>
+			<span className="traffic-node-full">
+				<span className="traffic-node-head">
+					<i className="traffic-node-dot" aria-hidden="true" />
+					<b>{nodeSeq(node)}</b>
+					{node.task?.taskType === "coordinator" && (
+						<em>{t("traffic.orbit.coordinator")}</em>
+					)}
+					<span className="traffic-node-count">{messageCount}</span>
+				</span>
+				<strong className="streamer-private">
+					{node.title || t("traffic.orbit.historical")}
+				</strong>
+				<span className="traffic-node-state">
+					{finished === "completed"
+						? "✓ "
+						: finished === "cancelled"
+							? "× "
+							: ""}
+					{state}
+				</span>
+				<span className="traffic-node-overview streamer-private">
+					{(node.task && getTaskOverview(node.task)) ||
+						t("traffic.orbit.noOverview")}
+				</span>
+				{latest && (
+					<span className="traffic-node-message streamer-private">
+						{latest.row.subject || latest.row.body.slice(0, 100)}
+					</span>
 				)}
 			</span>
-			<strong className="streamer-private">
-				{node.title || t("traffic.orbit.historical")}
-			</strong>
-			<span className="traffic-node-state">{state}</span>
-			{finished && (
-				<span className="traffic-node-stamp">
-					{t(finished === "completed" ? "status.completed" : "status.cancelled")}
+			<span className="traffic-node-compact">
+				<span className="traffic-node-head">
+					<i className="traffic-node-dot" aria-hidden="true" />
+					<b>{nodeSeq(node)}</b>
 				</span>
-			)}
+				<strong className="streamer-private">
+					{node.title || t("traffic.orbit.historical")}
+				</strong>
+				<span className="traffic-node-state">
+					{finished === "completed" ? "✓ " : ""}
+					{state}
+				</span>
+			</span>
 		</button>
 	);
 }

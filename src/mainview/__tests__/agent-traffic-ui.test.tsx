@@ -1,22 +1,42 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AgentMessageLogPage, AgentMessageLogRow } from "../../shared/agent-message-log";
+import type {
+	AgentMessageLogPage,
+	AgentMessageLogRow,
+} from "../../shared/agent-message-log";
 import { I18nProvider } from "../i18n";
-import { noteTrafficArrival, resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
+import {
+	noteTrafficArrival,
+	resetTrafficSeen,
+	resetTrafficStore,
+} from "../agent-traffic";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 import AgentTrafficLog from "../components/agent-traffic/AgentTrafficLog";
 import { api } from "../rpc";
 
-vi.mock("../components/agent-traffic/TrafficOrbit", () => ({ default: () => <div aria-label="Project traffic map" /> }));
+vi.mock("../components/agent-traffic/TrafficOrbit", () => ({
+	default: () => <div aria-label="Project traffic map" />,
+}));
 
 const page: { value: AgentMessageLogPage } = {
 	value: { rows: [], oldestDay: null, retentionDays: 30, hasMore: false },
 };
 
-const knownTaskIds: { value: string[] } = { value: ["task-a", "task-b", "task-c"] };
+const knownTaskIds: { value: string[] } = {
+	value: ["task-a", "task-b", "task-c"],
+};
 /** Per-task extras a test needs on top of the default fixture (status, hibernated). */
-const taskExtras: { value: Record<string, Record<string, unknown>> } = { value: {} };
+const taskExtras: { value: Record<string, Record<string, unknown>> } = {
+	value: {},
+};
 
 /** Stands in for the settings file: what a fresh install has is an empty object. */
 const settings: { value: Record<string, unknown> } = { value: {} };
@@ -30,12 +50,28 @@ vi.mock("../rpc", () => ({
 				settings.value = next;
 				return Promise.resolve();
 			}),
-			getProjects: vi.fn(() => Promise.resolve([{ id: "proj-1", name: "Project One" }])),
-			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id, index) => ({
-				id, projectId: "proj-1", seq: (index + 1) * 11, title: id === "task-a" ? "Coordinator" : id === "task-b" ? "Worker" : "Other worker",
-				status: "in-progress", taskType: id === "task-a" ? "coordinator" : null, overview: "Current task overview",
-				...(taskExtras.value[id] ?? {}),
-			})))),
+			getProjects: vi.fn(() =>
+				Promise.resolve([{ id: "proj-1", name: "Project One" }]),
+			),
+			getTasks: vi.fn(() =>
+				Promise.resolve(
+					knownTaskIds.value.map((id, index) => ({
+						id,
+						projectId: "proj-1",
+						seq: (index + 1) * 11,
+						title:
+							id === "task-a"
+								? "Coordinator"
+								: id === "task-b"
+									? "Worker"
+									: "Other worker",
+						status: "in-progress",
+						taskType: id === "task-a" ? "coordinator" : null,
+						overview: "Current task overview",
+						...(taskExtras.value[id] ?? {}),
+					})),
+				),
+			),
 		},
 	},
 }));
@@ -59,8 +95,17 @@ function row(over: Partial<AgentMessageLogRow> = {}): AgentMessageLogRow {
 	};
 }
 
-function setPage(rows: AgentMessageLogRow[], over: Partial<AgentMessageLogPage> = {}) {
-	page.value = { rows, oldestDay: rows.length ? "2026-08-01" : null, retentionDays: 30, hasMore: false, ...over };
+function setPage(
+	rows: AgentMessageLogRow[],
+	over: Partial<AgentMessageLogPage> = {},
+) {
+	page.value = {
+		rows,
+		oldestDay: rows.length ? "2026-08-01" : null,
+		retentionDays: 30,
+		hasMore: false,
+		...over,
+	};
 }
 
 beforeEach(() => {
@@ -83,7 +128,10 @@ afterEach(() => {
 /** Put the last look an hour back so the seeded rows read as unread. */
 function withUnread() {
 	resetTrafficSeen();
-	localStorage.setItem("dev3-agent-traffic-seen", String(Date.now() - 60 * 60 * 1000));
+	localStorage.setItem(
+		"dev3-agent-traffic-seen",
+		String(Date.now() - 60 * 60 * 1000),
+	);
 }
 
 function renderIndicator() {
@@ -127,13 +175,19 @@ describe("AgentTrafficIndicator (bar)", () => {
 		withUnread();
 		setPage([row()]);
 		const onOpenLog = vi.fn();
-		render(<I18nProvider><AgentTrafficIndicator projectId="proj-1" onOpenLog={onOpenLog} /></I18nProvider>);
+		render(
+			<I18nProvider>
+				<AgentTrafficIndicator projectId="proj-1" onOpenLog={onOpenLog} />
+			</I18nProvider>,
+		);
 		const pill = await screen.findByTestId("agent-traffic-indicator");
 		expect(pill.textContent).toContain("1");
 		await userEvent.click(pill);
 		expect(onOpenLog).toHaveBeenCalledTimes(1);
 		expect(screen.queryByTestId("agent-traffic-popover")).toBeNull();
-		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("1");
+		expect(
+			screen.getByTestId("agent-traffic-indicator").textContent,
+		).not.toContain("1");
 		expect(pill.getAttribute("aria-haspopup")).toBe("dialog");
 		expect(pill.getAttribute("title")).toBe("Open agent traffic");
 	});
@@ -143,7 +197,11 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 	function renderRow(variant: "menu" | "sheet" = "menu") {
 		return render(
 			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" onOpenLog={vi.fn()} variant={variant} />
+				<AgentTrafficIndicator
+					projectId="proj-1"
+					onOpenLog={vi.fn()}
+					variant={variant}
+				/>
 			</I18nProvider>,
 		);
 	}
@@ -161,7 +219,9 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 		withUnread();
 		setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
 		renderRow();
-		expect((await screen.findByTestId("agent-traffic-menu-badge")).textContent).toBe("2");
+		expect(
+			(await screen.findByTestId("agent-traffic-menu-badge")).textContent,
+		).toBe("2");
 	});
 
 	// The phone's action sheet is a stack of plain full-width text buttons. This row
@@ -190,14 +250,20 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 		withUnread();
 		setPage(Array.from({ length: 14 }, (_, i) => row({ body: `msg ${i}` })));
 		renderRow();
-		expect((await screen.findByTestId("agent-traffic-menu-badge")).textContent).toBe("9+");
+		expect(
+			(await screen.findByTestId("agent-traffic-menu-badge")).textContent,
+		).toBe("9+");
 	});
 });
 
 function renderLog(onOpenTask = vi.fn()) {
 	return render(
 		<I18nProvider>
-			<AgentTrafficLog projectId="proj-1" onClose={vi.fn()} onOpenTask={onOpenTask} />
+			<AgentTrafficLog
+				projectId="proj-1"
+				onClose={vi.fn()}
+				onOpenTask={onOpenTask}
+			/>
 		</I18nProvider>,
 	);
 }
@@ -208,46 +274,89 @@ async function choose(label: string, option: string) {
 }
 
 async function messageRows(count: number) {
-	await waitFor(() => expect(screen.getAllByTestId("traffic-message-row")).toHaveLength(count));
+	const inspector = document.querySelector(".traffic-inspector");
+	if (inspector?.hasAttribute("hidden"))
+		await userEvent.click(screen.getByRole("button", { name: "Messages" }));
+	await waitFor(() =>
+		expect(screen.getAllByTestId("traffic-message-row")).toHaveLength(count),
+	);
 	return screen.getAllByTestId("traffic-message-row");
 }
 
 describe("AgentTrafficLog live orbit", () => {
 	it("shows persisted traffic from the last 24 hours immediately, with older history available", async () => {
 		setPage([
-			row({ at: new Date(Date.now() - 5 * 86400000).toISOString(), subject: "Five days ago" }),
-			row({ at: new Date(Date.now() - 20 * 3600000).toISOString(), subject: "Earlier today" }),
+			row({
+				at: new Date(Date.now() - 5 * 86400000).toISOString(),
+				subject: "Five days ago",
+			}),
+			row({
+				at: new Date(Date.now() - 20 * 3600000).toISOString(),
+				subject: "Earlier today",
+			}),
 		]);
 		renderLog();
 		expect((await messageRows(1))[0].textContent).toContain("Earlier today");
-		expect(screen.getByRole("combobox", { name: "Time window" }).textContent).toContain("Last 24 hours");
+		expect(
+			screen.getByRole("combobox", { name: "Time window" }).textContent,
+		).toContain("Last 24 hours");
 		await choose("Time window", "Loaded history");
-		expect((await messageRows(2)).some(element => element.textContent?.includes("Five days ago"))).toBe(true);
+		expect(
+			(await messageRows(2)).some((element) =>
+				element.textContent?.includes("Five days ago"),
+			),
+		).toBe(true);
 	});
 
 	it.each([
-		["delivered", "Delivered"], ["held", "Held"], ["unconfirmed", "Unconfirmed"], ["not-delivered", "Not delivered"],
-	] as const)("retains and filters the %s delivery verdict", async (status, label) => {
-		setPage(["delivered", "held", "unconfirmed", "not-delivered"].map((value) => row({ status: value as AgentMessageLogRow["status"], subject: `${value} attempt` })));
-		renderLog();
-		await messageRows(4);
-		await choose("Delivery status", label);
-		const [message] = await messageRows(1);
-		expect(message.textContent).toContain(`${status} attempt`);
-		await userEvent.click(message);
-		const inspector = screen.getByRole("complementary", { name: "Task and message details" });
-		expect(within(inspector).getByText(label)).toBeTruthy();
-		if (status === "delivered") expect(inspector.textContent).toContain("not a read receipt");
-		if (status === "held") expect(inspector.textContent).toContain("does not show whether it is still queued");
-	});
+		["delivered", "Delivered"],
+		["held", "Held"],
+		["unconfirmed", "Unconfirmed"],
+		["not-delivered", "Not delivered"],
+	] as const)(
+		"retains and filters the %s delivery verdict",
+		async (status, label) => {
+			setPage(
+				["delivered", "held", "unconfirmed", "not-delivered"].map((value) =>
+					row({
+						status: value as AgentMessageLogRow["status"],
+						subject: `${value} attempt`,
+					}),
+				),
+			);
+			renderLog();
+			await messageRows(4);
+			await choose("Delivery status", label);
+			const [message] = await messageRows(1);
+			expect(message.textContent).toContain(`${status} attempt`);
+			await userEvent.click(message);
+			const inspector = screen.getByRole("complementary", {
+				name: "Task and message details",
+			});
+			expect(within(inspector).getByText(label)).toBeTruthy();
+			if (status === "delivered")
+				expect(inspector.textContent).toContain("not a read receipt");
+			if (status === "held")
+				expect(inspector.textContent).toContain(
+					"does not show whether it is still queued",
+				);
+		},
+	);
 
 	it("selects one pair from message details and clears the filter", async () => {
-		setPage([row({ subject: "First pair" }), row({ toTaskId: "task-c", toSeq: 33, subject: "Other pair" })]);
+		setPage([
+			row({ subject: "First pair" }),
+			row({ toTaskId: "task-c", toSeq: 33, subject: "Other pair" }),
+		]);
 		renderLog();
 		await userEvent.click((await messageRows(2))[0]);
-		await userEvent.click(screen.getByRole("button", { name: "Show this pair" }));
+		await userEvent.click(
+			screen.getByRole("button", { name: "Show this pair" }),
+		);
 		expect(await messageRows(1)).toHaveLength(1);
-		await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+		await userEvent.click(
+			screen.getByRole("button", { name: "Clear selection" }),
+		);
 		await messageRows(2);
 	});
 
@@ -257,12 +366,20 @@ describe("AgentTrafficLog live orbit", () => {
 		expect(await screen.findByText(/2026-08-01/)).toBeTruthy();
 		expect(screen.getByText(/30 days/)).toBeTruthy();
 		expect(screen.getByText(/Older rows remain to be loaded/)).toBeTruthy();
-		await userEvent.click(screen.getByRole("button", { name: "Load older messages" }));
-		await waitFor(() => expect(api.request.readAgentMessageLog).toHaveBeenCalledWith({ projectId: "proj-1", limit: 1000 }));
+		await userEvent.click(
+			screen.getByRole("button", { name: "Load older messages" }),
+		);
+		await waitFor(() =>
+			expect(api.request.readAgentMessageLog).toHaveBeenCalledWith({
+				projectId: "proj-1",
+				limit: 1000,
+			}),
+		);
 	});
 
 	it("leads with the full subject and reveals the full stored body on selection", async () => {
-		const subject = "A complete subject that must remain readable without an ellipsis";
+		const subject =
+			"A complete subject that must remain readable without an ellipsis";
 		const body = "The complete stored body. ".repeat(80);
 		setPage([row({ subject, body })]);
 		renderLog();
@@ -276,11 +393,20 @@ describe("AgentTrafficLog live orbit", () => {
 	it("falls back to the body for pre-subject rows", async () => {
 		setPage([row({ body: "Legacy message body" })]);
 		renderLog();
-		expect((await messageRows(1))[0].textContent).toContain("Legacy message body");
+		expect((await messageRows(1))[0].textContent).toContain(
+			"Legacy message body",
+		);
 	});
 
 	it("exposes spilled body evidence in message details", async () => {
-		setPage([row({ subject: "Large report", bodyKind: "spill-pointer", body: "Read the report file", spillPath: "/tmp/spill.txt" })]);
+		setPage([
+			row({
+				subject: "Large report",
+				bodyKind: "spill-pointer",
+				body: "Read the report file",
+				spillPath: "/tmp/spill.txt",
+			}),
+		]);
 		renderLog();
 		await userEvent.click((await messageRows(1))[0]);
 		expect(screen.getByText(/written to a file/i)).toBeTruthy();
@@ -295,7 +421,9 @@ describe("AgentTrafficLog live orbit", () => {
 		await userEvent.click((await messageRows(1))[0]);
 		expect(screen.getByText(/This task no longer exists/)).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
-		expect(document.querySelector("pre")?.textContent).toBe("rebase before you push");
+		expect(document.querySelector("pre")?.textContent).toBe(
+			"rebase before you push",
+		);
 		expect(onOpenTask).not.toHaveBeenCalled();
 	});
 
@@ -305,7 +433,9 @@ describe("AgentTrafficLog live orbit", () => {
 		renderLog(onOpenTask);
 		await userEvent.click((await messageRows(1))[0]);
 		expect(onOpenTask).not.toHaveBeenCalled();
-		await userEvent.click(await screen.findByRole("button", { name: "Open task" }));
+		await userEvent.click(
+			await screen.findByRole("button", { name: "Open task" }),
+		);
 		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
 	});
 
@@ -317,7 +447,9 @@ describe("AgentTrafficLog live orbit", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
 		// Scoped to the inspector: the stage renders its own card for the same task.
 		const inspector = within(screen.getByRole("complementary"));
-		await userEvent.click(await inspector.findByRole("button", { name: /#22 Worker/ }));
+		await userEvent.click(
+			await inspector.findByRole("button", { name: /#22 Worker/ }),
+		);
 		expect(inspector.getByText("Current task overview")).toBeTruthy();
 		expect(onOpenTask).not.toHaveBeenCalled();
 		await userEvent.click(inspector.getByRole("button", { name: "Open task" }));
@@ -332,14 +464,20 @@ describe("AgentTrafficLog live orbit", () => {
 		setPage([...page.value.rows, row({ subject: "Report arrived" })]);
 		act(() => noteTrafficArrival("proj-1"));
 		await messageRows(2);
-		expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("Report");
+		expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe(
+			"Report",
+		);
 	});
 
 	it("shows a load error and recovers on retry", async () => {
-		vi.mocked(api.request.getProjects).mockRejectedValueOnce(new Error("offline"));
+		vi.mocked(api.request.getProjects).mockRejectedValueOnce(
+			new Error("offline"),
+		);
 		setPage([row({ subject: "Recovered report" })]);
 		renderLog();
-		expect(await screen.findByRole("alert")).toHaveTextContent("Some traffic data could not be loaded");
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Some traffic data could not be loaded",
+		);
 		await userEvent.click(screen.getByRole("button", { name: "Retry" }));
 		expect((await messageRows(1))[0].textContent).toContain("Recovered report");
 		expect(screen.queryByRole("alert")).toBeNull();
@@ -349,8 +487,16 @@ describe("AgentTrafficLog live orbit", () => {
 		setPage([row()]);
 		renderLog();
 		await userEvent.click((await messageRows(1))[0]);
-		expect(await screen.findByRole("button", { name: "Open task" })).toBeTruthy();
-		act(() => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "proj-1", taskId: "task-b" } })));
+		expect(
+			await screen.findByRole("button", { name: "Open task" }),
+		).toBeTruthy();
+		act(() =>
+			window.dispatchEvent(
+				new CustomEvent("rpc:taskRemoved", {
+					detail: { projectId: "proj-1", taskId: "task-b" },
+				}),
+			),
+		);
 		expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
 		expect(screen.getByText(/This task no longer exists/)).toBeTruthy();
 	});
@@ -366,7 +512,10 @@ describe("AgentTrafficLog presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await messageRows(1);
-		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
+			"aria-checked",
+			"true",
+		);
 		expect(nodeCards().length).toBeGreaterThan(0);
 		expect(orbit()).toBeNull();
 	});
@@ -379,7 +528,10 @@ describe("AgentTrafficLog presentation picker", () => {
 		renderLog();
 		await messageRows(1);
 		await waitFor(() =>
-			expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute("aria-checked", "true"),
+			expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
+				"aria-checked",
+				"true",
+			),
 		);
 		expect(nodeCards().length).toBeGreaterThan(0);
 	});
@@ -389,7 +541,10 @@ describe("AgentTrafficLog presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await waitFor(() => expect(orbit()).not.toBeNull());
-		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute(
+			"aria-checked",
+			"true",
+		);
 		expect(nodeCards()).toHaveLength(0);
 	});
 
@@ -409,7 +564,9 @@ describe("AgentTrafficLog presentation picker", () => {
 		expect(orbit()).toBeNull();
 		expect(nodeCards().length).toBeGreaterThan(0);
 		await waitFor(() =>
-			expect(vi.mocked(api.request.saveGlobalSettings)).toHaveBeenLastCalledWith(
+			expect(
+				vi.mocked(api.request.saveGlobalSettings),
+			).toHaveBeenLastCalledWith(
 				expect.objectContaining({ agentTrafficExperiment: "2" }),
 			),
 		);
@@ -421,7 +578,7 @@ describe("AgentTrafficLog presentation picker", () => {
 		setPage([row({ subject: "Report baseline" })]);
 		renderLog();
 		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
-		expect(screen.getByText("Worker")).toBeTruthy();
+		expect(screen.getAllByText("Worker").length).toBeGreaterThan(0);
 		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
 		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
 	});
@@ -429,36 +586,50 @@ describe("AgentTrafficLog presentation picker", () => {
 	// A graph that re-arranges under the pointer is unreadable, so filtering and
 	// selection change what is lit, never where anything sits.
 	it("keeps every card in place when a selection narrows the messages", async () => {
-		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
+		setPage([
+			row(),
+			row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" }),
+		]);
 		renderLog();
 		await messageRows(2);
 		const before = nodeCards().map((node) => (node as HTMLElement).style.left);
 		const card = nodeCards().find((node) => node.textContent?.includes("#22"));
 		await userEvent.click(card as HTMLElement);
 		await messageRows(1);
-		expect(nodeCards().map((node) => (node as HTMLElement).style.left)).toEqual(before);
+		expect(nodeCards().map((node) => (node as HTMLElement).style.left)).toEqual(
+			before,
+		);
 	});
 
 	// The user's own board is mostly parked and mostly finished; both states have to
 	// read off the card without opening anything.
-	it("greys hibernated cards, puts them last, and stamps finished ones", async () => {
+	it("greys hibernated cards, puts them last, and marks finished ones", async () => {
 		taskExtras.value = {
 			"task-b": { status: "completed" },
 			"task-c": { hibernated: true },
 		};
-		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
+		setPage([
+			row(),
+			row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" }),
+		]);
 		renderLog();
 		await messageRows(2);
 		await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
 		const cards = nodeCards() as HTMLElement[];
-		const asleep = cards.find((card) => card.textContent?.includes("#33")) as HTMLElement;
-		const done = cards.find((card) => card.textContent?.includes("#22")) as HTMLElement;
+		const asleep = cards.find((card) =>
+			card.textContent?.includes("#33"),
+		) as HTMLElement;
+		const done = cards.find((card) =>
+			card.textContent?.includes("#22"),
+		) as HTMLElement;
 		expect(asleep.className).toContain("is-parked");
 		expect(done.className).toContain("is-completed");
 		expect(done.textContent).toContain("Completed");
 		// Last band: nothing sits below a hibernated card.
 		for (const other of cards.filter((card) => card !== asleep)) {
-			expect(parseFloat(asleep.style.top)).toBeGreaterThan(parseFloat(other.style.top));
+			expect(parseFloat(asleep.style.top)).toBeGreaterThan(
+				parseFloat(other.style.top),
+			);
 		}
 	});
 
@@ -488,4 +659,123 @@ describe("AgentTrafficLog presentation picker", () => {
 		const inspector = within(screen.getByRole("complementary"));
 		expect(inspector.getByText("Current task overview")).toBeTruthy();
 	});
+});
+
+describe("Coordination replay controls", () => {
+	it("opens on the whole stage and reveals Focus when inspecting a task", async () => {
+		setPage([row()]);
+		renderLog();
+		await waitFor(() =>
+			expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(
+				0,
+			),
+		);
+		expect(screen.queryByRole("complementary")).toBeNull();
+		expect(
+			screen
+				.getByRole("button", { name: "Follow" })
+				.getAttribute("aria-pressed"),
+		).toBe("true");
+		await userEvent.click(screen.getAllByTestId("traffic-node-card")[0]);
+		expect(screen.getByRole("complementary")).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "Focus" }));
+		expect(
+			screen
+				.getByRole("button", { name: "Follow" })
+				.getAttribute("aria-pressed"),
+		).toBe("false");
+	});
+	it("plays and steps actual messages, returns Live, and removes transport in Experiment 1", async () => {
+		setPage([
+			row({ subject: "Second exchange" }),
+			row({
+				at: new Date(Date.now() - 60000).toISOString(),
+				subject: "First exchange",
+			}),
+		]);
+		renderLog();
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+		await userEvent.click(play);
+		expect(screen.getByRole("button", { name: "Pause replay" })).toBeTruthy();
+		expect(
+			document.querySelector(".traffic-event-readout")?.textContent,
+		).toContain("First exchange");
+		await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+		expect(
+			document.querySelector(".traffic-event-readout")?.textContent,
+		).toContain("Second exchange");
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		expect(document.querySelector(".traffic-edge-subject")).toBeNull();
+		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		expect(screen.queryByRole("button", { name: "Play replay" })).toBeNull();
+	});
+});
+
+it("replay reveals its hibernated endpoint and never uses a future delivery verdict", async () => {
+	taskExtras.value = { "task-b": { hibernated: true } };
+	setPage([
+		row({ subject: "Later failure", status: "not-delivered" }),
+		row({
+			at: new Date(Date.now() - 60000).toISOString(),
+			subject: "Earlier delivery",
+			status: "delivered",
+		}),
+	]);
+	renderLog();
+	await waitFor(() =>
+		expect(
+			screen.getByRole("button", { name: /^Replay$/ }).hasAttribute("disabled"),
+		).toBe(false),
+	);
+	expect(
+		screen
+			.queryAllByTestId("traffic-node-card")
+			.some((card) => card.textContent?.includes("#22")),
+	).toBe(false);
+	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+	expect(
+		screen
+			.getAllByTestId("traffic-node-card")
+			.some((card) => card.classList.contains("is-parked")),
+	).toBe(true);
+	expect(
+		document
+			.querySelector(".traffic-wire.is-active")
+			?.classList.contains("verdict-delivered"),
+	).toBe(true);
+	fireEvent.change(screen.getByRole("slider", { name: "Message timeline" }), {
+		target: { value: "1" },
+	});
+	expect(
+		document
+			.querySelector(".traffic-wire.is-active")
+			?.classList.contains("verdict-not-delivered"),
+	).toBe(true);
+});
+
+it("Focus reveals a hibernated task selected from the task list without waking it", async () => {
+	taskExtras.value = { "task-c": { hibernated: true } };
+	setPage([row()]);
+	renderLog();
+	await messageRows(1);
+	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(2);
+	await userEvent.click(
+		within(screen.getByRole("complementary")).getByRole("button", {
+			name: "Tasks",
+		}),
+	);
+	const task = Array.from(document.querySelectorAll(".traffic-task-row")).find(
+		(el) => el.textContent?.includes("#33"),
+	);
+	await userEvent.click(task as HTMLElement);
+	await userEvent.click(screen.getByRole("button", { name: "Focus" }));
+	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(3);
+	expect(
+		screen.getAllByTestId("traffic-node-card").find((el) => el.classList.contains("is-parked")),
+	).toBeTruthy();
+	expect(
+		screen.getByRole("button", { name: "Follow" }).getAttribute("aria-pressed"),
+	).toBe("false");
 });

@@ -13,7 +13,7 @@ else, so do not compact them by deleting it.
 
 ## 2026-09-07 — Agent traffic gets a second presentation, defaulting to it
 
-The stage is Experiment 2 (node graph, default) or Experiment 1 (orbit), on a toolbar radiogroup that never touches the feature gate — bible §5.9, yaml `agent_traffic_log`. Why: `decisions/2026/09/07/two-agent-traffic-presentations.md`.
+Two gated presentations; Coordination v3 replay/follow/focus live inside the overlay — bible §5.9, yaml `agent_traffic_log`. Why: `decisions/2026/09/07/coordination-v3-replay-and-camera.md`.
 
 ## 2026-09-07 — The artifact panel is the default; the popup is one opt-in toggle
 
