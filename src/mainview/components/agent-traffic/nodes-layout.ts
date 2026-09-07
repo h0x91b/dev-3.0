@@ -1,10 +1,12 @@
 import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-model";
 
 /** Card footprint and the gaps between cards, in scene units (= CSS px at scale 1). */
-export const CARD_WIDTH = 208;
-export const CARD_HEIGHT = 132;
-const GAP_X = 44;
-const GAP_Y = 68;
+export const CARD_WIDTH = 196;
+export const CARD_HEIGHT = 96;
+const GAP_X = 40;
+const GAP_Y = 66;
+/** Padding between a row of correspondents and the bracket drawn around it. */
+const BRACKET_PAD = 14;
 /** Widest row a hub's correspondents form before wrapping to the next one. */
 const ROW_WIDTH = 6;
 
@@ -34,9 +36,19 @@ export interface PlacedEdge {
 	subject: string;
 }
 
+/** The rounded outline drawn around one row of a hub's correspondents. */
+export interface Bracket {
+	key: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
 export interface TrafficScene {
 	placed: PlacedNode[];
 	edges: PlacedEdge[];
+	brackets: Bracket[];
 	width: number;
 	height: number;
 	/** How many tasks each collapsible band holds, shown or not. */
@@ -194,6 +206,7 @@ export function layoutTraffic(
 
 	const positions = new Map<string, { x: number; y: number }>();
 	const placed: PlacedNode[] = [];
+	const brackets: Bracket[] = [];
 	const step = CARD_WIDTH + GAP_X;
 	let cursorY = 0;
 	let width = 0;
@@ -230,6 +243,21 @@ export function layoutTraffic(
 				false,
 			);
 		});
+		// One bracket per row of correspondents, the way the approved concept groups
+		// them: the bus enters its top edge, so a row reads as one delegation.
+		for (let row = 0; row < rows; row += 1) {
+			const inRow = rest.slice(row * ROW_WIDTH, (row + 1) * ROW_WIDTH);
+			if (!inRow.length) continue;
+			const rowWidth = inRow.length * step - GAP_X;
+			const offset = (groupWidth - rowWidth) / 2;
+			brackets.push({
+				key: `${group[0]}:${row}`,
+				x: offset - BRACKET_PAD,
+				y: cursorY + (row + 1) * (CARD_HEIGHT + GAP_Y) - BRACKET_PAD,
+				width: rowWidth + BRACKET_PAD * 2,
+				height: CARD_HEIGHT + BRACKET_PAD * 2,
+			});
+		}
 		cursorY += (rows + 1) * (CARD_HEIGHT + GAP_Y);
 	}
 	const band = (members: TrafficNode[]) => {
@@ -268,6 +296,7 @@ export function layoutTraffic(
 	return {
 		placed,
 		edges,
+		brackets,
 		width: Math.max(width, step),
 		height: Math.max(cursorY - GAP_Y, CARD_HEIGHT),
 		quietCount: quiet.length,
@@ -297,7 +326,9 @@ function wire(
 			{ x: bottomX, y: bottom.y + CARD_HEIGHT },
 		];
 	}
-	const bus = top.y + CARD_HEIGHT + GAP_Y / 2;
+	// The bus runs along the bracket's top edge, so a row of correspondents reads
+	// as one delegation rather than as a bus and a box drawn near each other.
+	const bus = bottom.y - BRACKET_PAD;
 	return [
 		{ x: topX, y: top.y + CARD_HEIGHT },
 		{ x: topX, y: bus },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { getTaskOverview } from "../../../shared/types";
 import { useT } from "../../i18n";
+import { getStatusLabel } from "../../utils/statusLabel";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import {
@@ -71,11 +71,16 @@ export default function TrafficNodes({
 	paused,
 	ready,
 	scope,
+	projects,
 }: Props) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const reduced = useReducedMotion();
 	const frame = useRef<HTMLDivElement>(null);
+	const projectById = useMemo(
+		() => new Map((projects ?? []).map((project) => [project.id, project])),
+		[projects],
+	);
 	// Both off: the stage opens on the conversation, not on a census of the board.
 	const [showQuiet, setShowQuiet] = useState(false);
 	const [showParked, setShowParked] = useState(false);
@@ -260,6 +265,17 @@ export default function TrafficNodes({
 					viewBox={`0 0 ${scene.width} ${scene.height}`}
 					aria-hidden="true"
 				>
+					{scene.brackets.map((bracket) => (
+						<rect
+							key={bracket.key}
+							className="traffic-bracket"
+							x={bracket.x}
+							y={bracket.y}
+							width={bracket.width}
+							height={bracket.height}
+							rx={14}
+						/>
+					))}
 					{scene.edges.map((edge) => {
 						const dim =
 							(selected !== null && edge.from !== selected && edge.to !== selected) ||
@@ -298,6 +314,7 @@ export default function TrafficNodes({
 							statusColor={
 								placed.node.task ? statusColors[placed.node.task.status] : undefined
 							}
+							project={projectById.get(placed.node.projectId)}
 							onSelect={onSelect}
 						/>
 					))}
@@ -334,6 +351,36 @@ export default function TrafficNodes({
 					)}
 				</div>
 			)}
+			{/* The concept's minimap: where the pan is, on a board bigger than the
+			    pane. Hidden when everything already fits — a map of the whole visible
+			    thing is chrome for nothing. */}
+			{scene.placed.length > 0 && (
+				<div className="traffic-minimap" aria-hidden="true">
+					<svg viewBox={`0 0 ${scene.width} ${scene.height}`} preserveAspectRatio="xMidYMid meet">
+						{scene.placed.map((placed) => (
+							<rect
+								key={placed.node.key}
+								className={`traffic-minimap-node ${placed.hub ? "is-hub" : ""} ${
+									selected === placed.node.key ? "is-selected" : ""
+								}`}
+								x={placed.x}
+								y={placed.y}
+								width={CARD_WIDTH}
+								height={CARD_HEIGHT}
+								rx={8}
+							/>
+						))}
+						<rect
+							className="traffic-minimap-view"
+							x={-view.x / view.scale}
+							y={-view.y / view.scale}
+							width={(frame.current?.clientWidth ?? 0) / view.scale}
+							height={(frame.current?.clientHeight ?? 0) / view.scale}
+						/>
+					</svg>
+					<span>{t.plural("traffic.nodes.nodeCount", scene.placed.length)}</span>
+				</div>
+			)}
 			<div className="traffic-camera-controls">
 				<button onClick={() => zoom(1 / 1.25)} aria-label={t("traffic.nodes.zoomOut")}>
 					−
@@ -359,6 +406,7 @@ function Card({
 	dim,
 	lit,
 	statusColor,
+	project,
 	onSelect,
 }: {
 	placed: PlacedNode;
@@ -366,12 +414,12 @@ function Card({
 	dim: boolean;
 	lit: boolean;
 	statusColor?: string;
+	project?: { id: string; name: string; customStatusLabels?: Record<string, string> };
 	onSelect: (key: string) => void;
 }) {
 	const t = useT();
 	const { node } = placed;
 	const coordinator = node.task?.taskType === "coordinator";
-	const overview = node.task ? getTaskOverview(node.task) : "";
 	// Finished work needs a verdict you can read at a glance, not just a coloured
 	// hairline: a card that is done should never look like one still running.
 	const finished =
@@ -380,6 +428,13 @@ function Card({
 			: node.task?.status === "cancelled"
 				? "cancelled"
 				: null;
+	// One line under the title, the way the approved concept carries it: where the
+	// task stands, not a paragraph. The overview belongs to the inspector.
+	const state = placed.parked
+		? t("task.hibernatedBadge")
+		: node.task
+			? getStatusLabel(node.task.status, t, project)
+			: t("traffic.orbit.historical");
 	return (
 		<button
 			type="button"
@@ -400,23 +455,17 @@ function Card({
 			onClick={() => onSelect(node.key)}
 		>
 			<span className="traffic-node-head">
+				<i className="traffic-node-dot" aria-hidden="true" />
 				<b>{nodeSeq(node)}</b>
-				{coordinator && <i>{t("traffic.orbit.coordinator")}</i>}
-				<em aria-hidden="true" />
+				{coordinator && <em>{t("traffic.orbit.coordinator")}</em>}
+				{placed.messages > 0 && (
+					<span className="traffic-node-count">{placed.messages}</span>
+				)}
 			</span>
 			<strong className="streamer-private">
 				{node.title || t("traffic.orbit.historical")}
 			</strong>
-			<span className="traffic-node-overview streamer-private">
-				{overview || t("traffic.orbit.noOverview")}
-			</span>
-			<span className="traffic-node-foot">
-				{placed.parked
-					? t("task.hibernatedBadge")
-					: placed.messages
-						? t.plural("traffic.orbit.messageCount", placed.messages)
-						: t("traffic.nodes.quiet")}
-			</span>
+			<span className="traffic-node-state">{state}</span>
 			{finished && (
 				<span className="traffic-node-stamp">
 					{t(finished === "completed" ? "status.completed" : "status.cancelled")}

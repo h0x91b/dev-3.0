@@ -139,6 +139,8 @@ const common = {
 	"traffic.nodes.quietCount_other": "{count} tasks with no messages",
 	"traffic.nodes.parkedCount_one": "{count} hibernated",
 	"traffic.nodes.parkedCount_other": "{count} hibernated",
+	"traffic.nodes.nodeCount_one": "{count} node",
+	"traffic.nodes.nodeCount_other": "{count} nodes",
 	"traffic.nodes.quiet": "No messages in this window",
 	"traffic.orbit.live": "Live",
 	"traffic.orbit.history": "History",
