@@ -46,6 +46,7 @@ export function installFilePathUnderlines(options: {
 	term: Terminal;
 	container: HTMLElement;
 	linksForRows: (absoluteRows: number[]) => BufferRange[];
+	trace?: (draw: () => void) => void;
 }): FilePathUnderlinesHandle {
 	const { term, container, linksForRows } = options;
 	if (typeof getComputedStyle === "function" && getComputedStyle(container).position === "static") {
@@ -142,7 +143,8 @@ export function installFilePathUnderlines(options: {
 		if (disposed || frameId !== null) return;
 		frameId = requestAnimationFrame(() => {
 			frameId = null;
-			redraw();
+			if (options.trace) options.trace(redraw);
+			else redraw();
 		});
 	}
 

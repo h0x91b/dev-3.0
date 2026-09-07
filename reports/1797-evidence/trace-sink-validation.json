@@ -1,0 +1,18 @@
+{
+  "events": 10413,
+  "counts": {
+    "arm": 3,
+    "propose-dimensions": 6,
+    "resize": 6,
+    "render": 3438,
+    "decode-native-message": 978,
+    "strip-osc52": 976,
+    "osc8-feed": 976,
+    "theme-filter": 976,
+    "write": 976,
+    "clear-selection": 976,
+    "underlines": 550,
+    "links-for-rows": 550,
+    "limit-reached": 2
+  }
+}

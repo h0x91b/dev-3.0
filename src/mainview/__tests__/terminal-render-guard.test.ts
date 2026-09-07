@@ -186,3 +186,20 @@ describe("installRenderGuard – noticing a loop that stopped", () => {
 		expect(h.guard.framesPainted()).toBe(0);
 	});
 });
+
+
+describe("render trace boundary", () => {
+	it("enters diagnostics before render and preserves the error guard", () => {
+		const order: string[] = [];
+		const renderer: GuardableRenderer = { render() { order.push("render"); throw new Error("frame"); } };
+		const guard = installRenderGuard(renderer, {
+			trace: (render) => { order.push("begin"); try { render(); } finally { order.push("end"); } },
+			onFrameError: () => order.push("caught"),
+			onStalled: () => {},
+		});
+		try {
+			expect(() => renderer.render({})).not.toThrow();
+			expect(order).toEqual(["begin", "render", "end", "caught"]);
+		} finally { guard.dispose(); }
+	});
+});
