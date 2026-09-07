@@ -82,7 +82,10 @@
 	text-align: left;
 	border: 0;
 	border-radius: 10px;
-	overflow: hidden;
+	/* Visible, so the stamp can bleed past the edge like a real one. Nothing else
+	   needs the clip: the title and overview clamp themselves, and the top rail is
+	   inset. */
+	overflow: visible;
 	color: rgb(var(--text-primary));
 	background: rgb(var(--surface-elevated) / 0.96);
 	box-shadow:
@@ -97,6 +100,7 @@
 	position: absolute;
 	inset: 0 14px auto;
 	height: 2px;
+	border-radius: 2px;
 	background: var(--node-status);
 	opacity: 0.85;
 }
@@ -242,8 +246,9 @@
 /* A stamp, not a badge: finished work reads as struck across the card. */
 .traffic-node-stamp {
 	position: absolute;
-	right: -30px;
-	top: 14px;
+	right: -22px;
+	top: 16px;
+	z-index: 1;
 	transform: rotate(-9deg);
 	padding: 3px 34px;
 	font-family: var(--dev3-mono-stack);
@@ -251,6 +256,7 @@
 	font-weight: 700;
 	letter-spacing: 1.6px;
 	text-transform: uppercase;
+	border-radius: 3px;
 	pointer-events: none;
 }
 .traffic-node-card.is-completed .traffic-node-stamp {
