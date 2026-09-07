@@ -13,11 +13,11 @@ else, so do not compact them by deleting it.
 
 ## 2026-09-07 — The artifact panel is the default; the popup is one opt-in toggle
 
-One App-mounted viewer renders either into the pane's docking slot (default) or as the lightbox, chosen by `openArtifactsInPopup` in Settings -> Tasks & Board — bible §3 + §5 + §12.3, yaml `task_artifact_viewer`. Why: users want an artifact beside a live terminal and mostly never hit the resize freeze; rejected a second viewer component and a three-way auto/panel/popup control. `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`.
+One App-mounted viewer renders into the pane's docking slot (default) or as the lightbox, per `openArtifactsInPopup` in Settings -> Tasks & Board; leaving the task hides it rather than popping it over the next board. Why: users want an artifact beside a live terminal and mostly never hit the resize freeze; rejected a second viewer, a three-way auto/panel/popup control, and clearing it on navigation (it holds an unsent draft) — bible §3 + §5 + §12.3, yaml `task_artifact_viewer`. `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`, `decisions/2026/09/07/docked-artifact-waits-offscreen.md`.
 
 ## 2026-09-05 — HTML artifacts open as a popup
 
-Superseded 2026-09-07 by the entry above; the popup is now the opt-in mode. Why: `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.
+Superseded 2026-09-07 by the entry above. `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.
 
 ## 2026-09-05 — Agent traffic becomes a live orbit
 

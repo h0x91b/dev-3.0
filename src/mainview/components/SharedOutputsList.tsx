@@ -95,7 +95,9 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 								data-testid="shared-artifact-link"
 								aria-label={t("infoPanel.openSharedArtifact", { name: artifact.title || artifact.name })}
 								onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-									detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts, index: i },
+									// paneless: this list lives in the task detail modal, which has no
+									// workspace pane to dock into — the viewer stays a popup.
+									detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts, index: i, paneless: true },
 								}))}
 							>
 								<span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">

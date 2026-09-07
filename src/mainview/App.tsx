@@ -417,7 +417,10 @@ function App() {
 	// Lightbox for artifacts an agent surfaced via `dev3 show-artifact`. Hosted
 	// here — never inside a task pane — so every surface that can open one (task
 	// workspace, archived task modal, a toast) gets the identical popup.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number } | null>(null);
+	// `paneless`: opened from a surface that has no workspace pane behind it (the
+	// task detail modal). Such a viewer is a popup for its whole life — it neither
+	// docks nor hides with the route, because there is no task screen it belongs to.
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; paneless?: boolean } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -477,9 +480,18 @@ function App() {
 	// own — the archived task modal, immersive fullscreen, a toast for a task that
 	// is not on screen — falls back to the popup because nothing publishes a slot
 	// there, and so does a narrow viewport, which the pane itself refuses.
-	const artifactDockTaskId = artifactViewer && globalSettings.openArtifactsInPopup !== true
+	const artifactDockTaskId = artifactViewer && !artifactViewer.paneless && globalSettings.openArtifactsInPopup !== true
 		? artifactViewer.taskId
 		: null;
+	// A docked panel belongs to its task's screen. Leaving that screen used to clear
+	// the dock slot and re-host the same viewer as a centred popup over whatever
+	// board came next; instead it waits offscreen — still mounted, so the document,
+	// the version pick and an unsent draft come back with it — until the route
+	// returns to the task or the user closes it.
+	const artifactOffscreen = artifactViewer !== null
+		&& !artifactViewer.paneless
+		&& globalSettings.openArtifactsInPopup !== true
+		&& routeTaskId(state.route) !== artifactViewer.taskId;
 	// Auth failure for browser remote access (expired/invalid session).
 	// Seeded from the transport: with a dead session the expired verdict lands
 	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
@@ -1709,6 +1721,8 @@ function App() {
 	imageViewerRef.current = imageViewer;
 	const artifactViewerRef = useRef(artifactViewer);
 	artifactViewerRef.current = artifactViewer;
+	const artifactOffscreenRef = useRef(artifactOffscreen);
+	artifactOffscreenRef.current = artifactOffscreen;
 
 	// CLI-shared images (`dev3 show-image`). Always raise the attention badge; auto-open
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
@@ -1788,19 +1802,31 @@ function App() {
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
 				(state.route.screen === "project" && state.route.activeTaskId === taskId);
 			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
-			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId;
+			// A viewer waiting offscreen is not "already open" — republishing into it
+			// would update a panel nobody can see and swallow the toast that is the
+			// only signal left.
+			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId && !artifactOffscreenRef.current;
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
+				// A republish keeps the presentation the open viewer already had; a
+				// fresh one lands on the task the user is looking at, so it can dock.
+				setArtifactViewer((prev) => ({
+					taskId,
+					artifacts,
+					index: artifacts.length - 1,
+					paneless: prev?.taskId === taskId ? prev.paneless : false,
+				}));
 				return;
 			}
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
 			toast.info(t.plural("showArtifact.toast", newCount ?? 1), {
 				context,
 				onClick: () => {
+					// The click navigates to the task first, so the viewer opens docked
+					// in its pane rather than as a popup over the board it came from.
 					openTaskFromNotification(taskId, projectId);
 					markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-					setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
+					setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1, paneless: false });
 				},
 			});
 		}
@@ -1810,16 +1836,21 @@ function App() {
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, taskStatus, projectId, artifacts, index } = (e as CustomEvent).detail as {
+			const { taskId, taskStatus, projectId, artifacts, index, paneless } = (e as CustomEvent).detail as {
 				taskId: string;
 				taskStatus?: TaskStatus;
 				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
+				paneless?: boolean;
 			};
 			if (!taskId || !projectId || !artifacts?.length) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-			setArtifactViewer({ taskId, taskStatus, artifacts, index: index ?? artifacts.length - 1 });
+			// Opened for a task that is not on screen? Then no pane will ever offer a
+			// slot for it, so it lives as a popup — only a viewer that started docked
+			// may later hide itself when the route walks away from its task.
+			const noPane = paneless === true || routeTaskId(routeRef.current) !== taskId;
+			setArtifactViewer({ taskId, taskStatus, artifacts, index: index ?? artifacts.length - 1, paneless: noPane });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -3398,6 +3429,7 @@ function App() {
 					taskStatus={artifactViewer.taskStatus}
 					artifacts={artifactViewer.artifacts}
 					initialIndex={artifactViewer.index}
+					offscreen={artifactOffscreen}
 					onClose={closeArtifactViewer}
 				/>
 			)}

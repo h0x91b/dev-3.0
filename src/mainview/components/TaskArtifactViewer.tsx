@@ -20,6 +20,8 @@ import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
 	initialIndex: number;
+	/** The route left this viewer's task: stay mounted, show nothing (see docstring). */
+	offscreen?: boolean;
 	onClose: () => void;
 	/** Required: an artifact with no addressable task has nowhere to send. */
 	taskId: string;
@@ -72,6 +74,11 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  *    archived-task modal, a toast for a task that is not on screen, narrow
  *    viewports). The lightbox `TaskImageViewer` uses: a centred card over a
  *    scrim, ~90% of the viewport.
+ *  - **Offscreen** (`offscreen`). A docked panel whose task the route has left.
+ *    It renders inside a `hidden` wrapper rather than falling back to the popup,
+ *    which used to drop a centred artifact over an unrelated board on every task
+ *    switch. Still mounted, so returning to the task brings back the document,
+ *    the version pick and an unsent draft; it owns no keys while hidden.
  *
  * A modal presentation owns the keyboard: the popup, and either presentation in
  * fullscreen, unwind Escape through the overlay-layer stack (search →
@@ -85,7 +92,7 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  * terminal — never for the docked panel, where the terminal is legitimately
  * visible beside it.
  */
-export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, taskStatus }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen = false, onClose, taskId, taskStatus }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
@@ -96,8 +103,9 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	// mounting a second one.
 	const dock = useSyncExternalStore(subscribeArtifactDock, getArtifactDock, () => null);
 	// Modal = covers the task and owns the keyboard. Docked-and-not-fullscreen is
-	// the one presentation that does not.
-	const modal = !dock || fullscreen;
+	// the one presentation that does not — nor is a hidden one, which must own no
+	// key, no overlay layer and no terminal blanking while it waits.
+	const modal = !offscreen && (!dock || fullscreen);
 	const [downloading, setDownloading] = useState(false);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -476,7 +484,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				{...(modal ? { role: "dialog" as const, "aria-modal": true } : {})}
 				data-testid="artifact-viewer"
 				data-fullscreen={fullscreen ? "true" : "false"}
-				data-presentation={dock ? "docked" : "popup"}
+				data-presentation={offscreen ? "offscreen" : dock ? "docked" : "popup"}
 				data-tour-anchor="task.artifact"
 				aria-label={t("artifactViewer.regionLabel")}
 				tabIndex={-1}
@@ -587,6 +595,10 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				</div>
 			</section>
 	);
+
+	// Waiting for its task to come back on screen: rendered, so nothing is lost,
+	// but out of the layout and out of the accessibility tree.
+	if (offscreen) return <div hidden data-testid="artifact-viewer-offscreen">{card}</div>;
 
 	// The dock is the pane's own element, so the panel renders inside the
 	// workspace layout while this component stays mounted under App.
