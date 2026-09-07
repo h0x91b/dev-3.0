@@ -12,6 +12,8 @@ interface BehaviorSettingsSectionProps {
 	globalSettings: GlobalSettings;
 	tipsResetDone: boolean;
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
+	/** True = centred popup, false = the docked right-hand artifact panel. */
+	onOpenArtifactsInPopupToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
@@ -34,6 +36,7 @@ export default function BehaviorSettingsSection({
 	globalSettings,
 	tipsResetDone,
 	onDefaultDiffViewModeChange,
+	onOpenArtifactsInPopupToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
@@ -231,6 +234,24 @@ export default function BehaviorSettingsSection({
 						</button>
 					))}
 				</div>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="artifact-popup">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.artifactPopup")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.artifactPopupDesc")}
+				</p>
+				<SettingsToggle
+					checked={globalSettings.openArtifactsInPopup === true}
+					ariaLabel={t("settings.artifactPopup")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={() => onOpenArtifactsInPopupToggle(globalSettings.openArtifactsInPopup !== true)}
+				/>
 			</div>
 			</SettingsEntry>
 

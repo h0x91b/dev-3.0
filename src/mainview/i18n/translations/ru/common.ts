@@ -443,6 +443,7 @@ const common = {
 	"artifactViewer.messageFailed": "Не удалось отправить агенту",
 	"artifactViewer.loadFailed": "Артефакт недоступен",
 	"artifactViewer.loading": "Загрузка артефакта…",
+	"artifactViewer.resize": "Изменить ширину панели артефакта",
 	"artifactViewer.themeMode": "Тема артефакта: {mode}",
 	"artifactViewer.themeFollow": "Как в dev3",
 	"artifactViewer.themeLight": "Светлая",

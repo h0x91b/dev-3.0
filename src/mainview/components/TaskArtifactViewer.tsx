@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { SharedArtifact, TaskStatus } from "../../shared/types";
 import { TERMINAL_STATUSES } from "../../shared/types";
 import { artifactAtVersion, latestArtifactVersion } from "../../shared/artifact-versions";
@@ -13,6 +14,7 @@ import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearc
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
+import { getArtifactDock, subscribeArtifactDock } from "../utils/artifact-dock";
 import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
 interface TaskArtifactViewerProps {
@@ -60,17 +62,28 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
 }
 
 /**
- * Windowed lightbox for artifacts an agent surfaced via `dev3 show-artifact` —
- * the exact container `TaskImageViewer` uses for images: a centred modal card
- * filling ~90% of the viewport over a scrim, with a fullscreen toggle for
- * edge-to-edge viewing. It is deliberately NOT a docked, drag-resizable panel:
- * resizing relaid out the iframe and refit the terminal on every pointer move
- * and could wedge the whole UI (see
- * `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`).
+ * One viewer for artifacts an agent surfaced via `dev3 show-artifact`, in two
+ * intentional presentations — same chrome, same document, same channel:
  *
- * While open it marks <html data-artifact-viewer="open">, which hides the
- * ghostty WebGL terminal behind it (index.css) — in WKWebView that canvas is
- * promoted to a hardware overlay plane painting ABOVE any DOM scrim.
+ *  - **Docked panel** (default). The workspace pane publishes a slot through
+ *    `utils/artifact-dock`; the viewer portals into it and renders in flow, to
+ *    the right of the task terminal, at the width the pane owns.
+ *  - **Popup** (`openArtifactsInPopup`, and wherever no dock exists — the
+ *    archived-task modal, a toast for a task that is not on screen, narrow
+ *    viewports). The lightbox `TaskImageViewer` uses: a centred card over a
+ *    scrim, ~90% of the viewport.
+ *
+ * A modal presentation owns the keyboard: the popup, and either presentation in
+ * fullscreen, unwind Escape through the overlay-layer stack (search →
+ * fullscreen → close) and take ⌘F unconditionally. The docked panel is not
+ * modal — the terminal beside it is live — so there its keys are gated on focus
+ * sitting inside the panel.
+ *
+ * <html data-artifact-viewer="open"> hides the ghostty WebGL terminal behind the
+ * viewer (index.css): in WKWebView that canvas is promoted to a hardware overlay
+ * plane painting ABOVE any DOM scrim. It is set whenever the viewer covers the
+ * terminal — never for the docked panel, where the terminal is legitimately
+ * visible beside it.
  */
 export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, taskStatus }: TaskArtifactViewerProps) {
 	const t = useT();
@@ -78,6 +91,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
 	const [error, setError] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
+	// The pane's docking slot, or null when there is none to dock into. Read as
+	// external state so flipping the preference re-hosts THIS viewer instead of
+	// mounting a second one.
+	const dock = useSyncExternalStore(subscribeArtifactDock, getArtifactDock, () => null);
+	// Modal = covers the task and owns the keyboard. Docked-and-not-fullscreen is
+	// the one presentation that does not.
+	const modal = !dock || fullscreen;
 	const [downloading, setDownloading] = useState(false);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -86,7 +106,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [matches, setMatches] = useState<number | null>(null);
 	const [activeIndex, setActiveIndex] = useState(-1);
 	const frameRef = useRef<ArtifactFrameHandle>(null);
-	const viewerRef = useRef<HTMLDivElement>(null);
+	const viewerRef = useRef<HTMLElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
 	const searchBarRef = useRef<ArtifactSearchBarHandle | null>(null);
 	const searchToggleRef = useRef<HTMLButtonElement>(null);
@@ -308,12 +328,15 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		return () => observer.disconnect();
 	}, [sendTheme]);
 
-	// Hide the WebGL terminal behind the lightbox (see the component docstring).
+	// Hide the WebGL terminal behind the viewer (see the component docstring). The
+	// docked panel deliberately leaves it alone — it sits beside the terminal, and
+	// blanking a live terminal the user can see is worse than the overlay plane.
 	useEffect(() => {
+		if (!modal) return;
 		const el = document.documentElement;
 		el.setAttribute("data-artifact-viewer", "open");
 		return () => el.removeAttribute("data-artifact-viewer");
-	}, []);
+	}, [modal]);
 
 	const go = useCallback((delta: number) => {
 		// Drop the version pick with the artifact: paging back to an artifact must
@@ -331,13 +354,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 			// While searching, arrows belong to the query caret, not to history.
 			if (searchOpen) return;
+			// Docked, the arrows belong to whatever has focus — the terminal beside
+			// the panel is live, and stealing its arrows would break every TUI.
+			if (!modal && !viewerRef.current?.contains(document.activeElement)) return;
 			event.preventDefault();
 			event.stopPropagation();
 			go(event.key === "ArrowLeft" ? -1 : 1);
 		}
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
-	}, [go, searchOpen]);
+	}, [go, searchOpen, modal]);
 
 	// Escape is owned by the overlay-layer stack, not by a listener of our own: a
 	// modal that opened this lightbox (the archived task modal) registered its
@@ -351,13 +377,25 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		else if (fullscreen) setFullscreen(false);
 		else onClose();
 	};
+	// Only a modal presentation joins that stack. A docked panel must not swallow
+	// Escape from the terminal next to it, so there the key is ours only while
+	// focus is inside the panel.
 	useEffect(() => {
 		const el = viewerRef.current;
 		if (!el) return;
-		return registerOverlayLayer(el, () => dismissRef.current());
-	// The card element identity is stable for the viewer's lifetime.
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+		if (modal) return registerOverlayLayer(el, () => dismissRef.current());
+		function onKey(event: KeyboardEvent) {
+			if (event.key !== "Escape") return;
+			if (!el?.contains(document.activeElement)) return;
+			event.preventDefault();
+			event.stopPropagation();
+			dismissRef.current();
+		}
+		window.addEventListener("keydown", onKey, { capture: true });
+		return () => window.removeEventListener("keydown", onKey, { capture: true });
+	// `dock` is a dependency for its element identity, not its value: re-hosting
+	// swaps the wrapper, and a layer registered on the old node never unwinds.
+	}, [modal, dock]);
 
 	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. The lightbox is modal, so
 	// while it is open the shortcut is unconditionally ours; the browser's native
@@ -368,13 +406,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		function onFindShortcut(event: KeyboardEvent) {
 			const combo = isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 			if (!combo || event.shiftKey || event.altKey || event.code !== "KeyF") return;
+			// Docked, ⌘F is only ours while focus is in the panel — otherwise it would
+			// steal the browser's native find from the rest of the page in remote mode.
+			if (!modal && !viewerRef.current?.contains(document.activeElement)) return;
 			event.preventDefault();
 			event.stopPropagation();
 			openSearch();
 		}
 		window.addEventListener("keydown", onFindShortcut, { capture: true });
 		return () => window.removeEventListener("keydown", onFindShortcut, { capture: true });
-	}, [openSearch]);
+	}, [openSearch, modal]);
 
 	if (!current) return null;
 
@@ -419,24 +460,28 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	});
 	const themeIcon = themeMode === "follow" ? "◐" : themeMode === "light" ? "" : "";
 
-	return (
-		<div
-			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "px-[5vw] py-[5vh]"}`}
-			onClick={onClose}
-		>
-			<div
+	// One card, three shapes: docked in flow, docked-and-fullscreen over
+	// everything, or the popup's centred lightbox.
+	const cardClass = dock
+		? fullscreen
+			? "fixed inset-0 z-[70] flex min-h-0 flex-col overflow-hidden bg-base outline-none"
+			: "flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-edge bg-base outline-none"
+		: `relative flex min-h-0 flex-col overflow-hidden bg-base outline-none ${fullscreen
+			? "h-full w-full rounded-none"
+			: "h-full w-full max-w-[2400px] max-h-[1600px] rounded-2xl border border-edge shadow-2xl"}`;
+
+	const card = (
+			<section
 				ref={viewerRef}
-				role="dialog"
-				aria-modal="true"
+				{...(modal ? { role: "dialog" as const, "aria-modal": true } : {})}
 				data-testid="artifact-viewer"
 				data-fullscreen={fullscreen ? "true" : "false"}
+				data-presentation={dock ? "docked" : "popup"}
 				data-tour-anchor="task.artifact"
 				aria-label={t("artifactViewer.regionLabel")}
 				tabIndex={-1}
 				onClick={(event) => event.stopPropagation()}
-				className={`relative flex min-h-0 flex-col overflow-hidden bg-base outline-none ${fullscreen
-					? "h-full w-full rounded-none"
-					: "h-full w-full max-w-[2400px] max-h-[1600px] rounded-2xl border border-edge shadow-2xl"}`}
+				className={cardClass}
 			>
 				<header className="relative flex flex-shrink-0 items-center gap-2 border-b border-edge bg-raised px-3 py-2">
 					<div className="min-w-0 flex-1">
@@ -540,7 +585,19 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 						<div className="flex h-full items-center justify-center text-sm text-fg-3">{t("artifactViewer.loading")}</div>
 					)}
 				</div>
-				</div>
+			</section>
+	);
+
+	// The dock is the pane's own element, so the panel renders inside the
+	// workspace layout while this component stays mounted under App.
+	if (dock) return createPortal(card, dock);
+
+	return (
+		<div
+			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "px-[5vw] py-[5vh]"}`}
+			onClick={onClose}
+		>
+			{card}
 		</div>
 	);
 }

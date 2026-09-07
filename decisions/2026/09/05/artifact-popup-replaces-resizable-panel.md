@@ -1,5 +1,10 @@
 # HTML artifacts open as a popup; the resizable panel is deleted
 
+> Superseded on 2026-09-07 by `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`:
+> the docked resizable panel is the default presentation again and the popup is an opt-in
+> setting. The freeze reasoning below stands as the reason the popup exists at all — it was
+> never a proven fix, and the panel's own resize mitigation is restored with it.
+
 ## Context
 
 `dev3 show-artifact` used to open the artifact in a panel docked to the right of the task

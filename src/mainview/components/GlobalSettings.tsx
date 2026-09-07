@@ -458,6 +458,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleOpenArtifactsInPopupToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ openArtifactsInPopup: enabled },
+				{ tracking: { setting: "open_artifacts_in_popup", value: enabled ? "popup" : "panel" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleDefaultDiffViewModeChange = useCallback(
 		(mode: "split" | "unified" | "auto") => {
 			persistSettingChange(
@@ -839,6 +849,7 @@ function GlobalSettings({
 						globalSettings={globalSettings}
 						tipsResetDone={tipsResetDone}
 						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
+						onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}

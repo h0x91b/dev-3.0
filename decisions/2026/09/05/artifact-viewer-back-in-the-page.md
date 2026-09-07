@@ -1,5 +1,10 @@
 # The artifact viewer renders in the page again — the separate webview is gone
 
+> Still current on 2026-09-07: one sandboxed `srcdoc` iframe, no native layer. What changed is
+> only where that iframe renders — `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`
+> brought back the docked panel as the default, so "artifacts open centrally" below now describes
+> the opt-in popup rather than the only presentation.
+
 ## Context
 
 `decisions/2026/08/31/artifact-viewer-in-its-own-webview-process.md` moved the

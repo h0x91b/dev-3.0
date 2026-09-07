@@ -247,6 +247,8 @@ const settings = {
 	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas. También afecta a Cmd+1..9: Vista dividida mantiene la vista de tarea, Pantalla completa cambia al tablero.",
 	"settings.taskOpenModeSplit": "Vista dividida (barra lateral + terminal)",
 	"settings.taskOpenModeFullscreen": "Pantalla completa (solo terminal)",
+	"settings.artifactPopup": "Abrir artefactos en una ventana emergente",
+	"settings.artifactPopupDesc": "Desactivado: un artefacto HTML se abre en un panel acoplado a la derecha del terminal de la tarea. Activado: se abre como una ventana emergente centrada sobre la tarea. Prueba la ventana emergente si el panel congela la app: es una presentación alternativa, no una solución a ese congelamiento.",
 	"settings.defaultDiffViewMode": "Layout de diff por defecto",
 	"settings.defaultDiffViewModeDesc": "Qué layout inline se selecciona al abrir Show Diff. Auto: en pantallas de portátil (<1800 CSS px de ancho) elige Unified, en monitores más grandes elige Lado a lado.",
 	"settings.defaultDiffViewModeSplit": "Lado a lado",

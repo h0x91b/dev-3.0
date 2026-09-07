@@ -152,6 +152,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 					: d.defaultDiffViewMode === "auto"
 						? "auto"
 						: undefined,
+		// Default-off opt-in: no key means the artifact opens in the docked panel.
+		// Both booleans are kept — an explicit false is the user choosing the panel,
+		// not the absence of a choice.
+		openArtifactsInPopup: typeof d.openArtifactsInPopup === "boolean" ? d.openArtifactsInPopup : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		remoteSilentUpdate: d.remoteSilentUpdate === false ? false : undefined,
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
