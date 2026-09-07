@@ -275,3 +275,33 @@
 		transition: none;
 	}
 }
+
+/* The stage owns its own overlay chrome: the orbit's placement assumes a canvas
+   that fills the pane, and reusing it stacked the caption under the zoom row. */
+.traffic-nodes .traffic-camera-controls {
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	top: auto;
+	left: auto;
+	z-index: 2;
+	padding: 3px 6px;
+	border-radius: 9px;
+	border: 1px solid rgb(var(--border-default) / 0.6);
+	background: rgb(var(--surface-overlay) / 0.92);
+	backdrop-filter: blur(6px);
+}
+.traffic-nodes .traffic-map-caption {
+	position: absolute;
+	left: 12px;
+	bottom: 14px;
+	right: auto;
+	top: auto;
+	margin: 0;
+	max-width: 55%;
+	padding: 4px 8px;
+	border-radius: 8px;
+	background: rgb(var(--surface-overlay) / 0.86);
+	backdrop-filter: blur(6px);
+	pointer-events: none;
+}

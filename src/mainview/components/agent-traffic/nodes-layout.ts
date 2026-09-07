@@ -4,9 +4,9 @@ import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-
 export const CARD_WIDTH = 208;
 export const CARD_HEIGHT = 132;
 const GAP_X = 44;
-const GAP_Y = 92;
+const GAP_Y = 68;
 /** Widest row a hub's correspondents form before wrapping to the next one. */
-const ROW_WIDTH = 4;
+const ROW_WIDTH = 6;
 
 export interface PlacedNode {
 	node: TrafficNode;
@@ -144,7 +144,6 @@ export function layoutTraffic(
 	// Groups: one per connected conversation, hub first, then BFS by distance.
 	const seen = new Set<string>();
 	const groups: string[][] = [];
-	const hubs = new Set<string>();
 	const talkative = [...connected.keys()].sort((a, b) => (better(a, b) ? -1 : 1));
 	for (const start of talkative) {
 		if (seen.has(start)) continue;
@@ -160,7 +159,6 @@ export function layoutTraffic(
 				queue.push(next);
 			}
 		}
-		hubs.add(group[0]);
 		groups.push(group);
 	}
 	const quiet = nodes.filter((node) => !seen.has(node.key));

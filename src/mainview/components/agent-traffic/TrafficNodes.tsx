@@ -32,7 +32,9 @@ const COMPACT_BELOW = 0.62;
 const CELL_BELOW = 0.34;
 const MIN_SCALE = 0.14;
 const MAX_SCALE = 1.8;
-const PADDING = 56;
+const PADDING = 48;
+/** Auto-fit never shrinks past readable cards; the user pans instead. */
+const FIT_FLOOR = 0.55;
 
 interface Flight {
 	id: string;
@@ -82,7 +84,7 @@ export default function TrafficNodes({
 		const box = frame.current?.getBoundingClientRect();
 		if (!box || !box.width || !box.height) return;
 		const scale = Math.max(
-			MIN_SCALE,
+			FIT_FLOOR,
 			Math.min(
 				1,
 				(box.width - PADDING) / scene.width,
