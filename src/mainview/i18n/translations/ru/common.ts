@@ -138,6 +138,8 @@ const common = {
 	"traffic.experiment.twoHint": "Плоский граф: карточки задач, соединённые с теми, кому писали.",
 	"traffic.nodes.zoomIn": "Приблизить",
 	"traffic.nodes.zoomOut": "Отдалить",
+	"traffic.nodes.minimap": "Миникарта доски",
+	"traffic.nodes.minimapHelp": "Перетаскивайте для перемещения. Стрелки двигают вид; Enter показывает всю доску.",
 	"traffic.nodes.fit": "Вместить всё на экран",
 	"traffic.nodes.legend": "Толщина линии = число сообщений · тяните мышью, колесо — масштаб",
 	"traffic.nodes.noTraffic": "В этом окне агенты друг другу не писали.",

@@ -360,8 +360,17 @@
 	border-radius: 9px;
 	background: rgb(var(--surface-raised) / 0.85);
 	box-shadow: 0 12px 34px rgb(0 0 0 / 0.12);
-	pointer-events: none;
+	cursor: grab;
+	touch-action: none;
+	text-align: left;
 	z-index: 2;
+}
+.traffic-minimap:active {
+	cursor: grabbing;
+}
+.traffic-minimap:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 3px;
 }
 .traffic-minimap svg {
 	display: block;
@@ -480,6 +489,52 @@
 	overflow: hidden;
 	font-size: 13px;
 	font-weight: 500;
+}
+.traffic-edge-subject .traffic-message-verdict {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+.traffic-message-verdict .traffic-icon {
+	width: 14px;
+	height: 14px;
+}
+.traffic-edge-subject.is-incoming {
+	--message-tone: var(--accent);
+	--message-ink: var(--accent);
+	border-radius: 14px;
+	background: rgb(var(--surface-overlay));
+	box-shadow: 0 8px 25px rgb(0 0 0 / 0.2), inset 0 0 0 1px rgb(var(--message-tone) / 0.45);
+}
+.traffic-edge-subject.is-incoming[data-status="delivered"] {
+	--message-tone: var(--success);
+	--message-ink: var(--success-strong);
+}
+.traffic-edge-subject.is-incoming[data-status="held"] {
+	--message-tone: var(--warning);
+	--message-ink: var(--warning-strong);
+}
+.traffic-edge-subject.is-incoming[data-status="not-delivered"] {
+	--message-tone: var(--danger);
+	--message-ink: var(--danger);
+}
+.traffic-edge-subject.is-incoming small {
+	color: rgb(var(--text-secondary));
+}
+.traffic-edge-subject.is-incoming .traffic-message-verdict {
+	color: rgb(var(--message-ink));
+}
+.traffic-edge-subject.is-incoming::after {
+	content: "";
+	position: absolute;
+	width: 10px;
+	height: 10px;
+	left: calc(50% - 5px);
+	bottom: -5px;
+	transform: rotate(45deg);
+	background: rgb(var(--surface-overlay));
+	border-right: 1px solid rgb(var(--message-tone) / 0.45);
+	border-bottom: 1px solid rgb(var(--message-tone) / 0.45);
 }
 .traffic-playback {
 	margin: 0 16px 8px;

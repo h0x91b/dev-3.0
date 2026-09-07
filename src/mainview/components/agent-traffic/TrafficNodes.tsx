@@ -29,6 +29,7 @@ import {
 } from "./traffic-model";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
+import TrafficMinimap from "./TrafficMinimap";
 import { frameExchange } from "./traffic-camera";
 
 interface Props {
@@ -616,7 +617,8 @@ export default function TrafficNodes({
 			</div>
 			{active && labelPoint && (
 				<div
-					className="traffic-edge-subject"
+					className={`traffic-edge-subject ${!activeFrom ? "is-incoming" : ""}`}
+					data-status={active.row.status}
 					style={{
 						left: Math.max(
 							150,
@@ -636,11 +638,12 @@ export default function TrafficNodes({
 				>
 					<small>
 						{projectById.get(active.row.toProjectId)?.name} ·{" "}
-						{active.row.fromSeq == null ? "—" : `#${active.row.fromSeq}`} → #
-						{active.row.toSeq} ·{" "}
-						{t(
-							`traffic.orbit.${active.row.status === "not-delivered" ? "notDelivered" : active.row.status === "held" ? "held" : active.row.status === "unconfirmed" ? "unconfirmed" : "delivered"}`,
-						)}
+						{active.row.fromSeq == null ? "" : `#${active.row.fromSeq} `}→ #
+						{active.row.toSeq}
+					</small>
+					<small className="traffic-message-verdict">
+						<TrafficIcon name={active.row.status === "held" ? "clock" : active.row.status === "delivered" ? "check" : active.row.status === "not-delivered" ? "error" : "info"} />
+						{t(`traffic.orbit.${active.row.status === "not-delivered" ? "notDelivered" : active.row.status}`)}
 					</small>
 					<strong className="streamer-private">
 						{active.row.subject || active.row.body.slice(0, 120)}
@@ -675,31 +678,15 @@ export default function TrafficNodes({
 				)}
 			</div>
 			{!!scene.placed.length && (
-				<div className="traffic-minimap" aria-hidden="true">
-					<svg viewBox={`0 0 ${scene.width} ${scene.height}`}>
-						{scene.placed.map((p) => (
-							<rect
-								key={p.node.key}
-								className={`traffic-minimap-node ${p.hub ? "is-hub" : ""} ${selected === p.node.key ? "is-selected" : ""}`}
-								x={p.x}
-								y={p.y}
-								width={p.width}
-								height={p.height}
-								rx={8}
-							/>
-						))}
-						<rect
-							className="traffic-minimap-view"
-							x={-view.x / view.scale}
-							y={-view.y / view.scale}
-							width={(frame.current?.clientWidth ?? 0) / view.scale}
-							height={(frame.current?.clientHeight ?? 0) / view.scale}
-						/>
-					</svg>
-					<span>
-						{t.plural("traffic.nodes.nodeCount", scene.placed.length)}
-					</span>
-				</div>
+				<TrafficMinimap
+					scene={scene}
+					selected={selected}
+					view={view}
+					width={frame.current?.clientWidth ?? 0}
+					height={frame.current?.clientHeight ?? 0}
+					onNavigate={(target) => { manual(); move(target, true); }}
+					onFit={() => { manual(); overviewMode.current = true; fit(); }}
+				/>
 			)}
 			<div className="traffic-camera-controls">
 				<button

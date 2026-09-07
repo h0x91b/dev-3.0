@@ -132,6 +132,8 @@ const common = {
 	"traffic.experiment.twoHint": "A flat graph: task cards wired to whoever they messaged.",
 	"traffic.nodes.zoomIn": "Zoom in",
 	"traffic.nodes.zoomOut": "Zoom out",
+	"traffic.nodes.minimap": "Canvas minimap",
+	"traffic.nodes.minimapHelp": "Drag to pan. Arrow keys move the view; Enter fits the board.",
 	"traffic.nodes.fit": "Fit everything on screen",
 	"traffic.nodes.legend": "Line thickness = messages exchanged · drag to pan, scroll to zoom",
 	"traffic.nodes.noTraffic": "No agent messages in this window.",

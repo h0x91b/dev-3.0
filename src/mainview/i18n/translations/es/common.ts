@@ -132,6 +132,8 @@ const common = {
 	"traffic.experiment.twoHint": "Un grafo plano: tarjetas de tareas unidas a quienes escribieron.",
 	"traffic.nodes.zoomIn": "Acercar",
 	"traffic.nodes.zoomOut": "Alejar",
+	"traffic.nodes.minimap": "Minimapa del lienzo",
+	"traffic.nodes.minimapHelp": "Arrastra para desplazarte. Las flechas mueven la vista; Intro encuadra el tablero.",
 	"traffic.nodes.fit": "Ajustar todo a la pantalla",
 	"traffic.nodes.legend": "Grosor de línea = mensajes intercambiados · arrastra para mover, rueda para zoom",
 	"traffic.nodes.noTraffic": "Sin mensajes entre agentes en esta ventana.",

@@ -354,7 +354,7 @@ Read-only stage/lists/inspector overlay, not a destination.
   hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
 - **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
   Replay restarts; Live exits. Freeze replay events. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
-  Follow/24h: pair glide, idle overview. Named project blocks, five-wide. Manual stops Follow; Focus frames one.
+  Follow/24h: pair glide, idle overview; named five-wide project blocks. Manual/minimap pan stops Follow; Focus frames one.
   Lists on request; calendar days auto-load local history.
 - **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
   mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany

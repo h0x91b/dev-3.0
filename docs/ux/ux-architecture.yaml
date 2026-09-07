@@ -273,11 +273,11 @@ ux_architecture:
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     agent_traffic_log:
       purpose: "Live map of recorded message attempts, with lists and a selection inspector."
-      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "delivery_status_filter", "open_existing_task"]
+      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task"]
       forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter", "inferred_reply_obligation"]
       narrow_form: "bottom_sheet"
       entry_point: "Header pill click, labelled kebab row, Shift+Cmd/Ctrl+M, View menu, command palette; one overlay, no separate old log or ninth destination."
-      note: "Push/fs; mixed-version safe, no polling. Pulses and verdict text; reduced motion stops flights/glides. Current state/overview; stable nodes, wires avoid cards. Counted quiet/parked bands; replay reveals endpoints without waking. Absent pick means 2; toolbar radio mounts one stage, never enables feature. In 2: frozen message replay/steps/speed/slider below graph, cursor verdicts, Live exits; Follow/24h frames pairs; idle overview; named project blocks, five-wide; calendar loads local days; Focus in details; manual stops Follow. Lists need no WebGL. Narrow filters use BottomSheet. Subject/body fallback, retention/pages: bible 5.9. No invented ownership, replies or intent."
+      note: "Push/fs; mixed-version safe, no polling. Pulses/verdicts; reduced motion stops flights/glides. Current state/overview; stable nodes, wires avoid cards. Counted quiet/parked bands; replay reveals endpoints without waking. Absent pick means 2; toolbar radio mounts one stage, never enables feature. In 2: frozen message replay/steps/speed/slider below graph, cursor verdicts, Live exits; Follow/24h frames pairs; idle overview; named project blocks, five-wide; calendar loads local days; Focus in details; manual/minimap pan stops Follow. WebGL optional. Narrow filters use BottomSheet. Subject/body fallback, retention/pages: bible 5.9. No invented ownership, replies or intent."
       evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."

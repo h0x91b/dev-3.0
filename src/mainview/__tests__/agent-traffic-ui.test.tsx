@@ -1008,3 +1008,39 @@ it("Follow returns to overview after live inactivity and replay completion but k
 		vi.useRealTimers();
 	}
 });
+
+
+it.each([
+	["held", "Held"], ["delivered", "Delivered"],
+	["unconfirmed", "Unconfirmed"], ["not-delivered", "Not delivered"],
+] as const)("senderless %s messages show a delivery bubble, not inferred notification intent", async (status, label) => {
+	setPage([row({ fromTaskId: null, fromSeq: null, status, subject: "Success: work completed, question for you" })]);
+	renderLog();
+	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
+	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+	const bubble = document.querySelector(".traffic-edge-subject.is-incoming");
+	expect(bubble).toHaveAttribute("data-status", status);
+	expect(bubble?.querySelector(".traffic-message-verdict")?.textContent).toBe(label);
+	expect(bubble?.querySelector(".traffic-message-verdict svg")).not.toBeNull();
+	expect(bubble?.textContent).toContain("→ #22");
+	expect(document.querySelector(".traffic-wire.is-active")).toBeNull();
+});
+
+it("minimap navigation hands camera control away from Follow", async () => {
+	const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1400);
+	const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(640);
+	setPage([row()]);
+	const rendered = renderLog();
+	try {
+		const map = await screen.findByRole("button", { name: "Canvas minimap" });
+		const stage = screen.getByTestId("traffic-node-scene");
+		const before = stage.style.transform;
+		expect(document.querySelector(".traffic-nodes")).toHaveAttribute("data-follow", "true");
+		map.focus();
+		await userEvent.keyboard("{ArrowRight}");
+		expect(stage.style.transform).not.toBe(before);
+		expect(document.querySelector(".traffic-nodes")).toHaveAttribute("data-follow", "false");
+	} finally {
+		rendered.unmount(); width.mockRestore(); height.mockRestore();
+	}
+});
