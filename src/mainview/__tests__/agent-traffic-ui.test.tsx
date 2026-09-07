@@ -16,10 +16,18 @@ const page: { value: AgentMessageLogPage } = {
 
 const knownTaskIds: { value: string[] } = { value: ["task-a", "task-b", "task-c"] };
 
+/** Stands in for the settings file: what a fresh install has is an empty object. */
+const settings: { value: Record<string, unknown> } = { value: {} };
+
 vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			readAgentMessageLog: vi.fn(() => Promise.resolve(page.value)),
+			getGlobalSettings: vi.fn(() => Promise.resolve(settings.value)),
+			saveGlobalSettings: vi.fn((next: Record<string, unknown>) => {
+				settings.value = next;
+				return Promise.resolve();
+			}),
 			getProjects: vi.fn(() => Promise.resolve([{ id: "proj-1", name: "Project One" }])),
 			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id, index) => ({
 				id, projectId: "proj-1", seq: (index + 1) * 11, title: id === "task-a" ? "Coordinator" : id === "task-b" ? "Worker" : "Other worker",
@@ -57,6 +65,7 @@ beforeEach(() => {
 	resetTrafficStore();
 	resetTrafficSeen();
 	setPage([]);
+	settings.value = {};
 	knownTaskIds.value = ["task-a", "task-b", "task-c"];
 	// The feature ships off; these tests describe it switched on. The off state has
 	// its own suite in agent-traffic-flag.test.tsx.
@@ -302,10 +311,12 @@ describe("AgentTrafficLog live orbit", () => {
 		renderLog(onOpenTask);
 		await messageRows(1);
 		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
-		await userEvent.click(await screen.findByRole("button", { name: /#22 Worker/ }));
-		expect(screen.getByText("Current task overview")).toBeTruthy();
+		// Scoped to the inspector: the stage renders its own card for the same task.
+		const inspector = within(screen.getByRole("complementary"));
+		await userEvent.click(await inspector.findByRole("button", { name: /#22 Worker/ }));
+		expect(inspector.getByText("Current task overview")).toBeTruthy();
 		expect(onOpenTask).not.toHaveBeenCalled();
-		await userEvent.click(screen.getByRole("button", { name: "Open task" }));
+		await userEvent.click(inspector.getByRole("button", { name: "Open task" }));
 		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
 	});
 
@@ -338,5 +349,86 @@ describe("AgentTrafficLog live orbit", () => {
 		act(() => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "proj-1", taskId: "task-b" } })));
 		expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
 		expect(screen.getByText(/This task no longer exists/)).toBeTruthy();
+	});
+});
+
+// Two presentations, one feature. The picker chooses between them; the Settings
+// toggle still decides whether any of it exists (agent-traffic-flag.test.tsx).
+describe("AgentTrafficLog presentation picker", () => {
+	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
+	const orbit = () => screen.queryByLabelText("Project traffic map");
+
+	it("renders Experiment 2 when no preference was ever recorded", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute("aria-checked", "true");
+		expect(nodeCards().length).toBeGreaterThan(0);
+		expect(orbit()).toBeNull();
+	});
+
+	// An install that turned the feature on before the picker existed never chose a
+	// presentation, so the old flag alone must not pin it to Experiment 1.
+	it("keeps the default for an upgrade that only has the feature flag", async () => {
+		settings.value = { experimentalAgentTraffic: true };
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		await waitFor(() =>
+			expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute("aria-checked", "true"),
+		);
+		expect(nodeCards().length).toBeGreaterThan(0);
+	});
+
+	it("honours a recorded pick of Experiment 1", async () => {
+		settings.value = { agentTrafficExperiment: "1" };
+		setPage([row()]);
+		renderLog();
+		await waitFor(() => expect(orbit()).not.toBeNull());
+		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute("aria-checked", "true");
+		expect(nodeCards()).toHaveLength(0);
+	});
+
+	it("switches both ways and persists each pick, one stage mounted at a time", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		expect(orbit()).not.toBeNull();
+		expect(nodeCards()).toHaveLength(0);
+		await waitFor(() =>
+			expect(vi.mocked(api.request.saveGlobalSettings)).toHaveBeenCalledWith(
+				expect.objectContaining({ agentTrafficExperiment: "1" }),
+			),
+		);
+		await userEvent.click(screen.getByTestId("traffic-experiment-2"));
+		expect(orbit()).toBeNull();
+		expect(nodeCards().length).toBeGreaterThan(0);
+		await waitFor(() =>
+			expect(vi.mocked(api.request.saveGlobalSettings)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ agentTrafficExperiment: "2" }),
+			),
+		);
+	});
+
+	// Both stages read the same records, so a message that reaches one reaches the
+	// other — and the message list stays the same in both.
+	it("shows the same real traffic under either presentation", async () => {
+		setPage([row({ subject: "Report baseline" })]);
+		renderLog();
+		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
+		expect(screen.getByText("Worker")).toBeTruthy();
+		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
+	});
+
+	it("selecting a card in Experiment 2 drives the shared inspector", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		const card = nodeCards().find((node) => node.textContent?.includes("#22"));
+		await userEvent.click(card as HTMLElement);
+		const inspector = within(screen.getByRole("complementary"));
+		expect(inspector.getByText("Current task overview")).toBeTruthy();
 	});
 });

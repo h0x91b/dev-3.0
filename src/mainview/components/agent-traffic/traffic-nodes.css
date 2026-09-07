@@ -1,0 +1,277 @@
+/* Experiment 2 — the flat node graph. Shares the dialog chrome in
+   traffic-orbit.css; only the stage itself lives here. */
+
+.traffic-nodes {
+	flex: 1;
+	min-height: 230px;
+	position: relative;
+	overflow: hidden;
+	touch-action: none;
+	cursor: grab;
+	isolation: isolate;
+}
+.traffic-nodes:active {
+	cursor: grabbing;
+}
+.traffic-nodes-scene {
+	position: absolute;
+	top: 0;
+	left: 0;
+	transform-origin: 0 0;
+	will-change: transform;
+}
+.traffic-nodes-wires {
+	position: absolute;
+	top: 0;
+	left: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+.traffic-nodes-cards {
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+
+.traffic-wire {
+	fill: none;
+	stroke: rgb(var(--agent) / 0.42);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: opacity 200ms;
+}
+.traffic-wire.verdict-held {
+	stroke: rgb(var(--warning) / 0.5);
+	stroke-dasharray: 6 6;
+}
+.traffic-wire.verdict-unconfirmed {
+	stroke: rgb(var(--warning) / 0.42);
+}
+.traffic-wire.verdict-not-delivered {
+	stroke: rgb(var(--danger) / 0.55);
+	stroke-dasharray: 3 5;
+}
+.traffic-wire.is-dim {
+	opacity: 0.16;
+}
+
+.traffic-flight {
+	fill: rgb(var(--agent));
+	filter: drop-shadow(0 0 6px rgb(var(--agent) / 0.7));
+}
+.traffic-flight.verdict-not-delivered {
+	fill: rgb(var(--danger));
+	filter: drop-shadow(0 0 6px rgb(var(--danger) / 0.7));
+}
+.traffic-flight.verdict-held,
+.traffic-flight.verdict-unconfirmed {
+	fill: rgb(var(--warning));
+	filter: drop-shadow(0 0 6px rgb(var(--warning) / 0.7));
+}
+
+.traffic-node-card {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	padding: 12px 14px;
+	text-align: left;
+	border: 0;
+	border-radius: 10px;
+	overflow: hidden;
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-elevated) / 0.96);
+	box-shadow:
+		0 8px 22px rgb(0 0 0 / 0.13),
+		inset 0 0 0 1px rgb(var(--border-default) / 0.55);
+	transition:
+		box-shadow 200ms,
+		opacity 220ms;
+}
+.traffic-node-card::before {
+	content: "";
+	position: absolute;
+	inset: 0 14px auto;
+	height: 2px;
+	background: var(--node-status);
+	opacity: 0.85;
+}
+.traffic-node-card.is-coordinator {
+	background:
+		linear-gradient(135deg, rgb(var(--success) / 0.07), transparent 70%),
+		rgb(var(--surface-elevated) / 0.98);
+	box-shadow:
+		0 6px 25px rgb(0 0 0 / 0.13),
+		inset 0 0 0 1px rgb(var(--success) / 0.6);
+}
+.traffic-node-card.is-coordinator::before {
+	display: none;
+}
+.traffic-node-card:hover {
+	box-shadow:
+		0 10px 30px rgb(0 0 0 / 0.2),
+		inset 0 0 0 1px rgb(var(--accent) / 0.65);
+}
+.traffic-node-card:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 2px;
+}
+.traffic-node-card.is-selected {
+	box-shadow:
+		0 0 0 2px rgb(var(--accent) / 0.9),
+		0 12px 30px rgb(0 0 0 / 0.2);
+}
+.traffic-node-card.is-dim {
+	opacity: 0.28;
+}
+.traffic-node-card.is-lit {
+	box-shadow:
+		0 0 0 1px rgb(var(--agent)),
+		0 0 34px rgb(var(--agent) / 0.28);
+}
+
+.traffic-node-head {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+}
+.traffic-node-head b {
+	font-family: var(--dev3-mono-stack);
+	font-weight: 500;
+	color: rgb(var(--accent));
+}
+.traffic-node-head i {
+	font-style: normal;
+	font-size: 9px;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	color: rgb(var(--success));
+	background: rgb(var(--success) / 0.1);
+	padding: 2px 5px;
+	border-radius: 4px;
+}
+.traffic-node-head em {
+	margin-left: auto;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--node-status);
+}
+.traffic-node-card > strong {
+	font-size: 14px;
+	line-height: 18px;
+	font-weight: 600;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.traffic-node-overview {
+	font-size: 11px;
+	line-height: 15px;
+	color: rgb(var(--text-secondary));
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+.traffic-node-foot {
+	margin-top: auto;
+	font-family: var(--dev3-mono-stack);
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Zoomed out, a card sheds what cannot be read at that size rather than
+   rendering unreadable text: first the body, then everything but its colour. */
+.traffic-nodes[data-detail="compact"] .traffic-node-overview,
+.traffic-nodes[data-detail="compact"] .traffic-node-foot {
+	display: none;
+}
+.traffic-nodes[data-detail="compact"] .traffic-node-card > strong {
+	font-size: 17px;
+	line-height: 21px;
+	-webkit-line-clamp: 3;
+}
+.traffic-nodes[data-detail="cell"] .traffic-node-card {
+	padding: 0;
+	border-radius: 6px;
+	background: var(--node-status);
+	opacity: 0.8;
+	box-shadow: none;
+}
+.traffic-nodes[data-detail="cell"] .traffic-node-card.is-coordinator {
+	background: rgb(var(--success));
+}
+.traffic-nodes[data-detail="cell"] .traffic-node-card > * {
+	display: none;
+}
+.traffic-nodes[data-detail="cell"] .traffic-node-card.is-selected {
+	opacity: 1;
+	box-shadow: 0 0 0 3px rgb(var(--accent));
+}
+
+.traffic-nodes-empty {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: rgb(var(--text-tertiary));
+}
+
+/* The presentation picker, shaped like the diff viewer's mode segments. */
+.traffic-experiment {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid rgb(var(--border-default) / 0.7);
+	border-radius: 9px;
+	background: rgb(var(--surface-base) / 0.5);
+	flex-shrink: 0;
+}
+.traffic-experiment button {
+	padding: 6px 12px;
+	min-height: 30px;
+	border: 0;
+	border-radius: 7px;
+	font-size: 12px;
+	font-weight: 600;
+	color: rgb(var(--text-tertiary));
+	background: transparent;
+}
+.traffic-experiment button:hover {
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-elevated));
+}
+.traffic-experiment button[aria-checked="true"] {
+	color: white;
+	background: rgb(var(--accent-fill));
+}
+.traffic-experiment button[aria-checked="true"]:hover {
+	background: rgb(var(--accent-fill-hover));
+}
+
+@media (max-width: 900px) {
+	.traffic-nodes {
+		min-height: 260px;
+	}
+	.traffic-experiment button {
+		min-height: 44px;
+		padding: 6px 14px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.traffic-node-card,
+	.traffic-wire {
+		transition: none;
+	}
+}

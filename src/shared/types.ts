@@ -1142,6 +1142,11 @@ export interface RemoteTunnelSettings {
 	urlPattern?: string;
 }
 
+/** The two supported agent-traffic presentations. Both are shipped, neither is legacy. */
+export type AgentTrafficExperiment = "1" | "2";
+/** What an install with no recorded preference renders. */
+export const DEFAULT_AGENT_TRAFFIC_EXPERIMENT: AgentTrafficExperiment = "2";
+
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
@@ -1192,6 +1197,13 @@ export interface GlobalSettings {
 	 * ⇧⌘M, no menu item, no palette command, no tip.
 	 */
 	experimentalAgentTraffic?: boolean;
+	/**
+	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
+	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
+	 * the default for a fresh install and for anyone upgrading, because having
+	 * turned the feature on is not a choice of a presentation nobody was offered.
+	 */
+	agentTrafficExperiment?: AgentTrafficExperiment;
 	/**
 	 * Turn on the `low-battery` answer format dev3 ships (header block first,
 	 * decision last, tables over prose). Absent ⇒ off: dev3 installs nothing and

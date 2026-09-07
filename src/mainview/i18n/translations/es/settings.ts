@@ -599,9 +599,9 @@ const settings = {
 		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",
 	"settings.terminalBidiCaveat":
 		"Solo visualización: el texto copiado conserva su orden original, que es el correcto. La selección con el ratón y el paso del cursor por los enlaces en esas líneas siguen el orden original, así que el resaltado puede verse mal. Las letras árabes no se unen en su forma cursiva.",
-	"settings.agentTraffic": "Experimento 1: tráfico de agentes",
+	"settings.agentTraffic": "Tráfico de agentes (experimental)",
 	"settings.agentTrafficDesc":
-		"Prueba el mapa 3D de tráfico en vivo: tareas y mensajes reales de las últimas 24 horas, con acceso al historial anterior conservado. Se abre con ⇧⌘M.",
+		"Mira lo que tus agentes se escriben entre sí: tareas y mensajes reales de las últimas 24 horas, con acceso al historial anterior conservado. Se abre con ⇧⌘M y dentro eliges la presentación: Experimento 2, un grafo plano de tarjetas, o Experimento 1, una órbita 3D.",
 	"settings.agentTrafficCaveat":
 		"Mientras está desactivado la función no deja rastro: ni control en la cabecera, ni atajo, ni entrada de menú, ni comando de la paleta. Los mensajes se guardan en disco de todos modos, así que al activarla verás el historial que ya tienes. El estado de lectura es por navegador, así que leer en el escritorio deja el distintivo encendido en el móvil.",
 

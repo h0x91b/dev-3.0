@@ -12,7 +12,10 @@ import Select from "../Select";
 import { AgentTrafficIcon } from "../HeaderIcons";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import TrafficOrbit from "./TrafficOrbit";
+import TrafficNodes from "./TrafficNodes";
 import { useTrafficData } from "./useTrafficData";
+import { useTrafficExperiment } from "./useTrafficExperiment";
+import type { AgentTrafficExperiment } from "../../../shared/types";
 import {
 	endpointKey,
 	trafficNodes,
@@ -24,6 +27,7 @@ import {
 	type TrafficRecord,
 } from "./traffic-model";
 import "./traffic-orbit.css";
+import "./traffic-nodes.css";
 
 interface Props {
 	projectId: string | null;
@@ -104,10 +108,64 @@ function TrafficDialog({
 	);
 }
 
+/**
+ * Which presentation renders the same traffic — the orbit or the node graph.
+ *
+ * A radiogroup, not two toggles: the two are mutually exclusive views of one
+ * data set, exactly like the diff viewer's modes, and it sits in the toolbar
+ * with the other view controls rather than in the header. It never touches the
+ * feature flag; with the feature off nothing here exists to be clicked.
+ */
+function ExperimentPicker({
+	value,
+	onChange,
+}: {
+	value: AgentTrafficExperiment;
+	onChange: (next: AgentTrafficExperiment) => void;
+}) {
+	const t = useT();
+	const options = [
+		{ id: "2", label: "traffic.experiment.two", hint: "traffic.experiment.twoHint" },
+		{ id: "1", label: "traffic.experiment.one", hint: "traffic.experiment.oneHint" },
+	] as const satisfies readonly {
+		id: AgentTrafficExperiment;
+		label: TranslationKey;
+		hint: TranslationKey;
+	}[];
+	return (
+		<div
+			className="traffic-experiment"
+			role="radiogroup"
+			aria-label={t("traffic.experiment.label")}
+			onKeyDown={(event) => {
+				if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+				event.preventDefault();
+				onChange(value === "1" ? "2" : "1");
+			}}
+		>
+			{options.map((option) => (
+				<button
+					key={option.id}
+					type="button"
+					role="radio"
+					aria-checked={value === option.id}
+					tabIndex={value === option.id ? 0 : -1}
+					title={t(option.hint)}
+					data-testid={`traffic-experiment-${option.id}`}
+					onClick={() => onChange(option.id)}
+				>
+					{t(option.label)}
+				</button>
+			))}
+		</div>
+	);
+}
+
 function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
 	const data = useTrafficData();
+	const { experiment, choose } = useTrafficExperiment();
 	const [scope, setScope] = useState(projectId ?? "all");
 	const [selected, setSelected] = useState<string | null>(null);
 	const [recordKey, setRecordKey] = useState<string | null>(null);
@@ -264,7 +322,6 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			<header className="traffic-header">
 				<AgentTrafficIcon className="w-5 h-5 text-agent" />
 				<h2>{t("traffic.label")}</h2>
-				<span className="traffic-orbit-name">{t("traffic.orbit.name")}</span>
 				<div className="traffic-header-tail">
 					<span className="traffic-live" role="status">
 						{data.loading
@@ -289,6 +346,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 				</div>
 			</header>
 			<div className="traffic-toolbar">
+				<ExperimentPicker value={experiment} onChange={choose} />
 				<Select
 					value={scope}
 					onChange={(value) => {
@@ -357,16 +415,31 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			)}
 			<div className="traffic-content">
 				<div className="traffic-main">
-					<TrafficOrbit
-						projects={data.projects}
-						scope={scope}
-						nodes={nodes}
-						records={visible}
-						selected={selected}
-						onSelect={select}
-						paused={paused || until !== null}
-						ready={!data.loading}
-					/>
+					{/* One stage at a time: switching unmounts the other, so neither
+					    presentation can leave a loop or an observer running behind it. */}
+					{experiment === "1" ? (
+						<TrafficOrbit
+							projects={data.projects}
+							scope={scope}
+							nodes={nodes}
+							records={visible}
+							selected={selected}
+							onSelect={select}
+							paused={paused || until !== null}
+							ready={!data.loading}
+						/>
+					) : (
+						<TrafficNodes
+							projects={data.projects}
+							scope={scope}
+							nodes={nodes}
+							records={visible}
+							selected={selected}
+							onSelect={select}
+							paused={paused || until !== null}
+							ready={!data.loading}
+						/>
+					)}
 					<div className="traffic-timeline">
 						<div className="traffic-timeline-header">
 							<strong>

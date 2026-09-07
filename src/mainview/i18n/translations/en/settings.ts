@@ -598,9 +598,9 @@ const settings = {
 		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",
 	"settings.terminalBidiCaveat":
 		"Display only: copied text keeps its original order, which is correct. Selecting with the mouse and hovering links on those lines still follow the original order, so the highlight can look wrong. Arabic letters are not joined into their cursive forms.",
-	"settings.agentTraffic": "Experiment 1: agent traffic",
+	"settings.agentTraffic": "Agent traffic (experimental)",
 	"settings.agentTrafficDesc":
-		"Try the live 3D traffic map: real tasks and messages from the last 24 hours, with older retained history available. Open with ⇧⌘M.",
+		"Watch what your agents write to each other: real tasks and messages from the last 24 hours, with older retained history available. Open with ⇧⌘M, then pick a presentation inside — Experiment 2, a flat graph of task cards, or Experiment 1, a 3D orbit.",
 	"settings.agentTrafficCaveat":
 		"While this is off the feature leaves no trace — no header control, no shortcut, no menu item, no palette command. Messages are still recorded on disk either way, so turning it on later shows the history you already have. Unread state is per browser, so reading on the desktop leaves a phone badge lit.",
 
