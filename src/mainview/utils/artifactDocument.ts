@@ -1,5 +1,6 @@
 import { artifactBridgeScript } from "./artifactBridge";
 import { artifactChannelScript } from "./artifactChannel";
+import { artifactLinksScript } from "./artifactLinks";
 
 interface ArtifactAssetPayload {
 	name: string;
@@ -135,7 +136,11 @@ export function composeArtifactDocument(
 	);
 
 	// The channel goes first: every other injected script reaches for it by name.
-	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactBridgeScript(canSendToAgent)}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
+	// `<base target="_blank">` sends every link to the browser (the frame carries
+	// `allow-popups` for it); it carries no href, so a report's own `<base href>`
+	// still sets the document base URL. `artifactLinksScript` takes the in-page
+	// anchors back off that default.
+	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactLinksScript()}${artifactBridgeScript(canSendToAgent)}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
 	if (/<head(?:\s|>)/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${injected}`);
 	if (/<html(?:\s|>)/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`);
 	const body = html.replace(/<!doctype[^>]*>/i, "");

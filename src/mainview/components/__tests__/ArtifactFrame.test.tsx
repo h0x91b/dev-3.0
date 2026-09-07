@@ -23,7 +23,9 @@ function mount(html = "<html>one</html>") {
 describe("ArtifactFrame", () => {
 	it("renders a sandboxed srcdoc iframe and never creates a native webview", () => {
 		const { iframe, view } = mount();
-		expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+		// allow-popups is load-bearing: without it every link in a report is a
+		// blocked, dead click. See artifactLinks.ts.
+		expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-popups");
 		expect(iframe.getAttribute("srcdoc")).toBe("<html>one</html>");
 		// The separate <electrobun-webview> host was removed; see
 		// decisions/2026/09/05/artifact-viewer-back-in-the-page.md.

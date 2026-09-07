@@ -51,7 +51,11 @@ const ArtifactFrame = forwardRef<ArtifactFrameHandle, ArtifactFrameProps>(
 			<iframe
 				ref={frameRef}
 				title={title}
-				sandbox="allow-scripts"
+				// allow-popups is what lets a link leave the report: with
+				// `<base target="_blank">` in the document the browser opens it in a
+				// tab (desktop: the new-window intercept hands it to the OS browser).
+				// Without it every link in a report is a blocked, dead click.
+				sandbox="allow-scripts allow-popups"
 				srcDoc={html}
 				onLoad={onReady}
 				className={className}

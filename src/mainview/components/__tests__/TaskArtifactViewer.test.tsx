@@ -120,7 +120,7 @@ describe("TaskArtifactViewer", () => {
 		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a"), artifact("b", true)]} initialIndex={1} onClose={vi.fn()} /></I18nProvider>);
 		expect(screen.getByText("Artifact b")).toBeInTheDocument();
 		const frame = await screen.findByTitle("Artifact b");
-		expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+		expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-popups");
 		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("data:image/png;base64,AAA"));
 	});
 
