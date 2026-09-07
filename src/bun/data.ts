@@ -873,6 +873,7 @@ export async function addTask(
 			}
 			variantIndex = maxVariantIndex + 1;
 		}
+		const hidden = extras?.groupId ? tasks.some((task) => task.groupId === extras.groupId && task.hidden) : false;
 		const newBackend = newTaskTerminalBackend(process.platform, readNewTaskTerminalBackendPreference());
 		const task: Task = {
 			id: crypto.randomUUID(),
@@ -916,6 +917,7 @@ export async function addTask(
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
+			...(hidden ? { hidden: true } : {}),
 			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
@@ -994,6 +996,36 @@ export async function updateTaskWith<T>(
 	});
 }
 
+async function updateTaskGroup(
+	project: Project,
+	taskId: string,
+	apply: (task: Task) => Task | null,
+): Promise<Task[]> {
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		log.info("Updating task group", { taskId, projectId: project.id });
+		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
+		const target = tasks.find((task) => task.id === taskId);
+		if (!target) throw new Error(`Task not found: ${taskId}`);
+
+		const now = new Date().toISOString();
+		const changed: Task[] = [];
+		for (let i = 0; i < tasks.length; i++) {
+			const task = tasks[i];
+			const inGroup = target.groupId ? task.groupId === target.groupId : task.id === target.id;
+			if (!inGroup) continue;
+			const updated = apply(task);
+			if (!updated) continue;
+			tasks[i] = { ...updated, updatedAt: now };
+			changed.push(tasks[i]);
+		}
+
+		if (changed.length > 0) await rawSaveTasks(project, tasks);
+		log.info("Task group updated", { taskId, changed: changed.length, projectId: project.id });
+		return changed;
+	});
+}
+
 /**
  * Set a task's priority. Priority belongs to the logical task, so this writes the
  * value to EVERY task sharing the target's `groupId` (or just the single task when
@@ -1002,33 +1034,12 @@ export async function updateTaskWith<T>(
  * `updatedAt` on changed tasks but never `movedAt` — priority is orthogonal to the
  * column/status move timeline.
  */
-export async function setTaskPriority(
-	project: Project,
-	taskId: string,
-	priority: TaskPriority,
-): Promise<Task[]> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
-		log.info("Setting task priority", { taskId, priority, projectId: project.id });
-		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
-		const target = tasks.find((t) => t.id === taskId);
-		if (!target) throw new Error(`Task not found: ${taskId}`);
+export function setTaskPriority(project: Project, taskId: string, priority: TaskPriority): Promise<Task[]> {
+	return updateTaskGroup(project, taskId, (task) => (task.priority === priority ? null : { ...task, priority }));
+}
 
-		const now = new Date().toISOString();
-		const changed: Task[] = [];
-		for (let i = 0; i < tasks.length; i++) {
-			const t = tasks[i];
-			const inGroup = target.groupId ? t.groupId === target.groupId : t.id === target.id;
-			if (!inGroup) continue;
-			if (t.priority === priority) continue;
-			tasks[i] = { ...t, priority, updatedAt: now };
-			changed.push(tasks[i]);
-		}
-
-		if (changed.length > 0) await rawSaveTasks(project, tasks);
-		log.info("Task priority set", { taskId, priority, changed: changed.length });
-		return changed;
-	});
+export function setTaskHidden(project: Project, taskId: string, hidden: boolean): Promise<Task[]> {
+	return updateTaskGroup(project, taskId, (task) => ((task.hidden === true) === hidden ? null : { ...task, hidden }));
 }
 
 /**

@@ -20,7 +20,7 @@ import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 import Tooltip from "./Tooltip";
-import { PanelLeftIcon } from "./TaskIcons";
+import { EyeIcon, PanelLeftIcon } from "./TaskIcons";
 import ActiveTaskRow from "./ActiveTaskRow";
 import { useSpaces } from "../useSpaces";
 import SpaceIcon from "./SpaceIcon";
@@ -28,6 +28,7 @@ import { spaceScopeProjectIds } from "../utils/spaceScope";
 
 type SidebarScope = "project" | "global" | "space";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
+const LS_SIDEBAR_SHOW_HIDDEN = "dev3-sidebar-show-hidden";
 
 /** Build a translucent fill from a "#rrggbb" status color for subtle tints. */
 function statusTint(hex: string, alpha: number): string {
@@ -49,6 +50,20 @@ function readScope(): SidebarScope | null {
 function writeScope(scope: SidebarScope) {
 	try {
 		localStorage.setItem(LS_SIDEBAR_SCOPE, scope);
+	} catch { /* ignore */ }
+}
+
+function readShowHidden(): boolean {
+	try {
+		return localStorage.getItem(LS_SIDEBAR_SHOW_HIDDEN) === "true";
+	} catch {
+		return false;
+	}
+}
+
+function writeShowHidden(showHidden: boolean) {
+	try {
+		localStorage.setItem(LS_SIDEBAR_SHOW_HIDDEN, String(showHidden));
 	} catch { /* ignore */ }
 }
 
@@ -171,6 +186,7 @@ function ActiveTasksSidebar({
 		return () => clearInterval(id);
 	}, []);
 	const [scope, setScopeState] = useState<SidebarScope | null>(readScope);
+	const [showHidden, setShowHiddenState] = useState(readShowHidden);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
 	const [globalLoading, setGlobalLoading] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
@@ -188,6 +204,10 @@ function ActiveTasksSidebar({
 	const setScope = useCallback((next: SidebarScope) => {
 		setScopeState(next);
 		writeScope(next);
+	}, []);
+	const setShowHidden = useCallback((next: boolean) => {
+		setShowHiddenState(next);
+		writeShowHidden(next);
 	}, []);
 
 	// No current project → the dashboard mount: global is the only meaningful scope.
@@ -279,6 +299,11 @@ function ActiveTasksSidebar({
 	if (effectiveScope === "space" && siblingIds) {
 		activeTasks = activeTasks.filter((task) => siblingIds.has(task.projectId));
 	}
+	const hiddenTaskCount = activeTasks.filter((task) => task.hidden).length;
+	if (!showHidden) {
+		activeTasks = activeTasks.filter((task) => !task.hidden);
+	}
+	const allTasksHidden = !showHidden && hiddenTaskCount > 0 && activeTasks.length === 0;
 
 	const projectById = useMemo(() => {
 		const map = new Map<string, Project>();
@@ -457,6 +482,21 @@ function ActiveTasksSidebar({
 		},
 		[dispatch, t],
 	);
+	const handleSetHidden = useCallback(
+		async (task: Task) => {
+			try {
+				const changed = await api.request.setTaskHidden({
+					taskId: task.id,
+					projectId: task.projectId,
+					hidden: !task.hidden,
+				});
+				for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
+			} catch (err) {
+				toast.error(t("task.hiddenFailed", { error: String(err) }), { taskId: task.id });
+			}
+		},
+		[dispatch, t],
+	);
 
 	function handleTaskClick(task: Task) {
 		if (task.shuttingDown) return;
@@ -587,6 +627,23 @@ function ActiveTasksSidebar({
 						</Tooltip>
 					</div>
 					)}
+					<Tooltip
+						content={t("sidebar.showHiddenTasks")}
+						detail={t.plural("sidebar.hiddenTaskCount", hiddenTaskCount)}
+						placement="bottom"
+					>
+						<button
+							type="button"
+							onClick={() => setShowHidden(!showHidden)}
+							aria-pressed={showHidden}
+							aria-label={t("sidebar.showHiddenTasks")}
+							className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(showHidden)}`}
+							data-testid="sidebar-show-hidden"
+							data-help-id="sidebar.show-hidden"
+						>
+							<EyeIcon off={showHidden} className="w-3.5 h-3.5" />
+						</button>
+					</Tooltip>
 					{activeTaskId && (
 						<Tooltip content={t("sidebar.hide")} detail={t("ttip.sidebar.hide")} placement="bottom">
 							<button
@@ -668,8 +725,8 @@ function ActiveTasksSidebar({
 							t("sidebar.noSearchResults")
 						) : (
 							<>
-								<p>{t("sidebar.noActiveTasks")}</p>
-								<p className="mt-1">{t("sidebar.noActiveTasksHint")}</p>
+								<p>{t(allTasksHidden ? "sidebar.allTasksHidden" : "sidebar.noActiveTasks")}</p>
+								<p className="mt-1">{t(allTasksHidden ? "sidebar.allTasksHiddenHint" : "sidebar.noActiveTasksHint")}</p>
 							</>
 						)}
 					</div>
@@ -749,6 +806,8 @@ function ActiveTasksSidebar({
 											navigate={navigate}
 											onOpen={() => handleTaskClick(task)}
 											onSetPriority={(p) => handleSetPriority(task, p)}
+											onSetHidden={() => handleSetHidden(task)}
+											showHidden={showHidden}
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											closePreview={preview.close}

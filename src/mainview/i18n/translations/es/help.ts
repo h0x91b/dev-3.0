@@ -251,6 +251,9 @@ const help = {
 	"help.sidebar.scope.title": "Qué proyectos entran en la lista",
 	"help.sidebar.scope.body":
 		"Tres iconos, tres tamaños de lista. La carpeta muestra solo las tareas de este proyecto. El anillo muestra todos los proyectos del mismo espacio, y aparece tachado cuando este proyecto no está en ninguno. El globo muestra todas las tareas de la máquina: así encuentras trabajo que dejaste en otro sitio.",
+	"help.sidebar.showHidden.title": "Tareas que ocultaste de esta lista",
+	"help.sidebar.showHidden.body":
+		"Ocultar una tarea saca todo su grupo de variantes de Tareas activas y nada más: sigue trabajando, sigue notificando y permanece en el tablero. Este ojo trae de vuelta las ocultas, atenuadas y marcadas, hasta que lo pulses otra vez.",
 	"help.tips.card.title": "¿Sabías que...?",
 	"help.tips.card.body":
 		"Una pista corta cada vez sobre algo que dev3 hace y que ningún botón en pantalla anuncia: un atajo, un arrastre, un comando de la CLI. Si la cierras no vuelve, y en Ajustes hay un interruptor para quitarlas todas.",

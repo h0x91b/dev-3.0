@@ -257,6 +257,9 @@ const help = {
 	"help.sidebar.scope.title": "Which project the list covers",
 	"help.sidebar.scope.body":
 		"Three glyphs, three sizes of list. The folder shows only this project's tasks. The ring shows every project in the same space, and is struck through when this project is in none of them. The globe shows every task on the machine, which is how you find work you left running somewhere else.",
+	"help.sidebar.showHidden.title": "Tasks you hid from this list",
+	"help.sidebar.showHidden.body":
+		"Hiding a task drops its whole variant group out of Active Tasks and nothing else: it keeps working, keeps notifying, and stays on the board. This eye brings the hidden ones back, dimmed and marked, until you press it again.",
 	"help.tips.card.title": "Did you know?",
 	"help.tips.card.body":
 		"One short pointer at a time towards something dev3 does that no button on screen announces — a shortcut, a drag, a CLI command. Dismiss it and it never returns; there is a switch in Settings if you would rather have none of them.",

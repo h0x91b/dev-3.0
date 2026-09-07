@@ -8,15 +8,16 @@ import type { SVGProps } from "react";
  * and ad-hoc inline SVGs with a single stroke style consistent with the header
  * (HeaderIcons), tmux (TmuxIcons) and git (GitIcons) sets.
  *
- * Every icon carries `th-*` animation hooks: when a `.task-anim` ancestor (the
- * hosting button) is hovered, pure-CSS keyframes in index.css act out the
+ * Every header-row icon carries `th-*` animation hooks: when a `.task-anim`
+ * ancestor (the hosting button) is hovered, pure-CSS keyframes in index.css act out the
  * operation the icon triggers — the watch bell rings with sound waves, the
  * bug squirms under a focusing lens, the agent robot tilts hello and pings, the
  * open-in arrow launches out of its box, the file / port trees wire themselves
  * up, the scripts ƒ writes itself, the images sun rises at golden hour, the
  * settings gear ratchets, the fullscreen arrows burst out (or dive back in),
  * the panel chevron dips with a ghost echo. Idle rendering is pixel-identical
- * to the static icon.
+ * to the static icon. Glyphs shared with other surfaces (`EyeIcon`, on the
+ * Active Tasks rows) ship static — they have no `.task-anim` host.
  */
 
 interface TaskIconProps {
@@ -263,6 +264,16 @@ export function PanelChevronIcon({ className, direction = "down" }: TaskIconProp
 		<svg {...svgBase(className, 2)}>
 			<path d={d} className={move} />
 			<path d={d} className={ghost} opacity="0" />
+		</svg>
+	);
+}
+
+export function EyeIcon({ className, off = false }: TaskIconProps & { off?: boolean }) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+			<circle cx="12" cy="12" r="2.8" />
+			{off && <path d="M4 20 20 4" />}
 		</svg>
 	);
 }

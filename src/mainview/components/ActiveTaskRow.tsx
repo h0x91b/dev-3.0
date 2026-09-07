@@ -7,6 +7,7 @@ import { useT, useLocale } from "../i18n";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { useReducedMotion } from "../utils/useReducedMotion";
 import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import type { AppAction, Route } from "../state";
 import AgentLauncherBadge from "./AgentLauncherBadge";
@@ -19,6 +20,7 @@ import TaskCardRail from "./TaskCardRail";
 import TaskPrBadges from "./TaskPrBadges";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
+import { EyeIcon } from "./TaskIcons";
 import VariantDots from "./VariantDots";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -56,6 +58,8 @@ interface ActiveTaskRowProps {
 	navigate: (route: Route) => void;
 	onOpen: () => void;
 	onSetPriority: (priority: TaskPriority) => void;
+	onSetHidden: () => Promise<void>;
+	showHidden: boolean;
 	onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => void;
 	onMouseLeave: () => void;
 	/** Closes the hover terminal preview before navigating away. */
@@ -88,6 +92,8 @@ export default function ActiveTaskRow({
 	navigate,
 	onOpen,
 	onSetPriority,
+	onSetHidden,
+	showHidden,
 	onMouseEnter,
 	onMouseLeave,
 	closePreview,
@@ -98,6 +104,8 @@ export default function ActiveTaskRow({
 	const statusMenu = useStatusMenu(narrow);
 	const [completing, setCompleting] = useState(false);
 	const [moving, setMoving] = useState(false);
+	const [hiding, setHiding] = useState(false);
+	const reducedMotion = useReducedMotion();
 
 	const displayTitle = getTaskTitle(task);
 	const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
@@ -154,6 +162,20 @@ export default function ActiveTaskRow({
 		}
 	}
 
+	async function handleSetHidden(e: React.MouseEvent) {
+		e.stopPropagation();
+		closePreview();
+		try {
+			if (!task.hidden && !showHidden && !reducedMotion) {
+				setHiding(true);
+				await new Promise((resolve) => setTimeout(resolve, 200));
+			}
+			await onSetHidden();
+		} finally {
+			setHiding(false);
+		}
+	}
+
 	const agePart = ageParts(task.movedAt, now);
 
 	return (
@@ -165,7 +187,9 @@ export default function ActiveTaskRow({
 			// The row's explicit name overrides its descendants, so the native
 			// marker only reaches assistive tech from here.
 			aria-label={
-				isNativeBackendTask(task) ? `${displayTitle} — ${t("task.nativeBackendMark")}` : displayTitle
+				[displayTitle, isNativeBackendTask(task) && t("task.nativeBackendMark"), task.hidden && t("task.hiddenFromSidebar")]
+					.filter(Boolean)
+					.join(" — ")
 			}
 			onClick={onOpen}
 			onKeyDown={(e) => {
@@ -181,7 +205,7 @@ export default function ActiveTaskRow({
 				if (!task.shuttingDown) onMouseEnter(e);
 			}}
 			onMouseLeave={onMouseLeave}
-			className={`relative flex w-full items-stretch text-left transition-colors cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
 					: task.hibernated || disconnected
@@ -189,7 +213,7 @@ export default function ActiveTaskRow({
 						: isActive
 							? "bg-accent/20 ring-1 ring-inset ring-accent/50"
 							: "hover:bg-elevated-hover"
-			}`}
+			} ${hiding ? "pointer-events-none !opacity-0 motion-safe:-translate-x-4 motion-safe:scale-[0.98]" : task.hidden && !task.shuttingDown ? "opacity-60" : ""}`}
 		>
 			{/* Faint status wash so the whole row carries its column color
 			    (non-active rows only; active keeps its accent tint). */}
@@ -227,11 +251,22 @@ export default function ActiveTaskRow({
 			{task.shuttingDown && <TaskShutdownOverlay />}
 
 			<div className="min-w-0 flex-1 px-2.5 py-2">
+				<Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
+					<button
+						type="button"
+						onClick={handleSetHidden}
+						className="absolute right-2 top-2 z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-raised text-fg-3 opacity-100 transition-[opacity,color,background-color,transform] duration-150 ease-out hover:bg-elevated hover:text-fg motion-safe:active:scale-[0.96] md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+						aria-label={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}
+						data-testid={`sidebar-task-hidden-toggle-${task.id}`}
+					>
+						<EyeIcon off={!task.hidden} className="h-3.5 w-3.5" />
+					</button>
+				</Tooltip>
 				{/* Project badge (global/attention scope only) */}
 				{projectBadgeName && (
 					<Tooltip content={projectBadgeName}>
 						<div
-							className="mb-1 inline-flex items-center gap-1 max-w-full text-micro font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
+							className="mb-1 inline-flex items-center gap-1 max-w-[calc(100%-1.5rem)] text-micro font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
 							data-testid={`sidebar-project-badge-${task.id}`}
 						>
 							<span
@@ -247,7 +282,7 @@ export default function ActiveTaskRow({
 				)}
 
 				{/* CONTENT — the row's only visual focus. */}
-				<div className={`text-xs leading-snug break-words ${isActive ? "text-fg font-medium" : "text-fg-2"}`}>
+				<div className={`pr-6 text-xs leading-snug break-words ${isActive ? "text-fg font-medium" : "text-fg-2"}`}>
 					{displayTitle}
 				</div>
 
@@ -272,6 +307,13 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
+					{task.hidden && (
+						<Tooltip content={t("task.hiddenFromSidebar")}>
+							<span className="inline-flex text-fg-muted" data-testid={`sidebar-task-hidden-badge-${task.id}`}>
+								<EyeIcon off className="h-3 w-3" />
+							</span>
+						</Tooltip>
+					)}
 					{/* Git group leads the signals, mirroring the board bottom bar. The
 					    merge verdict goes glyph-only here: its word is 77px of a 200px
 					    line, and it survives in the tooltip, the name and the popover. */}

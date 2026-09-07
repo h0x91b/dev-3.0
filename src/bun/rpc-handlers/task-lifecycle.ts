@@ -407,6 +407,17 @@ async function setTaskPriority(params: { taskId: string; projectId: string; prio
 	return changed;
 }
 
+async function setTaskHidden(params: { taskId: string; projectId: string; hidden: boolean }): Promise<Task[]> {
+	log.info("→ setTaskHidden", params);
+	const project = await data.getProject(params.projectId);
+	const changed = await data.setTaskHidden(project, params.taskId, params.hidden);
+	for (const task of changed) {
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	}
+	log.info("← setTaskHidden done", { count: changed.length });
+	return changed;
+}
+
 /**
  * Park a task: kill its agent, tmux session and dev server, release its ports,
  * keep the worktree and everything in it. `freedRssBytes` is read BEFORE the kill
@@ -1198,6 +1209,7 @@ export const taskLifecycleHandlers = {
 	debugEmitTaskSound,
 	cancelTaskPreparation,
 	setTaskPriority,
+	setTaskHidden,
 	hibernateTask,
 	deleteTask,
 	moveTaskToProject,

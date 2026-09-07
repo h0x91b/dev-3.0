@@ -59,8 +59,24 @@ const BUDGET_KB: Record<string, number> = {
 	// another rule's why. `allowed` is the gate ux-principal reads to decide placement, so
 	// leaving the token out would have made the shipped badge read as unsanctioned.
 	// Reasoning: decisions/2026/08/30/sidebar-pr-badge-without-discovery-poll.md.
-	"ux-architecture.yaml": 116,
-	"UX_DECISIONS.md": 80,
+	//
+	// 116 → 117 and the log 80 → 81 for `Task.hidden` (sidebar-only task visibility): two tokens in
+	// `surfaces.sidebar.allowed`, a one-line `visibility` note, and one dated log entry. Compaction
+	// ran first and is kept: both were drafted in full and folded to pointers at
+	// decisions/2026/09/07/hide-tasks-from-active-sidebar.md, taking the yaml note from 341 bytes to
+	// 168 and the log entry from 504 to 249. That was not enough, and the reason is the wall the
+	// tree-cap note below predicted in as many words: `main` arrived at 3 bytes of headroom on the
+	// yaml and 6 on the log, so the feature only fitted by documenting itself nowhere, which is the
+	// one thing these manifests exist to prevent.
+	//
+	// Folding other entries was the sanctioned alternative and it was tried. 38 record-backed
+	// entries in the log are still full prose, so the fat is real, but the largest (1213 bytes,
+	// 2026-08-07 "A narrow control row sheds") cites one record covering only its §12.3 half: its
+	// 340px measurement and the rejected ResizeObserver approach live nowhere else, and the log's
+	// own header forbids compacting those. Deleting a why permanently to buy 200 bytes is worse than
+	// this ratchet. The 38-entry fold is its own task and would pay for several features.
+	"ux-architecture.yaml": 117,
+	"UX_DECISIONS.md": 81,
 };
 
 /**
