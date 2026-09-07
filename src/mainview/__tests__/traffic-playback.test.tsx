@@ -26,6 +26,7 @@ const first = record("first", 1);
 const second = record("second", 2);
 const third = record("third", 3);
 const records = [third, second, first];
+const defaultInterval = 1629;
 
 function setup(initial = { records, enabled: true, scopeKey: "project" }) {
 	return renderHook(
@@ -45,7 +46,7 @@ describe("traffic playback", () => {
 		expect(result.current.index).toBe(-1);
 		expect(result.current.current).toBeNull();
 		expect(result.current.playing).toBe(false);
-		expect(result.current.speed).toBe(0.5);
+		expect(result.current.speed).toBe(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
@@ -54,15 +55,15 @@ describe("traffic playback", () => {
 		act(() => result.current.playPause());
 		expect(result.current.current).toBe(first);
 		expect(result.current.revision).toBe(1);
-		act(() => vi.advanceTimersByTime(2199));
+		act(() => vi.advanceTimersByTime(defaultInterval - 1));
 		expect(result.current.current).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.current).toBe(second);
-		act(() => vi.advanceTimersByTime(2200));
+		act(() => vi.advanceTimersByTime(defaultInterval));
 		expect(result.current.current).toBe(third);
 		expect(result.current.revision).toBe(3);
 		expect(result.current.playing).toBe(true);
-		act(() => vi.advanceTimersByTime(2199));
+		act(() => vi.advanceTimersByTime(defaultInterval - 1));
 		expect(result.current.playing).toBe(true);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.playing).toBe(false);
@@ -83,7 +84,7 @@ describe("traffic playback", () => {
 		expect(result.current.current).toBe(first);
 		act(() => result.current.playPause());
 		expect(result.current.revision).toBe(1);
-		act(() => vi.advanceTimersByTime(2200));
+		act(() => vi.advanceTimersByTime(defaultInterval));
 		expect(result.current.current).toBe(second);
 	});
 
@@ -91,7 +92,7 @@ describe("traffic playback", () => {
 		const { result } = setup();
 		act(() => result.current.playPause());
 		act(() => result.current.setSpeed(2));
-		act(() => vi.advanceTimersByTime(732));
+		act(() => vi.advanceTimersByTime(813));
 		expect(result.current.current).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.current).toBe(second);
@@ -103,7 +104,7 @@ describe("traffic playback", () => {
 		expect(result.current.speed).toBe(2);
 	});
 
-	it.each([[0.25, 4400], [0.5, 2200], [1, 1100 / 0.75], [2, 1100 / 1.5], [4, 1100 / 3], [8, 1100 / 6]])("runs %s× at the calibrated pace", (speed, duration) => {
+	it.each([[0.25, 4400 / 0.9], [0.5, 2200 / 0.9], [1, 1100 / 0.675], [2, 1100 / 1.35], [4, 1100 / 2.7], [8, 1100 / 5.4]])("runs %s× at the calibrated pace", (speed, duration) => {
 		const { result } = setup();
 		act(() => result.current.setSpeed(speed));
 		expect(result.current.intervalMs).toBeCloseTo(duration);
@@ -180,7 +181,7 @@ describe("traffic playback", () => {
 		act(() => result.current.playPause());
 		act(() => vi.advanceTimersByTime(2000));
 		act(() => result.current.restart());
-		act(() => vi.advanceTimersByTime(2199));
+		act(() => vi.advanceTimersByTime(defaultInterval - 1));
 		expect(result.current.current).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.current).toBe(second);
@@ -228,7 +229,7 @@ describe("traffic playback", () => {
 		expect(result.current.current).toBe(first);
 		expect(result.current.playing).toBe(true);
 		expect(vi.getTimerCount()).toBe(1);
-		act(() => vi.advanceTimersByTime(2199));
+		act(() => vi.advanceTimersByTime(defaultInterval - 1));
 		expect(result.current.playing).toBe(true);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.playing).toBe(false);

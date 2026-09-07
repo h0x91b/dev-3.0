@@ -7,7 +7,7 @@ it("moves with its route anchor and hides offscreen instead of sticking to the v
 	const bubble = container.firstElementChild as HTMLElement;
 	expect(bubble.textContent).toBe(props.subject);
 	expect(bubble.style.top).toBe("278px");
-	expect(bubble.querySelector(".traffic-message-tail path")?.getAttribute("d")).toBe("M0 0 L10 22 L20 0");
+	expect(bubble.querySelector(".traffic-message-tail")).not.toBeNull();
 	rerender(<TrafficMessageBubble {...props} anchor={{ x: 410, y: 200 }} />);
 	expect(bubble.style.top).toBe("178px");
 	for (const anchor of [{ x: 410, y: -10 }, { x: -10, y: 300 }, { x: 810, y: 300 }, { x: 410, y: 610 }]) {

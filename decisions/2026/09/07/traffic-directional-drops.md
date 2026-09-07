@@ -6,9 +6,9 @@ The user preferred a calm stream indicating message direction, with violet drops
 
 ## Decision
 
-`TrafficNodes` emits three round drops per attempt, 500ms apart at normal pace. Held and unconfirmed attempts traverse the full route; only not-delivered remains red and stops short. Faster replay compresses the train to finish within its event interval. The 1× preset is calibrated to the former 0.75× pace (1.5 times faster than unchanged 0.5×); 2×/4×/8× multiply that new baseline, while 0.25× remains unchanged. `useTrafficPlayback.intervalMs` synchronizes the event timer, camera and drops. Drops remain finite, screen-sized and absent under reduced motion; they do not increment message counts.
+`TrafficNodes` emits three round drops per attempt, 500ms apart at normal pace. Held and unconfirmed attempts traverse the full route; only not-delivered remains red and stops short. Faster replay compresses the train to finish within its event interval. The 1× preset is calibrated to the former 0.75× pace (1.5 times faster than unchanged 0.5×); 2×/4×/8× multiply that new baseline, while 0.25× retains its relative pace. All presets then apply a shared 0.9 speed factor; 1× is the default (about 1.63 seconds per event). `useTrafficPlayback.intervalMs` synchronizes the event timer, camera and drops. Drops remain finite, screen-sized and absent under reduced motion; they do not increment message counts.
 
-`TrafficMessageBubble` shows only the message with a triangular tail ending at the route midpoint (or known recipient for senderless messages). It follows the scene anchor, flips below near the top, and hides when that anchor is offscreen instead of pinning itself to an edge. Delivery details remain in the inspector and log.
+`TrafficMessageBubble` shows only the message with a rounded tail with its fill overlapping the body edge to hide the seam, ending at the route midpoint (or known recipient for senderless messages). It follows the scene anchor, flips below near the top, and hides when that anchor is offscreen instead of pinning itself to an edge. Delivery details remain in the inspector and log.
 
 ## Risks
 

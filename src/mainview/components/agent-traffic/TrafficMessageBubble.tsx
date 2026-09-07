@@ -30,9 +30,9 @@ export default function TrafficMessageBubble({ subject, anchor, width, height, f
 		<div ref={ref} className={`traffic-edge-subject ${failed ? "is-failed" : ""} ${below ? "is-below" : ""}`}
 			style={{ left, top, maxWidth: Math.max(80, width - 24), visibility: anchor.x < 0 || anchor.x > width || anchor.y < 0 || anchor.y > height ? "hidden" : undefined }}>
 			<strong className="streamer-private">{subject}</strong>
-			<svg className="traffic-message-tail" width="20" height="22" viewBox="0 0 20 22"
+			<svg className="traffic-message-tail" width="20" height="24" viewBox="0 -2 20 24"
 				style={{ left: tailX - 10 }} aria-hidden="true">
-				<path d={`M0 0 L${tipX} 22 L20 0`} />
+				<path d={`M0 -2 C4 2 ${tipX - 5} 14 ${tipX - 1.5} 20 Q${tipX} 24 ${tipX + 1.5} 20 C${tipX + 5} 14 16 2 20 -2`} />
 			</svg>
 		</div>
 	);

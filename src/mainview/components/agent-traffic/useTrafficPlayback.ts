@@ -22,8 +22,8 @@ export function useTrafficPlayback(
 				.sort((a, b) => Date.parse(a.row.at) - Date.parse(b.row.at)),
 		[records],
 	);
-	const [speed, updateSpeed] = useState(0.5);
-	const intervalMs = 1100 / (speed >= 1 ? speed * 0.75 : speed);
+	const [speed, updateSpeed] = useState(1);
+	const intervalMs = 1100 / ((speed >= 1 ? speed * 0.75 : speed) * 0.9);
 	const [state, setState] = useState<PlaybackState>({
 		scopeKey,
 		events: null,
