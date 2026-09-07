@@ -347,15 +347,15 @@ inspector. Not a destination.
 - **Beta, off by default, off means invisible.** Settings → System → Advanced Experience gates the
   control, kebab row, `⇧⌘M`, View menu, palette command and tip; no greyed-out trace, and picking a
   presentation never enables it.
-- **Presence follows data; the badge follows unread.** The kebab row stays; the bar pill appears
-  while the project has recorded traffic, never keyed to unread alone. Unread reads the per-browser
+- **Presence follows data; the badge follows unread.** The kebab row stays; the pill appears while
+  the project has recorded traffic, never keyed to unread alone. Unread reads the per-browser
   last-look stamp, initializes on first look, caps at `9+`.
 - **Direct entry, responsive overlay.** Clicking the pill opens it; on narrow only the kebab entry
   remains. BottomSheet there, dialog on wide, with focus trapping, Escape dismissal and focus
   restoration. Keep the shortcut/menu/palette entries.
 - **Project grouping, not ownership.** Show active tasks and selected-history endpoints, not the
-  whole archive. Use real identity, role, current column/runtime and overview; keep positions stable.
-  Historical endpoints stay readable without dead navigation; seq is display only.
+  whole archive. Use real identity, role, current column/runtime and overview; keep positions put.
+  Historical endpoints stay readable without dead links; seq is display only.
 - **Live attempts, not read receipts.** Writer pushes and lazy Bun fs observers cover durable
   appends, older installs included; no polling, observers close at shutdown.
   Each new attempt may pulse once along its route, verdict-coloured. Keep distinct verdict text and
@@ -365,10 +365,10 @@ inspector. Not a destination.
   history window belong inside the overlay, not the global header.
 - **History is messages; task state is current.** Time filtering never reconstructs past columns,
   runtime or PR checks. Show retention, oldest day, page limits. Subjects stay complete; old rows
-  fall back to their body head. Keep spill-pointer and delivery evidence.
+  fall back to their body head. Keep spill-pointer and delivery proof.
 - **No invented workflow.** The last recipient owes no inferred reply. Do not derive importance,
-  ownership, merge order, narratives or progress from traffic. No composer, terminal, import/export
-  or synthetic queue belongs in this read-only surface.
+  ownership, merge order, narratives or progress. No composer, terminal, import/export or synthetic
+  queue belongs in this read-only surface.
 
 Evidence: `agent-traffic/`, `agent-traffic.ts`, `shared/agent-message-log.ts`.
 
