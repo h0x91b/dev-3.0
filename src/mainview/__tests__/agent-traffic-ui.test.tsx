@@ -422,6 +422,19 @@ describe("AgentTrafficLog presentation picker", () => {
 		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
 	});
 
+	// A graph that re-arranges under the pointer is unreadable, so filtering and
+	// selection change what is lit, never where anything sits.
+	it("keeps every card in place when a selection narrows the messages", async () => {
+		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
+		renderLog();
+		await messageRows(2);
+		const before = nodeCards().map((node) => (node as HTMLElement).style.left);
+		const card = nodeCards().find((node) => node.textContent?.includes("#22"));
+		await userEvent.click(card as HTMLElement);
+		await messageRows(1);
+		expect(nodeCards().map((node) => (node as HTMLElement).style.left)).toEqual(before);
+	});
+
 	it("selecting a card in Experiment 2 drives the shared inspector", async () => {
 		setPage([row()]);
 		renderLog();

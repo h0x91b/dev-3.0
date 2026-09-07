@@ -434,6 +434,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 							scope={scope}
 							nodes={nodes}
 							records={visible}
+							layoutRecords={timeRows}
 							selected={selected}
 							onSelect={select}
 							paused={paused || until !== null}

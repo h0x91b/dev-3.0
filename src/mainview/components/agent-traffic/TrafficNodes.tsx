@@ -18,6 +18,13 @@ interface Props {
 	scope?: string;
 	nodes: TrafficNode[];
 	records: TrafficRecord[];
+	/**
+	 * What the layout is built from: the time window before search, delivery and
+	 * selection filters narrow it. Positions must not move when the user selects a
+	 * card or types in the search box — a graph that re-arranges under the pointer
+	 * is unreadable, and the bible's "keep positions stable" rule says so.
+	 */
+	layoutRecords: TrafficRecord[];
 	selected: string | null;
 	onSelect: (key: string) => void;
 	paused: boolean;
@@ -58,6 +65,7 @@ interface Flight {
 export default function TrafficNodes({
 	nodes,
 	records,
+	layoutRecords,
 	selected,
 	onSelect,
 	paused,
@@ -68,7 +76,7 @@ export default function TrafficNodes({
 	const statusColors = useStatusColors();
 	const reduced = useReducedMotion();
 	const frame = useRef<HTMLDivElement>(null);
-	const scene = useMemo(() => layoutTraffic(nodes, records), [nodes, records]);
+	const scene = useMemo(() => layoutTraffic(nodes, layoutRecords), [nodes, layoutRecords]);
 	const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
 	const [flights, setFlights] = useState<Flight[]>([]);
 	const [arrivals, setArrivals] = useState<Record<string, number>>({});
@@ -186,6 +194,16 @@ export default function TrafficNodes({
 		});
 	}, []);
 
+	// Which pairs survive the parent's filters right now: everything else stays in
+	// place and fades, so the shape of the conversation is never redrawn.
+	const live = useMemo(() => {
+		const keys = new Set<string>();
+		for (const { row } of records) {
+			const from = fromKey(row);
+			if (from) keys.add([from, toKey(row)].sort().join("|"));
+		}
+		return keys;
+	}, [records]);
 	const drag = useRef<{ id: number; x: number; y: number } | null>(null);
 	const detail = view.scale < CELL_BELOW ? "cell" : view.scale < COMPACT_BELOW ? "compact" : "full";
 	const now = Date.now();
@@ -238,7 +256,8 @@ export default function TrafficNodes({
 				>
 					{scene.edges.map((edge) => {
 						const dim =
-							selected !== null && edge.from !== selected && edge.to !== selected;
+							(selected !== null && edge.from !== selected && edge.to !== selected) ||
+							!live.has(edge.key);
 						return (
 							<path
 								key={edge.key}
