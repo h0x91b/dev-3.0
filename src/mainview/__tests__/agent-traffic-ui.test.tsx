@@ -856,8 +856,8 @@ it("Follow settles once on the pair and holds the same framing for its reply", a
 	const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => size.height);
 	let resize: ResizeObserverCallback | undefined;
 	vi.stubGlobal("ResizeObserver", class {
-		constructor(callback: ResizeObserverCallback) { resize = callback; }
-		observe() {}
+		constructor(private callback: ResizeObserverCallback) {}
+		observe(target: Element) { if (target.classList.contains("traffic-nodes")) resize = this.callback; }
 		unobserve() {}
 		disconnect() {}
 	});
@@ -1010,19 +1010,16 @@ it("Follow returns to overview after live inactivity and replay completion but k
 });
 
 
-it.each([
-	["held", "Held"], ["delivered", "Delivered"],
-	["unconfirmed", "Unconfirmed"], ["not-delivered", "Not delivered"],
-] as const)("senderless %s messages show a delivery bubble, not inferred notification intent", async (status, label) => {
-	setPage([row({ fromTaskId: null, fromSeq: null, status, subject: "Success: work completed, question for you" })]);
+it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s message bubbles contain only the message and a tail", async (status) => {
+	const subject = "Work finished with a question";
+	setPage([row({ fromTaskId: null, fromSeq: null, status, subject })]);
 	renderLog();
 	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
 	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
-	const bubble = document.querySelector(".traffic-edge-subject.is-incoming");
-	expect(bubble).toHaveAttribute("data-status", status);
-	expect(bubble?.querySelector(".traffic-message-verdict")?.textContent).toBe(label);
-	expect(bubble?.querySelector(".traffic-message-verdict svg")).not.toBeNull();
-	expect(bubble?.textContent).toContain("→ #22");
+	const bubble = document.querySelector(".traffic-edge-subject");
+	expect(bubble?.textContent).toBe(subject);
+	expect(bubble?.querySelector(".traffic-message-tail")).not.toBeNull();
+	expect(bubble?.classList.contains("is-failed")).toBe(status === "not-delivered");
 	expect(document.querySelector(".traffic-wire.is-active")).toBeNull();
 });
 
@@ -1042,5 +1039,45 @@ it("minimap navigation hands camera control away from Follow", async () => {
 		expect(document.querySelector(".traffic-nodes")).toHaveAttribute("data-follow", "false");
 	} finally {
 		rendered.unmount(); width.mockRestore(); height.mockRestore();
+	}
+});
+
+it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s sends three round drops in order and keeps only failures short of the destination", async (status) => {
+	vi.useFakeTimers();
+	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+		matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
+		addListener() {}, removeListener() {}, dispatchEvent: () => false,
+	}));
+	const frames = new Map<number, FrameRequestCallback>();
+	let frameId = 0;
+	vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
+	vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+	const advance = (ms: number) => act(() => {
+		vi.advanceTimersByTime(ms);
+		const pending = [...frames.values()]; frames.clear();
+		pending.forEach(callback => callback(performance.now()));
+	});
+	setPage([row({ status })]);
+	const rendered = renderLog();
+	try {
+		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+		advance(0);
+		expect(document.querySelectorAll("circle.traffic-flight")).toHaveLength(1);
+		advance(500);
+		expect(document.querySelectorAll("circle.traffic-flight")).toHaveLength(2);
+		advance(500);
+		expect(document.querySelectorAll("circle.traffic-flight")).toHaveLength(3);
+		const positions = [...document.querySelectorAll("circle.traffic-flight")].map(el => el.getAttribute("transform"));
+		expect(new Set(positions).size).toBe(3);
+		advance(200);
+		const destination = document.querySelector(".traffic-wire.is-active")!.getAttribute("d")!.match(/-?\d+(?:\.\d+)?/g)!.slice(-2).map(Number);
+		const arrived = document.querySelector("circle.traffic-flight")!.getAttribute("transform")!.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+		if (status === "not-delivered") expect(arrived).not.toEqual(destination);
+		else expect(arrived).toEqual(destination);
+		advance(1300);
+		expect(document.querySelectorAll(".traffic-flight")).toHaveLength(0);
+	} finally {
+		rendered.unmount(); media.mockRestore(); vi.unstubAllGlobals(); vi.useRealTimers();
 	}
 });

@@ -147,12 +147,9 @@
 	fill: rgb(var(--agent));
 	filter: drop-shadow(0 0 12px rgb(var(--agent) / 0.8));
 }
-.traffic-flight.verdict-held,
-.traffic-flight.verdict-unconfirmed {
-	fill: rgb(var(--warning));
-}
 .traffic-flight.verdict-not-delivered {
 	fill: rgb(var(--danger));
+	filter: drop-shadow(0 0 12px rgb(var(--danger) / 0.8));
 }
 .traffic-node-card {
 	position: absolute;
@@ -464,77 +461,44 @@
 	background: rgb(var(--accent) / 0.1);
 }
 .traffic-edge-subject {
+	--message-tone: var(--agent);
 	position: absolute;
 	z-index: 3;
 	pointer-events: none;
 	transform: translate(-50%, -100%);
-	max-width: 290px;
-	padding: 8px 12px;
-	border-radius: 7px;
-	background: rgb(var(--surface-overlay) / 0.97);
-	box-shadow:
-		0 8px 25px rgb(0 0 0 / 0.2),
-		inset 0 0 0 1px rgb(var(--agent) / 0.3);
+	width: max-content;
+	padding: 9px 13px;
+	border-radius: 12px;
+	background: rgb(var(--surface-overlay));
+	box-shadow: 0 8px 25px rgb(0 0 0 / 0.2), inset 0 0 0 1px rgb(var(--message-tone) / 0.3);
 }
-.traffic-edge-subject small {
-	display: block;
-	color: rgb(var(--agent));
-	font: 11px var(--dev3-mono-stack);
-	margin-bottom: 5px;
+.traffic-edge-subject.is-failed {
+	--message-tone: var(--danger);
+}
+.traffic-edge-subject.is-below {
+	transform: translate(-50%, 0);
 }
 .traffic-edge-subject strong {
 	display: -webkit-box;
+	max-width: 264px;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 	font-size: 13px;
 	font-weight: 500;
 }
-.traffic-edge-subject .traffic-message-verdict {
-	display: flex;
-	align-items: center;
-	gap: 5px;
-}
-.traffic-message-verdict .traffic-icon {
-	width: 14px;
-	height: 14px;
-}
-.traffic-edge-subject.is-incoming {
-	--message-tone: var(--accent);
-	--message-ink: var(--accent);
-	border-radius: 14px;
-	background: rgb(var(--surface-overlay));
-	box-shadow: 0 8px 25px rgb(0 0 0 / 0.2), inset 0 0 0 1px rgb(var(--message-tone) / 0.45);
-}
-.traffic-edge-subject.is-incoming[data-status="delivered"] {
-	--message-tone: var(--success);
-	--message-ink: var(--success-strong);
-}
-.traffic-edge-subject.is-incoming[data-status="held"] {
-	--message-tone: var(--warning);
-	--message-ink: var(--warning-strong);
-}
-.traffic-edge-subject.is-incoming[data-status="not-delivered"] {
-	--message-tone: var(--danger);
-	--message-ink: var(--danger);
-}
-.traffic-edge-subject.is-incoming small {
-	color: rgb(var(--text-secondary));
-}
-.traffic-edge-subject.is-incoming .traffic-message-verdict {
-	color: rgb(var(--message-ink));
-}
-.traffic-edge-subject.is-incoming::after {
-	content: "";
+.traffic-message-tail {
 	position: absolute;
-	width: 10px;
-	height: 10px;
-	left: calc(50% - 5px);
-	bottom: -5px;
-	transform: rotate(45deg);
-	background: rgb(var(--surface-overlay));
-	border-right: 1px solid rgb(var(--message-tone) / 0.45);
-	border-bottom: 1px solid rgb(var(--message-tone) / 0.45);
+	bottom: -22px;
+	overflow: visible;
+	fill: rgb(var(--surface-overlay));
+	stroke: rgb(var(--message-tone) / 0.3);
+	stroke-width: 1px;
+}
+.traffic-edge-subject.is-below .traffic-message-tail {
+	bottom: auto;
+	top: -22px;
+	transform: scaleY(-1);
 }
 .traffic-playback {
 	margin: 0 16px 8px;

@@ -97,7 +97,7 @@ export default function TrafficPlayback({
 					value={p.speed}
 					onChange={(e) => p.setSpeed(Number(e.target.value))}
 				>
-					{[0.5, 1, 2, 4].map((speed) => (
+					{[0.25, 0.5, 1, 2, 4, 8].map((speed) => (
 						<option key={speed} value={speed}>
 							{speed}×
 						</option>

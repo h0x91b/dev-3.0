@@ -23,6 +23,7 @@ export function useTrafficPlayback(
 		[records],
 	);
 	const [speed, updateSpeed] = useState(0.5);
+	const intervalMs = 1100 / (speed >= 1 ? speed * 0.75 : speed);
 	const [state, setState] = useState<PlaybackState>({
 		scopeKey,
 		events: null,
@@ -63,9 +64,9 @@ export function useTrafficPlayback(
 					revision: previous.revision + 1,
 				};
 			});
-		}, 1100 / speed);
+		}, intervalMs);
 		return () => clearInterval(timer);
-	}, [playing, speed, scopeKey, state.revision]);
+	}, [playing, intervalMs, scopeKey, state.revision]);
 
 	function activate(target: number, resume: boolean, refresh = false) {
 		if (!enabled || !Number.isFinite(target)) return;
@@ -97,6 +98,7 @@ export function useTrafficPlayback(
 		playing,
 		ended: active && state.ended,
 		speed,
+		intervalMs,
 		revision: state.revision,
 		setSpeed(value: number) {
 			if (Number.isFinite(value) && value > 0) updateSpeed(value);

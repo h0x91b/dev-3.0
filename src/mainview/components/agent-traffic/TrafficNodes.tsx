@@ -30,6 +30,7 @@ import {
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
+import TrafficMessageBubble from "./TrafficMessageBubble";
 import { frameExchange } from "./traffic-camera";
 
 interface Props {
@@ -59,10 +60,13 @@ interface Flight {
 	record: TrafficRecord;
 	points: { x: number; y: number }[];
 	started: number;
+	tempo: number;
 }
-const FLIGHT_MS = 1400;
+const FLOW_MS = 2400;
+const DROP_MS = 1200;
+const DROP_GAP_MS = 500;
+const DROP_FADE_MS = 200;
 const FOLLOW_IDLE_MS = 3500;
-const LINGER_MS = 900;
 const MIN_SCALE = 0.14;
 const MAX_SCALE = 2.2;
 
@@ -281,10 +285,10 @@ export default function TrafficNodes({
 			move(
 				frameExchange(viewport, sender ? [sender, recipient] : [recipient], edge?.points ?? []),
 				reduced,
-				playback?.playing ? Math.min(500, 990 / playback.speed) : 500,
+				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
 			);
 		},
-		[nodeByKey, edgeByKey, move, reduced, playback?.playing, playback?.speed],
+		[nodeByKey, edgeByKey, move, reduced, playback?.playing, playback?.intervalMs],
 	);
 
 	const launch = useCallback(
@@ -296,10 +300,10 @@ export default function TrafficNodes({
 			const points = edge ? (edge.from === from ? edge.points : [...edge.points].reverse()) : [];
 			setFlights((current) => [
 				...current.slice(-19),
-				{ record, points, started: Date.now() },
+				{ record, points, started: Date.now(), tempo: playback?.playing ? Math.min(1, playback.intervalMs / FLOW_MS) : 1 },
 			]);
 		},
-		[edgeByKey, reduced, paused],
+		[edgeByKey, paused, playback?.playing, playback?.intervalMs],
 	);
 	const launchRef = useRef(launch);
 	launchRef.current = launch;
@@ -391,7 +395,7 @@ export default function TrafficNodes({
 			const at = Date.now();
 			setNow(at);
 			setFlights((current) =>
-				current.filter((flight) => at - flight.started < FLIGHT_MS + LINGER_MS),
+				current.filter((flight) => at - flight.started < FLOW_MS * flight.tempo),
 			);
 			raf = requestAnimationFrame(tick);
 		};
@@ -549,33 +553,24 @@ export default function TrafficNodes({
 							/>
 						);
 					})}
-					{flights.map((flight) => {
-						if (reduced || !flight.points.length) return null;
+					{flights.flatMap((flight) => {
+						if (reduced || !flight.points.length) return [];
 						const status = flight.record.row.status;
-						const stop =
-							status === "held" ? 0.52 : status === "not-delivered" ? 0.7 : 1;
-						const elapsed = Math.max(0, now - flight.started);
-						const progress = Math.min(stop, elapsed / FLIGHT_MS);
-						const point = pointAt(flight.points, progress),
-							next = pointAt(flight.points, Math.min(1, progress + 0.001));
-						const angle =
-							(Math.atan2(next.y - point.y, next.x - point.x) * 180) / Math.PI;
-						return (
-							<rect
-								key={`${flight.record.key}:${flight.started}`}
-								className={`traffic-flight verdict-${status}`}
-								x={-7 / view.scale}
-								y={-2 / view.scale}
-								width={14 / view.scale}
-								height={4 / view.scale}
-								rx={2 / view.scale}
-								opacity={Math.max(
-									0,
-									1 - Math.max(0, elapsed - FLIGHT_MS) / LINGER_MS,
-								)}
-								transform={`translate(${point.x},${point.y}) rotate(${angle})`}
-							/>
-						);
+						const stop = status === "not-delivered" ? 0.7 : 1;
+						const age = (now - flight.started) / flight.tempo;
+						return [0, 1, 2].map((drop) => {
+							const elapsed = age - drop * DROP_GAP_MS;
+							if (elapsed < 0 || elapsed >= DROP_MS + DROP_FADE_MS) return null;
+							const progress = Math.min(stop, elapsed / DROP_MS);
+							const point = pointAt(flight.points, progress);
+							return (
+								<circle key={`${flight.record.key}:${flight.started}:${drop}`}
+									className={`traffic-flight verdict-${status}`}
+									r={3 / view.scale}
+									opacity={1 - Math.max(0, elapsed - DROP_MS) / DROP_FADE_MS}
+									transform={`translate(${point.x},${point.y})`} />
+							);
+						});
 					})}
 				</svg>
 				<div className="traffic-nodes-cards">
@@ -616,39 +611,13 @@ export default function TrafficNodes({
 				</div>
 			</div>
 			{active && labelPoint && (
-				<div
-					className={`traffic-edge-subject ${!activeFrom ? "is-incoming" : ""}`}
-					data-status={active.row.status}
-					style={{
-						left: Math.max(
-							150,
-							Math.min(
-								(frame.current?.clientWidth ?? 1000) - 150,
-								view.x + labelPoint.x * view.scale,
-							),
-						),
-						top: Math.max(
-							65,
-							Math.min(
-								(frame.current?.clientHeight ?? 500) - 95,
-								view.y + labelPoint.y * view.scale - 25,
-							),
-						),
-					}}
-				>
-					<small>
-						{projectById.get(active.row.toProjectId)?.name} ·{" "}
-						{active.row.fromSeq == null ? "" : `#${active.row.fromSeq} `}→ #
-						{active.row.toSeq}
-					</small>
-					<small className="traffic-message-verdict">
-						<TrafficIcon name={active.row.status === "held" ? "clock" : active.row.status === "delivered" ? "check" : active.row.status === "not-delivered" ? "error" : "info"} />
-						{t(`traffic.orbit.${active.row.status === "not-delivered" ? "notDelivered" : active.row.status}`)}
-					</small>
-					<strong className="streamer-private">
-						{active.row.subject || active.row.body.slice(0, 120)}
-					</strong>
-				</div>
+				<TrafficMessageBubble
+					subject={active.row.subject || active.row.body.slice(0, 120)}
+					anchor={{ x: view.x + labelPoint.x * view.scale, y: view.y + labelPoint.y * view.scale }}
+					width={frame.current?.clientWidth ?? 1000}
+					height={frame.current?.clientHeight ?? 500}
+					failed={active.row.status === "not-delivered"}
+				/>
 			)}
 			{!scene.placed.length && (
 				<p className="traffic-nodes-empty">

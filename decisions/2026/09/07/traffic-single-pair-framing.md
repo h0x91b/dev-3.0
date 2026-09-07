@@ -1,3 +1,5 @@
+Superseded in part on 2026-09-07 by `decisions/2026/09/07/traffic-directional-drops.md`: round directional drops and text-only anchored bubbles replace capsule/verdict presentation.
+
 Superseded in part on 2026-09-07 by `decisions/2026/09/07/traffic-project-groups-and-idle.md`: idle Follow returns to overview; project grouping replaces the mixed grid.
 
 # Single pair framing for traffic

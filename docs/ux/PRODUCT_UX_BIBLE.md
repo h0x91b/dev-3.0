@@ -358,7 +358,7 @@ Read-only stage/lists/inspector overlay, not a destination.
   Lists on request; calendar days auto-load local history.
 - **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
   mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany
-  recorded attempts only. Held/failed flights stop short; static verdict text distinguishes outcomes.
+  recorded attempts only. In 2, violet drops show direction; failures stay red. Verdicts live in details.
   Neither means read/queued. Reduced motion stops flights/glides.
 - **Inspect before navigating.** Nodes/messages open details; only the explicit task action navigates.
   Lists work without WebGL. Search, delivery filters and history windows stay inside this overlay.

@@ -91,7 +91,7 @@ describe("traffic playback", () => {
 		const { result } = setup();
 		act(() => result.current.playPause());
 		act(() => result.current.setSpeed(2));
-		act(() => vi.advanceTimersByTime(549));
+		act(() => vi.advanceTimersByTime(732));
 		expect(result.current.current).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.current).toBe(second);
@@ -101,6 +101,17 @@ describe("traffic playback", () => {
 			result.current.setSpeed(Number.NaN);
 		});
 		expect(result.current.speed).toBe(2);
+	});
+
+	it.each([[0.25, 4400], [0.5, 2200], [1, 1100 / 0.75], [2, 1100 / 1.5], [4, 1100 / 3], [8, 1100 / 6]])("runs %s× at the calibrated pace", (speed, duration) => {
+		const { result } = setup();
+		act(() => result.current.setSpeed(speed));
+		expect(result.current.intervalMs).toBeCloseTo(duration);
+		act(() => result.current.playPause());
+		act(() => vi.advanceTimersByTime(Math.floor(duration) - 1));
+		expect(result.current.current).toBe(first);
+		act(() => vi.advanceTimersByTime(1));
+		expect(result.current.current).toBe(second);
 	});
 
 	it("steps, seeks and clamps while pausing; repeated activation triggers a new revision", () => {
