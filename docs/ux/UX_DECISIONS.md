@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-07 — Agent traffic gets a second presentation, defaulting to it
+
+The stage is Experiment 2 (node graph, default) or Experiment 1 (orbit), on a toolbar radiogroup that never touches the feature gate — bible §5.9, yaml `agent_traffic_log`. Why: `decisions/2026/09/07/two-agent-traffic-presentations.md`.
+
 ## 2026-09-07 — The artifact panel is the default; the popup is one opt-in toggle
 
 One App-mounted viewer renders into the pane's docking slot (default) or as the lightbox, per `openArtifactsInPopup` in Settings -> Tasks & Board; leaving the task hides it rather than popping it over the next board. Why: users want an artifact beside a live terminal and mostly never hit the resize freeze; rejected a second viewer, a three-way auto/panel/popup control, and clearing it on navigation (it holds an unsent draft) — bible §3 + §5 + §12.3, yaml `task_artifact_viewer`. `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`, `decisions/2026/09/07/docked-artifact-waits-offscreen.md`.
@@ -21,8 +25,7 @@ Superseded 2026-09-07 by the entry above. `decisions/2026/09/05/artifact-popup-r
 
 ## 2026-09-05 — Agent traffic becomes a live orbit
 
-The existing overlay owns the project orbit, accessible lists and inspector; real append events animate attempts without inventing workflow — bible §5.9. Why: `decisions/2026/09/05/live-agent-traffic-orbit.md`.
-
+Superseded in part 2026-09-07 (the orbit is Experiment 1) — bible §5.9. Why: `decisions/2026/09/05/live-agent-traffic-orbit.md`.
 
 ## 2026-09-03 — Touch scrollback return is a floating button
 

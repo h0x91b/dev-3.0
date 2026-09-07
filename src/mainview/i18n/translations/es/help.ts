@@ -240,9 +240,9 @@ const help = {
 	"help.field.streamerMode.body":
 		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
 	"help.header.agentTraffic.title": "Tráfico de agentes: sigue sus conversaciones",
-	"help.header.agentTraffic.body": "Selecciona el icono morado de mensajes o pulsa ⇧⌘M para abrir la órbita en vivo. Empieza con las últimas 24 horas; el contador muestra los mensajes sin leer.",
+	"help.header.agentTraffic.body": "Selecciona el icono morado de mensajes o pulsa ⇧⌘M para abrir el tráfico en vivo. Empieza con las últimas 24 horas; el contador muestra los mensajes sin leer.",
 	"help.traffic.log.title": "Explora el tráfico de agentes en vivo",
-	"help.traffic.log.body": "Selecciona una tarea o un mensaje para consultar su estado de entrega registrado. Cambia el periodo o carga mensajes anteriores, conservados durante 30 días. La línea temporal filtra mensajes; las columnas de tareas siguen mostrando el estado actual.",
+	"help.traffic.log.body": "Elige la presentación a la izquierda: el Experimento 2 dibuja tarjetas de tareas unidas a quienes escribieron, el Experimento 1 te deja volar por una órbita 3D. Selecciona una tarea o un mensaje para consultar su estado de entrega. La línea temporal filtra mensajes; las columnas de tareas siguen mostrando el estado actual.",
 	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
 	"help.header.connectionQuality.title": "Qué tan lenta es esta conexión",
 	"help.header.connectionQuality.body":

@@ -1,5 +1,7 @@
 # Live agent traffic orbit
 
+> Superseded in part on 2026-09-07 by `decisions/2026/09/07/two-agent-traffic-presentations.md`: the orbit no longer replaces every other presentation — it is Experiment 1 beside a node graph that the surface now opens with.
+
 ## Context
 
 The approved visualization replaces the traffic log with a 3D project orbit and an inspector. The reference also contains reconstructed messages, authored stories and simulated actions that cannot become production facts.
