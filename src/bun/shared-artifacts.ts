@@ -14,7 +14,10 @@ import {
 	MAX_SHARED_ARTIFACT_HTML_BYTES,
 	MAX_SHARED_ARTIFACT_ASSET_BYTES,
 	MAX_SHARED_ARTIFACT_ASSETS,
+	MAX_SHARED_ARTIFACT_VIDEO_BYTES,
+	MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES,
 	SHARED_ARTIFACT_ASSET_EXTS,
+	SHARED_VIDEO_EXTS,
 } from "../shared/types";
 import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
@@ -22,6 +25,7 @@ import { createZip } from "./zip";
 import { projectSlug } from "./git";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
+const VIDEO_EXTS = new Set(SHARED_VIDEO_EXTS);
 const MAX_TOTAL_ASSET_BYTES = 100 * 1024 * 1024;
 const MIME_BY_EXT: Record<string, string> = {
 	css: "text/css",
@@ -32,7 +36,15 @@ const MIME_BY_EXT: Record<string, string> = {
 	gif: "image/gif",
 	webp: "image/webp",
 	bmp: "image/bmp",
+	mp4: "video/mp4",
+	webm: "video/webm",
 };
+
+/** "16 MB" / "2.7 MB" — the unit a size error has to speak to be actionable. */
+function megabytes(bytes: number): string {
+	const mb = bytes / 1024 / 1024;
+	return `${mb >= 10 || Number.isInteger(mb) ? Math.round(mb) : mb.toFixed(1)} MB`;
+}
 
 const ARTIFACT_THEME_CONTRACT = `<style data-dev3-artifact-shell>
 :root,[data-theme="dark"]{color-scheme:dark;--dev3-surface-base:6 9 21;--dev3-surface-raised:14 18 30;--dev3-surface-elevated:21 26 41;--dev3-text-primary:250 252 255;--dev3-text-secondary:170 187 212;--dev3-text-muted:82 98 121;--dev3-border:32 38 55;--dev3-accent:68 150 255;--dev3-success:74 222 128;--dev3-warning:250 204 21;--dev3-danger:255 130 130;--dev3-on-accent:255 255 255;--dev3-shadow:0 0 0}
@@ -112,19 +124,36 @@ export function saveSharedArtifact(
 	}
 	const seenNames = new Set<string>();
 	let totalAssetBytes = 0;
+	let totalVideoBytes = 0;
 	const validatedAssets = assetPaths.map((path) => {
 		const stat = assertSourceFile(path);
 		const name = assetNameFor(htmlPath, path);
 		const ext = extname(name).replace(/^\./, "").toLowerCase();
 		if (!ASSET_EXTS.has(ext)) throw new SharedArtifactError(`Unsupported artifact asset type "${ext || "(none)"}": ${path}`);
-		if (stat.size > MAX_SHARED_ARTIFACT_ASSET_BYTES) throw new SharedArtifactError(`Artifact asset is too large: ${path}`);
+		const isVideo = VIDEO_EXTS.has(ext);
+		// A clip pays its bytes on every open of the artifact, so it answers to a
+		// tighter cap than a stylesheet — and the error has to say what to do.
+		if (isVideo && stat.size > MAX_SHARED_ARTIFACT_VIDEO_BYTES) {
+			throw new SharedArtifactError(
+				`Artifact video is too large: ${path} is ${megabytes(stat.size)} (max ${megabytes(MAX_SHARED_ARTIFACT_VIDEO_BYTES)} per clip). Shorten it, drop the resolution, or re-encode at a lower bitrate.`,
+			);
+		}
+		if (!isVideo && stat.size > MAX_SHARED_ARTIFACT_ASSET_BYTES) {
+			throw new SharedArtifactError(`Artifact asset is too large: ${path} is ${megabytes(stat.size)} (max ${megabytes(MAX_SHARED_ARTIFACT_ASSET_BYTES)})`);
+		}
 		if (seenNames.has(name)) throw new SharedArtifactError(`Duplicate artifact asset name: ${name}`);
 		seenNames.add(name);
 		totalAssetBytes += stat.size;
+		if (isVideo) totalVideoBytes += stat.size;
 		return { path, name, ext, stat };
 	});
+	if (totalVideoBytes > MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES) {
+		throw new SharedArtifactError(
+			`Artifact videos total ${megabytes(totalVideoBytes)} (max ${megabytes(MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES)} combined). Publish fewer clips, or keep one format instead of both MP4 and WebM.`,
+		);
+	}
 	if (totalAssetBytes > MAX_TOTAL_ASSET_BYTES) {
-		throw new SharedArtifactError("Artifact assets exceed the 100 MB combined limit");
+		throw new SharedArtifactError(`Artifact assets total ${megabytes(totalAssetBytes)} (max ${megabytes(MAX_TOTAL_ASSET_BYTES)} combined)`);
 	}
 
 	const id = crypto.randomUUID();

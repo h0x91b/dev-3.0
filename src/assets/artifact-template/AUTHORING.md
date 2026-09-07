@@ -33,6 +33,7 @@ Write the class — never a `<style>` block, never a hex color, never a px font 
 | A chart | `<div class="chart-host" id="…" role="img">` + `dev3Artifact.chart()` in `report.js` |
 | A select, slider, switch | native markup + `data-ui-select` / `data-ui-slider`; `.check`, `.switch`, `.option-group` skin the rest |
 | A menu that opens | `.popover-anchor` → `data-popover-trigger` + `.popover` — never `position: absolute` + `z-index` |
+| A short clip | plain `<video controls playsinline preload="metadata" poster="clips/x.png">` with an MP4 or WebM under the report directory — 16 MB per clip, 48 MB in total. `REFERENCE.md` § Bundled video clips |
 
 ## Color: three families, never mixed
 
@@ -63,6 +64,7 @@ Keep `data-dev3-artifact-template="v1"` on `<html>`, the dev3 icon and a `DEV3 A
 | Color tokens · Tones | writing any CSS at all |
 | Text size | a one-off size, or a px number ECharts reads from something other than `fontSize` |
 | Publishing and assets | images under `shots/`, a path built in JavaScript, files outside the report directory |
+| Bundled video clips | an MP4/WebM clip in the report, its poster, and the size limits |
 | Network and libraries | pulling another CDN library, `fetch()` to a dev server |
 | Charts | more than one chart, live data, chart types |
 | Navigation and form controls | selects, sliders, switches, radio groups, `setControl()` |

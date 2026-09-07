@@ -2762,14 +2762,38 @@ export const MAX_SHARED_IMAGES_PER_CALL = 20;
 /** Maximum accepted HTML source size for `dev3 show-artifact` (bytes). */
 export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Video extensions a bundled artifact clip may use (lowercase, no dot). MP4 and
+ * WebM only: they are the two containers every engine dev3 renders in — WKWebView,
+ * Chromium and mobile Safari — decodes without a plugin or a transcode step.
+ */
+export const SHARED_VIDEO_EXTS: readonly string[] = ["mp4", "webm"];
+
 /** Local asset extensions accepted by `dev3 show-artifact --assets`. */
-export const SHARED_ARTIFACT_ASSET_EXTS: readonly string[] = ["css", "js", ...SHARED_IMAGE_EXTS];
+export const SHARED_ARTIFACT_ASSET_EXTS: readonly string[] = ["css", "js", ...SHARED_IMAGE_EXTS, ...SHARED_VIDEO_EXTS];
 
 /** Maximum local assets accepted by one `dev3 show-artifact --assets` call. */
 export const MAX_SHARED_ARTIFACT_ASSETS = 40;
 
 /** Per-file size cap for a local HTML artifact asset (bytes). */
 export const MAX_SHARED_ARTIFACT_ASSET_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Per-clip cap for a bundled artifact video (bytes), tighter than the generic
+ * asset cap. Every asset reaches the viewer as one base64 data URL inside the
+ * composed document, so a clip costs about 1.34× its bytes in the RPC payload and
+ * again in the document string — and it is paid on every open, not on first play.
+ * 16 MB holds a ~12 s 1080p screen capture with room to spare while keeping the
+ * worst-case single clip under ~22 MB of transport.
+ */
+export const MAX_SHARED_ARTIFACT_VIDEO_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Combined cap for all bundled videos in one artifact (bytes). Sits below
+ * {@link MAX_SHARED_ARTIFACT_VIDEO_BYTES} × the asset count on purpose: five
+ * clips of the per-file maximum would be a 100 MB document nobody can open.
+ */
+export const MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES = 48 * 1024 * 1024;
 
 // ---- Package scripts runner ----
 

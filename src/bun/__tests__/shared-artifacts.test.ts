@@ -1,8 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { inflateRawSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { SharedArtifact } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_VIDEO_BYTES } from "../../shared/types";
+import { TINY_MP4, TINY_WEBM } from "./fixtures/tiny-clips";
 
 const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-artifacts`);
 
@@ -272,5 +275,112 @@ describe("stored artifact read boundary", () => {
 		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
 		rmSync(saved.storedPath, { force: true });
 		expect(() => sharedArtifactHtmlPath(saved)).toThrow(SharedArtifactError);
+	});
+});
+
+/** Read the ZIP back with an independent inflater, so "it is in the bundle" means the bytes are. */
+function unzipEntries(zip: Buffer): Map<string, Buffer> {
+	const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+	const entries = new Map<string, Buffer>();
+	let offset = 0;
+	while (offset + 30 <= zip.byteLength && view.getUint32(offset, true) === 0x04034b50) {
+		const method = view.getUint16(offset + 8, true);
+		const compressedSize = view.getUint32(offset + 18, true);
+		const nameLength = view.getUint16(offset + 26, true);
+		const extraLength = view.getUint16(offset + 28, true);
+		const name = zip.subarray(offset + 30, offset + 30 + nameLength).toString("utf8");
+		const dataOffset = offset + 30 + nameLength + extraLength;
+		const data = zip.subarray(dataOffset, dataOffset + compressedSize);
+		entries.set(name, method === 8 ? Buffer.from(inflateRawSync(data)) : Buffer.from(data));
+		offset = dataOffset + compressedSize;
+	}
+	return entries;
+}
+
+describe("bundled video assets", () => {
+	beforeEach(() => rmSync(TEST_HOME, { recursive: true, force: true }));
+
+	function clipDir(name: string): { html: string; mp4: string; webm: string; poster: string } {
+		const root = join(SRC_DIR, name);
+		const nested = join(root, "clips and posters");
+		mkdirSync(nested, { recursive: true });
+		const html = join(root, "index.html");
+		const mp4 = join(nested, "tour take 1.mp4");
+		const webm = join(nested, "tour take 1.webm");
+		const poster = join(nested, "tour.png");
+		writeFileSync(html, [
+			"<!doctype html><html><head></head><body>",
+			'<video controls playsinline preload="metadata" poster="clips and posters/tour.png">',
+			'<source src="clips and posters/tour take 1.webm" type="video/webm">',
+			'<source src="clips and posters/tour take 1.mp4" type="video/mp4">',
+			"</video></body></html>",
+		].join(""));
+		writeFileSync(mp4, TINY_MP4);
+		writeFileSync(webm, TINY_WEBM);
+		writeFileSync(poster, "PNGDATA");
+		return { html, mp4, webm, poster };
+	}
+
+	it("stores real MP4/WebM clips byte-exact, with their own MIME types and a nested name", () => {
+		const { html, mp4, webm, poster } = clipDir("video-store");
+		const saved = saveSharedArtifact("/my/project", html, [mp4, webm, poster], "Video report");
+
+		expect(saved.assets.map((asset) => [asset.name, asset.mime])).toEqual([
+			["clips and posters/tour take 1.mp4", "video/mp4"],
+			["clips and posters/tour take 1.webm", "video/webm"],
+			["clips and posters/tour.png", "image/png"],
+		]);
+		expect(readFileSync(saved.assets[0].storedPath).equals(TINY_MP4)).toBe(true);
+		expect(readFileSync(saved.assets[1].storedPath).equals(TINY_WEBM)).toBe(true);
+		expect(saved.assets[0].bytes).toBe(TINY_MP4.byteLength);
+	});
+
+	it("hands clips to the viewer as playable data URLs and keeps them in the ZIP", () => {
+		const { html, mp4, webm, poster } = clipDir("video-load");
+		const saved = saveSharedArtifact("/my/project", html, [mp4, webm, poster], "Video report");
+		const content = loadSharedArtifactContent(saved);
+
+		const clip = content.assets.find((asset) => asset.name.endsWith(".mp4"))!;
+		expect(clip.mime).toBe("video/mp4");
+		expect(clip.dataUrl.startsWith("data:video/mp4;base64,")).toBe(true);
+		// The payload is the file itself, so what the media element decodes is what ffmpeg wrote.
+		expect(Buffer.from(clip.dataUrl.split(",")[1], "base64").equals(TINY_MP4)).toBe(true);
+		expect(content.assets.find((asset) => asset.name.endsWith(".webm"))!.mime).toBe("video/webm");
+
+		const entries = unzipEntries(readFileSync(saved.bundlePath!));
+		expect(entries.get("clips and posters/tour take 1.mp4")!.equals(TINY_MP4)).toBe(true);
+		expect(entries.get("clips and posters/tour take 1.webm")!.equals(TINY_WEBM)).toBe(true);
+		expect(loadSharedArtifactDownload(saved).fileName).toBe("Video report.zip");
+	});
+
+	it("names the file and the fix when a clip or the whole set is too big", () => {
+		const root = join(SRC_DIR, "video-limits");
+		mkdirSync(root, { recursive: true });
+		const html = join(root, "index.html");
+		writeFileSync(html, "<!doctype html>");
+
+		const huge = join(root, "huge.mp4");
+		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES + 1));
+		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/huge\.mp4 is 16 MB \(max 16 MB per clip\)/);
+		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/re-encode at a lower bitrate/);
+
+		// A clip stays under the per-file cap while the set blows the combined one.
+		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES - 1);
+		const paths = ["a", "b", "c", "d"].map((name) => {
+			const path = join(root, `${name}.webm`);
+			writeFileSync(path, each);
+			return path;
+		});
+		expect(() => saveSharedArtifact("/my/project", html, paths)).toThrow(/max 48 MB combined/);
+	});
+
+	it("rejects a container the viewer cannot play instead of storing it", () => {
+		const root = join(SRC_DIR, "video-reject");
+		mkdirSync(root, { recursive: true });
+		const html = join(root, "index.html");
+		const mov = join(root, "clip.mov");
+		writeFileSync(html, "<!doctype html>");
+		writeFileSync(mov, TINY_MP4);
+		expect(() => saveSharedArtifact("/my/project", html, [mov])).toThrow(/Unsupported artifact asset type "mov"/);
 	});
 });

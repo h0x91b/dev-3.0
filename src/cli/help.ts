@@ -575,8 +575,9 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [],
 		usage: 'dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
 		details: [
-			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, and raster file under it.",
-			"--assets <paths...>   Name local CSS, classic JS, and raster assets by hand; all following paths belong to the artifact until the next flag.",
+			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, raster and MP4/WebM file under it.",
+			"--assets <paths...>   Name local CSS, classic JS, raster and MP4/WebM assets by hand; all following paths belong to the artifact until the next flag.",
+			"                      A bundled clip is capped at 16 MB, and all clips together at 48 MB; poster images count as ordinary rasters.",
 			"--title <text>        Viewer title (defaults to the HTML filename).",
 			"--artifact-id <slug>  Group versions under a stable id, so re-wording the title does not fork a second artifact.",
 			"--new                 Publish a separate artifact instead of a new version of the matching one.",
