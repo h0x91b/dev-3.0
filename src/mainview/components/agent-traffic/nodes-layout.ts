@@ -127,7 +127,7 @@ export function layoutTraffic(
 	const active = awake.filter((node) => partners.has(node.key));
 	const quiet = awake.filter((node) => !partners.has(node.key));
 	const normalCount = active.filter((node) => node.task?.taskType !== "coordinator").length;
-	const columns = normalCount > 24 ? 6 : normalCount > 12 ? 4 : 3;
+	const columns = normalCount > 24 ? 6 : 5;
 	const gridWidth = columns * (CARD_WIDTH + GAP_X) - GAP_X;
 	const placed: PlacedNode[] = [];
 	const positions = new Map<string, PlacedNode>();

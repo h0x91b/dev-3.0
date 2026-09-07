@@ -450,7 +450,7 @@
 .traffic-edge-subject small {
 	display: block;
 	color: rgb(var(--agent));
-	font: 10px var(--dev3-mono-stack);
+	font: 11px var(--dev3-mono-stack);
 	margin-bottom: 5px;
 }
 .traffic-edge-subject strong {
@@ -458,7 +458,7 @@
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 500;
 }
 .traffic-playback {

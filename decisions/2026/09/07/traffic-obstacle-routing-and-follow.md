@@ -1,3 +1,5 @@
+Superseded in part on 2026-09-07 by `decisions/2026/09/07/traffic-single-pair-framing.md`: Follow holds the pair; obstacle routing is unchanged.
+
 # Traffic obstacle routing and Follow
 
 ## Context

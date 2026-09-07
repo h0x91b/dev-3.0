@@ -29,7 +29,7 @@ import {
 } from "./traffic-model";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
-import { frameExchange, frameRecipient, followView } from "./traffic-camera";
+import { frameExchange } from "./traffic-camera";
 
 interface Props {
 	projects?: {
@@ -153,7 +153,7 @@ export default function TrafficNodes({
 		return result;
 	}, [records]);
 	const move = useCallback(
-		(target: View, instant = false) => {
+		(target: View, instant = false, duration = 500) => {
 			cancelAnimationFrame(camera.current);
 			if (instant || reduced) {
 				viewRef.current = target;
@@ -163,7 +163,7 @@ export default function TrafficNodes({
 			const start = performance.now();
 			const from = viewRef.current;
 			const tick = (at: number) => {
-				const progress = Math.min(1, (at - start) / 500);
+				const progress = Math.min(1, (at - start) / duration);
 				const ease = progress * progress * (3 - 2 * progress);
 				setView({
 					x: from.x + (target.x - from.x) * ease,
@@ -267,50 +267,20 @@ export default function TrafficNodes({
 			focusRef.current(pendingFocus);
 	}, [pendingFocus, nodeByKey]);
 	const exchange = useCallback(
-		(record: TrafficRecord, animate = false) => {
+		(record: TrafficRecord) => {
 			const viewport = frame.current?.getBoundingClientRect();
 			const recipient = nodeByKey.get(toKey(record.row));
 			const sender = nodeByKey.get(fromKey(record.row) ?? "");
 			if (!viewport?.width || !viewport.height || !recipient) return;
 			overviewMode.current = false;
-			const edge =
-				sender &&
-				edgeByKey.get([sender.node.key, recipient.node.key].sort().join("|"));
-			const route = edge
-				? edge.from === fromKey(record.row)
-					? edge.points
-					: [...edge.points].reverse()
-				: [];
-			const stopped =
-				record.row.status === "held"
-					? 0.52
-					: record.row.status === "not-delivered"
-						? 0.7
-						: null;
-			const destination = frameRecipient(
-				viewport,
-				recipient,
-				stopped !== null && route.length ? pointAt(route, stopped) : undefined,
+			const edge = sender && edgeByKey.get(
+				[sender.node.key, recipient.node.key].sort().join("|"),
 			);
-			if (!animate || reduced || !sender || !route.length) {
-				move(destination, reduced);
-				return;
-			}
-			cancelAnimationFrame(camera.current);
-			const from = viewRef.current;
-			const wide = frameExchange(viewport, [sender, recipient], route);
-			const start = performance.now();
-			const duration = playback?.playing
-				? Math.min(1500, 990 / playback.speed)
-				: 1500;
-			const tick = (at: number) => {
-				const progress = Math.min(1, (at - start) / duration);
-				const next = followView(from, wide, destination, progress);
-				viewRef.current = next;
-				setView(next);
-				if (progress < 1) camera.current = requestAnimationFrame(tick);
-			};
-			camera.current = requestAnimationFrame(tick);
+			move(
+				frameExchange(viewport, sender ? [sender, recipient] : [recipient], edge?.points ?? []),
+				reduced,
+				playback?.playing ? Math.min(500, 990 / playback.speed) : 500,
+			);
 		},
 		[nodeByKey, edgeByKey, move, reduced, playback?.playing, playback?.speed],
 	);
@@ -348,7 +318,7 @@ export default function TrafficNodes({
 		if (!ready) return;
 		const event =
 			playback?.current ?? playback?.events[playback.events.length - 1];
-		if (event) exchangeRef.current(event, !!playback?.current);
+		if (event) exchangeRef.current(event);
 	}, [
 		playback?.revision,
 		playback?.events[playback.events.length - 1]?.key,
@@ -390,7 +360,7 @@ export default function TrafficNodes({
 					if (!newest || Date.parse(record.row.at) > Date.parse(newest.row.at))
 						newest = record;
 				}
-			if (follow && newest) exchangeRef.current(newest, true);
+			if (follow && newest) exchangeRef.current(newest);
 		}
 		known.current = current;
 	}, [layoutRecords, ready, paused, replaying, follow]);

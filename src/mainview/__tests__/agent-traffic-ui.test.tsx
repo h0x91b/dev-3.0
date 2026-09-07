@@ -833,7 +833,7 @@ it("selects a full local calendar day, then Live restores 24h and Follow", async
 	);
 });
 
-it("Follow changes zoom through a flight and reverses its framing for a reply", async () => {
+it("Follow settles once on the pair and holds the same framing for its reply", async () => {
 	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
 		matches: false,
 		media: query,
@@ -892,17 +892,20 @@ it("Follow changes zoom through a flight and reverses its framing for a reply", 
 			).not.toBeDisabled(),
 		);
 		advance(600);
+		fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+		advance(600);
 		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
-		advance(750);
+		advance(250);
 		const stage = screen.getByTestId("traffic-node-scene");
-		const wide = stage.style.transform;
-		advance(800);
-		const close = stage.style.transform;
-		expect(close).not.toBe(wide);
-		expect(close).toContain("scale(1.12)");
+		const moving = stage.style.transform;
+		advance(300);
+		const settled = stage.style.transform;
+		expect(settled).not.toBe(moving);
+		advance(1000);
+		expect(stage.style.transform).toBe(settled);
 		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
 		advance(1600);
-		expect(stage.style.transform).not.toBe(close);
+		expect(stage.style.transform).toBe(settled);
 		fireEvent.click(screen.getByRole("button", { name: "Follow" }));
 		const manual = stage.style.transform;
 		advance(2000);

@@ -68,6 +68,16 @@ describe("layoutTraffic", () => {
 		expect(edges).toHaveLength(2);
 	});
 
+	it("places five workers in the first row below the coordinator", () => {
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 6 }, (_, i) => task(`t${i}`, i + 2))];
+		const { placed } = scene(tasks, tasks.slice(1).map(t => row("hub", t.id)));
+		const workers = placed.filter(node => !node.hub);
+		expect(new Set(workers.slice(0, 5).map(node => node.y)).size).toBe(1);
+		expect(workers[5].y).toBeGreaterThan(workers[0].y);
+		const hub = placed.find(node => node.hub)!;
+		expect(hub.x + hub.width / 2).toBe((workers[0].x + workers[4].x + workers[4].width) / 2);
+	});
+
 	it("keeps ordinary tasks in a stable grid without assigning a coordinator", () => {
 		const tasks = [task("a", 11), task("b", 22), task("c", 33)];
 		const first = scene(tasks, [row("b", "a"), row("b", "c")]);
