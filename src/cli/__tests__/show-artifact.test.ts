@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CliResponse } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_VIDEO_BYTES } from "../../shared/types";
 import type { CliContext } from "../context";
 import { handleShowArtifact } from "../commands/show-artifact";
 
@@ -124,6 +125,46 @@ describe("show-artifact", () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, stored: 1, taskId: CTX.taskId }));
 		await handleShowArtifact([HTML], SOCKET, CTX);
 		expect(stdoutSpy).toHaveBeenCalledWith("Stored artifact — viewer queued until Focus Mode ends.\n");
+	});
+
+
+	it("collects nested MP4/WebM clips and posters from a report directory", async () => {
+		const report = join(DIR, "video-dir");
+		mkdirSync(join(report, "clips and posters"), { recursive: true });
+		writeFileSync(join(report, "index.html"), "<!doctype html>");
+		writeFileSync(join(report, "clips and posters", "tour.mp4"), "MP4");
+		writeFileSync(join(report, "clips and posters", "tour.webm"), "WEBM");
+		writeFileSync(join(report, "clips and posters", "tour.png"), "PNG");
+		writeFileSync(join(report, "clips and posters", "tour.mov"), "not an asset");
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([report], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
+			assetPaths: [
+				join(report, "clips and posters", "tour.mp4"),
+				join(report, "clips and posters", "tour.png"),
+				join(report, "clips and posters", "tour.webm"),
+			],
+		}));
+	});
+
+	it("refuses an oversize clip, an oversize set and an unplayable container before sending anything", async () => {
+		const over = join(DIR, "over.mp4");
+		writeFileSync(over, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES + 1));
+		await expect(handleShowArtifact([HTML, "--assets", over], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrSpy.mock.calls.join("")).toMatch(/over\.mp4 is 16 MB \(max 16 MB per clip\)/);
+
+		const clips = ["v1", "v2", "v3", "v4"].map((name) => {
+			const path = join(DIR, `${name}.webm`);
+			writeFileSync(path, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES - 1));
+			return path;
+		});
+		await expect(handleShowArtifact([HTML, "--assets", ...clips], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrSpy.mock.calls.join("")).toMatch(/max 48 MB combined/);
+
+		const mov = join(DIR, "clip.mov");
+		writeFileSync(mov, "MOV");
+		await expect(handleShowArtifact([HTML, "--assets", mov], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("rejects non-HTML input and unsupported assets", async () => {

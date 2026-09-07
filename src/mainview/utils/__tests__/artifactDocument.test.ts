@@ -117,7 +117,48 @@ describe("composeArtifactDocument", () => {
 		// A src the HTML scan never sees still resolves, so reports published before
 		// dev3Artifact.asset() existed keep rendering.
 		expect(output).toContain("MutationObserver");
-		expect(output).toContain("img,source");
+		expect(output).toContain("img,source,video");
+	});
+
+
+	it("rewrites a bundled clip's video src, its source alternatives and its poster", () => {
+		const html = [
+			"<!doctype html><html><head></head><body>",
+			'<video controls playsinline preload="metadata" poster="clips and posters/tour.png">',
+			'<source src="clips and posters/tour.webm" type="video/webm">',
+			'<source src="clips and posters/tour.mp4" type="video/mp4">',
+			"</video>",
+			'<video src="./clips%20and%20posters/tour.mp4"></video>',
+			"</body></html>",
+		].join("");
+		const output = composeArtifactDocument(html, [
+			{ name: "clips and posters/tour.mp4", mime: "video/mp4", dataUrl: "data:video/mp4;base64,TVA0" },
+			{ name: "clips and posters/tour.webm", mime: "video/webm", dataUrl: "data:video/webm;base64,V0VC" },
+			{ name: "clips and posters/tour.png", mime: "image/png", dataUrl: "data:image/png;base64,UE5H" },
+		]);
+
+		expect(output).toContain('poster="data:image/png;base64,UE5H"');
+		expect(output).toContain('src="data:video/webm;base64,V0VC" type="video/webm"');
+		expect(output).toContain('src="data:video/mp4;base64,TVA0" type="video/mp4"');
+		// A percent-encoded relative path with spaces resolves to the same clip.
+		expect(output).toContain('<video src="data:video/mp4;base64,TVA0">');
+		// Nothing relative is left in the markup — the raw names survive only as keys
+		// of the runtime map, which is what `dev3Artifact.asset()` reads.
+		expect(output.slice(output.indexOf("<body"))).not.toContain("clips and posters/tour");
+		expect(output).toContain('"clips and posters/tour.mp4":"data:video/mp4;base64,TVA0"');
+		// Controls, playsinline and preload are the report's markup and must survive untouched.
+		expect(output).toContain('controls playsinline preload="metadata"');
+	});
+
+	it("carries the blob retry for an engine that refuses a data: URL clip", () => {
+		const output = composeArtifactDocument('<video src="clip.mp4"></video>', [
+			{ name: "clip.mp4", mime: "video/mp4", dataUrl: "data:video/mp4;base64,TVA0" },
+		]);
+
+		expect(output).toContain("dev3VideoBlob");
+		expect(output).toContain("URL.createObjectURL");
+		// The retry is driven by the element's own error event, so a working engine never runs it.
+		expect(output).toContain("document.addEventListener('error'");
 	});
 
 	it("escapes a closing script tag smuggled through an asset name", () => {

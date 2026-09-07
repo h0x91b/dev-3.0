@@ -70,7 +70,7 @@ Two rules for report code:
 
 ## Publishing and assets
 
-`dev3 show-artifact ./dev3-artifact-report --title "Report title"` publishes the directory: `index.html` plus every CSS, classic JavaScript, and raster file under it. Pass the HTML file instead when the report is a single file, and list files that live elsewhere after `--assets`:
+`dev3 show-artifact ./dev3-artifact-report --title "Report title"` publishes the directory: `index.html` plus every CSS, classic JavaScript, raster and MP4/WebM file under it. Pass the HTML file instead when the report is a single file, and list files that live elsewhere after `--assets`:
 
 ```bash
 dev3 show-artifact ./dev3-artifact-report --title "Report title"
@@ -87,7 +87,25 @@ host.innerHTML = `<img src="${src}" alt="Run 42 timeline">`;
 element.style.backgroundImage = `url("${dev3Artifact.asset("shots/grid.png")}")`;
 ```
 
-It is safe everywhere: with no viewer map (file://, the extracted ZIP) it returns the path unchanged, and it leaves absolute URLs, data URLs, and CDN links alone. The viewer also heals a bare relative `src` on `img` and `source` elements added after load, so an older report still renders — but write `asset()` in new code, because that fallback covers nothing else (CSS you build in JS, `fetch()`, canvas, a download link). Pass every imported stylesheet explicitly in `--assets` when it is not under the report directory. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
+It is safe everywhere: with no viewer map (file://, the extracted ZIP) it returns the path unchanged, and it leaves absolute URLs, data URLs, and CDN links alone. The viewer also heals a bare relative `src` (and a `video` `poster`) on `img`, `source` and `video` elements added after load, so an older report still renders — but write `asset()` in new code, because that fallback covers nothing else (CSS you build in JS, `fetch()`, canvas, a download link). Pass every imported stylesheet explicitly in `--assets` when it is not under the report directory. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
+
+### Bundled video clips
+
+MP4 and WebM files publish like any other asset — nested paths and spaces included — and play with ordinary HTML5 markup. Nothing app-side is needed:
+
+```html
+<video controls playsinline preload="metadata" poster="clips/tour-poster.png" width="720">
+  <source src="clips/tour.webm" type="video/webm">
+  <source src="clips/tour.mp4" type="video/mp4">
+</video>
+```
+
+- **Always `controls` and `playsinline`**, and `preload="metadata"` so opening the report does not decode every clip. `muted` + `autoplay` is the only autoplay a browser allows; a clip with sound plays on a click, never on load, on every engine.
+- **Limits:** 16 MB per clip, 48 MB for all clips in one artifact, 40 assets total. Past them `show-artifact` fails and names the file — nothing is silently dropped or re-encoded.
+- **Keep clips small anyway.** Every asset reaches the viewer inline in the document, so bytes are paid on each open, not on first play: aim for a few MB per clip (a 10 s 1080p screen capture lands around 1–3 MB).
+- Give both formats only when the codec matters; two encodes of the same clip double the budget. MP4/H.264 plays everywhere dev3 renders.
+- A clip whose `src` your report code builds at runtime goes through `dev3Artifact.asset("clips/tour.mp4")`, exactly like an image.
+- Video rides the downloadable ZIP and opens from `file://` too. `svg`, `mov`, `gif`-as-video and audio-only files are not artifact assets.
 
 ## Network access and external libraries
 
