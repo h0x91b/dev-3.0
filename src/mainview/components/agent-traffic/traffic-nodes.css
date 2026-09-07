@@ -267,6 +267,11 @@
 		min-height: 44px;
 		padding: 6px 14px;
 	}
+	/* Drag-and-scroll advice is desktop advice, and on a phone it only collides
+	   with the zoom chip. */
+	.traffic-nodes .traffic-map-caption {
+		display: none;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
