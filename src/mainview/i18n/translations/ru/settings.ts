@@ -257,6 +257,8 @@ const settings = {
 	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",
 	"settings.taskOpenModeFullscreen": "Полный экран (только терминал)",
+	"settings.artifactPopup": "Открывать артефакты во всплывающем окне",
+	"settings.artifactPopupDesc": "Выключено: HTML-артефакт открывается в панели справа от терминала задачи. Включено: открывается всплывающим окном по центру поверх задачи. Попробуйте всплывающее окно, если с панелью приложение подвисает, — это альтернативный режим показа, а не исправление подвисания.",
 	"settings.defaultDiffViewMode": "Diff layout по умолчанию",
 	"settings.defaultDiffViewModeDesc": "Какой layout будет выбран при открытии Show Diff. Auto: на ноутбучных экранах (<1800 CSS px по ширине) — Unified, на больших мониторах — Side by side.",
 	"settings.defaultDiffViewModeSplit": "Side by side",

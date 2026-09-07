@@ -44,6 +44,8 @@ interface ProjectViewProps {
 	activeTaskId?: string;
 	taskView?: boolean;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
+	/** An artifact of the open task should use the docked panel. */
+	dockArtifact?: boolean;
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
 	skipCopyModeReset?: boolean;
@@ -66,6 +68,7 @@ function ProjectView({
 	activeTaskId,
 	taskView,
 	navigationGuardRef,
+	dockArtifact,
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
 	skipCopyModeReset,
@@ -251,6 +254,7 @@ function ProjectView({
 				inlineDiffRequest={inlineDiff.request}
 				onCloseInlineDiff={inlineDiff.close}
 				navigationGuardRef={navigationGuardRef}
+				dockArtifact={dockArtifact}
 				skipCopyModeReset={skipCopyModeReset}
 			/>
 		) : (

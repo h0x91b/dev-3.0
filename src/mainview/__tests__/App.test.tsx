@@ -135,18 +135,20 @@ vi.mock("../components/ProjectView", () => ({
 		activeTaskId?: string;
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
+		dockArtifact?: boolean;
 	}) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
+			data-dock-artifact={props.dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 		/>
 	),
 }));
 vi.mock("../components/TaskWorkspaceView", () => ({
-	default: (props: { immersive?: boolean }) => <div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} />,
+	default: (props: { immersive?: boolean; dockArtifact?: boolean }) => <div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} data-dock-artifact={props.dockArtifact ? "true" : "false"} />,
 }));
 vi.mock("../components/TaskTerminal", () => ({
 	default: () => <div data-testid="task-screen" />,
@@ -1121,9 +1123,11 @@ describe("App keyboard shortcuts", () => {
 			createdAt: 0,
 		});
 
-		// The viewer is a popup App owns, never a surface handed down to a screen —
-		// decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md.
-		it("hosts the artifact popup itself, over whichever screen is open", async () => {
+		// The viewer is always mounted by App, never by a screen; the screen only
+		// offers a docking slot for the default panel presentation. A task that is
+		// not on screen has no slot, so it falls back to the popup —
+		// decisions/2026/09/07/artifact-panel-default-popup-opt-in.md.
+		it("hosts the artifact viewer itself, over whichever screen is open", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
@@ -1183,6 +1187,67 @@ describe("App keyboard shortcuts", () => {
 			} finally {
 				hasFocus.mockRestore();
 			}
+		});
+
+		// Default presentation: the open task's pane is offered the docking slot.
+		it("offers the docking slot to the open task's screen when no preference is stored", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], index: 0 },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
+		});
+
+		// An artifact belonging to a task that is not the one on screen has no pane
+		// of its own, so the slot stays closed and the popup is the only host.
+		it("keeps the slot closed for an artifact of another task", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-other", projectId: "p1", artifacts: [artifact("a")], index: 0 },
+				}));
+			});
+
+			await screen.findByTestId("artifact-viewer");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
+		});
+
+		it("keeps the slot closed when the popup preference is stored", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				openArtifactsInPopup: true,
+			});
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], index: 0 },
+				}));
+			});
+
+			const card = await screen.findByTestId("artifact-viewer");
+			expect(card).toHaveAttribute("data-presentation", "popup");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
 		});
 	});
 

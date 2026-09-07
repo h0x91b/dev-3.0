@@ -1241,6 +1241,13 @@ export interface GlobalSettings {
 	terminalPathOpenMode?: TerminalPathOpenMode;
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
 	/**
+	 * Where an HTML artifact opens: the right-hand docked panel beside the task
+	 * terminal (default, undefined/false) or a centred popup over the task (true).
+	 * The popup is the alternative for anyone whose UI freezes with the panel — it
+	 * is not a fix for that freeze, whose cause is still unestablished.
+	 */
+	openArtifactsInPopup?: boolean;
+	/**
 	 * Let a headless `dev3 remote` box install updates on its own once it is quiet
 	 * (no task in progress, no terminal output, no browser connected). Default ON —
 	 * the whole point is that nobody ever goes back to a terminal to type

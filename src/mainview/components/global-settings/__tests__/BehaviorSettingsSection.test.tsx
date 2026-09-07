@@ -22,6 +22,7 @@ function renderSection(
 ) {
 	const onReviewModePromptChange = vi.fn();
 	const onPrOriginTaskLinkToggle = vi.fn();
+	const onOpenArtifactsInPopupToggle = vi.fn();
 	render(
 		<I18nProvider>
 			<BehaviorSettingsSection
@@ -29,6 +30,7 @@ function renderSection(
 				globalSettings={{ taskSortOrder: "oldest-first", ...settings } as GlobalSettings}
 				tipsResetDone={false}
 				onDefaultDiffViewModeChange={vi.fn()}
+				onOpenArtifactsInPopupToggle={onOpenArtifactsInPopupToggle}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
@@ -44,7 +46,7 @@ function renderSection(
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle };
 }
 
 describe("BehaviorSettingsSection — review prompt", () => {
@@ -124,5 +126,32 @@ describe("BehaviorSettingsSection — PR origin-task link toggle", () => {
 		);
 		await userEvent.click(prSwitch());
 		expect(onPrOriginTaskLinkToggle).not.toHaveBeenCalled();
+	});
+});
+
+describe("BehaviorSettingsSection — artifact popup toggle", () => {
+	function popupSwitch() {
+		return screen.getByRole("switch", { name: "settings.artifactPopup" });
+	}
+
+	it("is off by default, so an artifact opens in the docked panel", async () => {
+		const { onOpenArtifactsInPopupToggle } = renderSection();
+		expect(popupSwitch()).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(popupSwitch());
+		expect(onOpenArtifactsInPopupToggle).toHaveBeenCalledWith(true);
+	});
+
+	it("reflects a stored opt-in and turning it off reports false", async () => {
+		const { onOpenArtifactsInPopupToggle } = renderSection({ openArtifactsInPopup: true });
+		expect(popupSwitch()).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(popupSwitch());
+		expect(onOpenArtifactsInPopupToggle).toHaveBeenCalledWith(false);
+	});
+
+	// An explicit `false` is the user choosing the panel, not the absence of a
+	// choice — it must read Off exactly like an untouched install.
+	it("reads off for a stored explicit false", () => {
+		renderSection({ openArtifactsInPopup: false });
+		expect(popupSwitch()).toHaveAttribute("aria-checked", "false");
 	});
 });

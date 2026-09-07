@@ -472,6 +472,14 @@ function App() {
 		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 	});
+	// Which task's workspace pane may dock the artifact panel. Docking is the
+	// default; the popup is the explicit opt-in. Every surface with no pane of its
+	// own — the archived task modal, immersive fullscreen, a toast for a task that
+	// is not on screen — falls back to the popup because nothing publishes a slot
+	// there, and so does a narrow viewport, which the pane itself refuses.
+	const artifactDockTaskId = artifactViewer && globalSettings.openArtifactsInPopup !== true
+		? artifactViewer.taskId
+		: null;
 	// Auth failure for browser remote access (expired/invalid session).
 	// Seeded from the transport: with a dead session the expired verdict lands
 	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
@@ -3518,6 +3526,7 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
+						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.activeTaskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
@@ -3547,6 +3556,7 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
+						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.taskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
