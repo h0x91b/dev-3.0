@@ -63,9 +63,14 @@ beforeEach(() => {
 	mockSend.mockReset();
 	mockEndpoints.mockReset();
 	mockEndpoints.mockReturnValue([]);
+	// The harness that runs these tests may itself be an agent session, and the
+	// session id is read from the ambient environment — so every case states
+	// whether one exists instead of inheriting the developer's.
+	delete process.env.CLAUDE_CODE_SESSION_ID;
 });
 
 afterEach(() => {
+	delete process.env.CLAUDE_CODE_SESSION_ID;
 	stdoutSpy.mockRestore();
 	stderrSpy.mockRestore();
 	exitSpy.mockRestore();
@@ -84,8 +89,53 @@ describe("notify", () => {
 			level: "info",
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Toast sent");
+	});
+
+	it("names the caller's worktree separately from the task it points at", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: "other-task" }));
+
+		await handleNotify(args(["look at this"], { task: "other-task" }), SOCKET, CTX);
+
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ taskId: "other-task", sourceTaskId: CTX.taskId });
+	});
+
+	it("passes the harness session id when the environment carries one", async () => {
+		process.env.CLAUDE_CODE_SESSION_ID = "session-xyz";
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["hi"]), SOCKET, CTX);
+
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ sourceSessionId: "session-xyz" });
+	});
+
+	it("omits the session id rather than inventing one when the environment has none", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["hi"]), SOCKET, CTX);
+
+		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("sourceSessionId");
+	});
+
+	it("omits the caller's worktree when the command ran outside one", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: null }));
+
+		await handleNotify(args(["hi"]), SOCKET, null);
+
+		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("sourceTaskId");
+	});
+
+	it("marks the fan-out copies so only the primary is recorded", async () => {
+		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock"]);
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["build is green"]), SOCKET, CTX);
+
+		const [primary, fanout] = mockSend.mock.calls;
+		expect(primary[2]).not.toHaveProperty("fanout");
+		expect(fanout[2]).toMatchObject({ fanout: true });
 	});
 
 	it("delivers the toast to every live instance, not just the one it dialed", async () => {

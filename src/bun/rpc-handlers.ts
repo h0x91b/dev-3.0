@@ -25,6 +25,7 @@ export {
 	setFocusMode,
 	isTerminalFocusActive,
 	isNotificationSuppressed,
+	activeNotificationSuppression,
 	queueTerminalFocusToast,
 	queueTerminalFocusAttention,
 	dropQueuedAttention,

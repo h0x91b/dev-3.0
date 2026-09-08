@@ -97,6 +97,8 @@ vi.mock("../rpc-handlers", () => {
 		getActiveContext: vi.fn(() => ({ projectId: null, taskId: null })),
 		isTerminalFocusActive: vi.fn(() => false),
 		isNotificationSuppressed: vi.fn(() => false),
+		activeNotificationSuppression: vi.fn(() => []),
+		isProjectSilenced: vi.fn(() => false),
 		pushCliAttention: vi.fn(),
 		dropQueuedAttention: vi.fn(),
 		pushCliToast: vi.fn(),
@@ -107,6 +109,10 @@ vi.mock("../rpc-handlers", () => {
 		queueTerminalFocusToast: vi.fn(),
 	};
 });
+
+vi.mock("../notification-log", () => ({
+	appendNotificationLog: vi.fn(),
+}));
 
 vi.mock("../task-start-ref", () => ({
 	resolveTaskStartRef: vi.fn(async () => undefined),
@@ -183,7 +189,8 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, createTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, createTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { appendNotificationLog } from "../notification-log";
 import { loadSettings } from "../settings";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
@@ -266,6 +273,8 @@ function makeRequest(method: string, params: Record<string, unknown> = {}): CliR
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(isNotificationSuppressed).mockReturnValue(false);
+	vi.mocked(activeNotificationSuppression).mockReturnValue([]);
+	vi.mocked(isProjectSilenced).mockReturnValue(false);
 	vi.mocked(moveTask).mockImplementation(async (params) => {
 		const project = await data.getProject(params.projectId);
 		const task = (await data.loadTasks(project)).find((candidate) => candidate.id === params.taskId);
@@ -2009,6 +2018,118 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.data).toMatchObject({ delivered: true, queued: true });
 		expect(pushFn).not.toHaveBeenCalled();
 		expect(setFocusMode).toHaveBeenCalledWith(true);
+	});
+
+	it("ui.notify: records a delivered toast with its target and caller", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		await handleRequest(
+			makeRequest("ui.notify", {
+				message: "build green",
+				level: "success",
+				taskId: task.id,
+				projectId: project.id,
+				sourceTaskId: task.id,
+				sourceSessionId: "session-abc",
+			}),
+		);
+
+		expect(appendNotificationLog).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: "toast",
+				level: "success",
+				message: "build green",
+				outcome: "delivered",
+				taskId: task.id,
+				taskSeq: task.seq,
+				projectId: project.id,
+				sourceTaskId: task.id,
+				sourceSeq: task.seq,
+				sourceSessionId: "session-abc",
+			}),
+		);
+	});
+
+	it("ui.notify: records a task-less notification with null provenance, never a guess", async () => {
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		await handleRequest(makeRequest("ui.notify", { message: "hello", level: "info" }));
+
+		const row = vi.mocked(appendNotificationLog).mock.calls[0][0];
+		expect(row).toMatchObject({ taskId: null, taskSeq: null, projectId: null, sourceTaskId: null, sourceSeq: null });
+		expect(row).not.toHaveProperty("sourceSessionId");
+		expect(row).not.toHaveProperty("sourceTitle");
+	});
+
+	it("ui.notify: records a queued row naming what held it back", async () => {
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+		vi.mocked(activeNotificationSuppression).mockReturnValue(["focusMode"]);
+
+		await handleRequest(makeRequest("ui.notify", { message: "later", level: "info" }));
+
+		expect(appendNotificationLog).toHaveBeenCalledWith(
+			expect.objectContaining({ outcome: "queued", suppressedBy: ["focusMode"] }),
+		);
+	});
+
+	it("ui.notify: records `no-window` when nothing could be shown", async () => {
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "unseen" }));
+
+		expect(resp.data).toMatchObject({ delivered: false });
+		expect(appendNotificationLog).toHaveBeenCalledWith(expect.objectContaining({ outcome: "no-window" }));
+	});
+
+	it("ui.notify: the CLI's fan-out copy is not recorded a second time", async () => {
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		await handleRequest(makeRequest("ui.notify", { message: "once", fanout: true }));
+
+		expect(appendNotificationLog).not.toHaveBeenCalled();
+	});
+
+	it("ui.notify: a silenced project leaves no row, on either surface", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(isProjectSilenced).mockReturnValue(true);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+
+		await handleRequest(makeRequest("ui.notify", { message: "hidden", taskId: task.id, projectId: project.id }));
+		await handleRequest(
+			makeRequest("ui.notify", { message: "hidden", desktop: true, taskId: task.id, projectId: project.id }),
+		);
+
+		expect(appendNotificationLog).not.toHaveBeenCalled();
+	});
+
+	it("ui.notify: --desktop records the desktop surface", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 7 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleRequest(
+			makeRequest("ui.notify", { message: "needs you", desktop: true, taskId: task.id, projectId: project.id }),
+		);
+
+		expect(appendNotificationLog).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: "desktop", outcome: "delivered", taskId: task.id }),
+		);
+	});
+
+	it("ui.notify: a rejected request writes nothing", async () => {
+		await handleRequest(makeRequest("ui.notify", { message: "   " }));
+		await handleRequest(makeRequest("ui.notify", { message: "x", level: "warning" }));
+
+		expect(appendNotificationLog).not.toHaveBeenCalled();
 	});
 
 	it("ui.attention: focus mode queues the badge", async () => {

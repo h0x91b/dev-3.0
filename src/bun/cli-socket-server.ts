@@ -21,7 +21,9 @@ import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
-import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { appendNotificationLog } from "./notification-log";
+import type { NotificationLogInput, NotificationLogMode, NotificationLogOutcome } from "../shared/notification-log";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -342,6 +344,83 @@ async function resolveAgentMessageSource(
 		title: getTaskTitle(found.task),
 		projectId: found.task.projectId,
 	};
+}
+
+/** Everything a notification row knows before the app tries to deliver it. */
+type NotificationLogBase = Omit<NotificationLogInput, "at" | "mode" | "outcome" | "suppressedBy">;
+
+/**
+ * Collect the facts a notification row is made of. The caller's worktree
+ * (`sourceTaskId`) is resolved separately from the notification's target,
+ * because `dev3 notify --task <other>` addresses someone else's card; when the
+ * caller was not in a worktree the source stays null rather than borrowing the
+ * target's identity.
+ */
+async function buildNotificationLogBase(
+	params: Record<string, unknown>,
+	notification: {
+		message: string;
+		level: "info" | "success" | "error";
+		durationMs: unknown;
+		task: Task | null;
+		projectId: string | null;
+		projectName: string | null;
+	},
+): Promise<NotificationLogBase> {
+	const { message, level, durationMs, task, projectId, projectName } = notification;
+	const base: NotificationLogBase = {
+		level,
+		message,
+		taskId: task?.id ?? null,
+		taskSeq: task?.seq ?? null,
+		projectId,
+		sourceTaskId: null,
+		sourceSeq: null,
+	};
+	if (typeof durationMs === "number") base.durationMs = durationMs;
+	if (task) base.taskTitle = getTaskTitle(task);
+	if (projectName) base.projectName = projectName;
+	const sessionId = typeof params.sourceSessionId === "string" ? params.sourceSessionId.trim() : "";
+	if (sessionId) base.sourceSessionId = sessionId;
+
+	const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceTaskId) return base;
+	try {
+		const found = await resolveTaskAcrossProjects(sourceTaskId);
+		if (found) {
+			base.sourceTaskId = found.task.id;
+			base.sourceSeq = found.task.seq;
+			base.sourceTitle = getTaskTitle(found.task);
+			base.sourceProjectId = found.task.projectId;
+		}
+	} catch {
+		// An ambiguous or stale sender ref is not knowledge — the source stays null.
+	}
+	return base;
+}
+
+/**
+ * Write one notification row, unless this delivery is the CLI's fan-out copy.
+ *
+ * `dev3 notify` sends the same toast to every live dev3 instance so it reaches
+ * whichever app the user is looking at. That is one notification, not N, so only
+ * the instance the CLI addressed first records it.
+ */
+function recordNotification(
+	params: Record<string, unknown>,
+	base: NotificationLogBase,
+	mode: NotificationLogMode,
+	outcome: NotificationLogOutcome,
+): void {
+	if (params.fanout === true) return;
+	const suppressedBy = outcome === "queued" ? activeNotificationSuppression() : [];
+	appendNotificationLog({
+		...base,
+		at: new Date().toISOString(),
+		mode,
+		outcome,
+		...(suppressedBy.length ? { suppressedBy } : {}),
+	});
 }
 
 /**
@@ -1783,6 +1862,10 @@ const handlers: Record<string, Handler> = {
 	},
 
 	// UI control: surface an in-app toast (or native OS notification) from the CLI.
+	//
+	// Every accepted request is also appended to the notification log. The write
+	// is deliberately last and never throws: a toast the user already saw must
+	// not turn into a CLI error because a disk write failed.
 	"ui.notify": async (params) => {
 		const message = ((params.message as string) ?? "").trim();
 		if (!message) throw new Error("message is required");
@@ -1818,6 +1901,9 @@ const handlers: Record<string, Handler> = {
 			projectName = resolved.project.name;
 		}
 
+		// Resolved before delivery so the row can be written whatever happens next.
+		const logBase = await buildNotificationLogBase(params, { message, level, durationMs, task, projectId, projectName });
+
 		if (desktop) {
 			if (!task || !projectId) {
 				throw new Error("desktop notification requires a task — run inside a worktree or pass --task <id>");
@@ -1827,7 +1913,13 @@ const handlers: Record<string, Handler> = {
 				body: message,
 				projectName: projectName ?? undefined,
 			});
-			return { delivered: true, mode: "desktop", taskId: task.id, queued: isNotificationSuppressed() };
+			const queued = isNotificationSuppressed();
+			// A silenced project drops the notification without a trace on screen —
+			// see `deliverTaskNotification`. Recording it would put that trace back.
+			if (!isProjectSilenced(task.projectId)) {
+				recordNotification(params, logBase, "desktop", queued ? "queued" : "delivered");
+			}
+			return { delivered: true, mode: "desktop", taskId: task.id, queued };
 		}
 
 		const payload = {
@@ -1840,12 +1932,21 @@ const handlers: Record<string, Handler> = {
 		};
 		if (isNotificationSuppressed()) {
 			pushCliToast(payload);
+			// Same rule as the desktop path: `pushCliToast` drops a silenced
+			// project's toast outright instead of queuing it.
+			if (!isProjectSilenced(projectId)) {
+				recordNotification(params, logBase, "toast", "queued");
+			}
 			return { delivered: true, mode: "toast", taskId, queued: true };
 		}
 
 		const push = getPushMessage();
-		if (!push) return { delivered: false, mode: "toast" };
+		if (!push) {
+			recordNotification(params, logBase, "toast", "no-window");
+			return { delivered: false, mode: "toast" };
+		}
 		push("cliToast", payload);
+		recordNotification(params, logBase, "toast", "delivered");
 		return { delivered: true, mode: "toast", taskId };
 	},
 
