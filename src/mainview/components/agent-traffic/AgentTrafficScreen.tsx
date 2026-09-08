@@ -337,6 +337,16 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		useMemo(() => data.projects.map((project) => project.id), [data.projects]),
 	);
 	const { experiment, choose } = useTrafficExperiment();
+	/**
+	 * Whether this presentation replays a cursor at all.
+	 *
+	 * The gate means "is this a replay stage", not "is this Experiment 2" — the
+	 * transport, the Restart button, Space, the inspector, the filter sheet, the
+	 * rebuilt-states caption and the cursor clamp all belong to any replay
+	 * presentation. Written as `!== "1"` so a new stage inherits them instead of
+	 * quietly losing the whole replay because thirteen equality checks were missed.
+	 */
+	const replayStage = experiment !== "1";
 	const [scope, setScope] = useState(projectId ?? "all");
 	const [selected, setSelected] = useState<string | null>(null);
 	const [recordKey, setRecordKey] = useState<string | null>(null);
@@ -481,7 +491,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const levelKey = [...levels].sort().join(",");
 	const playback = useTrafficPlayback(
 		timeline,
-		experiment === "2",
+		replayStage,
 		`${scope}:${windowSize}:${filter}:${kindKey}:${levelKey}:${pair}:${query}`,
 	);
 	const graphRecords =
@@ -495,7 +505,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		() =>
 			(showMessages ? timeRows : []).filter(({ row }) => {
 				if (
-					experiment === "2" &&
+					replayStage &&
 					cursorAt !== null &&
 					Date.parse(row.at) > cursorAt
 				)
@@ -618,7 +628,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// fires only when nothing else owns the key. keymap.ts lists it display-only.
 	const playPause = useRef(playback.playPause);
 	playPause.current = playback.playPause;
-	const spaceArmed = experiment === "2" && replayRecords.length > 0;
+	const spaceArmed = replayStage && replayRecords.length > 0;
 	useGlobalShortcut(
 		(event) => {
 			if (!spaceArmed || event.code !== "Space") return;
@@ -730,14 +740,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 						{data.loading || data.historyLoading
 							? t("traffic.loading")
 							: (
-										experiment === "2"
+										replayStage
 											? playback.index < 0 && !calendarDay
 											: until === null
 								  )
 								? t("traffic.orbit.live")
 								: t("traffic.orbit.history")}
 					</span>
-					{experiment === "2" && (
+					{replayStage && (
 						<button
 							className="traffic-replay-start"
 							onClick={() => {
@@ -768,7 +778,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 				    timeline can actually carry more than one kind: a toggle over a kind
 				    that cannot occur is a dead control, and a one-option group is noise.
 				    Seq 1825's level group joins it here on the same terms. */}
-				{experiment === "2" && (
+				{replayStage && (
 					<FilterAxes
 						axes={[
 							{
@@ -801,14 +811,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 						if (value === "1" && calendarDay) setWindowSize(LIVE_WINDOW);
 					}}
 				/>
-				{experiment === "2" && narrowControls ? (
+				{replayStage && narrowControls ? (
 					<button onClick={() => setShowFilters(true)}>
 						{t("traffic.replay.filters")}
 					</button>
 				) : (
 					filters
 				)}
-				{experiment === "2" && (
+				{replayStage && (
 					<button
 						className="traffic-list-toggle"
 						aria-pressed={showInspector}
@@ -818,7 +828,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					</button>
 				)}
 			</div>
-			{experiment === "2" && narrowControls && (
+			{replayStage && narrowControls && (
 				<BottomSheet
 					open={showFilters}
 					onClose={() => setShowFilters(false)}
@@ -839,7 +849,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					    of those really are current, and claiming otherwise would be a lie
 					    on screen in the opposite direction. */}
 					<p>
-						{experiment === "2" && playback.cursor.at !== null
+						{replayStage && playback.cursor.at !== null
 							? t("traffic.replay.reconstructedTasks")
 							: t("traffic.orbit.currentTasks")}
 					</p>
@@ -899,7 +909,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							ready={!data.loading}
 						/>
 					)}
-					{experiment === "2" ? (
+					{replayStage ? (
 						<TrafficPlayback
 							loading={data.loading || data.historyLoading}
 							emptyKey={filtering ? "traffic.noneMatch" : "traffic.emptyWindow"}
@@ -983,10 +993,10 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 				</div>
 				<aside
 					className="traffic-inspector"
-					hidden={experiment === "2" && !showInspector}
+					hidden={replayStage && !showInspector}
 					aria-label={t("traffic.orbit.inspector")}
 				>
-					{experiment === "2" && (
+					{replayStage && (
 						<div className="traffic-inspector-heading">
 							{selectedNode && (
 								<button onClick={() => setFocusRequest((value) => value + 1)}>
