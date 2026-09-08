@@ -232,7 +232,7 @@
 	top: 12px;
 	right: 14px;
 	width: 15.5rem;
-	max-height: calc(100% - 96px);
+	max-height: calc(100% - 112px);
 	overflow: auto;
 	display: grid;
 	gap: 8px;

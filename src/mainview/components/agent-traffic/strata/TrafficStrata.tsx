@@ -112,11 +112,21 @@ export default function TrafficStrata({
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const labelLayerRef = useRef<HTMLDivElement>(null);
 	const [mode, setMode] = useState<StrataMode>("situation");
-	const [railOpen, setRailOpen] = useState(true);
+	/**
+	 * The activity panel is the lowest-priority overlay, so it is the first thing
+	 * to give the stage its room back (§12.6 — a control row sheds, never stacks).
+	 * `null` means nobody has chosen, and the stage width decides; once the user
+	 * opens or closes it, their choice sticks at every width.
+	 */
+	const [railChoice, setRailChoice] = useState<boolean | null>(null);
+	const [stageWidth, setStageWidth] = useState(0);
 	const [follow, setFollow] = useState(true);
 	const [unsupported, setUnsupported] = useState<string | null>(null);
 	const now = Date.now();
 
+	// 1080 is measured, not guessed: below it the 15.5rem panel covers a whole
+	// district and its own rows start clipping against the transport.
+	const railOpen = railChoice ?? stageWidth >= 1080;
 	const { palette, materials } = useMemo(() => strataPalette(theme), [theme]);
 	const cursorAt = playback?.cursor.at ?? null;
 
@@ -266,6 +276,7 @@ export default function TrafficStrata({
 		engineRef.current = engine;
 		setUnsupported(null);
 		engine.resize();
+		setStageWidth(host.getBoundingClientRect().width);
 
 		// The selection ring and the activity halo are built once and drawn at an
 		// offset per card, rather than rebuilt into every machine mesh.
@@ -294,6 +305,7 @@ export default function TrafficStrata({
 		canvas.addEventListener("webglcontextlost", onContextLost);
 		const observer = new ResizeObserver(() => {
 			engineRef.current?.resize();
+			setStageWidth(host.getBoundingClientRect().width);
 			// The aspect just changed, so the fit did too. Re-frame only while
 			// Follow owns the camera; a hand-placed view must survive a resize.
 			if (followRef.current) homeCamera(cameraRef.current, boundsRef.current, stageAspect());
@@ -504,7 +516,9 @@ export default function TrafficStrata({
 				const b = record ? machineMap.get(toKey(record.row)) : undefined;
 				if (a && b) {
 					const midpoint = V.mul(V.add(a.pos, b.pos), 0.5);
-					frameCamera(camera, midpoint, Math.max(30, Math.hypot(...V.sub(a.pos, b.pos)) * 1.5));
+					// The floor is 46, not 30: closer than that and the deck decal fills
+					// the frame behind the two machines it is meant to label.
+					frameCamera(camera, midpoint, Math.max(46, Math.hypot(...V.sub(a.pos, b.pos)) * 1.5));
 				} else if (ts - lastManual.current > FOLLOW_IDLE_MS) {
 					homeCamera(camera, bounds, stageAspect());
 				}
@@ -907,7 +921,7 @@ export default function TrafficStrata({
 						<span className="strata-kicker">{t("traffic.strata.summaryTitle")}</span>
 						<button
 							type="button"
-							onClick={() => setRailOpen(false)}
+							onClick={() => setRailChoice(false)}
 							aria-label={t("traffic.strata.railHide")}
 							title={t("traffic.strata.railHide")}
 						>
@@ -961,7 +975,7 @@ export default function TrafficStrata({
 				<button
 					type="button"
 					className="strata-rail-open"
-					onClick={() => setRailOpen(true)}
+					onClick={() => setRailChoice(true)}
 					data-strata-reserved
 				>
 					<TrafficIcon name="follow" />
