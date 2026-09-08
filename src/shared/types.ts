@@ -2414,6 +2414,10 @@ export interface Task {
 	 * every pre-existing task, so older app versions see an ordinary task.
 	 */
 	hibernated?: boolean;
+	/** Hidden from the Active Tasks sidebar only, group-wide; nothing else reads it.
+	 *  Absent/false on every pre-existing task, so older app versions see an
+	 *  ordinary task. */
+	hidden?: boolean;
 	/**
 	 * True when the task exists to look at code the local user did not write —
 	 * it was started on a remote/fork ref (a pull request, a colleague's branch).
@@ -4824,6 +4828,10 @@ export type AppRPCSchema = {
 				// Writes the priority to the whole variant group; returns every task
 				// it changed so all open surfaces re-render live.
 				params: { taskId: string; projectId: string; priority: TaskPriority };
+				response: Task[];
+			};
+			setTaskHidden: {
+				params: { taskId: string; projectId: string; hidden: boolean };
 				response: Task[];
 			};
 			moveTask: {

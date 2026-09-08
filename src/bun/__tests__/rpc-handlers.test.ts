@@ -56,6 +56,7 @@ vi.mock("../data", () => ({
 	loadTasks: vi.fn(),
 	updateTask: vi.fn(),
 	setTaskPriority: vi.fn(),
+	setTaskHidden: vi.fn(),
 	deriveTaskBaseBranch: vi.fn((project: any, branch?: string | null) => branch || project.defaultBaseBranch),
 	addTask: vi.fn(),
 	addProject: vi.fn(),
@@ -1505,6 +1506,30 @@ describe("handlers.setTaskPriority", () => {
 		await expect(
 			handlers.setTaskPriority({ taskId: "task-x", projectId: "proj-1", priority: "P0" }),
 		).rejects.toThrow("Task not found");
+	});
+});
+
+describe("handlers.setTaskHidden", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("writes visibility and pushes every changed variant", async () => {
+		const project = makeProject();
+		const changed = [
+			makeTask({ id: "task-1", hidden: true }),
+			makeTask({ id: "task-2", hidden: true }),
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.setTaskHidden).mockResolvedValue(changed);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.setTaskHidden({ taskId: "task-1", projectId: "proj-1", hidden: true });
+
+		expect(data.setTaskHidden).toHaveBeenCalledWith(project, "task-1", true);
+		expect(push).toHaveBeenCalledTimes(2);
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: changed[0] });
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: changed[1] });
+		expect(result).toEqual(changed);
 	});
 });
 

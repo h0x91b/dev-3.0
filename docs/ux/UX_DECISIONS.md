@@ -19,6 +19,10 @@ Two gated presentations; Coordination v3 replay/follow/focus live inside the ove
 
 One App viewer docks by default or uses a lightbox via `openArtifactsInPopup` in Settings → Tasks & Board; leaving a task hides it, preserving drafts. No second viewer or three-way mode — bible §3/§5/§12.3, yaml `task_artifact_viewer`. Why: `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`, `decisions/2026/09/07/docked-artifact-waits-offscreen.md`.
 
+## 2026-09-07 — Tasks can leave the Active Tasks queue without stopping
+
+`Task.hidden` hides a whole variant group from the Active Tasks sidebar only; row toggle, conditional reveal in the filter row (dot when one needs you), `is:hidden` token. Why: `decisions/2026/09/07/hide-tasks-from-active-sidebar.md`.
+
 ## 2026-09-05 — HTML artifacts open as a popup
 
 Superseded 2026-09-07 by the entry above. `decisions/2026/09/05/artifact-popup-replaces-resizable-panel.md`.

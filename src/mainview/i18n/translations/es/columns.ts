@@ -78,6 +78,7 @@ const columns = {
 	"filter.group.flags": "Indicadores",
 	"filter.flag.attention": "Requiere atención",
 	"filter.flag.port": "Con puerto activo",
+	"filter.flag.hidden": "Oculta de la barra lateral",
 	"labels.moreLabels": "+{count} más",
 
 	// Notes

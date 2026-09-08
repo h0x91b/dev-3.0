@@ -78,6 +78,7 @@ const columns = {
 	"filter.group.flags": "Flags",
 	"filter.flag.attention": "Needs attention",
 	"filter.flag.port": "Has running port",
+	"filter.flag.hidden": "Hidden from sidebar",
 	"labels.moreLabels": "+{count} more",
 
 	// Notes

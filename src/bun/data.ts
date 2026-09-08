@@ -873,6 +873,7 @@ export async function addTask(
 			}
 			variantIndex = maxVariantIndex + 1;
 		}
+		const hidden = extras?.groupId ? tasks.some((task) => task.groupId === extras.groupId && task.hidden) : false;
 		const newBackend = newTaskTerminalBackend(process.platform, readNewTaskTerminalBackendPreference());
 		const task: Task = {
 			id: crypto.randomUUID(),
@@ -916,6 +917,7 @@ export async function addTask(
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
+			...(hidden ? { hidden: true } : {}),
 			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
@@ -995,6 +997,42 @@ export async function updateTaskWith<T>(
 }
 
 /**
+ * Write one value across a whole variant group (or the single task when
+ * ungrouped) under the tasks-file lock. `op` names the write and its value for
+ * the log — without it every caller's lines would be indistinguishable.
+ */
+async function updateTaskGroup(
+	project: Project,
+	taskId: string,
+	op: string,
+	apply: (task: Task) => Task | null,
+): Promise<Task[]> {
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		log.info(`Setting task ${op}`, { taskId, projectId: project.id });
+		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
+		const target = tasks.find((task) => task.id === taskId);
+		if (!target) throw new Error(`Task not found: ${taskId}`);
+
+		const now = new Date().toISOString();
+		const changed: Task[] = [];
+		for (let i = 0; i < tasks.length; i++) {
+			const task = tasks[i];
+			const inGroup = target.groupId ? task.groupId === target.groupId : task.id === target.id;
+			if (!inGroup) continue;
+			const updated = apply(task);
+			if (!updated) continue;
+			tasks[i] = { ...updated, updatedAt: now };
+			changed.push(tasks[i]);
+		}
+
+		if (changed.length > 0) await rawSaveTasks(project, tasks);
+		log.info(`Task ${op} set`, { taskId, changed: changed.length, projectId: project.id });
+		return changed;
+	});
+}
+
+/**
  * Set a task's priority. Priority belongs to the logical task, so this writes the
  * value to EVERY task sharing the target's `groupId` (or just the single task when
  * ungrouped) — a variant group therefore never splits across sort bands. Returns
@@ -1002,32 +1040,24 @@ export async function updateTaskWith<T>(
  * `updatedAt` on changed tasks but never `movedAt` — priority is orthogonal to the
  * column/status move timeline.
  */
-export async function setTaskPriority(
-	project: Project,
-	taskId: string,
-	priority: TaskPriority,
-): Promise<Task[]> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
-		log.info("Setting task priority", { taskId, priority, projectId: project.id });
-		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
-		const target = tasks.find((t) => t.id === taskId);
-		if (!target) throw new Error(`Task not found: ${taskId}`);
+export function setTaskPriority(project: Project, taskId: string, priority: TaskPriority): Promise<Task[]> {
+	return updateTaskGroup(project, taskId, `priority=${priority}`, (task) =>
+		task.priority === priority ? null : { ...task, priority },
+	);
+}
 
-		const now = new Date().toISOString();
-		const changed: Task[] = [];
-		for (let i = 0; i < tasks.length; i++) {
-			const t = tasks[i];
-			const inGroup = target.groupId ? t.groupId === target.groupId : t.id === target.id;
-			if (!inGroup) continue;
-			if (t.priority === priority) continue;
-			tasks[i] = { ...t, priority, updatedAt: now };
-			changed.push(tasks[i]);
-		}
-
-		if (changed.length > 0) await rawSaveTasks(project, tasks);
-		log.info("Task priority set", { taskId, priority, changed: changed.length });
-		return changed;
+/**
+ * Hide or reveal a task in the Active Tasks sidebar. Visibility belongs to the
+ * logical task, so this writes across the whole variant group exactly like
+ * {@link setTaskPriority}. Reveal DELETES the field rather than storing `false`,
+ * matching how `addTask` omits it — one state, one representation on disk.
+ */
+export function setTaskHidden(project: Project, taskId: string, hidden: boolean): Promise<Task[]> {
+	return updateTaskGroup(project, taskId, `hidden=${hidden}`, (task) => {
+		if (Boolean(task.hidden) === hidden) return null;
+		if (hidden) return { ...task, hidden: true };
+		const { hidden: _revealed, ...rest } = task;
+		return rest;
 	});
 }
 

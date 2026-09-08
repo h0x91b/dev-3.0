@@ -212,7 +212,7 @@ const tips = {
 	"tip.llmProvider.title": "Agentes en Amazon Bedrock",
 	"tip.llmProvider.body": "El ajuste «LLM Provider» apunta Claude o Codex a Amazon Bedrock — dev3 fija el modelo mapeado; las credenciales y la región quedan en tu propia configuración.",
 	"tip.filterTokens.title": "Filtra tareas con tokens",
-	"tip.filterTokens.body": "En la búsqueda escribe label:Bug agent:Codex status:review is:attention has:port — o usa el embudo para construirlo.",
+	"tip.filterTokens.body": "En la búsqueda escribe label:Bug agent:Codex status:review is:attention is:hidden has:port — o usa el embudo para construirlo.",
 	"tip.cycleTaskVariants.title": "Cambia entre variantes",
 	"tip.cycleTaskVariants.body": "Pulsa Shift+Cmd+[ o ] (Ctrl en Linux) para moverte entre variantes activas sin salir del terminal.",
 	"tip.mobileTaskGit.title": "Git desde tu móvil",

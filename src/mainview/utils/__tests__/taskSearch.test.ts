@@ -53,6 +53,7 @@ function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
 		priorityValue: "",
 		spaceNames: [],
 		hasPort: false,
+		isHidden: false,
 		isAttention: false,
 		prNumber: null,
 		...overrides,
@@ -233,6 +234,14 @@ describe("matchesTaskQuery — facets", () => {
 		expect(matchesTaskQuery(makeTask(), "status:done", statusCtx)).toBe(false);
 		const parkedCtx = ctx({ statusValues: ["On Hold", "review-by-user", "Your Review"] });
 		expect(matchesTaskQuery(makeTask(), 'status:"on hold"', parkedCtx)).toBe(true);
+	});
+
+	it("is:hidden matches only a task hidden from the sidebar", () => {
+		expect(matchesTaskQuery(makeTask(), "is:hidden", ctx({ isHidden: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "is:hidden", ctx({ isHidden: false }))).toBe(false);
+		// The flag is its own axis: hidden does not imply attention or vice versa.
+		expect(matchesTaskQuery(makeTask(), "is:hidden", ctx({ isAttention: true }))).toBe(false);
+		expect(matchesTaskQuery(makeTask(), "is:attention", ctx({ isHidden: true }))).toBe(false);
 	});
 
 	it("is:attention matches only when the context flag is set", () => {

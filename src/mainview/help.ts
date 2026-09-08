@@ -194,6 +194,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 	// Three glyphs and no labels: the one control on the task screen that changes
 	// what the whole list means, and it explained itself only through tooltips.
 	{ id: "sidebar.scope", titleKey: "help.sidebar.scope.title", bodyKey: "help.sidebar.scope.body" },
+	{ id: "sidebar.show-hidden", titleKey: "help.sidebar.showHidden.title", bodyKey: "help.sidebar.showHidden.body" },
 
 	// ── Tips ──
 	// Occupies prime real estate on an empty board, so a newcomer meets it before
@@ -294,6 +295,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"header.tmux-sessions",
 	"sidebar.active-tasks",
 	"sidebar.scope",
+	"sidebar.show-hidden",
 	// Form fields (non-self-evident behavior)
 	"field.task-branch",
 	"field.streamer-mode",
