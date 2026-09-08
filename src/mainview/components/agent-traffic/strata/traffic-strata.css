@@ -170,12 +170,20 @@
 	box-shadow: inset 0 0 0 1px rgb(var(--border-active));
 }
 
-.strata-heading {
+/* Heading and metric strip are one stacked block on the left, so the activity
+   rail on the right can never sit on top of the numbers. */
+.strata-topleft {
 	position: absolute;
 	top: 56px;
 	left: 16px;
-	max-width: min(30rem, 60cqw);
+	display: grid;
+	gap: 13px;
+	max-width: min(32rem, 62cqw);
 	pointer-events: none;
+}
+.strata-heading {
+	display: grid;
+	gap: 0;
 }
 .strata-kicker {
 	display: block;
@@ -199,17 +207,13 @@
 }
 
 .strata-metrics {
-	position: absolute;
-	top: 56px;
-	right: 16px;
 	display: flex;
 	flex-wrap: nowrap;
-	gap: 15px;
-	pointer-events: none;
+	gap: 19px;
 }
 .strata-metric {
 	display: grid;
-	justify-items: end;
+	justify-items: start;
 	gap: 1px;
 }
 .strata-metric strong {
@@ -512,7 +516,7 @@
 	.strata-metrics {
 		display: none;
 	}
-	.strata-heading {
+	.strata-topleft {
 		top: 52px;
 		max-width: 78cqw;
 	}

@@ -51,6 +51,7 @@ import {
 	buildRoutes,
 	buildSubstrate,
 	machineLook,
+	sceneBounds,
 	sceneExtent,
 	type PlacedRoute,
 } from "./strata-scene";
@@ -133,7 +134,10 @@ export default function TrafficStrata({
 		[nodes, projects, layoutRecords, cursorAt],
 	);
 	const machineMap = useMemo(() => machineIndex(machines), [machines]);
-	const extent = useMemo(() => sceneExtent(districts), [districts]);
+	// Two measurements, not one: the camera frames the decks (`bounds`, centred on
+	// their own centroid), the substrate reaches past them from the world origin.
+	const bounds = useMemo(() => sceneBounds(districts), [districts]);
+	const decorExtent = useMemo(() => sceneExtent(districts), [districts]);
 	const routes = useMemo(
 		() => strataRoutes(records, mode, now),
 		// `now` deliberately excluded: it changes every render and only decides
@@ -179,7 +183,7 @@ export default function TrafficStrata({
 
 	// ---- imperative render state, deliberately outside React ----
 	const engineRef = useRef<StrataGL | null>(null);
-	const cameraRef = useRef<StrataCamera>(createCamera(extent));
+	const cameraRef = useRef<StrataCamera>(createCamera(bounds));
 	const staticRef = useRef<{
 		base: StrataMesh | null;
 		detail: StrataMesh | null;
@@ -202,12 +206,14 @@ export default function TrafficStrata({
 	const reducedRef = useRef(reduced);
 	const lastManual = useRef(0);
 	const lastFailedRoute = useRef<PlacedRoute | null>(null);
+	const boundsRef = useRef(bounds);
 	machinesRef.current = machines;
 	districtsRef.current = districts;
 	selectedRef.current = selected;
 	followRef.current = follow;
 	pausedRef.current = paused;
 	reducedRef.current = reduced;
+	boundsRef.current = bounds;
 
 	const statusColor = useCallback(
 		(status: Parameters<typeof getStatusLabel>[0]) => colors[status],
@@ -215,6 +221,12 @@ export default function TrafficStrata({
 	);
 
 	/** Nearest machine to a canvas point, within a forgiving radius. */
+	/** Current stage aspect, or the default before the canvas has been measured. */
+	const stageAspect = useCallback(() => {
+		const engine = engineRef.current;
+		return engine && engine.h > 0 ? engine.w / engine.h : undefined;
+	}, []);
+
 	const hitTest = useCallback((x: number, y: number): StrataMachine | null => {
 		const engine = engineRef.current;
 		if (!engine) return null;
@@ -280,7 +292,12 @@ export default function TrafficStrata({
 			setUnsupported(t("traffic.strata.contextLost"));
 		};
 		canvas.addEventListener("webglcontextlost", onContextLost);
-		const observer = new ResizeObserver(() => engineRef.current?.resize());
+		const observer = new ResizeObserver(() => {
+			engineRef.current?.resize();
+			// The aspect just changed, so the fit did too. Re-frame only while
+			// Follow owns the camera; a hand-placed view must survive a resize.
+			if (followRef.current) homeCamera(cameraRef.current, boundsRef.current, stageAspect());
+		});
 		observer.observe(host);
 		return () => {
 			canvas.removeEventListener("webglcontextlost", onContextLost);
@@ -303,7 +320,7 @@ export default function TrafficStrata({
 		};
 		// `palette`/`materials` are theme-derived: a theme flip rebuilds the whole
 		// scene, which is correct — every material changed.
-	}, [palette, materials, t]);
+	}, [palette, materials, t, stageAspect]);
 
 	// ---- static geometry: substrate, decks, deck decals ----
 	useEffect(() => {
@@ -314,7 +331,7 @@ export default function TrafficStrata({
 		engine.dispose(previous.detail);
 		engine.dispose(previous.ghost);
 		for (const decal of previous.decals) engine.disposeDecal(decal);
-		const { base, detail } = buildSubstrate(materials, extent);
+		const { base, detail } = buildSubstrate(materials, decorExtent);
 		const ghost = new MeshBuilder();
 		const decals: StrataDecal[] = [];
 		for (const district of districts) {
@@ -340,7 +357,7 @@ export default function TrafficStrata({
 			ghost: engine.mesh(ghost),
 			decals,
 		};
-	}, [districts, materials, extent, t]);
+	}, [districts, materials, decorExtent, t]);
 
 	// ---- one mesh per card, rebuilt only when its look actually changes ----
 	useEffect(() => {
@@ -432,17 +449,17 @@ export default function TrafficStrata({
 			event.preventDefault();
 			lastManual.current = performance.now();
 			if (key === "h") {
-				homeCamera(cameraRef.current, extent);
+				homeCamera(cameraRef.current, bounds, stageAspect());
 				setFollow(false);
 				return;
 			}
 			const machine = selectedRef.current ? machineMap.get(selectedRef.current) : undefined;
 			if (machine) frameCamera(cameraRef.current, machine.pos);
-			else homeCamera(cameraRef.current, extent);
+			else homeCamera(cameraRef.current, bounds, stageAspect());
 		};
 		host.addEventListener("keydown", onKeyDown);
 		return () => host.removeEventListener("keydown", onKeyDown);
-	}, [extent, machineMap, unsupported]);
+	}, [bounds, machineMap, unsupported, stageAspect]);
 
 	// ---- Focus / Follow nudges from the screen ----
 	useEffect(() => {
@@ -456,14 +473,14 @@ export default function TrafficStrata({
 	useEffect(() => {
 		if (!followRequest) return;
 		setFollow(true);
-		homeCamera(cameraRef.current, extent);
-	}, [followRequest, extent]);
+		homeCamera(cameraRef.current, bounds, stageAspect());
+	}, [followRequest, bounds, stageAspect]);
 	// A scene that changed size (a project appeared, the window moved) re-frames
 	// only while Follow owns the camera.
 	useEffect(() => {
 		if (!followRef.current) return;
-		cameraRef.current.toDistance = framingDistance(extent);
-	}, [extent]);
+		cameraRef.current.toDistance = framingDistance(bounds.radius, stageAspect());
+	}, [bounds, stageAspect]);
 
 	// ---- the render loop ----
 	useEffect(() => {
@@ -489,7 +506,7 @@ export default function TrafficStrata({
 					const midpoint = V.mul(V.add(a.pos, b.pos), 0.5);
 					frameCamera(camera, midpoint, Math.max(30, Math.hypot(...V.sub(a.pos, b.pos)) * 1.5));
 				} else if (ts - lastManual.current > FOLLOW_IDLE_MS) {
-					homeCamera(camera, extent);
+					homeCamera(camera, bounds, stageAspect());
 				}
 			}
 
@@ -573,8 +590,98 @@ export default function TrafficStrata({
 			}
 		};
 
-		/** Project every label and hand the survivors their transform, in the DOM. */
+		/**
+		 * Project every label and hand the survivors their transform, in the DOM.
+		 *
+		 * Order is load-bearing: the deck names and the failed-route callout are
+		 * placed first and their boxes become reserved space, so a floating card
+		 * label is dropped rather than parked on top of either. Doing cards first
+		 * — the obvious order, and what the first build did — buried the district
+		 * a card was standing on.
+		 */
 		const positionLabels = (engine: StrataGL) => {
+			// The overlay panels come first of all: every floating thing — deck name,
+			// route callout, card label — has to keep clear of them, and reading them
+			// once per frame is one `getBoundingClientRect` batch rather than three.
+			const claimed: Rect[] = [];
+			const layer = labelLayerRef.current;
+			const panels: Rect[] = [];
+			if (layer) {
+				const bounds = layer.getBoundingClientRect();
+				for (const panel of layer.parentElement?.querySelectorAll<HTMLElement>(
+					"[data-strata-reserved]",
+				) ?? []) {
+					const box = panel.getBoundingClientRect();
+					panels.push({
+						x: box.left - bounds.left,
+						y: box.top - bounds.top,
+						w: box.width,
+						h: box.height,
+					});
+				}
+			}
+			const hits = (rect: Rect, boxes: Rect[]) =>
+				boxes.some(
+					(box) =>
+						rect.x < box.x + box.w &&
+						rect.x + rect.w > box.x &&
+						rect.y < box.y + box.h &&
+						rect.y + rect.h > box.y,
+				);
+			for (const district of districtsRef.current) {
+				const element = districtNodes.current.get(district.id);
+				if (!element) continue;
+				const projected = engine.project([
+					district.center[0],
+					district.center[1] + 0.5,
+					district.center[2] + district.radius * 0.89,
+				]);
+				const visible =
+					projected.visible &&
+					projected.x > 40 &&
+					projected.x < engine.w - 40 &&
+					projected.y > 8 &&
+					projected.y < engine.h - 44;
+				element.style.display = visible ? "block" : "none";
+				if (!visible) continue;
+				element.style.transform = `translate(-50%, 0) translate(${projected.x}px, ${projected.y}px)`;
+				claimed.push({
+					x: projected.x - element.offsetWidth / 2,
+					y: projected.y,
+					w: element.offsetWidth,
+					h: element.offsetHeight,
+				});
+			}
+			const routeLabel = routeLabelRef.current;
+			const failed = lastFailedRoute.current;
+			if (routeLabel) {
+				const mid = failed?.points[Math.floor(failed.points.length / 2)];
+				const projected = mid ? engine.project(mid) : null;
+				const rect = projected
+					? {
+							x: projected.x - routeLabel.offsetWidth / 2,
+							y: projected.y + 4,
+							w: routeLabel.offsetWidth,
+							h: routeLabel.offsetHeight,
+						}
+					: null;
+				// Hidden rather than nudged when it lands under a panel: a moved
+				// callout points at a route that is not there.
+				const visible =
+					!!projected &&
+					!!rect &&
+					projected.visible &&
+					projected.x > 80 &&
+					projected.x < engine.w - 80 &&
+					projected.y > 12 &&
+					projected.y < engine.h - 48 &&
+					!hits(rect, panels);
+				routeLabel.style.display = visible ? "block" : "none";
+				if (visible && projected && rect) {
+					routeLabel.style.transform = `translate(-50%, 0) translate(${projected.x}px, ${projected.y + 4}px)`;
+					claimed.push(rect);
+				}
+			}
 			const points = new Map<string, { x: number; y: number; visible: boolean }>();
 			const sizes = new Map<string, { w: number; h: number }>();
 			for (const machine of machinesRef.current) {
@@ -591,22 +698,7 @@ export default function TrafficStrata({
 					h: element?.offsetHeight || 30,
 				});
 			}
-			const reserved: Rect[] = [];
-			const layer = labelLayerRef.current;
-			if (layer) {
-				const bounds = layer.getBoundingClientRect();
-				for (const panel of layer.parentElement?.querySelectorAll<HTMLElement>(
-					"[data-strata-reserved]",
-				) ?? []) {
-					const box = panel.getBoundingClientRect();
-					reserved.push({
-						x: box.left - bounds.left,
-						y: box.top - bounds.top,
-						w: box.width,
-						h: box.height,
-					});
-				}
-			}
+			const reserved: Rect[] = [...claimed, ...panels];
 			const placed = placeLabels({
 				machines: machinesRef.current,
 				selected: selectedRef.current,
@@ -630,45 +722,6 @@ export default function TrafficStrata({
 				element.style.transform = `translate(-50%, -100%) translate(${label.x}px, ${label.y}px)`;
 				element.removeAttribute("aria-hidden");
 			}
-			for (const district of districtsRef.current) {
-				const element = districtNodes.current.get(district.id);
-				if (!element) continue;
-				const projected = engine.project([
-					district.center[0],
-					district.center[1] + 0.5,
-					district.center[2] + district.radius * 0.89,
-				]);
-				const visible =
-					projected.visible &&
-					projected.x > 40 &&
-					projected.x < engine.w - 40 &&
-					projected.y > 8 &&
-					projected.y < engine.h - 44;
-				element.style.display = visible ? "block" : "none";
-				if (visible) {
-					element.style.transform = `translate(-50%, 0) translate(${projected.x}px, ${projected.y}px)`;
-				}
-			}
-			const routeLabel = routeLabelRef.current;
-			const failed = lastFailedRoute.current;
-			if (routeLabel) {
-				if (failed) {
-					const mid = failed.points[Math.floor(failed.points.length / 2)];
-					const projected = engine.project(mid);
-					const visible =
-						projected.visible &&
-						projected.x > 80 &&
-						projected.x < engine.w - 80 &&
-						projected.y > 12 &&
-						projected.y < engine.h - 48;
-					routeLabel.style.display = visible ? "block" : "none";
-					if (visible) {
-						routeLabel.style.transform = `translate(-50%, 0) translate(${projected.x}px, ${projected.y + 4}px)`;
-					}
-				} else {
-					routeLabel.style.display = "none";
-				}
-			}
 		};
 
 		raf = requestAnimationFrame(loop);
@@ -676,7 +729,7 @@ export default function TrafficStrata({
 	}, [
 		unsupported,
 		machineMap,
-		extent,
+		bounds,
 		mode,
 		colors,
 		materials,
@@ -812,31 +865,33 @@ export default function TrafficStrata({
 				))}
 			</nav>
 
-			<div className="strata-heading" data-strata-reserved>
-				<span className="strata-kicker">{t("traffic.strata.kicker")}</span>
-				<h3>{t(MODE_HEADING[mode])}</h3>
-				<p>
-					{t.plural("traffic.strata.districtCount", districts.length)} ·{" "}
-					{t.plural(
-						"traffic.strata.coordinatorCount",
-						machines.filter((machine) => machine.role === "coordinator").length,
-					)}{" "}
-					· {t("traffic.strata.noHierarchy")}
-				</p>
-			</div>
+			<div className="strata-topleft" data-strata-reserved>
+				<div className="strata-heading">
+					<span className="strata-kicker">{t("traffic.strata.kicker")}</span>
+					<h3>{t(MODE_HEADING[mode])}</h3>
+					<p>
+						{t.plural("traffic.strata.districtCount", districts.length)} ·{" "}
+						{t.plural(
+							"traffic.strata.coordinatorCount",
+							machines.filter((machine) => machine.role === "coordinator").length,
+						)}{" "}
+						· {t("traffic.strata.noHierarchy")}
+					</p>
+				</div>
 
-			<div className="strata-metrics" data-strata-reserved>
-				<div className="strata-metric">
-					<strong>{machines.filter((machine) => machine.status === "in-progress").length}</strong>
-					<span>{t("traffic.strata.metricWorking")}</span>
-				</div>
-				<div className="strata-metric">
-					<strong>{summary.attention}</strong>
-					<span>{t("traffic.strata.metricAsking")}</span>
-				</div>
-				<div className="strata-metric">
-					<strong>{summary.held + summary.queued + summary.undelivered}</strong>
-					<span>{t("traffic.strata.metricUnlanded")}</span>
+				<div className="strata-metrics">
+					<div className="strata-metric">
+						<strong>{machines.filter((machine) => machine.status === "in-progress").length}</strong>
+						<span>{t("traffic.strata.metricWorking")}</span>
+					</div>
+					<div className="strata-metric">
+						<strong>{summary.attention}</strong>
+						<span>{t("traffic.strata.metricAsking")}</span>
+					</div>
+					<div className="strata-metric">
+						<strong>{summary.held + summary.queued + summary.undelivered}</strong>
+						<span>{t("traffic.strata.metricUnlanded")}</span>
+					</div>
 				</div>
 			</div>
 
@@ -949,7 +1004,7 @@ export default function TrafficStrata({
 				<button
 					type="button"
 					onClick={() => {
-						homeCamera(cameraRef.current, extent);
+						homeCamera(cameraRef.current, bounds, stageAspect());
 						setFollow(false);
 						lastManual.current = performance.now();
 					}}
