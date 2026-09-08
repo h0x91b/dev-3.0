@@ -57,6 +57,34 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/(?:send|carries)[^.]*conclusion alone/i);
 	});
 
+	// Variants of one task exist to produce results nobody cross-contaminated, and
+	// the coordinator is the only party with the standing to leak between them: it
+	// alone knows the group exists. Each assertion pins one half of the isolation —
+	// nothing about siblings goes IN, and comparisons only come OUT to the user.
+	it("keeps variants isolated: nothing about a sibling reaches a variant", () => {
+		expect(COORDINATOR_PROMPT).toContain("== VARIANTS ==");
+		expect(COORDINATOR_PROMPT).toContain("NEVER TELL A VARIANT THAT A SIBLING EXISTS");
+		expect(COORDINATOR_PROMPT).toMatch(/findings, hypotheses, progress, artefacts, transcript or recommendation/);
+		expect(COORDINATOR_PROMPT).toMatch(/no invitation to inspect or work with one/);
+	});
+
+	// The two rules that would otherwise read as permission: facts travel between
+	// children, and overlaps get resolved by talking to both. Both are for
+	// independent tasks, and a coordinator that applies them to a variant group
+	// destroys the experiment while following the letter of its brief.
+	it("excludes sibling variants from child-to-child facts and overlap work", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/never to or between variants of one task/);
+		expect(COORDINATOR_PROMPT).toContain("CHILD-TO-CHILD FACTS AND OVERLAP WORK ARE FOR INDEPENDENT TASKS ONLY");
+		expect(COORDINATOR_PROMPT).toMatch(/Address a variant privately by `--variant <i>` or its task id/);
+		expect(COORDINATOR_PROMPT).toMatch(/never fan one summary into variant inboxes/);
+	});
+
+	it("lets the comparison go to the user only, and keeps relays provenance-free", () => {
+		expect(COORDINATOR_PROMPT).toContain("COMPARE THEIR RESULTS FOR THE USER");
+		expect(COORDINATOR_PROMPT).toMatch(/never back into a running variant/);
+		expect(COORDINATOR_PROMPT).toMatch(/with no sibling named as their source/);
+	});
+
 	it("keeps the four rules that were learned from a specific failure", () => {
 		expect(COORDINATOR_PROMPT).toContain("RELAY THE RULING, NOT YOUR READING OF IT");
 		expect(COORDINATOR_PROMPT).toContain("NEVER ATTRIBUTE WORDS THE USER DID NOT SAY");
