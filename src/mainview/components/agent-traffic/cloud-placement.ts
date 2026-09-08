@@ -142,6 +142,50 @@ function candidates(cloud: CloudToPlace, canvas: { width: number; height: number
 }
 
 /**
+ * Nudge a box straight out of whatever it still overlaps, and keep it if that
+ * lands clean.
+ *
+ * The grid of candidates is a grid: a pocket can exist between its offsets, and
+ * a coarse grid then reports "nowhere to go" for a canvas that has somewhere to
+ * go. This is the cheap escape — for every blocker still touched, try the four
+ * minimal translations that clear it, clamp, and re-score. Two passes, because
+ * clearing one blocker can touch another.
+ *
+ * Bounded by `limit`: a nudge that carries the cloud further from its card than
+ * the sideways sweep would have is not an improvement, it is a cloud belonging
+ * to nothing.
+ */
+function pushOut(
+	start: Rect,
+	blockers: readonly Rect[],
+	canvas: { width: number; height: number },
+	limit: { left: number; right: number },
+): Rect | null {
+	let current = start;
+	for (let pass = 0; pass < 2; pass += 1) {
+		const hit = blockers.find(blocker => overlapArea(current, blocker) > 0);
+		if (!hit) return current;
+		const options: Rect[] = [
+			{ ...current, left: hit.left - current.width - 1 },
+			{ ...current, left: hit.left + hit.width + 1 },
+			{ ...current, top: hit.top - current.height - 1 },
+			{ ...current, top: hit.top + hit.height + 1 },
+		]
+			.map(rect => clampIntoCanvas(rect, canvas))
+			.filter(rect => rect.left >= limit.left && rect.left <= limit.right);
+		let best: { rect: Rect; overlap: number } | null = null;
+		for (const rect of options) {
+			const overlap = blockers.reduce((sum, blocker) => sum + overlapArea(rect, blocker), 0);
+			if (!best || overlap < best.overlap) best = { rect, overlap };
+		}
+		if (!best) return null;
+		if (best.overlap === 0) return best.rect;
+		current = best.rect;
+	}
+	return null;
+}
+
+/**
  * Place every cloud, newest first.
  *
  * Newest first because the newest notification is the one the reader is looking
@@ -179,7 +223,20 @@ export function placeClouds(input: {
 		}
 		// `candidates` is never empty, so `best` is always set; the assertion is for
 		// the type, not for a case that can happen.
-		const chosen = best!;
+		let chosen = best!;
+		if (chosen.overlap > 0) {
+			// The grid missed. Try nudging straight out of what is still in the way,
+			// within the same sideways bound the grid honours, before reporting that
+			// there was nowhere to go — that report is what a product decision would
+			// rest on, so it has to mean "searched and there is nothing".
+			const slide = cloud.size.width * MAX_SLIDE;
+			const centred = cloud.anchor.x - cloud.size.width / 2;
+			const nudged = pushOut(chosen.candidate.rect, blockers, input.canvas, {
+				left: centred - slide,
+				right: centred + slide,
+			});
+			if (nudged) chosen = { candidate: { rect: nudged, side: chosen.candidate.side }, overlap: 0 };
+		}
 		placed.push(chosen.candidate.rect);
 		// The side comes from the candidate, never from the final coordinates: a
 		// clamp can push a "below" box back up past its own anchor, and deriving the

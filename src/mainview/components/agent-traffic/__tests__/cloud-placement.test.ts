@@ -252,4 +252,41 @@ describe("placeClouds", () => {
 			expect(placed.left + size.width).toBeLessThanOrEqual(480);
 		});
 	});
+
+	it("nudges out of the way when the candidate grid misses the pocket", () => {
+		// A 2px-wide corridor: wide enough for the cloud, but sitting between two of
+		// the grid's offsets, so the grid alone reports "nowhere to go". A non-zero
+		// score is what a product decision would rest on, so it has to mean searched
+		// and there is nothing — not "my grid was coarse".
+		const canvas = { width: 1280, height: 400 };
+		const card: Rect = { left: 300, top: 200, width: 100, height: 60 };
+		const size = { width: 278, height: 67 };
+		const walls: Rect[] = [
+			card,
+			{ left: 0, top: 0, width: 1280, height: 120 },     // the storey above
+			{ left: 0, top: 120, width: 240, height: 60 },     // corridor, left wall
+			{ left: 520, top: 120, width: 760, height: 60 },   // corridor, right wall
+			{ left: 0, top: 195, width: 1280, height: 205 },   // everything below
+		];
+		const placed = placeClouds({ canvas, obstacles: walls, clouds: [cloud("a", card, size)] }).get("a")!;
+		expect(placed.overlap).toBe(0);
+		expect(placed.left).toBeGreaterThanOrEqual(240);
+		expect(placed.left + size.width).toBeLessThanOrEqual(520);
+	});
+
+	it("refuses a nudge that would carry the cloud away from its card", () => {
+		// The escape is bounded by the same sideways limit the grid honours. A cloud
+		// that clears every obstacle by leaving its card behind belongs to nothing,
+		// so an honest non-zero score is the better answer.
+		const canvas = { width: 1280, height: 300 };
+		const card: Rect = { left: 100, top: 150, width: 80, height: 50 };
+		const size = { width: 200, height: 67 };
+		const walls: Rect[] = [
+			card,
+			{ left: 0, top: 0, width: 700, height: 300 },      // only free space is far right
+		];
+		const placed = placeClouds({ canvas, obstacles: walls, clouds: [cloud("a", card, size)] }).get("a")!;
+		expect(placed.overlap).toBeGreaterThan(0);
+		expect(placed.left).toBeLessThan(700);
+	});
 });
