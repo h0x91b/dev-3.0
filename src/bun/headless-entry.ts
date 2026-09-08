@@ -1,4 +1,4 @@
-import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { stopDayFileWatches } from "./day-file-watch";
 /**
  * Headless entry point for `dev3 remote`.
  *
@@ -554,7 +554,7 @@ setOnPaneExited((taskId, paneId) => {
 // ── Graceful shutdown ──
 function shutdown(signal: string): void {
 	log.info(`Received ${signal}, shutting down`);
-	stopAgentMessageLogWatches();
+	stopDayFileWatches();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();

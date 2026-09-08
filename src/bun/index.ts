@@ -1,4 +1,4 @@
-import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { stopDayFileWatches } from "./day-file-watch";
 import Electrobun, {
 	ApplicationMenu,
 	PATHS,
@@ -769,7 +769,7 @@ setOnPaneExited((taskId, paneId) => {
 
 function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
-	stopAgentMessageLogWatches();
+	stopDayFileWatches();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
