@@ -24,6 +24,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
 import { CLOUD_TEXT_MAX_WIDTH, COMPACT_LOBE_R, cloudGeometry } from "./traffic-cloud";
+import { type Rect, placeClouds } from "./cloud-placement";
 import "./traffic-notification.css";
 
 const LEVEL_ICON = {
@@ -64,7 +65,7 @@ export function cloudSenderEndpoint(event: TrafficNotificationEvent): Notificati
 	return event.origin;
 }
 
-export default function TrafficNotificationBubble({ event, anchor, width, height, placement = "auto", density = "full", room, onKnownTask }: {
+export default function TrafficNotificationBubble({ event, anchor, width, height, placement = "auto", density = "full", room, obstacles, at, onKnownTask }: {
 	event: TrafficNotificationEvent;
 	/**
 	 * Top-centre of the card to hang over, in canvas coordinates. Omit for flow.
@@ -113,6 +114,25 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	 * falls back to the canvas edge, exactly as before.
 	 */
 	room?: { above: number; below: number };
+	/**
+	 * A position already decided by `placeClouds`, which is how a canvas with
+	 * several clouds on it avoids stacking them on each other — a cloud cannot see
+	 * its neighbours from in here. Given this, the cloud simply draws where it is
+	 * told and ignores `placement` and `room`.
+	 */
+	at?: { left: number; top: number; side: "above" | "below" };
+	/**
+	 * Everything on the canvas the cloud must not cover, in the SAME space the
+	 * cloud is positioned in — cards, group frames, the caption, the minimap, the
+	 * camera controls. The sender's own card may stay in the list; the cloud is
+	 * meant to touch that one and excludes it itself.
+	 *
+	 * This is what `room` cannot express. Two gap numbers describe the anchor's own
+	 * column, and the overlap that survived on the real stage was HORIZONTAL: a
+	 * cloud is wider than a card, so it reaches into neighbouring columns whatever
+	 * side it takes. With the boxes it can step sideways or up a storey instead.
+	 */
+	obstacles?: readonly Rect[];
 	/** Whether the board being shown has this card. Unknown when not supplied. */
 	onKnownTask?: (endpoint: NotificationEndpoint) => boolean;
 }) {
@@ -150,13 +170,29 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	// there covered two other cards for nothing.
 	const roomier = room ? (room.below > room.above ? "below" : "above") : "above";
 	const auto = fitsAbove ? "above" : fitsBelow ? "below" : roomier;
-	const below = !!anchor && (placement === "below" || (placement === "auto" && auto === "below"));
+	// One cloud, placed by the shared engine, so the candidate order and the clamp
+	// are not written twice. The stage renders exactly one cloud at a time — its
+	// own structural rule, measured — so a batch call here would be a single-element
+	// batch, and the engine takes exactly that.
+	const solved = anchor && obstacles && placement === "auto" && content.width > 0
+		? placeClouds({
+			canvas: { width: canvasWidth, height: height ?? 0 },
+			obstacles,
+			clouds: [{ key: event.key, anchor, size: { width: cloud.width, height: cloud.height } }],
+		}).get(event.key) ?? null
+		: null;
+	const below = (at ?? solved)
+		? (at ?? solved)!.side === "below"
+		: !!anchor && (placement === "below" || (placement === "auto" && auto === "below"));
 	// Clamped into the canvas in BOTH axes. An unclamped cloud does not merely sit
 	// awkwardly, it leaves the viewport — and a cloud pushed off the bottom looks
 	// like zero overlap while actually being gone, which is how a fix for this
 	// overlap first appeared to succeed.
 	const canvasHeight = height ?? 0;
-	const position = anchor
+	const decided = at ?? solved;
+	const position = decided
+		? { left: decided.left + cloud.width / 2, top: decided.top }
+		: anchor
 		? {
 			left: Math.max(cloud.width / 2 + 8, Math.min(canvasWidth - cloud.width / 2 - 8, anchor.x)),
 			top: canvasHeight > cloud.height + 8
@@ -205,10 +241,18 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 						? (
 							// The level is still named for a screen reader; on screen the icon
 							// and the tone carry it, because a preview has one line to spend.
-							<span className="traffic-notification-preview streamer-private" title={row.message}>
-								<span className="sr-only">{t(`traffic.notification.level.${event.level}` as TranslationKey)}: </span>
-								{row.message}
-							</span>
+							<>
+								{/* The sender in words, not only as a trail of puffs. At the zoom
+								    the stage opens on, whether the puffs read as a connection could
+								    not be confirmed — so the claim does not rest on them alone. */}
+								{origin
+									? <span className="traffic-notification-endpoint traffic-notification-sender">#{origin.seq === null ? "—" : origin.seq}</span>
+									: null}
+								<span className="traffic-notification-preview streamer-private" title={row.message}>
+									<span className="sr-only">{t(`traffic.notification.level.${event.level}` as TranslationKey)}: </span>
+									{row.message}
+								</span>
+							</>
 						)
 						: (
 							<>

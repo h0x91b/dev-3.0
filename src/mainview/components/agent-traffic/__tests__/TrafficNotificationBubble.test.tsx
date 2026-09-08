@@ -229,6 +229,29 @@ describe("TrafficNotificationBubble", () => {
 		expect(bubble.classList.contains("is-below")).toBe(true);
 	});
 
+	it("names the sender in compact density, not only as a trail of puffs", () => {
+		// Whether the puffs read as a connection at the stage's own 25% zoom could not
+		// be confirmed on the real surface, so the preview says #N as well.
+		const bubble = show(notification({ sourceSeq: 1825 }), { density: "compact" });
+		expect(bubble.querySelector(".traffic-notification-sender")?.textContent).toBe("#1825");
+	});
+
+	it("takes obstacle boxes and moves off them, which room cannot express", () => {
+		// The overlap that survived on the real stage was horizontal: a cloud is wider
+		// than a card, so it reaches into neighbouring columns on either side. Two gap
+		// numbers describe one column and cannot see that.
+		const bubble = show(notification(), {
+			anchor: { x: 400, y: 300, height: 56 },
+			width: 1280,
+			height: 355,
+			density: "compact",
+			obstacles: [{ left: 0, top: 0, width: 1280, height: 260 }],
+		});
+		// Nothing is above it any more, so it must have gone below rather than into
+		// the obstacle.
+		expect(bubble.classList.contains("is-below")).toBe(true);
+	});
+
 	it("obeys an explicit `above` even where it would have flipped on its own", () => {
 		const forced = show(notification(), { anchor: { x: 400, y: 8 }, width: 1000, height: 600, placement: "above" });
 		expect(forced.classList.contains("is-below")).toBe(false);
