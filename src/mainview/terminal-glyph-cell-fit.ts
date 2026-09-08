@@ -2,13 +2,18 @@
  * Put box-drawing, block and powerline glyphs on the same integer cell box the
  * cell background is painted on.
  *
- * ghostty-web derives the cell from the INK box of a capital "M" — `measureFont`
- * is `Math.ceil(ascent + descent) + 2` tall and `Math.ceil(advance)` wide — but
- * draws every glyph into the font's own line box at the font's own advance. The
- * two boxes disagree on both axes: at 14px JetBrains Mono the cell is 16px tall
- * against an 18px line box, and 9px wide against an 8.4px advance. So a
- * powerline cap lands 2.5px above the background segment it is supposed to join,
- * and each full block leaves a 0.6px seam against its neighbour.
+ * ghostty-web draws every glyph into the font's own line box at the font's own
+ * advance, but grids on a cell that is `Math.ceil(advance)` wide. The two
+ * disagree on width: at 14px JetBrains Mono the cell is 9px against an 8.4px
+ * advance, so each full block leaves a 0.6px seam against its neighbour.
+ *
+ * The height axis used to disagree too — the vendor's cell came from the INK box
+ * of a capital "M" and was 16px against an 18px line box, putting a powerline cap
+ * 2.5px above the background segment it joins. `terminal-cell-metrics.ts` now
+ * gives the cell the font's own line box, so on that axis the fit is close to an
+ * identity transform; it still has to run, because the width axis has not moved
+ * and because a partial glyph is fitted from a line box that is measured
+ * unrounded while the cell is whole pixels.
  *
  * Native Ghostty avoids this by constraining these glyphs to the cell. This does
  * the same, for exactly the codepoints that are meant to touch the cell edges,
