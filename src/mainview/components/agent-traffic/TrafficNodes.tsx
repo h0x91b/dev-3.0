@@ -745,23 +745,21 @@ export default function TrafficNodes({
 				// document flow it lands on top of the caption — measured. It belongs to
 				// the timeline and the message list, where it is already readable.
 				if (!node) return null;
-				// The component's `auto` can only see whether the CANVAS has room
-				// overhead; whether that room is EMPTY depends on the other cards, and
-				// only this layout knows where they are — so the side is decided here.
+				// Placement stays `auto`, and that is a measured decision rather than a
+				// default left alone.
 				//
-				// A/B on the preserved fixture, all seven notification steps: this test
-				// changes exactly one of them and improves it — a cloud on a bottom-row
-				// card went from crossing four cards above it to crossing none. It makes
-				// no case worse. The overlaps that remain (a top-row card's cloud hanging
-				// down across the rows beneath) are the same under `auto`, so they are
-				// geometry rather than placement, and they are Seq 1825's to weigh.
-				const blocked = scene.placed.some(
-					(other) =>
-						other.node.key !== node.node.key &&
-						other.y + other.height <= node.y &&
-						other.x < node.x + node.width &&
-						other.x + other.width > node.x,
-				);
+				// I wired "is a card sitting overhead → force below", A/B'd it on the
+				// preserved fixture, and it looked like a win: one step went from a cloud
+				// crossing four cards to crossing none. Then I looked at the screenshot.
+				// The zero was because the cloud had been pushed off the bottom of the
+				// viewport — my metric counted card overlap and never asked whether the
+				// cloud was still visible. On a dense stage neither side is clear:
+				// `below` on a bottom-row card leaves the frame, `above` crosses the rows
+				// over it, and a top-row card's cloud crosses everything beneath. That is
+				// geometry, not placement, and it is Seq 1825's to weigh — handed over
+				// with the numbers rather than papered over with a heuristic I cannot
+				// defend. `anchor.height` is still passed, since it costs nothing and is
+				// required the moment they do choose `below`.
 				return (
 					<TrafficNotificationBubble
 						key={cloud.key}
@@ -773,7 +771,6 @@ export default function TrafficNodes({
 							// the card and the trail crosses its own title.
 							height: node.height * view.scale,
 						}}
-						placement={blocked ? "below" : "auto"}
 						width={frame.current?.clientWidth ?? 1000}
 						height={frame.current?.clientHeight ?? 500}
 						onKnownTask={(endpoint) =>
