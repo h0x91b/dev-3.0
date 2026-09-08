@@ -21,6 +21,10 @@ import {
 	type PlacedNode,
 } from "./nodes-layout";
 import {
+	projectTaskAt,
+	type TaskProjection,
+} from "./task-history";
+import {
 	fromKey,
 	nodeSeq,
 	toKey,
@@ -93,6 +97,18 @@ export default function TrafficNodes({
 	const [follow, setFollow] = useState(true);
 	const [pendingFocus, setPendingFocus] = useState<string | null>(null);
 	const replaying = !!playback && playback.index >= 0;
+	// The cursor is the ONLY input to the historical projection, and the projection
+	// is a pure function of it — which is what makes scrubbing backwards reverse the
+	// stage exactly, with no accumulated state to unwind. Deliberately NOT folded
+	// into `nodes` upstream: the layout must stay frozen while cards appear, so
+	// `scene` keeps depending on the full node set and only Card props move.
+	const cursorAt = playback?.cursor.at ?? null;
+	const projections = useMemo(() => {
+		const result = new Map<string, TaskProjection>();
+		for (const node of nodes)
+			result.set(node.key, projectTaskAt(node.task, cursorAt));
+		return result;
+	}, [nodes, cursorAt]);
 	const replayKeys = new Set(
 		replaying
 			? playback.events.flatMap((record) => [
@@ -585,40 +601,48 @@ export default function TrafficNodes({
 					})}
 				</svg>
 				<div className="traffic-nodes-cards">
-					{scene.placed.map((placed) => (
-						<Card
-							key={placed.node.key}
-							placed={placed}
-							messageCount={messageCounts.get(placed.node.key) ?? 0}
-							selected={selected === placed.node.key}
-							dim={
-								selected !== null &&
-								selected !== placed.node.key &&
-								!scene.edges.some(
-									(e) =>
-										(e.from === selected && e.to === placed.node.key) ||
-										(e.to === selected && e.from === placed.node.key),
-								)
-							}
-							active={
-								activeFrom === placed.node.key || activeTo === placed.node.key
-							}
-							scale={view.scale}
-							statusColor={
-								placed.node.task ? colors[placed.node.task.status] : undefined
-							}
-							inkColor={
-								placed.node.task ? ink[placed.node.task.status] : undefined
-							}
-							project={projectById.get(placed.node.projectId)}
-							latest={latest.get(placed.node.key)}
-							onSelect={(key) => {
-								manual();
-								onSelect(key);
-							}}
-							onFocus={focus}
-						/>
-					))}
+					{scene.placed.map((placed) => {
+						const projection =
+							projections.get(placed.node.key) ??
+							projectTaskAt(placed.node.task, cursorAt);
+						return (
+							<Card
+								key={placed.node.key}
+								placed={placed}
+								messageCount={messageCounts.get(placed.node.key) ?? 0}
+								selected={selected === placed.node.key}
+								dim={
+									selected !== null &&
+									selected !== placed.node.key &&
+									!scene.edges.some(
+										(e) =>
+											(e.from === selected && e.to === placed.node.key) ||
+											(e.to === selected && e.from === placed.node.key),
+									)
+								}
+								active={
+									activeFrom === placed.node.key ||
+									activeTo === placed.node.key
+								}
+								scale={view.scale}
+								projection={projection}
+								replaying={replaying}
+								statusColor={
+									placed.node.task ? colors[projection.status] : undefined
+								}
+								inkColor={
+									placed.node.task ? ink[projection.status] : undefined
+								}
+								project={projectById.get(placed.node.projectId)}
+								latest={latest.get(placed.node.key)}
+								onSelect={(key) => {
+									manual();
+									onSelect(key);
+								}}
+								onFocus={focus}
+							/>
+						);
+					})}
 				</div>
 			</div>
 			{active && labelPoint && (
@@ -713,6 +737,8 @@ function Card({
 	dim,
 	active,
 	scale,
+	projection,
+	replaying,
 	statusColor,
 	inkColor,
 	project,
@@ -726,6 +752,8 @@ function Card({
 	dim: boolean;
 	active: boolean;
 	scale: number;
+	projection: TaskProjection;
+	replaying: boolean;
 	statusColor?: string;
 	inkColor?: string;
 	project?: {
@@ -739,20 +767,41 @@ function Card({
 }) {
 	const t = useT();
 	const { node } = placed;
+	// Every status the card shows comes from the projection, never from
+	// `node.task.status` — reading the live status here is exactly the bug.
 	const finished =
-		node.task?.status === "completed" || node.task?.status === "cancelled"
-			? node.task.status
+		node.task &&
+		(projection.status === "completed" || projection.status === "cancelled")
+			? projection.status
 			: null;
 	const state = placed.parked
 		? t("task.hibernatedBadge")
 		: node.task
-			? getStatusLabel(node.task.status, t, project)
+			? getStatusLabel(projection.status, t, project)
 			: t("traffic.orbit.historical");
+	// Kept in the DOM at its frozen position so cards appear without the layout
+	// reflowing around them; hidden from the accessibility tree and untabbable
+	// while it has not happened yet.
+	const unborn = !projection.present;
+	// Only worth saying while a cursor is claiming to show the past. A task whose
+	// history predates capture, or whose earliest moves were evicted by the cap,
+	// must say so rather than let the live status read as a reconstruction.
+	const limited = replaying && node.task && projection.confidence !== "recorded"
+		? projection.confidence
+		: null;
+	const limitedLabel =
+		limited === "unrecorded"
+			? t("traffic.node.historyUnrecorded")
+			: limited === "partial"
+				? t("traffic.node.historyPartial")
+				: null;
 	return (
 		<button
 			type="button"
 			data-testid="traffic-node-card"
-			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""}`}
+			data-history={limited ?? undefined}
+			data-unborn={unborn ? "true" : undefined}
+			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""}`}
 			style={{
 				left: placed.x,
 				top: placed.y,
@@ -762,10 +811,12 @@ function Card({
 				["--node-ink" as string]: inkColor ?? "rgb(var(--text-tertiary))",
 				["--node-inverse" as string]: 1 / scale,
 			}}
-			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}`}
+			aria-hidden={unborn || undefined}
+			tabIndex={unborn ? -1 : undefined}
+			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}${limitedLabel ? ` · ${limitedLabel}` : ""}`}
 			aria-pressed={selected}
-			onClick={() => onSelect(node.key)}
-			onDoubleClick={() => onFocus(node.key)}
+			onClick={() => !unborn && onSelect(node.key)}
+			onDoubleClick={() => !unborn && onFocus(node.key)}
 		>
 			<span className="traffic-node-full">
 				<span className="traffic-node-head">
@@ -779,14 +830,20 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				<span className="traffic-node-state">
-					{finished === "completed"
-						? "✓ "
-						: finished === "cancelled"
-							? "× "
-							: ""}
-					{state}
-				</span>
+				{finished ? (
+					<span className={`traffic-node-stamp is-${finished}`}>
+						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
+						{state}
+					</span>
+				) : (
+					<span className="traffic-node-state">{state}</span>
+				)}
+				{limitedLabel && (
+					<span className="traffic-node-history">
+						<TrafficIcon name="unknown" />
+						{limitedLabel}
+					</span>
+				)}
 				<span className="traffic-node-overview streamer-private">
 					{(node.task && getTaskOverview(node.task)) ||
 						t("traffic.orbit.noOverview")}
@@ -805,10 +862,14 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				<span className="traffic-node-state">
-					{finished === "completed" ? "✓ " : ""}
-					{state}
-				</span>
+				{finished ? (
+					<span className={`traffic-node-stamp is-${finished}`}>
+						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
+						{state}
+					</span>
+				) : (
+					<span className="traffic-node-state">{state}</span>
+				)}
 			</span>
 		</button>
 	);

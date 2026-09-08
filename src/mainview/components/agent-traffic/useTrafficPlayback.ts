@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReplayCursor } from "./task-history";
 import type { TrafficRecord } from "./traffic-model";
 
 interface PlaybackState {
@@ -91,9 +92,21 @@ export function useTrafficPlayback(
 		});
 	}
 
+	const current = index >= 0 ? (events[index] ?? null) : null;
+	const currentAt = current ? Date.parse(current.row.at) : Number.NaN;
+	// One derived value every consumer of the cursor shares, so nobody re-parses
+	// `current.row.at` and nobody invents a different meaning for "live".
+	const cursor: ReplayCursor = {
+		at: Number.isFinite(currentAt) ? currentAt : null,
+		index,
+		total: events.length,
+		playing,
+	};
+
 	return {
 		events,
-		current: index >= 0 ? (events[index] ?? null) : null,
+		current,
+		cursor,
 		index,
 		playing,
 		ended: active && state.ended,

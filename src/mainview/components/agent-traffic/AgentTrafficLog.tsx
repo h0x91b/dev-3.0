@@ -531,7 +531,15 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 						{data.projects.find((project) => project.id === scope)?.name ??
 							t("traffic.orbit.allProjects")}
 					</strong>
-					<p>{t("traffic.orbit.currentTasks")}</p>
+					{/* Only a live cursor rebuilds anything: Experiment 1 has none at
+					    all, and Experiment 2 on Live is showing the board as it is. Both
+					    of those really are current, and claiming otherwise would be a lie
+					    on screen in the opposite direction. */}
+					<p>
+						{experiment === "2" && playback.cursor.at !== null
+							? t("traffic.replay.reconstructedTasks")
+							: t("traffic.orbit.currentTasks")}
+					</p>
 				</div>
 				<div className="traffic-stat">
 					<b>

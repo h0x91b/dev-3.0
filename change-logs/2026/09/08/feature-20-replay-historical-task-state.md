@@ -1,0 +1,3 @@
+Short: Replay rebuilds past task states
+
+Agent traffic replay now reconstructs each task as it stood at the replay cursor instead of drawing the board as it is now: cards appear at their recorded creation, change status at the moment they actually moved, and a finished task carries a readable stamp with its own icon and word rather than a tiny checkmark. States come only from the board-movement log, so a task with no recorded history says so instead of having its current status passed off as the past, and scrubbing backwards reverses everything exactly because the projection is a pure function of the cursor.
