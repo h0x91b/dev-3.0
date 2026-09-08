@@ -167,3 +167,9 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+.traffic-notification.is-compact .traffic-notification-sender {
+	flex-shrink: 0;
+	color: rgb(var(--text-secondary));
+	font-family: var(--dev3-mono-stack);
+	font-size: 11px;
+}
