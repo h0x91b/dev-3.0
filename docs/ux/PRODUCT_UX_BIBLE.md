@@ -337,8 +337,6 @@ Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskI
 
 ### 5.9 Agent traffic — `Observed`
 
-Read-only destination: stage, lists, inspector, standard header.
-
 - **Two presentations, one feature.** Experiment 2 (Coordination, default) and 1 (orbit) share data/filters/selection.
   A toolbar radiogroup selects one mounted stage; absent preference means 2.
 - **Beta, off by default.** Settings → System → Advanced Experience gates every entry point and
@@ -349,20 +347,20 @@ Read-only destination: stage, lists, inspector, standard header.
   `/app/agent-traffic`; Escape/⇧⌘M step back. Ninth destination by exception, never a nav item (yaml
   `global_nav`). Entry picks the trailing hour and plays it once; nothing else replays.
 - **Identity, not ownership.** Active/history endpoints use real identity, role,
-  current column/runtime and overview. Seq is display only; historical nodes have no dead links.
+  current runtime and overview. Seq is display only; historical nodes have no dead links.
   Stable grid; wires avoid cards, never imply parentage. Quiet/hibernated bands have counted disclosure;
-  hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
-- **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
-  Replay restarts; Live exits. Freeze replay events. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
+  hibernated cards stay grey below the rest; completed/cancelled carry an explicit stamp.
+- **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph; Replay restarts, Live exits. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
   Follow: pair glide, idle overview; named five-wide project blocks. Manual/minimap pan stops Follow; Focus frames one.
   Lists on request; calendar days auto-load local history.
-- **Attempts, not receipts.** Writer pushes plus lazy fs observers cover appends from mixed
-  versions, never polling; close them at exit. Finite directional pulses accompany
+- **Attempts, not receipts.** Writer pushes plus lazy fs observers cover appends from mixed versions, never polling; close at exit. Finite directional pulses accompany
   recorded attempts only. In 2, violet drops show direction; failures stay red. Verdicts live in details.
   Neither means read/queued. Reduced motion stops flights/glides.
 - **Inspect before navigating.** Nodes/messages open details; only the explicit task action navigates.
   Lists work without WebGL. Search, delivery filters and history windows stay on the screen.
-- **History is messages; task state is current.** Never reconstruct past columns, runtime or PR checks.
+- **History is recorded events; unrecorded state is unknown.** Status and column rebuild from
+  movement records; runtime and PR checks stay current. An unrecorded past reads neutral, never
+  today's status.
   Show retention, oldest day and page limits. Preserve complete subjects (old rows use body head),
   spill pointers and delivery proof. No inferred replies, importance, ownership, merge order,
   narratives or progress; no composer, terminal, import/export or synthetic queue.
