@@ -117,7 +117,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6), **one dev-server split control (open \| stop, §9)** | full settings, global destination, unbounded dot rows, dev-server start/restart/logs | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, **capped** notes preview (§5.8) | global destination, cross-project action, an uncapped note list | `TaskInfoPanel.tsx` (densest surface) |
-| Agent traffic | Live project orbit of recorded message attempts (§5.9) | inspect tasks/messages, search, loaded-history window, delivery filter, open existing task | global destination, sending a message, task lifecycle action, inferred reply obligations | `agent-traffic/AgentTrafficLog.tsx` |
+| Agent traffic | Live map of recorded message attempts, in either presentation (§5.9) | inspect tasks/messages, search, history window, delivery filter, pick a presentation, open existing task | global destination, sending a message, task lifecycle action, inferred reply obligations | `agent-traffic/AgentTrafficLog.tsx` |
 | Task notes log | The whole agent-written note log of one task | read every note, add, edit, delete | task lifecycle action, git mutation, global destination | `TaskNotesOverlay.tsx` (sheet on narrow, dialog on wide — see 5.8) |
 | Terminal immersive fullscreen | Ephemeral task-bound terminal workspace for focused tmux work | tmux terminal, existing tmux window/pane controls, `dev3` brand, one wide Exit full screen action | global/app header, task switching UI, inspector controls, route persistence, any tmux pane/layout mutation | `App.tsx`, `TaskInfoPanel.tsx` |
 | Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
@@ -335,36 +335,37 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 
 Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
-### 5.9 Agent traffic — live orbit — `Observed`
+### 5.9 Agent traffic — `Observed`
 
-The purple header control opens one live traffic overlay: a 3D project orbit, accessible task/message
-lists, and a selection inspector. It replaces the old traffic-log presentation, not a ninth destination.
+Read-only stage/lists/inspector overlay, not a destination.
 
-- **Beta, off by default, and off means invisible.** Settings → System → Advanced Experience gates
-  the control, kebab row, `⇧⌘M`, View menu, palette command and tip; no greyed-out trace.
-- **Presence follows data; the badge follows unread.** The labelled kebab row remains available;
-  the bar pill appears while the project has recorded agent traffic, never keyed to unread alone.
-  Unread uses the per-browser last-look stamp, initializes on first look, and caps at `9+`.
-- **Direct entry, responsive overlay.** Clicking the pill opens the orbit. On narrow widths only the
-  labelled kebab entry remains; use BottomSheet there and a dialog on wide, with focus trapping,
-  Escape dismissal and trigger focus restoration. Preserve the existing shortcut/menu/palette entries.
-- **Project grouping, not ownership.** Show active tasks and selected-history endpoints, not the
-  entire retained archive. Use real task identity, role, current column/runtime and overview; keep
-  positions stable. Historical endpoints stay readable without dead navigation. Seq is display-only.
-- **Live attempts, not read receipts.** Writer pushes and lazy Bun filesystem observers cover
-  durable appends, including older installed versions; no renderer polling, observers close at shutdown.
-  Each new attempt may pulse once: delivered travels its route; held, unconfirmed and not-delivered
-  pulse at the sender. Keep distinct verdict text/static cues; held proves no current queue state.
-  Animation never claims reading or answering. Respect reduced motion.
-- **Inspect before navigating.** A node or message opens the inspector; its explicit task action
-  opens an existing task. Accessible lists retain this behavior without WebGL. Search, delivery
-  filters and a loaded-history time window belong inside the overlay, not the global header.
-- **History is messages; task state is current.** Time filtering never reconstructs past task columns,
-  runtime or PR checks. Show retention, oldest stored day and partial-page limits. Subjects remain
-  complete; old rows fall back to their body head. Preserve spill-pointer and delivery evidence.
-- **No invented workflow.** The last recipient owes no inferred reply. Do not derive importance,
-  ownership, merge authorization/order, authored catch-up narratives or terminal progress from traffic.
-  No demo composer, terminal, import/export or synthetic queue belongs in this read-only surface.
+- **Two presentations, one feature.** Experiment 2 (Coordination, default) and 1 (orbit) share data/filters/selection.
+  A toolbar radiogroup selects one mounted stage.
+  Absent preference means 2; the feature flag records no presentation choice.
+- **Beta, off by default.** Settings → System → Advanced Experience gates the pill, kebab row,
+  `⇧⌘M`, View menu, palette and tip. Off leaves no trace; presentation selection never enables it.
+- **Presence follows data; the badge follows unread.** Kebab persists; the desktop pill requires project traffic,
+  even when read. Per-browser last-look initializes on first look; unread caps at `9+`.
+- **Direct, responsive entry.** Pill click opens a dialog (2 fills it); narrow uses kebab/BottomSheet.
+  Trap/restore focus, Escape dismisses; preserve entries.
+- **Identity, not ownership.** Active/history endpoints use real identity, role,
+  current column/runtime and overview. Seq is display only; historical nodes have no dead links.
+  Stable grid; wires avoid cards, never imply parentage. Quiet/hibernated bands have counted disclosure;
+  hibernated cards remain grey below the rest, completed/cancelled retain explicit current labels.
+- **Coordination transport.** Play, pause, steps, speed and an event slider sit below the graph;
+  Replay restarts; Live exits. Freeze replay events. Wire verdicts/counts follow the cursor. Replay reveals parked endpoints without waking.
+  Follow/24h: pair glide, idle overview; named five-wide project blocks. Manual/minimap pan stops Follow; Focus frames one.
+  Lists on request; calendar days auto-load local history.
+- **Attempts, not receipts.** Writer pushes and lazy Bun fs observers cover durable appends from
+  mixed versions, without polling; close observers at shutdown. Finite directional pulses accompany
+  recorded attempts only. In 2, violet drops show direction; failures stay red. Verdicts live in details.
+  Neither means read/queued. Reduced motion stops flights/glides.
+- **Inspect before navigating.** Nodes/messages open details; only the explicit task action navigates.
+  Lists work without WebGL. Search, delivery filters and history windows stay inside this overlay.
+- **History is messages; task state is current.** Never reconstruct past columns, runtime or PR checks.
+  Show retention, oldest day and page limits. Preserve complete subjects (old rows use body head),
+  spill pointers and delivery proof. No inferred replies, importance, ownership, merge order,
+  narratives or progress; no composer, terminal, import/export or synthetic queue.
 
 Evidence: `agent-traffic/`, `agent-traffic.ts`, `shared/agent-message-log.ts`.
 

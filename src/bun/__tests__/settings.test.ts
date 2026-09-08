@@ -236,6 +236,7 @@ describe("saveSettings", () => {
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			experimentalAgentTraffic: true,
+			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
 			lowBatteryDisabled: true,
 			lowBatteryAnnounced: true,

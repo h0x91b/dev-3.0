@@ -246,9 +246,9 @@ const help = {
 	"help.field.streamerMode.body":
 		"When on, identity-bearing values — account emails and names, organizations, home-folder paths, tunnel URLs, and the remote-access QR code — are blurred across the UI. Terminal content is NOT masked: panes print whatever agents output. Toggle it quickly from the ⇧⌘P command palette.",
 	"help.header.agentTraffic.title": "Agent traffic: see your agents communicate",
-	"help.header.agentTraffic.body": "Select the purple message icon to open the live orbit, or press ⇧⌘M. It starts with the last 24 hours; the badge counts unread messages.",
+	"help.header.agentTraffic.body": "Select the purple message icon to open live traffic, or press ⇧⌘M. It starts with the last 24 hours; the badge counts unread messages.",
 	"help.traffic.log.title": "Explore live agent traffic",
-	"help.traffic.log.body": "Select a task or message to inspect its recorded delivery status. Change the time window or load older history, retained for 30 days. The timeline filters messages; task columns remain current.",
+	"help.traffic.log.body": "Pick a presentation on the left: Experiment 2 draws task cards wired to whoever they messaged, Experiment 1 flies you around a 3D orbit. Select a task or message to inspect its delivery status. The timeline filters messages; task columns remain current.",
 	"help.header.memory.title": "The memory pill shows what is LEFT",
 	"help.header.memory.body": "The number is free memory, not used — hover it to see who actually took the rest. dev-3.0 itself holds a few hundred megabytes; the gigabytes belong to the agents you launched, and to whatever else is running.",
 	"help.header.connectionQuality.title": "How slow this connection is",

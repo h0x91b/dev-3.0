@@ -5,11 +5,13 @@ import { api } from "../../rpc";
 import { useProjectPrivacy } from "../../sensitive-projects";
 import { endpointKey } from "./traffic-model";
 
-export function useTrafficData() {
+export function useTrafficData(cutoff?: number) {
+	const requestedCutoff = Number.isFinite(cutoff) ? cutoff : undefined;
 	const { isLocked } = useProjectPrivacy();
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [historyLoading, setHistoryLoading] = useState(false);
 	const [error, setError] = useState(false);
 	const [revision, setRevision] = useState(0);
 	const [limit, setLimit] = useState(500);
@@ -18,6 +20,7 @@ export function useTrafficData() {
 	useEffect(() => subscribeTraffic(() => setTick(value => value + 1)), []);
 	useEffect(() => {
 		let cancelled = false;
+		const loadThrough = requestedCutoff ?? Date.now() - 24 * 60 * 60 * 1000;
 		const updated = new Map<string, Task | null>();
 		function onUpdate(event: Event) {
 			const { task } = (event as CustomEvent<{ task: Task }>).detail;
@@ -35,9 +38,9 @@ export function useTrafficData() {
 		window.addEventListener("rpc:taskRemoved", onRemove);
 		window.addEventListener("rpc:projectUpdated", reload);
 		setLoading(true);
+		setHistoryLoading(cutoff !== undefined && Number.isFinite(cutoff));
 		setError(false);
-		async function loadRecentTraffic(projectId: string) {
-			const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+		async function loadProjectTraffic(projectId: string) {
 			let pageLimit = limit;
 			let previousCount = -1;
 			while (!cancelled) {
@@ -49,7 +52,7 @@ export function useTrafficData() {
 					const at = Date.parse(row.at);
 					return Number.isFinite(at) ? Math.min(minimum, at) : minimum;
 				}, Infinity);
-				if (page.error || !page.hasMore || oldest <= cutoff || page.rows.length <= previousCount) return;
+				if (page.error || !page.hasMore || oldest <= loadThrough || page.rows.length <= previousCount) return;
 				previousCount = page.rows.length;
 				pageLimit = Math.max(pageLimit * 2, page.rows.length + 500);
 			}
@@ -61,7 +64,7 @@ export function useTrafficData() {
 				if (cancelled) return;
 				setProjects(visible);
 				await Promise.allSettled(visible.flatMap(project => [
-					loadRecentTraffic(project.id),
+					loadProjectTraffic(project.id),
 					api.request.getTasks({ projectId: project.id }).then(loaded => {
 						if (cancelled) return;
 						const snapshot = loaded.filter(task => !updated.has(endpointKey(task.projectId, task.id)));
@@ -71,7 +74,7 @@ export function useTrafficData() {
 					}).catch(() => { if (!cancelled) setError(true); }),
 				]));
 			} catch { if (!cancelled) setError(true); }
-			finally { if (!cancelled) setLoading(false); }
+			finally { if (!cancelled) { setLoading(false); setHistoryLoading(false); } }
 		})();
 		return () => {
 			cancelled = true;
@@ -79,12 +82,12 @@ export function useTrafficData() {
 			window.removeEventListener("rpc:taskRemoved", onRemove);
 			window.removeEventListener("rpc:projectUpdated", reload);
 		};
-	}, [revision, limit, isLocked, reload]);
+	}, [revision, limit, isLocked, reload, requestedCutoff]);
 	const visibleProjects = useMemo(() => projects.filter(project => !isLocked(project.id) && !isLocked(project)), [projects, isLocked]);
 	const pages = useMemo(() => visibleProjects.map(project => getTrafficState(project.id)), [visibleProjects, tick]);
 	const rows = useMemo(() => pages.flatMap(page => page.rows).filter(row => !isLocked(row.fromProjectId) && !isLocked(row.toProjectId)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), [pages, isLocked]);
 	const projectIds = new Set(visibleProjects.map(project => project.id));
-	return { projects: visibleProjects, tasks: tasks.filter(task => projectIds.has(task.projectId)), rows, loading,
+	return { projects: visibleProjects, tasks: tasks.filter(task => projectIds.has(task.projectId)), rows, loading, historyLoading,
 		error: error || pages.some(page => page.error), hasMore: pages.some(page => page.hasMore), limit,
 		oldestDay: pages.map(page => page.oldestDay).filter((day): day is string => !!day).sort()[0],
 		retentionDays: pages[0]?.retentionDays ?? 30,

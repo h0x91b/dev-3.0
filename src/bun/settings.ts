@@ -209,6 +209,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
 		// Default-off beta toggle — only an explicit true is a stored opt-in.
 		experimentalAgentTraffic: d.experimentalAgentTraffic === true ? true : undefined,
+		// Only a recorded pick survives; anything else falls back to the default view.
+		agentTrafficExperiment: d.agentTrafficExperiment === "1" || d.agentTrafficExperiment === "2"
+			? d.agentTrafficExperiment
+			: undefined,
 		// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 		favorites: sanitizeFavorites(d.favorites),
 		// User shortcut rebinds; sparse by design — absent means "all defaults".

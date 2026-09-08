@@ -12,7 +12,15 @@ import Select from "../Select";
 import { AgentTrafficIcon } from "../HeaderIcons";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import TrafficOrbit from "./TrafficOrbit";
+import TrafficNodes from "./TrafficNodes";
+import TrafficPlayback from "./TrafficPlayback";
+import TrafficPeriodPicker from "./TrafficPeriodPicker";
+import { isCalendarDay, trafficPeriodBounds } from "./traffic-period";
+import TrafficIcon from "./TrafficIcon";
+import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
+import { useTrafficExperiment } from "./useTrafficExperiment";
+import type { AgentTrafficExperiment } from "../../../shared/types";
 import {
 	endpointKey,
 	trafficNodes,
@@ -24,6 +32,7 @@ import {
 	type TrafficRecord,
 } from "./traffic-model";
 import "./traffic-orbit.css";
+import "./traffic-nodes.css";
 
 interface Props {
 	projectId: string | null;
@@ -104,27 +113,96 @@ function TrafficDialog({
 	);
 }
 
+/**
+ * Which presentation renders the same traffic — the orbit or the node graph.
+ *
+ * A radiogroup, not two toggles: the two are mutually exclusive views of one
+ * data set, exactly like the diff viewer's modes, and it sits in the toolbar
+ * with the other view controls rather than in the header. It never touches the
+ * feature flag; with the feature off nothing here exists to be clicked.
+ */
+function ExperimentPicker({
+	value,
+	onChange,
+}: {
+	value: AgentTrafficExperiment;
+	onChange: (next: AgentTrafficExperiment) => void;
+}) {
+	const t = useT();
+	const options = [
+		{
+			id: "2",
+			label: "traffic.experiment.two",
+			hint: "traffic.experiment.twoHint",
+		},
+		{
+			id: "1",
+			label: "traffic.experiment.one",
+			hint: "traffic.experiment.oneHint",
+		},
+	] as const satisfies readonly {
+		id: AgentTrafficExperiment;
+		label: TranslationKey;
+		hint: TranslationKey;
+	}[];
+	return (
+		<div
+			className="traffic-experiment"
+			role="radiogroup"
+			aria-label={t("traffic.experiment.label")}
+			onKeyDown={(event) => {
+				if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+				event.preventDefault();
+				const next = value === "1" ? "2" : "1";
+				onChange(next);
+				event.currentTarget
+					.querySelector<HTMLButtonElement>(
+						`[data-testid="traffic-experiment-${next}"]`,
+					)
+					?.focus();
+			}}
+		>
+			{options.map((option) => (
+				<button
+					key={option.id}
+					type="button"
+					role="radio"
+					aria-checked={value === option.id}
+					tabIndex={value === option.id ? 0 : -1}
+					title={t(option.hint)}
+					data-testid={`traffic-experiment-${option.id}`}
+					onClick={() => onChange(option.id)}
+				>
+					{t(option.label)}
+				</button>
+			))}
+		</div>
+	);
+}
+
 function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
-	const data = useTrafficData();
+	const [windowSize, setWindowSize] = useState("day");
+	const now = Date.now();
+	const { start, end } = trafficPeriodBounds(windowSize, now);
+	const calendarDay = isCalendarDay(windowSize);
+	const data = useTrafficData(calendarDay ? start : undefined);
+	const { experiment, choose } = useTrafficExperiment();
 	const [scope, setScope] = useState(projectId ?? "all");
 	const [selected, setSelected] = useState<string | null>(null);
 	const [recordKey, setRecordKey] = useState<string | null>(null);
 	const [pair, setPair] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState("all");
-	const [windowSize, setWindowSize] = useState("day");
 	const [until, setUntil] = useState<number | null>(null);
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
-	const now = Date.now();
-	const start =
-		windowSize === "hour"
-			? now - 3600000
-			: windowSize === "day"
-				? now - 86400000
-				: 0;
+	const [showInspector, setShowInspector] = useState(false);
+	const narrowControls = useNarrowViewport(900);
+	const [showFilters, setShowFilters] = useState(false);
+	const [focusRequest, setFocusRequest] = useState(0);
+	const [followRequest, setFollowRequest] = useState(0);
 	const scopedRows = useMemo(
 		() =>
 			data.rows.filter(
@@ -159,13 +237,42 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			records.filter(
 				({ row }) =>
 					Date.parse(row.at) >= start &&
-					Date.parse(row.at) <= (until ?? Infinity),
+					Date.parse(row.at) < end &&
+					Date.parse(row.at) <=
+						(experiment === "1" ? (until ?? Infinity) : Infinity),
 			),
-		[records, start, until],
+		[records, start, end, until, experiment],
 	);
+	const replayRecords = useMemo(
+		() =>
+			timeRows.filter(
+				({ row }) =>
+					(filter === "all" || row.status === filter) &&
+					(!pair || routeKey(row) === pair) &&
+					`${row.subject ?? ""} ${row.body} ${row.fromSeq} ${row.toSeq} ${row.fromTitle ?? ""} ${row.toTitle ?? ""}`
+						.toLocaleLowerCase()
+						.includes(query.toLocaleLowerCase()),
+			),
+		[timeRows, filter, pair, query],
+	);
+	const playback = useTrafficPlayback(
+		replayRecords,
+		experiment === "2",
+		`${scope}:${windowSize}:${filter}:${pair}:${query}`,
+	);
+	const graphRecords =
+		playback.index < 0
+			? replayRecords
+			: playback.events.slice(0, playback.index + 1);
 	const visible = useMemo(
 		() =>
 			timeRows.filter(({ row }) => {
+				if (
+					experiment === "2" &&
+					playback.current &&
+					Date.parse(row.at) > Date.parse(playback.current.row.at)
+				)
+					return false;
 				if (filter !== "all" && row.status !== filter) return false;
 				if (pair && routeKey(row) !== pair) return false;
 				if (selected && fromKey(row) !== selected && toKey(row) !== selected)
@@ -174,7 +281,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					.toLocaleLowerCase()
 					.includes(query.toLocaleLowerCase());
 			}),
-		[timeRows, filter, pair, selected, query],
+		[timeRows, filter, pair, selected, query, experiment, playback.current],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(
@@ -224,6 +331,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	}, []);
 	function select(key: string) {
 		setSelected(key);
+		setShowInspector(true);
 		setRecordKey(null);
 		setPair(null);
 	}
@@ -238,7 +346,10 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			<button
 				key={item.key}
 				className={`traffic-message ${recordKey === item.key ? "is-selected" : ""}`}
-				onClick={() => setRecordKey(item.key)}
+				onClick={() => {
+					setRecordKey(item.key);
+					setShowInspector(true);
+				}}
 				data-testid="traffic-message-row"
 			>
 				<span className="traffic-message-meta">
@@ -256,29 +367,90 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			</button>
 		);
 	}
+	const filters = (
+		<>
+			<Select
+				value={scope}
+				onChange={(value) => {
+					setScope(value);
+					clearSelection();
+				}}
+				options={[
+					{ value: "all", label: t("traffic.orbit.allProjects") },
+					...data.projects.map((project) => ({
+						value: project.id,
+						label: project.name,
+					})),
+				]}
+				ariaLabel={t("traffic.orbit.project")}
+			/>
+			<input
+				type="search"
+				value={query}
+				onChange={(event) => setQuery(event.target.value)}
+				placeholder={t("traffic.orbit.search")}
+				aria-label={t("traffic.orbit.search")}
+			/>
+			<Select
+				value={filter}
+				onChange={setFilter}
+				options={[
+					{ value: "all", label: t("traffic.filter.all") },
+					...["delivered", "held", "unconfirmed", "not-delivered"].map(
+						(value) => ({ value, label: t(verdictKey(value)) }),
+					),
+				]}
+				ariaLabel={t("traffic.orbit.delivery")}
+			/>
+		</>
+	);
 	return (
-		<div className="traffic-view" data-help-id="traffic.log">
+		<div
+			className="traffic-view"
+			data-experiment={experiment}
+			data-help-id="traffic.log"
+		>
 			<span className="sr-only" role="status">
 				{t.plural("traffic.orbit.messageCount", visible.length)}
 			</span>
 			<header className="traffic-header">
 				<AgentTrafficIcon className="w-5 h-5 text-agent" />
 				<h2>{t("traffic.label")}</h2>
-				<span className="traffic-orbit-name">{t("traffic.orbit.name")}</span>
 				<div className="traffic-header-tail">
 					<span className="traffic-live" role="status">
-						{data.loading
+						{data.loading || data.historyLoading
 							? t("traffic.loading")
-							: until === null
+							: (
+										experiment === "2"
+											? playback.index < 0 && !calendarDay
+											: until === null
+								  )
 								? t("traffic.orbit.live")
 								: t("traffic.orbit.history")}
 					</span>
-					<button
-						onClick={() => setPaused((value) => !value)}
-						aria-pressed={paused}
-					>
-						{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
-					</button>
+					{experiment === "2" && (
+						<button
+							className="traffic-replay-start"
+							onClick={() => {
+								clearSelection();
+								setShowInspector(false);
+								setFollowRequest((value) => value + 1);
+								playback.restart();
+							}}
+							disabled={!playback.events.length}
+						>
+							<TrafficIcon name="replay" />
+							{t("traffic.replay.restart")}
+						</button>
+					)}
+					{experiment === "1" && (
+						<button
+							onClick={() => setPaused((value) => !value)}
+							aria-pressed={paused}
+						>
+							{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
+						</button>
+					)}
 					<button
 						onClick={onClose}
 						aria-label={t("common.close")}
@@ -289,40 +461,40 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 				</div>
 			</header>
 			<div className="traffic-toolbar">
-				<Select
-					value={scope}
+				<ExperimentPicker
+					value={experiment}
 					onChange={(value) => {
-						setScope(value);
-						clearSelection();
+						choose(value);
+						if (value === "1" && calendarDay) setWindowSize("day");
 					}}
-					options={[
-						{ value: "all", label: t("traffic.orbit.allProjects") },
-						...data.projects.map((project) => ({
-							value: project.id,
-							label: project.name,
-						})),
-					]}
-					ariaLabel={t("traffic.orbit.project")}
 				/>
-				<input
-					type="search"
-					value={query}
-					onChange={(event) => setQuery(event.target.value)}
-					placeholder={t("traffic.orbit.search")}
-					aria-label={t("traffic.orbit.search")}
-				/>
-				<Select
-					value={filter}
-					onChange={setFilter}
-					options={[
-						{ value: "all", label: t("traffic.filter.all") },
-						...["delivered", "held", "unconfirmed", "not-delivered"].map(
-							(value) => ({ value, label: t(verdictKey(value)) }),
-						),
-					]}
-					ariaLabel={t("traffic.orbit.delivery")}
-				/>
+				{experiment === "2" && narrowControls ? (
+					<button onClick={() => setShowFilters(true)}>
+						{t("traffic.replay.filters")}
+					</button>
+				) : (
+					filters
+				)}
+				{experiment === "2" && (
+					<button
+						className="traffic-list-toggle"
+						aria-pressed={showInspector}
+						onClick={() => setShowInspector((value) => !value)}
+					>
+						{t("traffic.orbit.messages")}
+					</button>
+				)}
 			</div>
+			{experiment === "2" && narrowControls && (
+				<BottomSheet
+					open={showFilters}
+					onClose={() => setShowFilters(false)}
+					title={t("traffic.replay.filters")}
+				>
+					<div className="traffic-filter-fields">{filters}</div>
+				</BottomSheet>
+			)}
+
 			<div className="traffic-summary">
 				<div>
 					<strong>
@@ -357,73 +529,139 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			)}
 			<div className="traffic-content">
 				<div className="traffic-main">
-					<TrafficOrbit
-						projects={data.projects}
-						scope={scope}
-						nodes={nodes}
-						records={visible}
-						selected={selected}
-						onSelect={select}
-						paused={paused || until !== null}
-						ready={!data.loading}
-					/>
-					<div className="traffic-timeline">
-						<div className="traffic-timeline-header">
-							<strong>
-								{until === null ? t("traffic.orbit.live") : format(until)}
-							</strong>
-							<span>{t("traffic.orbit.messageTimeline")}</span>
-							<Select
-								value={windowSize}
-								onChange={(value) => {
-									setWindowSize(value);
-									setUntil(null);
-								}}
-								options={[
-									{ value: "hour", label: t("traffic.orbit.hour") },
-									{ value: "day", label: t("traffic.orbit.day") },
-									{ value: "all", label: t("traffic.orbit.loadedHistory") },
-								]}
-								ariaLabel={t("traffic.orbit.timeWindow")}
-							/>
-							<button onClick={() => setUntil(null)}>
-								{t("traffic.orbit.now")}
-							</button>
-						</div>
-						<div className="traffic-ticks" aria-hidden="true">
-							{records
-								.filter((item) => Date.parse(item.row.at) >= oldest)
-								.map((item) => (
-									<i
-										key={item.key}
-										style={{
-											left: `${Math.max(0, Math.min(100, ((Date.parse(item.row.at) - oldest) / Math.max(1, now - oldest)) * 100))}%`,
-										}}
-									/>
-								))}
-						</div>
-						<input
-							type="range"
-							min={oldest}
-							max={now}
-							value={until ?? now}
-							onChange={(event) => setUntil(Number(event.target.value))}
-							aria-label={t("traffic.orbit.messageTimeline")}
-							aria-valuetext={
-								until === null ? t("traffic.orbit.live") : format(until)
+					{/* One stage at a time: switching unmounts the other, so neither
+					    presentation can leave a loop or an observer running behind it. */}
+					{experiment === "1" ? (
+						<TrafficOrbit
+							projects={data.projects}
+							scope={scope}
+							nodes={nodes}
+							records={visible}
+							selected={selected}
+							onSelect={select}
+							paused={paused || until !== null}
+							ready={!data.loading}
+						/>
+					) : (
+						<TrafficNodes
+							projects={data.projects}
+							scope={scope}
+							nodes={nodes}
+							records={graphRecords}
+							layoutRecords={timeRows}
+							selected={selected}
+							onSelect={select}
+							paused={false}
+							playback={playback}
+							focusRequest={focusRequest}
+							followRequest={followRequest}
+							ready={!data.loading}
+						/>
+					)}
+					{experiment === "2" ? (
+						<TrafficPlayback
+							loading={data.loading || data.historyLoading}
+							playback={playback}
+							onInspect={(key) => {
+								setRecordKey(key);
+								setShowInspector(true);
+							}}
+							historical={calendarDay}
+							onLive={() => {
+								setWindowSize("day");
+								setFollowRequest((value) => value + 1);
+								playback.live();
+							}}
+							windowControl={
+								<TrafficPeriodPicker
+									value={windowSize}
+									retentionDays={data.retentionDays}
+									onChange={(value) => {
+										setWindowSize(value);
+										clearSelection();
+										setFollowRequest((request) => request + 1);
+									}}
+								/>
 							}
 						/>
-						<div className="traffic-time-labels">
-							<span>{format(oldest)}</span>
-							<span>{t("traffic.orbit.currentTasks")}</span>
-							<span>{format(now)}</span>
+					) : (
+						<div className="traffic-timeline">
+							<div className="traffic-timeline-header">
+								<strong>
+									{until === null ? t("traffic.orbit.live") : format(until)}
+								</strong>
+								<span>{t("traffic.orbit.messageTimeline")}</span>
+								<Select
+									value={windowSize}
+									onChange={(value) => {
+										setWindowSize(value);
+										setUntil(null);
+									}}
+									options={[
+										{ value: "hour", label: t("traffic.orbit.hour") },
+										{ value: "day", label: t("traffic.orbit.day") },
+										{ value: "all", label: t("traffic.orbit.loadedHistory") },
+									]}
+									ariaLabel={t("traffic.orbit.timeWindow")}
+								/>
+								<button onClick={() => setUntil(null)}>
+									{t("traffic.orbit.now")}
+								</button>
+							</div>
+							<div className="traffic-ticks" aria-hidden="true">
+								{records
+									.filter((item) => Date.parse(item.row.at) >= oldest)
+									.map((item) => (
+										<i
+											key={item.key}
+											style={{
+												left: `${Math.max(0, Math.min(100, ((Date.parse(item.row.at) - oldest) / Math.max(1, now - oldest)) * 100))}%`,
+											}}
+										/>
+									))}
+							</div>
+							<input
+								type="range"
+								min={oldest}
+								max={now}
+								value={until ?? now}
+								onChange={(event) => setUntil(Number(event.target.value))}
+								aria-label={t("traffic.orbit.messageTimeline")}
+								aria-valuetext={
+									until === null ? t("traffic.orbit.live") : format(until)
+								}
+							/>
+							<div className="traffic-time-labels">
+								<span>{format(oldest)}</span>
+								<span>{t("traffic.orbit.currentTasks")}</span>
+								<span>{format(now)}</span>
+							</div>
 						</div>
-					</div>
+					)}
 				</div>
 				<aside
 					className="traffic-inspector"
+					hidden={experiment === "2" && !showInspector}
 					aria-label={t("traffic.orbit.inspector")}
 				>
+					{experiment === "2" && (
+						<div className="traffic-inspector-heading">
+							{selectedNode && (
+								<button onClick={() => setFocusRequest((value) => value + 1)}>
+									<TrafficIcon name="follow" />
+									{t("traffic.nodes.focus")}
+								</button>
+							)}
+							<button
+								onClick={() => {
+									setShowInspector(false);
+									clearSelection();
+								}}
+							>
+								{t("common.close")}
+							</button>
+						</div>
+					)}
 					{record ? (
 						<>
 							<div className="traffic-inspector-heading">
