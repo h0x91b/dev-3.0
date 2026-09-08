@@ -145,3 +145,25 @@
 @media (prefers-reduced-motion: reduce) {
 	.traffic-notification { animation: none; }
 }
+
+/* The preview cloud: one line, on a canvas that has no room for four.
+   `text-overflow: ellipsis` is load-bearing rather than cosmetic — the cut has
+   to be VISIBLE, because a silently clipped notification reads as a complete
+   one. The whole text stays on the element's `title` and in the list. */
+.traffic-notification.is-compact .traffic-notification-head {
+	color: rgb(var(--text-primary));
+	font: 12px/1.35 var(--dev3-sans-stack, inherit);
+	letter-spacing: normal;
+	text-transform: none;
+}
+.traffic-notification.is-compact .traffic-notification-head svg {
+	color: rgb(var(--notification-tone));
+	width: 14px;
+	height: 14px;
+}
+.traffic-notification-preview {
+	overflow: hidden;
+	max-width: 210px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

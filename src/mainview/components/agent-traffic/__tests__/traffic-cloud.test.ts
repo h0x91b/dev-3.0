@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cloudGeometry } from "../traffic-cloud";
+import { COMPACT_LOBE_R, cloudGeometry } from "../traffic-cloud";
 
 /** Every circle in a `d`, as {cx, cy, r} — the arcs are written from the left point. */
 function circles(d: string): { cx: number; cy: number; r: number }[] {
@@ -105,5 +105,21 @@ describe("cloudGeometry", () => {
 		expect(cloud.width).toBeGreaterThan(0);
 		expect(cloud.height).toBeGreaterThan(0);
 		expect(circles(cloud.body).length).toBeGreaterThanOrEqual(3);
+	});
+
+	it("fits between two rows of cards at the compact lobe, where the full size does not", () => {
+		// The two shapes as they actually render: four lines of text at full size,
+		// one clipped line as a preview. The gap between two card rows on the stage
+		// is what this has to fit into — measured there at ~130px.
+		const full = cloudGeometry(250, 78, { tail: true });
+		const preview = cloudGeometry(210, 18, { tail: true, lobe: COMPACT_LOBE_R });
+		expect(full.height).toBeGreaterThan(130);
+		expect(preview.height).toBeLessThan(130);
+		// Still a cloud, not a pill: the lobes shrank, they did not disappear.
+		expect(circles(preview.body).length).toBeGreaterThanOrEqual(5);
+		const radii = new Set(circles(preview.body).map(lobe => lobe.r));
+		expect(radii.size).toBeGreaterThanOrEqual(4);
+		// And its trail shrank with it instead of trailing a full-size tail.
+		expect(preview.tailHeight).toBeLessThan(full.tailHeight);
 	});
 });

@@ -23,7 +23,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
-import { CLOUD_TEXT_MAX_WIDTH, cloudGeometry } from "./traffic-cloud";
+import { CLOUD_TEXT_MAX_WIDTH, COMPACT_LOBE_R, cloudGeometry } from "./traffic-cloud";
 import "./traffic-notification.css";
 
 const LEVEL_ICON = {
@@ -64,7 +64,7 @@ export function cloudSenderEndpoint(event: TrafficNotificationEvent): Notificati
 	return event.origin;
 }
 
-export default function TrafficNotificationBubble({ event, anchor, width, height, placement = "auto", onKnownTask }: {
+export default function TrafficNotificationBubble({ event, anchor, width, height, placement = "auto", density = "full", room, onKnownTask }: {
 	event: TrafficNotificationEvent;
 	/**
 	 * Top-centre of the card to hang over, in canvas coordinates. Omit for flow.
@@ -89,6 +89,30 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	 * says `below` for that one rather than having this component guess.
 	 */
 	placement?: "auto" | "above" | "below";
+	/**
+	 * How much of the notification the cloud carries.
+	 *
+	 * `full` is the reading version: type line, the message over up to four lines,
+	 * sender, subject and the outcome pill. `compact` is a PREVIEW for a crowded
+	 * canvas — the level icon and one line of the message, clipped with an
+	 * ellipsis so the cut is visible rather than silent, with the whole text still
+	 * on the element's `title`. Measured on the real stage, not chosen for taste:
+	 * at `full` size a cloud crossed up to six cards, and picking a side cannot
+	 * fix that because both directions collide. The full text lives on in the
+	 * list, which is the surface built for reading it.
+	 */
+	density?: "full" | "compact";
+	/**
+	 * Clear vertical space in the anchor's own column, in canvas pixels.
+	 *
+	 * This is the one thing `auto` cannot see and the layout already knows: how
+	 * far it is to the nearest card above and below, rather than to the canvas
+	 * edge. Given it, `auto` picks the side the cloud actually FITS in — which on
+	 * a dense stage is a different answer for almost every card, and measured
+	 * there it is what turns six crossed cards into none. Omit it and `auto`
+	 * falls back to the canvas edge, exactly as before.
+	 */
+	room?: { above: number; below: number };
 	/** Whether the board being shown has this card. Unknown when not supplied. */
 	onKnownTask?: (endpoint: NotificationEndpoint) => boolean;
 }) {
@@ -110,15 +134,34 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 
 	const { row, target, origin } = event;
 	const canvasWidth = width ?? 0;
-	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor });
+	const compact = density === "compact";
+	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor, ...(compact ? { lobe: COMPACT_LOBE_R } : {}) });
 	// The cloud sits ABOVE the card by default, which is the whole point of it. It
 	// flips below when the canvas has no room overhead, or when the surface that
 	// owns the layout says so because something else occupies that space.
-	const below = !!anchor && (placement === "below" || (placement === "auto" && anchor.y < cloud.height + 16));
+	// `auto` prefers ABOVE — a thought belongs over the head that had it — and only
+	// gives that up when the cloud does not fit there. "Fit" means the neighbours
+	// when the layout reported them, and the canvas edge when it did not.
+	const fitsAbove = room ? room.above >= cloud.height + 6 : !!anchor && anchor.y >= cloud.height + 16;
+	const fitsBelow = room ? room.below >= cloud.height + 14 : true;
+	// When NEITHER side fits — a dense stage has cards where no gap is cloud-sized —
+	// take the roomier one rather than staying above out of preference. Measured:
+	// the bottom-row card had 35px above and 61px below, and keeping the preference
+	// there covered two other cards for nothing.
+	const roomier = room ? (room.below > room.above ? "below" : "above") : "above";
+	const auto = fitsAbove ? "above" : fitsBelow ? "below" : roomier;
+	const below = !!anchor && (placement === "below" || (placement === "auto" && auto === "below"));
+	// Clamped into the canvas in BOTH axes. An unclamped cloud does not merely sit
+	// awkwardly, it leaves the viewport — and a cloud pushed off the bottom looks
+	// like zero overlap while actually being gone, which is how a fix for this
+	// overlap first appeared to succeed.
+	const canvasHeight = height ?? 0;
 	const position = anchor
 		? {
 			left: Math.max(cloud.width / 2 + 8, Math.min(canvasWidth - cloud.width / 2 - 8, anchor.x)),
-			top: below ? anchor.y + (anchor.height ?? 0) + 14 : anchor.y - cloud.height - 6,
+			top: canvasHeight > cloud.height + 8
+				? Math.max(4, Math.min(canvasHeight - cloud.height - 4, below ? anchor.y + (anchor.height ?? 0) + 14 : anchor.y - cloud.height - 6))
+				: below ? anchor.y + (anchor.height ?? 0) + 14 : anchor.y - cloud.height - 6,
 		}
 		: null;
 	const offCanvas = !!anchor && (anchor.x < 0 || anchor.x > canvasWidth || anchor.y < 0 || anchor.y > (height ?? 0));
@@ -132,7 +175,7 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 
 	return (
 		<div
-			className={`traffic-notification ${anchor ? "is-anchored" : ""} ${below ? "is-below" : ""}`}
+			className={`traffic-notification ${anchor ? "is-anchored" : ""} ${below ? "is-below" : ""} ${compact ? "is-compact" : ""}`}
 			data-level={event.level}
 			data-outcome={event.outcome}
 			data-testid="traffic-notification"
@@ -158,16 +201,32 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 			>
 				<div className="traffic-notification-head">
 					<svg viewBox="0 0 24 24" aria-hidden="true"><path d={LEVEL_ICON[event.level]} /></svg>
-					<span>
-						{t("traffic.notification.kind")} · {t(`traffic.notification.level.${event.level}` as TranslationKey)} · {t(`traffic.notification.mode.${event.mode}` as TranslationKey)}
-					</span>
-					<time dateTime={row.at}>{time}</time>
+					{compact
+						? (
+							// The level is still named for a screen reader; on screen the icon
+							// and the tone carry it, because a preview has one line to spend.
+							<span className="traffic-notification-preview streamer-private" title={row.message}>
+								<span className="sr-only">{t(`traffic.notification.level.${event.level}` as TranslationKey)}: </span>
+								{row.message}
+							</span>
+						)
+						: (
+							<>
+								<span>
+									{t("traffic.notification.kind")} · {t(`traffic.notification.level.${event.level}` as TranslationKey)} · {t(`traffic.notification.mode.${event.mode}` as TranslationKey)}
+								</span>
+								<time dateTime={row.at}>{time}</time>
+							</>
+						)}
 				</div>
 
 				{/* `title` carries the untruncated text — the clamp is visual only, and the
 				    data is never cut. */}
-				<div className="traffic-notification-body streamer-private" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }} title={row.message}>{row.message}</div>
+				{compact
+					? null
+					: <div className="traffic-notification-body streamer-private" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }} title={row.message}>{row.message}</div>}
 
+				{compact ? null : (
 				<div className="traffic-notification-foot" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }}>
 					{/* Sender, then subject when it differs or when there is no sender to
 					    name. "Not recorded" is a fact about the archive, never a claim
@@ -190,6 +249,7 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 						)
 						: null}
 				</div>
+				)}
 			</div>
 		</div>
 	);
