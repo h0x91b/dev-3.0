@@ -1,5 +1,11 @@
 # Terminal cell height comes from the font's line box, not from the ink of an "M"
 
+> Partly superseded on 2026-09-08 by `decisions/2026/09/08/cell-width-on-the-device-pixel-grid.md`:
+> the width axis is no longer left on the vendor's `ceil`, and this record's reason for leaving it
+> there — that device rounding would break the reference clamp — turned out to be backwards.
+> Measurement showed the `ceil` is what breaks the clamp, in 8 of 400 font/size pairs in WKWebView.
+> The height decision below stands unchanged.
+
 ## Context
 
 Issue #1668: at terminal font size 16 with JetBrains Mono, dev3 set lines 17 CSS px
@@ -40,7 +46,9 @@ went from 1440x782 (46 rows x 17) to 1440x777 (37 rows x 21), columns unchanged 
 `src/mainview/terminal-cell-metrics.ts` wraps the renderer's `measureFont` — the same
 instance-wrapping pattern as `terminal-glyph-cell-fit.ts` and the cursor gate — and
 replaces `height` and `baseline` with `ceil(fontBoundingBoxAscent)` plus
-`ceil(fontBoundingBoxDescent)`. Each side is ceiled on its own so neither is cropped.
+`ceil(fontBoundingBoxDescent)`. Each side is ceiled on its own so neither is cropped by this code — though both engines were
+later measured returning integers already, in all 400 font/size pairs including fractional sizes,
+so in practice the ceil never binds and the quantization is the engine's own.
 A measurement the engine cannot answer falls back to the vendor's own cell verbatim.
 `TerminalView.tsx` installs it before the glyph cell fit and disposes it after.
 

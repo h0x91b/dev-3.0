@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordingCtx } from "../terminal-bidi/__tests__/fixtures";
 import {
 	clearCellMetricsCache,
+	deviceGridWidth,
 	installCellLineBox,
 	isCellLineBoxInstalled,
 	lineBoxCell,
@@ -38,12 +39,12 @@ afterEach(() => {
 	getContextSpy.mockRestore();
 });
 
-function newRenderer() {
+function newRenderer(devicePixelRatio = 1) {
 	return new CanvasRenderer(document.createElement("canvas"), {
 		fontSize: 15,
 		fontFamily: "monospace",
 		cursorBlink: false,
-		devicePixelRatio: 1,
+		devicePixelRatio,
 	});
 }
 
@@ -73,6 +74,44 @@ describe("lineBoxCell", () => {
 	});
 });
 
+describe("deviceGridWidth", () => {
+	it("quantizes on the device grid, which on a 1x display is just whole CSS pixels", () => {
+		// JetBrains Mono at size 16: advance 9.6.
+		expect(deviceGridWidth(9.6, 1)).toBe(10);
+		expect(deviceGridWidth(8.4, 1)).toBe(8);
+	});
+
+	it("gives a half CSS pixel on a 2x display — a whole device pixel", () => {
+		// 9.6 x 2 = 19.2 device px, rounded to 19, which is Ghostty's 9.5 CSS px.
+		expect(deviceGridWidth(9.6, 2)).toBe(9.5);
+		expect(deviceGridWidth(8.4, 2)).toBe(8.5);
+	});
+
+	it("never collapses a cell to zero", () => {
+		expect(deviceGridWidth(0.2, 1)).toBe(1);
+		expect(deviceGridWidth(0.1, 2)).toBe(0.5);
+	});
+
+	it("holds the reference clamp where the vendor's ceil breaks it", () => {
+		// The measured case: Hack at user size 15 lands on 8.9946 in Chromium and
+		// 9.0001 in WKWebView, and `ceil` splits those into 9 and 10 — wider than the
+		// reference font's own cell. Quantizing agrees with itself and with the
+		// reference across that hair.
+		const reference = deviceGridWidth(9, 2);
+		expect(deviceGridWidth(8.9946, 2)).toBe(reference);
+		expect(deviceGridWidth(9.0001, 2)).toBe(reference);
+		expect(Math.ceil(8.9946)).not.toBe(Math.ceil(9.0001));
+	});
+
+	it("refuses what it cannot use, so the caller can fall back", () => {
+		expect(deviceGridWidth(Number.NaN, 2)).toBeNull();
+		expect(deviceGridWidth(0, 2)).toBeNull();
+		expect(deviceGridWidth(9.6, 0)).toBeNull();
+		expect(deviceGridWidth(9.6, undefined)).toBeNull();
+		expect(deviceGridWidth(9.6, Number.NaN)).toBeNull();
+	});
+});
+
 describe("installCellLineBox", () => {
 	it("the vendor's own cell ignores the font's line box", () => {
 		const metrics = newRenderer().getMetrics();
@@ -88,10 +127,32 @@ describe("installCellLineBox", () => {
 		expect(metrics.baseline).toBe(LINE_BOX_BASELINE);
 	});
 
-	it("leaves the cell width on the vendor's ceil of the advance", () => {
+	it("replaces the vendor's ceiled width with the device-grid width", () => {
+		// The stub advance is 9.5, which the vendor ceils to 10.
+		expect(newRenderer().getMetrics().width).toBe(CELL_WIDTH);
 		const renderer = newRenderer();
 		installCellLineBox(renderer);
-		expect(renderer.getMetrics().width).toBe(CELL_WIDTH);
+		expect(renderer.getMetrics().width).toBe(10); // round(9.5) at ratio 1
+	});
+
+	it("lands on a half CSS pixel at a 2x ratio, matching Ghostty", () => {
+		const renderer = newRenderer(2);
+		installCellLineBox(renderer);
+		// 9.5 x 2 = 19 device px exactly, so the CSS width stays 9.5 rather than 10.
+		expect(renderer.getMetrics().width).toBe(9.5);
+	});
+
+	it("reads the renderer's own ratio, not the window's", () => {
+		const original = window.devicePixelRatio;
+		Object.defineProperty(window, "devicePixelRatio", { value: 3, configurable: true });
+		try {
+			const renderer = newRenderer(2);
+			installCellLineBox(renderer);
+			// A window ratio of 3 would give round(9.5 * 3) / 3 = 9.333…
+			expect(renderer.getMetrics().width).toBe(9.5);
+		} finally {
+			Object.defineProperty(window, "devicePixelRatio", { value: original, configurable: true });
+		}
 	});
 
 	it("re-applies itself when the font changes", () => {
