@@ -13,6 +13,10 @@ vi.mock("../paths", () => ({
 }));
 
 import { saveSettings, loadSettings, loadSettingsSync, type GlobalSettings } from "../settings";
+import {
+	AGENT_TRAFFIC_EXPERIMENTS,
+	DEFAULT_AGENT_TRAFFIC_EXPERIMENT,
+} from "../../shared/types";
 
 function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
@@ -65,6 +69,41 @@ describe("saveSettings", () => {
 		// Explicit true normalizes back to undefined (the default-on representation).
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: true }), null, 2), "utf-8");
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
+	});
+
+	it("keeps every shipped traffic presentation and discards anything else", async () => {
+		// The failure this guards is silent: a presentation added to the union but
+		// forgotten in the loader throws the user's stored pick away on every
+		// launch, and the surface just opens on the default with no error.
+		for (const experiment of AGENT_TRAFFIC_EXPERIMENTS) {
+			writeFileSync(
+				settingsPath,
+				JSON.stringify(makeSettings({ agentTrafficExperiment: experiment }), null, 2),
+				"utf-8",
+			);
+			expect((await loadSettings()).agentTrafficExperiment).toBe(experiment);
+		}
+		for (const junk of ["4", "0", "", "two", 2, null, {}]) {
+			writeFileSync(
+				settingsPath,
+				JSON.stringify(
+					{ ...makeSettings(), agentTrafficExperiment: junk },
+					null,
+					2,
+				),
+				"utf-8",
+			);
+			expect((await loadSettings()).agentTrafficExperiment).toBeUndefined();
+		}
+	});
+
+	it("leaves an absent presentation absent, so it resolves to the default", async () => {
+		// Absent is never "Experiment 1": nobody was offered the choice, so having
+		// turned the feature on records nothing about which stage to draw.
+		const { agentTrafficExperiment: _drop, ...withoutPick } = makeSettings();
+		writeFileSync(settingsPath, JSON.stringify(withoutPick, null, 2), "utf-8");
+		expect((await loadSettings()).agentTrafficExperiment).toBeUndefined();
+		expect(DEFAULT_AGENT_TRAFFIC_EXPERIMENT).toBe("2");
 	});
 
 	it("defaults prOriginTaskLink to on and stores only an explicit opt-out", async () => {

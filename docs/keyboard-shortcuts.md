@@ -20,6 +20,8 @@ this page and the website all read from it.
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Agent traffic screen (beta — Settings → System → Advanced Experience) | ⇧⌘M | Ctrl+Shift+M |
 | Play or pause the traffic replay (inside the traffic log) | Space | Space |
+| Frame the selected task (Experiment 3 stage, while it has focus) | F | F |
+| Frame the whole scene (Experiment 3 stage, while it has focus) | H | H |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
