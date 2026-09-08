@@ -38,7 +38,11 @@ import {
 	routeKey,
 	type TrafficRecord,
 } from "./traffic-model";
-import { buildTimeline, matchesTimelineFilter } from "./traffic-timeline";
+import {
+	buildTimeline,
+	matchesTimelineFilter,
+	type TrafficTimelineEvent,
+} from "./traffic-timeline";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
@@ -162,24 +166,97 @@ function ExperimentPicker({
  * deleted and their import takes its place — the values are identical by
  * agreement, so nothing else moves.
  *
- * The LEVEL axis is deliberately absent here. It governs notifications only, its
- * vocabulary and its `traffic.notification.level.*` keys belong to Seq 1825, and
- * re-declaring either would be a second source for one thing. Their
- * `NOTIFICATION_LEVELS` (worst first) drops into the same {@link FilterToggles}
- * beside the kind group when their module lands.
+ * The LEVEL axis's VALUES, order and `traffic.notification.level.*` keys belong to
+ * Seq 1825 and are deliberately not restated here — but its LAYOUT is this
+ * screen's, and it is built: see {@link FilterAxes}, which lays out any number of
+ * axes identically. The level axis is one {@link FilterAxis} object away, and that
+ * object is assembled from their exports, not from a copy of them.
  */
 type TimelineKind = "task" | "message" | "notification";
 const ALL_KINDS: readonly TimelineKind[] = ["task", "message", "notification"];
-/** Seq 1825 owns the level labels; this only shapes them the way FilterToggles wants. */
-const LEVEL_LABEL = Object.fromEntries(
-	NOTIFICATION_LEVELS.map((level) => [level, notificationLevelKey(level)]),
-) as Record<NotificationLogLevel, TranslationKey>;
 
 const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
 	task: "traffic.kind.task",
 	message: "traffic.kind.message",
 	notification: "traffic.kind.notification",
 };
+
+/**
+ * The kinds this window can offer a control over — **never** the kinds currently
+ * selected, and never the kinds left visible after filtering.
+ *
+ * The distinction is the whole safety of the control: derive it from the filtered
+ * timeline and a reader who narrows to one kind watches the group collapse to one
+ * option, or vanish, taking with it the only way back. Availability is a property
+ * of the window; selection is a property of the reader.
+ *
+ * Takes the window's PRE-filter union and returns the kinds present in it. Never
+ * the selection: narrowing must not remove the control that undoes the narrowing.
+ */
+export function availableKinds(
+	timeline: readonly TrafficTimelineEvent[],
+): ReadonlySet<TimelineKind> {
+	return new Set(timeline.map((event) => event.kind));
+}
+
+/** The same rule for the level axis: the levels actually in the window. */
+export function availableLevels(
+	timeline: readonly TrafficTimelineEvent[],
+): ReadonlySet<NotificationLogLevel> {
+	return new Set(
+		timeline.flatMap((event) =>
+			event.kind === "notification" ? [event.event.level] : [],
+		),
+	);
+}
+
+/**
+ * One filter axis, described without naming its vocabulary.
+ *
+ * `values` and `labelKey` are supplied by whoever owns the axis — the kind axis
+ * fills them in from this file, the level axis from Seq 1825's
+ * `NOTIFICATION_LEVELS` and `notificationLevelKey`. Nothing about a level is
+ * declared here, and the layout does not care which axis it is drawing.
+ *
+ * `selected` may be null, meaning "everything", so an axis can be laid out before
+ * its values are known and a default never has to be spelled out twice.
+ */
+export interface FilterAxis {
+	id: string;
+	label: string;
+	values: readonly string[];
+	labelKey: (value: string) => TranslationKey;
+	selected: ReadonlySet<string> | null;
+	onChange: (next: ReadonlySet<string>) => void;
+}
+
+/**
+ * Every filter axis, laid out as one run of groups in the toolbar.
+ *
+ * An axis appears only when the window can offer more than one of its values:
+ * a toggle over a value that cannot occur is a dead control, and a one-option
+ * group is noise. Availability is computed pre-filter ({@link availableKinds}),
+ * so narrowing the selection never removes the control that would undo it.
+ */
+export function FilterAxes({ axes }: { axes: readonly FilterAxis[] }) {
+	return (
+		<>
+			{axes
+				.filter((axis) => axis.values.length > 1)
+				.map((axis) => (
+					<FilterToggles
+						key={axis.id}
+						label={axis.label}
+						values={axis.values}
+						selected={axis.selected ?? new Set(axis.values)}
+						labelKey={axis.labelKey}
+						onChange={axis.onChange}
+						testIdPrefix={`traffic-${axis.id}`}
+					/>
+				))}
+		</>
+	);
+}
 
 /**
  * A multi-select row of toggles for one filter axis, shaped like the existing
@@ -190,7 +267,7 @@ const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
  * axis is "show nothing", which the reader would have to undo by guessing which
  * control did it.
  */
-function FilterToggles<T extends string>({
+function FilterToggles({
 	label,
 	values,
 	selected,
@@ -199,10 +276,10 @@ function FilterToggles<T extends string>({
 	testIdPrefix,
 }: {
 	label: string;
-	values: readonly T[];
-	selected: ReadonlySet<T>;
-	labelKey: Record<T, TranslationKey>;
-	onChange: (next: Set<T>) => void;
+	values: readonly string[];
+	selected: ReadonlySet<string>;
+	labelKey: (value: string) => TranslationKey;
+	onChange: (next: ReadonlySet<string>) => void;
 	testIdPrefix: string;
 }) {
 	const t = useT();
@@ -224,7 +301,7 @@ function FilterToggles<T extends string>({
 							if (next.size) onChange(next);
 						}}
 					>
-						{t(labelKey[value])}
+						{t(labelKey(value))}
 					</button>
 				);
 			})}
@@ -349,17 +426,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			}),
 		[timeRows, scopedAllTasks, notificationArm, start, end],
 	);
-	const kindsPresent = useMemo<ReadonlySet<TimelineKind>>(
-		() => new Set(availableTimeline.map((event) => event.kind)),
+	const kindsPresent = useMemo(
+		() => availableKinds(availableTimeline),
 		[availableTimeline],
 	);
-	const levelsPresent = useMemo<ReadonlySet<NotificationLogLevel>>(
-		() =>
-			new Set(
-				availableTimeline.flatMap((event) =>
-					event.kind === "notification" ? [event.event.level] : [],
-				),
-			),
+	const levelsPresent = useMemo(
+		() => availableLevels(availableTimeline),
 		[availableTimeline],
 	);
 
@@ -696,24 +768,30 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 				    timeline can actually carry more than one kind: a toggle over a kind
 				    that cannot occur is a dead control, and a one-option group is noise.
 				    Seq 1825's level group joins it here on the same terms. */}
-				{experiment === "2" && kindsPresent.size > 1 && (
-					<FilterToggles
-						label={t("traffic.filter.kinds")}
-						values={ALL_KINDS.filter((kind) => kindsPresent.has(kind))}
-						selected={kinds}
-						labelKey={KIND_LABEL}
-						onChange={setKinds}
-						testIdPrefix="traffic-kind"
-					/>
-				)}
-				{experiment === "2" && levelsPresent.size > 1 && (
-					<FilterToggles
-						label={t("traffic.filter.levels")}
-						values={NOTIFICATION_LEVELS.filter((level) => levelsPresent.has(level))}
-						selected={levels}
-						labelKey={LEVEL_LABEL}
-						onChange={setLevels}
-						testIdPrefix="traffic-level"
+				{experiment === "2" && (
+					<FilterAxes
+						axes={[
+							{
+								id: "kind",
+								label: t("traffic.filter.kinds"),
+								values: ALL_KINDS.filter((kind) => kindsPresent.has(kind)),
+								labelKey: (value) => KIND_LABEL[value as TimelineKind],
+								selected: kinds,
+								onChange: (next) => setKinds(next as ReadonlySet<TimelineKind>),
+							},
+							// The level axis, assembled from Seq 1824's layout and Seq
+							// 1825's vocabulary, with neither declared here. `values` comes
+							// from the notifications actually in the window, pre-filter, for
+							// the same reason `kind` does.
+							{
+								id: "level",
+								label: t("traffic.filter.levels"),
+								values: NOTIFICATION_LEVELS.filter((level) => levelsPresent.has(level)),
+								labelKey: (value) => notificationLevelKey(value as NotificationLogLevel),
+								selected: levels,
+								onChange: (next) => setLevels(next as ReadonlySet<NotificationLogLevel>),
+							},
+						]}
 					/>
 				)}
 				<ExperimentPicker

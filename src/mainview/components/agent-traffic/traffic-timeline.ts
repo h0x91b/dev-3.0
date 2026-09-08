@@ -13,7 +13,10 @@
 
 import type { Task, TaskMovement } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
-import type { TrafficNotificationEvent as NormalizedNotification } from "./notification-event";
+import {
+	notificationPassesLevels,
+	type TrafficNotificationEvent as NormalizedNotification,
+} from "./notification-event";
 import { endpointKey, type TrafficRecord } from "./traffic-model";
 
 export type TrafficTimelineEventKind = "task" | "message" | "notification";
@@ -199,7 +202,11 @@ export function matchesTimelineFilter(
 	if (!filter.kinds.has(event.kind)) return false;
 	if (event.kind === "message")
 		return filter.delivery === "all" || event.record.row.status === filter.delivery;
-	if (event.kind === "notification") return filter.levels.has(event.event.level);
+	// Seq 1825's own predicate, not a re-implementation: an empty set hides every
+	// notification and is deliberately not the same as an absent filter, and that
+	// rule belongs in one place.
+	if (event.kind === "notification")
+		return notificationPassesLevels(event.event, filter.levels);
 	return true;
 }
 
