@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type { AgentLaunchRequest, CodingAgent, GlobalSettings } from "../../shared/types";
@@ -131,6 +131,57 @@ describe("AgentLaunchRequestModal", () => {
 		await user.click(await screen.findByRole("button", { name: "Decline" }));
 
 		expect(onRespond).toHaveBeenCalledWith(false);
+	});
+
+	// A blocked CLI is waiting on this answer, and the dialog can arrive while the
+	// user is clicking somewhere else entirely. Dismissing it as a decline threw
+	// away launches the user never even read.
+	it("stays open on a click outside, leaving the request unanswered", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal();
+
+		const backdrop = (await screen.findByRole("dialog")).parentElement!;
+		await user.click(backdrop);
+
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+		expect(onRespond).not.toHaveBeenCalled();
+	});
+
+	it("keeps focus on Decline when the click outside lands", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		const decline = await screen.findByRole("button", { name: "Decline" });
+		await waitFor(() => expect(decline).toHaveFocus());
+		await user.click((await screen.findByRole("dialog")).parentElement!);
+
+		expect(decline).toHaveFocus();
+	});
+
+	it("stays open when a drag starts outside and is released inside", async () => {
+		const { onRespond } = renderModal();
+
+		const dialog = await screen.findByRole("dialog");
+		const backdrop = dialog.parentElement!;
+		fireEvent.mouseDown(backdrop);
+		fireEvent.mouseUp(dialog);
+		fireEvent.click(dialog);
+
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+		expect(onRespond).not.toHaveBeenCalled();
+	});
+
+	it("stays open when a drag starts inside and is released outside", async () => {
+		const { onRespond } = renderModal();
+
+		const dialog = await screen.findByRole("dialog");
+		const backdrop = dialog.parentElement!;
+		fireEvent.mouseDown(dialog);
+		fireEvent.mouseUp(backdrop);
+		fireEvent.click(backdrop);
+
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+		expect(onRespond).not.toHaveBeenCalled();
 	});
 
 	it("seeds the priority picker with the priority the launch would use", async () => {

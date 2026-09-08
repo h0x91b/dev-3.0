@@ -93,7 +93,12 @@ export interface ConfirmOptions {
 	alternativeAction?: ConfirmAlternativeAction;
 	/** Render the three actions as consequence-explaining cards. */
 	outcomeCards?: ConfirmOutcomeCards;
-	/** Defaults to true. Disable when closing without a choice would be ambiguous. */
+	/**
+	 * Defaults to true, except for `agentInitiated` dialogs where it defaults to
+	 * false: an agent's CLI is blocked on the answer, so a stray click on empty
+	 * space would decline a request the user never read. Disable it explicitly
+	 * whenever closing without a choice would be ambiguous.
+	 */
 	dismissOnBackdrop?: boolean;
 }
 
@@ -258,6 +263,9 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	const deferredState = useDeferredBlock(pending.deferred);
 	const gateActive = Boolean(pending.deferred?.gateConfirm) && !deferredState.settled;
 	const dangerTone = pending.tone === "danger";
+	// An agent request holds a blocked CLI, so an outside click is far more likely
+	// to be a misclick than an answer — opt those out of backdrop dismissal.
+	const dismissOnBackdrop = pending.dismissOnBackdrop ?? !pending.agentInitiated;
 
 	// Auto-close when the caller's signal aborts (task resolved elsewhere).
 	useEffect(() => {
@@ -276,7 +284,11 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 		<div
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget && pending.dismissOnBackdrop !== false) close(false);
+				if (e.target !== e.currentTarget) return;
+				if (dismissOnBackdrop) close(false);
+				// Swallow the press instead, so a dialog that stays open keeps focus on
+				// its buttons rather than dropping it on `body`.
+				else e.preventDefault();
 			}}
 		>
 			<div
