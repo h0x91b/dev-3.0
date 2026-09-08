@@ -24,8 +24,10 @@ import {
 	NOTIFICATION_LEVELS,
 	notificationLevelKey,
 	notificationTimelineEvents,
+	notificationsAt,
 	type NotificationLogLevel,
 } from "./notification-event";
+import TrafficNotificationBubble from "./TrafficNotificationBubble";
 import { useTrafficExperiment } from "./useTrafficExperiment";
 import type { AgentTrafficExperiment } from "../../../shared/types";
 import {
@@ -501,6 +503,17 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					.slice(0, playback.index + 1)
 					.flatMap((event) => (event.kind === "message" ? [event.record] : []));
 	const cursorAt = playback.cursor.at;
+	// Every notification at or before the cursor, newest first, capped. Live shows
+	// the window's own, so the list is never empty just because nobody is scrubbing.
+	const crossedNotifications = useMemo(
+		() =>
+			notificationsAt(
+				notifications.events,
+				cursorAt ?? Number.POSITIVE_INFINITY,
+				{ max: 6 },
+			),
+		[notifications.events, cursorAt],
+	);
 	const visible = useMemo(
 		() =>
 			(showMessages ? timeRows : []).filter(({ row }) => {
@@ -1180,8 +1193,18 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 								)}
 							</div>
 							<div className="traffic-list">
+								{/* Notifications the cursor has crossed, in flow.
+								    The stage only draws a cloud that has a sender card to
+								    hang from, so an unanchored one would otherwise be
+								    reachable only by landing exactly on its own step. In
+								    document flow the same component is what a list wants —
+								    its author's own words. */}
+								{tab === "messages" &&
+									crossedNotifications.map((event) => (
+										<TrafficNotificationBubble key={event.key} event={event} />
+									))}
 								{tab === "messages" ? (
-									visible.length ? (
+									visible.length || crossedNotifications.length ? (
 										visible.map(rowButton)
 									) : (
 										<p className="traffic-empty">
