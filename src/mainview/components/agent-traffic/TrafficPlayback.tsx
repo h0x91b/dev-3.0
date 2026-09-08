@@ -1,4 +1,4 @@
-import { useLocale, useT } from "../../i18n";
+import { useLocale, useT, type TranslationKey } from "../../i18n";
 import type { ReactNode } from "react";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
@@ -8,6 +8,12 @@ type Props = {
 	windowControl: ReactNode;
 	historical?: boolean;
 	loading?: boolean;
+	/**
+	 * What an empty transport means. A filter that matches nothing and a window
+	 * that simply holds nothing are different facts, and the entry window is the
+	 * trailing hour — which on a quiet morning is legitimately empty.
+	 */
+	emptyKey: TranslationKey;
 	onLive?: () => void;
 	onInspect: (key: string) => void;
 };
@@ -16,6 +22,7 @@ export default function TrafficPlayback({
 	windowControl,
 	historical = false,
 	loading = false,
+	emptyKey,
 	onLive,
 	onInspect,
 }: Props) {
@@ -49,7 +56,7 @@ export default function TrafficPlayback({
 					<span className="streamer-private">
 						{event?.row.subject ||
 							event?.row.body.slice(0, 120) ||
-							t(loading ? "traffic.loading" : "traffic.noneMatch")}
+							t(loading ? "traffic.loading" : emptyKey)}
 					</span>
 				</button>
 				<span className="traffic-event-counter">
@@ -126,7 +133,7 @@ export default function TrafficPlayback({
 						aria-valuetext={
 							event
 								? `${clock(event.row.at)} · ${event.row.subject || t("traffic.orbit.noSubject")}`
-								: t("traffic.noneMatch")
+								: t(emptyKey)
 						}
 					/>
 					<div className="traffic-replay-times">

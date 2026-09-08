@@ -11,9 +11,13 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-08 — Agent traffic becomes the ninth destination, not an overlay
+
+Routed screen under the standard header with Back/Forward and a fixed anonymous screen path; entry autoplays the trailing hour once. Reverses the 2026-08-25 "still an overlay" ruling — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/08/agent-traffic-becomes-a-destination.md`.
+
 ## 2026-09-07 — Agent traffic gets a second presentation, defaulting to it
 
-Two gated presentations; Coordination v3 replay/follow/focus live inside the overlay — bible §5.9, yaml `agent_traffic_log`. Why: `decisions/2026/09/07/coordination-v3-replay-and-camera.md`.
+Two gated presentations; Coordination v3 replay/follow/focus live on the traffic screen — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/07/coordination-v3-replay-and-camera.md`.
 
 ## 2026-09-07 — The artifact panel is the default; the popup is one opt-in toggle
 
@@ -45,7 +49,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 
 2026-08-26 — Header presence follows data, unread is only the badge (§5.9). Why: `decisions/2026/08/26/header-slot-presence-follows-data-not-unread.md`.
 
-2026-08-25 — Traffic remains an overlay (§5.9); presentation superseded 2026-09-05. Why: `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
+2026-08-25 — Traffic was an overlay (§5.9); presentation superseded 2026-09-05, overlay reversed 2026-09-08. Why: `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
 
 ## 2026-08-25 — A self-previewing option list earns a disclosure, not a Settings category
 - **Rule:** the terminal font picker stays in Settings → Terminal behind a collapsed "Compare all N" disclosure of preview rows; no category of its own. **Why:** `decisions/2026/08/25/terminal-font-width-is-clamped-to-the-reference.md`.

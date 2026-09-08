@@ -114,6 +114,12 @@ const common = {
 	"traffic.logTitle": "Трафик агентов",
 	"traffic.empty": "Эти агенты ещё не писали друг другу.",
 	"traffic.noneMatch": "Под этот фильтр ничего не попало.",
+	"traffic.emptyWindow": "В этом окне сообщений пока нет.",
+	"traffic.kind.task": "События задач",
+	"traffic.kind.message": "Сообщения",
+	"traffic.kind.notification": "Уведомления",
+	"traffic.filter.kinds": "Виды событий",
+	"traffic.filter.levels": "Уровни уведомлений",
 	"traffic.loading": "Читаю журнал…",
 	"traffic.filter.all": "Всё",
 	"traffic.filter.unsettled": "Только недоказанные",
@@ -354,7 +360,7 @@ const common = {
 	"command.openQuickShell": "Открыть быструю консоль",
 	"command.tmuxCheatSheet": "Показать шпаргалку tmux",
 	"command.keyboardShortcuts": "Горячие клавиши",
-	"command.agentTrafficLog": "Журнал трафика агентов",
+	"command.agentTrafficLog": "Трафик агентов",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

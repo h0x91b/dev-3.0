@@ -7,6 +7,7 @@ import {
 	within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import type {
 	AgentMessageLogPage,
 	AgentMessageLogRow,
@@ -19,7 +20,10 @@ import {
 } from "../agent-traffic";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
-import AgentTrafficLog from "../components/agent-traffic/AgentTrafficLog";
+import AgentTrafficScreen, {
+	availableKinds,
+	FilterAxes,
+} from "../components/agent-traffic/AgentTrafficScreen";
 import { api } from "../rpc";
 
 vi.mock("../components/agent-traffic/TrafficOrbit", () => ({
@@ -266,11 +270,7 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 function renderLog(onOpenTask = vi.fn(), projectId: string | null = "proj-1") {
 	return render(
 		<I18nProvider>
-			<AgentTrafficLog
-				projectId={projectId}
-				onClose={vi.fn()}
-				onOpenTask={onOpenTask}
-			/>
+			<AgentTrafficScreen projectId={projectId} onOpenTask={onOpenTask} />
 		</I18nProvider>,
 	);
 }
@@ -290,7 +290,7 @@ async function messageRows(count: number) {
 	return screen.getAllByTestId("traffic-message-row");
 }
 
-describe("AgentTrafficLog live orbit", () => {
+describe("AgentTrafficScreen live orbit", () => {
 	it("shows persisted traffic from the last 24 hours immediately, with older history available", async () => {
 		setPage([
 			row({
@@ -303,11 +303,16 @@ describe("AgentTrafficLog live orbit", () => {
 			}),
 		]);
 		renderLog();
-		expect((await messageRows(1))[0].textContent).toContain("Earlier today");
+		// Entry lands on the trailing hour, so neither of these rows is in the
+		// window yet — widening is what brings them back.
 		expect(
-			screen.getByRole("button", { name: "Time window: Last 24 hours" })
-				.textContent,
-		).toContain("Last 24 hours");
+			screen.getByRole("button", { name: "Time window: Last hour" }).textContent,
+		).toContain("Last hour");
+		await userEvent.click(
+			screen.getByRole("button", { name: "Time window: Last hour" }),
+		);
+		await userEvent.click(screen.getByRole("button", { name: "Last 24 hours" }));
+		expect((await messageRows(1))[0].textContent).toContain("Earlier today");
 		await userEvent.click(
 			screen.getByRole("button", { name: "Time window: Last 24 hours" }),
 		);
@@ -517,7 +522,231 @@ describe("AgentTrafficLog live orbit", () => {
 
 // Two presentations, one feature. The picker chooses between them; the Settings
 // toggle still decides whether any of it exists (agent-traffic-flag.test.tsx).
-describe("AgentTrafficLog presentation picker", () => {
+/**
+ * Entering the screen is its own contract: the trailing hour, the cursor at that
+ * hour's start, and the replay started exactly once. What these guard is the
+ * "once" — the window's start slides with the clock and a live message can land
+ * at any moment, so a naive effect restarts the replay under the user's hands.
+ */
+describe("AgentTrafficScreen entry replay", () => {
+	/** The tests' default is reduced-motion; motion has to be asked for. */
+	function allowMotion() {
+		return vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+			matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
+			addListener() {}, removeListener() {}, dispatchEvent: () => false,
+		}) as unknown as MediaQueryList);
+	}
+
+	const counter = () => document.querySelector(".traffic-event-counter")?.textContent;
+	const playLabel = () => screen.getByTestId("traffic-play").getAttribute("aria-label");
+
+	it("starts the trailing hour from its first message, playing", async () => {
+		const media = allowMotion();
+		try {
+			setPage([
+				row({ at: new Date(Date.now() - 50 * 60000).toISOString(), subject: "Oldest in the hour" }),
+				row({ at: new Date(Date.now() - 20 * 60000).toISOString(), subject: "Middle" }),
+				row({ subject: "Newest" }),
+			]);
+			renderLog();
+			await waitFor(() => expect(playLabel()).toBe("Pause replay"));
+			expect(counter()).toBe("1 / 3");
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
+		} finally {
+			media.mockRestore();
+		}
+	});
+
+	it("does not restart when a live message arrives mid-replay", async () => {
+		const media = allowMotion();
+		try {
+			setPage([
+				row({ at: new Date(Date.now() - 30 * 60000).toISOString(), subject: "First" }),
+				row({ at: new Date(Date.now() - 10 * 60000).toISOString(), subject: "Second" }),
+			]);
+			renderLog();
+			await waitFor(() => expect(playLabel()).toBe("Pause replay"));
+			fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+			expect(counter()).toBe("2 / 2");
+			setPage([...page.value.rows, row({ subject: "Arrived while watching" })]);
+			act(() => noteTrafficArrival("proj-1"));
+			// The replay's event list is frozen, so the cursor stays where the user
+			// left it and the arrival does not extend the run under them.
+			await act(async () => { await Promise.resolve(); });
+			expect(counter()).toBe("2 / 2");
+			expect(playLabel()).toBe("Play replay");
+			// It did land in the data, though — Live shows all three.
+			await userEvent.click(screen.getByRole("button", { name: "Live" }));
+			expect(counter()).toBe("3 / 3");
+		} finally {
+			media.mockRestore();
+		}
+	});
+
+	it("leaves an empty hour parked, and keeps it parked when a message lands", async () => {
+		const media = allowMotion();
+		try {
+			setPage([row({ at: new Date(Date.now() - 5 * 3600000).toISOString(), subject: "Hours ago" })]);
+			renderLog();
+			await waitFor(() => expect(counter()).toBe("0 / 0"));
+			expect(playLabel()).toBe("Play replay");
+			setPage([...page.value.rows, row({ subject: "Just now" })]);
+			act(() => noteTrafficArrival("proj-1"));
+			await waitFor(() => expect(counter()).toBe("1 / 1"));
+			expect(playLabel()).toBe("Play replay");
+		} finally {
+			media.mockRestore();
+		}
+	});
+
+	// "Nothing matches this filter" was the only empty copy, so a quiet hour with no
+	// filter at all accused a filter that was not there.
+	it("says the window is empty when nothing is filtered, and blames the filter when something is", async () => {
+		setPage([row({ at: new Date(Date.now() - 5 * 3600000).toISOString(), subject: "Hours ago" })]);
+		renderLog();
+		await waitFor(() =>
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain(
+				"No messages in this window yet.",
+			),
+		);
+		await userEvent.type(screen.getByRole("searchbox"), "nothing like this");
+		await waitFor(() =>
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain(
+				"Nothing matches this filter.",
+			),
+		);
+	});
+
+	it("parks the cursor at the start instead of playing under reduced motion", async () => {
+		setPage([
+			row({ at: new Date(Date.now() - 40 * 60000).toISOString(), subject: "Oldest in the hour" }),
+			row({ subject: "Newest" }),
+		]);
+		renderLog();
+		await waitFor(() => expect(counter()).toBe("1 / 2"));
+		expect(playLabel()).toBe("Play replay");
+		expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
+	});
+});
+
+/**
+ * The kind axis exists ahead of the events it governs (Seq 1823's union timeline
+ * and Seq 1825's notifications). What is testable today is the gate: while
+ * messages are the only kind the timeline can carry, neither the toggles nor the
+ * per-kind counts may appear — a control over a kind that cannot occur is dead
+ * UI, and a one-option group is noise. The toggles' visible behaviour cannot be
+ * exercised until those events exist.
+ */
+/**
+ * The filter axes: what a reader can turn off must never depend on what they have
+ * already turned off. The trap this guards is a control that removes itself —
+ * narrow to one kind, watch the group collapse, and the way back is gone.
+ */
+describe("traffic filter axes", () => {
+	it("derives availability from the window, never from the selection", () => {
+		// The signature carries the rule: nothing about the current selection can
+		// reach it. Messages are the only kind the timeline offers today.
+		expect([...availableKinds(true)]).toEqual(["message"]);
+		expect([...availableKinds(false)]).toEqual([]);
+	});
+
+	it("keeps every option on screen after one is switched off", async () => {
+		function Harness() {
+			const [selected, setSelected] = useState<ReadonlySet<string>>(
+				() => new Set(["message", "task"]),
+			);
+			return (
+				<FilterAxes
+					axes={[
+						{
+							id: "kind",
+							label: "Event kinds",
+							values: ["message", "task"],
+							labelKey: () => "traffic.orbit.messages",
+							selected,
+							onChange: setSelected,
+						},
+					]}
+				/>
+			);
+		}
+		render(
+			<I18nProvider>
+				<Harness />
+			</I18nProvider>,
+		);
+		await userEvent.click(screen.getByTestId("traffic-kind-task"));
+		expect(screen.getByTestId("traffic-kind-task")).toHaveAttribute("aria-pressed", "false");
+		// Both controls are still there — including the one that undoes this.
+		expect(screen.getByTestId("traffic-kind-message")).toHaveAttribute("aria-pressed", "true");
+	});
+
+	it("refuses to empty an axis, and lays out nothing for a single-value one", () => {
+		const onChange = vi.fn();
+		const { unmount } = render(
+			<I18nProvider>
+				<FilterAxes
+					axes={[
+						{
+							id: "kind",
+							label: "Event kinds",
+							values: ["message", "task"],
+							labelKey: () => "traffic.orbit.messages",
+							selected: new Set(["message"]),
+							onChange,
+						},
+					]}
+				/>
+			</I18nProvider>,
+		);
+		// The last enabled value is not a way to show nothing at all.
+		expect(screen.getByTestId("traffic-kind-message")).toBeDisabled();
+		unmount();
+
+		render(
+			<I18nProvider>
+				<FilterAxes
+					axes={[
+						{
+							id: "level",
+							label: "Notification levels",
+							values: ["error"],
+							labelKey: () => "traffic.orbit.messages",
+							selected: null,
+							onChange,
+						},
+					]}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByTestId("traffic-level-error")).toBeNull();
+	});
+});
+
+describe("AgentTrafficScreen kind filter gate", () => {
+	it("shows no kind toggles and no per-kind counts while messages are the only kind", async () => {
+		setPage([row({ subject: "Only messages here" })]);
+		renderLog();
+		await messageRows(1);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-task")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-notification")).toBeNull();
+		expect(screen.queryByTestId("traffic-count-message")).toBeNull();
+		// The window's own Attempts stat is untouched by the gate.
+		expect(document.querySelector(".traffic-summary")?.textContent).toContain("Attempts");
+	});
+
+	it("keeps the group hidden when the window is empty", async () => {
+		setPage([]);
+		renderLog();
+		await waitFor(() =>
+			expect(document.querySelector(".traffic-event-counter")?.textContent).toBe("0 / 0"),
+		);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+	});
+});
+
+describe("AgentTrafficScreen presentation picker", () => {
 	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
 	const orbit = () => screen.queryByLabelText("Project traffic map");
 
@@ -899,7 +1128,7 @@ it("selects a full local calendar day, then Live restores 24h and Follow", async
 	);
 	await userEvent.click(screen.getByRole("button", { name: "Follow" }));
 	await userEvent.click(
-		screen.getByRole("button", { name: "Time window: Last 24 hours" }),
+		screen.getByRole("button", { name: "Time window: Last hour" }),
 	);
 	await userEvent.click(screen.getByRole("button", { name: "Yesterday" }));
 	expect(
@@ -912,6 +1141,7 @@ it("selects a full local calendar day, then Live restores 24h and Follow", async
 		"aria-pressed",
 		"true",
 	);
+	// Live is not part of the entry rule — it still returns to its own 24 hours.
 	await userEvent.click(screen.getByRole("button", { name: "Live" }));
 	expect(
 		screen.getByRole("button", { name: "Time window: Last 24 hours" }),
@@ -1068,6 +1298,9 @@ it("Follow returns to overview after live inactivity and replay completion but k
 	const rendered = renderLog();
 	try {
 		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		// Live is where "inactivity returns to overview" applies; entry parks the
+		// cursor at the start of the hour instead.
+		fireEvent.click(screen.getByRole("button", { name: "Live" }));
 		const stage = screen.getByTestId("traffic-node-scene");
 		const pair = stage.style.transform;
 		act(() => vi.advanceTimersByTime(3600));
@@ -1143,6 +1376,9 @@ it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s send
 	const rendered = renderLog();
 	try {
 		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		// Entry autoplays the trailing hour; this test is about the live flights, so
+		// hand the cursor back to Live before stepping.
+		fireEvent.click(screen.getByRole("button", { name: "Live" }));
 		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
 		advance(0);
 		expect(document.querySelectorAll("circle.traffic-flight")).toHaveLength(1);

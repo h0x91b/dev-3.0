@@ -108,6 +108,12 @@ const common = {
 	"traffic.logTitle": "Agent traffic",
 	"traffic.empty": "These agents have not written to each other yet.",
 	"traffic.noneMatch": "Nothing matches this filter.",
+	"traffic.emptyWindow": "No messages in this window yet.",
+	"traffic.kind.task": "Task events",
+	"traffic.kind.message": "Messages",
+	"traffic.kind.notification": "Notifications",
+	"traffic.filter.kinds": "Event kinds",
+	"traffic.filter.levels": "Notification levels",
 	"traffic.loading": "Reading the log…",
 	"traffic.filter.all": "All",
 	"traffic.filter.unsettled": "Unproven only",
@@ -337,7 +343,7 @@ const common = {
 	"command.openQuickShell": "Open Quick Shell",
 	"command.tmuxCheatSheet": "Show tmux cheat sheet",
 	"command.keyboardShortcuts": "Keyboard shortcuts",
-	"command.agentTrafficLog": "Agent traffic log",
+	"command.agentTrafficLog": "Agent traffic",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",
