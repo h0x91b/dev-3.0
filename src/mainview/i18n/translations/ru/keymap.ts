@@ -43,6 +43,8 @@ const keymap = {
 	"keymap.shortcut.helpMode": "Объяснить этот экран (режим подсказок)",
 	"keymap.shortcut.agentTrafficLog": "Трафик агентов",
 	"keymap.shortcut.trafficReplayPlayPause": "Запустить или остановить воспроизведение трафика",
+	"keymap.shortcut.trafficStrataFrame": "Показать выбранную задачу на сцене Strata",
+	"keymap.shortcut.trafficStrataHome": "Показать всю сцену Strata",
 	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
 	"keymap.shortcut.artifactSearch": "Поиск в открытом HTML-артефакте",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
@@ -56,6 +58,7 @@ const keymap = {
 	"keymap.fixed.holdModifier": "Для перебора нужен зажатый модификатор — обычной комбинацией это не выразить.",
 	"keymap.fixed.chordSequence": "Последовательность клавиш одна за другой, а не комбинация.",
 	"keymap.fixed.reserved": "Зарезервировано — это выход из любого диалога и режима.",
+	"keymap.fixed.stageLocal": "Работает только пока фокус на самой трёхмерной сцене, поэтому не может быть глобальной привязкой.",
 	"keymap.fixed.activatesFocused": "Пробел нажимает элемент, на котором фокус, поэтому его нельзя отдать чему-то ещё.",
 	"keymap.fixed.shellOwned": "Принадлежит оболочке приложения, а не странице.",
 

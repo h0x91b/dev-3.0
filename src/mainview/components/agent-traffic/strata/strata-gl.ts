@@ -236,11 +236,20 @@ export class StrataGL {
 		this.gl.viewport(0, 0, w, h);
 	}
 
-	begin(eye: Vec3, target: Vec3): void {
+	/**
+	 * Start a frame.
+	 *
+	 * `far` follows the camera rather than sitting at a fixed 650. A fixed plane
+	 * silently clipped the scene the moment a wide board on a narrow stage needed
+	 * the camera pulled back past it — the framing was correct and the geometry
+	 * simply vanished. The near plane stays at 0.5, and the ratio only grows with
+	 * distance, so depth precision at the decks is unaffected.
+	 */
+	begin(eye: Vec3, target: Vec3, far = 650): void {
 		const gl = this.gl;
 		this.eye = eye;
 		this.vp = M.mul(
-			M.persp((40 * Math.PI) / 180, this.w / this.h, 0.5, 650),
+			M.persp((40 * Math.PI) / 180, this.w / this.h, 0.5, Math.max(120, far)),
 			M.look(eye, target),
 		);
 		gl.clearColor(0, 0, 0, 0);

@@ -28,7 +28,16 @@ export interface StrataCamera {
 export const PITCH_MIN = 0.22;
 export const PITCH_MAX = 1.43;
 export const DISTANCE_MIN = 22;
-export const DISTANCE_MAX = 350;
+/**
+ * Zoom ceiling.
+ *
+ * Raised from 350 once the framing formula was written honestly: a large board
+ * on a narrow stage needs `radius / (tan(fov/2)·aspect)`, which at aspect 0.5
+ * and radius 120 is over 700, and the old ceiling silently refused to fit the
+ * scene while "Home" claimed to have framed it. `StrataGL.begin` now takes its
+ * far plane from the camera, so this is the only limit in the chain.
+ */
+export const DISTANCE_MAX = 900;
 
 export function createCamera(
 	bounds: { center: Vec3; radius: number },

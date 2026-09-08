@@ -43,6 +43,8 @@ const keymap = {
 	"keymap.shortcut.helpMode": "Explicar esta pantalla (modo ayuda)",
 	"keymap.shortcut.agentTrafficLog": "Tráfico de agentes",
 	"keymap.shortcut.trafficReplayPlayPause": "Reproducir o pausar la repetición del tráfico",
+	"keymap.shortcut.trafficStrataFrame": "Encuadrar la tarea seleccionada en el escenario Strata",
+	"keymap.shortcut.trafficStrataHome": "Encuadrar todo el escenario Strata",
 	"keymap.shortcut.terminalFullscreen": "Alternar pantalla inmersiva del terminal (solo en terminal de tarea)",
 	"keymap.shortcut.artifactSearch": "Buscar en el artefacto HTML abierto",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
@@ -56,6 +58,7 @@ const keymap = {
 	"keymap.fixed.holdModifier": "El ciclo necesita un modificador mantenido, algo que una combinación no expresa.",
 	"keymap.fixed.chordSequence": "Una secuencia de teclas una tras otra, no una combinación.",
 	"keymap.fixed.reserved": "Reservado: es la salida de cualquier diálogo o modo.",
+	"keymap.fixed.stageLocal": "Solo está activo mientras el escenario 3D tiene el foco, así que no puede ser un atajo global.",
 	"keymap.fixed.activatesFocused": "El espacio activa el control que tiene el foco, así que nada más puede reclamarlo.",
 	"keymap.fixed.shellOwned": "Pertenece al shell de la app, no a la página.",
 
