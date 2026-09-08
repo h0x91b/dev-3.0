@@ -13,6 +13,7 @@ import Select from "../Select";
 import { AgentTrafficIcon } from "../HeaderIcons";
 import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
+import TrafficStrata from "./strata/TrafficStrata";
 import TrafficPlayback from "./TrafficPlayback";
 import TrafficPeriodPicker from "./TrafficPeriodPicker";
 import { isCalendarDay, trafficPeriodBounds } from "./traffic-period";
@@ -113,6 +114,11 @@ function ExperimentPicker({
 			hint: "traffic.experiment.twoHint",
 		},
 		{
+			id: "3",
+			label: "traffic.experiment.three",
+			hint: "traffic.experiment.threeHint",
+		},
+		{
 			id: "1",
 			label: "traffic.experiment.one",
 			hint: "traffic.experiment.oneHint",
@@ -130,7 +136,13 @@ function ExperimentPicker({
 			onKeyDown={(event) => {
 				if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 				event.preventDefault();
-				const next = value === "1" ? "2" : "1";
+				// Cycle the options array rather than flipping between two ids: with a
+				// hardcoded pair, a third presentation is unreachable by keyboard and
+				// the radiogroup silently stops being one.
+				const step = event.key === "ArrowRight" ? 1 : -1;
+				const current = options.findIndex((option) => option.id === value);
+				const next =
+					options[(current + step + options.length) % options.length].id;
 				onChange(next);
 				event.currentTarget
 					.querySelector<HTMLButtonElement>(
@@ -891,6 +903,21 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							selected={selected}
 							onSelect={select}
 							paused={paused || until !== null}
+							ready={!data.loading}
+						/>
+					) : experiment === "3" ? (
+						<TrafficStrata
+							projects={data.projects}
+							scope={scope}
+							nodes={nodes}
+							records={graphRecords}
+							layoutRecords={timeRows}
+							selected={selected}
+							onSelect={select}
+							paused={false}
+							playback={playback}
+							focusRequest={focusRequest}
+							followRequest={followRequest}
 							ready={!data.loading}
 						/>
 					) : (
