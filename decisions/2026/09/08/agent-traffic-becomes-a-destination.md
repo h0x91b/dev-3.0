@@ -44,8 +44,10 @@ people look at traffic at all. Arseny reversed the ruling.
   Seq 1823's union timeline: an hour with no messages but with task movements or notifications
   is not an empty window and must replay. The cursor placement sits behind one local seam
   (`startEntryReplay`), whose contract is "the first event at or after the window's start" —
-  today index 0 of a window-filtered message list, and `playback.seekToTime(start)` the moment
-  Seq 1823 lands it. `useTrafficPlayback.ts` is not touched by this task.
+  today index 0 of a window-filtered message list, and `playback.seekToTime(start, !parkOnly)` the
+  moment Seq 1823 lands it (signature agreed with them on 2026-09-08: it returns false and moves
+  nothing when every event precedes `at`, which is what keeps an empty window parked instead of
+  jumping to the newest event). `useTrafficPlayback.ts` is not touched by this task.
 - **Back/Forward restoration is per entry.** History stores whole routes, so Back
   re-enters the screen as a fresh mount and it replays that hour again from its start.
   Cursor position is deliberately not restored: it belongs to a replay of a window

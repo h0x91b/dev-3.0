@@ -625,6 +625,37 @@ describe("AgentTrafficScreen entry replay", () => {
 	});
 });
 
+/**
+ * The kind axis exists ahead of the events it governs (Seq 1823's union timeline
+ * and Seq 1825's notifications). What is testable today is the gate: while
+ * messages are the only kind the timeline can carry, neither the toggles nor the
+ * per-kind counts may appear — a control over a kind that cannot occur is dead
+ * UI, and a one-option group is noise. The toggles' visible behaviour cannot be
+ * exercised until those events exist.
+ */
+describe("AgentTrafficScreen kind filter gate", () => {
+	it("shows no kind toggles and no per-kind counts while messages are the only kind", async () => {
+		setPage([row({ subject: "Only messages here" })]);
+		renderLog();
+		await messageRows(1);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-task")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-notification")).toBeNull();
+		expect(screen.queryByTestId("traffic-count-message")).toBeNull();
+		// The window's own Attempts stat is untouched by the gate.
+		expect(document.querySelector(".traffic-summary")?.textContent).toContain("Attempts");
+	});
+
+	it("keeps the group hidden when the window is empty", async () => {
+		setPage([]);
+		renderLog();
+		await waitFor(() =>
+			expect(document.querySelector(".traffic-event-counter")?.textContent).toBe("0 / 0"),
+		);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+	});
+});
+
 describe("AgentTrafficScreen presentation picker", () => {
 	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
 	const orbit = () => screen.queryByLabelText("Project traffic map");

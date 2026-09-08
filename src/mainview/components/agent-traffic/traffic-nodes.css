@@ -645,6 +645,41 @@
 	text-align: right;
 }
 /* The presentation picker, shaped like the diff viewer's mode segments. */
+/* One filter axis as a row of independent toggles — same shell as the
+   presentation segments beside it, but multi-select, so the pressed state is
+   `aria-pressed` rather than `aria-checked`. */
+.traffic-toggles {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid rgb(var(--border-default) / 0.7);
+	border-radius: 9px;
+	background: rgb(var(--surface-base) / 0.5);
+	flex-shrink: 0;
+}
+.traffic-toggles button {
+	padding: 6px 12px;
+	min-height: 30px;
+	border: 0;
+	border-radius: 7px;
+	font-size: 12px;
+	font-weight: 600;
+	color: rgb(var(--text-tertiary));
+	background: transparent;
+}
+.traffic-toggles button:hover:not(:disabled) {
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-elevated));
+}
+.traffic-toggles button[aria-pressed="true"] {
+	color: white;
+	background: rgb(var(--accent-fill));
+}
+.traffic-toggles button[aria-pressed="true"]:hover:not(:disabled) {
+	background: rgb(var(--accent-fill-hover));
+}
+
 .traffic-experiment {
 	display: inline-flex;
 	align-items: center;

@@ -146,6 +146,81 @@ function ExperimentPicker({
 }
 
 /**
+ * The kinds of event the replay timeline carries.
+ *
+ * A local mirror of Seq 1823's `TrafficTimelineEventKind` (contract
+ * `03-filter-and-counts-contract.md`): their module is not in this tree yet and
+ * the control has to exist before the data does. At integration the alias is
+ * deleted and their import takes its place — the values are identical by
+ * agreement, so nothing else moves.
+ *
+ * The LEVEL axis is deliberately absent here. It governs notifications only, its
+ * vocabulary and its `traffic.notification.level.*` keys belong to Seq 1825, and
+ * re-declaring either would be a second source for one thing. Their
+ * `NOTIFICATION_LEVELS` (worst first) drops into the same {@link FilterToggles}
+ * beside the kind group when their module lands.
+ */
+type TimelineKind = "task" | "message" | "notification";
+const ALL_KINDS: readonly TimelineKind[] = ["task", "message", "notification"];
+
+const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
+	task: "traffic.kind.task",
+	message: "traffic.kind.message",
+	notification: "traffic.kind.notification",
+};
+
+/**
+ * A multi-select row of toggles for one filter axis, shaped like the existing
+ * toolbar segments.
+ *
+ * Never a radiogroup: the axes are independent sets, and turning two kinds off is
+ * a normal thing to want. The last enabled value cannot be turned off — an empty
+ * axis is "show nothing", which the reader would have to undo by guessing which
+ * control did it.
+ */
+function FilterToggles<T extends string>({
+	label,
+	values,
+	selected,
+	labelKey,
+	onChange,
+	testIdPrefix,
+}: {
+	label: string;
+	values: readonly T[];
+	selected: ReadonlySet<T>;
+	labelKey: Record<T, TranslationKey>;
+	onChange: (next: Set<T>) => void;
+	testIdPrefix: string;
+}) {
+	const t = useT();
+	return (
+		<div className="traffic-toggles" role="group" aria-label={label}>
+			{values.map((value) => {
+				const on = selected.has(value);
+				return (
+					<button
+						key={value}
+						type="button"
+						aria-pressed={on}
+						disabled={on && selected.size === 1}
+						data-testid={`${testIdPrefix}-${value}`}
+						onClick={() => {
+							const next = new Set(selected);
+							if (on) next.delete(value);
+							else next.add(value);
+							if (next.size) onChange(next);
+						}}
+					>
+						{t(labelKey[value])}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
+/**
  * The window a fresh entry to the screen picks, and nothing else.
  *
  * An hour, because the question the screen answers on arrival is "what did my
@@ -174,6 +249,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const [pair, setPair] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState("all");
+	// `delivery` (above) governs messages only and `kinds` governs every event, so
+	// a message filter can never silently swallow a notification.
+	const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(() => new Set(ALL_KINDS));
 	const [until, setUntil] = useState<number | null>(null);
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
@@ -222,9 +300,21 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			),
 		[records, start, end, until, experiment],
 	);
+	const showMessages = kinds.has("message");
+	/**
+	 * Which kinds this timeline actually carries. Today the replay is messages
+	 * only, so this is the one place integration extends — and it is why the kind
+	 * and level controls do not render yet: a toggle over a kind that cannot occur
+	 * is a dead control, and a group with one option is noise.
+	 */
+	const kindsPresent = useMemo<ReadonlySet<TimelineKind>>(
+		() => new Set<TimelineKind>(timeRows.length ? ["message"] : []),
+		[timeRows.length],
+	);
+
 	const replayRecords = useMemo(
 		() =>
-			timeRows.filter(
+			(showMessages ? timeRows : []).filter(
 				({ row }) =>
 					(filter === "all" || row.status === filter) &&
 					(!pair || routeKey(row) === pair) &&
@@ -232,15 +322,23 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 						.toLocaleLowerCase()
 						.includes(query.toLocaleLowerCase()),
 			),
-		[timeRows, filter, pair, query],
+		[timeRows, showMessages, filter, pair, query],
 	);
 	// A filter hiding everything and an empty window are different answers, and the
 	// entry window is one hour — on a quiet morning it is legitimately empty.
-	const filtering = filter !== "all" || Boolean(pair) || query.trim().length > 0;
+	const filtering =
+		filter !== "all" ||
+		Boolean(pair) ||
+		query.trim().length > 0 ||
+		kinds.size < ALL_KINDS.length;
+	// Every filter input belongs in this key: changing one changes the timeline's
+	// length, and a cursor that survives that points at an event which is no longer
+	// there. Field order matches the key Seq 1823 assembles at integration.
+	const kindKey = [...kinds].sort().join(",");
 	const playback = useTrafficPlayback(
 		replayRecords,
 		experiment === "2",
-		`${scope}:${windowSize}:${filter}:${pair}:${query}`,
+		`${scope}:${windowSize}:${filter}:${kindKey}:${pair}:${query}`,
 	);
 	const graphRecords =
 		playback.index < 0
@@ -248,7 +346,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			: playback.events.slice(0, playback.index + 1);
 	const visible = useMemo(
 		() =>
-			timeRows.filter(({ row }) => {
+			(showMessages ? timeRows : []).filter(({ row }) => {
 				if (
 					experiment === "2" &&
 					playback.current &&
@@ -263,7 +361,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					.toLocaleLowerCase()
 					.includes(query.toLocaleLowerCase());
 			}),
-		[timeRows, filter, pair, selected, query, experiment, playback.current],
+		[timeRows, showMessages, filter, pair, selected, query, experiment, playback.current],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(
@@ -324,6 +422,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// It counts `playback.events`, not the message list: once Seq 1823's timeline
 	// lands, an hour with no messages but with task movements or notifications is
 	// NOT an empty window, and this must replay it.
+	//
+	// The load gate below is the messages-only approximation of the settled signal.
+	// At integration it becomes Seq 1823's `timelineSettled`, whose notification half
+	// must read Seq 1825's `status === "ready" || status === "failed"` — NOT
+	// `!notifications.loading`, which is true before the first read has even been
+	// asked for and would arm this one-shot latch on a stream that never came.
 	const reducedMotion = useReducedMotion();
 	const autoplayed = useRef(false);
 	const enterReplay = useRef(startEntryReplay);
@@ -341,12 +445,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	 * Put the cursor on the first event of the entry window and start playing (or,
 	 * under reduced motion, just park it there).
 	 *
-	 * INTEGRATION SEAM for Seq 1823's union cursor: the contract is "the first
-	 * event at or after `start`", which is what these index-0 calls mean while the
-	 * timeline is messages-only and already filtered to the window. When
-	 * `playback.seekToTime` exists, this function becomes
-	 * `playback.seekToTime(start)` plus `playback.playPause()` when motion is
-	 * allowed — nothing else in this file needs to know.
+	 * The contract is "the first event at or after `start`" — which is what these
+	 * index-0 calls mean while the timeline is messages-only and already filtered
+	 * to the window. It is the ONLY place that positions the entry cursor, so when
+	 * Seq 1823's union timeline lands (`seekToTime(at, resume) => boolean`, agreed
+	 * 2026-09-08: lands on the first event at or after `at`, moves nothing and
+	 * returns false when every event precedes it) the whole body becomes one line:
+	 *
+	 *     playback.seekToTime(start, !parkOnly);
 	 */
 	function startEntryReplay(parkOnly: boolean) {
 		if (parkOnly) playback.seek(0);
@@ -504,6 +610,21 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 				</div>
 			</header>
 			<div className="traffic-toolbar">
+				{/* One control per axis, in the toolbar the other view controls already
+				    live in — never a second filter cluster. It renders only once the
+				    timeline can actually carry more than one kind: a toggle over a kind
+				    that cannot occur is a dead control, and a one-option group is noise.
+				    Seq 1825's level group joins it here on the same terms. */}
+				{experiment === "2" && kindsPresent.size > 1 && (
+					<FilterToggles
+						label={t("traffic.filter.kinds")}
+						values={ALL_KINDS.filter((kind) => kindsPresent.has(kind))}
+						selected={kinds}
+						labelKey={KIND_LABEL}
+						onChange={setKinds}
+						testIdPrefix="traffic-kind"
+					/>
+				)}
 				<ExperimentPicker
 					value={experiment}
 					onChange={(value) => {
