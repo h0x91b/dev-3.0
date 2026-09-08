@@ -11,12 +11,13 @@
 .traffic-inspector[hidden] {
 	display: none;
 }
-.traffic-backdrop:has(.traffic-view[data-experiment="2"]) {
+.traffic-screen:has(.traffic-view[data-experiment="2"]) {
 	padding: 0;
 }
-.traffic-dialog:has(.traffic-view[data-experiment="2"]) {
+.traffic-frame:has(.traffic-view[data-experiment="2"]) {
 	border-radius: 0;
 	max-width: none;
+	box-shadow: none;
 }
 .traffic-view[data-experiment="2"] {
 	position: relative;
@@ -870,10 +871,6 @@
 	.traffic-transport > select {
 		padding: 4px;
 	}
-}
-
-.traffic-sheet:has(.traffic-view[data-experiment="2"]) {
-	height: calc(85dvh - 80px);
 }
 
 .traffic-period-trigger {

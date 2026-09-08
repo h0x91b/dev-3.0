@@ -434,6 +434,12 @@ export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
 			return { screen: "changelog", title: "Changelog", path: "/app/changelog" };
 		case "stats":
 			return { screen: "stats", title: "Stats", path: "/app/stats" };
+		case "agent-traffic":
+			// The route carries the project the user came from as a scope seed. It
+			// stays out of the path: one row per project is exactly what the rule
+			// above forbids, and which board someone opened traffic from is not a
+			// question analytics asks.
+			return { screen: "agent-traffic", title: "Agent Traffic", path: "/app/agent-traffic" };
 		case "gauge-demo":
 			return { screen: "gauge-demo", title: "Gauge Demo", path: "/app/gauge-demo" };
 		case "viewport-lab":

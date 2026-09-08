@@ -141,10 +141,10 @@ describe("agent-traffic feature flag", () => {
 
 	it("hides the native-menu rows while off, in both View and Help", () => {
 		const off = menuLabels(buildApplicationMenu({ ...MENU_CTX, agentTrafficEnabled: false }));
-		expect(off.filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(0);
+		expect(off.filter((l) => l.startsWith("Agent Traffic"))).toHaveLength(0);
 
 		const on = menuLabels(buildApplicationMenu({ ...MENU_CTX, agentTrafficEnabled: true }));
-		expect(on.filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(2);
+		expect(on.filter((l) => l.startsWith("Agent Traffic"))).toHaveLength(2);
 	});
 
 	it("reaches the browser menu bar too, and is not a roadmap placeholder", () => {
@@ -155,10 +155,10 @@ describe("agent-traffic feature flag", () => {
 		expect(BROWSER_HANDLED_ACTIONS.has("view-agent-traffic-log")).toBe(true);
 
 		const off = buildBrowserMenu({ ...MENU_CTX, agentTrafficEnabled: false });
-		expect(browserLabels(off).filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(0);
+		expect(browserLabels(off).filter((l) => l.startsWith("Agent Traffic"))).toHaveLength(0);
 
 		const on = buildBrowserMenu({ ...MENU_CTX, agentTrafficEnabled: true });
-		expect(browserLabels(on).filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(2);
+		expect(browserLabels(on).filter((l) => l.startsWith("Agent Traffic"))).toHaveLength(2);
 	});
 
 	it("keeps the tip out of the pool while off", () => {

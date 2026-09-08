@@ -108,6 +108,7 @@ const common = {
 	"traffic.logTitle": "Tráfico de agentes",
 	"traffic.empty": "Estos agentes aún no se han escrito.",
 	"traffic.noneMatch": "Nada coincide con este filtro.",
+	"traffic.emptyWindow": "Aún no hay mensajes en este periodo.",
 	"traffic.loading": "Leyendo el registro…",
 	"traffic.filter.all": "Todo",
 	"traffic.filter.unsettled": "Solo sin confirmar",
@@ -337,7 +338,7 @@ const common = {
 	"command.openQuickShell": "Abrir Shell rápido",
 	"command.tmuxCheatSheet": "Mostrar referencia de tmux",
 	"command.keyboardShortcuts": "Atajos de teclado",
-	"command.agentTrafficLog": "Registro de tráfico de agentes",
+	"command.agentTrafficLog": "Tráfico de agentes",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
