@@ -80,11 +80,31 @@ const SLIDE_STEPS = 8;
 const MAX_STOREYS = 3;
 /** Vertical air between two stacked clouds. */
 const STACK_GAP = 8;
+/**
+ * How far the cloud's near edge may sit from its card, as a fraction of the
+ * cloud's own height.
+ *
+ * Without this the storeys and the nudge will happily find a clean box 209px
+ * above a card at the other end of the canvas and score it zero — measured, on
+ * a real fixture. That is the same failure as scoring a cloud pushed off-screen
+ * as perfect: the number is clean and the thing the cloud is for is gone. A
+ * cloud that no longer reads as this card's thought is not a placement.
+ */
+const MAX_DETACH = 1.3;
 
 function overlapArea(a: Rect, b: Rect): number {
 	const x = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
 	const y = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
 	return x > 0 && y > 0 ? x * y : 0;
+}
+
+/** Vertical distance from the card to the cloud's nearest edge, 0 when touching. */
+function detachment(rect: Rect, cloud: CloudToPlace): number {
+	const cardTop = cloud.anchor.y;
+	const cardBottom = cloud.anchor.y + (cloud.anchor.height ?? 0);
+	if (rect.top + rect.height <= cardTop) return cardTop - (rect.top + rect.height);
+	if (rect.top >= cardBottom) return rect.top - cardBottom;
+	return 0;
 }
 
 function clampIntoCanvas(rect: Rect, canvas: { width: number; height: number }): Rect {
@@ -128,6 +148,10 @@ function candidates(cloud: CloudToPlace, canvas: { width: number; height: number
 	// policy: stay as close to the card as possible, prefer above, and only then
 	// wander sideways — a cloud slid halfway across the canvas has stopped saying
 	// which card thought it.
+	const fallback: Candidate = {
+		side: "above",
+		rect: clampIntoCanvas({ left: centred, top: anchor.y - size.height - ABOVE_GAP, width: size.width, height: size.height }, canvas),
+	};
 	for (let storey = 0; storey < MAX_STOREYS; storey += 1) {
 		const lift = storey * (size.height + STACK_GAP);
 		const tops = [
@@ -135,10 +159,16 @@ function candidates(cloud: CloudToPlace, canvas: { width: number; height: number
 			{ side: "below" as const, top: anchor.y + (anchor.height ?? 0) + BELOW_GAP + lift },
 		];
 		for (const { side, top } of tops)
-			for (const left of lefts)
-				out.push({ side, rect: clampIntoCanvas({ left, top, width: size.width, height: size.height }, canvas) });
+			for (const left of lefts) {
+				const rect = clampIntoCanvas({ left, top, width: size.width, height: size.height }, canvas);
+				// A clamp can turn a near candidate into a far one, so the distance is
+				// checked AFTER it, on the box that would actually be drawn.
+				if (detachment(rect, cloud) <= size.height * MAX_DETACH) out.push({ side, rect });
+			}
 	}
-	return out;
+	// Never empty-handed: with an anchor far enough off-canvas that every candidate
+	// is too detached, the caller still gets the centred box and an honest score.
+	return out.length ? out : [fallback];
 }
 
 /**
@@ -160,6 +190,7 @@ function pushOut(
 	blockers: readonly Rect[],
 	canvas: { width: number; height: number },
 	limit: { left: number; right: number },
+	cloud: CloudToPlace,
 ): Rect | null {
 	let current = start;
 	for (let pass = 0; pass < 2; pass += 1) {
@@ -172,7 +203,10 @@ function pushOut(
 			{ ...current, top: hit.top + hit.height + 1 },
 		]
 			.map(rect => clampIntoCanvas(rect, canvas))
-			.filter(rect => rect.left >= limit.left && rect.left <= limit.right);
+			.filter(rect => rect.left >= limit.left && rect.left <= limit.right)
+			// Same bound as the grid: a nudge that detaches the cloud from its card is
+			// not an escape, it is a different cloud.
+			.filter(rect => detachment(rect, cloud) <= start.height * MAX_DETACH);
 		let best: { rect: Rect; overlap: number } | null = null;
 		for (const rect of options) {
 			const overlap = blockers.reduce((sum, blocker) => sum + overlapArea(rect, blocker), 0);
@@ -234,7 +268,7 @@ export function placeClouds(input: {
 			const nudged = pushOut(chosen.candidate.rect, blockers, input.canvas, {
 				left: centred - slide,
 				right: centred + slide,
-			});
+			}, cloud);
 			if (nudged) chosen = { candidate: { rect: nudged, side: chosen.candidate.side }, overlap: 0 };
 		}
 		placed.push(chosen.candidate.rect);
