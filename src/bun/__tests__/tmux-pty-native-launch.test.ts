@@ -125,6 +125,7 @@ vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(async () => undefined),
 	ensureCodexTrust: vi.fn(async () => undefined),
 	ensureGeminiTrust: vi.fn(async () => undefined),
+	getCodexVersionCached: vi.fn(() => null),
 }));
 
 vi.mock("../../shared/agent-adapters/registry", () => ({
@@ -191,6 +192,7 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	buildAgentEnv: vi.fn(() => ({ DEV3_AGENT: "claude" })),
 	buildAgentRetryWrapper: vi.fn(() => "#!/bin/bash\n# retry\n"),
 	buildCmdScript: vi.fn(() => "#!/bin/bash\n"),
+	buildModelVersionGateWrapper: vi.fn(() => "#!/bin/bash\n# version-notice\n"),
 	buildSetupStartupWrapper: vi.fn(() => "#!/bin/bash\n# startup\n"),
 	buildSetupRerunScript: vi.fn(() => "#!/bin/bash\n# rerun\n"),
 	generatedScriptLaunch: vi.fn((p: string) => ({ executable: "/bin/zsh", argv: [p] })),
@@ -215,6 +217,7 @@ vi.mock("../setup-failure-watch", () => ({
 	stopSetupFailureWatch: vi.fn(),
 }));
 
+import * as agents from "../agents";
 import * as data from "../data";
 import * as watch from "../setup-failure-watch";
 import * as pty from "../pty-server";
@@ -278,6 +281,65 @@ function tmuxCalls(): string[] {
 beforeEach(() => {
 	vi.clearAllMocks();
 	written.clear();
+});
+
+describe("Codex model/CLI version notice (issue #1667)", () => {
+	function resolveAsCodex(model: string | undefined) {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "codex --model gpt-6-astra",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: undefined,
+			agentFamily: "codex",
+			launchModel: model,
+		} as never);
+	}
+
+	it("wraps the launch in the notice when the installed Codex predates the model", async () => {
+		resolveAsCodex("gpt-6-astra");
+		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.144.4");
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		expect(sharedPure.buildModelVersionGateWrapper).toHaveBeenCalledWith(
+			expect.objectContaining({
+				model: "gpt-6-astra",
+				installedVersion: "0.144.4",
+				requiredVersion: "0.153.1",
+				binaryName: "codex",
+				command: "codex --model gpt-6-astra",
+			}),
+		);
+	});
+
+	it("says nothing on a Codex new enough to run the model", async () => {
+		resolveAsCodex("gpt-6-astra");
+		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.153.4");
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
+	});
+
+	it("says nothing when the version could not be read", async () => {
+		resolveAsCodex("gpt-6-astra");
+		vi.mocked(agents.getCodexVersionCached).mockReturnValue(null);
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
+	});
+
+	it("never touches a non-Codex launch", async () => {
+		// `clearAllMocks` keeps implementations, so restore the Claude default the
+		// module factory installs before asserting the negative.
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
+		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.144.4");
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
+	});
 });
 
 describe("unmarked task — the legacy tmux path is untouched", () => {

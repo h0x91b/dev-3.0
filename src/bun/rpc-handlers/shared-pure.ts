@@ -186,6 +186,59 @@ export function buildAgentRetryWrapper(opts: {
 	return [...d.header(), "", ...check, "", ...loop, ""].join("\n");
 }
 
+/** Seconds the model-version notice stays on screen before the launch continues
+ *  on its own. An unattended launch (a peer agent spawning this one, an
+ *  auto-start) must never sit on a keypress forever. */
+const MODEL_VERSION_GATE_TIMEOUT_SECONDS = 20;
+
+/**
+ * Wrapper shown when the installed agent CLI predates the model the preset
+ * pins. It explains the mismatch and then runs the launch anyway.
+ *
+ * Deliberately a notice and not a block. The probe can be stale or wrong (a
+ * `--version` read once per app run, a binary swapped underneath it), and the
+ * failure this fixes is opacity, not the launch itself: the reporter's pane died
+ * on an upstream 400 that named neither dev3 nor an upgrade path (#1667).
+ */
+export function buildModelVersionGateWrapper(opts: {
+	model: string;
+	installedVersion: string;
+	requiredVersion: string;
+	binaryName: string;
+	upgradeCmd: string;
+	alternativeHint?: string;
+	/** The launch this notice precedes, run in place once the notice is read. */
+	command: string;
+}): string {
+	const d = launchDialect();
+	const lines = [
+		d.print(d.style("✗ %s %s is too old for model %s", "error"), {
+			blankBefore: true,
+			args: [d.quote(opts.binaryName), d.quote(opts.installedVersion), d.quote(opts.model)],
+		}),
+		d.print(d.style("That model needs %s or newer. Older versions reach the API and are", "dim"), {
+			args: [d.quote(opts.requiredVersion)],
+		}),
+		d.print(d.style("refused with a 400 that mentions neither dev-3.0 nor this preset.", "dim"), {
+			blankAfter: true,
+		}),
+		d.print(`${d.style("Upgrade:", "bold")} %s`, { args: [d.quote(opts.upgradeCmd)] }),
+	];
+	if (opts.alternativeHint) {
+		lines.push(d.print(d.style("%s", "dim"), { args: [d.quote(opts.alternativeHint)] }));
+	}
+	lines.push(
+		d.print(d.style("Starting anyway in %ss — press any key to start now.", "dim"), {
+			blankBefore: true,
+			blankAfter: true,
+			args: [d.quote(String(MODEL_VERSION_GATE_TIMEOUT_SECONDS))],
+		}),
+		d.readKey({ timeoutSeconds: MODEL_VERSION_GATE_TIMEOUT_SECONDS }),
+		d.execReplacing(opts.command),
+	);
+	return [...d.header(), "", ...lines, ""].join("\n");
+}
+
 /**
  * The setup/startup wrapper: run the project's setup script, then hand the view
  * to the agent wrapper.

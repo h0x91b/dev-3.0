@@ -6,6 +6,8 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
+import { agentKey } from "../../shared/agent-adapters/families";
+import { evaluateCodexModelSupport } from "../../shared/agent-model-cli-requirements";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearDevServerSummaryForTask, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, schedulePortScanSoon, waitForPortsFree } from "../port-scanner";
@@ -75,7 +77,7 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { buildDevServerScript } from "../dev-server-script";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -629,6 +631,46 @@ async function launchNativeTaskSession(
 	log.info("launchTaskPty DONE — native session created", { taskId: task.id.slice(0, 8) });
 }
 
+/** How to raise the Codex version. Deliberately not a single command: dev3 does
+ *  not know which package manager put the binary there, and a `brew upgrade` line
+ *  printed to an npm install is worse than naming both. */
+const CODEX_UPGRADE_COMMAND = "brew upgrade codex   (npm: npm install -g @openai/codex@latest)";
+
+/**
+ * Prefix a Codex launch with the model/CLI mismatch notice when the installed
+ * binary predates the model the preset pins (#1667). Returns `command`
+ * untouched for every other case — another agent, an unreadable
+ * `codex --version`, a model with no known floor, a third-party backend.
+ */
+async function applyModelVersionNotice(
+	taskId: string,
+	command: string,
+	opts: { baseCmd: string; family: AgentFamily | undefined; launchModel: string | undefined; userShell?: string },
+): Promise<string> {
+	if (agentKey(opts.baseCmd, opts.family) !== "codex") return command;
+	const support = evaluateCodexModelSupport(opts.launchModel, agents.getCodexVersionCached());
+	if (support.status !== "too-old") return command;
+
+	log.warn("Codex CLI predates the launch model", {
+		taskId: taskId.slice(0, 8),
+		model: support.model,
+		installed: support.installed,
+		required: support.required,
+	});
+	const script = buildModelVersionGateWrapper({
+		model: support.model,
+		installedVersion: support.installed,
+		requiredVersion: support.required,
+		binaryName: "codex",
+		upgradeCmd: CODEX_UPGRADE_COMMAND,
+		alternativeHint: "Or pick a preset on an older model — those run on the installed version.",
+		command,
+	});
+	const scriptPath = dev3TaskTempPath(taskId, generatedScriptName("model-version-notice"));
+	await writeLaunchScript(scriptPath, script);
+	return buildScriptRunnerCommand(scriptPath, { shellPath: opts.userShell });
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -677,6 +719,7 @@ export async function launchTaskPty(
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
+	let resolvedLaunchModel: string | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
@@ -706,6 +749,7 @@ export async function launchTaskPty(
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
+			resolvedLaunchModel = resolved.launchModel;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -721,6 +765,7 @@ export async function launchTaskPty(
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
+			resolvedLaunchModel = resolved.launchModel;
 		}
 
 		// Persist session state as pane[0] for the main agent pane.
@@ -830,6 +875,12 @@ export async function launchTaskPty(
 		stopTarget,
 		permissionMode: resolvedPermissionMode,
 		family: resolvedAgentFamily,
+	});
+	tmuxCmd = await applyModelVersionNotice(task.id, tmuxCmd, {
+		baseCmd: resolvedBaseCmd,
+		family: resolvedAgentFamily,
+		launchModel: resolvedLaunchModel,
+		userShell,
 	});
 
 	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
@@ -2737,6 +2788,7 @@ async function spawnAgentInTask(params: {
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedAgentFamily: AgentFamily | undefined;
+	let resolvedLaunchModel: string | undefined;
 	let launchedAgentId = params.agentId;
 	let launchedConfigId = params.configId;
 
@@ -2751,6 +2803,7 @@ async function spawnAgentInTask(params: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		resolvedLaunchModel = resolved.launchModel;
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
 		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
@@ -2768,6 +2821,7 @@ async function spawnAgentInTask(params: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		resolvedLaunchModel = resolved.launchModel;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -2779,6 +2833,11 @@ async function spawnAgentInTask(params: {
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		family: resolvedAgentFamily,
+	});
+	tmuxCmd = await applyModelVersionNotice(task.id, tmuxCmd, {
+		baseCmd: resolvedBaseCmd,
+		family: resolvedAgentFamily,
+		launchModel: resolvedLaunchModel,
 	});
 
 	const env: Record<string, string> = {

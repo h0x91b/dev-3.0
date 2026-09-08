@@ -214,6 +214,7 @@ vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureCodexTrust: vi.fn(),
 	ensureGeminiTrust: vi.fn(),
+	getCodexVersionCached: vi.fn(() => null),
 	isClaudeCommand: vi.fn(() => false),
 	skillInvocationPrefix: vi.fn((command: string) => (command === "codex" ? "$" : "/")),
 	supportsPreAssignedSessionId: vi.fn(() => false),
@@ -12908,6 +12909,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			config: undefined,
 			extraEnv: {},
 			agentFamily: undefined,
+			launchModel: undefined,
 		});
 	});
 
@@ -12990,6 +12992,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			config: undefined,
 			extraEnv: {},
 			agentFamily: undefined,
+			launchModel: undefined,
 		});
 		vi.mocked(setupAgentHooks).mockResolvedValueOnce("--dangerously-bypass-hook-trust");
 

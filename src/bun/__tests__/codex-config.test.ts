@@ -5,11 +5,11 @@ import {
 	ensureCodexProfileFile,
 	getCodexSyntaxForVersion,
 	pruneOrphanedMcpServers,
-	parseCodexVersion,
 	pickCodexProfileLaunchFlag,
 	tomlBasicString,
 } from "../codex-config";
 import { codexHookCommand } from "../../shared/agent-hooks";
+import { parseCliVersion } from "../../shared/agent-model-cli-requirements";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 describe("ensureCodexConfig", () => {
@@ -69,12 +69,12 @@ describe("ensureCodexConfig", () => {
 
 	describe("Codex version compatibility", () => {
 		it("parses Codex CLI version output", () => {
-			expect(parseCodexVersion("codex-cli 0.133.0")).toEqual({
+			expect(parseCliVersion("codex-cli 0.133.0")).toEqual({
 				major: 0,
 				minor: 133,
 				patch: 0,
 			});
-			expect(parseCodexVersion("OpenAI Codex (v0.131.2)")).toEqual({
+			expect(parseCliVersion("OpenAI Codex (v0.131.2)")).toEqual({
 				major: 0,
 				minor: 131,
 				patch: 2,
