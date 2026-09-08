@@ -48,7 +48,11 @@ export default function TrafficPlayback({
 					className="traffic-event-subject"
 				>
 					{readout.lead && <b>{readout.lead}</b>}
-					<span className="streamer-private">{readout.text}</span>
+					{/* Only agent-authored text is private. A localized "Board move" is
+					    the app's own label and blurring it just hides the readout. */}
+					<span className={readout.private ? "streamer-private" : undefined}>
+						{readout.text}
+					</span>
 				</button>
 				<span className="traffic-event-counter">
 					{p.index < 0 ? p.events.length : p.index + 1} / {p.events.length}
@@ -154,12 +158,13 @@ function describeEvent(
 	event: TrafficTimelineEvent | undefined,
 	t: ReturnType<typeof useT>,
 	loading: boolean,
-): { icon: "message" | "replay"; lead: string | null; text: string } {
+): { icon: "message" | "replay"; lead: string | null; text: string; private: boolean } {
 	if (!event) {
 		return {
 			icon: "message",
 			lead: null,
 			text: t(loading ? "traffic.loading" : "traffic.noneMatch"),
+			private: false,
 		};
 	}
 	if (event.kind === "message") {
@@ -168,6 +173,7 @@ function describeEvent(
 			icon: "message",
 			lead: `${row.fromSeq == null ? "—" : `#${row.fromSeq}`} → #${row.toSeq}`,
 			text: row.subject || row.body.slice(0, 120),
+			private: true,
 		};
 	}
 	if (event.kind === "task") {
@@ -178,7 +184,13 @@ function describeEvent(
 				event.movement.kind === "created"
 					? t("traffic.replay.taskCreated")
 					: t("traffic.replay.taskMoved"),
+			private: false,
 		};
 	}
-	return { icon: "message", lead: null, text: t("traffic.replay.notification") };
+	return {
+		icon: "message",
+		lead: null,
+		text: t("traffic.replay.notification"),
+		private: false,
+	};
 }
