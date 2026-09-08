@@ -763,6 +763,49 @@ export default function TrafficNodes({
 					.map((other) => other.y - (node.y + node.height));
 				const stageHeight =
 					(frame.current?.clientHeight ?? 0) / (view.scale || 1);
+				// Everything the cloud must not cover, converted to screen space HERE.
+				// Cards and project frames live in the zoomed scene; the caption, the
+				// minimap, the camera controls and the band toggles are screen-space
+				// chrome. Doing the multiplication in one place is the whole lesson of
+				// this defect — the cloud is screen pixels and the cards are not.
+				const toScreen = (r: { x: number; y: number; width: number; height: number }) => ({
+					left: view.x + r.x * view.scale,
+					top: view.y + r.y * view.scale,
+					width: r.width * view.scale,
+					height: r.height * view.scale,
+				});
+				const stageBox = frame.current?.getBoundingClientRect();
+				const chrome = stageBox
+					? [
+							".traffic-map-caption",
+							".traffic-minimap",
+							".traffic-camera-controls",
+							".traffic-nodes-bands",
+						].flatMap((selector) => {
+							// All four are descendants of the stage. They render after the
+							// clouds, so on the very first frame they are not there yet and
+							// the list is short by them — invisible on a decoration that only
+							// exists while replaying, and not worth a layout effect.
+							const box = frame.current
+								?.querySelector(selector)
+								?.getBoundingClientRect();
+							return box
+								? [
+										{
+											left: box.left - stageBox.left,
+											top: box.top - stageBox.top,
+											width: box.width,
+											height: box.height,
+										},
+									]
+								: [];
+						})
+					: [];
+				const obstacles = [
+					...scene.placed.map(toScreen),
+					...scene.groups.map(toScreen),
+					...chrome,
+				];
 				const room = {
 					above:
 						(above.length ? Math.min(...above) : node.y) * view.scale,
@@ -803,6 +846,7 @@ export default function TrafficNodes({
 						// keeps its own `full` cloud.
 						density="compact"
 						room={room}
+						obstacles={obstacles}
 						width={frame.current?.clientWidth ?? 1000}
 						height={frame.current?.clientHeight ?? 500}
 						onKnownTask={(endpoint) =>
