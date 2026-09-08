@@ -132,9 +132,8 @@ export function layoutTraffic(
 	const awake = sorted.filter((node) => !node.task?.hibernated);
 	// Eligibility is per project, not per message count: a project whose window
 	// holds zero messages still gets its block. Volume decides which cards a
-	// *conversation* buries, never whether a board exists — and in practice only
-	// boards running a coordinator carry traffic, so the old zero-message rule
-	// erased every other one from the stage.
+	// *conversation* buries, never whether a board exists — the old zero-message
+	// rule erased a whole board from the stage, group box and all.
 	const silent = new Set(awake.map((node) => node.projectId));
 	for (const node of awake) if (messages.has(node.key)) silent.delete(node.projectId);
 	const conversing = (node: TrafficNode) => messages.has(node.key) || silent.has(node.projectId);

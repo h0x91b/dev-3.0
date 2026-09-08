@@ -7,11 +7,17 @@ conversation alone": tasks that exchanged nothing in the window are counted into
 collapsed quiet band instead of drawn, which is what stopped a 43-task board from
 burying its four messages.
 
-Applied globally, that rule also decides whether a *project* exists. Only a board
-running a coordinator generates agent messages, so on an all-projects view every
-other board — group box, cards and all — was silently missing, and with a single
-conversing project left, `grouped` (`projectIds.length > 1`) went false and even
-that project lost its named block.
+Applied globally, that rule also decides whether a *project* exists: on an
+all-projects view a board with zero messages in the window was silently missing,
+group box, cards and all. With a single conversing project left, `grouped`
+(`projectIds.length > 1`) then went false and even that project lost its named
+block.
+
+The bug was reported as "projects without a coordinator are omitted", and it is
+worth being precise about that: what was measured is the zero-message rule.
+Whether a coordinator is the only thing that ever produces agent traffic was never
+verified and is not what this record claims — a coordinator-less board that does
+exchange messages was always drawn.
 
 ## Investigation
 
