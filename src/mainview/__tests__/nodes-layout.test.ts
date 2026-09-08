@@ -446,9 +446,9 @@ describe("obstacle-aware traffic routing", () => {
 			assertClear(result);
 		});
 
-		// Only a board with a coordinator produces agent traffic, so eligibility keyed
-		// on message volume erased every other project from the stage — group box,
-		// cards and all — and took the named group off the surviving project too.
+		// Eligibility keyed on message volume erased a whole project from the stage —
+		// group box, cards and all — and took the named group off the surviving
+		// project too, since grouping switches on at more than one visible project.
 		it("gives a project with no traffic its own named block beside a conversing one", () => {
 			const tasks = [...projectTasks("a"), task("solo1", 20, { projectId: "b" }), task("solo2", 21, { projectId: "b" })];
 			const result = collapsed(tasks, projectRows("a"));
