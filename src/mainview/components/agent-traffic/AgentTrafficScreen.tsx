@@ -43,6 +43,7 @@ import {
 import {
 	buildTimeline,
 	matchesTimelineFilter,
+	timelineCounts,
 	type TrafficTimelineEvent,
 } from "./traffic-timeline";
 import "./traffic-orbit.css";
@@ -505,14 +506,28 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const cursorAt = playback.cursor.at;
 	// Every notification at or before the cursor, newest first, capped. Live shows
 	// the window's own, so the list is never empty just because nobody is scrubbing.
+	//
+	// Clipped to the window FIRST: the store holds the whole archive read, and
+	// selecting straight out of it put notifications from before the displayed
+	// window into the list — measured, three of them at the first step of an hour.
+	// The window is the frame of the whole screen, not of the message list alone.
+	const windowNotifications = useMemo(
+		() =>
+			notifications.events.filter(
+				(event) => event.at >= start && event.at < end,
+			),
+		[notifications.events, start, end],
+	);
+	// After filtering, so a number never disagrees with what is on the timeline.
+	const counts = useMemo(() => timelineCounts(timeline), [timeline]);
 	const crossedNotifications = useMemo(
 		() =>
 			notificationsAt(
-				notifications.events,
+				windowNotifications,
 				cursorAt ?? Number.POSITIVE_INFINITY,
 				{ max: 6 },
 			),
-		[notifications.events, cursorAt],
+		[windowNotifications, cursorAt],
 	);
 	const visible = useMemo(
 		() =>
@@ -866,6 +881,27 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							? t("traffic.replay.reconstructedTasks")
 							: t("traffic.orbit.currentTasks")}
 					</p>
+				{/* Three numbers, never one. A notification inside a "messages" count
+				    makes the number disagree with both its label and the timeline, and
+				    the old `attempts` stat counts messages only — which stopped being
+				    the whole timeline. Its own class, so Seq 1824's density decision to
+				    hide the other stats on this stage still stands. */}
+				{replayStage && kindsPresent.size > 1 && (
+					<div className="traffic-kind-counts">
+						{ALL_KINDS.filter((kind) => kindsPresent.has(kind)).map((kind) => (
+							<span key={kind} className="traffic-kind-count">
+								<b>
+									{kind === "task"
+										? counts.tasks
+										: kind === "message"
+											? counts.messages
+											: counts.notifications}
+								</b>
+								{t(KIND_LABEL[kind])}
+							</span>
+						))}
+					</div>
+				)}
 				</div>
 				<div className="traffic-stat">
 					<b>

@@ -1101,3 +1101,29 @@
 	background: rgb(var(--accent-fill-hover));
 	color: white;
 }
+
+/* Per-kind counts on the replay stage. Its own class rather than `.traffic-stat`,
+   so hiding the older stats on this stage stays true. */
+/* Deliberately NOT `margin-left: auto`: that pushed the row into the top-right
+   corner, straight under the minimap — measured on a stage with few cards. It
+   sits with the caption it belongs to instead. */
+.traffic-kind-counts {
+	display: flex;
+	align-items: baseline;
+	gap: 14px;
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+	white-space: nowrap;
+}
+.traffic-kind-count {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 5px;
+}
+.traffic-kind-count b {
+	font-family: var(--dev3-mono-stack);
+	font-size: 12px;
+	font-weight: 600;
+	color: rgb(var(--text-secondary));
+	font-variant-numeric: tabular-nums;
+}
