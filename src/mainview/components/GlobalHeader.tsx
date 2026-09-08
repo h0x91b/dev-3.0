@@ -511,6 +511,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		segments.push({ label: t("header.settings") });
 	} else if (route.screen === "changelog") {
 		segments.push({ label: t("header.changelog") });
+	} else if (route.screen === "agent-traffic") {
+		// A global screen, so the tail names it and nothing claims a project — the
+		// route's scope seed is a filter on the screen, not a location.
+		segments.push({ label: t("traffic.label") });
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
 	} else if (route.screen === "native-pane-layout-lab") {

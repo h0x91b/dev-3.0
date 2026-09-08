@@ -1,4 +1,4 @@
-import { useLocale, useT } from "../../i18n";
+import { useLocale, useT, type TranslationKey } from "../../i18n";
 import type { ReactNode } from "react";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import type { TrafficTimelineEvent } from "./traffic-timeline";
@@ -9,6 +9,12 @@ type Props = {
 	windowControl: ReactNode;
 	historical?: boolean;
 	loading?: boolean;
+	/**
+	 * What an empty transport means. A filter that matches nothing and a window
+	 * that simply holds nothing are different facts, and the entry window is the
+	 * trailing hour — which on a quiet morning is legitimately empty.
+	 */
+	emptyKey: TranslationKey;
 	onLive?: () => void;
 	onInspect: (key: string) => void;
 };
@@ -17,6 +23,7 @@ export default function TrafficPlayback({
 	windowControl,
 	historical = false,
 	loading = false,
+	emptyKey,
 	onLive,
 	onInspect,
 }: Props) {
@@ -31,7 +38,7 @@ export default function TrafficPlayback({
 	// The readout describes whichever kind of event the cursor stands on. A board
 	// movement is a step of its own now, so it gets its own line rather than
 	// borrowing the last message's subject and pretending a message happened.
-	const readout = describeEvent(event, t, loading);
+	const readout = describeEvent(event, t, loading, emptyKey);
 	return (
 		<section
 			className="traffic-playback"
@@ -128,7 +135,7 @@ export default function TrafficPlayback({
 						aria-valuetext={
 							event
 								? `${clock(event.at)} · ${readout.lead ? `${readout.lead} · ` : ""}${readout.text}`
-								: t("traffic.noneMatch")
+								: t(emptyKey)
 						}
 					/>
 					<div className="traffic-replay-times">
@@ -158,12 +165,13 @@ function describeEvent(
 	event: TrafficTimelineEvent | undefined,
 	t: ReturnType<typeof useT>,
 	loading: boolean,
+	emptyKey: TranslationKey,
 ): { icon: "message" | "replay"; lead: string | null; text: string; private: boolean } {
 	if (!event) {
 		return {
 			icon: "message",
 			lead: null,
-			text: t(loading ? "traffic.loading" : "traffic.noneMatch"),
+			text: t(loading ? "traffic.loading" : emptyKey),
 			private: false,
 		};
 	}

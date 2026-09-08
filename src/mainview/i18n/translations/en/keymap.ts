@@ -44,7 +44,7 @@ const keymap = {
 	"keymap.shortcut.openIn": "Open current project/worktree in an app (picker)",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
-	"keymap.shortcut.agentTrafficLog": "Agent traffic log",
+	"keymap.shortcut.agentTrafficLog": "Agent traffic",
 	"keymap.shortcut.trafficReplayPlayPause": "Play or pause the traffic replay",
 	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",
 	"keymap.shortcut.artifactSearch": "Find in the focused HTML artifact",

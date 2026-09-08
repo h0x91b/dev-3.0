@@ -504,7 +504,7 @@ const SEP: ApplicationMenuItemConfig = { type: "separator" };
 /** The traffic-log row, present only while the beta flag is on (View and Help). */
 function agentTrafficItems(): ApplicationMenuItemConfig[] {
 	if (!currentContext.agentTrafficEnabled) return [];
-	return [item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog })];
+	return [item({ label: "Agent Traffic (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog })];
 }
 
 function appMenu(): ApplicationMenuItemConfig {

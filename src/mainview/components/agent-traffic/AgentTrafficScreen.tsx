@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
 import { useLocale, useT, type TranslationKey } from "../../i18n";
-import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { getOverlayLayerElements } from "../../utils/overlay-layers";
 import { isTypingContext } from "../../utils/typing-context";
-import { useFocusTrap } from "../../utils/useFocusTrap";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
 import Select from "../Select";
 import { AgentTrafficIcon } from "../HeaderIcons";
-import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
 import TrafficPlayback from "./TrafficPlayback";
@@ -22,6 +19,8 @@ import { isCalendarDay, trafficPeriodBounds } from "./traffic-period";
 import TrafficIcon from "./TrafficIcon";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
+import { useNotificationTraffic } from "./useNotificationTraffic";
+import { notificationTimelineEvents } from "./notification-event";
 import { useTrafficExperiment } from "./useTrafficExperiment";
 import type { AgentTrafficExperiment } from "../../../shared/types";
 import {
@@ -39,8 +38,8 @@ import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
 interface Props {
+	/** The project the user came from; seeds the scope filter, nothing else. */
 	projectId: string | null;
-	onClose: () => void;
 	onOpenTask: (taskId: string, projectId: string) => void;
 }
 const runtimeKeys = {
@@ -64,54 +63,19 @@ const verdictKey = (status: string): TranslationKey => {
 	}
 };
 
-export default function AgentTrafficLog(props: Props) {
-	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const t = useT();
-	const body = <TrafficView {...props} />;
-	return narrow ? (
-		<BottomSheet
-			open
-			onClose={props.onClose}
-			title={t("traffic.label")}
-			testId="agent-traffic-log-sheet"
-		>
-			<div className="traffic-sheet">{body}</div>
-		</BottomSheet>
-	) : (
-		createPortal(
-			<TrafficDialog onClose={props.onClose}>{body}</TrafficDialog>,
-			document.body,
-		)
-	);
-}
-
-function TrafficDialog({
-	children,
-	onClose,
-}: {
-	children: React.ReactNode;
-	onClose: () => void;
-}) {
-	const t = useT();
-	const ref = useFocusTrap<HTMLDivElement>();
-	useEscapeKey(onClose);
+/**
+ * The Agent traffic screen: one routed destination, the same on every width.
+ *
+ * It used to be a modal dialog (a portal, a focus trap, an Escape-dismiss and a
+ * BottomSheet on phones), which cost it the app header, Back/Forward and a screen
+ * path in analytics. It is a route now — the shell above it is the ordinary one,
+ * so this component owns nothing but its own content.
+ */
+export default function AgentTrafficScreen(props: Props) {
 	return (
-		<div
-			className="traffic-backdrop"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget) onClose();
-			}}
-		>
-			<div
-				ref={ref}
-				tabIndex={-1}
-				role="dialog"
-				aria-modal="true"
-				aria-label={t("traffic.label")}
-				className="traffic-dialog"
-				data-testid="agent-traffic-log-dialog"
-			>
-				{children}
+		<div className="traffic-screen" data-testid="agent-traffic-screen">
+			<div className="traffic-frame">
+				<TrafficView {...props} />
 			</div>
 		</div>
 	);
@@ -184,14 +148,33 @@ function ExperimentPicker({
 	);
 }
 
-function TrafficView({ projectId, onClose, onOpenTask }: Props) {
+/**
+ * The window a fresh entry to the screen picks, and nothing else.
+ *
+ * An hour, because the question the screen answers on arrival is "what did my
+ * agents just say to each other" — replaying a whole day is minutes of watching
+ * before the cursor reaches anything recent. The period picker names it on
+ * screen, wider windows are one click away, and a calendar day still loads
+ * retained history. `Live` deliberately keeps returning to its own 24 hours:
+ * that control is not part of the entry rule.
+ */
+const ENTRY_WINDOW = "hour";
+/** What `Live` returns to — unchanged, and deliberately not {@link ENTRY_WINDOW}. */
+const LIVE_WINDOW = "day";
+
+function TrafficView({ projectId, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
-	const [windowSize, setWindowSize] = useState("day");
+	const [windowSize, setWindowSize] = useState(ENTRY_WINDOW);
 	const now = Date.now();
 	const { start, end } = trafficPeriodBounds(windowSize, now);
 	const calendarDay = isCalendarDay(windowSize);
 	const data = useTrafficData(calendarDay ? start : undefined);
+	// The visibility allowlist, not a display filter: a project the user marked
+	// sensitive never puts its notification text on the wire.
+	const notifications = useNotificationTraffic(
+		useMemo(() => data.projects.map((project) => project.id), [data.projects]),
+	);
 	const { experiment, choose } = useTrafficExperiment();
 	const [scope, setScope] = useState(projectId ?? "all");
 	const [selected, setSelected] = useState<string | null>(null);
@@ -259,23 +242,30 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			),
 		[timeRows, filter, pair, query],
 	);
-	// Task movements ride the same timeline as messages, so an hour where the board
-	// moved and nobody said anything still has steps to play. The window bounds are
-	// applied here rather than inside the builder's caller so every arm is clipped
-	// by exactly the same interval.
+	// Task movements and notifications ride the same timeline as messages, so an hour
+	// where the board moved and nobody said anything still has steps to play. The
+	// window bounds are applied inside the builder so every arm is clipped by exactly
+	// the same interval rather than each caller being trusted to have done it.
 	const timeline = useMemo(
 		() =>
 			buildTimeline({
 				records: replayRecords,
 				tasks: scope === "all" ? data.tasks : data.tasks.filter((task) => task.projectId === scope),
+				notifications: notificationTimelineEvents(notifications.events),
 				start,
 				end,
 			}),
-		[replayRecords, data.tasks, scope, start, end],
+		[replayRecords, data.tasks, scope, notifications.events, start, end],
 	);
+	// A filter hiding everything and an empty window are different answers, and the
+	// entry window is one hour — on a quiet morning it is legitimately empty.
+	const filtering = filter !== "all" || Boolean(pair) || query.trim().length > 0;
 	const playback = useTrafficPlayback(
 		timeline,
 		experiment === "2",
+		// Every filter input belongs in this key. A filter change shortens the
+		// timeline, so an index into it stops meaning anything — a missing field
+		// here leaves the cursor pointing at an event that is no longer there.
 		`${scope}:${windowSize}:${filter}:${pair}:${query}`,
 	);
 	const graphRecords =
@@ -350,6 +340,55 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	useEffect(() => {
 		markTrafficSeen();
 	}, []);
+	// Autoplay the trailing hour ONCE per entry to this screen.
+	//
+	// The ref, not a piece of state, is what makes "once" true: the window's start
+	// slides with the clock and a live append arrives at any moment, so an effect
+	// keyed off the data would restart the replay under the user's cursor — and a
+	// manual pause has to stand. It arms on the first render where the load has
+	// settled, INCLUDING a settled load that found nothing, so an empty window
+	// stays parked instead of springing to life when the next event lands. Reduced
+	// motion keeps the cursor at the start of the window and skips the playing.
+	//
+	// It counts `playback.events`, not the message list: once Seq 1823's timeline
+	// lands, an hour with no messages but with task movements or notifications is
+	// NOT an empty window, and this must replay it.
+	const reducedMotion = useReducedMotion();
+	const autoplayed = useRef(false);
+	const enterReplay = useRef(startEntryReplay);
+	enterReplay.current = startEntryReplay;
+	const eventCount = playback.events.length;
+	// Readiness covers EVERY stream the timeline is built from. Branching on
+	// `!notifications.loading` would arm the latch before the first read has even
+	// been asked for — `loading` is false until the effect starts it — and a slow
+	// second stream would then be mistaken for an empty hour, permanently, because
+	// the latch is one-shot. `failed` counts as settled on purpose: a transport
+	// failure must not park the entry replay forever.
+	const notificationsSettled =
+		notifications.status === "ready" || notifications.status === "failed";
+	const timelineSettled =
+		!data.loading && !data.historyLoading && notificationsSettled;
+	useEffect(() => {
+		if (autoplayed.current || experiment !== "2") return;
+		if (!timelineSettled) return;
+		autoplayed.current = true;
+		if (!eventCount) return;
+		enterReplay.current(reducedMotion);
+	}, [experiment, timelineSettled, eventCount, reducedMotion]);
+
+	/**
+	 * Put the cursor on the first event of the entry window and start playing (or,
+	 * under reduced motion, just park it there).
+	 *
+	 * `seekToTime` rather than `seek(0)`: it lands on the first event at or after
+	 * the window's start and returns false without moving anything when every
+	 * recorded event precedes it. A clamp to the newest event would turn "nothing
+	 * happened in this hour" into "the hour started here", which is the reading the
+	 * empty-window rule exists to prevent.
+	 */
+	function startEntryReplay(parkOnly: boolean) {
+		if (!playback.seekToTime(start, !parkOnly)) return;
+	}
 	// Space toggles the replay, the way it does in a media player — same action as
 	// the transport's Play/Pause button, including its restart-when-finished
 	// semantics. Hand-written and non-remappable: `Space` is a `RESERVED_CODE` in
@@ -499,13 +538,6 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 							{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
 						</button>
 					)}
-					<button
-						onClick={onClose}
-						aria-label={t("common.close")}
-						title={t("common.close")}
-					>
-						×
-					</button>
 				</div>
 			</header>
 			<div className="traffic-toolbar">
@@ -513,7 +545,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					value={experiment}
 					onChange={(value) => {
 						choose(value);
-						if (value === "1" && calendarDay) setWindowSize("day");
+						if (value === "1" && calendarDay) setWindowSize(LIVE_WINDOW);
 					}}
 				/>
 				{experiment === "2" && narrowControls ? (
@@ -617,6 +649,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					{experiment === "2" ? (
 						<TrafficPlayback
 							loading={data.loading || data.historyLoading}
+							emptyKey={filtering ? "traffic.noneMatch" : "traffic.emptyWindow"}
 							playback={playback}
 							onInspect={(key) => {
 								setRecordKey(key);
@@ -624,7 +657,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 							}}
 							historical={calendarDay}
 							onLive={() => {
-								setWindowSize("day");
+								setWindowSize(LIVE_WINDOW);
 								setFollowRequest((value) => value + 1);
 								playback.live();
 							}}
@@ -891,7 +924,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 										<p className="traffic-empty">
 											{data.loading
 												? t("traffic.loading")
-												: t("traffic.noneMatch")}
+												: t(filtering ? "traffic.noneMatch" : "traffic.emptyWindow")}
 										</p>
 									)
 								) : (

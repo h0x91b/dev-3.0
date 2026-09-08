@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -45,7 +45,7 @@ import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { useSpaces } from "./useSpaces";
-import AgentTrafficLog from "./components/agent-traffic/AgentTrafficLog";
+import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
@@ -223,7 +223,6 @@ function App() {
 	const rpcState = useRpcStatus();
 	// In-UI diagnostics viewer (opened from the floating indicator / menu).
 	const [showDiagnostics, setShowDiagnostics] = useState(false);
-	const [trafficLogOpen, setTrafficLogOpen] = useState(false);
 
 	// Listen for menu actions routed from the bun side. Any menu item that the
 	// renderer is responsible for arrives here as `rpc:menuAction` with
@@ -747,14 +746,6 @@ function App() {
 	// detached card references (e.g. after a hint commits or an async route change).
 	useEffect(() => {
 		setHintMode(false);
-	}, [state.route]);
-
-	// Same rule for the traffic log, which covers the whole screen: ⌘1–9, ⌘0, the
-	// `g` chords and the palette all navigated *behind* it, so the screen changed
-	// where nobody could see it and the shortcut read as dead. Closing on
-	// navigation is what makes the destination visible.
-	useEffect(() => {
-		setTrafficLogOpen(false);
 	}, [state.route]);
 
 	// Single chokepoint for committing a navigation. Records a project "jump"
@@ -1300,13 +1291,15 @@ function App() {
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
 			} else if (matchesShortcut(e, "agent-traffic-log") && getAgentTrafficEnabled()) {
-				// The traffic log is an overlay over any screen, so the shortcut toggles
-				// it from wherever the user is — including a focused terminal. Read
+				// Reachable from wherever the user is, including a focused terminal. Read
 				// through the module getter so the beta flag needs no effect re-bind.
+				// Pressed again ON the screen it steps back, so the one key both opens and
+				// leaves — what the overlay's toggle did, expressed as navigation.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog) return;
-				setTrafficLogOpen((open) => !open);
+				if (state.route.screen === "agent-traffic") dispatch({ type: "goBack" });
+				else navigate({ screen: "agent-traffic", scopeProjectId: projectIdForRoute(state.route) ?? undefined });
 			} else if (matchesShortcut(e, "help-mode")) {
 				// Help mode ("Explain this screen"): every data-help-id zone gets an (i)
 				// badge with a HelpCard. Sibling of the shortcuts reference overlay.
@@ -1702,16 +1695,24 @@ function App() {
 		return () => window.removeEventListener("rpc:agentMessageLogChanged", onLogChanged);
 	}, []);
 
-	// Everything that opens the traffic log goes through one event: the header
-	// readout, the native View menu and the command palette all fire it.
+	// Everything that opens agent traffic goes through one event: the header
+	// readout, the native View menu and the command palette all fire it, and it
+	// lands as an ordinary navigation — so Back returns to wherever they were.
+	// The project in view rides along as the screen's initial scope.
 	useEffect(() => {
 		function onOpen() {
 			if (!getAgentTrafficEnabled()) return;
-			setTrafficLogOpen(true);
+			navigate({ screen: "agent-traffic", scopeProjectId: projectIdForRoute(state.route) ?? undefined });
 		}
 		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
-	}, []);
+	}, [navigate, state.route]);
+
+	// Switching the beta off while the screen is open must not leave the user on a
+	// destination nothing can reach any more (the overlay closed itself instead).
+	useEffect(() => {
+		if (state.route.screen === "agent-traffic" && !agentTrafficOn) navigate({ screen: "dashboard" });
+	}, [state.route.screen, agentTrafficOn, navigate]);
 
 	// Cmd/Ctrl+Click on a file path in any terminal (preview mode).
 	useEffect(() => {
@@ -2707,7 +2708,14 @@ function App() {
 				return;
 			}
 			const { route } = state;
-			if (route.screen === "settings") {
+			if (route.screen === "agent-traffic") {
+				// The overlay dismissed on Escape and this screen inherits the reflex:
+				// step back to where the user opened it from, or home if it was a
+				// restored session with nothing behind it.
+				e.preventDefault();
+				if (canGoBack(state)) dispatch({ type: "goBack" });
+				else navigate({ screen: "dashboard" });
+			} else if (route.screen === "settings") {
 				e.preventDefault();
 				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project-settings") {
@@ -2798,6 +2806,7 @@ function App() {
 			case "settings": return t("settings.screenTitle");
 			case "changelog": return t("changelog.screenTitle");
 			case "stats": return t("stats.title");
+			case "agent-traffic": return t("traffic.label");
 			default: return "";
 		}
 	})();
@@ -3493,20 +3502,6 @@ function App() {
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<PushEnrollmentInvite t={t} />
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
-			{/* Agent traffic log — an overlay over any screen (the nav budget is spent),
-			    opened from the header readout, ⇧⌘M, the View menu and the palette. */}
-			{/* The flag also closes an open log, so switching the beta off mid-session
-			    does not leave an overlay nothing can reach any more. */}
-			{trafficLogOpen && agentTrafficOn && (
-				<AgentTrafficLog
-					projectId={projectIdForRoute(route)}
-					onClose={() => setTrafficLogOpen(false)}
-					onOpenTask={(taskId, projectId) => {
-						setTrafficLogOpen(false);
-						openTaskFromNotification(taskId, projectId);
-					}}
-				/>
-			)}
 		</div>
 	);
 
@@ -3634,6 +3629,16 @@ function App() {
 						canGoBack={state.historyIndex > 0}
 					/>
 				);
+			case "agent-traffic":
+				// The flag effect above navigates away when the beta goes off; rendering
+				// nothing here keeps that single frame from showing a screen the user
+				// just switched off.
+				return agentTrafficOn ? (
+					<AgentTrafficScreen
+						projectId={route.scopeProjectId ?? null}
+						onOpenTask={openTaskFromNotification}
+					/>
+				) : null;
 			case "gauge-demo":
 				return <GaugeDemo navigate={navigate} />;
 			case "viewport-lab":

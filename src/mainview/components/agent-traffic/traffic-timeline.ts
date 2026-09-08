@@ -13,6 +13,7 @@
 
 import type { Task, TaskMovement } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
+import type { TrafficNotificationEvent as NormalizedNotification } from "./notification-event";
 import { endpointKey, type TrafficRecord } from "./traffic-model";
 
 export type TrafficTimelineEventKind = "task" | "message" | "notification";
@@ -38,14 +39,15 @@ export interface TrafficMessageEvent {
 }
 
 /**
- * Seq 1825 owns the payload; this arm only carries it. Typed structurally rather
- * than by importing their module, so neither task blocks on the other landing.
+ * The notification arm. The payload is Seq 1825's normalized event, imported
+ * rather than restated — one declaration, so the two ends cannot drift. Their
+ * module deliberately does not import this one, so there is no cycle.
  */
 export interface TrafficNotificationEvent {
 	kind: "notification";
 	at: number;
 	key: string;
-	event: unknown;
+	event: NormalizedNotification;
 }
 
 export type TrafficTimelineEvent =
