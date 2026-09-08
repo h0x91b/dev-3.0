@@ -745,6 +745,23 @@ export default function TrafficNodes({
 				// document flow it lands on top of the caption — measured. It belongs to
 				// the timeline and the message list, where it is already readable.
 				if (!node) return null;
+				// The component's `auto` can only see whether the CANVAS has room
+				// overhead; whether that room is EMPTY depends on the other cards, and
+				// only this layout knows where they are — so the side is decided here.
+				//
+				// A/B on the preserved fixture, all seven notification steps: this test
+				// changes exactly one of them and improves it — a cloud on a bottom-row
+				// card went from crossing four cards above it to crossing none. It makes
+				// no case worse. The overlaps that remain (a top-row card's cloud hanging
+				// down across the rows beneath) are the same under `auto`, so they are
+				// geometry rather than placement, and they are Seq 1825's to weigh.
+				const blocked = scene.placed.some(
+					(other) =>
+						other.node.key !== node.node.key &&
+						other.y + other.height <= node.y &&
+						other.x < node.x + node.width &&
+						other.x + other.width > node.x,
+				);
 				return (
 					<TrafficNotificationBubble
 						key={cloud.key}
@@ -752,7 +769,11 @@ export default function TrafficNodes({
 						anchor={{
 							x: view.x + (node.x + node.width / 2) * view.scale,
 							y: view.y + node.y * view.scale,
+							// Only read for "below", and without it the cloud starts inside
+							// the card and the trail crosses its own title.
+							height: node.height * view.scale,
 						}}
+						placement={blocked ? "below" : "auto"}
 						width={frame.current?.clientWidth ?? 1000}
 						height={frame.current?.clientHeight ?? 500}
 						onKnownTask={(endpoint) =>
