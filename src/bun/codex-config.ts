@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { load } from "js-toml";
 import { buildCodexHooks, CODEX_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../shared/agent-hooks";
+import { type CliVersion, isCliVersionAtLeast, parseCliVersion } from "../shared/agent-model-cli-requirements";
 import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
@@ -54,11 +55,7 @@ interface CodexConfigOptions {
 	dialect?: HookCliDialect;
 }
 
-interface CodexVersion {
-	major: number;
-	minor: number;
-	patch: number;
-}
+type CodexVersion = CliVersion;
 
 interface CodexSyntax {
 	filesystemRootKey: ":project_roots" | ":workspace_roots";
@@ -621,35 +618,17 @@ export function pruneCodexTrustEntries(
 	return removed;
 }
 
-export function parseCodexVersion(output: string): CodexVersion | null {
-	const match = output.match(/\bv?(\d+)\.(\d+)\.(\d+)\b/);
-	if (match == null) return null;
-
-	return {
-		major: Number(match[1]),
-		minor: Number(match[2]),
-		patch: Number(match[3]),
-	};
-}
-
-function isVersionAtLeast(version: CodexVersion | null, threshold: CodexVersion): boolean {
-	if (version == null) return false;
-	if (version.major !== threshold.major) return version.major > threshold.major;
-	if (version.minor !== threshold.minor) return version.minor > threshold.minor;
-	return version.patch >= threshold.patch;
-}
-
 export function getCodexSyntaxForVersion(versionText: string | null | undefined): CodexSyntax {
-	const version = versionText != null ? parseCodexVersion(versionText) : null;
+	const version = versionText != null ? parseCliVersion(versionText) : null;
 	return {
-		filesystemRootKey: isVersionAtLeast(version, CODEX_WORKSPACE_ROOTS_RENAME_VERSION)
+		filesystemRootKey: isCliVersionAtLeast(version, CODEX_WORKSPACE_ROOTS_RENAME_VERSION)
 			? ":workspace_roots"
 			: LEGACY_CODEX_SYNTAX.filesystemRootKey,
-		hooksFeatureKey: isVersionAtLeast(version, CODEX_HOOKS_RENAME_VERSION)
+		hooksFeatureKey: isCliVersionAtLeast(version, CODEX_HOOKS_RENAME_VERSION)
 			? "hooks"
 			: LEGACY_CODEX_SYNTAX.hooksFeatureKey,
-		profileV2: isVersionAtLeast(version, CODEX_PROFILE_V2_VERSION),
-		unixSocketsAsMap: isVersionAtLeast(version, CODEX_UNIX_SOCKETS_MAP_VERSION),
+		profileV2: isCliVersionAtLeast(version, CODEX_PROFILE_V2_VERSION),
+		unixSocketsAsMap: isCliVersionAtLeast(version, CODEX_UNIX_SOCKETS_MAP_VERSION),
 	};
 }
 

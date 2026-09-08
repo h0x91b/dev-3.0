@@ -13,6 +13,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
 	buildAgentRetryWrapper,
 	buildCmdScript,
+	buildModelVersionGateWrapper,
 	buildEnvExports,
 	buildScriptRunnerCommand,
 	buildSetupStartupWrapper,
@@ -175,6 +176,50 @@ describe("POSIX agent-not-found retry wrapper", () => {
 				shellPath: SHELL,
 			}),
 		).toBe(AGENT_RETRY_WRAPPER);
+	});
+});
+
+const MODEL_VERSION_GATE_WRAPPER = [
+	"#!/bin/bash",
+	"",
+	"printf '\\n\\033[1;31m✗ %s %s is too old for model %s\\033[0m\\n' 'codex' '0.144.4' 'gpt-6-astra'",
+	"printf '\\033[2mThat model needs %s or newer. Older versions reach the API and are\\033[0m\\n' '0.153.1'",
+	"printf '\\033[2mrefused with a 400 that mentions neither dev-3.0 nor this preset.\\033[0m\\n\\n'",
+	"printf '\\033[1mUpgrade:\\033[0m %s\\n' 'brew upgrade codex'",
+	"printf '\\033[2m%s\\033[0m\\n' 'Or pick a preset on an older model.'",
+	"printf '\\n\\033[2mStarting anyway in %ss — press any key to start now.\\033[0m\\n\\n' '20'",
+	'if [ -n "$ZSH_VERSION" ]; then read -t 20 -k 1 -s; elif [ -n "$BASH_VERSION" ]; then read -t 20 -n 1 -s; else sleep 20; fi',
+	"exec codex --model gpt-6-astra",
+	"",
+].join("\n");
+
+describe("POSIX model/CLI version notice (issue #1667)", () => {
+	it("renders the notice and then execs the launch unchanged", () => {
+		expect(
+			buildModelVersionGateWrapper({
+				model: "gpt-6-astra",
+				installedVersion: "0.144.4",
+				requiredVersion: "0.153.1",
+				binaryName: "codex",
+				upgradeCmd: "brew upgrade codex",
+				alternativeHint: "Or pick a preset on an older model.",
+				command: "codex --model gpt-6-astra",
+			}),
+		).toBe(MODEL_VERSION_GATE_WRAPPER);
+	});
+
+	it("omits the alternatives line when there is none", () => {
+		const script = buildModelVersionGateWrapper({
+			model: "gpt-6-astra",
+			installedVersion: "0.144.4",
+			requiredVersion: "0.153.1",
+			binaryName: "codex",
+			upgradeCmd: "brew upgrade codex",
+			command: "codex",
+		});
+		expect(script).not.toContain("Or pick a preset");
+		// The launch itself always survives — this is a notice, never a block.
+		expect(script).toContain("exec codex");
 	});
 });
 
