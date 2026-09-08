@@ -157,18 +157,17 @@ export function placeClouds(input: {
 	const obstacles = input.obstacles ?? [];
 	const placed: Rect[] = [];
 	const out = new Map<string, CloudPlacement>();
-	// A cloud never counts its OWN card as an obstacle: it is supposed to touch it,
-	// and the trail deliberately reaches down to it.
-	const ownCard = (cloud: CloudToPlace): Rect => ({
-		left: cloud.anchor.x - 1,
-		top: cloud.anchor.y,
-		width: 2,
-		height: Math.max(1, cloud.anchor.height ?? 0),
-	});
 
+	// The cloud's OWN card is an obstacle like any other. It was excluded once, on
+	// the reasoning that the cloud is supposed to touch the card it belongs to —
+	// and that was wrong twice over. The trail lives inside the cloud's own box and
+	// stops short of the card, so a clean placement never needs to reach into it;
+	// and excluding it hid a real collision. Measured: where a card straddled the
+	// canvas edge, every "above" candidate was off-canvas, the clamp pulled the
+	// cloud down onto that card, and the exclusion scored the result as zero while
+	// the card's title was 100% hidden underneath.
 	for (const cloud of [...input.clouds].reverse()) {
-		const mine = ownCard(cloud);
-		const blockers = [...obstacles.filter(rect => overlapArea(rect, mine) === 0), ...placed];
+		const blockers = [...obstacles, ...placed];
 		let best: { candidate: Candidate; overlap: number } | null = null;
 		for (const candidate of candidates(cloud, input.canvas)) {
 			const overlap = blockers.reduce((sum, blocker) => sum + overlapArea(candidate.rect, blocker), 0);
