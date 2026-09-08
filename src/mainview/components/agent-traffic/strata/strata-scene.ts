@@ -396,13 +396,52 @@ export function buildRoutes(
 	return { mesh, placed };
 }
 
-/** The scene's outer radius, for framing the camera and sizing the substrate. */
+/**
+ * How far out the substrate has to reach: the districts plus generous margin, so
+ * the grid and its arcs still run past the outermost deck.
+ */
 export function sceneExtent(districts: StrataDistrict[]): number {
-	let extent = 24;
+	return Math.max(24, districtExtent(districts) * 1.3);
+}
+
+/**
+ * What the camera frames: the districts' own centroid and the radius that
+ * reaches the far edge of the outermost deck from there.
+ *
+ * Two things the first build got wrong and this fixes. It framed
+ * `sceneExtent` — the padded decor radius — so the decks came out at a third of
+ * their legible size adrift in empty grid. And it aimed at the world origin,
+ * which is only the middle of the ring when the districts happen to be evenly
+ * spread; with three of unequal size the far deck hung off the bottom edge.
+ */
+export function sceneBounds(districts: StrataDistrict[]): {
+	center: Vec3;
+	radius: number;
+} {
+	if (!districts.length) return { center: [0, 0, 0], radius: 16 };
+	const center: Vec3 = [
+		districts.reduce((sum, d) => sum + d.center[0], 0) / districts.length,
+		0,
+		districts.reduce((sum, d) => sum + d.center[2], 0) / districts.length,
+	];
+	let radius = 16;
+	for (const district of districts) {
+		radius = Math.max(
+			radius,
+			Math.hypot(district.center[0] - center[0], district.center[2] - center[2]) +
+				district.radius,
+		);
+	}
+	return { center, radius };
+}
+
+/** The radius the substrate must cover, measured from the world origin. */
+export function districtExtent(districts: StrataDistrict[]): number {
+	let extent = 16;
 	for (const district of districts) {
 		extent = Math.max(
 			extent,
-			Math.hypot(district.center[0], district.center[2]) + district.radius * 1.3,
+			Math.hypot(district.center[0], district.center[2]) + district.radius,
 		);
 	}
 	return extent;

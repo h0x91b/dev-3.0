@@ -30,36 +30,69 @@ export const PITCH_MAX = 1.43;
 export const DISTANCE_MIN = 22;
 export const DISTANCE_MAX = 350;
 
-export function createCamera(extent: number): StrataCamera {
-	const distance = framingDistance(extent);
+export function createCamera(
+	bounds: { center: Vec3; radius: number },
+	aspect?: number,
+): StrataCamera {
+	const distance = framingDistance(bounds.radius, aspect);
+	const target: Vec3 = [bounds.center[0], bounds.center[1], bounds.center[2]];
 	return {
 		yaw: 0.49,
 		pitch: 0.76,
 		distance,
-		target: [0, 0, 0],
+		target: [...target] as Vec3,
 		toYaw: 0.49,
 		toPitch: 0.76,
 		toDistance: distance,
-		toTarget: [0, 0, 0],
+		toTarget: target,
 	};
 }
 
+/** Vertical field of view the projection uses, in radians. Mirrors `StrataGL.begin`. */
+export const FOV = (40 * Math.PI) / 180;
+/** Slack around a perfect fit, so the outermost deck is not flush with the edge. */
+const FIT_MARGIN = 1.08;
+/** Stage aspect assumed when nothing has measured the canvas yet. */
+const DEFAULT_ASPECT = 16 / 9;
+
 /**
- * How far back the whole scene fits.
+ * How far back the whole scene fits — derived, not tuned.
  *
- * Scales with the scene, not with the viewport: a board with twelve projects has
- * a wider ring than one with two, and a fixed distance would either clip the big
- * one or strand the small one in empty space.
+ * Two constraints, and the binding one wins. Vertically the ground plane is
+ * foreshortened by `sin(pitch)`, so a scene of radius R needs
+ * `R·sin(pitch) / tan(fov/2)`. Horizontally there is no foreshortening but the
+ * field is `aspect` times wider, so it needs `R / (tan(fov/2)·aspect)`.
+ *
+ * Both halves matter in practice. The traffic stage is a short wide strip, where
+ * height binds; a tall narrow stage on a phone is the opposite, and a formula
+ * fitted to only one of them clipped the far deck on the other. Two earlier
+ * hand-tuned multipliers (1.55, then 1.25) each looked right on one stage and
+ * cut a district off on the next — that is what this replaces.
  */
-export function framingDistance(extent: number): number {
-	return Math.max(DISTANCE_MIN, Math.min(DISTANCE_MAX, 34 + extent * 1.55));
+export function framingDistance(
+	radius: number,
+	aspect = DEFAULT_ASPECT,
+	pitch = 0.76,
+): number {
+	const tan = Math.tan(FOV / 2);
+	const vertical = (radius * Math.sin(pitch)) / tan;
+	const horizontal = radius / (tan * Math.max(0.2, aspect));
+	return Math.max(
+		DISTANCE_MIN,
+		Math.min(DISTANCE_MAX, Math.max(vertical, horizontal) * FIT_MARGIN),
+	);
 }
 
-export function home(camera: StrataCamera, extent: number): void {
-	camera.toTarget = [0, 0, 0];
+/** Frame the whole scene: aim at its centroid, pull back to fit its radius. */
+export function home(
+	camera: StrataCamera,
+	bounds: { center: Vec3; radius: number },
+	aspect?: number,
+): void {
+	camera.toTarget = [bounds.center[0], bounds.center[1], bounds.center[2]];
 	camera.toYaw = 0.49;
 	camera.toPitch = 0.76;
-	camera.toDistance = framingDistance(extent);
+	camera.toDistance = framingDistance(bounds.radius, aspect);
 }
 
 /** Fly to one point — a selected card, or the midpoint of an exchange. */
