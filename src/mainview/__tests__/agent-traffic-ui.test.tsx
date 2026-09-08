@@ -7,6 +7,7 @@ import {
 	within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import type {
 	AgentMessageLogPage,
 	AgentMessageLogRow,
@@ -19,7 +20,10 @@ import {
 } from "../agent-traffic";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
-import AgentTrafficScreen from "../components/agent-traffic/AgentTrafficScreen";
+import AgentTrafficScreen, {
+	availableKinds,
+	FilterAxes,
+} from "../components/agent-traffic/AgentTrafficScreen";
 import { api } from "../rpc";
 
 vi.mock("../components/agent-traffic/TrafficOrbit", () => ({
@@ -633,6 +637,92 @@ describe("AgentTrafficScreen entry replay", () => {
  * UI, and a one-option group is noise. The toggles' visible behaviour cannot be
  * exercised until those events exist.
  */
+/**
+ * The filter axes: what a reader can turn off must never depend on what they have
+ * already turned off. The trap this guards is a control that removes itself —
+ * narrow to one kind, watch the group collapse, and the way back is gone.
+ */
+describe("traffic filter axes", () => {
+	it("derives availability from the window, never from the selection", () => {
+		// The signature carries the rule: nothing about the current selection can
+		// reach it. Messages are the only kind the timeline offers today.
+		expect([...availableKinds(true)]).toEqual(["message"]);
+		expect([...availableKinds(false)]).toEqual([]);
+	});
+
+	it("keeps every option on screen after one is switched off", async () => {
+		function Harness() {
+			const [selected, setSelected] = useState<ReadonlySet<string>>(
+				() => new Set(["message", "task"]),
+			);
+			return (
+				<FilterAxes
+					axes={[
+						{
+							id: "kind",
+							label: "Event kinds",
+							values: ["message", "task"],
+							labelKey: () => "traffic.orbit.messages",
+							selected,
+							onChange: setSelected,
+						},
+					]}
+				/>
+			);
+		}
+		render(
+			<I18nProvider>
+				<Harness />
+			</I18nProvider>,
+		);
+		await userEvent.click(screen.getByTestId("traffic-kind-task"));
+		expect(screen.getByTestId("traffic-kind-task")).toHaveAttribute("aria-pressed", "false");
+		// Both controls are still there — including the one that undoes this.
+		expect(screen.getByTestId("traffic-kind-message")).toHaveAttribute("aria-pressed", "true");
+	});
+
+	it("refuses to empty an axis, and lays out nothing for a single-value one", () => {
+		const onChange = vi.fn();
+		const { unmount } = render(
+			<I18nProvider>
+				<FilterAxes
+					axes={[
+						{
+							id: "kind",
+							label: "Event kinds",
+							values: ["message", "task"],
+							labelKey: () => "traffic.orbit.messages",
+							selected: new Set(["message"]),
+							onChange,
+						},
+					]}
+				/>
+			</I18nProvider>,
+		);
+		// The last enabled value is not a way to show nothing at all.
+		expect(screen.getByTestId("traffic-kind-message")).toBeDisabled();
+		unmount();
+
+		render(
+			<I18nProvider>
+				<FilterAxes
+					axes={[
+						{
+							id: "level",
+							label: "Notification levels",
+							values: ["error"],
+							labelKey: () => "traffic.orbit.messages",
+							selected: null,
+							onChange,
+						},
+					]}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByTestId("traffic-level-error")).toBeNull();
+	});
+});
+
 describe("AgentTrafficScreen kind filter gate", () => {
 	it("shows no kind toggles and no per-kind counts while messages are the only kind", async () => {
 		setPage([row({ subject: "Only messages here" })]);

@@ -113,6 +113,7 @@ const common = {
 	"traffic.kind.message": "Mensajes",
 	"traffic.kind.notification": "Notificaciones",
 	"traffic.filter.kinds": "Tipos de evento",
+	"traffic.filter.levels": "Niveles de notificación",
 	"traffic.loading": "Leyendo el registro…",
 	"traffic.filter.all": "Todo",
 	"traffic.filter.unsettled": "Solo sin confirmar",
