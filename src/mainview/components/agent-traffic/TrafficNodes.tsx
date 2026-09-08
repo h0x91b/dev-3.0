@@ -155,14 +155,19 @@ export default function TrafficNodes({
 						node.key,
 					))),
 	);
-	// Notifications the cursor has already crossed, newest last. Capped, because a
-	// minute holding fifty of them would try to draw fifty clouds at once.
+	// The most recent notification the cursor has crossed, and only that one.
+	//
+	// Two clouds at overview zoom collide with each other and with the stage
+	// caption — measured, not predicted. One cloud also matches how the message
+	// bubble already behaves: the stage shows the thing that just happened, and the
+	// list is where a burst gets read.
 	const clouds = useMemo(() => {
 		if (!playback || playback.index < 0) return [];
-		return playback.events
-			.slice(0, playback.index + 1)
-			.flatMap((event) => (event.kind === "notification" ? [event] : []))
-			.slice(-2);
+		for (let i = playback.index; i >= 0; i--) {
+			const event = playback.events[i];
+			if (event.kind === "notification") return [event];
+		}
+		return [];
 	}, [playback?.events, playback?.index]);
 	const scene = useMemo(
 		() =>
@@ -729,25 +734,25 @@ export default function TrafficNodes({
 				/>
 			)}
 			{clouds.map((cloud) => {
-				// The cloud hangs over the card that SENT it. No sender recorded means
-				// unanchored — it is never reattached to the card it is about, and never
-				// to a nearby one.
+				// The cloud hangs over the card that SENT it, and only ever that card:
+				// no sender recorded means unanchored, and it is never reattached to the
+				// card it is about or to a nearby one.
 				const sender = cloudSenderEndpoint(cloud.event);
 				const node = sender
 					? nodeByKey.get(endpointKey(sender.projectId, sender.taskId))
 					: undefined;
+				// An unanchored cloud has nothing on this stage to hang from, and in
+				// document flow it lands on top of the caption — measured. It belongs to
+				// the timeline and the message list, where it is already readable.
+				if (!node) return null;
 				return (
 					<TrafficNotificationBubble
 						key={cloud.key}
 						event={cloud.event}
-						anchor={
-							node
-								? {
-										x: view.x + (node.x + node.width / 2) * view.scale,
-										y: view.y + node.y * view.scale,
-									}
-								: undefined
-						}
+						anchor={{
+							x: view.x + (node.x + node.width / 2) * view.scale,
+							y: view.y + node.y * view.scale,
+						}}
 						width={frame.current?.clientWidth ?? 1000}
 						height={frame.current?.clientHeight ?? 500}
 						onKnownTask={(endpoint) =>
