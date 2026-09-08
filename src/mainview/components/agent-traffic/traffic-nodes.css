@@ -771,6 +771,10 @@
 	font-weight: 600;
 	color: rgb(var(--text-tertiary));
 	background: transparent;
+	/* Three options no longer fit a compressed row: without these the labels wrap
+	   to two lines and the last one is clipped mid-word. */
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 .traffic-experiment button:hover {
 	color: rgb(var(--text-primary));

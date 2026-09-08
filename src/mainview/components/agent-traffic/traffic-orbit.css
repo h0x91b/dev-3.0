@@ -115,6 +115,13 @@
 	max-width: 240px;
 	min-width: 140px;
 }
+/* The presentation radiogroup is not one of the filter fields and must not
+   inherit their 240px cap: three options exceed it, and the clamp clipped the
+   last label mid-word rather than letting the row shed something. */
+.traffic-toolbar > .traffic-experiment {
+	max-width: none;
+	min-width: 0;
+}
 .traffic-toolbar input {
 	width: 280px;
 	min-width: 100px;

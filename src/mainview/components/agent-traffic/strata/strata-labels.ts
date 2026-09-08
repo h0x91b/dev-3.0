@@ -55,8 +55,24 @@ export function labelRank(machine: StrataMachine, selected: string | null): numb
 	return rank;
 }
 
-function overlaps(a: Rect, b: Rect): boolean {
-	return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+/**
+ * Breathing room around a label when testing collisions.
+ *
+ * Zero gap technically prevents overlap and still reads as a stacked list rather
+ * than as pointers into a scene — measured on the seeded board, where four cards
+ * on one deck produced four labels touching edge to edge. Six pixels is enough
+ * for the eye to separate them and cheap enough that a dense deck still shows
+ * three or four.
+ */
+const LABEL_GAP = 6;
+
+function overlaps(a: Rect, b: Rect, gap = 0): boolean {
+	return (
+		a.x - gap < b.x + b.w &&
+		a.x + a.w + gap > b.x &&
+		a.y - gap < b.y + b.h &&
+		a.y + a.h + gap > b.y
+	);
 }
 
 /**
@@ -115,7 +131,7 @@ export function placeLabels(input: {
 			// Off-stage, or under an overlay, or on top of a better label — gone.
 			if (rect.x < 5 || rect.x + rect.w > width - 5) continue;
 			if (rect.y < 4 || rect.y + rect.h > height - 8) continue;
-			if (occupied.some((box) => overlaps(rect, box))) continue;
+			if (occupied.some((box) => overlaps(rect, box, LABEL_GAP))) continue;
 		}
 		occupied.push(rect);
 		placed.push({ key: machine.key, x, y: y - 8, rect });
