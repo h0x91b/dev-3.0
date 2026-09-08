@@ -42,6 +42,7 @@ const keymap = {
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.helpMode": "Объяснить этот экран (режим подсказок)",
 	"keymap.shortcut.agentTrafficLog": "Журнал трафика агентов",
+	"keymap.shortcut.trafficReplayPlayPause": "Запустить или остановить воспроизведение трафика",
 	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
 	"keymap.shortcut.artifactSearch": "Поиск в открытом HTML-артефакте",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
@@ -55,6 +56,7 @@ const keymap = {
 	"keymap.fixed.holdModifier": "Для перебора нужен зажатый модификатор — обычной комбинацией это не выразить.",
 	"keymap.fixed.chordSequence": "Последовательность клавиш одна за другой, а не комбинация.",
 	"keymap.fixed.reserved": "Зарезервировано — это выход из любого диалога и режима.",
+	"keymap.fixed.activatesFocused": "Пробел нажимает элемент, на котором фокус, поэтому его нельзя отдать чему-то ещё.",
 	"keymap.fixed.shellOwned": "Принадлежит оболочке приложения, а не странице.",
 
 	// Редактор хоткеев (Настройки → Клавиатура → Хоткеи приложения)

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
 import { useLocale, useT, type TranslationKey } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
+import { getOverlayLayerElements } from "../../utils/overlay-layers";
+import { isTypingContext } from "../../utils/typing-context";
 import { useFocusTrap } from "../../utils/useFocusTrap";
 import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
@@ -329,6 +332,33 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	useEffect(() => {
 		markTrafficSeen();
 	}, []);
+	// Space toggles the replay, the way it does in a media player — same action as
+	// the transport's Play/Pause button, including its restart-when-finished
+	// semantics. Hand-written and non-remappable: `Space` is a `RESERVED_CODE` in
+	// keymap-bindings because it activates whatever control holds focus, so this
+	// fires only when nothing else owns the key. keymap.ts lists it display-only.
+	const playPause = useRef(playback.playPause);
+	playPause.current = playback.playPause;
+	const spaceArmed = experiment === "2" && replayRecords.length > 0;
+	useGlobalShortcut(
+		(event) => {
+			if (!spaceArmed || event.code !== "Space") return;
+			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+			// A held key must not flip play/pause per repeat, and a composing IME
+			// owns the keystroke outright.
+			if (event.repeat || event.isComposing || isTypingContext()) return;
+			// The focused control activates on Space; an open dropdown or calendar
+			// owns the keyboard above the stage.
+			const active = document.activeElement as HTMLElement | null;
+			if (active?.closest('button,a[href],[role="button"],[role="radio"],[role="option"]')) return;
+			if (getOverlayLayerElements().length) return;
+			// Stops the page from scrolling under the overlay.
+			event.preventDefault();
+			event.stopPropagation();
+			playPause.current();
+		},
+		[spaceArmed],
+	);
 	function select(key: string) {
 		setSelected(key);
 		setShowInspector(true);
