@@ -99,7 +99,26 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	// Countdown only — the timer that actually approves lives in the bun process
 	// and closes this dialog through `agentRequestResolved`. Rendering it from
 	// the deadline (not a local tick budget) keeps a backgrounded tab honest.
-	const autoApproveAt = request.autoApproveAt;
+	//
+	// The deadline is re-read on mount rather than taken from the push: dialogs
+	// queue instead of stacking, so this one may have waited minutes behind
+	// another, and the bun side restarts its timer the moment we say we are on
+	// screen. Drawing the original deadline would show a countdown the timer no
+	// longer agrees with.
+	const [autoApproveAt, setAutoApproveAt] = useState(request.autoApproveAt);
+	useEffect(() => {
+		let cancelled = false;
+		api.request.markAgentRequestShown({ requestId: request.requestId })
+			.then(({ autoApproveAt: deadline }) => {
+				// Null means the bun side has no timer to restart — an already
+				// answered request, or one that never had a deadline. Keep what the
+				// push gave us rather than blanking a live countdown.
+				if (!cancelled && deadline !== null) setAutoApproveAt(deadline);
+			})
+			.catch(() => {});
+		return () => { cancelled = true; };
+	}, [request.requestId]);
+
 	const [secondsLeft, setSecondsLeft] = useState(() => (autoApproveAt ? secondsUntil(autoApproveAt) : 0));
 	useEffect(() => {
 		if (!autoApproveAt) return;

@@ -39,6 +39,10 @@ interface PendingAgentRequest {
 	autoApproveTimer?: ReturnType<typeof setTimeout>;
 	/** Epoch ms the timer fires at; mirrored to the dialog for its countdown. */
 	autoApproveAt: number | null;
+	/** The configured delay, kept so the countdown can be re-armed on first display. */
+	autoApproveMs: number;
+	/** When a client first drew this dialog. Undefined until one does. */
+	shownAt?: number;
 	/** Last agent pick reported by a dialog; used when the timer fires. */
 	launchChoice?: AgentLaunchChoice;
 }
@@ -89,6 +93,7 @@ export function createAgentRequest(
 	const autoApproveAt = autoApproveAfterMs > 0 ? Date.now() + autoApproveAfterMs : null;
 	const entry: PendingAgentRequest = {
 		requestId, kind, taskId, projectId, decision, resolve, autoApproveAt,
+		autoApproveMs: autoApproveAfterMs,
 		...(opts.dialog ? { dialog: opts.dialog } : {}),
 	};
 	pendingByRequestId.set(requestId, entry);
@@ -108,6 +113,37 @@ export function createAgentRequest(
 
 	log.info("Created agent request", { kind, taskId: taskId.slice(0, 8), requestId, autoApproveAt });
 	return { requestId, decision, isNew: true, autoApproveAt };
+}
+
+/**
+ * Restart the countdown at the moment a client first puts this request on screen.
+ *
+ * Dialogs are queued, not stacked, so request #2 can wait behind #1 for minutes.
+ * Its timer started when it was created, so a user who thought about #1 for the
+ * whole delay would find #2 already approved without ever having seen it — the
+ * countdown has to measure time the user was actually given.
+ *
+ * Only the FIRST display re-arms it: a window that reloads and re-draws the queue
+ * must not be able to postpone a launch indefinitely. And a request nobody ever
+ * shows keeps its original deadline, so a closed window still cannot stall the
+ * requesting agent.
+ */
+export function markAgentRequestShown(requestId: string): number | null {
+	const entry = pendingByRequestId.get(requestId);
+	if (!entry || entry.shownAt !== undefined || !entry.autoApproveTimer || entry.autoApproveMs <= 0) {
+		return entry?.autoApproveAt ?? null;
+	}
+	entry.shownAt = Date.now();
+	clearTimeout(entry.autoApproveTimer);
+	entry.autoApproveAt = Date.now() + entry.autoApproveMs;
+	entry.autoApproveTimer = setTimeout(() => {
+		log.info("Auto-approving agent request after timeout", {
+			kind: entry.kind, taskId: entry.taskId.slice(0, 8), requestId, afterMs: entry.autoApproveMs,
+		});
+		resolveAgentRequest(requestId, { approved: true, launch: entry.launchChoice });
+	}, entry.autoApproveMs);
+	log.info("Countdown restarted when the dialog reached the screen", { requestId, autoApproveAt: entry.autoApproveAt });
+	return entry.autoApproveAt;
 }
 
 /**

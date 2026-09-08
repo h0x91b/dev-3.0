@@ -3081,13 +3081,48 @@ export interface AgentLaunchRequest {
 /** Minutes the launch dialog waits before approving itself when unconfigured. */
 export const DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES = 5;
 
-/** Choices offered for {@link GlobalSettings.agentLaunchAutoApproveMinutes}; `0` = off. */
-export const AGENT_LAUNCH_AUTO_APPROVE_CHOICES = [0, 1, 2, 5, 10, 15] as const;
+/** Shortest and longest delay the picker accepts; anything else is clamped into the range. */
+export const AGENT_LAUNCH_AUTO_APPROVE_MIN_MS = 5_000;
+export const AGENT_LAUNCH_AUTO_APPROVE_MAX_MS = 24 * 60 * 60 * 1000;
 
-/** Resolve the configured auto-approve delay in ms; `0` means "never auto-approve". */
+/** Units the delay picker offers. Stored value stays minutes, so seconds are fractional. */
+export const AUTO_APPROVE_UNITS = ["seconds", "minutes", "hours"] as const;
+export type AutoApproveUnit = (typeof AUTO_APPROVE_UNITS)[number];
+
+const UNIT_MINUTES: Record<AutoApproveUnit, number> = { seconds: 1 / 60, minutes: 1, hours: 60 };
+
+/**
+ * Resolve the configured auto-approve delay in ms; `0` means "never auto-approve".
+ * A stored value outside the accepted range is clamped rather than dropped — an
+ * older build (or a hand-edited settings file) must not be able to park an agent
+ * on a dialog for a week, nor fire the timer before a dialog can even paint.
+ */
 export function agentLaunchAutoApproveMs(settings: Pick<GlobalSettings, "agentLaunchAutoApproveMinutes">): number {
 	const minutes = settings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES;
-	return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60_000) : 0;
+	if (!Number.isFinite(minutes) || minutes <= 0) return 0;
+	const ms = Math.round(minutes * 60_000);
+	return Math.min(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS, Math.max(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS, ms));
+}
+
+/** Split a stored minutes value into the largest unit that keeps it a whole number. */
+export function splitAutoApproveMinutes(minutes: number): { amount: number; unit: AutoApproveUnit } {
+	const ms = Math.round(minutes * 60_000);
+	if (ms % 3_600_000 === 0) return { amount: ms / 3_600_000, unit: "hours" };
+	if (ms % 60_000 === 0) return { amount: ms / 60_000, unit: "minutes" };
+	return { amount: Math.round(ms / 1_000), unit: "seconds" };
+}
+
+/** Build a stored minutes value from a picker amount, clamped into the accepted range. */
+export function autoApproveMinutesFrom(amount: number, unit: AutoApproveUnit): number {
+	if (!Number.isFinite(amount) || amount <= 0) return DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES;
+	const ms = Math.round(amount * UNIT_MINUTES[unit] * 60_000);
+	const clamped = Math.min(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS, Math.max(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS, ms));
+	return clamped / 60_000;
+}
+
+/** Largest amount the picker accepts for a unit, so the input can clamp before it stores. */
+export function maxAutoApproveAmount(unit: AutoApproveUnit): number {
+	return Math.floor(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS / (UNIT_MINUTES[unit] * 60_000));
 }
 
 /**
@@ -5809,6 +5844,17 @@ export type AppRPCSchema = {
 					launch: AgentLaunchChoice;
 				};
 				response: void;
+			};
+			/**
+			 * Report that this dialog has reached the screen, restarting its
+			 * countdown from now. Dialogs queue rather than stack, so a request that
+			 * waited behind another must still get the whole delay in front of a
+			 * human. Answers with the deadline to draw, which is the same one the
+			 * bun-side timer will fire on.
+			 */
+			markAgentRequestShown: {
+				params: { requestId: string };
+				response: { autoApproveAt: number | null };
 			};
 			/**
 			 * Cheap liveness probe for the desktop RPC bridge watchdog. The renderer

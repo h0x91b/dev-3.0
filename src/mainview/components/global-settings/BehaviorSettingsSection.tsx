@@ -1,11 +1,97 @@
 import { useState } from "react";
-import { AGENT_LAUNCH_AUTO_APPROVE_CHOICES, COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type GlobalSettings } from "../../../shared/types";
-import type { TFunction } from "../../i18n";
+import { AUTO_APPROVE_UNITS, COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type AutoApproveUnit, type GlobalSettings, autoApproveMinutesFrom, maxAutoApproveAmount, splitAutoApproveMinutes } from "../../../shared/types";
+import type { TFunction, TranslationKey } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
 import SettingsToggle from "./SettingsToggle";
 
 const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
+
+const UNIT_LABEL_KEYS: Record<AutoApproveUnit, TranslationKey> = {
+	seconds: "settings.autoApproveUnitSeconds",
+	minutes: "settings.autoApproveUnitMinutes",
+	hours: "settings.autoApproveUnitHours",
+};
+
+/**
+ * Amount + unit picker for the launch dialog's auto-approve delay.
+ *
+ * "Never" is its own switch rather than a zero in the amount list — `0 hours`
+ * is not a sentence, and the stored `0` has to keep meaning "the user said
+ * never", not "the amount happens to be empty". Switching it off remembers the
+ * amount for the session so turning it back on does not lose a chosen 15 s.
+ */
+function AutoApproveDelayEntry({
+	t,
+	minutes,
+	onChange,
+}: {
+	t: TFunction;
+	minutes: number;
+	onChange: (minutes: number) => void;
+}) {
+	const enabled = minutes > 0;
+	const [remembered, setRemembered] = useState(
+		() => (enabled ? minutes : DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES),
+	);
+	const shown = splitAutoApproveMinutes(enabled ? minutes : remembered);
+	// Free text while typing: an intermediate "" or "1" must not be committed as
+	// a clamped value under the cursor. Committed on blur and on unit change.
+	const [draft, setDraft] = useState<string | null>(null);
+
+	const commit = (amount: number, unit: AutoApproveUnit) => {
+		const next = autoApproveMinutesFrom(amount, unit);
+		setRemembered(next);
+		setDraft(null);
+		if (enabled) onChange(next);
+	};
+
+	return (
+		<div>
+			<p className="block text-fg text-sm font-semibold mb-2">
+				{t("settings.agentLaunchAutoApprove")}
+			</p>
+			<p className="text-fg-3 text-sm mb-3">
+				{t("settings.agentLaunchAutoApproveDesc")}
+			</p>
+			<SettingsToggle
+				checked={enabled}
+				ariaLabel={t("settings.agentLaunchAutoApprove")}
+				onLabel={t("settings.on")}
+				offLabel={t("settings.agentLaunchAutoApproveOff")}
+				onToggle={() => onChange(enabled ? 0 : remembered)}
+			/>
+			<div className="flex flex-wrap items-center gap-2 mt-3">
+				<input
+					type="number"
+					inputMode="numeric"
+					min={1}
+					max={maxAutoApproveAmount(shown.unit)}
+					step={1}
+					disabled={!enabled}
+					value={draft ?? String(shown.amount)}
+					aria-label={t("settings.agentLaunchAutoApproveAmount")}
+					onChange={(e) => setDraft(e.target.value)}
+					onBlur={() => commit(Number(draft ?? shown.amount), shown.unit)}
+					className="w-24 px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none disabled:opacity-50"
+				/>
+				<select
+					value={shown.unit}
+					disabled={!enabled}
+					aria-label={t("settings.agentLaunchAutoApproveUnit")}
+					onChange={(e) => commit(Number(draft ?? shown.amount), e.target.value as AutoApproveUnit)}
+					className="flex-1 min-w-[9rem] px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none disabled:opacity-50"
+				>
+					{AUTO_APPROVE_UNITS.map((unit) => (
+						<option key={unit} value={unit}>
+							{t(UNIT_LABEL_KEYS[unit])}
+						</option>
+					))}
+				</select>
+			</div>
+		</div>
+	);
+}
 
 interface BehaviorSettingsSectionProps {
 	t: TFunction;
@@ -138,28 +224,11 @@ export default function BehaviorSettingsSection({
 			</SettingsEntry>
 
 			<SettingsEntry anchor="agent-launch-auto-approve">
-			<div>
-				<p className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.agentLaunchAutoApprove")}
-				</p>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.agentLaunchAutoApproveDesc")}
-				</p>
-				<select
-					value={String(globalSettings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES)}
-					aria-label={t("settings.agentLaunchAutoApprove")}
-					onChange={(e) => onAgentLaunchAutoApproveChange(Number(e.target.value))}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none"
-				>
-					{AGENT_LAUNCH_AUTO_APPROVE_CHOICES.map((minutes) => (
-						<option key={minutes} value={String(minutes)}>
-							{minutes === 0
-								? t("settings.agentLaunchAutoApproveOff")
-								: t.plural("settings.agentLaunchAutoApproveMinutes", minutes)}
-						</option>
-					))}
-				</select>
-			</div>
+			<AutoApproveDelayEntry
+				t={t}
+				minutes={globalSettings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES}
+				onChange={onAgentLaunchAutoApproveChange}
+			/>
 			</SettingsEntry>
 
 			<SettingsEntry anchor="pr-origin-task-link">

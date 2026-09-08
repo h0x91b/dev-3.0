@@ -34,6 +34,9 @@ vi.mock("../rpc", () => ({
 			listAgentAccounts: vi.fn(() => Promise.resolve({ agents: [] })),
 			getAgentRateLimits: vi.fn(() => Promise.resolve(null)),
 			updateAgentLaunchChoice: vi.fn(() => Promise.resolve(undefined)),
+			// The dialog reports itself on screen so the bun side restarts the
+			// countdown; it answers with the deadline the timer will really use.
+			markAgentRequestShown: vi.fn(() => Promise.resolve({ autoApproveAt: null })),
 			// Reached by MemoryPressureBanner, which scales its forecast with the
 			// variant count; null = no pressure, so the banner renders nothing.
 			getSystemMemory: vi.fn(() => Promise.resolve(null)),

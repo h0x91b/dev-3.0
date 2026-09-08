@@ -63,6 +63,9 @@ vi.mock("../rpc", () => ({
 			listPendingCancellationRequests: vi.fn().mockResolvedValue([]),
 			getUnsavedWork: vi.fn().mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false }),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
+			// The launch dialog reports itself on screen on mount so the bun side
+			// restarts its countdown; null means there is no timer to restart.
+			markAgentRequestShown: vi.fn().mockResolvedValue({ autoApproveAt: null }),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
 				qrDataUrl: "data:image/png;base64,test",

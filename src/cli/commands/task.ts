@@ -21,6 +21,32 @@ const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.in
 // How long the CLI waits for the user to answer an approval dialog.
 const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const LAUNCH_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+// Slack on top of the app's own auto-approve deadline, so the socket never gives
+// up on the very timer it is waiting for.
+const APPROVAL_TIMEOUT_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * How long to wait for a launch approval. The app's auto-approve delay is
+ * configurable up to a day, and a fixed 10-minute socket timeout would kill the
+ * waiting agent long before the timer it is waiting on fires — so ask the app
+ * what its deadline is first. Cheap, non-blocking, and short-circuited: an app
+ * that cannot answer leaves the baseline in place rather than blocking the move.
+ */
+async function launchApprovalTimeoutMs(socketPath: string): Promise<number> {
+	try {
+		const resp = await sendRequest(socketPath, "approval.policy", {}, {
+			timeoutMs: 5_000,
+			connectAttempts: 1,
+		});
+		if (!resp.ok) return LAUNCH_APPROVAL_TIMEOUT_MS;
+		const policy = resp.data as { autoApproveMs?: unknown };
+		const deadline = typeof policy.autoApproveMs === "number" ? policy.autoApproveMs : 0;
+		if (!Number.isFinite(deadline) || deadline <= 0) return LAUNCH_APPROVAL_TIMEOUT_MS;
+		return Math.max(LAUNCH_APPROVAL_TIMEOUT_MS, deadline + APPROVAL_TIMEOUT_GRACE_MS);
+	} catch {
+		return LAUNCH_APPROVAL_TIMEOUT_MS;
+	}
+}
 
 /**
  * The one reading of `--type` for every command that takes it, so `task create`
@@ -508,7 +534,7 @@ async function createScratchAndRun(
 			projectId,
 			sourceTaskId: context.taskId,
 			...(handoffNote ? { handoffNote } : {}),
-		}, { timeoutMs: LAUNCH_APPROVAL_TIMEOUT_MS });
+		}, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(
@@ -642,7 +668,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// The approval dialog can sit open for minutes, so a move that might turn
 	// into one waits on the long timeout. A silent move still answers instantly.
 	const resp = movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, "task.move", params, { timeoutMs: LAUNCH_APPROVAL_TIMEOUT_MS })
+		? await sendRequest(socketPath, "task.move", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) })
 		: await sendRequest(socketPath, "task.move", params);
 	if (!resp.ok) {
 		// A draft was deliberately parked by the human — give it its own exit code
