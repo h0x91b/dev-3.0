@@ -94,14 +94,52 @@ describe("placeClouds", () => {
 		}
 	});
 
-	it("does not treat the cloud's own card as something to avoid", () => {
-		// The trail reaches down to it on purpose, so a placement that dodged it
-		// would push every cloud away from the card it belongs to.
+	it("still centres over its own card, which it does not need to cover", () => {
+		// The trail lives inside the cloud's own box and stops short of the card, so a
+		// clean placement never reaches into it — the cloud can treat its own card as
+		// an obstacle and still sit centred right above it.
 		const lone: Rect = { left: 600, top: 180, width: 75, height: 56 };
 		const placed = placeClouds({ canvas: CANVAS, obstacles: [lone], clouds: [cloud("a", lone)] });
 		const spot = placed.get("a")!;
 		expect(spot.overlap).toBe(0);
 		expect(Math.abs(spot.left - (lone.left + lone.width / 2 - SIZE.width / 2))).toBeLessThan(1);
+	});
+
+	it("does not sit on its OWN card when the clamp pulls it down onto one", () => {
+		// Seq 1823's reproduction, verbatim: at 39% zoom the stage pans, so card #101
+		// straddles the top edge at y −4..68. Every "above" candidate is off-canvas,
+		// the clamp pulls the cloud back to top 4 — onto the card — and the card's
+		// title ended up 100% hidden while the placement scored zero, because the
+		// cloud's own card was excluded from its obstacles. It is not excluded now.
+		const own: Rect = { left: 567, top: -4, width: 145, height: 72 };
+		const size = { width: 278, height: 67 };
+		const placed = placeClouds({
+			canvas: CANVAS,
+			obstacles: [own, { left: 663, top: 229, width: 117, height: 87 }],
+			clouds: [cloud("a", own, size)],
+		}).get("a")!;
+		expect(placed.overlap).toBe(0);
+		// And the number is honest about the box that actually lands on screen.
+		const landed = { ...placed, ...size };
+		const covered = Math.max(0, Math.min(landed.left + size.width, own.left + own.width) - Math.max(landed.left, own.left))
+			* Math.max(0, Math.min(landed.top + size.height, own.top + own.height) - Math.max(landed.top, own.top));
+		expect(covered).toBe(0);
+	});
+
+	it("scores the box that lands, not the candidate before the clamp", () => {
+		// The area form of the side-flip: a candidate can be clean where it was asked
+		// for and dirty where the clamp puts it. Whatever is reported has to describe
+		// the box on screen, or an acceptance run reads a zero that is not true.
+		const canvas = { width: 400, height: 160 };
+		const own: Rect = { left: 150, top: -10, width: 100, height: 60 };
+		const size = { width: 300, height: 100 };
+		const wall: Rect = { left: 0, top: 55, width: 400, height: 105 };
+		const placed = placeClouds({ canvas, obstacles: [own, wall], clouds: [cloud("a", own, size)] }).get("a")!;
+		const landed = { ...placed, ...size };
+		const truth = [own, wall].reduce((sum, box) => sum
+			+ Math.max(0, Math.min(landed.left + size.width, box.left + box.width) - Math.max(landed.left, box.left))
+			* Math.max(0, Math.min(landed.top + size.height, box.top + box.height) - Math.max(landed.top, box.top)), 0);
+		expect(placed.overlap).toBe(Math.round(truth));
 	});
 
 	it("reports the overlap it could not avoid instead of pretending it is zero", () => {
