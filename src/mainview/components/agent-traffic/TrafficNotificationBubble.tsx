@@ -9,12 +9,12 @@
  * outline is computed from the measured text in `traffic-cloud.ts`, because the
  * lobes have to be rebuilt whenever the text changes size.
  *
- * WHERE it hangs: over the card the notification was SENT FROM (`origin`), which
- * is not always the card it is about — `dev3 notify --task <other>` addresses
- * somebody else's card from your worktree. When the archive recorded no source,
- * the cloud falls back to the card it is about, and with neither it is unanchored
- * and belongs to no card at all. It is never attached to a nearby card to fill
- * the gap.
+ * WHERE it hangs: over the card the notification was SENT FROM (`origin`) and
+ * nowhere else. That is not always the card it is about — `dev3 notify --task
+ * <other>` addresses somebody else's card from your worktree — and when the
+ * archive recorded no source the cloud is UNANCHORED rather than falling back to
+ * the target. Hanging a thought over a card that never sent it would invent a
+ * sender out of a missing field.
  *
  * `row.message` is text an agent wrote. It reaches the DOM as a React child and
  * nothing else — no `dangerouslySetInnerHTML` on this path, ever.
@@ -47,12 +47,21 @@ const SUPPRESSION_KEY = {
 } as const satisfies Record<"focusMode" | "terminalImmersive", TranslationKey>;
 
 /**
- * The card a cloud hangs over: the sender first, the subject second, nothing
- * third. Exported because the surface that lays the clouds out needs the same
- * answer to pick a node, and two copies of this order would drift.
+ * The card a cloud hangs over: the SENDER, or nothing.
+ *
+ * There is deliberately no fallback to the card the notification is *about*. A
+ * thought cloud says "this card thought this", so hanging one over a target that
+ * never sent it would invent a sender out of a missing field — and a missing
+ * source is the archive not recording one, not evidence about who called. An
+ * unrecorded source therefore stays unanchored: the cloud belongs to the
+ * timeline, and the card it is about is named in words instead, which reads as
+ * a different claim because it is one.
+ *
+ * Exported because the surface that lays the clouds out needs the same answer to
+ * pick a node, and two copies of this rule would drift.
  */
-export function cloudAnchorEndpoint(event: TrafficNotificationEvent): NotificationEndpoint | null {
-	return event.origin ?? event.target;
+export function cloudSenderEndpoint(event: TrafficNotificationEvent): NotificationEndpoint | null {
+	return event.origin;
 }
 
 export default function TrafficNotificationBubble({ event, anchor, width, height, onKnownTask }: {
@@ -96,11 +105,11 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	const offCanvas = !!anchor && (anchor.x < 0 || anchor.x > canvasWidth || anchor.y < 0 || anchor.y > (height ?? 0));
 
 	const time = new Date(event.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-	const anchorEndpoint = cloudAnchorEndpoint(event);
+	const sender = cloudSenderEndpoint(event);
 	// A card the shown board does not have is still a real anchor: it keeps its
 	// place and gets a line saying the board does not have it. Nothing about its
 	// status is inferred, and it is never reattached to another card.
-	const anchorOffBoard = !!anchorEndpoint && !!onKnownTask && !onKnownTask(anchorEndpoint);
+	const anchorOffBoard = !!sender && !!onKnownTask && !onKnownTask(sender);
 
 	return (
 		<div

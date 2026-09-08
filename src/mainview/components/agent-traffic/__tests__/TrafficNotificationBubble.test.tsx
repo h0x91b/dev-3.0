@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { NotificationLogRow } from "../../../../shared/notification-log";
 import { I18nProvider } from "../../../i18n";
 import { notificationEvents } from "../notification-event";
-import TrafficNotificationBubble, { cloudAnchorEndpoint } from "../TrafficNotificationBubble";
+import TrafficNotificationBubble, { cloudSenderEndpoint } from "../TrafficNotificationBubble";
 
 function notification(overrides: Partial<NotificationLogRow> = {}): NotificationLogRow {
 	return {
@@ -153,14 +153,18 @@ describe("TrafficNotificationBubble", () => {
 	});
 
 	describe("which card the cloud hangs over", () => {
-		it("prefers the SENDER, because that is whose thought it is", () => {
+		it("hangs over the SENDER, even when the notification is about another card", () => {
 			const [event] = notificationEvents([notification({ taskId: "task-b", taskSeq: 22, sourceTaskId: "task-a", sourceSeq: 11 })]);
-			expect(cloudAnchorEndpoint(event)?.taskId).toBe("task-a");
+			expect(cloudSenderEndpoint(event)?.taskId).toBe("task-a");
 		});
 
-		it("falls back to the card it is about when no sender was recorded", () => {
+		it("stays UNANCHORED when no sender was recorded, rather than using the target", () => {
+			// A thought over a card that never sent it would invent a sender out of a
+			// missing field. The target is still named in words, which is a different
+			// claim and reads as one.
 			const [event] = notificationEvents([notification({ sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined })]);
-			expect(cloudAnchorEndpoint(event)?.taskId).toBe("task-a");
+			expect(event.target?.taskId).toBe("task-a");
+			expect(cloudSenderEndpoint(event)).toBeNull();
 		});
 
 		it("has nowhere to hang when the archive recorded neither end", () => {
@@ -168,7 +172,7 @@ describe("TrafficNotificationBubble", () => {
 				taskId: null, taskSeq: null, projectId: null, taskTitle: undefined,
 				sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined,
 			})]);
-			expect(cloudAnchorEndpoint(event)).toBeNull();
+			expect(cloudSenderEndpoint(event)).toBeNull();
 		});
 	});
 });
