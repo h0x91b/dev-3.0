@@ -1148,10 +1148,32 @@ export interface RemoteTunnelSettings {
 	urlPattern?: string;
 }
 
-/** The two supported agent-traffic presentations. Both are shipped, neither is legacy. */
-export type AgentTrafficExperiment = "1" | "2";
-/** What an install with no recorded preference renders. */
+/**
+ * The three supported agent-traffic presentations. All are shipped, none is legacy.
+ *
+ * `"1"` the 3D orbit, `"2"` the flat node graph, `"3"` the Strata districts. The
+ * list is the validation surface too — `src/bun/settings.ts` and
+ * `AGENT_TRAFFIC_EXPERIMENTS` below must agree with it, or a stored preference
+ * for a presentation that exists gets thrown away on load.
+ */
+export type AgentTrafficExperiment = "1" | "2" | "3";
+/** Every accepted value, in picker order. One list, so validation cannot drift. */
+export const AGENT_TRAFFIC_EXPERIMENTS: readonly AgentTrafficExperiment[] = ["1", "2", "3"];
+/**
+ * What an install with no recorded preference renders.
+ *
+ * Adding a presentation never moves this: nobody was offered Experiment 3, so an
+ * absent preference still means Experiment 2 — for a fresh install and for every
+ * upgrade.
+ */
 export const DEFAULT_AGENT_TRAFFIC_EXPERIMENT: AgentTrafficExperiment = "2";
+
+/** Type guard over {@link AGENT_TRAFFIC_EXPERIMENTS}, for reading stored settings. */
+export function isAgentTrafficExperiment(
+	value: unknown,
+): value is AgentTrafficExperiment {
+	return AGENT_TRAFFIC_EXPERIMENTS.includes(value as AgentTrafficExperiment);
+}
 
 export interface GlobalSettings {
 	defaultAgentId: string;

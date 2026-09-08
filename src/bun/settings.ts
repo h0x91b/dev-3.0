@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
-import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
+import {
+	DEFAULT_AGENTS,
+	DEPRECATED_DEFAULT_CONFIG_REMAP,
+	isAgentTrafficExperiment,
+} from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
@@ -210,7 +214,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// Default-off beta toggle — only an explicit true is a stored opt-in.
 		experimentalAgentTraffic: d.experimentalAgentTraffic === true ? true : undefined,
 		// Only a recorded pick survives; anything else falls back to the default view.
-		agentTrafficExperiment: d.agentTrafficExperiment === "1" || d.agentTrafficExperiment === "2"
+		// Validated against the shared list rather than a hand-written `||` chain:
+		// a presentation added to the union but forgotten here would silently
+		// discard the user's stored pick on every load.
+		agentTrafficExperiment: isAgentTrafficExperiment(d.agentTrafficExperiment)
 			? d.agentTrafficExperiment
 			: undefined,
 		// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.

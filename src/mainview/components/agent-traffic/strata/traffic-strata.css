@@ -1,0 +1,571 @@
+/*
+ * Strata stage chrome: the overlay panels that float on the 3D canvas.
+ *
+ * Every colour is a design token. The reference demo hardcoded a dark palette
+ * and bolted a light override on top, which is why its light theme left the deck
+ * labels white-on-white — legible in exactly one of its two themes. Here the
+ * panels inherit `--surface-overlay` / `--text-primary` and are correct in both
+ * by construction.
+ *
+ * Panels are `position: absolute` over the canvas and every one carries
+ * `data-strata-reserved`, which is how the label placer knows not to hide a
+ * floating card label behind them.
+ */
+
+.strata-frame {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+	background: rgb(var(--surface-base));
+	container-type: inline-size;
+}
+.strata-frame:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: -2px;
+}
+
+.strata-canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	display: block;
+	touch-action: none;
+	cursor: grab;
+}
+.strata-canvas:active {
+	cursor: grabbing;
+}
+
+/* ---- floating labels ---- */
+
+.strata-label-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.strata-card-labels {
+	pointer-events: none;
+}
+
+.strata-card-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	pointer-events: auto;
+	display: grid;
+	gap: 1px;
+	max-width: 15rem;
+	padding: 4px 9px 5px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 7px;
+	background: rgb(var(--surface-overlay) / 0.88);
+	backdrop-filter: blur(9px);
+	color: rgb(var(--text-primary));
+	text-align: left;
+	font: inherit;
+	font-size: 11px;
+	line-height: 1.32;
+	box-shadow: 0 3px 12px rgb(0 0 0 / 0.22);
+}
+.strata-card-label:hover,
+.strata-card-label:focus-visible {
+	border-color: rgb(var(--border-active));
+}
+.strata-card-label.is-selected {
+	max-width: 19rem;
+	border-color: rgb(var(--accent));
+	box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+}
+.strata-card-label.is-parked {
+	opacity: 0.72;
+}
+.strata-card-seq {
+	font-family: ui-monospace, monospace;
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+}
+.strata-card-title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.strata-card-status {
+	font-size: 10px;
+	color: rgb(var(--text-secondary));
+}
+.strata-card-overview {
+	margin-top: 2px;
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.strata-district-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	display: grid;
+	gap: 1px;
+	text-align: center;
+	color: rgb(var(--text-secondary));
+	text-shadow: 0 1px 3px rgb(var(--surface-base));
+}
+.strata-district-label strong {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	color: rgb(var(--text-primary));
+}
+.strata-district-label span {
+	font-family: ui-monospace, monospace;
+	font-size: 9px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: rgb(var(--text-muted));
+}
+.strata-district-label.is-quiet strong {
+	color: rgb(var(--text-secondary));
+}
+
+/* ---- overlay panels ---- */
+
+.strata-modes {
+	position: absolute;
+	top: 12px;
+	left: 14px;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 2px;
+	padding: 3px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 9px;
+	background: rgb(var(--surface-overlay) / 0.90);
+	backdrop-filter: blur(10px);
+}
+.strata-modes button {
+	min-height: 30px;
+	padding: 0 11px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: rgb(var(--text-secondary));
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.strata-modes button:hover {
+	background: rgb(var(--surface-elevated-hover));
+	color: rgb(var(--text-primary));
+}
+.strata-modes button.is-active {
+	background: rgb(var(--surface-elevated));
+	color: rgb(var(--text-primary));
+	box-shadow: inset 0 0 0 1px rgb(var(--border-active));
+}
+
+.strata-heading {
+	position: absolute;
+	top: 56px;
+	left: 16px;
+	max-width: min(30rem, 60cqw);
+	pointer-events: none;
+}
+.strata-kicker {
+	display: block;
+	font-family: ui-monospace, monospace;
+	font-size: 9px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: rgb(var(--text-muted));
+}
+.strata-heading h3 {
+	margin: 4px 0 3px;
+	font-size: clamp(17px, 2.1cqw, 25px);
+	font-weight: 600;
+	line-height: 1.16;
+	color: rgb(var(--text-primary));
+}
+.strata-heading p {
+	margin: 0;
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+}
+
+.strata-metrics {
+	position: absolute;
+	top: 56px;
+	right: 16px;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 15px;
+	pointer-events: none;
+}
+.strata-metric {
+	display: grid;
+	justify-items: end;
+	gap: 1px;
+}
+.strata-metric strong {
+	font-size: 19px;
+	font-weight: 600;
+	line-height: 1;
+	color: rgb(var(--text-primary));
+}
+.strata-metric span {
+	font-size: 10px;
+	color: rgb(var(--text-muted));
+}
+
+.strata-rail {
+	position: absolute;
+	top: 12px;
+	right: 14px;
+	width: 15.5rem;
+	max-height: calc(100% - 96px);
+	overflow: auto;
+	display: grid;
+	gap: 8px;
+	align-content: start;
+	padding: 11px 12px 12px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 11px;
+	background: rgb(var(--surface-overlay) / 0.93);
+	backdrop-filter: blur(12px);
+}
+.strata-rail-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.strata-rail-head button {
+	width: 24px;
+	height: 24px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: rgb(var(--text-tertiary));
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+}
+.strata-rail-head button:hover {
+	background: rgb(var(--surface-elevated-hover));
+	color: rgb(var(--text-primary));
+}
+.strata-rail-summary {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.42;
+	color: rgb(var(--text-secondary));
+}
+.strata-rail-section {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	padding-top: 6px;
+	border-top: 1px solid rgb(var(--border-default));
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+}
+.strata-rail-section strong {
+	font-size: 12px;
+	color: rgb(var(--text-primary));
+}
+.strata-rail-empty,
+.strata-rail-note {
+	margin: 0;
+	font-size: 11px;
+	line-height: 1.4;
+	color: rgb(var(--text-muted));
+}
+.strata-attention {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: grid;
+	gap: 5px;
+}
+.strata-attention button {
+	width: 100%;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 2px 6px;
+	padding: 6px 8px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 7px;
+	background: rgb(var(--surface-raised));
+	color: rgb(var(--text-primary));
+	text-align: left;
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+}
+.strata-attention button:hover,
+.strata-attention button:focus-visible {
+	border-color: rgb(var(--border-active));
+	background: rgb(var(--surface-raised-hover));
+}
+.strata-attention-dot {
+	width: 6px;
+	height: 6px;
+	margin-top: 4px;
+	border-radius: 50%;
+}
+.strata-attention-dot.is-undelivered {
+	background: rgb(var(--danger));
+}
+.strata-attention-dot.is-asking {
+	background: rgb(var(--accent));
+}
+.strata-attention-reason {
+	font-size: 11px;
+	font-weight: 600;
+}
+.strata-attention-task {
+	grid-column: 2;
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.strata-rail-open {
+	position: absolute;
+	top: 12px;
+	right: 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 30px;
+	padding: 0 11px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 9px;
+	background: rgb(var(--surface-overlay) / 0.90);
+	backdrop-filter: blur(10px);
+	color: rgb(var(--text-secondary));
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.strata-rail-open:hover {
+	border-color: rgb(var(--border-active));
+	color: rgb(var(--text-primary));
+}
+
+.strata-route-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	padding: 4px 9px;
+	border: 1px solid rgb(var(--danger) / 0.45);
+	border-radius: 7px;
+	background: rgb(var(--surface-overlay) / 0.92);
+	backdrop-filter: blur(9px);
+	color: rgb(var(--danger));
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.strata-legend {
+	position: absolute;
+	bottom: 12px;
+	left: 16px;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 13px;
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+	pointer-events: none;
+}
+.strata-legend span {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	white-space: nowrap;
+}
+.strata-legend i {
+	width: 17px;
+	height: 2px;
+	border-radius: 1px;
+}
+/* Kind is carried by shape as well as hue, so a greyscale or colour-blind read
+   still separates "landed" from "held" from "failed". */
+.strata-legend i.is-dashed {
+	background-image: linear-gradient(90deg, currentColor 0 45%, transparent 45% 100%);
+	background-size: 6px 100%;
+	background-repeat: repeat-x;
+	background-blend-mode: normal;
+	mask-image: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 6px);
+}
+.strata-legend i.is-broken {
+	mask-image: linear-gradient(90deg, #000 0 38%, transparent 38% 62%, #000 62% 100%);
+}
+
+.strata-camera {
+	position: absolute;
+	right: 14px;
+	bottom: 12px;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 3px;
+	padding: 3px;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 9px;
+	background: rgb(var(--surface-overlay) / 0.90);
+	backdrop-filter: blur(10px);
+}
+.strata-camera-hint {
+	margin-right: 5px;
+	padding-left: 6px;
+	font-family: ui-monospace, monospace;
+	font-size: 9px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: rgb(var(--text-muted));
+	white-space: nowrap;
+}
+.strata-camera button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 30px;
+	min-height: 30px;
+	justify-content: center;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: rgb(var(--text-secondary));
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.strata-camera button:hover {
+	background: rgb(var(--surface-elevated-hover));
+	color: rgb(var(--text-primary));
+}
+.strata-camera button.is-active {
+	background: rgb(var(--surface-elevated));
+	color: rgb(var(--accent));
+}
+.strata-camera .traffic-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.strata-loading {
+	position: absolute;
+	inset: auto 0 50% 0;
+	text-align: center;
+	font-size: 12px;
+	color: rgb(var(--text-tertiary));
+	pointer-events: none;
+}
+
+.strata-unsupported {
+	display: grid;
+	place-items: center;
+	padding: 2rem;
+	text-align: center;
+}
+.strata-unsupported h3 {
+	margin: 0 0 6px;
+	font-size: 15px;
+	color: rgb(var(--text-primary));
+}
+.strata-unsupported p {
+	margin: 0 0 4px;
+	font-size: 12px;
+	color: rgb(var(--text-secondary));
+}
+.strata-unsupported-hint {
+	color: rgb(var(--text-muted));
+}
+
+/*
+ * Narrow: rows shed, they never stack (§12.6). The camera hint goes first, then
+ * the metric strip, then the legend's two rarest kinds, then the rail collapses
+ * to its chip — in that order, so the last thing standing is the mode switch and
+ * the ability to get the camera back.
+ */
+@container (max-width: 900px) {
+	.strata-rail {
+		width: 13.5rem;
+	}
+	.strata-camera-hint {
+		display: none;
+	}
+}
+@container (max-width: 760px) {
+	.strata-metrics {
+		display: none;
+	}
+	.strata-heading {
+		top: 52px;
+		max-width: 78cqw;
+	}
+}
+@container (max-width: 620px) {
+	.strata-rail {
+		width: auto;
+		inset: auto 14px 52px 14px;
+		max-height: 42%;
+	}
+	.strata-legend {
+		bottom: 8px;
+		gap: 9px;
+	}
+	.strata-legend span:nth-child(3) {
+		display: none;
+	}
+}
+@container (max-width: 460px) {
+	.strata-legend span:nth-child(2) {
+		display: none;
+	}
+	.strata-heading h3 {
+		font-size: 16px;
+	}
+	.strata-modes button {
+		padding: 0 8px;
+		font-size: 11px;
+	}
+}
+
+/* Coarse pointers get the 44px floor on standalone controls (§12.6). */
+@media (pointer: coarse) {
+	.strata-modes button,
+	.strata-camera button,
+	.strata-rail-open,
+	.strata-rail-head button {
+		min-height: 44px;
+		min-width: 44px;
+	}
+}
+
+/*
+ * Reduced motion. The camera still moves when the user asks it to — a framing
+ * that never arrives is a broken control, not a calm one — but it snaps instead
+ * of gliding (`advance()` uses a lerp of 1), and the idle flourishes stop: no
+ * orbiting halo, no pulsing lamp, no drifting particles.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.strata-card-label,
+	.strata-rail,
+	.strata-modes,
+	.strata-camera {
+		transition: none !important;
+	}
+}
