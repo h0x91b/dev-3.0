@@ -19,6 +19,7 @@ this page and the website all read from it.
 | Command palette | ⇧⌘P / ⇧⌘Space | Ctrl+Shift+P / Ctrl+Shift+Space |
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Agent traffic log (beta — Settings → System → Advanced Experience) | ⇧⌘M | Ctrl+Shift+M |
+| Play or pause the traffic replay (inside the traffic log) | Space | Space |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |

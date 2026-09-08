@@ -45,6 +45,7 @@ const keymap = {
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
 	"keymap.shortcut.agentTrafficLog": "Agent traffic log",
+	"keymap.shortcut.trafficReplayPlayPause": "Play or pause the traffic replay",
 	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",
 	"keymap.shortcut.artifactSearch": "Find in the focused HTML artifact",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
@@ -58,6 +59,7 @@ const keymap = {
 	"keymap.fixed.holdModifier": "Cycling needs a modifier you hold down, which a plain combo can't express.",
 	"keymap.fixed.chordSequence": "A sequence of keys pressed one after another, not a combo.",
 	"keymap.fixed.reserved": "Reserved — it is how you get out of every dialog and mode.",
+	"keymap.fixed.activatesFocused": "Space activates whatever control has focus, so nothing else can claim it.",
 	"keymap.fixed.shellOwned": "Owned by the app shell, not by the page.",
 
 	// Shortcut editor (Settings → Keyboard → App shortcuts)

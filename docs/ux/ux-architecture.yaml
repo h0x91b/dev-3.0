@@ -272,12 +272,12 @@ ux_architecture:
       status: "observed"
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     agent_traffic_log:
-      purpose: "Live map of recorded message attempts, with lists and a selection inspector."
+      purpose: "Live map of recorded message attempts, with lists and an inspector."
       allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task"]
       forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter", "inferred_reply_obligation"]
       narrow_form: "bottom_sheet"
-      entry_point: "Header pill click, labelled kebab row, Shift+Cmd/Ctrl+M, View menu, command palette; one overlay, no separate old log or ninth destination."
-      note: "Push/fs, no polling. Pulses/verdicts; reduced motion stops flights/glides. Current state/overview; stable nodes, wires avoid cards. Counted quiet/parked bands; replay reveals endpoints without waking. Absent pick means 2; toolbar radio mounts one stage, never enables feature. In 2: frozen message replay/steps/speed/slider below graph, cursor verdicts, Live exits; Follow/24h frames pairs; idle overview; named project blocks, five-wide; calendar loads local days; Focus in details; manual/minimap pan stops Follow. WebGL optional. Subject/body fallback, retention/pages: bible 5.9. No invented ownership, replies or intent."
+      entry_point: "Header pill, kebab row, Shift+Cmd/Ctrl+M, View menu, palette; one overlay, no old log or new screen."
+      note: "Push/fs, no poll. Pulses/verdicts; reduced motion stops flights/glides. Current state/overview; nodes stable, wires dodge cards. Counted quiet/parked bands; replay reveals endpoints unwoken. Absent pick means 2; the radio mounts a stage, not the feature. In 2: frozen replay/steps/speed/slider under graph, cursor verdicts, Live exits; Follow/24h frames pairs; idle overview; named project blocks, 5-wide; calendar loads local days; Focus in details; manual/minimap pan drops Follow. Space toggles replay unless a field/control owns it; navigation closes it. WebGL optional. Subject/body fallback, retention/pages: bible 5.9. No invented ownership, reply or intent."
       evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."

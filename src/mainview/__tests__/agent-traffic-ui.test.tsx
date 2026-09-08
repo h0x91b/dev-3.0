@@ -726,6 +726,88 @@ describe("Coordination replay controls", () => {
 	});
 });
 
+describe("Space toggles the replay", () => {
+	/** Two messages so the transport has something to play through. */
+	function seedTwo() {
+		setPage([
+			row({ subject: "Second exchange" }),
+			row({
+				at: new Date(Date.now() - 60000).toISOString(),
+				subject: "First exchange",
+			}),
+		]);
+	}
+
+	/** A raw keydown on the window — what a Space press from the stage looks like. */
+	function pressSpace(over: Partial<KeyboardEventInit> = {}) {
+		const event = new KeyboardEvent("keydown", {
+			code: "Space",
+			key: " ",
+			bubbles: true,
+			cancelable: true,
+			...over,
+		});
+		act(() => {
+			window.dispatchEvent(event);
+		});
+		return event;
+	}
+
+	it("plays from the start, pauses, and stops the page from scrolling", async () => {
+		seedTwo();
+		renderLog();
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+
+		const started = pressSpace();
+		expect(started.defaultPrevented).toBe(true);
+		expect(screen.getByRole("button", { name: "Pause replay" })).toBeTruthy();
+		expect(
+			document.querySelector(".traffic-event-readout")?.textContent,
+		).toContain("First exchange");
+
+		pressSpace();
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+	});
+
+	it("ignores a held key, a modifier and a composing IME", async () => {
+		seedTwo();
+		renderLog();
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+
+		for (const over of [{ repeat: true }, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) {
+			expect(pressSpace(over).defaultPrevented).toBe(false);
+		}
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+	});
+
+	it("leaves the key to a search field and to the focused control", async () => {
+		seedTwo();
+		renderLog();
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+
+		screen.getByRole("searchbox", { name: "Search tasks and messages" }).focus();
+		expect(pressSpace().defaultPrevented).toBe(false);
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+
+		// A focused button activates on Space by itself; claiming the key here
+		// would fire two different actions from one press.
+		screen.getByRole("button", { name: "Messages" }).focus();
+		expect(pressSpace().defaultPrevented).toBe(false);
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+	});
+
+	it("stays out of the orbit, which has no replay to toggle", async () => {
+		seedTwo();
+		renderLog();
+		await screen.findByRole("button", { name: "Play replay" });
+		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		expect(pressSpace().defaultPrevented).toBe(false);
+	});
+});
+
 it("Follow reveals its hibernated endpoint and replay never uses a future delivery verdict", async () => {
 	taskExtras.value = { "task-b": { hibernated: true } };
 	setPage([

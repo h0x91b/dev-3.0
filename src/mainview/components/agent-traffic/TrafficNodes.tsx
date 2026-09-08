@@ -31,7 +31,7 @@ import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
-import { frameExchange } from "./traffic-camera";
+import { MAX_SCALE, frameExchange, stageCeiling } from "./traffic-camera";
 
 interface Props {
 	projects?: {
@@ -68,7 +68,6 @@ const DROP_GAP_MS = 500;
 const DROP_FADE_MS = 200;
 const FOLLOW_IDLE_MS = 3500;
 const MIN_SCALE = 0.14;
-const MAX_SCALE = 2.2;
 
 export default function TrafficNodes({
 	nodes,
@@ -191,7 +190,7 @@ export default function TrafficNodes({
 			const top = Math.min(...targets.map((p) => p.y)) - 86;
 			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
 			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
-			const scale = Math.min(maximum, (box.width - 52) / width, (box.height - 80) / height);
+			const scale = Math.min(stageCeiling(box, maximum), (box.width - 52) / width, (box.height - 80) / height);
 			move(
 				{
 					scale,
@@ -207,6 +206,18 @@ export default function TrafficNodes({
 		(instant = false) => fitNodes(scene.groups.length ? scene.groups : scene.placed, 0.85, instant),
 		[fitNodes, scene.placed, scene.groups],
 	);
+	/** The scene's outer edge with the same padding `fitNodes` leaves around it. */
+	const sceneBounds = useMemo(() => {
+		const targets: { x: number; y: number; width: number; height: number }[] =
+			scene.groups.length ? scene.groups : scene.placed;
+		if (!targets.length) return undefined;
+		return {
+			left: Math.min(...targets.map((p) => p.x)) - 70,
+			top: Math.min(...targets.map((p) => p.y)) - 86,
+			right: Math.max(...targets.map((p) => p.x + p.width)) + 70,
+			bottom: Math.max(...targets.map((p) => p.y + p.height)) + 86,
+		};
+	}, [scene.groups, scene.placed]);
 	const resizeFollow = useRef<(() => void) | null>(null);
 	const fitRef = useRef(fit);
 	fitRef.current = fit;
@@ -283,12 +294,12 @@ export default function TrafficNodes({
 				[sender.node.key, recipient.node.key].sort().join("|"),
 			);
 			move(
-				frameExchange(viewport, sender ? [sender, recipient] : [recipient], edge?.points ?? []),
+				frameExchange(viewport, sender ? [sender, recipient] : [recipient], edge?.points ?? [], sceneBounds),
 				reduced,
 				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
 			);
 		},
-		[nodeByKey, edgeByKey, move, reduced, playback?.playing, playback?.intervalMs],
+		[nodeByKey, edgeByKey, move, reduced, sceneBounds, playback?.playing, playback?.intervalMs],
 	);
 
 	const launch = useCallback(

@@ -749,6 +749,14 @@ function App() {
 		setHintMode(false);
 	}, [state.route]);
 
+	// Same rule for the traffic log, which covers the whole screen: ⌘1–9, ⌘0, the
+	// `g` chords and the palette all navigated *behind* it, so the screen changed
+	// where nobody could see it and the shortcut read as dead. Closing on
+	// navigation is what makes the destination visible.
+	useEffect(() => {
+		setTrafficLogOpen(false);
+	}, [state.route]);
+
 	// Single chokepoint for committing a navigation. Records a project "jump"
 	// for the Cmd+K recency list whenever the destination route lands on a
 	// project, so every entry point (Dashboard click, Cmd+1..9, Cmd+Shift+1..9,
