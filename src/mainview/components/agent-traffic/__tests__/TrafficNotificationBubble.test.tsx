@@ -152,9 +152,56 @@ describe("TrafficNotificationBubble", () => {
 		// Reported from the shared stage: a cloud anchored to a lower-band card was
 		// drawn upward across the card above it. Room on the CANVAS is all this
 		// component can measure; whether that room is empty is the layout's answer.
-		const forced = show(notification(), { anchor: { x: 400, y: 500 }, width: 1000, height: 600, placement: "below" });
+		// A roomy canvas, so the clamp below does not join in and confuse the reading.
+		const forced = show(notification(), { anchor: { x: 400, y: 500 }, width: 1000, height: 1200, placement: "below" });
 		expect(forced.classList.contains("is-below")).toBe(true);
 		expect(Number.parseFloat(forced.style.top)).toBeGreaterThan(500);
+	});
+
+	it("stays inside the canvas rather than being pushed out of sight", () => {
+		// The trap this closes: a cloud shoved off the bottom edge crosses no card,
+		// which measures as a solved overlap while the cloud is simply gone. Seq 1823
+		// caught exactly that in a screenshot after their own heuristic "worked".
+		const canvas = { width: 1000, height: 620 };
+		for (const y of [8, 300, 610]) {
+			const bubble = show(notification(), { anchor: { x: 400, y, height: 58 }, ...canvas });
+			const top = Number.parseFloat(bubble.style.top);
+			const cloudHeight = Number.parseFloat(bubble.querySelector("svg.traffic-cloud")!.getAttribute("height")!);
+			expect(top).toBeGreaterThanOrEqual(0);
+			expect(top + cloudHeight).toBeLessThanOrEqual(canvas.height);
+		}
+	});
+
+	it("draws a smaller cloud in compact density, so it fits between two rows of cards", () => {
+		// happy-dom measures every box as 0, so both densities render the same
+		// FALLBACK content size here and only the lobe differs. That still proves the
+		// direction; how much smaller a real one-line preview gets is measured against
+		// the geometry itself in traffic-cloud.test.ts.
+		const cloudHeight = (props: Partial<Parameters<typeof TrafficNotificationBubble>[0]>) => {
+			const bubble = show(notification(), { anchor: { x: 400, y: 400, height: 58 }, width: 1000, height: 1200, ...props });
+			return Number.parseFloat(bubble.querySelector("svg.traffic-cloud")!.getAttribute("height")!);
+		};
+		expect(cloudHeight({ density: "compact" })).toBeLessThan(cloudHeight({}));
+	});
+
+	it("shows the cut in compact density instead of clipping the text silently", () => {
+		const long = "Windows packaging failed: CreateProcess refused a 34 000-character command line";
+		const bubble = show(notification({ message: long }), { density: "compact" });
+		const preview = bubble.querySelector<HTMLElement>(".traffic-notification-preview")!;
+		// The ellipsis is a CSS rule, so what is asserted here is the contract it
+		// needs: the whole text is present, on one line, with the full text on title.
+		expect(preview.textContent).toContain(long);
+		expect(preview.getAttribute("title")).toBe(long);
+		// The reading version's parts are deliberately absent from a preview.
+		expect(bubble.querySelector(".traffic-notification-body")).toBeNull();
+		expect(bubble.querySelector(".traffic-notification-foot")).toBeNull();
+	});
+
+	it("keeps the level readable in compact density, by icon and by name for a reader", () => {
+		const bubble = show(notification({ level: "error" }), { density: "compact" });
+		expect(bubble.dataset.level).toBe("error");
+		expect(bubble.querySelector(".traffic-notification-head svg")).not.toBeNull();
+		expect(bubble.textContent).toContain("error");
 	});
 
 	it("clears the card's own height when it hangs below, so the trail misses its title", () => {
@@ -163,6 +210,23 @@ describe("TrafficNotificationBubble", () => {
 		const card = { x: 400, y: 500, height: 58 };
 		const clearing = show(notification(), { anchor: card, width: 1000, height: 900, placement: "below" });
 		expect(Number.parseFloat(clearing.style.top)).toBeGreaterThan(card.y + card.height);
+	});
+
+	it("picks the side the cloud FITS when the layout reports the room", () => {
+		// The stage's own numbers, measured at its fit zoom: a top-row card with the
+		// stage edge above it and a card 39px below, and a bottom-row card with 35px
+		// above and 61px below. Room is the only thing the component cannot see.
+		const top = show(notification(), { anchor: { x: 400, y: 62, height: 46 }, width: 1280, height: 355, density: "compact", room: { above: 62, below: 39 } });
+		expect(top.classList.contains("is-below")).toBe(false);
+		const bottom = show(notification(), { anchor: { x: 400, y: 238, height: 56 }, width: 1280, height: 355, density: "compact", room: { above: 35, below: 61 } });
+		expect(bottom.classList.contains("is-below")).toBe(true);
+	});
+
+	it("takes the roomier side when neither fits, rather than keeping its preference", () => {
+		// Both gaps smaller than the cloud. Staying above out of preference covered
+		// two unrelated cards for nothing; below at least has more room.
+		const bubble = show(notification(), { anchor: { x: 400, y: 238, height: 56 }, width: 1280, height: 355, room: { above: 35, below: 61 } });
+		expect(bubble.classList.contains("is-below")).toBe(true);
 	});
 
 	it("obeys an explicit `above` even where it would have flipped on its own", () => {
