@@ -156,4 +156,62 @@ describe("placeClouds", () => {
 		const placed = placeClouds({ canvas, obstacles: [card, above], clouds: [cloud("a", card)] });
 		expect(placed.get("a")!.side).toBe("below");
 	});
+
+	describe("the zoom band where cards render text", () => {
+		// The blocker Seq 1823 measured: at 39% the stage switches from a bare
+		// coloured cell to a compact card WITH a title, and the cloud covered #101's
+		// title 100%. Cards scale with the zoom, the cloud does not, so the same
+		// stage is a different packing problem at every zoom — and fit zoom, the one
+		// their acceptance measured, is the one where a card has no content at all.
+		//
+		// This models it the only way a unit test can: their fit-zoom geometry scaled
+		// by the zoom ratio. It is a model, not their stage; the point it proves is
+		// that a clean box EXISTS at these zooms, so a covered title means the search
+		// or its inputs, never an impossible fit.
+		const scaled = (zoom: number): Rect[] => {
+			const k = zoom / 25;
+			// Zooming in enlarges the cards and pushes some of them out of frame — the
+			// stage pans, it does not grow. Keeping an off-canvas card in the model
+			// would invent a packing problem the real stage never poses.
+			return CARDS
+				.map(card => ({ left: card.left * k, top: card.top * k, width: card.width * k, height: card.height * k }))
+				.filter(card => card.left + card.width <= CANVAS.width && card.top + card.height <= CANVAS.height);
+		};
+
+		for (const zoom of [39, 49, 61]) {
+			it(`finds a clean box for every sender at ${zoom}%`, () => {
+				const cards = scaled(zoom);
+				for (const [index, card] of cards.entries()) {
+					const placed = placeClouds({
+						canvas: CANVAS,
+						obstacles: cards,
+						clouds: [cloud(`z${index}`, card, { width: 278, height: 67 })],
+					}).get(`z${index}`)!;
+					expect(placed.overlap).toBe(0);
+				}
+			});
+		}
+
+		it("reaches a pocket that only an intermediate offset can hit", () => {
+			// A corridor 15px wider than the cloud, positioned BETWEEN the offsets a
+			// coarse sweep would try. Every other storey and the whole area below are
+			// walled off, so this pocket is the only clean box on the canvas — and a
+			// sweep of centred/half/full misses it by construction. Verified by
+			// mutation: restoring the five-offset sweep fails this test.
+			const canvas = { width: 1280, height: 280 };
+			const card: Rect = { left: 300, top: 200, width: 100, height: 60 };
+			const size = { width: 140, height: 67 };
+			const walls: Rect[] = [
+				card,
+				{ left: 0, top: 0, width: 1280, height: 120 },     // the storey above the corridor
+				{ left: 0, top: 120, width: 325, height: 80 },     // corridor, left wall
+				{ left: 480, top: 120, width: 800, height: 80 },   // corridor, right wall
+				{ left: 0, top: 205, width: 1280, height: 75 },    // everything below
+			];
+			const placed = placeClouds({ canvas, obstacles: walls, clouds: [cloud("a", card, size)] }).get("a")!;
+			expect(placed.overlap).toBe(0);
+			expect(placed.left).toBeGreaterThanOrEqual(325);
+			expect(placed.left + size.width).toBeLessThanOrEqual(480);
+		});
+	});
 });
