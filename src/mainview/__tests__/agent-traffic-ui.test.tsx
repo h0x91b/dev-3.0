@@ -625,6 +625,37 @@ describe("AgentTrafficScreen entry replay", () => {
 	});
 });
 
+/**
+ * The kind axis exists ahead of the events it governs (Seq 1823's union timeline
+ * and Seq 1825's notifications). What is testable today is the gate: while
+ * messages are the only kind the timeline can carry, neither the toggles nor the
+ * per-kind counts may appear — a control over a kind that cannot occur is dead
+ * UI, and a one-option group is noise. The toggles' visible behaviour cannot be
+ * exercised until those events exist.
+ */
+describe("AgentTrafficScreen kind filter gate", () => {
+	it("shows no kind toggles and no per-kind counts while messages are the only kind", async () => {
+		setPage([row({ subject: "Only messages here" })]);
+		renderLog();
+		await messageRows(1);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-task")).toBeNull();
+		expect(screen.queryByTestId("traffic-kind-notification")).toBeNull();
+		expect(screen.queryByTestId("traffic-count-message")).toBeNull();
+		// The window's own Attempts stat is untouched by the gate.
+		expect(document.querySelector(".traffic-summary")?.textContent).toContain("Attempts");
+	});
+
+	it("keeps the group hidden when the window is empty", async () => {
+		setPage([]);
+		renderLog();
+		await waitFor(() =>
+			expect(document.querySelector(".traffic-event-counter")?.textContent).toBe("0 / 0"),
+		);
+		expect(screen.queryByTestId("traffic-kind-message")).toBeNull();
+	});
+});
+
 describe("AgentTrafficScreen presentation picker", () => {
 	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
 	const orbit = () => screen.queryByLabelText("Project traffic map");
@@ -735,6 +766,11 @@ describe("AgentTrafficScreen presentation picker", () => {
 		]);
 		renderLog();
 		await messageRows(2);
+		// The routed screen autoplays its entry window, so the cursor starts in the
+		// PAST and the cards are reconstructed. This assertion is about the live card
+		// treatment, so return to Live first — under a cursor, a task with no
+		// recorded movements is correctly "Status not recorded", not "Completed".
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
 		const cards = nodeCards() as HTMLElement[];
 		const asleep = cards.find((card) =>
@@ -1452,7 +1488,10 @@ describe("Replay reconstructs the board at the cursor", () => {
 		setUpHistory();
 		renderLog();
 		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
+		// Entry autoplay lands the cursor in the past, so the claim is true on arrival.
+		await waitFor(() => expect(summary()).toContain("rebuilt from recorded board moves"));
 		// Experiment 2 on Live shows the board as it is, so it must not claim a rebuild.
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		expect(summary()).toContain("Task states are current");
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
@@ -1470,6 +1509,10 @@ describe("Replay reconstructs the board at the cursor", () => {
 		setUpHistory();
 		renderLog();
 		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
+		// Entry autoplay already put the cursor in the past, so the disclosure is
+		// there on arrival — it belongs to the cursor, not to a click.
+		await waitFor(() => expect(caption()).toContain("Hibernation"));
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		expect(caption()).not.toContain("Hibernation");
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));

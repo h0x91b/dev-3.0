@@ -177,6 +177,56 @@ export function buildTimeline(input: {
 }
 
 /**
+ * The three filter axes, and which events each one governs.
+ *
+ * A filter never touches an event of a kind it does not govern — that is the
+ * whole point, and the failure it prevents is a message-delivery filter silently
+ * swallowing notifications. A task event has neither a delivery status nor a
+ * level, so it answers to `kinds` alone; inventing one for it would be
+ * fabrication.
+ */
+export interface TimelineFilter {
+	kinds: ReadonlySet<TrafficTimelineEventKind>;
+	/** The existing message-delivery filter value; `"all"` passes everything. */
+	delivery: string;
+	levels: ReadonlySet<NormalizedNotification["level"]>;
+}
+
+export function matchesTimelineFilter(
+	event: TrafficTimelineEvent,
+	filter: TimelineFilter,
+): boolean {
+	if (!filter.kinds.has(event.kind)) return false;
+	if (event.kind === "message")
+		return filter.delivery === "all" || event.record.row.status === filter.delivery;
+	if (event.kind === "notification") return filter.levels.has(event.event.level);
+	return true;
+}
+
+/** Per-kind counts, after filtering. Never merged — see `timelineCounts`. */
+export interface TimelineCounts {
+	tasks: number;
+	messages: number;
+	notifications: number;
+}
+
+/**
+ * Counts by kind. Three numbers, never one: a notification inside a "messages"
+ * count makes the number disagree with both the label and the timeline.
+ */
+export function timelineCounts(
+	events: readonly TrafficTimelineEvent[],
+): TimelineCounts {
+	const counts: TimelineCounts = { tasks: 0, messages: 0, notifications: 0 };
+	for (const event of events) {
+		if (event.kind === "task") counts.tasks++;
+		else if (event.kind === "message") counts.messages++;
+		else counts.notifications++;
+	}
+	return counts;
+}
+
+/**
  * The last message at or before the cursor, for the surfaces that still speak in
  * messages — the flying wire, the subject bubble, the message list. A task or
  * notification step must not blank the wire that was lit a moment ago, and must
