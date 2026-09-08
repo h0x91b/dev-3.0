@@ -112,6 +112,15 @@ export interface NotificationLogPage {
 	 * everything before this day was deleted by the retention policy.
 	 */
 	oldestDay: string | null;
+	/**
+	 * The newest day on disk (`YYYY-MM-DD`), or null when there is no history.
+	 *
+	 * Together with {@link oldestDay} this is the ONLY honest answer to "how far
+	 * back does this go" — the collection started when the writer shipped, not
+	 * when the app was installed, and a reader that assumed 30 days of history
+	 * would invent the difference.
+	 */
+	newestDay: string | null;
 	/** Days of history the retention policy keeps. */
 	retentionDays: number;
 	/** True when `limit` cut the answer short and older rows still exist on disk. */

@@ -38,7 +38,7 @@ import { DEV3_HOME } from "./paths";
 import { projectSlug } from "./git";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
-import { noteLocalMessageLogAppend } from "./agent-message-log-watch";
+import { noteLocalDayFileAppend } from "./day-file-watch";
 
 const log = createLogger("agent-message-log");
 
@@ -124,7 +124,7 @@ export function appendAgentMessageLog(project: Project, input: AgentMessageLogIn
 		return;
 	}
 	pruneIfNeeded(project, now);
-	noteLocalMessageLogAppend(messageLogDir(project));
+	noteLocalDayFileAppend(messageLogDir(project));
 	try {
 		getPushMessage()?.("agentMessageLogChanged", { projectId: project.id });
 	} catch (err) {

@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessageLocal: () => push }));
-import { noteLocalMessageLogAppend, stopAgentMessageLogWatches, watchAgentMessageLog } from "../agent-message-log-watch";
+import { watchAgentMessageLog } from "../agent-message-log-watch";
+import { noteLocalDayFileAppend, stopDayFileWatches } from "../day-file-watch";
 
 let root: string;
 let directory: string;
@@ -16,7 +17,7 @@ beforeEach(() => {
 	directory = join(root, "messages");
 	push.mockClear();
 });
-afterEach(() => { stopAgentMessageLogWatches(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { stopDayFileWatches(); rmSync(root, { recursive: true, force: true }); });
 
 describe("external message log appends", () => {
 	it("pushes a debounced invalidation for a real external append", async () => {
@@ -46,7 +47,7 @@ describe("external message log appends", () => {
 		watchAgentMessageLog("project", directory);
 		writeFileSync(join(directory, "readme.txt"), "unrelated");
 		writeFileSync(join(directory, "2026-09-05.jsonl"), "local append\n");
-		noteLocalMessageLogAppend(directory);
+		noteLocalDayFileAppend(directory);
 		await delay(300);
 		expect(push).not.toHaveBeenCalled();
 	});
@@ -56,7 +57,7 @@ describe("external message log appends", () => {
 		watchAgentMessageLog("project", directory);
 		writeFileSync(join(directory, "2026-09-05.jsonl"), "pending\n");
 		await delay(20);
-		stopAgentMessageLogWatches();
+		stopDayFileWatches();
 		await delay(200);
 		expect(push).not.toHaveBeenCalled();
 	});
@@ -66,8 +67,10 @@ describe("external message log appends", () => {
 it("observes an external append in the actual Bun runtime", () => {
 	const watcherModule = new URL("../agent-message-log-watch.ts", import.meta.url).href;
 	const pushModule = new URL("../rpc-handlers/shared-pure.ts", import.meta.url).href;
+	const dayWatchModule = new URL("../day-file-watch.ts", import.meta.url).href;
 	const script = `
-		import { watchAgentMessageLog, stopAgentMessageLogWatches } from ${JSON.stringify(watcherModule)};
+		import { watchAgentMessageLog } from ${JSON.stringify(watcherModule)};
+		import { stopDayFileWatches } from ${JSON.stringify(dayWatchModule)};
 		import { setPushMessage } from ${JSON.stringify(pushModule)};
 		import * as fs from "node:fs";
 		const directory = ${JSON.stringify(root)};
@@ -80,7 +83,7 @@ it("observes an external append in the actual Bun runtime", () => {
 		watchAgentMessageLog("bun-proof", directory);
 		setTimeout(() => fs.appendFileSync(file, "external\\n"), 300);
 		setTimeout(() => {
-			stopAgentMessageLogWatches();
+			stopDayFileWatches();
 			console.log(count);
 			process.exit(count === 1 ? 0 : 1);
 		}, 2500);
