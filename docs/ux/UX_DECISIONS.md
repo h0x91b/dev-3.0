@@ -11,6 +11,12 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-08 — Three presentations; a stage's sub-mode stays on its stage
+
+Bible 5.9 counts three, and a sub-mode of one presentation never moves to the shared toolbar. Yaml
+`allowed` folds the per-presentation tokens into `stage_visualization` + `stage_scene_mode`. Why:
+`decisions/2026/09/08/strata-carries-only-recorded-facts.md`.
+
 ## 2026-09-08 — Agent traffic becomes the ninth destination, not an overlay
 
 Routed screen under the standard header with Back/Forward and a fixed anonymous screen path; entry autoplays the trailing hour once. Reverses the 2026-08-25 "still an overlay" ruling — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/08/agent-traffic-becomes-a-destination.md`.
