@@ -745,6 +745,33 @@ export default function TrafficNodes({
 				// document flow it lands on top of the caption — measured. It belongs to
 				// the timeline and the message list, where it is already readable.
 				if (!node) return null;
+				// Clear space in the anchor's own column: to the nearest card above and
+				// below, or to the stage edge when there is none. Scaled, because the
+				// cloud is measured in screen pixels and the cards are not — the whole
+				// reason a fixed-size cloud swamps a zoomed-out stage.
+				const column = scene.placed.filter(
+					(other) =>
+						other.node.key !== node.node.key &&
+						other.x < node.x + node.width &&
+						other.x + other.width > node.x,
+				);
+				const above = column
+					.filter((other) => other.y + other.height <= node.y)
+					.map((other) => node.y - (other.y + other.height));
+				const below = column
+					.filter((other) => other.y >= node.y + node.height)
+					.map((other) => other.y - (node.y + node.height));
+				const stageHeight =
+					(frame.current?.clientHeight ?? 0) / (view.scale || 1);
+				const room = {
+					above:
+						(above.length ? Math.min(...above) : node.y) * view.scale,
+					below:
+						(below.length
+							? Math.min(...below)
+							: Math.max(0, stageHeight - (node.y + node.height))) *
+						view.scale,
+				};
 				// Placement stays `auto`, and that is a measured decision rather than a
 				// default left alone.
 				//
@@ -771,6 +798,11 @@ export default function TrafficNodes({
 							// the card and the trail crosses its own title.
 							height: node.height * view.scale,
 						}}
+						// Compact on the stage: a fixed-size cloud swamps a zoomed-out
+						// stage, and the full text stays one click away in the list, which
+						// keeps its own `full` cloud.
+						density="compact"
+						room={room}
 						width={frame.current?.clientWidth ?? 1000}
 						height={frame.current?.clientHeight ?? 500}
 						onKnownTask={(endpoint) =>
