@@ -299,3 +299,41 @@ describe("the level axis is importable from one place", () => {
 		expect(notificationLevelKey(level)).toBe("traffic.notification.level.error");
 	});
 });
+
+describe("a notification with no task and no project", () => {
+	// Reported from combined QA as "the project allowlist drops project-less rows,
+	// so a notification sent without a task is invisible". The reader disproves it
+	// on disk (notification-log-read.test.ts: an allowlist always keeps a row with
+	// no project, and an EMPTY allowlist keeps exactly those). This is the other
+	// half: normalization and the level axis must not drop it either, so whatever
+	// swallowed it lives downstream of both.
+	const rows = [
+		notification({
+			level: "error",
+			message: "sent from a plain shell",
+			taskId: null, taskSeq: null, taskTitle: undefined,
+			projectId: null,
+			sourceTaskId: null, sourceSeq: null, sourceTitle: undefined, sourceProjectId: undefined,
+		}),
+	];
+
+	it("survives normalization with both endpoints null, rather than being dropped", () => {
+		const [event] = notificationEvents(rows);
+		expect(event).toBeDefined();
+		expect(event.target).toBeNull();
+		expect(event.origin).toBeNull();
+		expect(event.crossAddressed).toBe(false);
+	});
+
+	it("puts its level on the axis, so `error` cannot vanish from a control", () => {
+		const events = notificationEvents(rows);
+		expect(notificationCounts(events).byLevel.error).toBe(1);
+		expect(events.filter(event => notificationPassesLevels(event, new Set(["error"] as const)))).toHaveLength(1);
+	});
+
+	it("rides the timeline like any other notification", () => {
+		const [arm] = notificationTimelineEvents(notificationEvents(rows));
+		expect(arm.kind).toBe("notification");
+		expect(Number.isFinite(arm.at)).toBe(true);
+	});
+});

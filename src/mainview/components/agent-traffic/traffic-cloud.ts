@@ -12,6 +12,17 @@
  * `fill-rule="nonzero"`, which unions them. Stroking that would draw every
  * internal arc, so the rim is a SECOND copy of the same silhouette, grown by a
  * hair and painted behind — a clean outline with no inner lines.
+ *
+ * Three things make it read as a cloud rather than as a bumpy rectangle, and all
+ * three were measured against a render, not guessed:
+ *
+ * 1. A lobe has to be BIG relative to the box. At r=15 on a 300-wide cloud the
+ *    lobes are 5% of the width and the eye reads a dented rectangle.
+ * 2. The radii have to VARY. Uniform lobes read as machined scalloping; a short
+ *    repeating pattern of ratios gives the undulating edge a real cloud has.
+ * 3. The CORNERS need their own lobes. Lobe centres sit on the content box's
+ *    edges, so the box's four corners stick out past every neighbouring circle —
+ *    which is exactly the square shoulder the first version had.
  */
 
 /** One circle of the silhouette. */
@@ -38,12 +49,38 @@ export interface CloudGeometry {
 	tailHeight: number;
 }
 
-/** Radius of an edge lobe. Big enough to read as a cloud, small enough to stay tidy. */
-const LOBE_R = 15;
-/** Roughly how much edge one lobe covers; fewer, fatter lobes on a small cloud. */
-const LOBE_PITCH = 46;
+/**
+ * How wide a wrapping line inside the cloud may get.
+ *
+ * It caps the LINES, never the box the cloud is measured from: capping the box
+ * leaves a line that cannot wrap — the type/level/time head — measured at the
+ * cap and painted outside the silhouette. Measured in a browser, not reasoned
+ * about: the clock and the outcome pill both sat outside the cloud that way.
+ */
+export const CLOUD_TEXT_MAX_WIDTH = 250;
+
+/** Radius of the biggest lobe. Every other radius is a ratio of this. */
+const LOBE_R = 29;
+/** Roughly how much edge one lobe covers. Below ~1.5r the lobes stop reading apart. */
+const LOBE_PITCH = 42;
 /** How far the rim extends past the body. */
-const RIM = 1.25;
+const RIM = 1.5;
+/** Top lobes, left to right, as ratios of `LOBE_R` — the pattern repeats. */
+const TOP_RATIOS = [1, 0.7, 0.88, 0.64, 0.95];
+/** Bottom lobes: smaller, so the cloud is fluffy on top and settles underneath. */
+const BOTTOM_RATIOS = [0.5, 0.62, 0.46];
+const SIDE_RATIO = 0.68;
+const CORNER_RATIO = 0.7;
+/** Fraction of its own radius a top lobe rises above the box; the undulation. */
+const LIFT = 0.22;
+/** The same, downwards, for the bottom edge. Small — a cloud does not sag much. */
+const SAG = 0.05;
+/** Trail puffs as [sideways drift fraction, drop below the body, radius]. */
+const PUFFS: readonly [number, number, number][] = [
+	[0.24, 6, 11],
+	[0.6, 23, 7],
+	[0.9, 37, 4.2],
+];
 
 function circle(lobe: Lobe, grow = 0): string {
 	const r = lobe.r + grow;
@@ -76,39 +113,48 @@ function spread(length: number, min: number): number[] {
 export function cloudGeometry(contentWidth: number, contentHeight: number, options: { tail?: boolean } = {}): CloudGeometry {
 	const width = Math.max(40, contentWidth);
 	const height = Math.max(24, contentHeight);
-	const inset = LOBE_R + RIM;
+	// The furthest anything reaches past the box: a full-size top lobe, lifted.
+	const inset = LOBE_R * (1 + LIFT) + RIM;
 	const lobes: Lobe[] = [];
-	// Top and bottom edges carry most of the lobes; the sides get fewer, so a wide
-	// cloud does not turn into a lumpy circle.
-	for (const cx of spread(width, 3)) {
-		lobes.push({ cx: inset + cx, cy: inset, r: LOBE_R });
-		lobes.push({ cx: inset + cx, cy: inset + height, r: LOBE_R });
-	}
+	const columns = spread(width, TOP_RATIOS.length);
+	columns.forEach((cx, index) => {
+		const r = LOBE_R * TOP_RATIOS[index % TOP_RATIOS.length];
+		lobes.push({ cx: inset + cx, cy: inset - LIFT * r, r });
+	});
+	columns.forEach((cx, index) => {
+		const r = LOBE_R * BOTTOM_RATIOS[index % BOTTOM_RATIOS.length];
+		lobes.push({ cx: inset + cx, cy: inset + height + SAG * r, r });
+	});
 	for (const cy of spread(height, 1)) {
-		lobes.push({ cx: inset, cy: inset + cy, r: LOBE_R });
-		lobes.push({ cx: inset + width, cy: inset + cy, r: LOBE_R });
+		lobes.push({ cx: inset, cy: inset + cy, r: LOBE_R * SIDE_RATIO });
+		lobes.push({ cx: inset + width, cy: inset + cy, r: LOBE_R * SIDE_RATIO });
 	}
-	const middle = rect(inset, inset, width, height);
-	const middleRim = rect(inset, inset, width, height, RIM);
-	const body = middle + lobes.map(lobe => circle(lobe)).join("");
-	const bodyRim = middleRim + lobes.map(lobe => circle(lobe, RIM)).join("");
+	// One lobe per corner. Without these the content box's corners poke out of the
+	// silhouette and the cloud grows four square shoulders.
+	for (const [cx, cy] of [
+		[inset, inset],
+		[inset + width, inset],
+		[inset, inset + height],
+		[inset + width, inset + height],
+	]) {
+		lobes.push({ cx, cy, r: LOBE_R * CORNER_RATIO });
+	}
+	const body = rect(inset, inset, width, height) + lobes.map(lobe => circle(lobe)).join("");
+	const bodyRim = rect(inset, inset, width, height, RIM) + lobes.map(lobe => circle(lobe, RIM)).join("");
 
 	if (!options.tail) {
 		return { width: width + inset * 2, height: height + inset * 2, inset, body, bodyRim, tail: "", tailRim: "", tailHeight: 0 };
 	}
-	// Three shrinking puffs walking down from the cloud to the card it belongs to.
-	// They start near the centre, because the cloud is centred over that card, and
-	// drift only slightly sideways so the trail reads as a thought rather than as a
-	// speech tail pointing dead straight at it.
+	// Shrinking puffs walking down from the cloud to the card it belongs to. They
+	// start near the centre, because the cloud is centred over that card, and drift
+	// sideways so the trail reads as a thought rather than as a speech tail pointing
+	// dead straight at it.
 	const centre = inset + width / 2;
-	const drift = Math.min(26, width * 0.12);
-	const base = inset + height + LOBE_R;
-	const puffs: Lobe[] = [
-		{ cx: centre - drift * 0.35, cy: base + 3, r: 7.5 },
-		{ cx: centre - drift * 0.75, cy: base + 16, r: 5 },
-		{ cx: centre - drift, cy: base + 26, r: 3 },
-	];
-	const tailHeight = puffs[puffs.length - 1].cy + puffs[puffs.length - 1].r + RIM - (inset + height + inset);
+	const drift = Math.min(32, width * 0.15);
+	const base = inset + height + LOBE_R * Math.min(...BOTTOM_RATIOS) * 0.9;
+	const puffs: Lobe[] = PUFFS.map(([dx, dy, r]) => ({ cx: centre - drift * dx, cy: base + dy, r }));
+	const last = puffs[puffs.length - 1];
+	const tailHeight = last.cy + last.r + RIM - (inset + height + inset);
 	return {
 		width: width + inset * 2,
 		height: height + inset * 2 + Math.max(0, tailHeight),

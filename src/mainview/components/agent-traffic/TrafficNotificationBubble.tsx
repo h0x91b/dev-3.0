@@ -23,7 +23,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
-import { cloudGeometry } from "./traffic-cloud";
+import { CLOUD_TEXT_MAX_WIDTH, cloudGeometry } from "./traffic-cloud";
 import "./traffic-notification.css";
 
 const LEVEL_ICON = {
@@ -64,13 +64,31 @@ export function cloudSenderEndpoint(event: TrafficNotificationEvent): Notificati
 	return event.origin;
 }
 
-export default function TrafficNotificationBubble({ event, anchor, width, height, onKnownTask }: {
+export default function TrafficNotificationBubble({ event, anchor, width, height, placement = "auto", onKnownTask }: {
 	event: TrafficNotificationEvent;
-	/** Top-centre of the card to hang over, in canvas coordinates. Omit for flow. */
-	anchor?: { x: number; y: number };
+	/**
+	 * Top-centre of the card to hang over, in canvas coordinates. Omit for flow.
+	 *
+	 * `height` is the card's own height, and it only matters when the cloud hangs
+	 * BELOW: `y` is the card's top, so without it the cloud starts inside the card
+	 * and the thought trail is drawn across the card's own title. Measured, not
+	 * reasoned about — that is exactly what the first `below` render did.
+	 */
+	anchor?: { x: number; y: number; height?: number };
 	/** Canvas size, used to keep an anchored cloud on screen. */
 	width?: number;
 	height?: number;
+	/**
+	 * Which side of the card to hang on.
+	 *
+	 * `auto` hangs above and flips below only when the canvas has no room
+	 * overhead — the right default, and all this component can decide on its own.
+	 * It cannot decide more than that: whether the space above is actually EMPTY
+	 * depends on the other cards, and only the surface laying them out knows
+	 * where they are. So a stage that finds a cloud drawn across the card above
+	 * says `below` for that one rather than having this component guess.
+	 */
+	placement?: "auto" | "above" | "below";
 	/** Whether the board being shown has this card. Unknown when not supplied. */
 	onKnownTask?: (endpoint: NotificationEndpoint) => boolean;
 }) {
@@ -94,12 +112,13 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	const canvasWidth = width ?? 0;
 	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor });
 	// The cloud sits ABOVE the card by default, which is the whole point of it. It
-	// flips below only when there is not enough room overhead.
-	const below = !!anchor && anchor.y < cloud.height + 16;
-	const placement = anchor
+	// flips below when the canvas has no room overhead, or when the surface that
+	// owns the layout says so because something else occupies that space.
+	const below = !!anchor && (placement === "below" || (placement === "auto" && anchor.y < cloud.height + 16));
+	const position = anchor
 		? {
 			left: Math.max(cloud.width / 2 + 8, Math.min(canvasWidth - cloud.width / 2 - 8, anchor.x)),
-			top: below ? anchor.y + 14 : anchor.y - cloud.height - 6,
+			top: below ? anchor.y + (anchor.height ?? 0) + 14 : anchor.y - cloud.height - 6,
 		}
 		: null;
 	const offCanvas = !!anchor && (anchor.x < 0 || anchor.x > canvasWidth || anchor.y < 0 || anchor.y > (height ?? 0));
@@ -117,8 +136,8 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 			data-level={event.level}
 			data-outcome={event.outcome}
 			data-testid="traffic-notification"
-			style={placement
-				? { left: placement.left, top: placement.top, width: cloud.width, visibility: offCanvas ? "hidden" : undefined }
+			style={position
+				? { left: position.left, top: position.top, width: cloud.width, visibility: offCanvas ? "hidden" : undefined }
 				: { width: cloud.width }}
 		>
 			<svg className="traffic-cloud" viewBox={`0 0 ${cloud.width} ${cloud.height}`} width={cloud.width} height={cloud.height} aria-hidden="true">
@@ -147,9 +166,9 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 
 				{/* `title` carries the untruncated text — the clamp is visual only, and the
 				    data is never cut. */}
-				<div className="traffic-notification-body streamer-private" title={row.message}>{row.message}</div>
+				<div className="traffic-notification-body streamer-private" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }} title={row.message}>{row.message}</div>
 
-				<div className="traffic-notification-foot">
+				<div className="traffic-notification-foot" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }}>
 					{/* Sender, then subject when it differs or when there is no sender to
 					    name. "Not recorded" is a fact about the archive, never a claim
 					    that the call came from outside a worktree. */}

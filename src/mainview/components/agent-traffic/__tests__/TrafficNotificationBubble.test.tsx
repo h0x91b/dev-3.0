@@ -4,6 +4,7 @@ import type { NotificationLogRow } from "../../../../shared/notification-log";
 import { I18nProvider } from "../../../i18n";
 import { notificationEvents } from "../notification-event";
 import TrafficNotificationBubble, { cloudSenderEndpoint } from "../TrafficNotificationBubble";
+import { CLOUD_TEXT_MAX_WIDTH } from "../traffic-cloud";
 
 function notification(overrides: Partial<NotificationLogRow> = {}): NotificationLogRow {
 	return {
@@ -147,6 +148,28 @@ describe("TrafficNotificationBubble", () => {
 		expect(Number.parseFloat(cramped.style.top)).toBeGreaterThan(8);
 	});
 
+	it("hangs below on request, because only the stage knows the space above is taken", () => {
+		// Reported from the shared stage: a cloud anchored to a lower-band card was
+		// drawn upward across the card above it. Room on the CANVAS is all this
+		// component can measure; whether that room is empty is the layout's answer.
+		const forced = show(notification(), { anchor: { x: 400, y: 500 }, width: 1000, height: 600, placement: "below" });
+		expect(forced.classList.contains("is-below")).toBe(true);
+		expect(Number.parseFloat(forced.style.top)).toBeGreaterThan(500);
+	});
+
+	it("clears the card's own height when it hangs below, so the trail misses its title", () => {
+		// The first `below` render drew the puffs across the sender card's own title,
+		// because `anchor.y` is the card's TOP and the cloud started 14px under it.
+		const card = { x: 400, y: 500, height: 58 };
+		const clearing = show(notification(), { anchor: card, width: 1000, height: 900, placement: "below" });
+		expect(Number.parseFloat(clearing.style.top)).toBeGreaterThan(card.y + card.height);
+	});
+
+	it("obeys an explicit `above` even where it would have flipped on its own", () => {
+		const forced = show(notification(), { anchor: { x: 400, y: 8 }, width: 1000, height: 600, placement: "above" });
+		expect(forced.classList.contains("is-below")).toBe(false);
+	});
+
 	it("hides an anchor that sits off the canvas rather than drawing it at the edge", () => {
 		const bubble = show(notification(), { anchor: { x: -50, y: 300 }, width: 1000, height: 600 });
 		expect(bubble.style.visibility).toBe("hidden");
@@ -173,6 +196,24 @@ describe("TrafficNotificationBubble", () => {
 				sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined,
 			})]);
 			expect(cloudSenderEndpoint(event)).toBeNull();
+		});
+	});
+
+	describe("the measured box", () => {
+		// happy-dom reports every offsetWidth as 0, so the layout itself cannot be
+		// asserted here — but the ONE rule that broke it in a real render can be. The
+		// cloud is drawn around the measured content box, so capping the BOX while a
+		// line inside it cannot wrap leaves the measurement at the cap and paints that
+		// line outside the silhouette. Measured in a browser: the head's clock and the
+		// outcome pill both sat outside the cloud until the cap moved to the lines.
+		it("caps the wrapping lines, never the box the cloud is measured from", () => {
+			const bubble = show(notification({ outcome: "queued", suppressedBy: ["focusMode"] }));
+			const box = bubble.querySelector<HTMLElement>(".traffic-notification-content")!;
+			expect(box.style.maxWidth).toBe("");
+			for (const selector of [".traffic-notification-body", ".traffic-notification-foot"]) {
+				const line = bubble.querySelector<HTMLElement>(selector)!;
+				expect(line.style.maxWidth).toBe(`${CLOUD_TEXT_MAX_WIDTH}px`);
+			}
 		});
 	});
 });
