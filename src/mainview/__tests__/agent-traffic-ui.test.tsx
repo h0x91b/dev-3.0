@@ -1164,21 +1164,33 @@ it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s send
 	}
 });
 
-describe("Replay reconstructs task state at the cursor", () => {
+
+describe("Replay reconstructs the board at the cursor", () => {
 	const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 	const card = (seq: string) =>
 		screen.getAllByTestId("traffic-node-card").find(el => el.textContent?.includes(seq))!;
+	const counter = () => document.querySelector(".traffic-event-counter")!.textContent!.trim();
+	const readout = () => document.querySelector(".traffic-event-subject")!.textContent!;
 
 	/**
-	 * task-b is COMPLETED right now and its movements say it only got there ten
+	 * task-b is COMPLETED right now and its movements say it only got there fifteen
 	 * minutes ago. Every assertion below is about not letting the first fact leak
 	 * into the earlier part of the replay.
+	 *
+	 * The timeline that produces, oldest first:
+	 *   1 task  created        (-25)   task-b appears, To Do
+	 *   2 task  -> in-progress (-22)
+	 *   3 msg   to task-c      (-21)
+	 *   4 msg   First exchange (-20)
+	 *   5 task  -> completed   (-15)   ← a step with NO message anywhere near it
+	 *   6 msg   Second exchange(-10)
+	 * task-c has no movements at all, so it contributes no steps and no history.
 	 */
 	function setUpHistory() {
 		setPage([
-			row({ at: ago(10), subject: "Third exchange", toTaskId: "task-b", toSeq: 22 }),
-			row({ at: ago(20), subject: "Second exchange", toTaskId: "task-b", toSeq: 22 }),
-			row({ at: ago(30), subject: "First exchange", toTaskId: "task-c", toSeq: 33 }),
+			row({ at: ago(10), subject: "Second exchange", toTaskId: "task-b", toSeq: 22 }),
+			row({ at: ago(20), subject: "First exchange", toTaskId: "task-b", toSeq: 22 }),
+			row({ at: ago(21), subject: "Sidebar note", toTaskId: "task-c", toSeq: 33 }),
 		]);
 		taskExtras.value = {
 			"task-b": {
@@ -1189,7 +1201,6 @@ describe("Replay reconstructs task state at the cursor", () => {
 					{ id: "m3", at: ago(15), kind: "status", from: "in-progress", to: "completed", fromColumnId: null, toColumnId: null },
 				],
 			},
-			// No movements at all — the pre-capture majority.
 			"task-c": { status: "in-progress" },
 		};
 	}
@@ -1203,32 +1214,64 @@ describe("Replay reconstructs task state at the cursor", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Pause replay" }));
 	}
 
-	it("withholds a card until its recorded creation, then keeps the layout still", async () => {
+	async function next(times = 1) {
+		for (let i = 0; i < times; i++)
+			await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+	}
+
+	it("puts board movements on the timeline, so message-less intervals still advance", async () => {
 		await replayFromStart();
-		// Cursor at T-30, three minutes before task-b was created.
+		// Six steps: three movements and three messages, not just the three messages.
+		expect(counter()).toBe("1 / 6");
+		const kinds: string[] = [readout()];
+		for (let i = 0; i < 5; i++) { await next(); kinds.push(readout()); }
+		expect(kinds.map(text =>
+			text.includes("Task created") ? "created"
+				: text.includes("Board move") ? "move"
+					: "message",
+		)).toEqual(["created", "move", "message", "message", "move", "message"]);
+		// Step 5 is a movement with no message anywhere near it — the case a
+		// message-indexed cursor could not express at all.
+		expect(counter()).toBe("6 / 6");
+	});
+
+	it("withholds a card until its recorded creation, then keeps the layout still", async () => {
+		setUpHistory();
+		// One extra message BEFORE task-b was created, so there is a step to stand on
+		// while the card does not exist yet.
+		setPage([
+			row({ at: ago(10), subject: "Second exchange", toTaskId: "task-b", toSeq: 22 }),
+			row({ at: ago(20), subject: "First exchange", toTaskId: "task-b", toSeq: 22 }),
+			row({ at: ago(21), subject: "Sidebar note", toTaskId: "task-c", toSeq: 33 }),
+			row({ at: ago(40), subject: "Before it existed", toTaskId: "task-c", toSeq: 33 }),
+		]);
+		renderLog();
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+		await userEvent.click(play);
+		await userEvent.click(screen.getByRole("button", { name: "Pause replay" }));
+
 		const early = card("#22");
 		expect(early.getAttribute("data-unborn")).toBe("true");
 		expect(early.getAttribute("aria-hidden")).toBe("true");
 		expect(early.getAttribute("tabindex")).toBe("-1");
 		const box = (el: Element) =>
-			(el as HTMLElement).getAttribute("style")!.match(/(left|top|width|height): [^;]+/g);
+			el.getAttribute("style")!.match(/(left|top|width|height): [^;]+/g);
 		const frozen = box(early);
 
-		await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+		await next();
 		const born = card("#22");
 		expect(born.getAttribute("data-unborn")).toBeNull();
 		expect(born.getAttribute("aria-hidden")).toBeNull();
-		// Same absolute box: the card fades in, the stage does not reflow. Only its
-		// status colour moves, which is the point.
-		expect(box(born)).toEqual(frozen);
-		// Same element, kept in place rather than mounted fresh at its birth.
+		// Same element, same absolute box: the card fades in, the stage does not reflow.
 		expect(born).toBe(early);
+		expect(box(born)).toEqual(frozen);
 	});
 
 	it("never reads the current completed status back into the past", async () => {
 		await replayFromStart();
-		await userEvent.click(screen.getByRole("button", { name: "Next message" }));
-		// T-20: recorded state is in-progress even though the card is completed now.
+		expect(card("#22").textContent).toContain("To Do");
+		await next();
 		expect(card("#22").textContent).toContain("Agent is Working");
 		expect(card("#22").textContent).not.toContain("Completed");
 		expect(card("#22").className).not.toContain("is-completed");
@@ -1237,8 +1280,7 @@ describe("Replay reconstructs task state at the cursor", () => {
 
 	it("stamps the card at the recorded completion and unstamps it scrubbing back", async () => {
 		await replayFromStart();
-		await userEvent.click(screen.getByRole("button", { name: "Next message" }));
-		await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+		await next(4);
 		const stamped = card("#22");
 		expect(stamped.className).toContain("is-completed");
 		const stamp = stamped.querySelector(".traffic-node-stamp")!;
@@ -1250,13 +1292,31 @@ describe("Replay reconstructs task state at the cursor", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Previous message" }));
 		expect(card("#22").className).not.toContain("is-completed");
 		expect(card("#22").querySelector(".traffic-node-stamp")).toBeNull();
+		expect(card("#22").textContent).toContain("Agent is Working");
 	});
 
-	it("marks a task with no recorded history instead of inventing one", async () => {
+	it("walks backwards through exactly the states it walked forwards", async () => {
 		await replayFromStart();
+		const state = () => card("#22").textContent!.replace(/Current task overview.*$/, "");
+		const forward: string[] = [state()];
+		for (let i = 0; i < 5; i++) { await next(); forward.push(state()); }
+		const backward: string[] = [state()];
+		for (let i = 0; i < 5; i++) {
+			await userEvent.click(screen.getByRole("button", { name: "Previous message" }));
+			backward.push(state());
+		}
+		expect([...backward].reverse()).toEqual(forward);
+	});
+
+	it("renders an unrecorded past as unknown, not as today's status", async () => {
+		await replayFromStart();
+		// task-c is in-progress NOW and has no movements. It must not show that.
 		expect(card("#33").getAttribute("data-history")).toBe("unrecorded");
-		expect(card("#33").textContent).toContain("History not recorded");
-		// The card is still shown: we cannot know it did not exist.
+		expect(card("#33").textContent).toContain("Status not recorded");
+		expect(card("#33").textContent).not.toContain("Agent is Working");
+		// No status colour either — an unknown past is neutral, not tinted.
+		expect(card("#33").getAttribute("style")).toContain("--node-status: rgb(var(--text-tertiary))");
+		// Still shown: we cannot know it did not exist.
 		expect(card("#33").getAttribute("data-unborn")).toBeNull();
 		expect(card("#22").getAttribute("data-history")).toBeNull();
 	});
@@ -1266,7 +1326,7 @@ describe("Replay reconstructs task state at the cursor", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		await waitFor(() => expect(card("#22").className).toContain("is-completed"));
 		expect(card("#33").getAttribute("data-history")).toBeNull();
-		expect(card("#33").textContent).not.toContain("History not recorded");
+		expect(card("#33").textContent).toContain("Agent is Working");
 		expect(
 			screen.getAllByTestId("traffic-node-card").some(el => el.getAttribute("data-unborn")),
 		).toBe(false);

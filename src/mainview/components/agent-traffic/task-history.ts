@@ -20,15 +20,23 @@
  */
 
 import type { Task, TaskMovement, TaskStatus } from "../../../shared/types";
+import type { TrafficTimelineEventKind } from "./traffic-timeline";
 
 /** Where replay is standing in time. `at === null` means live — no cursor at all. */
 export interface ReplayCursor {
-	/** Epoch ms of the record being shown, or null when live. */
+	/**
+	 * Epoch ms of the event being shown, or null when live. This is the value to
+	 * select by — a card's state, a notification bubble's visibility. Never the
+	 * index: an index into messages cannot express an interval where the board
+	 * moved and nobody said anything.
+	 */
 	at: number | null;
 	/** Index into the playback event list; -1 when live. */
 	index: number;
 	total: number;
 	playing: boolean;
+	/** Which kind of event the cursor is standing on; null when live. */
+	kind: TrafficTimelineEventKind | null;
 }
 
 /**
@@ -47,8 +55,15 @@ export type TaskHistoryConfidence = "recorded" | "partial" | "unrecorded";
 export interface TaskProjection {
 	/** False only when we KNOW the card did not exist yet. Never false on a guess. */
 	present: boolean;
-	/** Status at the cursor. The live status when confidence is `unrecorded`. */
-	status: TaskStatus;
+	/**
+	 * Status at the cursor, or `null` for NOT KNOWN.
+	 *
+	 * `null` is never a stand-in for the live status. Showing the current status with
+	 * a disclaimer beside it was the original shape and was ruled out: a green
+	 * "Completed" card reads as history whatever the small print says. A caller must
+	 * render `null` neutrally and must never substitute `task.status`.
+	 */
+	status: TaskStatus | null;
 	/** Custom column at the cursor, or null. */
 	columnId: string | null;
 	confidence: TaskHistoryConfidence;
@@ -73,23 +88,23 @@ export function projectTaskAt(
 	task: Task | undefined,
 	at: number | null,
 ): TaskProjection {
-	if (!task) {
+	const unknown: TaskProjection = {
+		present: true,
+		status: null,
+		columnId: null,
+		confidence: "unrecorded",
+	};
+	if (!task) return unknown;
+	if (at === null) {
 		return {
 			present: true,
-			status: "todo",
-			columnId: null,
-			confidence: "unrecorded",
+			status: task.status,
+			columnId: task.customColumnId ?? null,
+			confidence: "recorded",
 		};
 	}
-	const live: TaskProjection = {
-		present: true,
-		status: task.status,
-		columnId: task.customColumnId ?? null,
-		confidence: "recorded",
-	};
-	if (at === null) return live;
 	const movements = task.movements?.length ? sorted(task.movements) : null;
-	if (!movements) return { ...live, confidence: "unrecorded" };
+	if (!movements) return unknown;
 
 	const complete =
 		movements[0].kind === "created" && !(task.movementsDropped ?? 0);
@@ -121,7 +136,9 @@ export function projectTaskAt(
 	}
 	return {
 		present: true,
-		status: first.from ?? task.status,
+		// `from` is recorded evidence about the past, so it is used. Its absence is
+		// not an excuse to reach for the live status — that stays unknown.
+		status: first.from ?? null,
 		columnId: first.fromColumnId ?? null,
 		confidence: "partial",
 	};

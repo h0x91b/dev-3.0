@@ -34,6 +34,7 @@ import {
 	routeKey,
 	type TrafficRecord,
 } from "./traffic-model";
+import { buildTimeline } from "./traffic-timeline";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
@@ -258,22 +259,39 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			),
 		[timeRows, filter, pair, query],
 	);
+	// Task movements ride the same timeline as messages, so an hour where the board
+	// moved and nobody said anything still has steps to play. The window bounds are
+	// applied here rather than inside the builder's caller so every arm is clipped
+	// by exactly the same interval.
+	const timeline = useMemo(
+		() =>
+			buildTimeline({
+				records: replayRecords,
+				tasks: scope === "all" ? data.tasks : data.tasks.filter((task) => task.projectId === scope),
+				start,
+				end,
+			}),
+		[replayRecords, data.tasks, scope, start, end],
+	);
 	const playback = useTrafficPlayback(
-		replayRecords,
+		timeline,
 		experiment === "2",
 		`${scope}:${windowSize}:${filter}:${pair}:${query}`,
 	);
 	const graphRecords =
 		playback.index < 0
 			? replayRecords
-			: playback.events.slice(0, playback.index + 1);
+			: playback.events
+					.slice(0, playback.index + 1)
+					.flatMap((event) => (event.kind === "message" ? [event.record] : []));
+	const cursorAt = playback.cursor.at;
 	const visible = useMemo(
 		() =>
 			timeRows.filter(({ row }) => {
 				if (
 					experiment === "2" &&
-					playback.current &&
-					Date.parse(row.at) > Date.parse(playback.current.row.at)
+					cursorAt !== null &&
+					Date.parse(row.at) > cursorAt
 				)
 					return false;
 				if (filter !== "all" && row.status !== filter) return false;
@@ -284,7 +302,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					.toLocaleLowerCase()
 					.includes(query.toLocaleLowerCase());
 			}),
-		[timeRows, filter, pair, selected, query, experiment, playback.current],
+		[timeRows, filter, pair, selected, query, experiment, cursorAt],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(

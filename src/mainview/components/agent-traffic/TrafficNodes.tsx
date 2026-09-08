@@ -31,6 +31,7 @@ import {
 	type TrafficNode,
 	type TrafficRecord,
 } from "./traffic-model";
+import type { TrafficTimelineEvent } from "./traffic-timeline";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
@@ -73,6 +74,17 @@ const DROP_FADE_MS = 200;
 const FOLLOW_IDLE_MS = 3500;
 const MIN_SCALE = 0.14;
 
+/** Latest message on the timeline, for the camera and the wire that only speak messages. */
+function lastMessageRecord(
+	events?: TrafficTimelineEvent[],
+): TrafficRecord | undefined {
+	for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+		const event = events![i];
+		if (event.kind === "message") return event.record;
+	}
+	return undefined;
+}
+
 export default function TrafficNodes({
 	nodes,
 	records,
@@ -109,21 +121,31 @@ export default function TrafficNodes({
 			result.set(node.key, projectTaskAt(node.task, cursorAt));
 		return result;
 	}, [nodes, cursorAt]);
+	// Every card the timeline touches, whichever kind of event touched it: a task
+	// event names its own card, a message names both ends.
 	const replayKeys = new Set(
 		replaying
-			? playback.events.flatMap((record) => [
-					fromKey(record.row),
-					toKey(record.row),
-				])
+			? playback.events.flatMap((event) =>
+					event.kind === "message"
+						? [fromKey(event.record.row), toKey(event.record.row)]
+						: event.kind === "task"
+							? [event.nodeKey]
+							: [],
+				)
 			: [],
 	);
 	const followedRecord = follow
-		? (playback?.current ?? playback?.events[playback.events.length - 1])
+		? (playback?.currentRecord ?? lastMessageRecord(playback?.events))
 		: undefined;
+	const followedTaskKey =
+		follow && playback?.current?.kind === "task"
+			? playback.current.nodeKey
+			: undefined;
 	const replayParked = nodes.some(
 		(node) =>
 			node.task?.hibernated &&
 			(replayKeys.has(node.key) ||
+				node.key === followedTaskKey ||
 				(followedRecord &&
 					[fromKey(followedRecord.row), toKey(followedRecord.row)].includes(
 						node.key,
@@ -318,6 +340,26 @@ export default function TrafficNodes({
 		[nodeByKey, edgeByKey, move, reduced, sceneBounds, playback?.playing, playback?.intervalMs],
 	);
 
+	/**
+	 * Frame one card, for a timeline step that names a card rather than a pair — a
+	 * recorded board movement. Same camera helper as `exchange`, so a task step and
+	 * a message step move the view in the same way rather than two ways.
+	 */
+	const frameCard = useCallback(
+		(nodeKey: string) => {
+			const viewport = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
+			const node = nodeByKey.get(nodeKey);
+			if (!viewport.width || !viewport.height || !node) return;
+			overviewMode.current = false;
+			move(
+				frameExchange(viewport, [node], [], sceneBounds),
+				reduced,
+				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
+			);
+		},
+		[nodeByKey, move, reduced, sceneBounds, playback?.playing, playback?.intervalMs],
+	);
+
 	const launch = useCallback(
 		(record: TrafficRecord) => {
 			const from = fromKey(record.row),
@@ -336,22 +378,32 @@ export default function TrafficNodes({
 	launchRef.current = launch;
 	const exchangeRef = useRef(exchange);
 	exchangeRef.current = exchange;
+	const frameCardRef = useRef(frameCard);
+	frameCardRef.current = frameCard;
 	resizeFollow.current = follow && ready ? () => {
 		if (overviewMode.current || !followedRecord) fitRef.current(true);
 		else exchange(followedRecord);
 	} : null;
 	useEffect(() => {
 		setFlights([]);
-		if (!playback?.current) return;
-		launchRef.current(playback.current);
+		// Only a message flies. A task or notification step legitimately launches
+		// nothing, and must not re-fly the previous message.
+		if (playback?.current?.kind !== "message") return;
+		launchRef.current(playback.current.record);
 	}, [playback?.revision, replaying]);
 	useEffect(() => {
 		if (!follow) return;
 		if (!ready) return;
-		const event =
-			playback?.current ?? playback?.events[playback.events.length - 1];
-		if (event && (replaying || Date.now() - Date.parse(event.row.at) < FOLLOW_IDLE_MS)) {
-			exchangeRef.current(event);
+		const current = playback?.current;
+		if (current?.kind === "task") {
+			frameCardRef.current(current.nodeKey);
+			return;
+		}
+		const event = current ?? playback?.events[playback.events.length - 1];
+		const record =
+			event?.kind === "message" ? event.record : lastMessageRecord(playback?.events);
+		if (event && record && (replaying || Date.now() - event.at < FOLLOW_IDLE_MS)) {
+			exchangeRef.current(record);
 		} else {
 			overviewMode.current = true;
 			fitRef.current();
@@ -388,7 +440,7 @@ export default function TrafficNodes({
 		if (!follow || !ready || (replaying && !playback?.playing && !playback?.ended)) return;
 		const latest = playback?.events[playback.events.length - 1];
 		const delay = playback?.ended || !latest ? 0 : replaying ? FOLLOW_IDLE_MS :
-			Math.max(0, FOLLOW_IDLE_MS - (Date.now() - Date.parse(latest.row.at)));
+			Math.max(0, FOLLOW_IDLE_MS - (Date.now() - latest.at));
 		const timer = setTimeout(() => {
 			overviewMode.current = true;
 			fitRef.current();
@@ -455,7 +507,13 @@ export default function TrafficNodes({
 		});
 	};
 	const drag = useRef<{ id: number; x: number; y: number } | null>(null);
-	const active = playback?.ended ? undefined : playback?.current ?? flights[flights.length - 1]?.record;
+	// The lit wire and its subject bubble are message-only. On a task step the wire
+	// that was lit stays lit rather than blanking, and no new one lights up.
+	const active = playback?.ended
+		? undefined
+		: playback?.current?.kind === "message"
+			? playback.current.record
+			: (playback?.currentRecord ?? flights[flights.length - 1]?.record);
 	const activeFrom = active && fromKey(active.row),
 		activeTo = active && toKey(active.row);
 	const activeEdge =
@@ -627,11 +685,14 @@ export default function TrafficNodes({
 								scale={view.scale}
 								projection={projection}
 								replaying={replaying}
+								// A null status leaves both undefined, so the card falls back
+								// to the neutral tertiary ink. An unknown past must never be
+								// painted in a status colour.
 								statusColor={
-									placed.node.task ? colors[projection.status] : undefined
+									projection.status ? colors[projection.status] : undefined
 								}
 								inkColor={
-									placed.node.task ? ink[projection.status] : undefined
+									projection.status ? ink[projection.status] : undefined
 								}
 								project={projectById.get(placed.node.projectId)}
 								latest={latest.get(placed.node.key)}
@@ -770,15 +831,18 @@ function Card({
 	// Every status the card shows comes from the projection, never from
 	// `node.task.status` — reading the live status here is exactly the bug.
 	const finished =
-		node.task &&
-		(projection.status === "completed" || projection.status === "cancelled")
+		projection.status === "completed" || projection.status === "cancelled"
 			? projection.status
 			: null;
 	const state = placed.parked
 		? t("task.hibernatedBadge")
-		: node.task
+		: projection.status
 			? getStatusLabel(projection.status, t, project)
-			: t("traffic.orbit.historical");
+			: node.task
+				? // Known to be a task, unknown what state it was in. Said plainly
+					// instead of borrowing today's status for the past.
+					t("traffic.node.statusUnrecorded")
+				: t("traffic.orbit.historical");
 	// Kept in the DOM at its frozen position so cards appear without the layout
 	// reflowing around them; hidden from the accessibility tree and untabbable
 	// while it has not happened yet.

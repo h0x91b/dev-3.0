@@ -63,15 +63,30 @@ describe("projectTaskAt", () => {
 		expect(projectTaskAt(subject, ms(90) - 1)).toMatchObject({ present: false });
 	});
 
-	it("never passes a live status off as history when nothing was recorded", () => {
+	it("renders unknown rather than the live status when nothing was recorded", () => {
 		const subject = task({ status: "completed" });
-		const projection = projectTaskAt(subject, ms(600));
-		// The status is still shown — it is the only one we have — but it is labelled
-		// unrecorded, and the card is present because we cannot know it was not.
-		expect(projection).toEqual({
-			present: true, status: "completed", columnId: null, confidence: "unrecorded",
+		// The card is completed NOW. Nothing about the past is known, so the status
+		// is null — not "completed with a disclaimer", which reads as history to
+		// anyone glancing at a green card. The card stays present because we cannot
+		// know it did not exist.
+		expect(projectTaskAt(subject, ms(600))).toEqual({
+			present: true, status: null, columnId: null, confidence: "unrecorded",
 		});
-		expect(projectTaskAt(task({ status: "todo", movements: [] }), ms(600)).confidence).toBe("unrecorded");
+		expect(projectTaskAt(task({ status: "todo", movements: [] }), ms(600))).toEqual({
+			present: true, status: null, columnId: null, confidence: "unrecorded",
+		});
+		// Live is not a reconstruction, so there the real status is the answer.
+		expect(projectTaskAt(subject, null)).toMatchObject({ status: "completed", confidence: "recorded" });
+	});
+
+	it("leaves the status unknown when a partial record has no `from` to salvage", () => {
+		const subject = task({
+			status: "review-by-user",
+			movements: [{ id: "x", at: at(40), kind: "column", to: "in-progress", toColumnId: "hold" }],
+		});
+		expect(projectTaskAt(subject, ms(80))).toEqual({
+			present: true, status: null, columnId: null, confidence: "partial",
+		});
 	});
 
 	it("salvages the pre-capture status from the first movement's `from`", () => {
@@ -97,7 +112,7 @@ describe("projectTaskAt", () => {
 
 	it("keeps a task that no longer exists present and honestly unknown", () => {
 		expect(projectTaskAt(undefined, ms(60))).toEqual({
-			present: true, status: "todo", columnId: null, confidence: "unrecorded",
+			present: true, status: null, columnId: null, confidence: "unrecorded",
 		});
 		expect(projectTaskAt(undefined, null)).toMatchObject({ confidence: "unrecorded" });
 	});
