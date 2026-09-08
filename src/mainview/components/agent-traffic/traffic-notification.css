@@ -1,31 +1,20 @@
 /*
- * Notification bubbles on the traffic timeline.
+ * Notification thought clouds on the traffic timeline.
  *
- * Its own file rather than an addition to traffic-nodes.css: the bubble is
+ * Its own file rather than an addition to traffic-nodes.css: the cloud is
  * rendered by whichever traffic surface holds the cursor, and a stylesheet that
  * belongs to one of those surfaces would make the other one depend on it.
  *
- * Colour is the whole point of the component, so it is carried by ONE custom
- * property set from `data-level` — semantic tokens only, never a literal.
+ * The silhouette is an SVG behind the text (see traffic-cloud.ts) — nothing here
+ * draws the shape. Colour is the whole point of the component, so it is carried
+ * by ONE custom property set from `data-level`: semantic tokens only, never a
+ * literal.
  */
 
 .traffic-notification {
 	--notification-tone: var(--accent);
 	position: relative;
 	z-index: 3;
-	display: flex;
-	flex-direction: column;
-	gap: 5px;
-	width: max-content;
-	max-width: 320px;
-	padding: 9px 13px;
-	border-radius: 12px;
-	background: rgb(var(--surface-overlay));
-	/* Layered transparent shadow, not a border: the ring is depth plus tone, and
-	   a real border here would read as structure the bubble does not have. */
-	box-shadow:
-		0 8px 25px rgb(0 0 0 / 0.2),
-		inset 0 0 0 1px rgb(var(--notification-tone) / 0.35);
 	text-align: left;
 }
 
@@ -33,20 +22,41 @@
 .traffic-notification[data-level="info"] { --notification-tone: var(--accent); }
 .traffic-notification[data-level="error"] { --notification-tone: var(--danger); }
 
-/* Anchored to a node on the canvas; the inline variant keeps document flow. */
+/* Hanging over a card on the canvas; the flow variant keeps document flow. */
 .traffic-notification.is-anchored {
 	position: absolute;
 	pointer-events: none;
-	transform: translate(-50%, -100%);
-}
-.traffic-notification.is-anchored.is-below {
-	transform: translate(-50%, 0);
+	transform: translateX(-50%);
 }
 
+.traffic-cloud {
+	display: block;
+	overflow: visible;
+	filter: drop-shadow(0 10px 22px rgb(0 0 0 / 0.28));
+}
+/* Below the card, the trail of puffs has to point up at it instead of down. */
+.traffic-notification.is-below .traffic-cloud {
+	transform: scaleY(-1);
+}
+.traffic-cloud-body {
+	fill: rgb(var(--surface-overlay));
+}
+.traffic-cloud-rim {
+	fill: rgb(var(--notification-tone) / 0.55);
+}
+
+.traffic-notification-content {
+	position: absolute;
+	width: max-content;
+	max-width: 250px;
+}
 .traffic-notification-head {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	/* The type line is one label; breaking "IN-APP" across two lines reads as
+	   two different words. */
+	white-space: nowrap;
 	color: rgb(var(--notification-tone));
 	font: 10px var(--dev3-mono-stack);
 	letter-spacing: 0.02em;
@@ -74,6 +84,7 @@
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 	overflow-wrap: anywhere;
+	margin: 4px 0;
 	color: rgb(var(--text-primary));
 	font-size: 13px;
 	font-weight: 500;
@@ -84,7 +95,7 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 4px 8px;
+	gap: 3px 8px;
 	color: rgb(var(--text-secondary));
 	font-size: 10px;
 }
@@ -106,111 +117,25 @@
 	color: rgb(var(--danger-strong));
 }
 
-.traffic-notification-tail {
-	position: absolute;
-	bottom: -22px;
-	overflow: visible;
-	fill: rgb(var(--surface-overlay));
-	stroke: rgb(var(--notification-tone) / 0.35);
-	stroke-width: 1px;
-}
-.traffic-notification.is-below .traffic-notification-tail {
-	bottom: auto;
-	top: -22px;
-	transform: scaleY(-1);
-}
-
 /* Entrance: the cursor crossing this event is the only thing that spawns the
-   bubble, so the motion is what tells the eye WHEN it happened. */
+   cloud, so the motion is what tells the eye WHEN it happened. */
 @keyframes traffic-notification-in {
 	from { opacity: 0; transform: scale(0.94); filter: blur(4px); }
 	to { opacity: 1; transform: scale(1); filter: blur(0); }
-}
-.traffic-notification {
-	animation: traffic-notification-in 220ms cubic-bezier(0.2, 0, 0, 1);
-}
-.traffic-notification.is-anchored {
-	/* The anchored variant already owns `transform`, so it animates opacity and
-	   blur only — animating both would fight the translate that positions it. */
-	animation-name: traffic-notification-in-anchored;
 }
 @keyframes traffic-notification-in-anchored {
 	from { opacity: 0; filter: blur(4px); }
 	to { opacity: 1; filter: blur(0); }
 }
+.traffic-notification {
+	animation: traffic-notification-in 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.traffic-notification.is-anchored {
+	/* The anchored variant already owns `transform` for its centring, so it
+	   animates opacity and blur only rather than fighting the translate. */
+	animation-name: traffic-notification-in-anchored;
+}
 
 @media (prefers-reduced-motion: reduce) {
 	.traffic-notification { animation: none; }
-}
-
-/* ── the standalone preview shell (`?notificationPreview=1`) ─────────────── */
-
-.notification-preview {
-	position: fixed;
-	inset: 0;
-	z-index: 9999;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	overflow-y: auto;
-	padding: 16px 20px 28px;
-	background: rgb(var(--surface-base));
-	color: rgb(var(--text-primary));
-	font-size: 13px;
-}
-.notification-preview header {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 6px 16px;
-	color: rgb(var(--text-secondary));
-	font-size: 11px;
-}
-.notification-preview header strong {
-	color: rgb(var(--text-primary));
-	font-size: 15px;
-}
-.notification-preview-canvas {
-	position: relative;
-	flex-shrink: 0;
-	height: 320px;
-	border-radius: 12px;
-	background:
-		radial-gradient(circle at 1px 1px, rgb(var(--border-default) / 0.35) 1px, transparent 0) 0 0 / 18px 18px,
-		rgb(var(--surface-raised) / 0.5);
-}
-.notification-preview-controls {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-}
-.notification-preview-controls button {
-	padding: 4px 10px;
-	border-radius: 8px;
-	background: rgb(var(--surface-elevated));
-	color: rgb(var(--text-primary));
-	font-size: 12px;
-	transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
-}
-.notification-preview-controls button:active {
-	transform: scale(0.96);
-}
-.notification-preview-controls input[type="range"] {
-	flex: 1;
-	min-width: 220px;
-}
-.notification-preview-controls time {
-	color: rgb(var(--text-secondary));
-	font: 11px var(--dev3-mono-stack);
-}
-.notification-preview-list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
-	list-style: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.notification-preview-controls button { transition: none; }
 }

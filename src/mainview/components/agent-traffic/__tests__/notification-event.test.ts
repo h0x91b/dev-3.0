@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { NotificationLogRow } from "../../../../shared/notification-log";
-import type { AgentMessageLogRow } from "../../../../shared/agent-message-log";
 import {
-	TIMELINE_KIND_RANK,
-	mergeTrafficTimeline,
+	NOTIFICATION_LEVELS,
+	notificationCounts,
 	notificationEvents,
+	notificationLevelKey,
+	notificationPassesLevels,
 	notificationTimelineEvents,
 	notificationsAt,
-	type TrafficTimelineEvent,
 } from "../notification-event";
-import { trafficRecords } from "../traffic-model";
 
 function notification(overrides: Partial<NotificationLogRow> = {}): NotificationLogRow {
 	return {
@@ -94,11 +93,53 @@ describe("notificationEvents", () => {
 		expect(new Set(events.map(event => event.key)).size).toBe(2);
 	});
 
-	it("a prepended row cannot renumber the keys of older ones", () => {
-		const old = notification({ message: "same" });
-		const before = notificationEvents([old, old]).map(event => event.key);
-		const after = notificationEvents([notification({ at: "2026-09-08T10:00:00.000Z" }), old, old]);
-		expect(after.slice(0, 2).map(event => event.key)).toEqual(before);
+	describe("stable identity", () => {
+		// The page arrives newest-first and is truncated at `limit` from the OLD end,
+		// so every one of these is a different way for a key to move.
+		const twin = notification({ message: "identical twin" });
+
+		it("re-reading the same page yields the same keys", () => {
+			const page = newestFirst(
+				notification({ at: "2026-09-07T09:00:00.000Z" }),
+				twin,
+				twin,
+				notification({ at: "2026-09-07T12:00:00.000Z" }),
+			);
+			expect(notificationEvents(page).map(event => event.key))
+				.toEqual(notificationEvents([...page]).map(event => event.key));
+		});
+
+		it("does not collapse two identical notifications into one", () => {
+			const events = notificationEvents([twin, twin, twin]);
+			expect(events).toHaveLength(3);
+			expect(new Set(events.map(event => event.key)).size).toBe(3);
+		});
+
+		it("a newer row prepended by a live append renumbers nothing", () => {
+			const before = notificationEvents([twin, twin]).map(event => event.key);
+			const after = notificationEvents([notification({ at: "2026-09-08T10:00:00.000Z" }), twin, twin]);
+			// The two twins keep their keys; only the arrival is new.
+			expect(after.slice(0, 2).map(event => event.key)).toEqual(before);
+		});
+
+		it("a longer page revealing an OLDER identical row renumbers nothing", () => {
+			// This is the case a page-relative index gets wrong: the short page held two
+			// twins, `load more` reveals a third, older one.
+			const shortPage = notificationEvents([twin, twin]).map(event => event.key);
+			const longPage = notificationEvents([twin, twin, twin]).map(event => event.key);
+			expect(longPage.slice(1)).toEqual(shortPage);
+		});
+
+		it("keys stay unique across a page that mixes twins with ordinary rows", () => {
+			const events = notificationEvents(newestFirst(
+				notification({ at: "2026-09-07T08:00:00.000Z" }),
+				twin,
+				notification({ at: "2026-09-07T10:00:00.000Z" }),
+				twin,
+				twin,
+			));
+			expect(new Set(events.map(event => event.key)).size).toBe(events.length);
+		});
 	});
 });
 
@@ -145,52 +186,104 @@ describe("notificationsAt", () => {
 	it("returns nothing for a cursor that is not a number", () => {
 		expect(notificationsAt(events, Number.NaN)).toEqual([]);
 	});
+
+	describe("a live cursor (at === null)", () => {
+		it("shows the newest events, measured back from the newest one", () => {
+			// Not from wall-clock time: an archive whose last row is hours old would
+			// otherwise render an empty live view.
+			expect(notificationsAt(events, null, { windowMs: 90 * 60_000 }).map(e => e.row.message))
+				.toEqual(["11:00", "10:00"]);
+		});
+
+		it("shows nothing when there is nothing recorded", () => {
+			expect(notificationsAt([], null)).toEqual([]);
+		});
+
+		it("agrees with parking the cursor on the newest event", () => {
+			const newest = events[events.length - 1].at;
+			expect(notificationsAt(events, null).map(e => e.key)).toEqual(notificationsAt(events, newest).map(e => e.key));
+		});
+	});
 });
 
-describe("mergeTrafficTimeline", () => {
-	function message(at: string, subject: string): AgentMessageLogRow {
-		return {
-			v: 1, at, fromTaskId: "task-a", fromSeq: 11, toTaskId: "task-b", toSeq: 22,
-			toProjectId: "proj-1", kind: "immediate", subject, body: subject,
-			bodyKind: "text", status: "delivered",
-		};
-	}
-
-	const messages: TrafficTimelineEvent[] = trafficRecords([message("2026-09-07T10:00:00.000Z", "hello")])
-		.map(record => ({ kind: "message" as const, at: Date.parse(record.row.at), key: `message:${record.key}`, record }));
-	const notifications = notificationTimelineEvents(notificationEvents([notification({ at: "2026-09-07T10:00:00.000Z" })]));
-
-	it("interleaves kinds by time", () => {
-		const merged = mergeTrafficTimeline(
-			notificationTimelineEvents(notificationEvents([notification({ at: "2026-09-07T09:00:00.000Z" })])),
-			messages,
-		);
-		expect(merged.map(event => event.kind)).toEqual(["notification", "message"]);
-	});
-
-	it("breaks an exact tie by kind, in a fixed order", () => {
-		expect(mergeTrafficTimeline(notifications, messages).map(event => event.kind)).toEqual(["message", "notification"]);
-		expect(mergeTrafficTimeline(messages, notifications).map(event => event.kind)).toEqual(["message", "notification"]);
-		expect(TIMELINE_KIND_RANK.message).toBeLessThan(TIMELINE_KIND_RANK.notification);
-	});
-
-	it("is deterministic for two notifications sharing a timestamp", () => {
-		const same = notificationTimelineEvents(notificationEvents([
-			notification({ at: "2026-09-07T10:00:00.000Z", message: "zulu" }),
-			notification({ at: "2026-09-07T10:00:00.000Z", message: "alpha" }),
-		]));
-		const once = mergeTrafficTimeline(same).map(event => event.key);
-		const again = mergeTrafficTimeline([...same].reverse()).map(event => event.key);
-		expect(again).toEqual(once);
-	});
-
-	it("adds no duplicate when the same stream is merged after a live append", () => {
-		const live = notificationTimelineEvents(notificationEvents(newestFirst(
-			notification({ at: "2026-09-07T10:00:00.000Z" }),
-			notification({ at: "2026-09-07T12:00:00.000Z", message: "just arrived" }),
+describe("the notification arm handed to the shared timeline", () => {
+	// The union, its KIND_RANK and the merge belong to the cursor's owner
+	// (traffic-timeline.ts). What this module owes is one well-formed arm.
+	it("stamps the kind, the time and a namespaced key on every arm", () => {
+		const arms = notificationTimelineEvents(notificationEvents(newestFirst(
+			notification({ at: "2026-09-07T09:00:00.000Z" }),
+			notification({ at: "2026-09-07T11:00:00.000Z" }),
 		)));
-		const merged = mergeTrafficTimeline(live, messages);
-		expect(new Set(merged.map(event => event.key)).size).toBe(merged.length);
-		expect(merged).toHaveLength(3);
+		expect(arms.map(arm => arm.kind)).toEqual(["notification", "notification"]);
+		expect(arms.map(arm => arm.at)).toEqual([
+			Date.parse("2026-09-07T09:00:00.000Z"),
+			Date.parse("2026-09-07T11:00:00.000Z"),
+		]);
+		for (const arm of arms) expect(arm.key.startsWith("notification:")).toBe(true);
+	});
+
+	it("hands the arms over oldest first, so a merge does not have to reorder them", () => {
+		const arms = notificationTimelineEvents(notificationEvents(newestFirst(
+			notification({ at: "2026-09-07T09:00:00.000Z" }),
+			notification({ at: "2026-09-07T11:00:00.000Z" }),
+		)));
+		expect(arms.map(arm => arm.at)).toEqual([...arms.map(arm => arm.at)].sort((a, b) => a - b));
+	});
+
+	it("keeps the event object identical to what the normalizer produced", () => {
+		const events = notificationEvents([notification()]);
+		expect(notificationTimelineEvents(events)[0].event).toBe(events[0]);
+	});
+});
+
+describe("the level axis and the counts", () => {
+	const mixed = notificationEvents(newestFirst(
+		notification({ at: "2026-09-07T09:00:00.000Z", level: "info", outcome: "delivered" }),
+		notification({ at: "2026-09-07T10:00:00.000Z", level: "error", outcome: "queued", suppressedBy: ["focusMode"] }),
+		notification({ at: "2026-09-07T11:00:00.000Z", level: "success", outcome: "no-window" }),
+		notification({ at: "2026-09-07T12:00:00.000Z", level: "error", outcome: "delivered" }),
+	));
+
+	it("passes an event only when its level is in the set", () => {
+		const errors = new Set<"info" | "success" | "error">(["error"]);
+		expect(mixed.filter(event => notificationPassesLevels(event, errors)).map(event => event.level))
+			.toEqual(["error", "error"]);
+	});
+
+	it("an EMPTY set hides every notification — it is not the same as no filter", () => {
+		expect(mixed.filter(event => notificationPassesLevels(event, new Set()))).toEqual([]);
+	});
+
+	it("all three levels present is the show-everything default", () => {
+		expect(mixed.filter(event => notificationPassesLevels(event, new Set(NOTIFICATION_LEVELS)))).toHaveLength(4);
+	});
+
+	it("lists the levels worst news first, and every level exactly once", () => {
+		expect(NOTIFICATION_LEVELS).toEqual(["error", "success", "info"]);
+		expect(new Set(NOTIFICATION_LEVELS).size).toBe(NOTIFICATION_LEVELS.length);
+	});
+
+	it("names a level's label key, so a control and a cloud cannot disagree", () => {
+		expect(NOTIFICATION_LEVELS.map(notificationLevelKey))
+			.toEqual(["traffic.notification.level.error", "traffic.notification.level.success", "traffic.notification.level.info"]);
+	});
+
+	it("counts notifications only, split by level and by outcome", () => {
+		const counts = notificationCounts(mixed);
+		expect(counts.total).toBe(4);
+		expect(counts.byLevel).toEqual({ error: 2, success: 1, info: 1 });
+		expect(counts.byOutcome).toEqual({ delivered: 2, queued: 1, "no-window": 1 });
+	});
+
+	it("counts what the user may never have seen: everything not delivered", () => {
+		expect(notificationCounts(mixed).neverSeen).toBe(2);
+	});
+
+	it("counts nothing as zeroes rather than as absent keys", () => {
+		const counts = notificationCounts([]);
+		expect(counts.total).toBe(0);
+		expect(counts.byLevel).toEqual({ error: 0, success: 0, info: 0 });
+		expect(counts.byOutcome).toEqual({ delivered: 0, queued: 0, "no-window": 0 });
+		expect(counts.neverSeen).toBe(0);
 	});
 });

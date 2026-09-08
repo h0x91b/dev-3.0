@@ -15,7 +15,17 @@ import {
 	noteNotificationArrival,
 	subscribeNotificationTraffic,
 } from "../../notification-traffic";
-import { notificationEvents } from "./notification-event";
+import { notificationCounts, notificationEvents } from "./notification-event";
+
+/**
+ * Where the read has got to. One field rather than two booleans, because the
+ * distinction that matters is easy to lose: `unread` is "we have not looked
+ * yet", `ready` with no events is "we looked and there is nothing". Anything
+ * deciding whether to enter, autostart or show an empty state must branch on
+ * this and never on `events.length` alone — a stream that has not arrived is not
+ * an empty stream.
+ */
+export type NotificationTrafficStatus = "unread" | "loading" | "ready" | "failed";
 
 export function useNotificationTraffic(projectIds: string[] | null, limit = 500) {
 	const [, setTick] = useState(0);
@@ -30,5 +40,13 @@ export function useNotificationTraffic(projectIds: string[] | null, limit = 500)
 	}, [scope, limit]);
 	const state = getNotificationTrafficState();
 	const events = useMemo(() => notificationEvents(state.rows), [state.rows]);
-	return { ...state, events };
+	const counts = useMemo(() => notificationCounts(events), [events]);
+	const status: NotificationTrafficStatus = state.error
+		? "failed"
+		: state.loading
+			? "loading"
+			: state.loaded
+				? "ready"
+				: "unread";
+	return { ...state, events, counts, status };
 }

@@ -160,25 +160,6 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// Notification-archive preview: a QA-only readout of the recorded `dev3 notify`
-	// history with its own replay cursor, so the bubbles are drivable while the
-	// shared traffic cursor is owned elsewhere. Off without the parameter, and it
-	// replaces the app rather than overlaying it — nothing else in the UI links here.
-	if (new URLSearchParams(location.search).get("notificationPreview") === "1") {
-		const { default: NotificationTrafficPreview } = await import("./components/agent-traffic/NotificationTrafficPreview");
-		createRoot(document.getElementById("root")!).render(
-			<StrictMode>
-				<RootErrorBoundary>
-					<I18nProvider>
-						<NotificationTrafficPreview />
-					</I18nProvider>
-				</RootErrorBoundary>
-			</StrictMode>,
-		);
-		debugLog("boot", "[main] Notification preview rendered");
-		return;
-	}
-
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
 	// I18nProvider/MobileProvider themselves still renders a visible fallback
