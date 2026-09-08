@@ -17,7 +17,7 @@ Two gated presentations; Coordination v3 replay/follow/focus live inside the ove
 
 ## 2026-09-07 — The artifact panel is the default; the popup is one opt-in toggle
 
-One App-mounted viewer renders into the pane's docking slot (default) or as the lightbox, per `openArtifactsInPopup` in Settings -> Tasks & Board; leaving the task hides it rather than popping it over the next board. Why: users want an artifact beside a live terminal and mostly never hit the resize freeze; rejected a second viewer, a three-way auto/panel/popup control, and clearing it on navigation (it holds an unsent draft) — bible §3 + §5 + §12.3, yaml `task_artifact_viewer`. `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`, `decisions/2026/09/07/docked-artifact-waits-offscreen.md`.
+One App viewer docks by default or uses a lightbox via `openArtifactsInPopup` in Settings → Tasks & Board; leaving a task hides it, preserving drafts. No second viewer or three-way mode — bible §3/§5/§12.3, yaml `task_artifact_viewer`. Why: `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md`, `decisions/2026/09/07/docked-artifact-waits-offscreen.md`.
 
 ## 2026-09-05 — HTML artifacts open as a popup
 
