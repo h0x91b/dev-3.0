@@ -38,8 +38,17 @@ const record = (key: string, minutes: number, over: Partial<AgentMessageLogRow> 
 	} as AgentMessageLogRow,
 });
 
+// The arm carries Seq 1825's normalized event verbatim; this suite only cares
+// about `at`/`key`/`kind`, so the payload is a minimal real-shaped stub.
 const notification = (key: string, minutes: number): TrafficNotificationEvent => ({
-	kind: "notification", at: ms(minutes), key: `notification:${key}`, event: { key },
+	kind: "notification",
+	at: ms(minutes),
+	key: `notification:${key}`,
+	event: {
+		key, at: ms(minutes), row: { v: 1, at: at(minutes), message: key } as never,
+		target: null, origin: null, crossAddressed: false,
+		level: "info", mode: "toast", outcome: "delivered", suppressedBy: [],
+	},
 });
 
 const shape = (events: TrafficTimelineEvent[]) =>

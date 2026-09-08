@@ -25,12 +25,16 @@ import {
 	type TaskProjection,
 } from "./task-history";
 import {
+	endpointKey,
 	fromKey,
 	nodeSeq,
 	toKey,
 	type TrafficNode,
 	type TrafficRecord,
 } from "./traffic-model";
+import TrafficNotificationBubble, {
+	cloudSenderEndpoint,
+} from "./TrafficNotificationBubble";
 import type { TrafficTimelineEvent } from "./traffic-timeline";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
@@ -151,6 +155,15 @@ export default function TrafficNodes({
 						node.key,
 					))),
 	);
+	// Notifications the cursor has already crossed, newest last. Capped, because a
+	// minute holding fifty of them would try to draw fifty clouds at once.
+	const clouds = useMemo(() => {
+		if (!playback || playback.index < 0) return [];
+		return playback.events
+			.slice(0, playback.index + 1)
+			.flatMap((event) => (event.kind === "notification" ? [event] : []))
+			.slice(-2);
+	}, [playback?.events, playback?.index]);
 	const scene = useMemo(
 		() =>
 			layoutTraffic(nodes, layoutRecords, {
@@ -715,6 +728,34 @@ export default function TrafficNodes({
 					failed={active.row.status === "not-delivered"}
 				/>
 			)}
+			{clouds.map((cloud) => {
+				// The cloud hangs over the card that SENT it. No sender recorded means
+				// unanchored — it is never reattached to the card it is about, and never
+				// to a nearby one.
+				const sender = cloudSenderEndpoint(cloud.event);
+				const node = sender
+					? nodeByKey.get(endpointKey(sender.projectId, sender.taskId))
+					: undefined;
+				return (
+					<TrafficNotificationBubble
+						key={cloud.key}
+						event={cloud.event}
+						anchor={
+							node
+								? {
+										x: view.x + (node.x + node.width / 2) * view.scale,
+										y: view.y + node.y * view.scale,
+									}
+								: undefined
+						}
+						width={frame.current?.clientWidth ?? 1000}
+						height={frame.current?.clientHeight ?? 500}
+						onKnownTask={(endpoint) =>
+							nodeByKey.has(endpointKey(endpoint.projectId, endpoint.taskId))
+						}
+					/>
+				);
+			})}
 			{!scene.placed.length && (
 				<p className="traffic-nodes-empty">
 					{ready ? t("traffic.nodes.noTraffic") : t("traffic.loading")}
