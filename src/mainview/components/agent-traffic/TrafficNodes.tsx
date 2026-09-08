@@ -786,7 +786,14 @@ export default function TrafficNodes({
 					{t("traffic.nodes.follow")}
 				</button>
 			</div>
-			<p className="traffic-map-caption">{t("traffic.nodes.legend")}</p>
+			<p className="traffic-map-caption">
+				{t("traffic.nodes.legend")}
+				{/* The movement log records creation, status and custom-column moves and
+				    nothing else, so these three dimensions are the CURRENT ones on a
+				    replayed card. Said once on the stage rather than as a per-card badge
+				    the log has nothing per-card to justify. */}
+				{replaying && ` · ${t("traffic.nodes.currentOnlyDimensions")}`}
+			</p>
 		</div>
 	);
 }

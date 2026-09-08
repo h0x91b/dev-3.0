@@ -172,6 +172,7 @@ const common = {
 	"traffic.node.statusUnrecorded": "Статус не записан",
 	"traffic.node.historyUnrecorded": "История не записана",
 	"traffic.node.historyPartial": "Ранняя история не сохранилась",
+	"traffic.nodes.currentOnlyDimensions": "Хибернация, проект и вариант не записываются — они показаны текущими",
 	"traffic.nodes.follow": "Следовать",
 	"traffic.nodes.focus": "Фокус",
 	"traffic.nodes.nodeCount_one": "{count} узел",

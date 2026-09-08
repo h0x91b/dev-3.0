@@ -162,6 +162,7 @@ const common = {
 	"traffic.node.statusUnrecorded": "Status not recorded",
 	"traffic.node.historyUnrecorded": "History not recorded",
 	"traffic.node.historyPartial": "Earlier history missing",
+	"traffic.nodes.currentOnlyDimensions": "Hibernation, project and variant are not recorded, so those stay current",
 	"traffic.nodes.follow": "Follow",
 	"traffic.nodes.focus": "Focus",
 	"traffic.nodes.nodeCount_one": "{count} node",

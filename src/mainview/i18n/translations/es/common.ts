@@ -162,6 +162,7 @@ const common = {
 	"traffic.node.statusUnrecorded": "Estado no registrado",
 	"traffic.node.historyUnrecorded": "Historial no registrado",
 	"traffic.node.historyPartial": "Falta el historial anterior",
+	"traffic.nodes.currentOnlyDimensions": "La hibernación, el proyecto y la variante no se registran: se muestran los actuales",
 	"traffic.nodes.follow": "Seguir",
 	"traffic.nodes.focus": "Enfocar",
 	"traffic.nodes.nodeCount_one": "{count} nodo",

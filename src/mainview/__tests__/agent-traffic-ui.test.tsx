@@ -1349,4 +1349,20 @@ describe("Replay reconstructs the board at the cursor", () => {
 		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
 		expect(summary()).toContain("Task states are current");
 	});
+
+	it("names the dimensions the movement log does not record, only while replaying", async () => {
+		const caption = () => document.querySelector(".traffic-map-caption")!.textContent!;
+		setUpHistory();
+		renderLog();
+		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
+		expect(caption()).not.toContain("Hibernation");
+		const play = await screen.findByRole("button", { name: "Play replay" });
+		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+		await userEvent.click(play);
+		// A replayed card's parked state and project ARE the current ones, and the
+		// stage has to say so rather than let them read as reconstructed.
+		expect(caption()).toContain("Hibernation, project and variant are not recorded");
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		expect(caption()).not.toContain("Hibernation");
+	});
 });
