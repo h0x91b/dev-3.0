@@ -59,7 +59,9 @@ interface ActiveTaskRowProps {
 	onOpen: () => void;
 	onSetPriority: (priority: TaskPriority) => void;
 	onSetHidden: () => Promise<void>;
-	showHidden: boolean;
+	/** True when hiding this row will drop it out of the list, so it earns the
+	 *  exit animation. False in reveal mode, where it only dims in place. */
+	animateOut: boolean;
 	onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => void;
 	onMouseLeave: () => void;
 	/** Closes the hover terminal preview before navigating away. */
@@ -93,7 +95,7 @@ export default function ActiveTaskRow({
 	onOpen,
 	onSetPriority,
 	onSetHidden,
-	showHidden,
+	animateOut,
 	onMouseEnter,
 	onMouseLeave,
 	closePreview,
@@ -166,7 +168,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		closePreview();
 		try {
-			if (!task.hidden && !showHidden && !reducedMotion) {
+			if (animateOut && !reducedMotion) {
 				setHiding(true);
 				await new Promise((resolve) => setTimeout(resolve, 200));
 			}
@@ -255,7 +257,12 @@ export default function ActiveTaskRow({
 					<button
 						type="button"
 						onClick={handleSetHidden}
-						className="absolute right-2 top-2 z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-raised text-fg-3 opacity-100 transition-[opacity,color,background-color,transform] duration-150 ease-out hover:bg-elevated hover:text-fg motion-safe:active:scale-[0.96] md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+						// Resting visibility is a pointer-capability question, not a width
+						// one: the sidebar does not render below `md` at all, so a
+						// width-gated rule would only ever hide it. Where a hover pointer
+						// exists the row reveals it; where none does it stays put and
+						// grows a 44px hit area (the 24px glyph is the bare WCAG floor).
+						className="absolute right-2 top-2 z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-raised text-fg-3 transition-[opacity,color,background-color,transform] duration-150 ease-out hover:bg-elevated hover:text-fg motion-safe:active:scale-[0.96] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:none)]:before:absolute [@media(hover:none)]:before:-inset-2.5 [@media(hover:none)]:before:content-['']"
 						aria-label={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}
 						data-testid={`sidebar-task-hidden-toggle-${task.id}`}
 					>

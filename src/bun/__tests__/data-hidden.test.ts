@@ -114,7 +114,10 @@ describe("setTaskHidden", () => {
 
 		expect(changed.map((task) => task.id)).toEqual(["variant-1", "variant-2"]);
 		const saved = savedTasks();
-		expect(saved.filter((task) => task.groupId === "group-1").map((task) => task.hidden)).toEqual([false, false]);
+		// Revealing DELETES the field rather than storing `false`, so a revealed
+		// task is byte-identical to one that was never hidden.
+		const group = saved.filter((task) => task.groupId === "group-1");
+		expect(group.map((task) => "hidden" in task)).toEqual([false, false]);
 		expect(saved.find((task) => task.id === "other")?.hidden).toBe(true);
 	});
 

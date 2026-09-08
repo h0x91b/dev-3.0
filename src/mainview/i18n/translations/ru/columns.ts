@@ -84,6 +84,7 @@ const columns = {
 	"filter.group.flags": "Флаги",
 	"filter.flag.attention": "Требует внимания",
 	"filter.flag.port": "Есть открытый порт",
+	"filter.flag.hidden": "Скрыта из боковой панели",
 	"labels.moreLabels": "+{count} ещё",
 
 	// Notes

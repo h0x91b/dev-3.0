@@ -354,7 +354,12 @@ function KanbanBoard({
 		() => buildFilterGroups(tasks, resolver, {
 			priorityCandidates,
 			statusCandidates,
-			flagLabels: { attention: t("filter.flag.attention"), port: t("filter.flag.port"), home: t("spaces.homeGroup") },
+			flagLabels: {
+				attention: t("filter.flag.attention"),
+				port: t("filter.flag.port"),
+				home: t("spaces.homeGroup"),
+				hidden: t("filter.flag.hidden"),
+			},
 		}),
 		[tasks, resolver, priorityCandidates, statusCandidates, t],
 	);

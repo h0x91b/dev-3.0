@@ -996,14 +996,20 @@ export async function updateTaskWith<T>(
 	});
 }
 
+/**
+ * Write one value across a whole variant group (or the single task when
+ * ungrouped) under the tasks-file lock. `op` names the write and its value for
+ * the log — without it every caller's lines would be indistinguishable.
+ */
 async function updateTaskGroup(
 	project: Project,
 	taskId: string,
+	op: string,
 	apply: (task: Task) => Task | null,
 ): Promise<Task[]> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
-		log.info("Updating task group", { taskId, projectId: project.id });
+		log.info(`Setting task ${op}`, { taskId, projectId: project.id });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const target = tasks.find((task) => task.id === taskId);
 		if (!target) throw new Error(`Task not found: ${taskId}`);
@@ -1021,7 +1027,7 @@ async function updateTaskGroup(
 		}
 
 		if (changed.length > 0) await rawSaveTasks(project, tasks);
-		log.info("Task group updated", { taskId, changed: changed.length, projectId: project.id });
+		log.info(`Task ${op} set`, { taskId, changed: changed.length, projectId: project.id });
 		return changed;
 	});
 }
@@ -1035,11 +1041,24 @@ async function updateTaskGroup(
  * column/status move timeline.
  */
 export function setTaskPriority(project: Project, taskId: string, priority: TaskPriority): Promise<Task[]> {
-	return updateTaskGroup(project, taskId, (task) => (task.priority === priority ? null : { ...task, priority }));
+	return updateTaskGroup(project, taskId, `priority=${priority}`, (task) =>
+		task.priority === priority ? null : { ...task, priority },
+	);
 }
 
+/**
+ * Hide or reveal a task in the Active Tasks sidebar. Visibility belongs to the
+ * logical task, so this writes across the whole variant group exactly like
+ * {@link setTaskPriority}. Reveal DELETES the field rather than storing `false`,
+ * matching how `addTask` omits it — one state, one representation on disk.
+ */
 export function setTaskHidden(project: Project, taskId: string, hidden: boolean): Promise<Task[]> {
-	return updateTaskGroup(project, taskId, (task) => ((task.hidden === true) === hidden ? null : { ...task, hidden }));
+	return updateTaskGroup(project, taskId, `hidden=${hidden}`, (task) => {
+		if (Boolean(task.hidden) === hidden) return null;
+		if (hidden) return { ...task, hidden: true };
+		const { hidden: _revealed, ...rest } = task;
+		return rest;
+	});
 }
 
 /**

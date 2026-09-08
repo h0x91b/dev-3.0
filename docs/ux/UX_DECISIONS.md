@@ -21,7 +21,7 @@ One App viewer docks by default or uses a lightbox via `openArtifactsInPopup` in
 
 ## 2026-09-07 — Tasks can leave the Active Tasks queue without stopping
 
-`Task.hidden` hides a whole variant group from the Active Tasks sidebar only; row toggle, header reveal mode. Why: `decisions/2026/09/07/hide-tasks-from-active-sidebar.md`.
+`Task.hidden` hides a whole variant group from the Active Tasks sidebar only; row toggle, conditional reveal in the filter row (dot when one needs you), `is:hidden` token. Why: `decisions/2026/09/07/hide-tasks-from-active-sidebar.md`.
 
 ## 2026-09-05 — HTML artifacts open as a popup
 

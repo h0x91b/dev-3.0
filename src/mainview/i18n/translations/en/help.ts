@@ -43,13 +43,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Search & filters",
 	"help.board.filterBar.body":
-		"One box searches and filters the board. Type free text to fuzzy-match titles/descriptions, or filter with tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home has:port. The P0–P4 priority chips, the label chips and the funnel dropdown all edit these same tokens, so typing and clicking never disagree. The × clears everything. Manage labels in Project Settings → Labels.",
+		"One box searches and filters the board. Type free text to fuzzy-match titles/descriptions, or filter with tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home is:hidden has:port. The P0–P4 priority chips, the label chips and the funnel dropdown all edit these same tokens, so typing and clicking never disagree. The × clears everything. Manage labels in Project Settings → Labels.",
 	"help.board.priorityFilter.title": "Priority filter",
 	"help.board.priorityFilter.body":
 		"Every task has a priority P0 (highest) … P4 (lowest, default P3). Columns always sort by it, so the most important work stays on top. Click a chip to show only that priority; drag a card into another band to re-prioritize it.",
 	"help.filters.dsl.title": "Search & filters",
 	"help.filters.dsl.body":
-		"Type to fuzzy-match titles and descriptions, or filter with tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home has:port. Quote multi-word values. Combine facets (AND); repeat one facet to broaden (OR). The P0–P4 chips, label chips and the funnel all edit these same tokens. Manage labels in Project Settings → Labels.",
+		"Type to fuzzy-match titles and descriptions, or filter with tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home is:hidden has:port. Quote multi-word values. Combine facets (AND); repeat one facet to broaden (OR). The P0–P4 chips, label chips and the funnel all edit these same tokens. Manage labels in Project Settings → Labels.",
 	"help.board.taskCard.title": "Task card",
 	"help.board.taskCard.body":
 		"The colored dots are parallel agent variants (each in its own worktree), the bell means the agent is calling you, and the #123 badge is the task's PR with its CI and review state. Right-click the card for every task action.",
@@ -259,7 +259,7 @@ const help = {
 		"Three glyphs, three sizes of list. The folder shows only this project's tasks. The ring shows every project in the same space, and is struck through when this project is in none of them. The globe shows every task on the machine, which is how you find work you left running somewhere else.",
 	"help.sidebar.showHidden.title": "Tasks you hid from this list",
 	"help.sidebar.showHidden.body":
-		"Hiding a task drops its whole variant group out of Active Tasks and nothing else: it keeps working, keeps notifying, and stays on the board. This eye brings the hidden ones back, dimmed and marked, until you press it again.",
+		"Hiding a task drops its whole variant group out of Active Tasks and nothing else: it keeps working, keeps notifying, and stays on the board. This eye sits by the filter funnel, appears only while something is hidden, and brings those rows back, dimmed and marked, until you press it again. A red dot on it means one of them is asking for you. The funnel's is:hidden token does the same from the filter.",
 	"help.tips.card.title": "Did you know?",
 	"help.tips.card.body":
 		"One short pointer at a time towards something dev3 does that no button on screen announces — a shortcut, a drag, a CLI command. Dismiss it and it never returns; there is a switch in Settings if you would rather have none of them.",

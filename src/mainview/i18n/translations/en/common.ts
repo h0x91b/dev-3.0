@@ -254,6 +254,8 @@ const common = {
 	"sidebar.allTasksHiddenHint": "Use \"Show hidden tasks\" above to reveal them.",
 	"sidebar.showHiddenTasks": "Show hidden tasks",
 	"sidebar.hiddenTaskCount_one": "{count} hidden task",
+	"sidebar.hiddenAttentionCount_one": "{count} hidden task needs you",
+	"sidebar.hiddenAttentionCount_other": "{count} hidden tasks need you",
 	"sidebar.hiddenTaskCount_other": "{count} hidden tasks",
 	"sidebar.noSearchResults": "No tasks match your search",
 	"sidebar.searchPlaceholder": "Search tasks...",

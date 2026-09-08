@@ -475,7 +475,6 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Toolbar visible actions | 4 | overflow after 4 |
 | Tabs | 6 | more-menu / subpage |
 | Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |
-
 | Active Tasks sidebar row | 2 resting (lifecycle rail, priority) + 1 hide, hover or touch | demote to the row context menu; the row is a navigator, not a board |
 | Settings library toolbar (§8) | 4 visible controls; 5 always-visible editor fields | extra editor fields go behind the single `Advanced` disclosure; list rows stay actionless |
 

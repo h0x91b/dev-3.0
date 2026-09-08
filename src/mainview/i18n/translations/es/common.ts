@@ -255,6 +255,8 @@ const common = {
 	"sidebar.allTasksHiddenHint": "Usa «Mostrar tareas ocultas» arriba para verlas.",
 	"sidebar.showHiddenTasks": "Mostrar tareas ocultas",
 	"sidebar.hiddenTaskCount_one": "{count} tarea oculta",
+	"sidebar.hiddenAttentionCount_one": "{count} tarea oculta te necesita",
+	"sidebar.hiddenAttentionCount_other": "{count} tareas ocultas te necesitan",
 	"sidebar.hiddenTaskCount_other": "{count} tareas ocultas",
 	"sidebar.noSearchResults": "No se encontraron tareas",
 	"sidebar.searchPlaceholder": "Buscar tareas...",

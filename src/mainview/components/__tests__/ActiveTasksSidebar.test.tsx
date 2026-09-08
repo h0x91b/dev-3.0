@@ -175,6 +175,71 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByRole("button", { name: "Show hidden tasks" })).toHaveAttribute("aria-pressed", "true");
 	});
 
+	it("keeps the reveal eye out of the header until something is hidden", async () => {
+		const { rerender } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask()]} dispatch={vi.fn()}
+					navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>,
+		);
+
+		// Nothing hidden: the header carries the scope group and nothing else, so
+		// the last slot is not spent on a control that would read "0 hidden".
+		expect(screen.queryByTestId("sidebar-show-hidden")).not.toBeInTheDocument();
+
+		rerender(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask(), makeTask({ id: "t2", hidden: true })]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(await screen.findByTestId("sidebar-show-hidden")).toBeInTheDocument();
+	});
+
+	it("marks the reveal eye when a hidden task is the one asking for you", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask(),
+					makeTask({ id: "t2", title: "Parked question", hidden: true, status: "user-questions" }),
+				]} dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>,
+		);
+
+		// The row is absent, so the dot on the eye is the only signal left.
+		expect(screen.queryByText("Parked question")).not.toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-hidden-attention-dot")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "1 hidden task needs you" })).toBeInTheDocument();
+
+		await user.click(screen.getByTestId("sidebar-show-hidden"));
+		expect(screen.getByText("Parked question")).toBeInTheDocument();
+		expect(screen.queryByTestId("sidebar-hidden-attention-dot")).not.toBeInTheDocument();
+	});
+
+	it("reveals hidden tasks from the is:hidden token without touching the eye", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask({ title: "Working task" }),
+					makeTask({ id: "t2", title: "Parked task", hidden: true }),
+				]} dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByText("Parked task")).not.toBeInTheDocument();
+		await user.type(screen.getByPlaceholderText("Search tasks..."), "is:hidden");
+
+		// The token selects hidden tasks, so it must reveal them rather than
+		// search the pool they were filtered out of.
+		expect(await screen.findByText("Parked task")).toBeInTheDocument();
+		expect(screen.queryByText("Working task")).not.toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-show-hidden")).toHaveAttribute("aria-pressed", "false");
+		expect(localStorage.getItem("dev3-sidebar-show-hidden")).toBeNull();
+	});
+
 	it("shows teardown feedback and blocks a shutting-down task", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();

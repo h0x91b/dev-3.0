@@ -299,11 +299,21 @@ function ActiveTasksSidebar({
 	if (effectiveScope === "space" && siblingIds) {
 		activeTasks = activeTasks.filter((task) => siblingIds.has(task.projectId));
 	}
-	const hiddenTaskCount = activeTasks.filter((task) => task.hidden).length;
-	if (!showHidden) {
+	// `is:hidden` reveals on its own: a token that selects hidden tasks must not
+	// search a pool they were already filtered out of.
+	const queryWantsHidden = isFacetTokenActive(searchQuery, "is", "hidden");
+	const revealHidden = showHidden || queryWantsHidden;
+	// Pool BEFORE visibility filtering — feeds the funnel and the header counts.
+	const scopedTasks = activeTasks;
+	const hiddenTaskCount = scopedTasks.filter((task) => task.hidden).length;
+	const hiddenAttentionCount = scopedTasks.filter((task) => task.hidden && isAttentionTask(task)).length;
+	if (!revealHidden) {
 		activeTasks = activeTasks.filter((task) => !task.hidden);
 	}
-	const allTasksHidden = !showHidden && hiddenTaskCount > 0 && activeTasks.length === 0;
+	const allTasksHidden = !revealHidden && hiddenTaskCount > 0 && activeTasks.length === 0;
+	// The dot exists because the row is absent. Once revealed, the row carries
+	// its own attention marker and a second one on the eye is noise.
+	const flagHiddenAttention = !revealHidden && hiddenAttentionCount > 0;
 
 	const projectById = useMemo(() => {
 		const map = new Map<string, Project>();
@@ -367,12 +377,17 @@ function ActiveTasksSidebar({
 	}, [projectById, project, t]);
 
 	const filterGroups = useMemo(
-		() => buildFilterGroups(activeTasks, resolver, {
+		() => buildFilterGroups(scopedTasks, resolver, {
 			priorityCandidates,
 			statusCandidates,
-			flagLabels: { attention: t("filter.flag.attention"), port: t("filter.flag.port"), home: t("spaces.homeGroup") },
+			flagLabels: {
+				attention: t("filter.flag.attention"),
+				port: t("filter.flag.port"),
+				home: t("spaces.homeGroup"),
+				hidden: t("filter.flag.hidden"),
+			},
 		}),
-		[activeTasks, resolver, priorityCandidates, statusCandidates, t],
+		[scopedTasks, resolver, priorityCandidates, statusCandidates, t],
 	);
 
 	if (searchQuery.trim()) {
@@ -627,23 +642,6 @@ function ActiveTasksSidebar({
 						</Tooltip>
 					</div>
 					)}
-					<Tooltip
-						content={t("sidebar.showHiddenTasks")}
-						detail={t.plural("sidebar.hiddenTaskCount", hiddenTaskCount)}
-						placement="bottom"
-					>
-						<button
-							type="button"
-							onClick={() => setShowHidden(!showHidden)}
-							aria-pressed={showHidden}
-							aria-label={t("sidebar.showHiddenTasks")}
-							className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(showHidden)}`}
-							data-testid="sidebar-show-hidden"
-							data-help-id="sidebar.show-hidden"
-						>
-							<EyeIcon off={showHidden} className="w-3.5 h-3.5" />
-						</button>
-					</Tooltip>
 					{activeTaskId && (
 						<Tooltip content={t("sidebar.hide")} detail={t("ttip.sidebar.hide")} placement="bottom">
 							<button
@@ -703,6 +701,47 @@ function ActiveTasksSidebar({
 						</button>
 					)}
 				</div>
+				{/* Reveal sits with the funnel, not in the header: measured on a board
+				    with spaces, a fifth header control truncates the "Active Tasks"
+				    title. It is the same axis as the funnel anyway — which tasks are
+				    in this list — and `is:hidden` lives one click away inside it.
+				    Rendered only while there is something to bring back; the dot is
+				    the sole signal that an absent task is asking for the user, since
+				    hiding never silences a task. */}
+				{(hiddenTaskCount > 0 || showHidden) && (
+					<Tooltip
+						content={t("sidebar.showHiddenTasks")}
+						detail={
+							flagHiddenAttention
+								? t.plural("sidebar.hiddenAttentionCount", hiddenAttentionCount)
+								: t.plural("sidebar.hiddenTaskCount", hiddenTaskCount)
+						}
+						placement="bottom"
+					>
+						<button
+							type="button"
+							onClick={() => setShowHidden(!showHidden)}
+							aria-pressed={showHidden}
+							aria-label={
+								flagHiddenAttention
+									? t.plural("sidebar.hiddenAttentionCount", hiddenAttentionCount)
+									: t("sidebar.showHiddenTasks")
+							}
+							className={`relative shrink-0 ${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(showHidden)}`}
+							data-testid="sidebar-show-hidden"
+							data-help-id="sidebar.show-hidden"
+						>
+							<EyeIcon off={showHidden} className="w-3.5 h-3.5" />
+							{flagHiddenAttention && (
+								<span
+									className="absolute -right-px -top-px h-1.5 w-1.5 rounded-full bg-danger"
+									aria-hidden="true"
+									data-testid="sidebar-hidden-attention-dot"
+								/>
+							)}
+						</button>
+					</Tooltip>
+				)}
 				<FilterFunnel query={searchQuery} onChange={setSearchQuery} groups={filterGroups} size="xs" helpTopicId="filters.dsl" />
 			</div>
 
@@ -807,7 +846,7 @@ function ActiveTasksSidebar({
 											onOpen={() => handleTaskClick(task)}
 											onSetPriority={(p) => handleSetPriority(task, p)}
 											onSetHidden={() => handleSetHidden(task)}
-											showHidden={showHidden}
+											animateOut={!task.hidden && !revealHidden}
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											closePreview={preview.close}

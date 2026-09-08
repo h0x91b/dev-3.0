@@ -69,6 +69,7 @@ export function taskQueryContext(task: Task, resolver: FacetResolver): TaskQuery
 		priorityValue: resolver.priorityFor(task).toLowerCase(),
 		hasPort: resolver.hasPortFor(task),
 		isAttention: resolver.isAttentionFor(task),
+		isHidden: task.hidden === true,
 		spaceNames: resolver.spaceNamesFor ? resolver.spaceNamesFor(task) : null,
 		prNumber: resolver.prNumberFor?.(task) ?? null,
 	};
@@ -79,7 +80,7 @@ export interface FilterFunnelCandidates {
 	priorityCandidates: FilterFunnelOption[];
 	/** Full ordered status vocabulary (built-in statuses + custom columns). */
 	statusCandidates: FilterFunnelOption[];
-	flagLabels: { attention: string; port: string; home: string };
+	flagLabels: { attention: string; port: string; home: string; hidden: string };
 }
 
 /**
@@ -102,6 +103,7 @@ export function buildFilterGroups(
 	let anyAttention = false;
 	let anyPort = false;
 	let anyHome = false;
+	let anyHidden = false;
 
 	for (const task of tasks) {
 		for (const label of resolver.labelsFor(task)) {
@@ -132,6 +134,7 @@ export function buildFilterGroups(
 		presentPriority.add(resolver.priorityFor(task).toLowerCase());
 		if (resolver.isAttentionFor(task)) anyAttention = true;
 		if (resolver.hasPortFor(task)) anyPort = true;
+		if (task.hidden) anyHidden = true;
 	}
 
 	const priorityOptions = priorityCandidates.filter((c) => presentPriority.has(c.value.toLowerCase()));
@@ -146,6 +149,9 @@ export function buildFilterGroups(
 	const flagOptions: FilterFunnelOption[] = [];
 	if (anyAttention) flagOptions.push({ facet: "is", value: "attention", label: flagLabels.attention });
 	if (anyPort) flagOptions.push({ facet: "has", value: "port", label: flagLabels.port });
+	// Offered from the pool BEFORE sidebar visibility filtering, so the token is
+	// reachable while the very tasks it selects are out of the list.
+	if (anyHidden) flagOptions.push({ facet: "is", value: "hidden", label: flagLabels.hidden });
 
 	const groups: FilterFunnelGroup[] = [
 		{ id: "priority", options: priorityOptions },

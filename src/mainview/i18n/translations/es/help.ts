@@ -37,13 +37,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Búsqueda y filtros",
 	"help.board.filterBar.body":
-		"Una sola caja busca y filtra el tablero. Escribe texto libre para una búsqueda difusa por título/descripción, o filtra con tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home has:port. Los chips de prioridad P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens, así que escribir y hacer clic nunca se contradicen. La × lo borra todo. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
+		"Una sola caja busca y filtra el tablero. Escribe texto libre para una búsqueda difusa por título/descripción, o filtra con tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home is:hidden has:port. Los chips de prioridad P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens, así que escribir y hacer clic nunca se contradicen. La × lo borra todo. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.priorityFilter.title": "Filtro de prioridad",
 	"help.board.priorityFilter.body":
 		"Cada tarea tiene una prioridad P0 (la más alta) … P4 (la más baja, P3 por defecto). Las columnas siempre se ordenan por ella, así lo más importante queda arriba. Haz clic en un chip para mostrar solo esa prioridad; arrastra una tarjeta a otra banda para recategorizarla.",
 	"help.filters.dsl.title": "Búsqueda y filtros",
 	"help.filters.dsl.body":
-		"Escribe para una búsqueda difusa por títulos y descripciones, o filtra con tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home has:port. Entrecomilla los valores con espacios. Combina facetas (Y); repite una faceta para ampliar (O). Los chips P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
+		"Escribe para una búsqueda difusa por títulos y descripciones, o filtra con tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review space:\"Client X\" is:attention is:home is:hidden has:port. Entrecomilla los valores con espacios. Combina facetas (Y); repite una faceta para ampliar (O). Los chips P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.taskCard.title": "Tarjeta de tarea",
 	"help.board.taskCard.body":
 		"Los puntos de colores son variantes paralelas de agentes (cada una en su worktree), la campana significa que el agente te llama, y la insignia #123 es el PR de la tarea con su estado de CI y revisión. Clic derecho para todas las acciones.",
@@ -253,7 +253,7 @@ const help = {
 		"Tres iconos, tres tamaños de lista. La carpeta muestra solo las tareas de este proyecto. El anillo muestra todos los proyectos del mismo espacio, y aparece tachado cuando este proyecto no está en ninguno. El globo muestra todas las tareas de la máquina: así encuentras trabajo que dejaste en otro sitio.",
 	"help.sidebar.showHidden.title": "Tareas que ocultaste de esta lista",
 	"help.sidebar.showHidden.body":
-		"Ocultar una tarea saca todo su grupo de variantes de Tareas activas y nada más: sigue trabajando, sigue notificando y permanece en el tablero. Este ojo trae de vuelta las ocultas, atenuadas y marcadas, hasta que lo pulses otra vez.",
+		"Ocultar una tarea saca todo su grupo de variantes de Tareas activas y nada más: sigue trabajando, sigue notificando y permanece en el tablero. Este ojo está junto al embudo de filtros, aparece solo cuando hay algo oculto y devuelve esas filas, atenuadas y marcadas, hasta que lo pulses otra vez. Un punto rojo indica que una de ellas te necesita. El token is:hidden del embudo hace lo mismo desde el filtro.",
 	"help.tips.card.title": "¿Sabías que...?",
 	"help.tips.card.body":
 		"Una pista corta cada vez sobre algo que dev3 hace y que ningún botón en pantalla anuncia: un atajo, un arrastre, un comando de la CLI. Si la cierras no vuelve, y en Ajustes hay un interruptor para quitarlas todas.",

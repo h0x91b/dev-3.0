@@ -427,8 +427,9 @@ ux_architecture:
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
       allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark", "git_status_badge", "task_visibility_toggle", "reveal_hidden_mode"]
-      forbidden: ["durable_configuration"]
-      visibility: "Task.hidden hides a variant group from THIS list only; header eye reveals them dimmed. Why: decisions/2026/09/07/hide-tasks-from-active-sidebar.md."
+      forbidden: ["durable_configuration", "permanent_header_control"]
+      header_budget: "Header is FULL: scope group + collapse. Measured on a board with spaces, a fifth control truncates the 'Active Tasks' title, so the reveal-hidden eye sits in the filter row beside the funnel — same axis (which tasks are in this list) and state-gated. A new sidebar control goes to the filter row or the funnel, never the header."
+      visibility: "Task.hidden hides a variant group from THIS list only. Header eye reveals them dimmed and renders ONLY while something is hidden (the scope group owns the rest of the header); red dot when a hidden task needs the user; is:hidden reveals from the funnel. Why: decisions/2026/09/07/hide-tasks-from-active-sidebar.md."
       variant_dots: "Same capped clickable dots + SiblingPopover as task_card (see surfaces.task_card.variant_dots); placed in the card's bottom status row, mirroring the kanban card position."
       queue_policy: "Readiness tiers are NEEDS YOU (review-by-user, user-questions, review-by-colleague) → project custom columns → WAITING (in-progress, review-by-ai). Per-task bells are visual notifications and never alter tier membership."
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx"]
