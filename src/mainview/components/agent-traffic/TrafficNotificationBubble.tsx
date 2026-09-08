@@ -1,11 +1,20 @@
 /**
- * One recorded `dev3 notify` call, as a bubble on the traffic timeline.
+ * One recorded `dev3 notify` call, drawn as a thought cloud over the card that
+ * sent it.
  *
- * Two placements, one component: `anchor` given → absolutely positioned against
- * a node on the canvas, with a tail, exactly like the message bubble;
- * `anchor` omitted → an ordinary block in document flow, which is what a list or
- * a standalone readout needs. Splitting them would duplicate the level colours
- * and the wording, which is where a divergence would actually hurt.
+ * Why a cloud and not the message bubble's shape: a message is one agent speaking
+ * to another, and it belongs on the line between two cards. A notification is an
+ * agent thinking out loud at the human — it has one end, not two — so it hangs
+ * above its own card as a thought, lobed edges and a trail of puffs included. The
+ * outline is computed from the measured text in `traffic-cloud.ts`, because the
+ * lobes have to be rebuilt whenever the text changes size.
+ *
+ * WHERE it hangs: over the card the notification was SENT FROM (`origin`), which
+ * is not always the card it is about — `dev3 notify --task <other>` addresses
+ * somebody else's card from your worktree. When the archive recorded no source,
+ * the cloud falls back to the card it is about, and with neither it is unanchored
+ * and belongs to no card at all. It is never attached to a nearby card to fill
+ * the gap.
  *
  * `row.message` is text an agent wrote. It reaches the DOM as a React child and
  * nothing else — no `dangerouslySetInnerHTML` on this path, ever.
@@ -14,6 +23,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
+import { cloudGeometry } from "./traffic-cloud";
 import "./traffic-notification.css";
 
 const LEVEL_ICON = {
@@ -36,107 +46,123 @@ const SUPPRESSION_KEY = {
 	terminalImmersive: "traffic.notification.suppression.terminalImmersive",
 } as const satisfies Record<"focusMode" | "terminalImmersive", TranslationKey>;
 
-function endpointLabel(endpoint: NotificationEndpoint): string {
-	return endpoint.seq === null ? "#—" : `#${endpoint.seq}`;
+/**
+ * The card a cloud hangs over: the sender first, the subject second, nothing
+ * third. Exported because the surface that lays the clouds out needs the same
+ * answer to pick a node, and two copies of this order would drift.
+ */
+export function cloudAnchorEndpoint(event: TrafficNotificationEvent): NotificationEndpoint | null {
+	return event.origin ?? event.target;
 }
 
 export default function TrafficNotificationBubble({ event, anchor, width, height, onKnownTask }: {
 	event: TrafficNotificationEvent;
-	/** Canvas coordinates to pin to. Omit for an inline bubble. */
+	/** Top-centre of the card to hang over, in canvas coordinates. Omit for flow. */
 	anchor?: { x: number; y: number };
-	/** Canvas size, used to keep an anchored bubble on screen. */
+	/** Canvas size, used to keep an anchored cloud on screen. */
 	width?: number;
 	height?: number;
-	/** Whether the board still has this card. Unknown when not supplied. */
+	/** Whether the board being shown has this card. Unknown when not supplied. */
 	onKnownTask?: (endpoint: NotificationEndpoint) => boolean;
 }) {
 	const t = useT();
-	const ref = useRef<HTMLDivElement>(null);
-	const [size, setSize] = useState({ width: 290, height: 76 });
+	const contentRef = useRef<HTMLDivElement>(null);
+	const [content, setContent] = useState({ width: 250, height: 78 });
 	useLayoutEffect(() => {
-		const element = ref.current;
-		if (!element || !anchor) return;
+		const element = contentRef.current;
+		if (!element) return;
 		const measure = () => {
 			if (element.offsetWidth && element.offsetHeight)
-				setSize({ width: element.offsetWidth, height: element.offsetHeight });
+				setContent({ width: element.offsetWidth, height: element.offsetHeight });
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(element);
 		return () => observer.disconnect();
-	}, [event.key, anchor, width]);
+	}, [event.key, width]);
 
 	const { row, target, origin } = event;
 	const canvasWidth = width ?? 0;
-	const below = !!anchor && anchor.y < size.height + 34;
+	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor });
+	// The cloud sits ABOVE the card by default, which is the whole point of it. It
+	// flips below only when there is not enough room overhead.
+	const below = !!anchor && anchor.y < cloud.height + 16;
 	const placement = anchor
 		? {
-			left: Math.max(size.width / 2 + 12, Math.min(canvasWidth - size.width / 2 - 12, anchor.x)),
-			top: anchor.y + (below ? 22 : -22),
+			left: Math.max(cloud.width / 2 + 8, Math.min(canvasWidth - cloud.width / 2 - 8, anchor.x)),
+			top: below ? anchor.y + 14 : anchor.y - cloud.height - 6,
 		}
 		: null;
-	const tailX = anchor && placement ? Math.max(18, Math.min(size.width - 18, anchor.x - placement.left + size.width / 2)) : 0;
-	const tipX = anchor && placement ? anchor.x - placement.left + size.width / 2 - tailX + 10 : 0;
 	const offCanvas = !!anchor && (anchor.x < 0 || anchor.x > canvasWidth || anchor.y < 0 || anchor.y > (height ?? 0));
 
 	const time = new Date(event.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-	// A target the board no longer has is still a target: the anchor is kept and
-	// labelled, never reassigned to some other card that happens to be nearby.
-	const targetMissing = !!target && !!onKnownTask && !onKnownTask(target);
+	const anchorEndpoint = cloudAnchorEndpoint(event);
+	// A card the shown board does not have is still a real anchor: it keeps its
+	// place and gets a line saying the board does not have it. Nothing about its
+	// status is inferred, and it is never reattached to another card.
+	const anchorOffBoard = !!anchorEndpoint && !!onKnownTask && !onKnownTask(anchorEndpoint);
 
 	return (
 		<div
-			ref={ref}
 			className={`traffic-notification ${anchor ? "is-anchored" : ""} ${below ? "is-below" : ""}`}
 			data-level={event.level}
 			data-outcome={event.outcome}
 			data-testid="traffic-notification"
 			style={placement
-				// Only ever NARROWER than the stylesheet's cap: an inline maxWidth taken
-				// from the canvas would override it and let a long message run wide.
-				? { left: placement.left, top: placement.top, maxWidth: Math.min(320, Math.max(120, canvasWidth - 24)), visibility: offCanvas ? "hidden" : undefined }
-				: undefined}
+				? { left: placement.left, top: placement.top, width: cloud.width, visibility: offCanvas ? "hidden" : undefined }
+				: { width: cloud.width }}
 		>
-			<div className="traffic-notification-head">
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path d={LEVEL_ICON[event.level]} /></svg>
-				<span>
-					{t("traffic.notification.kind")} · {t(`traffic.notification.level.${event.level}` as TranslationKey)} · {t(`traffic.notification.mode.${event.mode}` as TranslationKey)}
-				</span>
-				<time dateTime={row.at}>{time}</time>
+			<svg className="traffic-cloud" viewBox={`0 0 ${cloud.width} ${cloud.height}`} width={cloud.width} height={cloud.height} aria-hidden="true">
+				{/* Rim first, body over it: one grown copy of the same silhouette is what
+				    gives a clean outline without stroking every internal arc. */}
+				<path className="traffic-cloud-rim" d={cloud.bodyRim} />
+				{cloud.tailRim ? <path className="traffic-cloud-rim" d={cloud.tailRim} /> : null}
+				<path className="traffic-cloud-body" d={cloud.body} />
+				{cloud.tail ? <path className="traffic-cloud-body" d={cloud.tail} /> : null}
+			</svg>
+
+			{/* The SVG is mirrored when the cloud hangs below its card, so the body ends
+			    up at the bottom of the viewBox; the text follows it, unmirrored. */}
+			<div
+				className="traffic-notification-content"
+				ref={contentRef}
+				style={{ top: below ? cloud.height - cloud.inset - content.height : cloud.inset, left: cloud.inset }}
+			>
+				<div className="traffic-notification-head">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d={LEVEL_ICON[event.level]} /></svg>
+					<span>
+						{t("traffic.notification.kind")} · {t(`traffic.notification.level.${event.level}` as TranslationKey)} · {t(`traffic.notification.mode.${event.mode}` as TranslationKey)}
+					</span>
+					<time dateTime={row.at}>{time}</time>
+				</div>
+
+				{/* `title` carries the untruncated text — the clamp is visual only, and the
+				    data is never cut. */}
+				<div className="traffic-notification-body streamer-private" title={row.message}>{row.message}</div>
+
+				<div className="traffic-notification-foot">
+					{/* Sender, then subject when it differs or when there is no sender to
+					    name. "Not recorded" is a fact about the archive, never a claim
+					    that the call came from outside a worktree. */}
+					{origin
+						? <span className="traffic-notification-endpoint">{t("traffic.notification.fromTask", { seq: origin.seq === null ? "—" : String(origin.seq) })}</span>
+						: <span>{target ? t("traffic.notification.noSource") : t("traffic.notification.noTask")}</span>}
+					{target && (!origin || event.crossAddressed)
+						? <span className="traffic-notification-endpoint">{t("traffic.notification.aboutTask", { seq: target.seq === null ? "—" : String(target.seq) })}</span>
+						: null}
+					{anchorOffBoard ? <span>{t("traffic.notification.offBoard")}</span> : null}
+					{event.outcome !== "delivered"
+						? (
+							<span className="traffic-notification-outcome">
+								{t(OUTCOME_KEY[event.outcome])}
+								{event.suppressedBy.length
+									? ` · ${event.suppressedBy.map(source => t(SUPPRESSION_KEY[source])).join(", ")}`
+									: ""}
+							</span>
+						)
+						: null}
+				</div>
 			</div>
-
-			{/* `title` carries the untruncated text — the clamp is visual only, and the
-			    data is never cut. */}
-			<div className="traffic-notification-body streamer-private" title={row.message}>{row.message}</div>
-
-			<div className="traffic-notification-foot">
-				{target
-					? <span className="traffic-notification-endpoint">{t("traffic.notification.aboutTask", { seq: endpointLabel(target).slice(1) })}</span>
-					: <span>{t("traffic.notification.noTask")}</span>}
-				{event.crossAddressed && origin
-					? <span className="traffic-notification-endpoint">{t("traffic.notification.fromTask", { seq: endpointLabel(origin).slice(1) })}</span>
-					: null}
-				{targetMissing ? <span>{t("traffic.notification.unknownTask")}</span> : null}
-				{event.outcome !== "delivered"
-					? (
-						<span className="traffic-notification-outcome">
-							{t(OUTCOME_KEY[event.outcome])}
-							{event.suppressedBy.length
-								? ` · ${event.suppressedBy.map(source => t(SUPPRESSION_KEY[source])).join(", ")}`
-								: ""}
-						</span>
-					)
-					: null}
-			</div>
-
-			{anchor
-				? (
-					<svg className="traffic-notification-tail" width="20" height="24" viewBox="0 -2 20 24"
-						style={{ left: tailX - 10 }} aria-hidden="true">
-						<path d={`M0 -2 C4 2 ${tipX - 5} 14 ${tipX - 1.5} 20 Q${tipX} 24 ${tipX + 1.5} 20 C${tipX + 5} 14 16 2 20 -2`} />
-					</svg>
-				)
-				: null}
 		</div>
 	);
 }

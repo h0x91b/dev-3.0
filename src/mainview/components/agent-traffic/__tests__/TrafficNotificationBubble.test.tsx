@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { NotificationLogRow } from "../../../../shared/notification-log";
 import { I18nProvider } from "../../../i18n";
 import { notificationEvents } from "../notification-event";
-import TrafficNotificationBubble from "../TrafficNotificationBubble";
+import TrafficNotificationBubble, { cloudAnchorEndpoint } from "../TrafficNotificationBubble";
 
 function notification(overrides: Partial<NotificationLogRow> = {}): NotificationLogRow {
 	return {
@@ -66,9 +66,16 @@ describe("TrafficNotificationBubble", () => {
 		expect(bubble.querySelector(".traffic-notification-body")?.getAttribute("title")).toBe(long);
 	});
 
-	it("says a notification had no task instead of guessing one", () => {
+	it("says no task was recorded rather than guessing one", () => {
 		show(notification({ taskId: null, taskSeq: null, taskTitle: undefined, projectId: null, sourceTaskId: null, sourceSeq: null }));
-		expect(screen.getByText("Sent without a task")).toBeTruthy();
+		expect(screen.getByText("No task recorded")).toBeTruthy();
+	});
+
+	it("says the SENDER was not recorded, never that there was no worktree", () => {
+		show(notification({ sourceTaskId: null, sourceSeq: null, sourceTitle: undefined, sourceProjectId: undefined }));
+		expect(screen.getByText("Sender not recorded")).toBeTruthy();
+		// The subject is still named, because that part the archive did record.
+		expect(screen.getByText("About #11")).toBeTruthy();
 	});
 
 	it("names both ends when the notification was addressed at another card", () => {
@@ -77,9 +84,10 @@ describe("TrafficNotificationBubble", () => {
 		expect(screen.getByText("Sent from #11")).toBeTruthy();
 	});
 
-	it("does not repeat the sender when it is the same card", () => {
+	it("names the sender once and does not repeat it as the subject", () => {
 		show(notification());
-		expect(screen.queryByText("Sent from #11")).toBeNull();
+		expect(screen.getByText("Sent from #11")).toBeTruthy();
+		expect(screen.queryByText("About #11")).toBeNull();
 	});
 
 	it("says a queued notification may never have been seen, and why", () => {
@@ -99,36 +107,68 @@ describe("TrafficNotificationBubble", () => {
 		expect(bubble.querySelector(".traffic-notification-outcome")).toBeNull();
 	});
 
-	it("flags a target the board no longer has without moving the anchor", () => {
-		show(notification({ taskId: "gone", taskSeq: 99 }), { onKnownTask: () => false });
-		expect(screen.getByText(/no longer on the board/)).toBeTruthy();
-		expect(screen.getByText("About #99")).toBeTruthy();
+	it("says an anchor is not on the shown board, without claiming it was deleted", () => {
+		show(notification({ taskId: "gone", taskSeq: 99, sourceTaskId: "gone", sourceSeq: 99 }), { onKnownTask: () => false });
+		expect(screen.getByText("Not on the board being shown")).toBeTruthy();
+		// The anchor is kept and named, not reassigned to a card that is present.
+		expect(screen.getByText("Sent from #99")).toBeTruthy();
 	});
 
-	it("renders inline with no tail when no anchor is given", () => {
+	it("draws a cloud silhouette with a rim behind it, both from one geometry", () => {
+		const bubble = show(notification());
+		// A rim path and a body path, and the rim is first so the body covers it.
+		const paths = [...bubble.querySelectorAll(".traffic-cloud path")];
+		expect(paths.length).toBeGreaterThanOrEqual(2);
+		expect(paths[0].classList.contains("traffic-cloud-rim")).toBe(true);
+		// Arcs, not a rounded rectangle: the lobes are what make it a cloud.
+		expect(paths[0].getAttribute("d")).toContain("A");
+	});
+
+	it("renders in flow with no thought trail when no anchor is given", () => {
 		const bubble = show(notification());
 		expect(bubble.classList.contains("is-anchored")).toBe(false);
-		expect(bubble.querySelector(".traffic-notification-tail")).toBeNull();
+		// Two paths only — silhouette and rim, no puffs to point at a card.
+		expect(bubble.querySelectorAll(".traffic-cloud path")).toHaveLength(2);
 	});
 
-	it("positions and grows a tail when anchored to a node", () => {
+	it("grows a thought trail and positions itself when anchored to a card", () => {
 		const bubble = show(notification(), { anchor: { x: 400, y: 300 }, width: 1000, height: 600 });
 		expect(bubble.classList.contains("is-anchored")).toBe(true);
-		expect(bubble.querySelector(".traffic-notification-tail")).toBeTruthy();
+		expect(bubble.querySelectorAll(".traffic-cloud path")).toHaveLength(4);
 		expect(bubble.style.left).toBeTruthy();
 	});
 
-	it("never widens itself past the stylesheet cap on a wide canvas", () => {
-		// An inline maxWidth taken from the canvas would beat the CSS cap and let a
-		// long message run the full width, overlapping the next bubble.
-		const wide = show(notification(), { anchor: { x: 400, y: 300 }, width: 4000, height: 600 });
-		expect(wide.style.maxWidth).toBe("320px");
-		const narrow = show(notification(), { anchor: { x: 100, y: 300 }, width: 200, height: 600 });
-		expect(narrow.style.maxWidth).toBe("176px");
+	it("hangs ABOVE the card, and flips below only when there is no room overhead", () => {
+		const roomy = show(notification(), { anchor: { x: 400, y: 500 }, width: 1000, height: 600 });
+		expect(roomy.classList.contains("is-below")).toBe(false);
+		expect(Number.parseFloat(roomy.style.top)).toBeLessThan(500);
+		const cramped = show(notification(), { anchor: { x: 400, y: 8 }, width: 1000, height: 600 });
+		expect(cramped.classList.contains("is-below")).toBe(true);
+		expect(Number.parseFloat(cramped.style.top)).toBeGreaterThan(8);
 	});
 
 	it("hides an anchor that sits off the canvas rather than drawing it at the edge", () => {
 		const bubble = show(notification(), { anchor: { x: -50, y: 300 }, width: 1000, height: 600 });
 		expect(bubble.style.visibility).toBe("hidden");
+	});
+
+	describe("which card the cloud hangs over", () => {
+		it("prefers the SENDER, because that is whose thought it is", () => {
+			const [event] = notificationEvents([notification({ taskId: "task-b", taskSeq: 22, sourceTaskId: "task-a", sourceSeq: 11 })]);
+			expect(cloudAnchorEndpoint(event)?.taskId).toBe("task-a");
+		});
+
+		it("falls back to the card it is about when no sender was recorded", () => {
+			const [event] = notificationEvents([notification({ sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined })]);
+			expect(cloudAnchorEndpoint(event)?.taskId).toBe("task-a");
+		});
+
+		it("has nowhere to hang when the archive recorded neither end", () => {
+			const [event] = notificationEvents([notification({
+				taskId: null, taskSeq: null, projectId: null, taskTitle: undefined,
+				sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined,
+			})]);
+			expect(cloudAnchorEndpoint(event)).toBeNull();
+		});
 	});
 });
