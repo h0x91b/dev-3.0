@@ -781,12 +781,21 @@ export default function TrafficNodes({
 							".traffic-minimap",
 							".traffic-camera-controls",
 							".traffic-nodes-bands",
+							// Outside the stage element but over the same screen band: the
+							// summary block, which carries the rebuilt-states caption and the
+							// per-kind counts. Measured a cloud covering them 17% and 18%
+							// while every card was clear, so "inside the stage" was the wrong
+							// boundary for this list.
+							":scope > .traffic-summary",
 						].flatMap((selector) => {
 							// All four are descendants of the stage. They render after the
 							// clouds, so on the very first frame they are not there yet and
 							// the list is short by them — invisible on a decoration that only
 							// exists while replaying, and not worth a layout effect.
-							const box = frame.current
+							const root = selector.startsWith(":scope")
+								? frame.current?.closest(".traffic-view")
+								: frame.current;
+							const box = root
 								?.querySelector(selector)
 								?.getBoundingClientRect();
 							return box
