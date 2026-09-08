@@ -148,6 +148,28 @@ describe("TrafficNotificationBubble", () => {
 		expect(Number.parseFloat(cramped.style.top)).toBeGreaterThan(8);
 	});
 
+	it("hangs below on request, because only the stage knows the space above is taken", () => {
+		// Reported from the shared stage: a cloud anchored to a lower-band card was
+		// drawn upward across the card above it. Room on the CANVAS is all this
+		// component can measure; whether that room is empty is the layout's answer.
+		const forced = show(notification(), { anchor: { x: 400, y: 500 }, width: 1000, height: 600, placement: "below" });
+		expect(forced.classList.contains("is-below")).toBe(true);
+		expect(Number.parseFloat(forced.style.top)).toBeGreaterThan(500);
+	});
+
+	it("clears the card's own height when it hangs below, so the trail misses its title", () => {
+		// The first `below` render drew the puffs across the sender card's own title,
+		// because `anchor.y` is the card's TOP and the cloud started 14px under it.
+		const card = { x: 400, y: 500, height: 58 };
+		const clearing = show(notification(), { anchor: card, width: 1000, height: 900, placement: "below" });
+		expect(Number.parseFloat(clearing.style.top)).toBeGreaterThan(card.y + card.height);
+	});
+
+	it("obeys an explicit `above` even where it would have flipped on its own", () => {
+		const forced = show(notification(), { anchor: { x: 400, y: 8 }, width: 1000, height: 600, placement: "above" });
+		expect(forced.classList.contains("is-below")).toBe(false);
+	});
+
 	it("hides an anchor that sits off the canvas rather than drawing it at the edge", () => {
 		const bubble = show(notification(), { anchor: { x: -50, y: 300 }, width: 1000, height: 600 });
 		expect(bubble.style.visibility).toBe("hidden");
