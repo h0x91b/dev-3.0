@@ -4,6 +4,7 @@ import type { NotificationLogRow } from "../../../../shared/notification-log";
 import { I18nProvider } from "../../../i18n";
 import { notificationEvents } from "../notification-event";
 import TrafficNotificationBubble, { cloudSenderEndpoint } from "../TrafficNotificationBubble";
+import { CLOUD_TEXT_MAX_WIDTH } from "../traffic-cloud";
 
 function notification(overrides: Partial<NotificationLogRow> = {}): NotificationLogRow {
 	return {
@@ -173,6 +174,24 @@ describe("TrafficNotificationBubble", () => {
 				sourceTaskId: null, sourceSeq: null, sourceProjectId: undefined,
 			})]);
 			expect(cloudSenderEndpoint(event)).toBeNull();
+		});
+	});
+
+	describe("the measured box", () => {
+		// happy-dom reports every offsetWidth as 0, so the layout itself cannot be
+		// asserted here — but the ONE rule that broke it in a real render can be. The
+		// cloud is drawn around the measured content box, so capping the BOX while a
+		// line inside it cannot wrap leaves the measurement at the cap and paints that
+		// line outside the silhouette. Measured in a browser: the head's clock and the
+		// outcome pill both sat outside the cloud until the cap moved to the lines.
+		it("caps the wrapping lines, never the box the cloud is measured from", () => {
+			const bubble = show(notification({ outcome: "queued", suppressedBy: ["focusMode"] }));
+			const box = bubble.querySelector<HTMLElement>(".traffic-notification-content")!;
+			expect(box.style.maxWidth).toBe("");
+			for (const selector of [".traffic-notification-body", ".traffic-notification-foot"]) {
+				const line = bubble.querySelector<HTMLElement>(selector)!;
+				expect(line.style.maxWidth).toBe(`${CLOUD_TEXT_MAX_WIDTH}px`);
+			}
 		});
 	});
 });

@@ -45,10 +45,16 @@
 	fill: rgb(var(--notification-tone) / 0.55);
 }
 
+/* The cloud is built around this box's MEASURED size, so nothing inside may
+   overflow it: an overflowing line keeps the measured width at the cap and then
+   paints itself outside the silhouette. The cap therefore lives on the lines
+   that can wrap — never on the box, whose `max-content` must stay the true
+   width of the widest line, including the head, which cannot wrap at all. It is
+   applied in the component, from one exported constant, so the rule is testable
+   in the DOM rather than only readable here. */
 .traffic-notification-content {
 	position: absolute;
 	width: max-content;
-	max-width: 250px;
 }
 .traffic-notification-head {
 	display: flex;

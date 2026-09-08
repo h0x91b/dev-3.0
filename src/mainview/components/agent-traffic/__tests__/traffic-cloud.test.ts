@@ -16,16 +16,43 @@ describe("cloudGeometry", () => {
 		const lobes = circles(cloud.body);
 		const top = cloud.inset;
 		const bottom = cloud.inset + 80;
-		expect(lobes.some(lobe => lobe.cy === top)).toBe(true);
-		expect(lobes.some(lobe => lobe.cy === bottom)).toBe(true);
+		// Lobes straddle an edge rather than sitting exactly on it — they are lifted
+		// and sagged to undulate — so assert the overhang, not the coordinate.
+		expect(lobes.some(lobe => lobe.cy <= top && lobe.cy - lobe.r < top)).toBe(true);
+		expect(lobes.some(lobe => lobe.cy >= bottom && lobe.cy + lobe.r > bottom)).toBe(true);
 		expect(lobes.some(lobe => lobe.cx === cloud.inset)).toBe(true);
 		expect(lobes.some(lobe => lobe.cx === cloud.inset + 240)).toBe(true);
 	});
 
+	it("covers the content box's corners, so the cloud grows no square shoulders", () => {
+		// The bug this guards: lobe centres sit on the EDGES, so without a lobe of its
+		// own every corner of the rectangle pokes out past its neighbours and the
+		// silhouette reads as a dented rectangle instead of a cloud.
+		const [width, height] = [240, 80];
+		const cloud = cloudGeometry(width, height);
+		const lobes = circles(cloud.body);
+		for (const [cx, cy] of [
+			[cloud.inset, cloud.inset],
+			[cloud.inset + width, cloud.inset],
+			[cloud.inset, cloud.inset + height],
+			[cloud.inset + width, cloud.inset + height],
+		]) {
+			const covered = lobes.some(lobe => Math.hypot(lobe.cx - cx, lobe.cy - cy) < lobe.r);
+			expect(covered).toBe(true);
+		}
+	});
+
+	it("varies the lobe radii, because uniform scallops read as machined, not as a cloud", () => {
+		const radii = new Set(circles(cloudGeometry(320, 80).body).map(lobe => lobe.r));
+		expect(radii.size).toBeGreaterThanOrEqual(4);
+	});
+
 	it("adds lobes as the text gets wider, so a long message does not get one fat lobe", () => {
-		const narrow = circles(cloudGeometry(120, 60).body).filter(lobe => lobe.cy === cloudGeometry(120, 60).inset);
-		const wide = circles(cloudGeometry(480, 60).body).filter(lobe => lobe.cy === cloudGeometry(480, 60).inset);
-		expect(wide.length).toBeGreaterThan(narrow.length);
+		const above = (contentWidth: number) => {
+			const cloud = cloudGeometry(contentWidth, 60);
+			return circles(cloud.body).filter(lobe => lobe.cy < cloud.inset).length;
+		};
+		expect(above(480)).toBeGreaterThan(above(120));
 	});
 
 	it("reserves room for the lobes around the content box", () => {

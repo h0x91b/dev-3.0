@@ -23,7 +23,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
-import { cloudGeometry } from "./traffic-cloud";
+import { CLOUD_TEXT_MAX_WIDTH, cloudGeometry } from "./traffic-cloud";
 import "./traffic-notification.css";
 
 const LEVEL_ICON = {
@@ -147,9 +147,9 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 
 				{/* `title` carries the untruncated text — the clamp is visual only, and the
 				    data is never cut. */}
-				<div className="traffic-notification-body streamer-private" title={row.message}>{row.message}</div>
+				<div className="traffic-notification-body streamer-private" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }} title={row.message}>{row.message}</div>
 
-				<div className="traffic-notification-foot">
+				<div className="traffic-notification-foot" style={{ maxWidth: CLOUD_TEXT_MAX_WIDTH }}>
 					{/* Sender, then subject when it differs or when there is no sender to
 					    name. "Not recorded" is a fact about the archive, never a claim
 					    that the call came from outside a worktree. */}
