@@ -24,8 +24,8 @@ import {
 	NOTIFICATION_LEVELS,
 	notificationLevelKey,
 	notificationTimelineEvents,
+	type NotificationLogLevel,
 } from "./notification-event";
-import type { NotificationLogLevel } from "../../../shared/notification-log";
 import { useTrafficExperiment } from "./useTrafficExperiment";
 import type { AgentTrafficExperiment } from "../../../shared/types";
 import {
