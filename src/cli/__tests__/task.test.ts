@@ -966,6 +966,12 @@ describe("task move", () => {
 // "completed" is not a direct move: the CLI sends task.requestCompletion and
 // blocks until the user answers the approval dialog in the app.
 
+/** The `task.move` call, skipping the `approval.policy` pre-flight in front of it. */
+function moveCall(mock: { mock: { calls: unknown[][] } }) {
+	return mock.mock.calls.find((call) => call[1] === "task.move") as
+		[string, string, Record<string, unknown>, Record<string, unknown>] | undefined;
+}
+
 describe("task move --status completed", () => {
 	it("sends task.requestCompletion with the long approval timeout", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
@@ -1713,11 +1719,51 @@ describe("task move — agent asking to start another task", () => {
 
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.sourceTaskId).toBe(CTX.taskId);
+		// A cheap `approval.policy` read comes first so the CLI can size its own
+		// timeout to the configured delay — the move itself is the second call.
+		expect(mockSend.mock.calls[0]![1]).toBe("approval.policy");
+		const move = moveCall(mockSend)!;
+		expect(move[2]!.sourceTaskId).toBe(CTX.taskId);
 		// The dialog can sit open for minutes, so this call waits far longer than
 		// the default socket timeout.
-		expect(mockSend.mock.calls[0]![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+		expect(move[3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+	});
+
+	it("waits past a one-hour delay instead of giving up after the fixed ten minutes", async () => {
+		// The bug this covers: both approval timeouts were hard-coded to 10 minutes,
+		// so any configured delay longer than that killed the waiting agent before
+		// the timer it was waiting on could fire.
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "approval.policy") return okResp({ autoApproveMs: 60 * 60 * 1000 });
+			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
+		});
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		// One hour plus the two-minute grace, not the ten-minute baseline.
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 60 * 60 * 1000 + 2 * 60 * 1000 });
+	});
+
+	it("keeps the baseline when the app cannot say what its delay is", async () => {
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "approval.policy") throw new Error("Socket timeout (5s)");
+			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
+		});
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+	});
+
+	it("never shortens the wait below the baseline for a short delay", async () => {
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "approval.policy") return okResp({ autoApproveMs: 15_000 });
+			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
+		});
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
 	});
 
 	it("prints the new task's seq and how to talk to it on approval", async () => {
@@ -1769,7 +1815,7 @@ describe("task move — agent asking to start another task", () => {
 
 			await handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": path }), SOCKET, CTX);
 
-			expect(mockSend.mock.calls[0]![2]!.handoffNote).toBe("Report to Seq 1141 only.");
+			expect(moveCall(mockSend)![2]!.handoffNote).toBe("Report to Seq 1141 only.");
 			rmSync(path, { force: true });
 		});
 

@@ -4,7 +4,7 @@ import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, r
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { listPendingAgentRequests, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -988,6 +988,15 @@ async function updateAgentLaunchChoice(params: {
 }
 
 /**
+ * A client put this dialog on screen. The countdown restarts from now, so a
+ * request that queued behind another still gets the full delay in front of a
+ * human instead of expiring unseen. Returns the deadline the timer will use.
+ */
+async function markAgentRequestShown(params: { requestId: string }): Promise<{ autoApproveAt: number | null }> {
+	return { autoApproveAt: markShown(params.requestId) };
+}
+
+/**
  * Quick shell (⇧⌘`): spawns a FRESH scratch operation in the built-in Operations
  * board on every press — exactly like clicking "Scratch Task" there. The task
  * gets the normal `Scratch — HH:mm` title and a managed work dir, and is launched
@@ -1231,6 +1240,7 @@ export const taskLifecycleHandlers = {
 	respondToAgentCancellationRequest,
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,
+	markAgentRequestShown,
 	getTaskTerminalBackend,
 	setTaskTerminalBackend,
 	getNativeTerminalAvailability,

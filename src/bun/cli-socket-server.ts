@@ -2195,6 +2195,15 @@ const handlers: Record<string, Handler> = {
 		return getDevServerStatus({ taskId: task.id, projectId: project.id });
 	},
 
+	// How long an approval can take, asked BEFORE the blocking request that waits
+	// for it. The CLI's own socket timeout is a fixed 10 minutes, so a delay longer
+	// than that used to kill the waiting agent before the timer it was waiting on
+	// could ever fire. Cheap and non-blocking on purpose — it is on the hot path of
+	// every launch request.
+	"approval.policy": async () => {
+		return { autoApproveMs: agentLaunchAutoApproveMs(await loadSettings()) };
+	},
+
 	"config.export": async (params) => {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
