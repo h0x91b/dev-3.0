@@ -745,6 +745,29 @@ export default function TrafficNodes({
 				// document flow it lands on top of the caption — measured. It belongs to
 				// the timeline and the message list, where it is already readable.
 				if (!node) return null;
+				// A cloud whose sender card is ENTIRELY outside the stage points at
+				// something nobody can see, and it lands on whatever card is there
+				// instead — measured at 77% zoom, where the sender sat 36px above the
+				// top edge and its cloud covered a neighbour's seq label completely.
+				// Partially visible still renders: the card is on screen, so the thought
+				// still belongs to something.
+				//
+				// This re-evaluates on pan and zoom for free, because `view` is state and
+				// the whole computation lives in render — so the cloud comes back the
+				// moment the card re-enters. Nothing here touches the camera, the
+				// playback or the focus.
+				const stageWidth = frame.current?.clientWidth ?? 0;
+				const stageHeightPx = frame.current?.clientHeight ?? 0;
+				const senderLeft = view.x + node.x * view.scale;
+				const senderTop = view.y + node.y * view.scale;
+				const senderOffscreen =
+					stageWidth > 0 &&
+					stageHeightPx > 0 &&
+					(senderLeft + node.width * view.scale <= 0 ||
+						senderLeft >= stageWidth ||
+						senderTop + node.height * view.scale <= 0 ||
+						senderTop >= stageHeightPx);
+				if (senderOffscreen) return null;
 				// Clear space in the anchor's own column: to the nearest card above and
 				// below, or to the stage edge when there is none. Scaled, because the
 				// cloud is measured in screen pixels and the cards are not — the whole
