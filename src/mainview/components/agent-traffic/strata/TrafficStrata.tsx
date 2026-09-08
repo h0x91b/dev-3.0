@@ -511,7 +511,9 @@ export default function TrafficStrata({
 			}
 
 			const eye = advance(camera, dt, reducedRef.current);
-			engine.begin(eye, camera.target);
+			// The far plane has to clear the whole scene from wherever the camera is,
+			// or a framing that pulls back far enough silently clips the decks away.
+			engine.begin(eye, camera.target, camera.distance + boundsRef.current.radius * 2.5);
 			const statics = staticRef.current;
 			if (statics.base) engine.draw(statics.base);
 			if (statics.detail) engine.draw(statics.detail);

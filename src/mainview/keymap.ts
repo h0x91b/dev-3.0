@@ -202,6 +202,19 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 		remappable: false, fixedReasonKey: "keymap.fixed.activatesFocused",
 		display: { mac: "Space", other: "Space" },
 	},
+	// Bare F and H, live only while the Strata stage itself holds focus, so they
+	// cannot be dispatched bindings and cannot be rebound. Listed for the same
+	// reason Space above is: an undocumented key is invisible everywhere.
+	{
+		id: "traffic-strata-frame", primary: [], descKey: "keymap.shortcut.trafficStrataFrame", category: "view",
+		remappable: false, fixedReasonKey: "keymap.fixed.stageLocal",
+		display: { mac: "F", other: "F" },
+	},
+	{
+		id: "traffic-strata-home", primary: [], descKey: "keymap.shortcut.trafficStrataHome", category: "view",
+		remappable: false, fixedReasonKey: "keymap.fixed.stageLocal",
+		display: { mac: "H", other: "H" },
+	},
 	{ id: "help-mode", primary: [mod("Slash", "Shift")], descKey: "keymap.shortcut.helpMode", category: "view" },
 	// F11 is the browser's own fullscreen off macOS; the ⇧⌘F alias carries remote.
 	{ id: "terminal-fullscreen", primary: [{ code: "F11", mods: [], desktopOnly: true }], alias: [mod("KeyF", "Shift")], descKey: "keymap.shortcut.terminalFullscreen", category: "view" },
@@ -352,6 +365,8 @@ export function shortcutAppliesInMode(spec: ShortcutSpec, remote: boolean): bool
 const FLAGGED_SHORTCUTS: Record<string, () => boolean> = {
 	"agent-traffic-log": getAgentTrafficEnabled,
 	"traffic-replay-play-pause": getAgentTrafficEnabled,
+	"traffic-strata-frame": getAgentTrafficEnabled,
+	"traffic-strata-home": getAgentTrafficEnabled,
 };
 
 /** Whether the shortcut's feature is currently switched on (true when ungated). */
