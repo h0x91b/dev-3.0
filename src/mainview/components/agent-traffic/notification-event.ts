@@ -185,6 +185,17 @@ export function notificationsAt(
 /* ── the level axis and the notification count ───────────────────────────── */
 
 /**
+ * Re-exported so a consumer of the level axis has ONE import site.
+ *
+ * The type itself belongs to the on-disk schema, but nothing building a level
+ * control should have to know that: it would make the axis's vocabulary and its
+ * predicate arrive from two different modules, and code written against the axis
+ * alone then fails to compile for a reason that has nothing to do with the axis.
+ * Measured, not guessed — that exact import failed.
+ */
+export type { NotificationLogLevel } from "../../../shared/notification-log";
+
+/**
  * The `levels` axis of the shared timeline filter, which governs notification
  * events and nothing else — a message filter must never swallow a notification,
  * and a level means nothing to a message or a board movement.

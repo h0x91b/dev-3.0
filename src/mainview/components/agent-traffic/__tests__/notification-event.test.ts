@@ -5,6 +5,7 @@ import {
 	notificationCounts,
 	notificationEvents,
 	notificationLevelKey,
+	type NotificationLogLevel,
 	notificationPassesLevels,
 	notificationTimelineEvents,
 	notificationsAt,
@@ -285,5 +286,16 @@ describe("the level axis and the counts", () => {
 		expect(counts.byLevel).toEqual({ error: 0, success: 0, info: 0 });
 		expect(counts.byOutcome).toEqual({ delivered: 0, queued: 0, "no-window": 0 });
 		expect(counts.neverSeen).toBe(0);
+	});
+});
+
+describe("the level axis is importable from one place", () => {
+	// A consumer building a level control imports the vocabulary, the label key and
+	// the type from this module alone. Seq 1824's patch was written that way and did
+	// not compile until the type was re-exported, so this guards the re-export.
+	it("re-exports the level type alongside the axis it belongs to", () => {
+		const level: NotificationLogLevel = "error";
+		expect(NOTIFICATION_LEVELS).toContain(level);
+		expect(notificationLevelKey(level)).toBe("traffic.notification.level.error");
 	});
 });
