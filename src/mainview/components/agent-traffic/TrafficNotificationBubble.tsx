@@ -120,7 +120,7 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	 * its neighbours from in here. Given this, the cloud simply draws where it is
 	 * told and ignores `placement` and `room`.
 	 */
-	at?: { left: number; top: number; side: "above" | "below" };
+	at?: { left: number; top: number; side: "above" | "below"; overlap?: number };
 	/**
 	 * Everything on the canvas the cloud must not cover, in the SAME space the
 	 * cloud is positioned in — cards, group frames, the caption, the minimap, the
@@ -209,11 +209,18 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	// status is inferred, and it is never reattached to another card.
 	const anchorOffBoard = !!sender && !!onKnownTask && !onKnownTask(sender);
 
+	// `data-cloud-*` are diagnostics for an acceptance run on the real stage: what
+	// the placement BELIEVES it achieved. A cloud reporting 0 overlap while a card
+	// title is visibly covered means the obstacle boxes it was handed are wrong or
+	// stale, not that the search failed — the two causes look identical in a
+	// screenshot and are fixed in different places.
 	return (
 		<div
 			className={`traffic-notification ${anchor ? "is-anchored" : ""} ${below ? "is-below" : ""} ${compact ? "is-compact" : ""}`}
 			data-level={event.level}
 			data-outcome={event.outcome}
+			data-cloud-side={decided ? decided.side : undefined}
+			data-cloud-overlap={decided?.overlap}
 			data-testid="traffic-notification"
 			style={position
 				? { left: position.left, top: position.top, width: cloud.width, visibility: offCanvas ? "hidden" : undefined }

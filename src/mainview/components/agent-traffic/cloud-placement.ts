@@ -52,11 +52,22 @@ const EDGE = 4;
 /**
  * How far sideways a cloud may slide from its card, as a fraction of its width.
  *
- * The trail has to keep pointing at the sender, and it starts near the cloud's
- * centre — so past roughly a third of the width the thought stops visibly
- * belonging to its card, which is worse than an overlap.
+ * The trail has to keep pointing at the sender, so this used to be a third of the
+ * width. It was widened deliberately once the compact cloud started naming its
+ * sender in words (#N): the connection no longer rests on the puffs alone, so a
+ * further slide costs less than it did — and it buys clean placements that a
+ * narrower sweep could not reach. Still bounded: a cloud on the far side of the
+ * canvas belongs to nothing.
  */
-const MAX_SLIDE = 0.34;
+const MAX_SLIDE = 0.5;
+/**
+ * How many sideways offsets to try between centred and {@link MAX_SLIDE}.
+ *
+ * Coarse steps miss pockets that exist: five offsets left a card's title fully
+ * covered where a finer sweep finds a clean box. The cost is a few dozen
+ * rectangle intersections for one cloud, which is nothing next to a hidden title.
+ */
+const SLIDE_STEPS = 8;
 /**
  * How many storeys away from its card a cloud may be pushed.
  *
@@ -105,7 +116,13 @@ function candidates(cloud: CloudToPlace, canvas: { width: number; height: number
 	const { anchor, size } = cloud;
 	const centred = anchor.x - size.width / 2;
 	const slide = size.width * MAX_SLIDE;
-	const lefts = [centred, centred - slide * 0.5, centred + slide * 0.5, centred - slide, centred + slide];
+	// Centred first, then alternating outwards in even steps, so the nearest clean
+	// box always wins over a further one.
+	const lefts = [centred];
+	for (let step = 1; step <= SLIDE_STEPS; step += 1) {
+		const offset = (slide * step) / SLIDE_STEPS;
+		lefts.push(centred - offset, centred + offset);
+	}
 	const out: Candidate[] = [];
 	// Storey outermost, then side, then the sideways slide. That order is the
 	// policy: stay as close to the card as possible, prefer above, and only then

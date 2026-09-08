@@ -252,6 +252,23 @@ describe("TrafficNotificationBubble", () => {
 		expect(bubble.classList.contains("is-below")).toBe(true);
 	});
 
+	it("publishes what the placement believes it achieved, for an acceptance run", () => {
+		// The two causes of a covered card title look identical in a screenshot: the
+		// search failed, or the obstacle boxes it was handed were wrong or stale. A
+		// cloud reporting 0 while a title is visibly covered separates them, and they
+		// are fixed in different places.
+		const clean = show(notification(), {
+			anchor: { x: 400, y: 300, height: 56 }, width: 1280, height: 720,
+			density: "compact", obstacles: [{ left: 0, top: 0, width: 100, height: 100 }],
+		});
+		expect(clean.dataset.cloudOverlap).toBe("0");
+		expect(clean.dataset.cloudSide).toBe("above");
+		// No obstacles given, nothing to report — the attribute is absent rather than
+		// a zero that would read as "checked and clean".
+		const unchecked = show(notification(), { anchor: { x: 400, y: 300 }, width: 1280, height: 720 });
+		expect(unchecked.dataset.cloudOverlap).toBeUndefined();
+	});
+
 	it("obeys an explicit `above` even where it would have flipped on its own", () => {
 		const forced = show(notification(), { anchor: { x: 400, y: 8 }, width: 1000, height: 600, placement: "above" });
 		expect(forced.classList.contains("is-below")).toBe(false);
