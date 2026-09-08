@@ -102,7 +102,7 @@ interface PendingConfirm extends ConfirmOptions {
 	resolve: (value: boolean | string) => void;
 }
 
-let listener: ((req: PendingConfirm | null) => void) | null = null;
+let listener: ((req: PendingConfirm) => void) | null = null;
 let counter = 0;
 
 /**
@@ -115,6 +115,8 @@ let counter = 0;
  *
  * Requires `<ConfirmHost />` to be mounted once (in `App.tsx`). If it is not
  * mounted, the promise resolves `false` (fail-closed) instead of blocking.
+ *
+ * Overlapping calls queue instead of replacing each other — see {@link ConfirmHost}.
  */
 export function confirm(options: ConfirmOptions & { alternativeAction: ConfirmAlternativeAction }): Promise<boolean | string>;
 export function confirm(options: ConfirmOptions): Promise<boolean>;
@@ -154,21 +156,51 @@ export function whenConfirmHostMounted(timeoutMs = 10_000): Promise<boolean> {
 	});
 }
 
+/**
+ * Draws one dialog at a time and makes the rest wait their turn. A single slot
+ * would let a second `confirm()` overwrite the first, whose promise then never
+ * resolves — see `decisions/2026/09/08/queue-overlapping-confirm-dialogs.md`.
+ */
 export function ConfirmHost() {
-	const [pending, setPending] = useState<PendingConfirm | null>(null);
+	const [queue, setQueue] = useState<PendingConfirm[]>([]);
 
 	useEffect(() => {
-		listener = setPending;
+		listener = (req) => setQueue((current) => [...current, req]);
 		return () => {
 			listener = null;
 		};
 	}, []);
 
+	// A waiting entry whose caller aborted (the task was resolved on another
+	// window) has nothing left to ask. Resolve it where it stands rather than
+	// promoting a dialog nobody can act on. The head needs none of this — the
+	// mounted dialog watches its own signal.
+	useEffect(() => {
+		const waiting = queue.slice(1).filter((entry) => entry.signal);
+		const detach = waiting.map((entry) => {
+			const signal = entry.signal!;
+			const drop = () => {
+				entry.resolve(false);
+				setQueue((current) => current.filter((other) => other !== entry));
+			};
+			if (signal.aborted) {
+				drop();
+				return () => {};
+			}
+			signal.addEventListener("abort", drop);
+			return () => signal.removeEventListener("abort", drop);
+		});
+		return () => {
+			for (const off of detach) off();
+		};
+	}, [queue]);
+
+	const pending = queue[0];
 	if (!pending) return null;
 
 	const close = (result: boolean | string) => {
 		pending.resolve(result);
-		setPending(null);
+		setQueue((current) => current.filter((entry) => entry !== pending));
 	};
 
 	// Render the dialog as a child keyed by request id so it genuinely

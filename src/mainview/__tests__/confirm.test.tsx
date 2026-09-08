@@ -468,3 +468,65 @@ describe("whenConfirmHostMounted", () => {
 		await expect(waiting).resolves.toBe(true);
 	});
 });
+
+// A single-slot host let a second confirm overwrite the first: the dialog
+// vanished and its promise never settled. Behind an agent-initiated request
+// that stranded a blocked CLI for its full 10-minute wait, and its retry joined
+// the pending request instead of pushing again — so nothing could ever redraw
+// it (issue #1669).
+describe("overlapping confirms", () => {
+	it("queues the second request instead of replacing the first", async () => {
+		const user = userEvent.setup();
+		renderHost();
+
+		let first: Promise<boolean>;
+		let second: Promise<boolean>;
+		act(() => {
+			first = confirm({ title: "Cancel task one", message: "Throw it away?", confirmLabel: "Cancel it" });
+		});
+		expect(await screen.findByText("Cancel task one")).toBeInTheDocument();
+
+		act(() => {
+			second = confirm({ title: "Cancel task two", message: "Throw it away?", confirmLabel: "Cancel it" });
+		});
+
+		// The first question is still the one on screen — the second waits.
+		expect(screen.getByText("Cancel task one")).toBeInTheDocument();
+		expect(screen.queryByText("Cancel task two")).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Cancel it" }));
+		await expect(first!).resolves.toBe(true);
+
+		// Answering the first promotes the second rather than losing it.
+		expect(await screen.findByText("Cancel task two")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Cancel it" }));
+		await expect(second!).resolves.toBe(true);
+		expect(screen.queryByText("Cancel task two")).not.toBeInTheDocument();
+	});
+
+	it("resolves a queued request whose caller aborted, without ever drawing it", async () => {
+		const user = userEvent.setup();
+		renderHost();
+
+		const controller = new AbortController();
+		let first: Promise<boolean>;
+		let queued: Promise<boolean>;
+		act(() => {
+			first = confirm({ title: "Still asking", message: "?", confirmLabel: "Yes" });
+		});
+		expect(await screen.findByText("Still asking")).toBeInTheDocument();
+		act(() => {
+			queued = confirm({ title: "Answered elsewhere", message: "?", confirmLabel: "Yes", signal: controller.signal });
+		});
+
+		await act(async () => {
+			controller.abort();
+		});
+		await expect(queued!).resolves.toBe(false);
+
+		await user.click(screen.getByRole("button", { name: "Yes" }));
+		await expect(first!).resolves.toBe(true);
+		// The aborted entry never reached the screen.
+		expect(screen.queryByText("Answered elsewhere")).not.toBeInTheDocument();
+	});
+});
