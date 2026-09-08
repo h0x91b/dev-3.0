@@ -446,6 +446,52 @@ describe("obstacle-aware traffic routing", () => {
 			assertClear(result);
 		});
 
+		// Only a board with a coordinator produces agent traffic, so eligibility keyed
+		// on message volume erased every other project from the stage — group box,
+		// cards and all — and took the named group off the surviving project too.
+		it("gives a project with no traffic its own named block beside a conversing one", () => {
+			const tasks = [...projectTasks("a"), task("solo1", 20, { projectId: "b" }), task("solo2", 21, { projectId: "b" })];
+			const result = collapsed(tasks, projectRows("a"));
+			expect(result.groups.map(group => group.projectId)).toEqual(["a", "b"]);
+			expect(result.placed.map(card => `${card.node.projectId}/${card.node.id}`).sort())
+				.toEqual(["a/hub", "a/worker", "b/solo1", "b/solo2"]);
+			// No coordinator is invented for the silent project, and its cards are not
+			// double-counted by the quiet band that would otherwise have hidden them.
+			expect(result.placed.filter(card => card.hub).map(card => card.node.projectId)).toEqual(["a"]);
+			expect(result.placed.every(card => card.node.projectId !== "b" || card.messages === 0)).toBe(true);
+			expect(result.quietCount).toBe(1);
+			assertClear(result);
+		});
+
+		// The silent project's tasks are drawn once, whichever way the bands are set.
+		it("never draws a promoted task twice when the quiet band opens", () => {
+			const tasks = [...projectTasks("a"), task("solo", 20, { projectId: "b" })];
+			const result = scene(tasks, projectRows("a"));
+			expect(result.placed.filter(card => card.node.id === "solo")).toHaveLength(1);
+			expect(result.quietCount).toBe(1);
+		});
+
+		// The window's whole traffic decides eligibility, not the replay cursor, so a
+		// coordinator arriving mid-replay cannot reshuffle either project's cards.
+		it("keeps a silent project's cards in place once the other project goes quiet", () => {
+			const tasks = [...projectTasks("a"), task("solo", 20, { projectId: "b" })];
+			const withTraffic = collapsed(tasks, projectRows("a"));
+			const noTraffic = collapsed(tasks, []);
+			expect(noTraffic.groups.map(group => group.projectId)).toEqual(["a", "b"]);
+			expect(noTraffic.placed.map(card => card.node.id).sort()).toEqual(["hub", "quiet", "solo", "worker"]);
+			expect(withTraffic.placed.find(card => card.node.id === "solo")).toMatchObject({ messages: 0, hub: false });
+		});
+
+		// Hibernated and completed tasks keep their existing treatment: neither state
+		// earns a project a block of its own.
+		it("leaves a project holding only hibernated tasks in the parked band", () => {
+			const tasks = [...projectTasks("a"), task("asleep", 20, { projectId: "b", hibernated: true })];
+			const result = collapsed(tasks, projectRows("a"));
+			expect(result.groups.map(group => group.projectId)).toEqual([]);
+			expect(result.placed.every(card => card.node.projectId === "a")).toBe(true);
+			expect(result.parkedCount).toBe(2);
+		});
+
 		it("keeps single-ended recipients visible and counts every attempt once", () => {
 			const tasks = [task("a", 1), task("b", 1, { projectId: "q" })];
 			const rows = [row("", "a", { fromTaskId: null, fromSeq: null }),

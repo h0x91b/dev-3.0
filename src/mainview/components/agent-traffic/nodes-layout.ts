@@ -130,8 +130,16 @@ export function layoutTraffic(
 	);
 	const parked = sorted.filter((node) => node.task?.hibernated === true);
 	const awake = sorted.filter((node) => !node.task?.hibernated);
-	const active = awake.filter((node) => messages.has(node.key));
-	const quiet = awake.filter((node) => !messages.has(node.key));
+	// Eligibility is per project, not per message count: a project whose window
+	// holds zero messages still gets its block. Volume decides which cards a
+	// *conversation* buries, never whether a board exists — and in practice only
+	// boards running a coordinator carry traffic, so the old zero-message rule
+	// erased every other one from the stage.
+	const silent = new Set(awake.map((node) => node.projectId));
+	for (const node of awake) if (messages.has(node.key)) silent.delete(node.projectId);
+	const conversing = (node: TrafficNode) => messages.has(node.key) || silent.has(node.projectId);
+	const active = awake.filter(conversing);
+	const quiet = awake.filter((node) => !conversing(node));
 	const placed: PlacedNode[] = [];
 	const positions = new Map<string, PlacedNode>();
 	const groups: TrafficScene["groups"] = [];
