@@ -31,6 +31,10 @@ import {
 	routeKey,
 	type TrafficRecord,
 } from "./traffic-model";
+import {
+	buildTimeline,
+	type TrafficTimelineEvent,
+} from "./traffic-timeline";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
@@ -178,15 +182,15 @@ const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
  * option, or vanish, taking with it the only way back. Availability is a property
  * of the window; selection is a property of the reader.
  *
- * Today the replay carries messages alone, so this takes one boolean. When Seq
- * 1823's union lands it takes the PRE-filter union and returns the kinds present
- * in it — this signature is the one place that changes.
+ * Takes the window's PRE-filter union and returns the kinds present in it. Never
+ * the selection: narrowing must not remove the control that undoes the narrowing.
  */
-export function availableKinds(hasMessages: boolean): ReadonlySet<TimelineKind> {
-	const kinds = new Set<TimelineKind>();
-	if (hasMessages) kinds.add("message");
-	return kinds;
+export function availableKinds(
+	timeline: readonly TrafficTimelineEvent[],
+): ReadonlySet<TimelineKind> {
+	return new Set(timeline.map((event) => event.kind));
 }
+
 
 /**
  * One filter axis, described without naming its vocabulary.
@@ -368,10 +372,31 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		[records, start, end, until, experiment],
 	);
 	const showMessages = kinds.has("message");
-	// Which kinds the window can offer, computed BEFORE any filter — see
-	// {@link availableKinds}. `timeRows` is bounded by the window and nothing else,
-	// which is exactly the input that rule requires.
-	const kindsPresent = useMemo(() => availableKinds(timeRows.length > 0), [timeRows.length]);
+	const scopedAllTasks = useMemo(
+		() => (scope === "all" ? data.tasks : data.tasks.filter((task) => task.projectId === scope)),
+		[data.tasks, scope],
+	);
+	/**
+	 * What the window CAN carry, before any filter runs.
+	 *
+	 * Availability must never depend on the filter: derive it from the filtered
+	 * timeline and turning a kind off removes the very control that turns it back
+	 * on, stranding the reader with data they cannot restore.
+	 */
+	const availableTimeline = useMemo(
+		() =>
+			buildTimeline({
+				records: timeRows,
+				tasks: scopedAllTasks,
+				start,
+				end,
+			}),
+		[timeRows, scopedAllTasks, start, end],
+	);
+	const kindsPresent = useMemo(
+		() => availableKinds(availableTimeline),
+		[availableTimeline],
+	);
 
 	const replayRecords = useMemo(
 		() =>
@@ -385,6 +410,22 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			),
 		[timeRows, showMessages, filter, pair, query],
 	);
+	// Task movements and notifications ride the same timeline as messages, so an hour
+	// where the board moved and nobody said anything still has steps to play. The
+	// window bounds are applied inside the builder so every arm is clipped by exactly
+	// the same interval rather than each caller being trusted to have done it.
+	const timeline = useMemo(
+		() =>
+			buildTimeline({
+				records: replayRecords,
+				tasks: scopedAllTasks,
+				start,
+				end,
+			}).filter((event) => kinds.has(event.kind)),
+		// `delivery: "all"` because `replayRecords` already applied it to the message
+		// arm along with pair and query; running it twice would be the same answer.
+		[replayRecords, scopedAllTasks, start, end, kinds],
+	);
 	// A filter hiding everything and an empty window are different answers, and the
 	// entry window is one hour — on a quiet morning it is legitimately empty.
 	const filtering =
@@ -397,21 +438,24 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// there. Field order matches the key Seq 1823 assembles at integration.
 	const kindKey = [...kinds].sort().join(",");
 	const playback = useTrafficPlayback(
-		replayRecords,
+		timeline,
 		experiment === "2",
 		`${scope}:${windowSize}:${filter}:${kindKey}:${pair}:${query}`,
 	);
 	const graphRecords =
 		playback.index < 0
 			? replayRecords
-			: playback.events.slice(0, playback.index + 1);
+			: playback.events
+					.slice(0, playback.index + 1)
+					.flatMap((event) => (event.kind === "message" ? [event.record] : []));
+	const cursorAt = playback.cursor.at;
 	const visible = useMemo(
 		() =>
 			(showMessages ? timeRows : []).filter(({ row }) => {
 				if (
 					experiment === "2" &&
-					playback.current &&
-					Date.parse(row.at) > Date.parse(playback.current.row.at)
+					cursorAt !== null &&
+					Date.parse(row.at) > cursorAt
 				)
 					return false;
 				if (filter !== "all" && row.status !== filter) return false;
@@ -422,7 +466,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					.toLocaleLowerCase()
 					.includes(query.toLocaleLowerCase());
 			}),
-		[timeRows, showMessages, filter, pair, selected, query, experiment, playback.current],
+		[timeRows, showMessages, filter, pair, selected, query, experiment, cursorAt],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(
@@ -506,18 +550,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	 * Put the cursor on the first event of the entry window and start playing (or,
 	 * under reduced motion, just park it there).
 	 *
-	 * The contract is "the first event at or after `start`" — which is what these
-	 * index-0 calls mean while the timeline is messages-only and already filtered
-	 * to the window. It is the ONLY place that positions the entry cursor, so when
-	 * Seq 1823's union timeline lands (`seekToTime(at, resume) => boolean`, agreed
-	 * 2026-09-08: lands on the first event at or after `at`, moves nothing and
-	 * returns false when every event precedes it) the whole body becomes one line:
-	 *
-	 *     playback.seekToTime(start, !parkOnly);
+	 * `seekToTime` rather than `seek(0)`: it lands on the first event at or after
+	 * the window's start and returns false without moving anything when every
+	 * recorded event precedes it. A clamp to the newest event would turn "nothing
+	 * happened in this hour" into "the hour started here", which is the reading the
+	 * empty-window rule exists to prevent.
 	 */
 	function startEntryReplay(parkOnly: boolean) {
-		if (parkOnly) playback.seek(0);
-		else playback.restart();
+		if (!playback.seekToTime(start, !parkOnly)) return;
 	}
 	// Space toggles the replay, the way it does in a media player — same action as
 	// the transport's Play/Pause button, including its restart-when-finished
@@ -687,14 +727,6 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 								selected: kinds,
 								onChange: (next) => setKinds(next as ReadonlySet<TimelineKind>),
 							},
-							// The level axis lands here as one more object, built from Seq
-							// 1825's exports and nothing of ours:
-							//   { id: "level", label: t("traffic.filter.levels"),
-							//     values: notificationLevels(kindsPresent),
-							//     labelKey: notificationLevelKey,
-							//     selected: levels, onChange: setLevels }
-							// `values` must come from the notifications actually in the
-							// window, pre-filter, for the same reason `kind` does.
 						]}
 					/>
 				)}
@@ -738,7 +770,15 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 						{data.projects.find((project) => project.id === scope)?.name ??
 							t("traffic.orbit.allProjects")}
 					</strong>
-					<p>{t("traffic.orbit.currentTasks")}</p>
+					{/* Only a live cursor rebuilds anything: Experiment 1 has none at
+					    all, and Experiment 2 on Live is showing the board as it is. Both
+					    of those really are current, and claiming otherwise would be a lie
+					    on screen in the opposite direction. */}
+					<p>
+						{experiment === "2" && playback.cursor.at !== null
+							? t("traffic.replay.reconstructedTasks")
+							: t("traffic.orbit.currentTasks")}
+					</p>
 				</div>
 				<div className="traffic-stat">
 					<b>

@@ -1,27 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReplayCursor } from "./task-history";
 import type { TrafficRecord } from "./traffic-model";
+import {
+	indexAtOrAfter,
+	messageAt,
+	sortTimeline,
+	type TrafficTimelineEvent,
+} from "./traffic-timeline";
 
 interface PlaybackState {
 	scopeKey: string;
-	events: TrafficRecord[] | null;
+	events: TrafficTimelineEvent[] | null;
 	index: number;
 	playing: boolean;
 	ended: boolean;
 	revision: number;
 }
 
+/**
+ * Walks the replay timeline — task movements, messages and notifications in one
+ * union — one recorded event at a time.
+ *
+ * It used to index `TrafficRecord[]`, which made a message the only thing that
+ * could advance the cursor: an hour of board activity with nothing said had zero
+ * steps. The union is what lets a task appear at its own recorded instant.
+ */
 export function useTrafficPlayback(
-	records: TrafficRecord[],
+	timeline: TrafficTimelineEvent[],
 	enabled: boolean,
 	scopeKey: string,
 ) {
-	const chronological = useMemo(
-		() =>
-			[...records]
-				.reverse()
-				.sort((a, b) => Date.parse(a.row.at) - Date.parse(b.row.at)),
-		[records],
-	);
+	const chronological = useMemo(() => sortTimeline(timeline), [timeline]);
 	const [speed, updateSpeed] = useState(1);
 	const intervalMs = 1100 / ((speed >= 1 ? speed * 0.75 : speed) * 0.9);
 	const [state, setState] = useState<PlaybackState>({
@@ -91,9 +100,28 @@ export function useTrafficPlayback(
 		});
 	}
 
+	const current = index >= 0 ? (events[index] ?? null) : null;
+	// One derived cursor every consumer shares, so nobody re-parses a timestamp
+	// and nobody invents a different meaning for "live". `at` is a TIME, not an
+	// index: notification bubbles and card states select by it.
+	const cursor: ReplayCursor = {
+		at: current ? current.at : null,
+		index,
+		total: events.length,
+		playing,
+		kind: current ? current.kind : null,
+	};
+	// The surfaces that genuinely speak in messages — the flying wire, the subject
+	// bubble — keep the last message at or before the cursor. A task or
+	// notification step must neither blank the wire nor light one early.
+	const currentRecord: TrafficRecord | null =
+		index >= 0 ? messageAt(events, index) : null;
+
 	return {
 		events,
-		current: index >= 0 ? (events[index] ?? null) : null,
+		current,
+		currentRecord,
+		cursor,
 		index,
 		playing,
 		ended: active && state.ended,
@@ -116,6 +144,19 @@ export function useTrafficPlayback(
 		},
 		seek(target: number) {
 			activate(target, false);
+		},
+		/**
+		 * Land on the first event at or after `at` — the entry range ("open on the
+		 * last hour"). Returns false and moves nothing when every recorded event
+		 * precedes `at`, so a caller can tell "nothing happened in that window"
+		 * from "started at the top".
+		 */
+		seekToTime(at: number, resume = false): boolean {
+			if (!Number.isFinite(at)) return false;
+			const target = indexAtOrAfter(events, at);
+			if (target < 0) return false;
+			activate(target, resume);
+			return true;
 		},
 		live() {
 			setState((previous) => ({
