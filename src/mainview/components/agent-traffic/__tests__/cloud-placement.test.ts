@@ -201,7 +201,10 @@ describe("placeClouds", () => {
 		// in — #102 above it, the caption below, the canvas edge to its left.
 		const CANVAS_39 = { width: 1280, height: 355 };
 		const ANCHOR = { x: 363.5, y: 271.4, height: 87.2 };
-		const CLOUD = { width: 220.7, height: 66.7 };
+		// The preview as it measures TODAY. Their handoff recorded 66.7 tall, which is
+		// what clipped the stamp; the preview was shortened to 51.1 for exactly this.
+		const CLOUD = { width: 220.7, height: 51.1 };
+		const CLOUD_BEFORE = { width: 220.7, height: 66.7 };
 		const OBSTACLES: Rect[] = [
 			{ left: 567.3, top: -3.6, width: 145.3, height: 71.9 },
 			{ left: 304.6, top: 130.0, width: 117.8, height: 87.2 },
@@ -223,6 +226,20 @@ describe("placeClouds", () => {
 			clouds: [{ key: "s44", anchor: ANCHOR, size: CLOUD }],
 		}).get("s44")!;
 
+		it("clears card #102's Completed stamp now the preview is shorter", () => {
+			// The whole point of the shortened preview: at 66.7 tall the only box within
+			// reach of the card clipped 48% of a neighbour's status stamp; at 51.1 there
+			// is a clean one, still touching its own card.
+			const before = placeClouds({
+				canvas: CANVAS_39, obstacles: OBSTACLES,
+				clouds: [{ key: "b", anchor: ANCHOR, size: CLOUD_BEFORE }],
+			}).get("b")!;
+			expect(before.overlap).toBeGreaterThan(0);
+			const now = place();
+			expect(now.overlap).toBe(0);
+			expect(ANCHOR.y - (now.top + CLOUD.height)).toBeLessThanOrEqual(CLOUD.height * 1.3);
+		});
+
 		it("stays attached to its own card rather than taking a clean box far away", () => {
 			// A zero-overlap box DOES exist on this canvas — 209px above the card, at
 			// the other end of the stage. Taking it would score perfectly and stop
@@ -234,10 +251,15 @@ describe("placeClouds", () => {
 			expect(gap).toBeLessThanOrEqual(CLOUD.height * 1.3);
 		});
 
-		it("reports the residual honestly, to the pixel they measured", () => {
-			// 58.9 x 18.5 of card #102, which is where its Completed stamp sits. Their
-			// number and mine agree, so the score describes the drawn box.
-			expect(place().overlap).toBe(1090);
+		it("reports the residual honestly, to the pixel they measured, at the old height", () => {
+			// Kept as the record of what was measured on the real stage: 58.9 x 18.5 of
+			// card #102, exactly where its Completed stamp sits. Their number and mine
+			// agreed, which is what proved the score describes the drawn box.
+			const before = placeClouds({
+				canvas: CANVAS_39, obstacles: OBSTACLES,
+				clouds: [{ key: "b", anchor: ANCHOR, size: CLOUD_BEFORE }],
+			}).get("b")!;
+			expect(before.overlap).toBe(1090);
 		});
 	});
 
