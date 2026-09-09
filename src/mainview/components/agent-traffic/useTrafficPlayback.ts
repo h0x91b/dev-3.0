@@ -18,8 +18,8 @@ interface PlaybackState {
 }
 
 /**
- * Walks the replay timeline — task movements, messages and notifications in one
- * union — one recorded event at a time.
+ * Walks the replay timeline — recorded task movements and messages in one union —
+ * one recorded event at a time.
  *
  * It used to index `TrafficRecord[]`, which made a message the only thing that
  * could advance the cursor: an hour of board activity with nothing said had zero
@@ -103,7 +103,7 @@ export function useTrafficPlayback(
 	const current = index >= 0 ? (events[index] ?? null) : null;
 	// One derived cursor every consumer shares, so nobody re-parses a timestamp
 	// and nobody invents a different meaning for "live". `at` is a TIME, not an
-	// index: notification bubbles and card states select by it.
+	// index: card states and the visible-message cut-off select by it.
 	const cursor: ReplayCursor = {
 		at: current ? current.at : null,
 		index,
@@ -112,8 +112,8 @@ export function useTrafficPlayback(
 		kind: current ? current.kind : null,
 	};
 	// The surfaces that genuinely speak in messages — the flying wire, the subject
-	// bubble — keep the last message at or before the cursor. A task or
-	// notification step must neither blank the wire nor light one early.
+	// bubble — keep the last message at or before the cursor. A task step must
+	// neither blank the wire nor light one early.
 	const currentRecord: TrafficRecord | null =
 		index >= 0 ? messageAt(events, index) : null;
 

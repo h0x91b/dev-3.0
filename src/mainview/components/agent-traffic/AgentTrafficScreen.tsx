@@ -152,11 +152,10 @@ function ExperimentPicker({
 /**
  * The kinds of event the replay timeline carries.
  *
- * A local mirror of Seq 1823's `TrafficTimelineEventKind` (contract
- * `03-filter-and-counts-contract.md`): their module is not in this tree yet and
- * the control has to exist before the data does. At integration the alias is
- * deleted and their import takes its place — the values are identical by
- * agreement, so nothing else moves.
+ * A superset of `TrafficTimelineEventKind`, which the timeline now carries for
+ * real: `task` and `message` are events, `notification` is a control value with
+ * no arm behind it yet. The two coincide the moment the notification arm lands,
+ * and this alias goes away then — the widened kind is why it cannot go away now.
  *
  * The LEVEL axis's VALUES, order and `traffic.notification.level.*` keys belong to
  * Seq 1825 and are deliberately not restated here — but its LAYOUT is this
@@ -190,7 +189,6 @@ export function availableKinds(
 ): ReadonlySet<TimelineKind> {
 	return new Set(timeline.map((event) => event.kind));
 }
-
 
 /**
  * One filter axis, described without naming its vocabulary.
@@ -410,7 +408,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			),
 		[timeRows, showMessages, filter, pair, query],
 	);
-	// Task movements and notifications ride the same timeline as messages, so an hour
+	// Recorded task movements ride the same timeline as messages, so an hour
 	// where the board moved and nobody said anything still has steps to play. The
 	// window bounds are applied inside the builder so every arm is clipped by exactly
 	// the same interval rather than each caller being trusted to have done it.
@@ -524,13 +522,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// stays parked instead of springing to life when the next event lands. Reduced
 	// motion keeps the cursor at the start of the window and skips the playing.
 	//
-	// It counts `playback.events`, not the message list: once Seq 1823's timeline
-	// lands, an hour with no messages but with task movements or notifications is
-	// NOT an empty window, and this must replay it.
+	// It counts `playback.events`, not the message list: an hour with no messages
+	// but with recorded task movements is NOT an empty window, and this replays it.
 	//
-	// The load gate below is the messages-only approximation of the settled signal.
-	// At integration it becomes Seq 1823's `timelineSettled`, whose notification half
-	// must read Seq 1825's `status === "ready" || status === "failed"` — NOT
+	// The load gate below covers both arms the timeline has — messages and tasks
+	// both come from `data`. A notification arm would add a third, and its settled
+	// signal must read Seq 1825's `status === "ready" || status === "failed"` — NOT
 	// `!notifications.loading`, which is true before the first read has even been
 	// asked for and would arm this one-shot latch on a stream that never came.
 	const reducedMotion = useReducedMotion();
@@ -557,7 +554,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	 * empty-window rule exists to prevent.
 	 */
 	function startEntryReplay(parkOnly: boolean) {
-		if (!playback.seekToTime(start, !parkOnly)) return;
+		playback.seekToTime(start, !parkOnly);
 	}
 	// Space toggles the replay, the way it does in a media player — same action as
 	// the transport's Play/Pause button, including its restart-when-finished
