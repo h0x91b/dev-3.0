@@ -1,6 +1,7 @@
 import { useLocale, useT, type TranslationKey } from "../../i18n";
 import type { ReactNode } from "react";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
+import type { TrafficTimelineEvent } from "./traffic-timeline";
 import TrafficIcon from "./TrafficIcon";
 
 type Props = {
@@ -29,34 +30,35 @@ export default function TrafficPlayback({
 	const t = useT();
 	const [locale] = useLocale();
 	const event = p.current ?? p.events[p.events.length - 1];
-	const clock = (at: string) =>
+	const clock = (at: number) =>
 		new Date(at).toLocaleTimeString(locale, {
 			hour: "2-digit",
 			minute: "2-digit",
 		});
+	// The readout describes whichever kind of event the cursor stands on. A board
+	// movement is a step of its own now, so it gets its own line rather than
+	// borrowing the last message's subject and pretending a message happened.
+	const readout = describeEvent(event, t, loading, emptyKey);
 	return (
 		<section
 			className="traffic-playback"
 			aria-label={t("traffic.replay.label")}
 		>
 			<div className="traffic-event-readout">
-				<time>{event ? clock(event.row.at) : "—"}</time>
-				<TrafficIcon name="message" />
+				<time>{event ? clock(event.at) : "—"}</time>
+				<TrafficIcon name={readout.icon} />
 				<button
-					disabled={!event}
-					onClick={() => event && onInspect(event.key)}
+					disabled={!event || event.kind !== "message"}
+					onClick={() =>
+						event?.kind === "message" && onInspect(event.record.key)
+					}
 					className="traffic-event-subject"
 				>
-					{event && (
-						<b>
-							{event.row.fromSeq == null ? "—" : `#${event.row.fromSeq}`} → #
-							{event.row.toSeq}
-						</b>
-					)}
-					<span className="streamer-private">
-						{event?.row.subject ||
-							event?.row.body.slice(0, 120) ||
-							t(loading ? "traffic.loading" : emptyKey)}
+					{readout.lead && <b>{readout.lead}</b>}
+					{/* Only agent-authored text is private. A localized "Board move" is
+					    the app's own label and blurring it just hides the readout. */}
+					<span className={readout.private ? "streamer-private" : undefined}>
+						{readout.text}
 					</span>
 				</button>
 				<span className="traffic-event-counter">
@@ -132,13 +134,13 @@ export default function TrafficPlayback({
 						aria-label={t("traffic.orbit.messageTimeline")}
 						aria-valuetext={
 							event
-								? `${clock(event.row.at)} · ${event.row.subject || t("traffic.orbit.noSubject")}`
+								? `${clock(event.at)} · ${readout.lead ? `${readout.lead} · ` : ""}${readout.text}`
 								: t(emptyKey)
 						}
 					/>
 					<div className="traffic-replay-times">
-						<span>{p.events[0] && clock(p.events[0].row.at)}</span>
-						<span>{event && clock(event.row.at)}</span>
+						<span>{p.events[0] && clock(p.events[0].at)}</span>
+						<span>{event && clock(event.at)}</span>
 					</div>
 				</div>
 				<div className="traffic-replay-window">{windowControl}</div>
@@ -153,4 +155,42 @@ export default function TrafficPlayback({
 			<p className="traffic-replay-note">{t("traffic.replay.currentStates")}</p>
 		</section>
 	);
+}
+
+/**
+ * One readout line per event kind. A board movement names the card and what it
+ * did; a message keeps the sender → recipient pair and its subject.
+ */
+function describeEvent(
+	event: TrafficTimelineEvent | undefined,
+	t: ReturnType<typeof useT>,
+	loading: boolean,
+	emptyKey: TranslationKey,
+): { icon: "message" | "replay"; lead: string | null; text: string; private: boolean } {
+	if (!event) {
+		return {
+			icon: "message",
+			lead: null,
+			text: t(loading ? "traffic.loading" : emptyKey),
+			private: false,
+		};
+	}
+	if (event.kind === "message") {
+		const { row } = event.record;
+		return {
+			icon: "message",
+			lead: `${row.fromSeq == null ? "—" : `#${row.fromSeq}`} → #${row.toSeq}`,
+			text: row.subject || row.body.slice(0, 120),
+			private: true,
+		};
+	}
+	return {
+		icon: "replay",
+		lead: `#${event.seq ?? "—"}`,
+		text:
+			event.movement.kind === "created"
+				? t("traffic.replay.taskCreated")
+				: t("traffic.replay.taskMoved"),
+		private: false,
+	};
 }
