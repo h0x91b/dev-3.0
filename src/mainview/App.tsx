@@ -47,7 +47,7 @@ import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
-import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "./agent-traffic-events";
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
 import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
@@ -1655,8 +1655,9 @@ function App() {
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
 	// Its own violet variant and a two-identity source line — the only toast whose
-	// event has a sender AND a receiver. The click goes to the RECEIVER: that is
-	// where the text landed and where the reply gets typed.
+	// event has a sender AND a receiver. With the traffic beta on, the click opens
+	// the traffic screen, where both identities and the full text live; with it off
+	// it falls back to the RECEIVER, where the text landed and the reply gets typed.
 	useEffect(() => {
 		function onAgentMessage(e: Event) {
 			const { taskId, projectId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = (e as CustomEvent)
@@ -1678,7 +1679,18 @@ function App() {
 			toast.agent(t("toast.agentMessage", { preview }), {
 				context: `${from} → ${to}`,
 				taskId,
-				onClick: () => openTaskFromNotification(taskId, projectId),
+				// Read the flag at CLICK time, not here: a toast can outlive a toggle.
+				onClick: () => {
+					if (!getAgentTrafficEnabled()) {
+						openTaskFromNotification(taskId, projectId);
+						return;
+					}
+					// Already there — the shortcut toggles, but a toast has nothing to
+					// toggle back to, and navigating again would stack a second identical
+					// history entry and make Back a dead key.
+					if (routeRef.current.screen === "agent-traffic") return;
+					openAgentTrafficLog();
+				},
 			});
 		}
 		window.addEventListener("rpc:agentMessage", onAgentMessage);
