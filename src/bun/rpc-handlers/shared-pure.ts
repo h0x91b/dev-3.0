@@ -540,10 +540,3 @@ export function extractConfigFromParams(params: Record<string, any>): Record<str
 	return config;
 }
 
-/** Whether a codex config.toml text declares `[model_providers.<id>]` (bare or
- *  quoted key, incl. an implicit parent via a `[model_providers.<id>.x]` subtable). */
-export function hasModelProviderSection(toml: string, providerId: string): boolean {
-	const id = providerId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const re = new RegExp(String.raw`^\s*\[model_providers\.(?:"${id}"|'${id}'|${id})(?:\]|\.)`, "m");
-	return re.test(toml);
-}

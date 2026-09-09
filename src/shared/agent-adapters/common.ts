@@ -16,7 +16,7 @@ export function modelArgs(
 }
 
 /** The active third-party backend's routing args (shell-quoted), e.g. Codex's
- *  `-c model_provider="amazon-bedrock"`. Empty for the native default. */
+ *  `-c model_provider="amazon-bedrock-runtime"`. Empty for the native default. */
 export function providerArgs(options?: AdapterLaunchOptions): string[] {
 	return (options?.providerArgs ?? []).map(quoteIfUnsafe);
 }

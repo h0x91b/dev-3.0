@@ -129,14 +129,15 @@ For Gemini CLI specifically, dev-3.0 installs these managed skills only via the 
 ## LLM provider (per-agent backend)
 
 Each agent can run against its **native API** (default) or a registered
-third-party backend (today: **Amazon Bedrock** for Claude), chosen via a
+third-party backend (today: **Amazon Bedrock** for Claude and for Codex), chosen via a
 **per-agent** toggle inside that agent's row in **Settings → Coding Agents**
 (`CodingAgent.llmProvider` / `CodingAgent.providerConfig`). dev3's built-in
 configs select a model with `--model` using native aliases (e.g.
 `claude-opus-4-8[1m]`); third-party providers reject those, so when one is
 selected dev3 **omits `--model`** for that agent and injects the provider env
-instead. Agents on their native provider — and agents with no registered
-backend at all (Codex, Gemini, …, which show no toggle) — are unaffected.
+instead (Claude), or rewrites `--model` to the mapped id and appends the routing
+args (Codex). Agents on their native provider — and agents with no registered
+backend at all (Gemini, …, which show no toggle) — are unaffected.
 
 Providers are data, not code: each one is a `ProviderDefinition` in the
 `PROVIDER_REGISTRY` (`src/shared/llm-provider.ts`), keyed by an `LLM_PROVIDER` id
@@ -153,7 +154,8 @@ global agent setup (shell env / `~/.claude/settings.json`).
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
 | Anthropic | _(none)_ | `--model <alias>` as usual |
-| Bedrock | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`apac` toggle), or the per-model override |
+| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override |
+| Bedrock (Codex) | _(none — `--model <geo>.openai.<family>` + `-c model_provider="amazon-bedrock-runtime"`)_ | same geo toggle; per-model override |
 
 Known model aliases map to provider-native ids automatically
 (`src/shared/llm-provider.ts`); unknown/new models are derived from the alias so
