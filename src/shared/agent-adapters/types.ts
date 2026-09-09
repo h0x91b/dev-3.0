@@ -59,7 +59,7 @@ export interface AdapterLaunchOptions {
 	/** True when a third-party backend delivers the model via env → omit --model. */
 	skipModelForProvider?: boolean;
 	/** Raw (unescaped) CLI args the active third-party backend adds to the launch
-	 *  (e.g. Codex's `-c model_provider="amazon-bedrock"`). Adapters shell-escape
+	 *  (e.g. Codex's `-c model_provider="amazon-bedrock-runtime"`). Adapters shell-escape
 	 *  them and push them before the config's additionalArgs, so user args win. */
 	providerArgs?: string[];
 	/** Codex-only runtime (theme/profile/launch-flag); present only for codex. */

@@ -69,8 +69,46 @@ function resolveFamily(model: string): string {
 /** Default cross-region inference-profile prefix when the user hasn't chosen one. */
 export const DEFAULT_BEDROCK_GEO: BedrockGeo = "global";
 
-/** The selectable Bedrock geo prefixes, for the settings toggle. */
-export const BEDROCK_GEOS: BedrockGeo[] = ["global", "us", "eu", "apac"];
+/** The selectable Bedrock geo prefixes, for the settings toggle. `apac` was
+ *  dropped on 2026-09-09: no current-generation model has an `apac.` profile,
+ *  Bedrock serves that geography as `jp.` (only the 4.x generation, see
+ *  `BEDROCK_GEO_GAPS`). */
+export const BEDROCK_GEOS: BedrockGeo[] = ["global", "us", "eu", "jp"];
+
+/** A stored geo dev3 no longer offers (`apac`, saved before it was dropped)
+ *  reads as the default — the settings file is rewritten in place, never moved. */
+export function normalizeBedrockGeo(geo: BedrockGeo | undefined): BedrockGeo {
+	return geo && (BEDROCK_GEOS as string[]).includes(geo) ? geo : DEFAULT_BEDROCK_GEO;
+}
+
+/** Families whose Bedrock id is not the bare family key. Everything else is
+ *  `<geo>.anthropic.<family>` verbatim (verified live 2026-09-09). */
+const BEDROCK_ANTHROPIC_IDS: Record<string, string> = {
+	"claude-haiku-4-5": "claude-haiku-4-5-20251001-v1:0",
+	"claude-opus-4-6": "claude-opus-4-6-v1",
+};
+
+/**
+ * Families a geo does NOT serve, per provider — a snapshot of
+ * `aws bedrock list-inference-profiles` on 2026-09-09. Advisory only: it marks
+ * a row in Settings, it never blocks a launch, and a family absent from the
+ * table counts as served. `global` and `us` carry every current model.
+ */
+const BEDROCK_GEO_GAPS: Partial<Record<LlmProvider, Partial<Record<BedrockGeo, string[] | "all">>>> = {
+	[LLM_PROVIDER.BedrockClaude]: {
+		eu: ["claude-fable-5", "claude-fable-5-1"],
+		jp: ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5"],
+	},
+	[LLM_PROVIDER.BedrockCodex]: { eu: "all", jp: "all" },
+};
+
+/** Whether the derived id for this alias is known to exist in the geo.
+ *  True whenever dev3 has no data saying otherwise. */
+export function bedrockModelServedInGeo(provider: LlmProvider | undefined, model: string, geo: BedrockGeo): boolean {
+	const gaps = provider ? BEDROCK_GEO_GAPS[provider]?.[geo] : undefined;
+	if (!gaps) return true;
+	return gaps === "all" ? false : !gaps.includes(resolveFamily(model));
+}
 
 /**
  * Static description of a third-party LLM backend. Everything dev3 needs to
@@ -123,9 +161,9 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		enableEnv: "CLAUDE_CODE_USE_BEDROCK",
 		modelEnv: "ANTHROPIC_MODEL",
 		usesGeo: true,
-		// `<geo>.anthropic.<family>` inference profiles, fully derived from the
-		// alias — new models need no registry edit (always pinned).
-		mapFamily: (family, geo) => `${geo}.anthropic.${family}`,
+		// `<geo>.anthropic.<family>` inference profiles, derived from the alias —
+		// a new model needs no registry edit unless Bedrock dates its id.
+		mapFamily: (family, geo) => `${geo}.anthropic.${BEDROCK_ANTHROPIC_IDS[family] ?? family}`,
 	},
 	[LLM_PROVIDER.BedrockCodex]: {
 		id: LLM_PROVIDER.BedrockCodex,
@@ -136,11 +174,14 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		// to the mapped id) and the backend is selected via a config override.
 		// Caveat: a config with NO model emits no --model, so codex falls back to
 		// its own default (all built-in codex configs set one; custom configs may not).
-		enableArgs: ["-c", 'model_provider="amazon-bedrock"'],
-		usesGeo: false,
-		// Bedrock exposes OpenAI models as flat `openai.<family>` ids — no
-		// cross-region geo prefix (verified against the live Bedrock endpoint).
-		mapFamily: (family) => `openai.${family}`,
+		// The Bedrock Runtime provider, not codex's OpenAI-compatible
+		// `amazon-bedrock` (Mantle) one: Mantle does not serve gpt-6-astra at all
+		// (decisions/2026/09/09/codex-bedrock-runtime-provider-geo-prefix.md).
+		enableArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'],
+		usesGeo: true,
+		// Runtime rejects the bare `openai.<family>` id; it wants the
+		// `<geo>.openai.<family>` inference profile, same shape as Anthropic's.
+		mapFamily: (family, geo) => `${geo}.openai.${family}`,
 	},
 };
 
@@ -207,7 +248,7 @@ export function providerPinnedModel(
 	const def = getProviderDefinition(provider);
 	if (!def) return undefined;
 	const settings = providerConfig?.[def.id];
-	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;
+	const geo = normalizeBedrockGeo(settings?.geo);
 	return (
 		resolveModelOverride(settings?.modelOverrides, configModel) ||
 		mapModelForProvider(configModel, def.id, geo)

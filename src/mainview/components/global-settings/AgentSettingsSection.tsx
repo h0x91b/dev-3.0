@@ -31,9 +31,10 @@ import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import {
 	BEDROCK_GEOS,
-	DEFAULT_BEDROCK_GEO,
+	bedrockModelServedInGeo,
 	defaultModelMap,
 	getProviderDefinition,
+	normalizeBedrockGeo,
 	providersForAgent,
 } from "../../../shared/llm-provider";
 import { buildCommandPreview } from "./utils";
@@ -1305,28 +1306,7 @@ function ProviderSelector({
 	const activeDef = def && def.agentCommand === agentKey(baseCommand, agentFamily) ? def : undefined;
 	const effectiveProvider = activeDef ? provider : LLM_PROVIDER.Native;
 	const settings = activeDef ? providerConfig?.[activeDef.id] : undefined;
-	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;
-
-	// Preflight: codex is routed at Bedrock via a `-c` override, but the
-	// `[model_providers.amazon-bedrock]` section must exist in the user's own
-	// ~/.codex/config.toml — warn here instead of failing at launch.
-	const [codexConfigMissing, setCodexConfigMissing] = useState(false);
-	useEffect(() => {
-		if (activeDef?.id !== LLM_PROVIDER.BedrockCodex) {
-			setCodexConfigMissing(false);
-			return;
-		}
-		let cancelled = false;
-		api.request
-			.checkCodexBedrockConfig()
-			.then((result) => {
-				if (!cancelled) setCodexConfigMissing(!result.configured);
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
-	}, [activeDef?.id]);
+	const geo = normalizeBedrockGeo(settings?.geo);
 
 	const patchProvider = (patch: Partial<ProviderSettings>) => {
 		if (!activeDef) return;
@@ -1373,11 +1353,6 @@ function ProviderSelector({
 					<p className="text-fg-3 text-xs">
 						{t(activeDef.hintKey as Parameters<TFunction>[0])}
 					</p>
-					{codexConfigMissing ? (
-						<p className="text-danger text-xs">
-							{t("settings.providerBedrockCodexConfigMissing")}
-						</p>
-					) : null}
 					{activeDef.usesGeo ? (
 						<div>
 							<span className="block text-fg-2 text-xs mb-1">
@@ -1462,6 +1437,9 @@ function ModelOverrideTable({
 					const overridden =
 						overrides != null && model in overrides && (overrides[model]?.trim() ?? "") !== "";
 					const value = overridden ? overrides[model] : defaultId;
+					// Advisory: the derived id is not in this geo's profile list, so the
+					// launch will 400 unless the row is pinned to something else.
+					const notServed = !overridden && geo != null && !bedrockModelServedInGeo(provider, model, geo);
 					return (
 						<div key={model} className="flex items-center gap-2 px-3 py-2 bg-base">
 							<span
@@ -1493,6 +1471,10 @@ function ModelOverrideTable({
 										{t("settings.providerModelRevert")}
 									</button>
 								</>
+							) : notServed ? (
+								<span className="text-warning text-dense uppercase tracking-wide shrink-0">
+									{t("settings.providerModelNotServed")}
+								</span>
 							) : (
 								<span className="text-fg-muted text-dense uppercase tracking-wide shrink-0">
 									{t("settings.providerModelDefault")}

@@ -1530,7 +1530,7 @@ export const LLM_PROVIDER = {
 export type LlmProvider = (typeof LLM_PROVIDER)[keyof typeof LLM_PROVIDER];
 
 /** Bedrock cross-region inference-profile prefix (the `<geo>.` part of the model id). */
-export type BedrockGeo = "global" | "us" | "eu" | "apac";
+export type BedrockGeo = "global" | "us" | "eu" | "jp";
 
 /**
  * Per-provider connection settings. Generic across providers so a new backend
@@ -1543,7 +1543,7 @@ export type BedrockGeo = "global" | "us" | "eu" | "apac";
 export interface ProviderSettings {
 	/**
 	 * Cross-region inference-profile prefix baked into the mapped model ids
-	 * (`global.` | `us.` | `eu.` | `apac.`). Bedrock-only. Changing it
+	 * (`global.` | `us.` | `eu.` | `jp.`). Bedrock-only. Changing it
 	 * re-populates every non-overridden row of the model table. Defaults to
 	 * "global". This is the id prefix only — NOT the AWS_REGION env (the
 	 * customer's global Claude config owns credentials/region).
@@ -5189,10 +5189,6 @@ export type AppRPCSchema = {
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
 				response: void;
-			};
-			checkCodexBedrockConfig: {
-				params: void;
-				response: { configured: boolean };
 			};
 			getChangelogs: {
 				params: void;
