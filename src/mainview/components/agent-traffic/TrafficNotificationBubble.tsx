@@ -23,7 +23,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { type TranslationKey, useT } from "../../i18n";
 import type { NotificationEndpoint, TrafficNotificationEvent } from "./notification-event";
-import { CLOUD_TEXT_MAX_WIDTH, COMPACT_LOBE_R, cloudGeometry } from "./traffic-cloud";
+import { CLOUD_TEXT_MAX_WIDTH, COMPACT_LIFT, COMPACT_LOBE_R, COMPACT_PITCH_SCALE, COMPACT_TAIL_SCALE, cloudGeometry } from "./traffic-cloud";
 import { type Rect, placeClouds } from "./cloud-placement";
 import "./traffic-notification.css";
 
@@ -155,7 +155,7 @@ export default function TrafficNotificationBubble({ event, anchor, width, height
 	const { row, target, origin } = event;
 	const canvasWidth = width ?? 0;
 	const compact = density === "compact";
-	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor, ...(compact ? { lobe: COMPACT_LOBE_R } : {}) });
+	const cloud = cloudGeometry(content.width, content.height, { tail: !!anchor, ...(compact ? { lobe: COMPACT_LOBE_R, lift: COMPACT_LIFT, tailScale: COMPACT_TAIL_SCALE, pitchScale: COMPACT_PITCH_SCALE } : {}) });
 	// The cloud sits ABOVE the card by default, which is the whole point of it. It
 	// flips below when the canvas has no room overhead, or when the surface that
 	// owns the layout says so because something else occupies that space.

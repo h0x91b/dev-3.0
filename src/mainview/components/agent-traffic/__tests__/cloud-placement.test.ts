@@ -195,40 +195,73 @@ describe("placeClouds", () => {
 		expect(placed.get("a")!.side).toBe("below");
 	});
 
-	describe("the zoom band where cards render text", () => {
-		// The blocker Seq 1823 measured: at 39% the stage switches from a bare
-		// coloured cell to a compact card WITH a title, and the cloud covered #101's
-		// title 100%. Cards scale with the zoom, the cloud does not, so the same
-		// stage is a different packing problem at every zoom — and fit zoom, the one
-		// their acceptance measured, is the one where a card has no content at all.
-		//
-		// This models it the only way a unit test can: their fit-zoom geometry scaled
-		// by the zoom ratio. It is a model, not their stage; the point it proves is
-		// that a clean box EXISTS at these zooms, so a covered title means the search
-		// or its inputs, never an impossible fit.
-		const scaled = (zoom: number): Rect[] => {
-			const k = zoom / 25;
-			// Zooming in enlarges the cards and pushes some of them out of frame — the
-			// stage pans, it does not grow. Keeping an off-canvas card in the model
-			// would invent a packing problem the real stage never poses.
-			return CARDS
-				.map(card => ({ left: card.left * k, top: card.top * k, width: card.width * k, height: card.height * k }))
-				.filter(card => card.left + card.width <= CANVAS.width && card.top + card.height <= CANVAS.height);
-		};
+	describe("Seq 1823's real stage, step 44 at 39% zoom", () => {
+		// Their verbatim handoff, not a scaled stand: every box in the space their code
+		// passes it, from one frame of the preserved fixture. The sender #107 is boxed
+		// in — #102 above it, the caption below, the canvas edge to its left.
+		const CANVAS_39 = { width: 1280, height: 355 };
+		const ANCHOR = { x: 363.5, y: 271.4, height: 87.2 };
+		// The preview as it measures TODAY. Their handoff recorded 66.7 tall, which is
+		// what clipped the stamp; the preview was shortened to 51.1 for exactly this.
+		const CLOUD = { width: 220.7, height: 51.1 };
+		const CLOUD_BEFORE = { width: 220.7, height: 66.7 };
+		const OBSTACLES: Rect[] = [
+			{ left: 567.3, top: -3.6, width: 145.3, height: 71.9 },
+			{ left: 304.6, top: 130.0, width: 117.8, height: 87.2 },
+			{ left: 442.8, top: 130.0, width: 117.8, height: 87.2 },
+			{ left: 581.1, top: 130.0, width: 117.8, height: 87.2 },
+			{ left: 719.3, top: 130.0, width: 117.8, height: 87.2 },
+			{ left: 857.6, top: 130.0, width: 117.8, height: 87.2 },
+			{ left: 304.6, top: 271.4, width: 117.8, height: 87.2 },
+			{ left: 22.0, top: 309.0, width: 665.6, height: 30.0 },
+			{ left: 1112.0, top: 16.0, width: 148.0, height: 101.0 },
+			{ left: 1038.4, top: 301.0, width: 221.6, height: 40.0 },
+			{ left: 20.0, top: 65.0, width: 0.0, height: 0.0 },
+			{ left: 0.0, top: -17.0, width: 1280.0, height: 76.5 },
+		];
 
-		for (const zoom of [39, 49, 61]) {
-			it(`finds a clean box for every sender at ${zoom}%`, () => {
-				const cards = scaled(zoom);
-				for (const [index, card] of cards.entries()) {
-					const placed = placeClouds({
-						canvas: CANVAS,
-						obstacles: cards,
-						clouds: [cloud(`z${index}`, card, { width: 278, height: 67 })],
-					}).get(`z${index}`)!;
-					expect(placed.overlap).toBe(0);
-				}
-			});
-		}
+		const place = () => placeClouds({
+			canvas: CANVAS_39,
+			obstacles: OBSTACLES,
+			clouds: [{ key: "s44", anchor: ANCHOR, size: CLOUD }],
+		}).get("s44")!;
+
+		it("clears card #102's Completed stamp now the preview is shorter", () => {
+			// The whole point of the shortened preview: at 66.7 tall the only box within
+			// reach of the card clipped 48% of a neighbour's status stamp; at 51.1 there
+			// is a clean one, still touching its own card.
+			const before = placeClouds({
+				canvas: CANVAS_39, obstacles: OBSTACLES,
+				clouds: [{ key: "b", anchor: ANCHOR, size: CLOUD_BEFORE }],
+			}).get("b")!;
+			expect(before.overlap).toBeGreaterThan(0);
+			const now = place();
+			expect(now.overlap).toBe(0);
+			expect(ANCHOR.y - (now.top + CLOUD.height)).toBeLessThanOrEqual(CLOUD.height * 1.3);
+		});
+
+		it("stays attached to its own card rather than taking a clean box far away", () => {
+			// A zero-overlap box DOES exist on this canvas — 209px above the card, at
+			// the other end of the stage. Taking it would score perfectly and stop
+			// being #107's thought, which is the same failure as scoring a cloud
+			// pushed off-screen as clean. So the bound wins and the overlap is real.
+			const spot = place();
+			const gap = ANCHOR.y - (spot.top + CLOUD.height);
+			expect(gap).toBeGreaterThanOrEqual(0);
+			expect(gap).toBeLessThanOrEqual(CLOUD.height * 1.3);
+		});
+
+		it("reports the residual honestly, to the pixel they measured, at the old height", () => {
+			// Kept as the record of what was measured on the real stage: 58.9 x 18.5 of
+			// card #102, exactly where its Completed stamp sits. Their number and mine
+			// agreed, which is what proved the score describes the drawn box.
+			const before = placeClouds({
+				canvas: CANVAS_39, obstacles: OBSTACLES,
+				clouds: [{ key: "b", anchor: ANCHOR, size: CLOUD_BEFORE }],
+			}).get("b")!;
+			expect(before.overlap).toBe(1090);
+		});
+	});
 
 		it("reaches a pocket that only an intermediate offset can hit", () => {
 			// A corridor 15px wider than the cloud, positioned BETWEEN the offsets a
@@ -251,5 +284,41 @@ describe("placeClouds", () => {
 			expect(placed.left).toBeGreaterThanOrEqual(325);
 			expect(placed.left + size.width).toBeLessThanOrEqual(480);
 		});
+
+	it("nudges out of the way when the candidate grid misses the pocket", () => {
+		// A 2px-wide corridor: wide enough for the cloud, but sitting between two of
+		// the grid's offsets, so the grid alone reports "nowhere to go". A non-zero
+		// score is what a product decision would rest on, so it has to mean searched
+		// and there is nothing — not "my grid was coarse".
+		const canvas = { width: 1280, height: 400 };
+		const card: Rect = { left: 300, top: 200, width: 100, height: 60 };
+		const size = { width: 278, height: 67 };
+		const walls: Rect[] = [
+			card,
+			{ left: 0, top: 0, width: 1280, height: 120 },     // the storey above
+			{ left: 0, top: 120, width: 240, height: 60 },     // corridor, left wall
+			{ left: 520, top: 120, width: 760, height: 60 },   // corridor, right wall
+			{ left: 0, top: 195, width: 1280, height: 205 },   // everything below
+		];
+		const placed = placeClouds({ canvas, obstacles: walls, clouds: [cloud("a", card, size)] }).get("a")!;
+		expect(placed.overlap).toBe(0);
+		expect(placed.left).toBeGreaterThanOrEqual(240);
+		expect(placed.left + size.width).toBeLessThanOrEqual(520);
+	});
+
+	it("refuses a nudge that would carry the cloud away from its card", () => {
+		// The escape is bounded by the same sideways limit the grid honours. A cloud
+		// that clears every obstacle by leaving its card behind belongs to nothing,
+		// so an honest non-zero score is the better answer.
+		const canvas = { width: 1280, height: 300 };
+		const card: Rect = { left: 100, top: 150, width: 80, height: 50 };
+		const size = { width: 200, height: 67 };
+		const walls: Rect[] = [
+			card,
+			{ left: 0, top: 0, width: 700, height: 300 },      // only free space is far right
+		];
+		const placed = placeClouds({ canvas, obstacles: walls, clouds: [cloud("a", card, size)] }).get("a")!;
+		expect(placed.overlap).toBeGreaterThan(0);
+		expect(placed.left).toBeLessThan(700);
 	});
 });
