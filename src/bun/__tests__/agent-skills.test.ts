@@ -6,6 +6,7 @@ import {
 	buildGenericSkillContent,
 	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
+	DEV3_AUTO_MODE_ALLOW_ENTRY,
 	getAskDev3SkillContent,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
@@ -506,10 +507,11 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(sandbox.network.allowUnixSockets[0]).not.toContain("*");
 	});
 
-	it("is a no-op (returns false) when both entries are already present", () => {
+	it("is a no-op (returns false) when every entry is already present", () => {
 		const settings: Record<string, unknown> = {
 			permissions: { allow: ["Bash(~/.dev3.0/bin/dev3 *)"] },
 			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
+			autoMode: { allow: ["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY] },
 		};
 		expect(applyClaudeSettings(settings, SOCKETS)).toBe(false);
 	});
@@ -529,6 +531,55 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(permissions.deny).toEqual(["Bash(rm *)"]);
 		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
 		expect(sandbox.network.allowUnixSockets).toEqual(["/tmp/other.sock", SOCKETS]);
+	});
+
+	// The classifier is a second gate, and it reads autoMode ONLY from this file —
+	// never from a worktree's .claude/settings*.json. Without the entry,
+	// `dev3 task move --status completed` comes back as "Blocked by classifier".
+	it("declares the dev3 exception to the auto-mode classifier, with the built-ins kept", () => {
+		const settings: Record<string, unknown> = {};
+		applyClaudeSettings(settings, SOCKETS);
+
+		const autoMode = settings.autoMode as { allow: string[] };
+		expect(autoMode.allow).toEqual(["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+	});
+
+	it("names only the dev3 CLI in that entry", () => {
+		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toContain("dev3");
+		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/only to `dev3` subcommands/);
+	});
+
+	it("appends to an owned allow list without re-adding $defaults the user dropped", () => {
+		const settings: Record<string, unknown> = {
+			autoMode: { allow: ["Deploying to staging is allowed"], environment: ["$defaults"] },
+		};
+		const changed = applyClaudeSettings(settings, SOCKETS);
+
+		expect(changed).toBe(true);
+		const autoMode = settings.autoMode as { allow: string[]; environment: string[] };
+		expect(autoMode.allow).toEqual(["Deploying to staging is allowed", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+		expect(autoMode.environment).toEqual(["$defaults"]);
+	});
+
+	it("keeps the user's own soft_deny and hard_deny lists untouched", () => {
+		const settings: Record<string, unknown> = {
+			autoMode: { soft_deny: ["$defaults", "Never touch prod"], hard_deny: ["$defaults"] },
+		};
+		applyClaudeSettings(settings, SOCKETS);
+
+		const autoMode = settings.autoMode as Record<string, string[]>;
+		expect(autoMode.soft_deny).toEqual(["$defaults", "Never touch prod"]);
+		expect(autoMode.hard_deny).toEqual(["$defaults"]);
+		expect(autoMode.allow).toEqual(["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+	});
+
+	it("replaces a non-array autoMode.allow rather than throwing", () => {
+		const settings: Record<string, unknown> = { autoMode: { allow: "everything" } };
+		expect(() => applyClaudeSettings(settings, SOCKETS)).not.toThrow();
+		expect((settings.autoMode as { allow: string[] }).allow).toEqual([
+			"$defaults",
+			DEV3_AUTO_MODE_ALLOW_ENTRY,
+		]);
 	});
 
 	it("does not duplicate the socket when only the permission is missing", () => {
