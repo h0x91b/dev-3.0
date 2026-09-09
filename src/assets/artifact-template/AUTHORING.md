@@ -32,6 +32,7 @@ Write the class — never a `<style>` block, never a hex color, never a px font 
 | A hue | `tone-1` … `tone-6` or `tone-gold` on a card, KPI, pill — everything inside follows |
 | A chart | `<div class="chart-host" id="…" role="img">` + `dev3Artifact.chart()` in `report.js` |
 | A select, slider, switch | native markup + `data-ui-select` / `data-ui-slider`; `.check`, `.switch`, `.option-group` skin the rest |
+| Any other input | plain `<input>`, `<textarea>`, `<select>` — the shell already skins every type, checkbox and radio glyphs included, with or without a `.field` wrapper. Write no styles for them |
 | A menu that opens | `.popover-anchor` → `data-popover-trigger` + `.popover` — never `position: absolute` + `z-index` |
 | A short clip | plain `<video controls playsinline preload="metadata" poster="clips/x.png">` with an MP4 or WebM under the report directory — 16 MB per clip, 48 MB in total. `REFERENCE.md` § Bundled video clips |
 

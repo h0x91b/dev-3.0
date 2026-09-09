@@ -140,7 +140,7 @@
       background: rgb(var(--dev3-success));
       box-shadow: 0 0 0 4px rgb(var(--dev3-success) / .12);
     }
-    button, input, select { font: inherit; }
+    button, input, select, textarea { font: inherit; }
     button {
       padding: 8px 12px;
       border: 1px solid rgb(var(--dev3-border));
@@ -153,7 +153,7 @@
     button:hover { border-color: rgb(var(--dev3-accent) / .65); transform: translateY(-1px); }
     button:disabled { opacity: .42; cursor: default; }
     button:disabled:hover { border-color: rgb(var(--dev3-border)); transform: none; }
-    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, th:focus-visible,
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, th:focus-visible,
     .choices.is-focused .choices__inner, .noUi-handle:focus-visible {
       outline: 2px solid rgb(var(--dev3-accent));
       outline-offset: 2px;
@@ -306,25 +306,154 @@
       letter-spacing: 0;
       text-transform: none;
     }
-    .field input, .field select {
-      width: 100%;
+    /* One shell for every control, hung off the elements rather than off
+       `.field`, so a bare <textarea> or <select> dropped into a hand-written
+       panel matches the form above it instead of being a raw UA box. The
+       glyph, slider, file, and color types re-specify what they need further
+       down; keeping the shell at element specificity is what lets them, and
+       lets `.field` and `.table-tools` win on their own details. */
+    input:where(:not(.choices__input)), textarea, select {
       padding: 9px 10px;
       border: 1px solid rgb(var(--dev3-border));
       border-radius: 10px;
       background: rgb(var(--dev3-surface-base));
       color: rgb(var(--dev3-text-primary));
+      caret-color: rgb(var(--dev3-accent));
       outline: none;
+      transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
     }
-    .field input:focus, .field select:focus {
+    input:where(:not(.choices__input)):hover, textarea:hover, select:hover { border-color: rgb(var(--dev3-accent) / .48); }
+    input:where(:not(.choices__input)):focus, textarea:focus, select:focus {
       border-color: rgb(var(--dev3-accent));
       box-shadow: 0 0 0 3px rgb(var(--dev3-accent) / .12);
+    }
+    input:where([type="submit"], [type="reset"], [type="button"]) { background: rgb(var(--dev3-surface-elevated)); cursor: pointer; }
+    input:where([type="image"], [type="hidden"]) { padding: 0; border: 0; background: none; }
+    ::placeholder { color: rgb(var(--dev3-text-muted)); opacity: 1; }
+    :disabled { cursor: not-allowed; opacity: .62; }
+    input:read-only:where(:not([type="checkbox"], [type="radio"], [type="range"])), textarea:read-only,
+    input:disabled, textarea:disabled, select:disabled {
+      background-color: rgb(var(--dev3-surface-elevated));
+      color: rgb(var(--dev3-text-secondary));
+    }
+    /* `:user-invalid` fires only after the reader has touched the field, so an
+       untouched required input is not red the moment the report opens. */
+    :is(input, textarea, select):is(:user-invalid, [aria-invalid="true"]) { border-color: rgb(var(--dev3-danger)); }
+    :is(input, textarea, select):is(:user-invalid, [aria-invalid="true"]):focus { box-shadow: 0 0 0 3px rgb(var(--dev3-danger) / .16); }
+    .field input:where(:not([type="checkbox"], [type="radio"], [type="submit"], [type="reset"], [type="button"])), .field select, .field textarea { width: 100%; }
+    /* A default textarea is 20 columns of UA font. It gets a real box, and where
+       `field-sizing` is supported it grows with the text instead of handing the
+       reader a two-line slot and a drag handle. */
+    textarea {
+      width: 100%;
+      min-height: 5.5rem;
+      max-height: 60vh;
+      field-sizing: content;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    /* A data-URI arrow cannot read a CSS variable, so the caret is two gradient
+       triangles and stays on the same token as the Choices chevron. */
+    select {
+      appearance: none;
+      padding-right: 30px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgb(var(--dev3-text-muted)) 50%),
+        linear-gradient(135deg, rgb(var(--dev3-text-muted)) 50%, transparent 50%);
+      background-repeat: no-repeat;
+      background-position: right 17px center, right 12px center;
+      background-size: 5px 5px;
+      cursor: pointer;
+    }
+    select:hover, select:focus {
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgb(var(--dev3-accent)) 50%),
+        linear-gradient(135deg, rgb(var(--dev3-accent)) 50%, transparent 50%);
+    }
+    select[multiple], select[size]:not([size="1"]) { padding-right: 10px; background-image: none; cursor: default; }
+    select[multiple] option { padding: 4px 6px; border-radius: 6px; }
+    /* A selected row in a multi-select ignores background-color; a flat gradient
+       is the only fill browsers honour there. */
+    select[multiple] option:checked { background: linear-gradient(rgb(var(--dev3-accent) / .3), rgb(var(--dev3-accent) / .3)); color: rgb(var(--dev3-text-primary)); }
+    /* Windows and Linux paint the native popup from these; macOS ignores them. */
+    option, optgroup { background: rgb(var(--dev3-surface-elevated)); color: rgb(var(--dev3-text-primary)); }
+    input[type="search"]:where(:not(.choices__input)) { appearance: none; }
+    input[type="search"]:where(:not(.choices__input))::-webkit-search-cancel-button {
+      appearance: none;
+      width: .85em;
+      height: .85em;
+      background: rgb(var(--dev3-text-muted));
+      cursor: pointer;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 3.5l9 9M12.5 3.5l-9 9' stroke='%23000' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    input[type="search"]:where(:not(.choices__input))::-webkit-search-cancel-button:hover { background: rgb(var(--dev3-text-primary)); }
+    input[type="number"]::-webkit-inner-spin-button { opacity: .5; }
+    input[type="number"]:hover::-webkit-inner-spin-button,
+    input[type="number"]:focus::-webkit-inner-spin-button { opacity: 1; }
+    input::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .55; transition: opacity .16s ease; }
+    input:hover::-webkit-calendar-picker-indicator, input:focus::-webkit-calendar-picker-indicator { opacity: 1; }
+    /* A file input's UA chrome is the loudest control on any page it lands on:
+       a dashed well plus a ghost button reads as a drop target instead. */
+    input[type="file"] {
+      width: 100%;
+      padding: 7px;
+      border: 1px dashed rgb(var(--dev3-border));
+      border-radius: 10px;
+      background: rgb(var(--dev3-surface-base));
+      color: rgb(var(--dev3-text-secondary));
+      cursor: pointer;
+      font-size: .75rem;
+      transition: border-color .16s ease;
+    }
+    input[type="file"]:hover { border-color: rgb(var(--dev3-accent) / .5); }
+    input[type="file"]::file-selector-button {
+      margin-right: 10px;
+      padding: 6px 11px;
+      border: 1px solid rgb(var(--dev3-border));
+      border-radius: 8px;
+      background: rgb(var(--dev3-surface-elevated));
+      color: rgb(var(--dev3-text-primary));
+      cursor: pointer;
+      font: inherit;
+      transition: border-color .16s ease;
+    }
+    input[type="file"]::file-selector-button:hover { border-color: rgb(var(--dev3-accent) / .65); }
+    input[type="color"] {
+      width: 2.9em;
+      height: 2.35em;
+      padding: 3px;
+      border: 1px solid rgb(var(--dev3-border));
+      border-radius: 9px;
+      background: rgb(var(--dev3-surface-base));
+      cursor: pointer;
+    }
+    input[type="color"]:hover { border-color: rgb(var(--dev3-accent) / .5); }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+    input[type="color"]::-moz-color-swatch { border: 0; border-radius: 6px; }
+    /* A bare fieldset is UA chrome too; `.option-group` still opts out of it. */
+    fieldset {
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid rgb(var(--dev3-border));
+      border-radius: 12px;
+    }
+    legend {
+      padding: 0 6px;
+      color: rgb(var(--dev3-text-secondary));
+      font-size: .6875rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
     }
     input[type="range"] {
       height: 28px;
       padding: 0;
       border: 0;
+      border-radius: 0;
+      background: none;
       box-shadow: none;
       accent-color: rgb(var(--dev3-accent));
+      cursor: pointer;
     }
     input[data-ui-slider].is-enhanced {
       position: absolute;
@@ -407,10 +536,12 @@
     .check:hover, .switch:hover { border-color: rgb(var(--dev3-accent) / .48); color: rgb(var(--dev3-text-primary)); }
     .check:has(input:checked), .switch:has(input:checked) { border-color: rgb(var(--dev3-accent) / .34); background: rgb(var(--dev3-accent) / .055); }
     /* Control glyphs are sized in em, so a checkbox, radio, or switch grows with
-       the label beside it instead of shrinking against enlarged text. */
-    .check input {
+       the label beside it instead of shrinking against enlarged text. They hang
+       off the element rather than off `.check`, so a checkbox in a paragraph or
+       a table cell is the same glyph as one in a form row. */
+    input:where([type="checkbox"], [type="radio"]) {
       appearance: none;
-      display: grid;
+      display: inline-grid;
       flex: 0 0 auto;
       width: 1.5em;
       height: 1.5em;
@@ -420,11 +551,17 @@
       border-radius: 5px;
       background: rgb(var(--dev3-surface-raised));
       box-shadow: none;
+      cursor: pointer;
+      transition: border-color .16s ease, background .16s ease;
+      vertical-align: -.3em;
     }
-    .check input[type="radio"] { border-radius: 50%; }
-    .check input[type="radio"]:checked { border-color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent)); box-shadow: inset 0 0 0 .33em rgb(var(--dev3-surface-raised)); }
-    .check input[type="checkbox"]:checked { border-color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent)); }
-    .check input[type="checkbox"]:checked::after { width: .66em; height: .33em; border: solid rgb(var(--dev3-on-accent)); border-width: 0 0 2px 2px; content: ""; transform: translateY(-1px) rotate(-45deg); }
+    input:where([type="checkbox"], [type="radio"]):hover { border-color: rgb(var(--dev3-accent) / .55); }
+    input[type="radio"] { border-radius: 50%; }
+    input[type="radio"]:checked { border-color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent)); box-shadow: inset 0 0 0 .33em rgb(var(--dev3-surface-raised)); }
+    input[type="checkbox"]:checked { border-color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent)); }
+    input[type="checkbox"]:checked::after { width: .66em; height: .33em; border: solid rgb(var(--dev3-on-accent)); border-width: 0 0 2px 2px; content: ""; transform: translateY(-1px) rotate(-45deg); }
+    input[type="checkbox"]:indeterminate { border-color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent)); }
+    input[type="checkbox"]:indeterminate::after { width: .62em; border-top: 2px solid rgb(var(--dev3-on-accent)); content: ""; }
     .switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
     .switch > span { position: relative; flex: 0 0 auto; width: 3.17em; height: 1.83em; border-radius: 999px; background: rgb(var(--dev3-border)); transition: background .18s ease; }
     .switch > span::after { position: absolute; top: .25em; left: .25em; width: 1.33em; height: 1.33em; border-radius: 50%; background: rgb(var(--dev3-text-primary)); content: ""; transition: transform .18s ease; }
@@ -551,15 +688,18 @@
     :not(html, body):has(> table), .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }
     .table-head { padding: 16px 18px 12px; }
     .table-tools { gap: 8px; }
+    /* background-color, not the shorthand: the select's caret is a background
+       image and a shorthand here would wipe it. */
     .table-tools input, .table-tools select {
       padding: 7px 9px;
       border: 1px solid rgb(var(--dev3-border));
       border-radius: 9px;
-      background: rgb(var(--dev3-surface-base));
+      background-color: rgb(var(--dev3-surface-base));
       color: rgb(var(--dev3-text-primary));
       outline: none;
     }
     .table-tools input { width: 12rem; }
+    .table-tools select { padding-right: 26px; background-position: right 14px center, right 9px center; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); overflow-wrap: break-word; text-align: left; font-size: .75rem; }
     /* A vertical rule keeps the eye inside one column across a wide row; every
