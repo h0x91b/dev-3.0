@@ -3,9 +3,11 @@ import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-
 
 /** Card footprint and the gaps between cards, in scene units (= CSS px at scale 1). */
 export const CARD_WIDTH = 300;
-export const CARD_HEIGHT = 222;
+/** Tall enough for every row the card draws (head, two title lines, state,
+ *  three overview lines, last message) without clipping one mid-glyph. */
+export const CARD_HEIGHT = 234;
 const COORDINATOR_WIDTH = 370;
-const COORDINATOR_HEIGHT = 183;
+const COORDINATOR_HEIGHT = CARD_HEIGHT;
 const GAP_X = 52;
 const ROW_STEP = 360;
 const COORDINATOR_STEP = 340;

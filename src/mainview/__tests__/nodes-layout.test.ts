@@ -91,10 +91,12 @@ describe("layoutTraffic", () => {
 
 	it("uses overview-sized cards and a wider coordinator", () => {
 		const { placed } = scene([coordinator("a", 11), task("b", 22)], [row("a", "b")]);
-		expect(placed[0]).toMatchObject({ width: 370, height: 183 });
+		// The coordinator is wider, never shorter — it draws the same rows, so a
+		// smaller box clipped its title and overview mid-line.
+		expect(placed[0]).toMatchObject({ width: 370, height: CARD_HEIGHT });
 		expect(placed[1]).toMatchObject({ width: CARD_WIDTH, height: CARD_HEIGHT });
 		expect(CARD_WIDTH).toBe(300);
-		expect(CARD_HEIGHT).toBe(222);
+		expect(CARD_HEIGHT).toBe(234);
 	});
 
 	it("counts a pair once however many attempts it carries", () => {

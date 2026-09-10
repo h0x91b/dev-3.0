@@ -1017,18 +1017,11 @@ function Card({
 	// reflowing around them; hidden from the accessibility tree and untabbable
 	// while it has not happened yet.
 	const unborn = !projection.present;
-	// Only worth saying while a cursor is claiming to show the past. A task whose
-	// history predates capture, or whose earliest moves were evicted by the cap,
-	// must say so rather than let the live status read as a reconstruction.
+	// Kept as an attribute for styling and tests: the card itself no longer spends
+	// a line on it, the state line already says what is and is not known.
 	const limited = replaying && node.task && projection.confidence !== "recorded"
 		? projection.confidence
 		: null;
-	const limitedLabel =
-		limited === "unrecorded"
-			? t("traffic.node.historyUnrecorded")
-			: limited === "partial"
-				? t("traffic.node.historyPartial")
-				: null;
 	return (
 		<button
 			type="button"
@@ -1047,7 +1040,7 @@ function Card({
 			}}
 			aria-hidden={unborn || undefined}
 			tabIndex={unborn ? -1 : undefined}
-			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}${limitedLabel ? ` · ${limitedLabel}` : ""}`}
+			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}`}
 			aria-pressed={selected}
 			onClick={() => !unborn && onSelect(node.key)}
 			onDoubleClick={() => !unborn && onFocus(node.key)}
@@ -1071,12 +1064,6 @@ function Card({
 					</span>
 				) : (
 					<span className="traffic-node-state">{state}</span>
-				)}
-				{limitedLabel && (
-					<span className="traffic-node-history">
-						<TrafficIcon name="unknown" />
-						{limitedLabel}
-					</span>
 				)}
 				<span className="traffic-node-overview streamer-private">
 					{(node.task && getTaskOverview(node.task)) ||

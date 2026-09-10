@@ -13,7 +13,8 @@
       "Bash(gh *)",
       "WebSearch",
       "Bash(dev3:*)",
-      "Bash(sed *)"
+      "Bash(sed *)",
+      "Bash(~/.dev3.0/bin/dev3 *)"
     ]
   },
   "hooks": {
