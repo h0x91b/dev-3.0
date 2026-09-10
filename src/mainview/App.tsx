@@ -109,6 +109,9 @@ const QR_REFRESH_SECONDS = 60;
 /** Whether the Debug → Terminal Performance overlay is showing. */
 const TERMINAL_PERF_KEY = "dev3-terminal-perf";
 
+/** Unanswered quit dialog auto-confirms after this long — sessions survive in tmux either way. */
+const QUIT_AUTO_CONFIRM_SECONDS = 10;
+
 type RemoteAccessQRData = {
 	qrDataUrl: string;
 	accessUrl: string;
@@ -293,6 +296,12 @@ function App() {
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
+	const [quitSecondsLeft, setQuitSecondsLeft] = useState(QUIT_AUTO_CONFIRM_SECONDS);
+	const [quitTimerStopped, setQuitTimerStopped] = useState(false);
+	// Read by the auto-confirm timer, which is armed once per dialog and would
+	// otherwise close over the checkbox value from the moment it opened.
+	const dontShowAgainRef = useRef(dontShowAgain);
+	dontShowAgainRef.current = dontShowAgain;
 
 	// Pending agent-initiated launch requests; only the head is on screen.
 	const [launchRequests, setLaunchRequests] = useState<AgentLaunchRequest[]>([]);
@@ -303,6 +312,7 @@ function App() {
 	useEffect(() => {
 		function onShowQuitDialog() {
 			setDontShowAgain(false);
+			setQuitTimerStopped(false);
 			setShowQuitDialog(true);
 		}
 		window.addEventListener("rpc:showQuitDialog", onShowQuitDialog);
@@ -319,6 +329,7 @@ function App() {
 			.then((pending) => {
 				if (pending) {
 					setDontShowAgain(false);
+					setQuitTimerStopped(false);
 					setShowQuitDialog(true);
 				}
 			})
@@ -1466,8 +1477,36 @@ function App() {
 	}, [dispatch]);
 
 	function handleConfirmQuit() {
-		api.request.quitApp({ dontShowAgain }).catch(() => {});
+		api.request.quitApp({ dontShowAgain: dontShowAgainRef.current }).catch(() => {});
 	}
+
+	// The dialog only tells the user sessions survive, so leaving it unanswered
+	// should not park the quit forever. Ticking off a deadline (not a per-tick
+	// budget) keeps the number honest while the window is backgrounded.
+	//
+	// The first key or click proves somebody is at the machine, and from then on
+	// the quit is theirs to confirm: only an abandoned dialog fires by itself.
+	useEffect(() => {
+		if (!showQuitDialog || quitTimerStopped) return;
+		const deadline = Date.now() + QUIT_AUTO_CONFIRM_SECONDS * 1000;
+		setQuitSecondsLeft(QUIT_AUTO_CONFIRM_SECONDS);
+		const id = setInterval(() => {
+			const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+			setQuitSecondsLeft(left);
+			if (left === 0) {
+				clearInterval(id);
+				api.request.quitApp({ dontShowAgain: dontShowAgainRef.current }).catch(() => {});
+			}
+		}, 250);
+		const stop = () => setQuitTimerStopped(true);
+		window.addEventListener("keydown", stop);
+		window.addEventListener("pointerdown", stop);
+		return () => {
+			clearInterval(id);
+			window.removeEventListener("keydown", stop);
+			window.removeEventListener("pointerdown", stop);
+		};
+	}, [showQuitDialog, quitTimerStopped]);
 
 	// Check gh availability after requirements pass (non-blocking)
 	useEffect(() => {
@@ -3070,7 +3109,12 @@ function App() {
 							/>
 							<span className="text-fg-2 text-sm">{t("quit.dontShowAgain")}</span>
 						</label>
-						<div className="flex justify-end gap-2 pt-1">
+						<div className="flex items-center justify-end gap-2 pt-1">
+							{!quitTimerStopped && (
+								<span className="mr-auto text-fg-muted text-xs tabular-nums" aria-live="off">
+									{t("quit.autoQuitIn", { seconds: String(quitSecondsLeft) })}
+								</span>
+							)}
 							<button
 								onClick={() => setShowQuitDialog(false)}
 								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"

@@ -360,6 +360,67 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
 			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: true });
 		});
+
+		it("counts down and quits on its own after 10 seconds", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			vi.useFakeTimers();
+			try {
+				requestQuitDialog();
+				expect(screen.getByText("Quitting in 10s")).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(4_000));
+				expect(screen.getByText("Quitting in 6s")).toBeInTheDocument();
+				expect(api.request.quitApp).not.toHaveBeenCalled();
+				act(() => vi.advanceTimersByTime(6_000));
+				expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: false });
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("the first click drops the countdown — only an abandoned dialog quits itself", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			requestQuitDialog();
+			await userEvent.click(screen.getByRole("checkbox"));
+			expect(screen.queryByText(/Quitting in/)).not.toBeInTheDocument();
+			vi.useFakeTimers();
+			try {
+				act(() => vi.advanceTimersByTime(15_000));
+				expect(api.request.quitApp).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("a keystroke drops the countdown too", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			requestQuitDialog();
+			await userEvent.keyboard("{Tab}");
+			expect(screen.queryByText(/Quitting in/)).not.toBeInTheDocument();
+			vi.useFakeTimers();
+			try {
+				act(() => vi.advanceTimersByTime(15_000));
+				expect(api.request.quitApp).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("stops counting down once the dialog is dismissed", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			requestQuitDialog();
+			await userEvent.keyboard("{Escape}");
+			vi.useFakeTimers();
+			try {
+				act(() => vi.advanceTimersByTime(15_000));
+				expect(api.request.quitApp).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 	});
 
 	describe("hide (Cmd+H / Ctrl+H)", () => {
