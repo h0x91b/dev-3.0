@@ -242,6 +242,15 @@ html {
 	--hint-border: 202 138 4;  /* amber-600 */
 	--hint-typed: 185 28 28;   /* red-700 — the already-typed prefix */
 
+	/* ---- Rendered markdown documents ----
+	   Structural chrome of a document (heading rules, quote bar, table head,
+	   list markers, code chips): teal, because no state token owns that hue —
+	   not --accent, which means "link" inside prose, and not --agent, which
+	   means agent traffic. */
+	--md-chrome: 45 212 191;
+	/* Hairline over arbitrary imagery: pure ink, never a tinted neutral. */
+	--outline-ink: 255 255 255;
+
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 115deg;
 	--bg-grad-from: #060916;
@@ -367,6 +376,10 @@ html {
 	--hint-fg: 28 25 23;
 	--hint-border: 180 83 9;   /* amber-700 */
 	--hint-typed: 185 28 28;
+
+	/* ---- Rendered markdown documents ---- */
+	--md-chrome: 13 148 136;   /* teal-600 — the dark teal is invisible on paper */
+	--outline-ink: 0 0 0;
 
 	/* ---- Background gradient ---- */
 	/* Hue travels 256° → 291° → 293°, one direction. Sits at L 0.899 → 0.775:
