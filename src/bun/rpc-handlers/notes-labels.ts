@@ -1,9 +1,11 @@
 import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskNote, TaskStatus } from "../../shared/types";
 import { LABEL_COLORS, appendTaskNote } from "../../shared/types";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
+import type { NotificationLogPage } from "../../shared/notification-log";
 import * as data from "../data";
 import { messageLogDir, readAgentMessageLog as readMessageLog } from "../agent-message-log";
 import { watchAgentMessageLog } from "../agent-message-log-watch";
+import { readNotificationLog as readNotifications } from "../notification-log";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
 
@@ -321,8 +323,18 @@ async function readAgentMessageLog(params: { projectId: string; limit?: number }
 	return readMessageLog(project, params.limit);
 }
 
+/**
+ * Read the global notification archive. Read-only; a machine that has never had a
+ * notification answers with an empty page rather than an error, and the empty
+ * page's null day range is what "collection has not started here" looks like.
+ */
+async function readNotificationLog(params: { limit?: number; projectIds?: string[] }): Promise<NotificationLogPage> {
+	return readNotifications({ limit: params.limit, projectIds: params.projectIds });
+}
+
 export const notesLabelsHandlers = {
 	readAgentMessageLog,
+	readNotificationLog,
 	createLabel,
 	updateLabel,
 	deleteLabel,

@@ -13,6 +13,7 @@ export type { TelemetryProfile } from "./telemetry-profile";
 import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage } from "./agent-message-log";
+import type { NotificationLogPage } from "./notification-log";
 import type { LowBatteryStatus } from "./low-battery";
 export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
 
@@ -5381,6 +5382,18 @@ export type AppRPCSchema = {
 				params: { projectId: string; limit?: number };
 				response: AgentMessageLogPage;
 			};
+			/**
+			 * Read the global `dev3 notify` archive, newest first.
+			 *
+			 * Deliberately not per project: a notification can be sent with no task and
+			 * therefore no project, so splitting the stream by project would make
+			 * "every notification, in order" unanswerable. `projectIds` narrows it, and
+			 * a row with no project is always kept.
+			 */
+			readNotificationLog: {
+				params: { limit?: number; projectIds?: string[] };
+				response: NotificationLogPage;
+			};
 			taskPaneState: {
 				params: { taskId: string };
 				response: TaskPaneState;
@@ -6036,6 +6049,13 @@ export type AppRPCSchema = {
 			 */
 			/** A durable append completed; refresh the recipient project log, including failed attempts. */
 			agentMessageLogChanged: { projectId: string };
+			/**
+			 * A notification row was appended to the global archive by THIS instance.
+			 * No payload: the archive is one global stream, so there is nothing to
+			 * scope the refresh to. Another instance's appends are not announced —
+			 * that needs a filesystem watcher, which a read API does not.
+			 */
+			notificationLogChanged: Record<string, never>;
 			agentMessage: {
 				/** Receiving task — the click target, and the inbox that got the text. */
 				taskId: string;
