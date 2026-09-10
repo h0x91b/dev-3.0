@@ -5,8 +5,8 @@ import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
 
 /**
- * Home for beta behaviour that is useful but not yet stable enough to be on by
- * default. Every entry here ships off and states its own limitations.
+ * Home for beta behaviour that is still labelled experimental and states its own
+ * limitations. Most entries ship off; agent traffic ships on and can be turned off.
  */
 export default function AdvancedExperienceSection({
 	t,
@@ -20,7 +20,8 @@ export default function AdvancedExperienceSection({
 	onAgentTrafficToggle: (enabled: boolean) => void;
 }) {
 	const bidiEnabled = globalSettings.experimentalTerminalBidi === true;
-	const trafficEnabled = globalSettings.experimentalAgentTraffic === true;
+	// Default-on, unlike its neighbours: absent is "never chose", not "off".
+	const trafficEnabled = globalSettings.experimentalAgentTraffic !== false;
 
 	return (
 		<SettingsSection

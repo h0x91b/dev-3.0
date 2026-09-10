@@ -596,7 +596,7 @@ const settings = {
 	// Advanced Experience — beta behaviour, every entry ships off
 	"settings.categoryAdvancedExperience": "Experiencia avanzada",
 	"settings.categoryAdvancedExperienceDesc":
-		"Comportamiento en beta: útil, pero todavía no estable. Todo aquí está desactivado por defecto.",
+		"Comportamiento en beta: útil, pero todavía no estable. Cada opción indica su valor por defecto.",
 	"settings.terminalBidi": "Texto de derecha a izquierda en terminales (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",

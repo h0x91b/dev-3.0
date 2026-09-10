@@ -94,6 +94,20 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).lowBatteryEnabled).toBe(false);
 	});
 
+	/**
+	 * Agent traffic is default-on, so absent must stay absent (the renderer reads it
+	 * as "on") while an explicit false survives as the user's opt-out.
+	 */
+	it("keeps both explicit agent-traffic choices and stores no default", async () => {
+		expect((await loadSettings()).experimentalAgentTraffic).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalAgentTraffic: false }), null, 2), "utf-8");
+		expect((await loadSettings()).experimentalAgentTraffic).toBe(false);
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalAgentTraffic: true }), null, 2), "utf-8");
+		expect((await loadSettings()).experimentalAgentTraffic).toBe(true);
+	});
+
 	// Absent = the docked artifact panel, which is what every existing install gets
 	// without ever being asked. An explicit false is the user picking the panel and
 	// must survive a restart as a choice, not collapse back into "unset".
