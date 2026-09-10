@@ -1620,3 +1620,51 @@ describe("Replay reconstructs the board at the cursor", () => {
 		expect(caption()).not.toContain("Hibernation");
 	});
 });
+
+describe("AgentTrafficScreen project scope", () => {
+	/** Two boards, one of which said nothing all window and never moved a card. */
+	function setUpTwoProjects() {
+		projectFixtures.value = [
+			{ id: "proj-1", name: "Project One" },
+			{ id: "proj-2", name: "Project Two" },
+		];
+		additionalTasks.value = [{
+			id: "task-idle", projectId: "proj-2", seq: 91, title: "Idle worker",
+			status: "in-progress", taskType: null, overview: "Nothing recorded",
+		}];
+		projectPages.value = {
+			"proj-1": { rows: [row({ subject: "Live chatter" })], oldestDay: "2026-08-01", retentionDays: 30, hasMore: false },
+			"proj-2": { rows: [], oldestDay: null, retentionDays: 30, hasMore: false },
+		};
+	}
+	const taskStat = () => document.querySelectorAll(".traffic-stat b")[1]?.textContent;
+	const scopeName = () => document.querySelector(".traffic-summary strong")?.textContent;
+	const cardTitles = () => screen.getAllByTestId("traffic-node-card").map((card) => card.textContent ?? "").join(" | ");
+
+	it("opens on the active projects and leaves the silent board off the stage", async () => {
+		setUpTwoProjects();
+		renderLog(vi.fn(), null);
+		await waitFor(() => expect(scopeName()).toBe("All active projects"));
+		// proj-1's three tasks only: proj-2 exists and is running, and neither is a
+		// recorded event, so it does not occupy the stage.
+		await waitFor(() => expect(taskStat()).toBe("3"));
+		expect(cardTitles()).not.toContain("Idle worker");
+	});
+
+	it("keeps All projects unfiltered, silent board and all", async () => {
+		setUpTwoProjects();
+		renderLog(vi.fn(), null);
+		await waitFor(() => expect(taskStat()).toBe("3"));
+		await choose("Project", "All projects");
+		await waitFor(() => expect(scopeName()).toBe("All projects"));
+		expect(taskStat()).toBe("4");
+		await waitFor(() => expect(cardTitles()).toContain("Idle worker"));
+	});
+
+	it("still honours the project the user arrived from, over the active default", async () => {
+		setUpTwoProjects();
+		renderLog(vi.fn(), "proj-2");
+		await waitFor(() => expect(scopeName()).toBe("Project Two"));
+		expect(taskStat()).toBe("1");
+	});
+});

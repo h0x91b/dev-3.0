@@ -177,6 +177,7 @@ const common = {
 	"traffic.orbit.history": "Historial",
 	"traffic.orbit.resume": "Reanudar animación",
 	"traffic.orbit.pause": "Pausar animación",
+	"traffic.orbit.activeProjects": "Proyectos activos",
 	"traffic.orbit.allProjects": "Todos los proyectos",
 	"traffic.orbit.project": "Proyecto",
 	"traffic.orbit.search": "Buscar tareas y mensajes",

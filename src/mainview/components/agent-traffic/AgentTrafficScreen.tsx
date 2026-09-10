@@ -35,6 +35,13 @@ import {
 	buildTimeline,
 	type TrafficTimelineEvent,
 } from "./traffic-timeline";
+import {
+	ACTIVE_PROJECTS,
+	ALL_PROJECTS,
+	activeProjectIds,
+	admits,
+	scopeProjectIds,
+} from "./traffic-scope";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
@@ -312,7 +319,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const calendarDay = isCalendarDay(windowSize);
 	const data = useTrafficData(calendarDay ? start : undefined);
 	const { experiment, choose } = useTrafficExperiment();
-	const [scope, setScope] = useState(projectId ?? "all");
+	// Arriving without a project opens on the active projects, not on all of them:
+	// eighteen empty blocks are eighteen blocks of stage the busy two could have
+	// had. A project the user came from still wins — an explicit subject beats a
+	// default — and the initialiser runs once, so their own later pick survives
+	// every re-render and every reload of the window.
+	const [scope, setScope] = useState(projectId ?? ACTIVE_PROJECTS);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [recordKey, setRecordKey] = useState<string | null>(null);
 	const [pair, setPair] = useState<string | null>(null);
@@ -329,26 +341,53 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const [showFilters, setShowFilters] = useState(false);
 	const [focusRequest, setFocusRequest] = useState(0);
 	const [followRequest, setFollowRequest] = useState(0);
+	/**
+	 * The window's whole recorded union, before any scope or filter runs.
+	 *
+	 * Deliberately unscoped: it is what decides which projects the `active` scope
+	 * admits, and deriving that from scoped data would be circular — a project
+	 * filtered out could never prove it belonged. It is also independent of the
+	 * replay cursor, so membership holds still while the cursor walks the window
+	 * and only moves when the window changes or a live event actually arrives.
+	 */
+	const windowTimeline = useMemo(
+		() =>
+			buildTimeline({
+				records: trafficRecords(data.rows),
+				tasks: data.tasks,
+				start,
+				end,
+			}),
+		[data.rows, data.tasks, start, end],
+	);
+	const scopeProjects = useMemo(
+		() =>
+			scopeProjectIds({
+				scope,
+				active: activeProjectIds(windowTimeline),
+				settled: !data.loading && !data.historyLoading,
+			}),
+		[scope, windowTimeline, data.loading, data.historyLoading],
+	);
 	const scopedRows = useMemo(
 		() =>
 			data.rows.filter(
 				(row) =>
-					scope === "all" ||
-					row.toProjectId === scope ||
-					row.fromProjectId === scope,
+					admits(scopeProjects, row.toProjectId) ||
+					admits(scopeProjects, row.fromProjectId),
 			),
-		[data.rows, scope],
+		[data.rows, scopeProjects],
 	);
 	const records = useMemo(() => trafficRecords(scopedRows), [scopedRows]);
 	const scopedTasks = useMemo(
 		() =>
 			data.tasks.filter(
 				(task) =>
-					(scope === "all" || task.projectId === scope) &&
+					admits(scopeProjects, task.projectId) &&
 					task.status !== "completed" &&
 					task.status !== "cancelled",
 			),
-		[data.tasks, scope],
+		[data.tasks, scopeProjects],
 	);
 	const allNodes = useMemo(
 		() => trafficNodes(data.tasks, scopedRows),
@@ -371,8 +410,8 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	);
 	const showMessages = kinds.has("message");
 	const scopedAllTasks = useMemo(
-		() => (scope === "all" ? data.tasks : data.tasks.filter((task) => task.projectId === scope)),
-		[data.tasks, scope],
+		() => data.tasks.filter((task) => admits(scopeProjects, task.projectId)),
+		[data.tasks, scopeProjects],
 	);
 	/**
 	 * What the window CAN carry, before any filter runs.
@@ -472,15 +511,13 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		);
 		return allNodes.filter(
 			(node) =>
-				(scope === "all" ||
-					node.projectId === scope ||
-					endpoints.has(node.key)) &&
+				(admits(scopeProjects, node.projectId) || endpoints.has(node.key)) &&
 				(scopedTasks.some(
 					(task) => endpointKey(task.projectId, task.id) === node.key,
 				) ||
 					endpoints.has(node.key)),
 		);
-	}, [allNodes, timeRows, scope, scopedTasks]);
+	}, [allNodes, timeRows, scopeProjects, scopedTasks]);
 	const selectedNode = selected ? nodeMap.get(selected) : undefined;
 	const record = records.find((record) => record.key === recordKey);
 	const taskList = nodes
@@ -630,7 +667,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					clearSelection();
 				}}
 				options={[
-					{ value: "all", label: t("traffic.orbit.allProjects") },
+					// The scope the screen opens on leads the list, then the two aggregate
+					// scopes stay adjacent above the per-project entries, so the list reads
+					// broad → narrow in one gradient.
+					{ value: ACTIVE_PROJECTS, label: t("traffic.orbit.activeProjects") },
+					{ value: ALL_PROJECTS, label: t("traffic.orbit.allProjects") },
 					...data.projects.map((project) => ({
 						value: project.id,
 						label: project.name,
@@ -765,7 +806,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 				<div>
 					<strong>
 						{data.projects.find((project) => project.id === scope)?.name ??
-							t("traffic.orbit.allProjects")}
+							t(
+								scope === ACTIVE_PROJECTS
+									? "traffic.orbit.activeProjects"
+									: "traffic.orbit.allProjects",
+							)}
 					</strong>
 					{/* Only a live cursor rebuilds anything: Experiment 1 has none at
 					    all, and Experiment 2 on Live is showing the board as it is. Both
