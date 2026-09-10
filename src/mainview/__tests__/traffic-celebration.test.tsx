@@ -209,6 +209,30 @@ describe("completion celebration on the traffic stage", () => {
 		expect(badge.textContent).toBe("Completed");
 	});
 
+	it("drops every particle under reduced motion and keeps the badge", () => {
+		vi.stubGlobal("matchMedia", (query: string) => ({
+			matches: query.includes("prefers-reduced-motion"),
+			media: query,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		}));
+		try {
+			const { rerender } = render(
+				draw([node(task("task-a", 1, WORKING)), node(other)]),
+			);
+			rerender(draw([node(task("task-a", 1, DONE)), node(other)]));
+			const celebration = screen.getByTestId("traffic-celebration");
+			expect(celebration.dataset.reduced).toBe("true");
+			expect(
+				celebration.querySelectorAll(".traffic-celebration-piece"),
+			).toHaveLength(0);
+			// Motion is never the only channel: the badge still says what happened.
+			expect(celebration.textContent).toContain("Completed in");
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("celebrates when replay crosses the completion forward", () => {
 		const completed = task("task-a", 1, DONE);
 		const event = completionEvent(completed);
