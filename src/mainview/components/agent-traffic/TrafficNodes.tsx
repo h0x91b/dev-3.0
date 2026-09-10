@@ -48,6 +48,7 @@ import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
+import TrafficNotificationCloud from "./TrafficNotificationCloud";
 import { IDENTITY_SCALE, MAX_SCALE, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
@@ -635,6 +636,23 @@ export default function TrafficNodes({
 			? edgeByKey.get([activeFrom, activeTo].sort().join("|"))
 			: undefined;
 	const activeRecipient = activeTo ? nodeByKey.get(activeTo) : undefined;
+	// The notification the cursor is standing on, previewed over the card that SENT
+	// it — never over the card it was about, and never over a neighbouring card
+	// when the archive recorded no sender. An unattributed notification stays in
+	// the inspector list, where it can say so in words; inventing a sender on the
+	// stage is the one thing the archive exists not to do.
+	const activeNotification =
+		!playback?.ended && playback?.current?.kind === "notification"
+			? playback.current.notification
+			: undefined;
+	const notificationSender = activeNotification?.origin
+		? nodeByKey.get(
+				endpointKey(
+					activeNotification.origin.projectId,
+					activeNotification.origin.taskId,
+				),
+			)
+		: undefined;
 	const labelPoint = activeEdge ? pointAt(activeEdge.points, 0.5) : activeRecipient ?
 		{ x: activeRecipient.x + activeRecipient.width / 2, y: activeRecipient.y } : undefined;
 	const detail = detailTier(view.scale);
@@ -875,6 +893,22 @@ export default function TrafficNodes({
 					width={frame.current?.clientWidth ?? 1000}
 					height={frame.current?.clientHeight ?? 500}
 					failed={active.row.status === "not-delivered"}
+				/>
+			)}
+			{activeNotification && notificationSender && (
+				<TrafficNotificationCloud
+					key={activeNotification.key}
+					message={activeNotification.row.message}
+					level={activeNotification.level}
+					anchor={{
+						x:
+							view.x +
+							(notificationSender.x + notificationSender.width / 2) * view.scale,
+						y: view.y + notificationSender.y * view.scale,
+					}}
+					width={frame.current?.clientWidth ?? 1000}
+					height={frame.current?.clientHeight ?? 500}
+					compact={detail !== "full"}
 				/>
 			)}
 			{!scene.placed.length && (
