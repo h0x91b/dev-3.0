@@ -159,14 +159,16 @@ export default function TrafficPlayback({
 
 /**
  * One readout line per event kind. A board movement names the card and what it
- * did; a message keeps the sender → recipient pair and its subject.
+ * did; a message keeps the sender → recipient pair and its subject; a
+ * notification keeps its own text and both endpoints as the archive recorded
+ * them — an unrecorded sender says so rather than borrowing the target's name.
  */
 function describeEvent(
 	event: TrafficTimelineEvent | undefined,
 	t: ReturnType<typeof useT>,
 	loading: boolean,
 	emptyKey: TranslationKey,
-): { icon: "message" | "replay"; lead: string | null; text: string; private: boolean } {
+): { icon: "message" | "replay" | "bell"; lead: string | null; text: string; private: boolean } {
 	if (!event) {
 		return {
 			icon: "message",
@@ -181,6 +183,19 @@ function describeEvent(
 			icon: "message",
 			lead: `${row.fromSeq == null ? "—" : `#${row.fromSeq}`} → #${row.toSeq}`,
 			text: row.subject || row.body.slice(0, 120),
+			private: true,
+		};
+	}
+	if (event.kind === "notification") {
+		const { notification } = event;
+		const seq = (end: typeof notification.target) =>
+			end ? (end.seq === null ? "#?" : `#${end.seq}`) : null;
+		const from = seq(notification.origin);
+		const to = seq(notification.target);
+		return {
+			icon: "bell",
+			lead: `${from ?? t("traffic.notification.unrecordedSender")}${to ? ` → ${to}` : ""}`,
+			text: notification.row.message,
 			private: true,
 		};
 	}

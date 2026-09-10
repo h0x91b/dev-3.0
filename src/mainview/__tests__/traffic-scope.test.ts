@@ -3,6 +3,8 @@ import type { AgentMessageLogRow } from "../../shared/agent-message-log";
 import type { Task, TaskMovement, TaskStatus } from "../../shared/types";
 import type { TrafficRecord } from "../components/agent-traffic/traffic-model";
 import { buildTimeline } from "../components/agent-traffic/traffic-timeline";
+import { notificationEvents, type TrafficNotificationEvent } from "../notification-event";
+import type { NotificationLogRow } from "../../shared/notification-log";
 import {
 	ACTIVE_PROJECTS,
 	ALL_PROJECTS,
@@ -31,8 +33,18 @@ const record = (key: string, minutes: number, over: Partial<AgentMessageLogRow> 
 	} as AgentMessageLogRow,
 });
 
-const active = (input: { records?: TrafficRecord[]; tasks?: Task[] }) =>
-	[...activeProjectIds(buildTimeline({ records: input.records ?? [], tasks: input.tasks ?? [], ...WINDOW }))].sort();
+const notification = (minutes: number, over: Partial<NotificationLogRow> = {}) =>
+	notificationEvents([{
+		v: 1, at: at(minutes), mode: "toast", level: "info", message: "n",
+		taskId: "b", taskSeq: 2, projectId: "p-target", sourceTaskId: "a", sourceSeq: 1,
+		sourceProjectId: "p-source", outcome: "delivered", ...over,
+	} as NotificationLogRow]);
+
+const active = (input: { records?: TrafficRecord[]; tasks?: Task[]; notifications?: TrafficNotificationEvent[] }) =>
+	[...activeProjectIds(buildTimeline({
+		records: input.records ?? [], tasks: input.tasks ?? [],
+		notifications: input.notifications ?? [], ...WINDOW,
+	}))].sort();
 
 describe("active project membership", () => {
 	it("counts both ends of a message, so the sending board is not dropped", () => {
@@ -53,6 +65,23 @@ describe("active project membership", () => {
 		// No coordinator anywhere in this project, and it stays in on its events alone.
 		const tasks = [task("t1", "p-plain", [created(5, "todo")], { taskType: null })];
 		expect(active({ tasks })).toEqual(["p-plain"]);
+	});
+
+	it("counts both ends of a notification, so the sending board is not dropped", () => {
+		expect(active({ notifications: notification(10) })).toEqual(["p-source", "p-target"]);
+	});
+
+	it("counts an archived notification on its own, with nothing else all window", () => {
+		expect(active({ notifications: notification(10, { sourceProjectId: undefined, sourceTaskId: null, sourceSeq: null }) }))
+			.toEqual(["p-target"]);
+	});
+
+	it("counts NO project for a notification the archive anchored nowhere", () => {
+		// `dev3 notify` from a plain shell: it happened, but not on any board.
+		expect(active({ notifications: notification(10, {
+			projectId: null, taskId: null, taskSeq: null,
+			sourceProjectId: undefined, sourceTaskId: null, sourceSeq: null,
+		}) })).toEqual([]);
 	});
 
 	it("ignores events outside the selected window, on either arm", () => {

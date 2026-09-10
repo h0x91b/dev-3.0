@@ -13,11 +13,12 @@
  * moves.
  */
 
+import type { TrafficNotificationEvent } from "../../notification-event";
 import type { Task, TaskMovement } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
 import { endpointKey, type TrafficRecord } from "./traffic-model";
 
-export type TrafficTimelineEventKind = "task" | "message";
+export type TrafficTimelineEventKind = "task" | "message" | "notification";
 
 /** One recorded board movement, addressed to the card it moved. */
 export interface TrafficTaskEvent {
@@ -39,7 +40,26 @@ export interface TrafficMessageEvent {
 	record: TrafficRecord;
 }
 
-export type TrafficTimelineEvent = TrafficTaskEvent | TrafficMessageEvent;
+/**
+ * One archived `dev3 notify` request, riding the same timeline as the rest.
+ *
+ * The normalizer's event is carried verbatim rather than unpacked: it already
+ * decided the three things that are easy to get wrong about a notification
+ * (unrecorded endpoints stay unrecorded, a claimed session is not an identity,
+ * the request and its fate are separate facts), and restating any of them here
+ * would be a second answer to the same question.
+ */
+export interface TrafficNotificationTimelineEvent {
+	kind: "notification";
+	at: number;
+	key: string;
+	notification: TrafficNotificationEvent;
+}
+
+export type TrafficTimelineEvent =
+	| TrafficTaskEvent
+	| TrafficMessageEvent
+	| TrafficNotificationTimelineEvent;
 
 /**
  * Same-instant order, a literal rather than a derived one — a rank that fell out
@@ -48,11 +68,15 @@ export type TrafficTimelineEvent = TrafficTaskEvent | TrafficMessageEvent;
  * Task first is load-bearing, not alphabetical: a message stamped at the same
  * millisecond as a `created` movement must land on a card that already exists.
  * Ranking `task` last — the obvious first guess — renders a bubble against a
- * card that has not appeared yet.
+ * card that has not appeared yet. A notification is about a card too, so it
+ * shares that constraint and sits after `task`; after `message` as well, because
+ * a notification is usually the *consequence* of the work a message asked for,
+ * and a tie has to break somewhere written down rather than by sort accident.
  */
 export const TIMELINE_KIND_RANK: Record<TrafficTimelineEventKind, number> = {
 	task: 0,
 	message: 1,
+	notification: 2,
 };
 
 /**
@@ -128,16 +152,51 @@ export function messageEvents(
 	return events;
 }
 
+/**
+ * Archived notifications as timeline events, clipped to `bounds` like every
+ * other arm.
+ *
+ * The normalizer's `key` is reused verbatim: it is already stable under a
+ * refresh, a live prepend and a longer page, and minting a second key here would
+ * throw that away. `at` is reused too, so nothing re-parses a timestamp.
+ */
+export function notificationTimelineEvents(
+	notifications: readonly TrafficNotificationEvent[],
+	bounds?: { start: number; end: number },
+): TrafficNotificationTimelineEvent[] {
+	const events: TrafficNotificationTimelineEvent[] = [];
+	for (const notification of notifications) {
+		if (
+			bounds &&
+			(notification.at < bounds.start || notification.at >= bounds.end)
+		)
+			continue;
+		events.push({
+			kind: "notification",
+			at: notification.at,
+			key: notification.key,
+			notification,
+		});
+	}
+	return events;
+}
+
 /** Assemble the replay timeline. */
 export function buildTimeline(input: {
 	records: TrafficRecord[];
 	tasks: Task[];
+	/** Archived notifications. Optional so a caller with none passes nothing. */
+	notifications?: readonly TrafficNotificationEvent[];
 	start: number;
 	end: number;
 }): TrafficTimelineEvent[] {
 	return sortTimeline([
 		...taskEvents(input.tasks, input.start, input.end),
 		...messageEvents(input.records, { start: input.start, end: input.end }),
+		...notificationTimelineEvents(input.notifications ?? [], {
+			start: input.start,
+			end: input.end,
+		}),
 	]);
 }
 

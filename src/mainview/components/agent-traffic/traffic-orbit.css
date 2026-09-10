@@ -361,6 +361,7 @@
 	overflow-y: auto;
 }
 .traffic-message,
+.traffic-notification,
 .traffic-task-row {
 	display: flex;
 	width: 100%;
@@ -388,10 +389,38 @@
 	font-size: 10px;
 	font-variant-numeric: tabular-nums;
 }
-.traffic-message strong {
+.traffic-message strong,
+.traffic-notification strong {
 	font-size: 12px;
 	font-weight: 500;
 	overflow-wrap: anywhere;
+}
+/* The notification the replay cursor is standing on, marked the same way a
+   selected message is — one highlight vocabulary for the whole list. */
+.traffic-notification[aria-current="true"] {
+	background: rgb(var(--accent) / 0.12);
+}
+.traffic-notification-tail {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+}
+.traffic-notification-level {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: rgb(var(--text-tertiary));
+}
+.traffic-notification-level.level-success {
+	color: rgb(var(--success));
+}
+.traffic-notification-level.level-error {
+	color: rgb(var(--danger));
+}
+/* A held or never-shown notification must not read like a delivered one. */
+.traffic-notification[data-outcome="queued"] .traffic-verdict,
+.traffic-notification[data-outcome="no-window"] .traffic-verdict {
+	color: rgb(var(--warning-strong));
 }
 .traffic-verdict {
 	font-size: 11px;

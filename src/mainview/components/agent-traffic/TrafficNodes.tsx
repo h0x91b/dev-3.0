@@ -35,6 +35,7 @@ import {
 } from "./completion-celebration";
 import { formatDuration } from "../../utils/productivityStats";
 import {
+	endpointKey,
 	fromKey,
 	nodeSeq,
 	toKey,
@@ -132,14 +133,19 @@ export default function TrafficNodes({
 		return result;
 	}, [nodes, cursorAt]);
 	// Every card the timeline touches, whichever kind of event touched it: a task
-	// event names its own card, a message names both ends.
+	// event names its own card, a message names both ends, a notification names
+	// whichever ends the archive actually recorded — and nothing at all when it
+	// recorded neither, because an unanchored notification belongs to no card.
 	const replayKeys = new Set(
 		replaying
-			? playback.events.flatMap((event) =>
-					event.kind === "message"
-						? [fromKey(event.record.row), toKey(event.record.row)]
-						: [event.nodeKey],
-				)
+			? playback.events.flatMap((event) => {
+					if (event.kind === "message")
+						return [fromKey(event.record.row), toKey(event.record.row)];
+					if (event.kind === "task") return [event.nodeKey];
+					return [event.notification.target, event.notification.origin].flatMap(
+						(end) => (end ? [endpointKey(end.projectId, end.taskId)] : []),
+					);
+				})
 			: [],
 	);
 	const followedRecord = follow
