@@ -159,8 +159,9 @@ describe("completion celebration on the traffic stage", () => {
 
 		rerender(draw([node(task("task-a", 1, DONE)), node(other)]));
 		const badge = screen.getByTestId("traffic-celebration");
-		expect(badge.dataset.basis).toBe("worked");
+		expect(badge.dataset.basis).toBe("work-start");
 		expect(badge.textContent).toContain("1h");
+		expect(badge.textContent).toContain("since work started");
 	});
 
 	it("celebrates the same movement once, however many times the board re-renders", () => {
@@ -181,7 +182,7 @@ describe("completion celebration on the traffic stage", () => {
 		expect(screen.queryByTestId("traffic-celebration")).toBeNull();
 	});
 
-	it("labels a completion with no recorded work start as task age, not as work", () => {
+	it("names the anchor as the task's creation when no work start is recorded", () => {
 		const born = [movement("a0", -90, "todo", "created")];
 		const { rerender } = render(draw([node(task("task-a", 1, born)), node(other)]));
 		rerender(
@@ -190,7 +191,7 @@ describe("completion celebration on the traffic stage", () => {
 				node(other),
 			]),
 		);
-		expect(screen.getByTestId("traffic-celebration").dataset.basis).toBe("age");
+		expect(screen.getByTestId("traffic-celebration").dataset.basis).toBe("created");
 	});
 
 	it("prints no duration at all when the log cannot prove one", () => {
@@ -227,7 +228,7 @@ describe("completion celebration on the traffic stage", () => {
 				celebration.querySelectorAll(".traffic-celebration-piece"),
 			).toHaveLength(0);
 			// Motion is never the only channel: the badge still says what happened.
-			expect(celebration.textContent).toContain("Completed in");
+			expect(celebration.textContent).toContain("since work started");
 		} finally {
 			vi.unstubAllGlobals();
 		}

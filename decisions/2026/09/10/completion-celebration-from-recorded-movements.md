@@ -30,11 +30,18 @@ half: detection (`liveCompletions`, `replayCompletion`), the duration
 
 Three rules the module exists to enforce:
 
-- **Duration is labelled by what it measures.** A preceding `in-progress` move →
-  "completed in X" (`worked`). No work start but the task's own `created` entry →
-  "X old" (`age`), a deliberately different sentence. Neither → **no number**.
-  Nothing here is ever presented as agent work or CPU time; nothing on disk
-  records that.
+- **Duration is elapsed wall clock, and the copy names the anchor.** The window
+  is the delivery cycle this completion ends — everything after the previous
+  terminal move. Inside it the anchor is the **first** recorded `in-progress`,
+  not the nearest one: a task that bounces review → in-progress three times did
+  not start work on the third bounce, and measuring from there quietly shrinks
+  every hard task's number. So: "Completed · X since work started"
+  (`work-start`); no work start but the task's own `created` entry **opening
+  this cycle** → "Completed · X since created" (`created`); anything else →
+  **no number**, which includes a reopened task with no recorded work start,
+  because `created` then sits in an earlier cycle and reaching across the
+  previous completion would measure a span nobody worked. Neither value is ever
+  worded as active labour or CPU time — nothing on disk records that.
 - **One movement, one celebration.** The live scan seeds its seen-set on the
   first pass, so opening the screen on a board full of finished tasks — and any
   remount — is silent. It keeps seeding while replaying or paused, or returning

@@ -922,7 +922,7 @@ function CompletionBurst({
 		: null;
 	const line = !duration
 		? t("traffic.celebration.completed")
-		: duration.basis === "worked"
+		: duration.basis === "work-start"
 			? t("traffic.celebration.worked", { duration: elapsed! })
 			: t("traffic.celebration.age", { duration: elapsed! });
 	return (

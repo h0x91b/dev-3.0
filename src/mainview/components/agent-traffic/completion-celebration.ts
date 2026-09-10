@@ -30,11 +30,14 @@ export const LIVE_WINDOW_MS = 30_000;
 export const CAMERA_COOLDOWN_MS = 1200;
 
 /**
- * Which clock the printed duration is measuring. Two different facts, and they
- * are never presented in the same words — nor as anything resembling how long
- * an agent "worked", which nothing on disk records.
+ * Which anchor the printed duration is measured FROM. Two different facts, and
+ * they are never presented in the same words.
+ *
+ * Both are **elapsed wall clock**, never active labour: nothing on disk records
+ * how long an agent actually worked, so neither value may be worded as if it
+ * did. The copy names the anchor for exactly this reason.
  */
-export type CompletionDurationBasis = "worked" | "age";
+export type CompletionDurationBasis = "work-start" | "created";
 
 export interface CompletionDuration {
 	/** Wall-clock milliseconds. */
@@ -59,19 +62,31 @@ function parse(at: string): number {
 	return Number.isFinite(value) ? value : Number.NaN;
 }
 
+/** A terminal move closes a delivery cycle; the next movement opens a new one. */
+function closesCycle(movement: TaskMovement): boolean {
+	return movement.to === "completed" || movement.to === "cancelled";
+}
+
 /**
- * How long the task took, strictly from the movement log.
+ * Elapsed wall clock for one completion, strictly from the movement log.
  *
- * Walks backwards from the completion for the move that started the current
- * delivery cycle. `lifecycleStartedAt` would be easier and is deliberately not
- * used: it is live state that a reopen resets, so replaying an old completion
- * would print a later cycle's clock against it.
+ * The window is **the delivery cycle this completion ends** — everything after
+ * the previous terminal move. Inside it the anchor is the **first** recorded
+ * `in-progress`, not the nearest one: a task that bounces review → in-progress
+ * three times before landing did not start work on the third bounce, and
+ * measuring from there would quietly shrink every hard task's number.
  *
- * - a preceding `in-progress` move → `worked`, the current cycle's wall clock;
- * - otherwise the task's own `created` entry → `age`, which is a different
- *   claim and is labelled as one;
- * - neither (log truncated by the 50-cap, or absent) → `null`. An unprovable
- *   duration is omitted, never estimated.
+ * `lifecycleStartedAt` would be easier and is deliberately not used: it is live
+ * state that a reopen resets, so replaying an older completion would print a
+ * later cycle's clock against it.
+ *
+ * - first `in-progress` of the cycle → `work-start`;
+ * - no work start, and the cycle is the task's first (its own `created` entry
+ *   opens it) → `created`, a different claim, labelled as one;
+ * - anything else → `null`. That includes a reopened task with no recorded work
+ *   start: `created` sits in an EARLIER cycle, and reaching across the previous
+ *   completion would measure a span nobody worked. An unprovable duration is
+ *   omitted, never estimated.
  */
 export function completionDuration(
 	movements: readonly TaskMovement[] | undefined,
@@ -84,17 +99,25 @@ export function completionDuration(
 	const finished = parse(ordered[end].at);
 	if (!Number.isFinite(finished)) return null;
 
+	let cycleStart = 0;
 	for (let i = end - 1; i >= 0; i--) {
+		if (closesCycle(ordered[i])) {
+			cycleStart = i + 1;
+			break;
+		}
+	}
+	for (let i = cycleStart; i < end; i++) {
 		if (ordered[i].to !== "in-progress") continue;
 		const started = parse(ordered[i].at);
 		if (!Number.isFinite(started) || started > finished) return null;
-		return { ms: finished - started, basis: "worked" };
+		return { ms: finished - started, basis: "work-start" };
 	}
-	const first = ordered[0];
-	if (first.kind !== "created") return null;
+	// Only the task's own birth may stand in, and only when it opens THIS cycle.
+	const first = ordered[cycleStart];
+	if (cycleStart !== 0 || !first || first.kind !== "created") return null;
 	const born = parse(first.at);
 	if (!Number.isFinite(born) || born > finished) return null;
-	return { ms: finished - born, basis: "age" };
+	return { ms: finished - born, basis: "created" };
 }
 
 function celebration(

@@ -53,11 +53,29 @@ describe("completionDuration", () => {
 		];
 		expect(completionDuration(movements, "m2")).toEqual({
 			ms: 30 * 60_000,
-			basis: "worked",
+			basis: "work-start",
 		});
 	});
 
-	it("takes the LAST in-progress before the completion, not the first", () => {
+	it("takes the FIRST work start of the cycle, not the nearest re-entry", () => {
+		const movements = [
+			movement("m0", 0, "todo", "created"),
+			movement("m1", 10, "in-progress"),
+			movement("m2", 25, "review-by-user"),
+			movement("m3", 30, "in-progress"),
+			movement("m4", 45, "review-by-user"),
+			movement("m5", 50, "in-progress"),
+			movement("m6", 70, "completed"),
+		];
+		// 70 − 10, not 70 − 50: a task that bounced through review three times
+		// did not start work on the third bounce.
+		expect(completionDuration(movements, "m6")).toEqual({
+			ms: 60 * 60_000,
+			basis: "work-start",
+		});
+	});
+
+	it("scopes the cycle to this completion, not to the whole log", () => {
 		const movements = [
 			movement("m0", 0, "todo", "created"),
 			movement("m1", 5, "in-progress"),
@@ -65,20 +83,52 @@ describe("completionDuration", () => {
 			movement("m3", 30, "in-progress"),
 			movement("m4", 50, "completed"),
 		];
+		// The reopened cycle starts after m2, so the anchor is m3 and not m1.
 		expect(completionDuration(movements, "m4")).toEqual({
 			ms: 20 * 60_000,
-			basis: "worked",
+			basis: "work-start",
+		});
+		expect(completionDuration(movements, "m2")).toEqual({
+			ms: 15 * 60_000,
+			basis: "work-start",
 		});
 	});
 
-	it("falls back to task age, labelled as age, when no work start is recorded", () => {
+	it("refuses to reach across a previous completion for a birth", () => {
+		const movements = [
+			movement("m0", 0, "todo", "created"),
+			movement("m1", 5, "in-progress"),
+			movement("m2", 20, "completed"),
+			movement("m3", 30, "review-by-user"),
+			movement("m4", 50, "completed"),
+		];
+		// The reopened cycle recorded no work start. `created` belongs to the
+		// EARLIER cycle, so measuring from it would invent a span nobody worked.
+		expect(completionDuration(movements, "m4")).toBeNull();
+	});
+
+	it("a cancelled cycle closes the window too", () => {
+		const movements = [
+			movement("m0", 0, "todo", "created"),
+			movement("m1", 5, "in-progress"),
+			movement("m2", 20, "cancelled"),
+			movement("m3", 30, "in-progress"),
+			movement("m4", 50, "completed"),
+		];
+		expect(completionDuration(movements, "m4")).toEqual({
+			ms: 20 * 60_000,
+			basis: "work-start",
+		});
+	});
+
+	it("falls back to the task's own birth, named as such, when no work start is recorded", () => {
 		const movements = [
 			movement("m0", 0, "todo", "created"),
 			movement("m1", 90, "completed"),
 		];
 		expect(completionDuration(movements, "m1")).toEqual({
 			ms: 90 * 60_000,
-			basis: "age",
+			basis: "created",
 		});
 	});
 
@@ -109,7 +159,7 @@ describe("completionDuration", () => {
 		];
 		expect(completionDuration(movements, "m2")).toEqual({
 			ms: 30 * 60_000,
-			basis: "worked",
+			basis: "work-start",
 		});
 	});
 });
@@ -136,7 +186,7 @@ describe("liveCompletions", () => {
 			key: "m2",
 			nodeKey: "node-a",
 			seq: 42,
-			duration: { ms: 30 * 60_000, basis: "worked" },
+			duration: { ms: 30 * 60_000, basis: "work-start" },
 		});
 	});
 
@@ -187,7 +237,7 @@ describe("replayCompletion", () => {
 			key: "m2",
 			nodeKey: "node-a",
 			at: ms(40),
-			duration: { ms: 30 * 60_000, basis: "worked" },
+			duration: { ms: 30 * 60_000, basis: "work-start" },
 		});
 	});
 
