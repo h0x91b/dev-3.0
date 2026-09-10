@@ -23,14 +23,6 @@
 	position: relative;
 	background: rgb(var(--surface-base));
 }
-.traffic-view[data-experiment="2"] .traffic-header {
-	min-height: 50px;
-	padding: 8px 20px;
-	background: rgb(var(--surface-raised) / 0.55);
-}
-.traffic-view[data-experiment="2"] .traffic-header h2 {
-	font-size: 17px;
-}
 .traffic-view[data-experiment="2"] .traffic-summary {
 	gap: 18px;
 	padding: 10px 22px;
@@ -68,8 +60,12 @@
 	color: rgb(var(--text-secondary));
 	background: rgb(var(--surface-elevated));
 }
-.traffic-header-tail .traffic-replay-start {
+.traffic-toolbar-tail .traffic-replay-start {
 	background: rgb(var(--accent-fill));
+	color: white;
+}
+.traffic-toolbar-tail .traffic-replay-start:hover:not(:disabled) {
+	background: rgb(var(--accent-fill-hover));
 	color: white;
 }
 .traffic-nodes {
@@ -821,9 +817,6 @@
 	.traffic-view[data-experiment="2"] .traffic-stat {
 		display: none;
 	}
-	.traffic-view[data-experiment="2"] .traffic-header {
-		padding: 8px 12px;
-	}
 	.traffic-view[data-experiment="2"] .traffic-toolbar {
 		gap: 6px;
 		padding: 8px 12px;
@@ -979,6 +972,26 @@
 @media (max-width: 900px) {
 	.traffic-view[data-experiment="2"] .traffic-toolbar {
 		flex-wrap: nowrap;
+	}
+	/* Between 700 and 900 this toolbar never wraps, so the tail shrinks instead:
+	   the readout keeps its dot and ellipsizes, and Replay drops to its icon (the
+	   label stays as its accessible name and tooltip). Below 700 there is no room
+	   left to shrink into, and the wrap rule below gives the tail its own row. */
+	.traffic-view[data-experiment="2"] .traffic-toolbar-tail {
+		gap: 6px;
+		flex: 0 1 auto;
+	}
+	.traffic-view[data-experiment="2"] .traffic-toolbar-tail .traffic-live {
+		max-width: 92px;
+		font-size: 11px;
+	}
+	.traffic-view[data-experiment="2"]
+		.traffic-toolbar-tail
+		.traffic-action-label {
+		display: none;
+	}
+	.traffic-view[data-experiment="2"] .traffic-replay-start {
+		padding: 6px 8px;
 	}
 	.traffic-view[data-experiment="2"] .traffic-experiment {
 		min-width: 0;
@@ -1245,5 +1258,22 @@
 	}
 	.traffic-celebration-badge {
 		animation: none;
+	}
+}
+
+/* Phone width: the row of filter controls alone fills it, so the readout and the
+   stage action take a row of their own rather than being squeezed out of the
+   nowrap toolbar above. The label comes back with the space. */
+@media (max-width: 700px) {
+	.traffic-view[data-experiment="2"] .traffic-toolbar {
+		flex-wrap: wrap;
+	}
+	.traffic-view[data-experiment="2"] .traffic-toolbar-tail .traffic-live {
+		max-width: none;
+	}
+	.traffic-view[data-experiment="2"]
+		.traffic-toolbar-tail
+		.traffic-action-label {
+		display: inline;
 	}
 }

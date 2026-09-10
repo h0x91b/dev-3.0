@@ -47,33 +47,23 @@
 	cursor: default;
 	opacity: 0.5;
 }
-.traffic-header {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	min-height: 60px;
-	padding: 12px 20px;
-	background: rgb(var(--surface-overlay) / 0.7);
-	border-bottom: 1px solid rgb(var(--border-default) / 0.5);
-}
-.traffic-header h2 {
-	margin: 0;
-	font-size: 18px;
-	font-weight: 600;
-}
 .traffic-orbit-name {
 	padding: 6px 14px;
 	color: rgb(var(--accent));
 	background: rgb(var(--accent) / 0.12);
 	border-radius: 8px;
 }
-.traffic-header-tail {
+/* Sized against `.traffic-toolbar > div`, which caps the filter controls' width
+   and would otherwise squeeze the tail too. */
+.traffic-toolbar > .traffic-toolbar-tail {
 	display: flex;
 	align-items: center;
 	gap: 12px;
 	margin-left: auto;
+	min-width: 0;
+	max-width: none;
 }
-.traffic-header-tail button,
+.traffic-toolbar-tail button,
 .traffic-timeline button,
 .traffic-inspector-heading button,
 .traffic-detail-actions button,
@@ -84,7 +74,7 @@
 	background: rgb(var(--surface-elevated));
 	color: rgb(var(--text-secondary));
 }
-.traffic-header-tail button:hover,
+.traffic-toolbar-tail button:hover,
 .traffic-timeline button:hover,
 .traffic-inspector button:hover {
 	background: rgb(var(--surface-elevated-hover));
@@ -93,6 +83,8 @@
 .traffic-live {
 	color: rgb(var(--success));
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .traffic-live::before {
 	content: "";
@@ -514,21 +506,13 @@
 	}
 }
 @media (max-width: 700px) {
-	.traffic-header {
-		padding: 8px 12px;
-		min-height: 48px;
-		gap: 8px;
-	}
-	.traffic-header h2 {
-		font-size: 14px;
-	}
 	.traffic-orbit-name {
 		display: none;
 	}
-	.traffic-header-tail {
+	.traffic-toolbar > .traffic-toolbar-tail {
 		gap: 6px;
 	}
-	.traffic-header-tail button {
+	.traffic-toolbar-tail button {
 		padding: 5px;
 	}
 	.traffic-toolbar {
@@ -609,16 +593,9 @@
 }
 
 @media (max-width: 700px) {
-	.traffic-header > svg,
-	.traffic-header h2,
-	.traffic-header-tail > button:last-child {
-		display: none;
-	}
-	.traffic-header {
-		min-height: 40px;
-		padding: 4px 12px;
-	}
-	.traffic-header-tail {
+	/* The wrapped toolbar gives the tail its own row instead of dropping the
+	   stage action, which the old header row hid outright at this width. */
+	.traffic-toolbar > .traffic-toolbar-tail {
 		width: 100%;
 		justify-content: space-between;
 		margin-left: 0;

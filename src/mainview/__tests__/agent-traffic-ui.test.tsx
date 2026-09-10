@@ -752,6 +752,68 @@ describe("AgentTrafficScreen kind filter gate", () => {
 	});
 });
 
+/**
+ * The screen is a route the app's own breadcrumb already names, so it carries no
+ * title row of its own — the readout and the stage action ride in the toolbar
+ * the other view controls live in. What these guard is that the row is gone AND
+ * that nothing it used to carry got dropped with it.
+ */
+describe("AgentTrafficScreen route header", () => {
+	const tail = () =>
+		document.querySelector(".traffic-toolbar > .traffic-toolbar-tail");
+
+	it("has no title row, and keeps the readout and Replay in the toolbar", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		expect(document.querySelector(".traffic-header")).toBeNull();
+		expect(screen.queryByRole("heading", { name: "Agent traffic" })).toBeNull();
+		const toolbarTail = tail();
+		expect(toolbarTail).not.toBeNull();
+		expect(toolbarTail?.querySelector(".traffic-live")?.textContent).toMatch(
+			/^(Live|History)$/,
+		);
+		expect(
+			within(toolbarTail as HTMLElement).getByRole("button", {
+				name: "Replay",
+			}),
+		).toBeTruthy();
+	});
+
+	it("still restarts the replay from the toolbar's Replay", async () => {
+		const counter = () =>
+			document.querySelector(".traffic-event-counter")?.textContent;
+		setPage([
+			row({ at: new Date(Date.now() - 20 * 60000).toISOString(), subject: "First" }),
+			row({ subject: "Second" }),
+		]);
+		renderLog();
+		await waitFor(() => expect(counter()).toBe("1 / 2"));
+		// Live drops the cursor, so a counter back at the first event can only come
+		// from the button restarting the replay.
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		await waitFor(() => expect(counter()).not.toBe("1 / 2"));
+		await userEvent.click(screen.getByRole("button", { name: "Replay" }));
+		await waitFor(() => expect(counter()).toBe("1 / 2"));
+	});
+
+	it("carries Experiment 1's animation toggle in the toolbar", async () => {
+		settings.value = { agentTrafficExperiment: "1" };
+		setPage([row()]);
+		renderLog();
+		await waitFor(() => expect(tail()).not.toBeNull());
+		const toggle = within(tail() as HTMLElement).getByRole("button", {
+			name: "Pause animation",
+		});
+		await userEvent.click(toggle);
+		expect(
+			within(tail() as HTMLElement).getByRole("button", {
+				name: "Resume animation",
+			}),
+		).toHaveAttribute("aria-pressed", "true");
+	});
+});
+
 describe("AgentTrafficScreen presentation picker", () => {
 	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
 	const orbit = () => screen.queryByLabelText("Project traffic map");
