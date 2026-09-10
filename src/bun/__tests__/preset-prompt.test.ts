@@ -35,6 +35,16 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/Not allowed[\s\S]*engineering judgement/);
 	});
 
+	// Seq 1801 read the role as pure traffic control and policed process instead of
+	// finishing anything: the prompt named no goal, no size and no moment to stop.
+	it("names the outcome, the size, the autonomy and the stopping point", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/smallest sufficient change/);
+		expect(COORDINATOR_PROMPT).toMatch(/put extra work in a separate task before implementing it/);
+		expect(COORDINATOR_PROMPT).toContain("SIZE IT TO ONE SMALL, INDEPENDENTLY REVIEWABLE OUTCOME");
+		expect(COORDINATOR_PROMPT).toMatch(/Leave routine engineering to the child/);
+		expect(COORDINATOR_PROMPT).toMatch(/Verify agreed acceptance checks, then stop/);
+	});
+
 	it("requires every reply to be a self-contained status", () => {
 		expect(COORDINATOR_PROMPT).toContain("SELF-CONTAINED STATUS");
 		expect(COORDINATOR_PROMPT).toContain("does not see or read your conversations");
@@ -111,7 +121,7 @@ describe("COORDINATOR_PROMPT", () => {
 
 	it("keeps the long-turn and no-harness fallbacks", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/turn has run long/);
-		expect(COORDINATOR_PROMPT).toMatch(/no block at all/);
+		expect(COORDINATOR_PROMPT).toMatch(/[Nn]o block at all/);
 	});
 
 	// A quiet time is not a screen: peek stays the only way to see what a child
@@ -141,7 +151,7 @@ describe("COORDINATOR_PROMPT", () => {
 	it("bootstraps a bounded window openly and refuses a relative window as a substitute", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/NO CURSOR YET\?/);
 		expect(COORDINATOR_PROMPT).toMatch(/bounded WINDOW, not a position/);
-		expect(COORDINATOR_PROMPT).toMatch(/rather than implying you read everything/);
+		expect(COORDINATOR_PROMPT).toMatch(/its footer counts what it cut off, say so/);
 		expect(COORDINATOR_PROMPT).toContain("A LOST CURSOR IS NEVER REPLACED BY `--from 2h`");
 	});
 
@@ -152,9 +162,9 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("DRAIN THE PAGES");
 		expect(COORDINATOR_PROMPT).toMatch(/Capped at --limit[\s\S]*until nothing is capped/);
 		expect(COORDINATOR_PROMPT).toContain("dev3 note show <id> --task seq:");
-		// Scoped to NOTE rows: another kind's event id is not a note id at all.
+		// Scoped to NOTE rows, and the owning task is what makes the lookup resolve.
 		expect(COORDINATOR_PROMPT).toMatch(/open a NOTE row in full/);
-		expect(COORDINATOR_PROMPT).toMatch(/another kind's id is not a note/);
+		expect(COORDINATOR_PROMPT).toMatch(/needs `--task`, or it reads YOUR notes/);
 	});
 
 	it("never reports a failed read as a quiet board", () => {
@@ -162,13 +172,11 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/keep the old cursor/);
 	});
 
-	// Events and the board answer different questions. The prompt must not name the
-	// kinds itself: v1 records notes only, Seq 1675 is adding board movements, and a
-	// hardcoded list here would be false the day it lands — so it points at the CLI's
-	// own help, which is generated from the build the coordinator is actually running.
-	it("keeps events complementary to the board and sources the kinds from the CLI", () => {
-		expect(COORDINATOR_PROMPT).toContain("EVENTS AND THE BOARD ARE COMPLEMENTARY");
-		expect(COORDINATOR_PROMPT).toMatch(/`dev3 events --help` names the kinds this build records/);
+	// The bullet that said this in prose paid for the outcome rules and is gone; the
+	// invariant it protected is not. The prompt must never name the event kinds: v1
+	// records notes only, board movements came later, and a hardcoded list here would
+	// be false the day the next kind lands.
+	it("never names the event kinds itself, whatever this build records", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/--kind (all|note|move)\b/);
 	});
 
