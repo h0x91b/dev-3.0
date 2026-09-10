@@ -1,6 +1,6 @@
 /** Shared recipient-project log store for the header and live traffic surface. */
 
-import type { AgentMessageLogPage, AgentMessageLogRow } from "../shared/agent-message-log";
+import { isUserOrigin, type AgentMessageLogPage, type AgentMessageLogRow } from "../shared/agent-message-log";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { api } from "./rpc";
 
@@ -61,8 +61,11 @@ export function markTrafficSeen(): void {
 export function unreadRows(rows: AgentMessageLogRow[], since = trafficSeenAt()): AgentMessageLogRow[] {
 	return rows.filter((row) => {
 		const at = Date.parse(row.at);
-		// Anything dev3 itself sent is not traffic between two agents.
-		if (Number.isNaN(at) || (row.fromSeq === null && row.fromTaskId === null)) return false;
+		// Anything dev3 itself sent is not traffic. A message the user sent is,
+		// which is why the sender-less check asks about provenance rather than
+		// treating every null sender as dev3.
+		if (Number.isNaN(at)) return false;
+		if (row.fromSeq === null && row.fromTaskId === null && !isUserOrigin(row)) return false;
 		return at > since;
 	});
 }
@@ -130,7 +133,7 @@ function rowTime(row: AgentMessageLogRow): number {
 }
 
 function pairKey(row: AgentMessageLogRow): string {
-	const from = row.fromTaskId ?? `seq:${row.fromSeq ?? "?"}`;
+	const from = row.fromTaskId ?? (isUserOrigin(row) ? "dev3:user" : `seq:${row.fromSeq ?? "?"}`);
 	return [JSON.stringify([row.fromProjectId ?? row.toProjectId, from]), JSON.stringify([row.toProjectId, row.toTaskId])].sort().join("|");
 }
 
@@ -138,8 +141,9 @@ function pairKey(row: AgentMessageLogRow): string {
 export function derivePairs(rows: AgentMessageLogRow[]): TrafficPair[] {
 	const byKey = new Map<string, TrafficPair>();
 	for (const row of rows) {
-		// A row with no sender is a hand-off from dev3 itself, not agent traffic.
-		if (row.fromSeq === null && row.fromTaskId === null) continue;
+		// A row with no sender AND no proven origin is a hand-off from dev3 itself,
+		// not traffic. A row the user sent is traffic and keeps its pair.
+		if (row.fromSeq === null && row.fromTaskId === null && !isUserOrigin(row)) continue;
 		const key = pairKey(row);
 		const at = rowTime(row);
 		const existing = byKey.get(key);

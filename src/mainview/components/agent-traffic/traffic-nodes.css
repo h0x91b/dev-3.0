@@ -194,6 +194,35 @@
 	background: color-mix(in srgb, var(--node-status) 14%, transparent);
 	pointer-events: none;
 }
+/* The person, not a task: no status stripe, no card grammar, and an accent ring
+   instead of a border so it reads as a different kind of thing at every zoom. */
+.traffic-user-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	text-align: center;
+	background:
+		linear-gradient(135deg, rgb(var(--accent) / 0.1), transparent 70%),
+		rgb(var(--surface-elevated));
+	box-shadow:
+		0 8px 22px rgb(0 0 0 / 0.13),
+		inset 0 0 0 1.5px rgb(var(--accent) / 0.55);
+}
+.traffic-user-card::before {
+	display: none;
+}
+.traffic-user-card .traffic-icon {
+	width: 34px;
+	height: 34px;
+	color: rgb(var(--accent));
+}
+.traffic-user-card strong {
+	font-size: 15px;
+	color: rgb(var(--text-primary));
+}
+
 .traffic-node-card.is-coordinator {
 	background:
 		linear-gradient(135deg, rgb(var(--success) / 0.065), transparent 70%),

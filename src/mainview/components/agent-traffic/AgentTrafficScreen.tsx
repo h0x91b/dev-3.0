@@ -27,6 +27,7 @@ import {
 	fromKey,
 	toKey,
 	routeKey,
+	senderLabel,
 	type TrafficRecord,
 } from "./traffic-model";
 import {
@@ -604,7 +605,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			>
 				<span className="traffic-message-meta">
 					<b>
-						{row.fromSeq === null ? "—" : `#${row.fromSeq}`} → #{row.toSeq}
+						{senderLabel(row, t("traffic.node.you"))} → #{row.toSeq}
 					</b>
 					<time dateTime={row.at}>{format(row.at)}</time>
 				</span>
@@ -951,8 +952,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							</div>
 							<div className="traffic-detail">
 								<b>
-									{record.row.fromSeq === null ? "—" : `#${record.row.fromSeq}`}{" "}
-									→ #{record.row.toSeq}
+									{senderLabel(record.row, t("traffic.node.you"))} → #{record.row.toSeq}
 								</b>
 								<h3 className="streamer-private">
 									{record.row.subject || t("traffic.orbit.noSubject")}

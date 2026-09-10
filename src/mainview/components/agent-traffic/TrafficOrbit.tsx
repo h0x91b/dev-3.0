@@ -337,14 +337,18 @@ export default function TrafficOrbit(props: Props) {
 					label.hidden = true;
 					label.tabIndex = -1;
 					label.type = "button";
-					label.className = `traffic-node-label ${coordinator ? "is-coordinator" : ""} ${node.key === selected ? "is-selected" : ""}`;
+					label.className = `traffic-node-label ${coordinator ? "is-coordinator" : ""} ${node.user ? "is-user" : ""} ${node.key === selected ? "is-selected" : ""}`;
+					// The user has no seq and no title, and the task fallbacks would print
+					// "#—" and "historical" about a person. One honest label instead.
 					const seq = document.createElement("b");
-					seq.textContent = nodeSeq(node);
+					seq.textContent = node.user ? t("traffic.node.you") : nodeSeq(node);
 					label.append(seq);
-					const title = document.createElement("span");
-					title.className = "streamer-private";
-					title.textContent = node.title || t("traffic.orbit.historical");
-					label.append(title);
+					if (!node.user) {
+						const title = document.createElement("span");
+						title.className = "streamer-private";
+						title.textContent = node.title || t("traffic.orbit.historical");
+						label.append(title);
+					}
 					if (coordinator) {
 						const role = document.createElement("small");
 						role.textContent = t("traffic.orbit.coordinator");

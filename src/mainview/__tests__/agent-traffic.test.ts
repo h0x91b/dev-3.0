@@ -73,6 +73,22 @@ describe("derivePairs", () => {
 		expect(derivePairs([row({ fromTaskId: null, fromSeq: null })])).toHaveLength(0);
 	});
 
+	// The user IS a sender, so the same sender-less shape must not swallow them.
+	// The two cases sit together deliberately: they differ only by `origin`.
+	it("keeps a pair for a message the user proved they sent", () => {
+		const pairs = derivePairs([row({ fromTaskId: null, fromSeq: null, origin: "user" })]);
+		expect(pairs).toHaveLength(1);
+		expect(pairs[0].toSeq).toBe(22);
+	});
+
+	it("does not fold the user's messages into the same pair as an unproven hand-off", () => {
+		const pairs = derivePairs([
+			row({ fromTaskId: null, fromSeq: null, origin: "user" }),
+			row({ fromTaskId: null, fromSeq: null, at: new Date(NOW - 1_000).toISOString() }),
+		]);
+		expect(pairs).toHaveLength(1);
+	});
+
 	// One unproven message taints the pair: that is the thing the human has to look at.
 	it("marks a pair unsettled when any of its rows is unproven", () => {
 		const pairs = derivePairs([
@@ -110,6 +126,13 @@ describe("unreadRows", () => {
 	it("ignores rows with no sending agent", () => {
 		const rows = [row({ at: new Date(NOW).toISOString(), fromTaskId: null, fromSeq: null })];
 		expect(unreadRows(rows, NOW - 30_000)).toHaveLength(0);
+	});
+
+	// …but the user's own message is traffic worth a badge, and it wears the same
+	// sender-less shape. Only `origin` separates this case from the one above.
+	it("counts a message the user sent", () => {
+		const rows = [row({ at: new Date(NOW).toISOString(), fromTaskId: null, fromSeq: null, origin: "user" })];
+		expect(unreadRows(rows, NOW - 30_000)).toHaveLength(1);
 	});
 
 	// A fresh install has no "last time you clicked", so 30 days of history must
