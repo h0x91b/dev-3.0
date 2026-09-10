@@ -752,40 +752,14 @@
 	background: rgb(var(--accent-fill-hover));
 }
 
+/*
+ * The picker is the shared Select, which draws its own field: this only gives it
+ * the room the toolbar can spare. Wide enough for the longest label plus the
+ * chevron, and it does not stretch — the search input is what should take slack.
+ */
 .traffic-experiment {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-	padding: 2px;
-	border: 1px solid rgb(var(--border-default) / 0.7);
-	border-radius: 9px;
-	background: rgb(var(--surface-base) / 0.5);
+	width: 148px;
 	flex-shrink: 0;
-}
-.traffic-experiment button {
-	padding: 6px 12px;
-	min-height: 30px;
-	border: 0;
-	border-radius: 7px;
-	font-size: 12px;
-	font-weight: 600;
-	color: rgb(var(--text-tertiary));
-	background: transparent;
-	/* Three options no longer fit a compressed row: without these the labels wrap
-	   to two lines and the last one is clipped mid-word. */
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-.traffic-experiment button:hover {
-	color: rgb(var(--text-primary));
-	background: rgb(var(--surface-elevated));
-}
-.traffic-experiment button[aria-checked="true"] {
-	color: white;
-	background: rgb(var(--accent-fill));
-}
-.traffic-experiment button[aria-checked="true"]:hover {
-	background: rgb(var(--accent-fill-hover));
 }
 
 @media (max-width: 900px) {
@@ -950,16 +924,6 @@
 @media (max-width: 900px) {
 	.traffic-view[data-experiment="2"] .traffic-toolbar {
 		flex-wrap: nowrap;
-	}
-	.traffic-view[data-experiment="2"] .traffic-experiment {
-		min-width: 0;
-		max-width: none;
-		flex: 1;
-	}
-	.traffic-view[data-experiment="2"] .traffic-experiment button {
-		white-space: nowrap;
-		padding: 6px;
-		font-size: 11px;
 	}
 	.traffic-view[data-experiment="2"] .traffic-main {
 		flex: 1;

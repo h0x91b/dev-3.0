@@ -338,7 +338,7 @@ Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskI
 ### 5.9 Agent traffic — `Observed`
 
 - **Three presentations, one feature.** Experiment 2 (Coordination, default), 1 (orbit) and 3 (Strata)
-  share data/filters/selection. A toolbar radiogroup selects one mounted stage; absent preference means
+  share data/filters/selection. One toolbar dropdown mounts one stage; absent preference means
   2. A stage's own sub-mode stays on that stage.
 - **Beta, off by default.** Settings → System → Advanced Experience gates every entry point and
   the tip. Off leaves no trace.

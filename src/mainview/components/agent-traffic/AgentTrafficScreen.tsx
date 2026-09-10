@@ -21,7 +21,10 @@ import TrafficIcon from "./TrafficIcon";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
 import { useTrafficExperiment } from "./useTrafficExperiment";
-import type { AgentTrafficExperiment } from "../../../shared/types";
+import {
+	isAgentTrafficExperiment,
+	type AgentTrafficExperiment,
+} from "../../../shared/types";
 import {
 	endpointKey,
 	trafficNodes,
@@ -84,12 +87,15 @@ export default function AgentTrafficScreen(props: Props) {
 }
 
 /**
- * Which presentation renders the same traffic — the orbit or the node graph.
+ * Which presentation renders the same traffic — the graph, the stage or the orbit.
  *
- * A radiogroup, not two toggles: the two are mutually exclusive views of one
- * data set, exactly like the diff viewer's modes, and it sits in the toolbar
- * with the other view controls rather than in the header. It never touches the
- * feature flag; with the feature off nothing here exists to be clicked.
+ * A dropdown, not a segmented row: three mutually exclusive views of one data
+ * set, and a closed field costs the dense toolbar one control's width instead of
+ * three. The list is also where each presentation finally gets a sentence saying
+ * what it draws — as an option caption, which a segmented button could only carry
+ * as a tooltip nobody hovers. It sits in the toolbar with the other view controls
+ * rather than in the header, and never touches the feature flag; with the feature
+ * off nothing here exists to be clicked.
  */
 function ExperimentPicker({
 	value,
@@ -121,42 +127,25 @@ function ExperimentPicker({
 		hint: TranslationKey;
 	}[];
 	return (
-		<div
-			className="traffic-experiment"
-			role="radiogroup"
-			aria-label={t("traffic.experiment.label")}
-			onKeyDown={(event) => {
-				if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-				event.preventDefault();
-				// Cycle the options array rather than flipping between two ids: with a
-				// hardcoded pair, a third presentation is unreachable by keyboard and
-				// the radiogroup silently stops being one.
-				const step = event.key === "ArrowRight" ? 1 : -1;
-				const current = options.findIndex((option) => option.id === value);
-				const next =
-					options[(current + step + options.length) % options.length].id;
-				onChange(next);
-				event.currentTarget
-					.querySelector<HTMLButtonElement>(
-						`[data-testid="traffic-experiment-${next}"]`,
-					)
-					?.focus();
-			}}
-		>
-			{options.map((option) => (
-				<button
-					key={option.id}
-					type="button"
-					role="radio"
-					aria-checked={value === option.id}
-					tabIndex={value === option.id ? 0 : -1}
-					title={t(option.hint)}
-					data-testid={`traffic-experiment-${option.id}`}
-					onClick={() => onChange(option.id)}
-				>
-					{t(option.label)}
-				</button>
-			))}
+		<div className="traffic-experiment" data-testid="traffic-experiment">
+			<Select
+				ariaLabel={t("traffic.experiment.label")}
+				value={value}
+				options={options.map((option) => ({
+					value: option.id,
+					label: t(option.label),
+					caption: t(option.hint),
+				}))}
+				// The captions are a sentence long, so the open list is allowed past the
+				// trigger's width; the trigger itself stays as narrow as the toolbar needs.
+				growList
+				onChange={(next) => {
+					// The list can only offer ids this screen declared, but the shared
+					// Select speaks strings — so the guard, not a cast, is what keeps a
+					// stray value out of the stored preference.
+					if (isAgentTrafficExperiment(next)) onChange(next);
+				}}
+			/>
 		</div>
 	);
 }

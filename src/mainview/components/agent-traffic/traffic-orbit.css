@@ -118,10 +118,6 @@
 /* The presentation radiogroup is not one of the filter fields and must not
    inherit their 240px cap: three options exceed it, and the clamp clipped the
    last label mid-word rather than letting the row shed something. */
-.traffic-toolbar > .traffic-experiment {
-	max-width: none;
-	min-width: 0;
-}
 .traffic-toolbar input {
 	width: 280px;
 	min-width: 100px;
@@ -132,40 +128,6 @@
 	color: rgb(var(--text-primary));
 }
 
-/*
- * Between roughly 900px and 1140px the toolbar holds every control at once and
- * runs out of room, so its last item — the message-list toggle — was clipped.
- * Measured on the seeded board at a 1024px viewport: 40px of overflow with three
- * presentations offered, and 16px with two, so the row was already over before a
- * third option existed.
- *
- * §12.6 says the last survivors degrade by truncation, never by clipping, so the
- * three flexible fields give up width first: the row's own gap and padding
- * tighten, and each field's floor drops to what its longest real label still
- * needs. The two shrink-0 groups (the kind filter and the radiogroup) keep their
- * width, because a radio label truncated to "Experim…" is exactly the failure
- * this is fixing.
- *
- * It sits after the field rules on purpose: they set the same `min-width` at the
- * same specificity, so an earlier block silently loses.
- *
- * Below 900px none of this matters — the screen folds the filters into a bottom
- * sheet there. Raising THAT threshold to ~1140px is the cleaner fix and belongs
- * in `AgentTrafficScreen.tsx`, which another task's integration is holding; this
- * does the same job from the stylesheet in the meantime.
- */
-@media (min-width: 901px) and (max-width: 1140px) {
-	.traffic-toolbar {
-		gap: 8px;
-		padding: 10px 12px;
-	}
-	.traffic-toolbar > div {
-		min-width: 112px;
-	}
-	.traffic-toolbar input {
-		min-width: 84px;
-	}
-}
 .traffic-summary {
 	display: flex;
 	align-items: center;

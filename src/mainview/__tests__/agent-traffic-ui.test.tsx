@@ -280,6 +280,26 @@ async function choose(label: string, option: string) {
 	await userEvent.click(await screen.findByRole("option", { name: option }));
 }
 
+/**
+ * The presentation picker is a dropdown, so a pick is open-then-choose.
+ *
+ * Its rows carry a caption, which lands in the option's accessible name after
+ * the label — hence the anchored pattern rather than an exact string.
+ */
+async function pickPresentation(label: string) {
+	await userEvent.click(screen.getByRole("combobox", { name: "Presentation" }));
+	await userEvent.click(
+		await screen.findByRole("option", { name: new RegExp(`^${label}\\b`) }),
+	);
+}
+
+/** What the closed picker says is showing. */
+function presentation(): string {
+	return (
+		screen.getByRole("combobox", { name: "Presentation" }).textContent ?? ""
+	);
+}
+
 async function messageRows(count: number) {
 	const inspector = document.querySelector(".traffic-inspector");
 	if (inspector?.hasAttribute("hidden"))
@@ -760,10 +780,7 @@ describe("AgentTrafficScreen presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await messageRows(1);
-		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
-			"aria-checked",
-			"true",
-		);
+		expect(presentation()).toContain("Experiment 2");
 		expect(nodeCards().length).toBeGreaterThan(0);
 		expect(orbit()).toBeNull();
 	});
@@ -775,13 +792,49 @@ describe("AgentTrafficScreen presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await messageRows(1);
+		await waitFor(() => expect(presentation()).toContain("Experiment 2"));
+		expect(nodeCards().length).toBeGreaterThan(0);
+	});
+
+	// The toolbar is dense enough that the picker had already started clipping as a
+	// segmented row, so it is one closed field: what it must never do is hide an
+	// option or forget which one is showing.
+	it("offers every presentation in one closed field, each with what it draws", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		const trigger = screen.getByRole("combobox", { name: "Presentation" });
+		await userEvent.click(trigger);
+		// Scoped to this picker's own list: the transport's speed field is a native
+		// <select>, so its options answer to the same role on this screen.
+		const list = document.getElementById(
+			trigger.getAttribute("aria-controls") ?? "",
+		);
+		const options = [...(list?.querySelectorAll('[role="option"]') ?? [])].map(
+			(option) => option.textContent ?? "",
+		);
+		expect(options).toHaveLength(3);
+		expect(options[0]).toContain("Experiment 2");
+		expect(options[1]).toContain("Experiment 3");
+		expect(options[2]).toContain("Experiment 1");
+		// The caption is the reason a dropdown beats three buttons here: as a
+		// segmented row this sentence could only be a tooltip.
+		expect(options[1]).toContain("hex platform");
+	});
+
+	it("reaches the third presentation, which no pair of buttons could", async () => {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		await pickPresentation("Experiment 3");
+		expect(presentation()).toContain("Experiment 3");
+		expect(nodeCards()).toHaveLength(0);
+		expect(orbit()).toBeNull();
 		await waitFor(() =>
-			expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
-				"aria-checked",
-				"true",
+			expect(vi.mocked(api.request.saveGlobalSettings)).toHaveBeenCalledWith(
+				expect.objectContaining({ agentTrafficExperiment: "3" }),
 			),
 		);
-		expect(nodeCards().length).toBeGreaterThan(0);
 	});
 
 	it("honours a recorded pick of Experiment 1", async () => {
@@ -789,10 +842,7 @@ describe("AgentTrafficScreen presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await waitFor(() => expect(orbit()).not.toBeNull());
-		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute(
-			"aria-checked",
-			"true",
-		);
+		expect(presentation()).toContain("Experiment 1");
 		expect(nodeCards()).toHaveLength(0);
 	});
 
@@ -800,7 +850,7 @@ describe("AgentTrafficScreen presentation picker", () => {
 		setPage([row()]);
 		renderLog();
 		await messageRows(1);
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		await pickPresentation("Experiment 1");
 		expect(orbit()).not.toBeNull();
 		expect(nodeCards()).toHaveLength(0);
 		await waitFor(() =>
@@ -808,7 +858,7 @@ describe("AgentTrafficScreen presentation picker", () => {
 				expect.objectContaining({ agentTrafficExperiment: "1" }),
 			),
 		);
-		await userEvent.click(screen.getByTestId("traffic-experiment-2"));
+		await pickPresentation("Experiment 2");
 		expect(orbit()).toBeNull();
 		expect(nodeCards().length).toBeGreaterThan(0);
 		await waitFor(() =>
@@ -827,7 +877,7 @@ describe("AgentTrafficScreen presentation picker", () => {
 		renderLog();
 		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
 		expect(screen.getAllByText("Worker").length).toBeGreaterThan(0);
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		await pickPresentation("Experiment 1");
 		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
 	});
 
@@ -961,7 +1011,7 @@ describe("Coordination replay controls", () => {
 		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
 		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		expect(document.querySelector(".traffic-edge-subject")).toBeNull();
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		await pickPresentation("Experiment 1");
 		expect(screen.queryByRole("button", { name: "Play replay" })).toBeNull();
 	});
 });
@@ -1043,7 +1093,7 @@ describe("Space toggles the replay", () => {
 		seedTwo();
 		renderLog();
 		await screen.findByRole("button", { name: "Play replay" });
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		await pickPresentation("Experiment 1");
 		expect(pressSpace().defaultPrevented).toBe(false);
 	});
 });
@@ -1596,7 +1646,7 @@ describe("Replay reconstructs the board at the cursor", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Live" }));
 		expect(summary()).toContain("Task states are current");
 		// Experiment 1 has no cursor at all.
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		await pickPresentation("Experiment 1");
 		expect(summary()).toContain("Task states are current");
 	});
 

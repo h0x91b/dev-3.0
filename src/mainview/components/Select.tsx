@@ -18,6 +18,10 @@ export interface SelectOption {
 	 *  listbox's option indices stay untouched. Options carrying the same section
 	 *  must be adjacent — the caller owns the order. */
 	section?: string;
+	/** One line explaining the option, shown under its label in the list only.
+	 *  Deliberately not `renderOption`: that callback also draws the trigger, so a
+	 *  caption written through it lands in the closed field as well. */
+	caption?: string;
 }
 
 /** Substring match that ignores case and separators, so "xhigh" finds "X-High". */
@@ -46,11 +50,11 @@ function LockIcon() {
 	);
 }
 
-function CheckIcon() {
+function CheckIcon({ className }: { className?: string }) {
 	return (
 		<svg
 			aria-hidden
-			className="w-3.5 h-3.5 flex-shrink-0 text-accent"
+			className={`w-3.5 h-3.5 flex-shrink-0 text-accent ${className ?? ""}`}
 			viewBox="0 0 24 24"
 			fill="none"
 			stroke="currentColor"
@@ -208,7 +212,9 @@ function SelectListbox({
 						onMouseDown={(e) => e.preventDefault()}
 						onMouseEnter={() => onHover(index)}
 						onClick={() => onPick(index)}
-						className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
+						className={`w-full text-left px-3 py-2 text-sm transition-colors flex gap-2 ${
+							opt.caption ? "items-start" : "items-center"
+						} ${
 							isActive ? "ring-1 ring-inset ring-accent" : ""
 						} ${
 							opt.disabled
@@ -220,26 +226,33 @@ function SelectListbox({
 					>
 						{/* The lock is the option's state, not its content, so it survives a
 						    caller's renderOption — a custom row must not silently drop it. */}
-						<span className="flex-1 min-w-0 truncate">
-							{renderOption && !opt.custom ? (
-								opt.disabled ? (
+						<span className={`flex-1 min-w-0 ${opt.caption ? "" : "truncate"}`}>
+							<span className="block truncate">
+								{renderOption && !opt.custom ? (
+									opt.disabled ? (
+										<span className="flex items-center gap-1.5 opacity-70">
+											{renderOption(opt)}
+											<LockIcon />
+										</span>
+									) : (
+										renderOption(opt)
+									)
+								) : opt.disabled ? (
 									<span className="flex items-center gap-1.5 opacity-70">
-										{renderOption(opt)}
+										{opt.label}
 										<LockIcon />
 									</span>
 								) : (
-									renderOption(opt)
-								)
-							) : opt.disabled ? (
-								<span className="flex items-center gap-1.5 opacity-70">
-									{opt.label}
-									<LockIcon />
+									opt.label
+								)}
+							</span>
+							{opt.caption && (
+								<span className="block mt-0.5 text-micro leading-snug text-fg-muted">
+									{opt.caption}
 								</span>
-							) : (
-								opt.label
 							)}
 						</span>
-						{isSelected && <CheckIcon />}
+						{isSelected && <CheckIcon className={opt.caption ? "mt-0.5" : undefined} />}
 					</button>
 					</Fragment>
 				);
