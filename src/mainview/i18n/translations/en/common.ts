@@ -52,6 +52,7 @@ const common = {
 	"quit.dontShowAgain": "Don't show again",
 	"quit.confirm": "Quit",
 	"quit.cancel": "Cancel",
+	"quit.autoQuitIn": "Quitting in {seconds}s",
 
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.cancel": "Cancel",
