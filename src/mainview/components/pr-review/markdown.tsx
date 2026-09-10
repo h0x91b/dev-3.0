@@ -161,7 +161,10 @@ export function MarkdownContent({
 			key={`${rendererConfig.theme}:${isDocument}:${imageBaseDir ?? ""}:${imageRootDir ?? ""}:${lineOffset ?? ""}:${commentedSignature}`}
 			mode="static"
 			dir="auto"
-			className={`space-y-0${isDocument ? " dev3-md-doc" : ""}`}
+			// `space-y-0` zeroes `margin-top` on every block but the first, and it
+			// outranks the stylesheet — a document needs its own top margins to put
+			// more air above a heading than below it, so it opts out.
+			className={isDocument ? "dev3-md-doc" : "space-y-0"}
 			components={components}
 			controls={false}
 			lineNumbers={false}
