@@ -33,7 +33,10 @@ import {
 import {
 	buildTimeline,
 	type TrafficTimelineEvent,
+	type TrafficTimelineEventKind,
 } from "./traffic-timeline";
+import { useNotificationTraffic } from "./useNotificationTraffic";
+import type { TrafficNotificationEvent } from "../../notification-event";
 import {
 	ACTIVE_PROJECTS,
 	ALL_PROJECTS,
@@ -156,26 +159,40 @@ function ExperimentPicker({
 }
 
 /**
- * The kinds of event the replay timeline carries.
+ * The kinds of event the replay timeline carries — every one of them a real arm
+ * now, so this is the timeline's own kind rather than a superset of it.
  *
- * A superset of `TrafficTimelineEventKind`, which the timeline now carries for
- * real: `task` and `message` are events, `notification` is a control value with
- * no arm behind it yet. The two coincide the moment the notification arm lands,
- * and this alias goes away then — the widened kind is why it cannot go away now.
- *
- * The LEVEL axis's VALUES, order and `traffic.notification.level.*` keys belong to
- * Seq 1825 and are deliberately not restated here — but its LAYOUT is this
- * screen's, and it is built: see {@link FilterAxes}, which lays out any number of
- * axes identically. The level axis is one {@link FilterAxis} object away, and that
- * object is assembled from their exports, not from a copy of them.
+ * A LEVEL axis would be laid out by {@link FilterAxes} on the same terms as the
+ * kind axis, from one more {@link FilterAxis} object; it is deliberately not
+ * built here, because a level filter is nobody's task yet.
  */
-type TimelineKind = "task" | "message" | "notification";
-const ALL_KINDS: readonly TimelineKind[] = ["task", "message", "notification"];
+const ALL_KINDS: readonly TrafficTimelineEventKind[] = [
+	"task",
+	"message",
+	"notification",
+];
 
-const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
+const KIND_LABEL: Record<TrafficTimelineEventKind, TranslationKey> = {
 	task: "traffic.kind.task",
 	message: "traffic.kind.message",
 	notification: "traffic.kind.notification",
+};
+
+/** One row of the inspector's list: a message, or an archived notification. */
+type TrafficListItem =
+	| { at: number; kind: "message"; record: TrafficRecord }
+	| { at: number; kind: "notification"; notification: TrafficNotificationEvent };
+
+/** Level and outcome, named for the reader. Nothing is folded together. */
+const NOTIFICATION_LEVEL_LABEL: Record<string, TranslationKey> = {
+	info: "traffic.notification.level.info",
+	success: "traffic.notification.level.success",
+	error: "traffic.notification.level.error",
+};
+const NOTIFICATION_OUTCOME_LABEL: Record<string, TranslationKey> = {
+	delivered: "traffic.notification.outcome.delivered",
+	queued: "traffic.notification.outcome.queued",
+	"no-window": "traffic.notification.outcome.noWindow",
 };
 
 /**
@@ -192,7 +209,7 @@ const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
  */
 export function availableKinds(
 	timeline: readonly TrafficTimelineEvent[],
-): ReadonlySet<TimelineKind> {
+): ReadonlySet<TrafficTimelineEventKind> {
 	return new Set(timeline.map((event) => event.kind));
 }
 
@@ -317,6 +334,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const { start, end } = trafficPeriodBounds(windowSize, now);
 	const calendarDay = isCalendarDay(windowSize);
 	const data = useTrafficData(calendarDay ? start : undefined);
+	// The archive is read for the projects the user can actually see, and not read
+	// at all until that list exists: `null` keeps the hook idle rather than asking
+	// for every project's notification text while the answer is still unknown.
+	const notifications = useNotificationTraffic(
+		data.loading ? null : data.projects.map((project) => project.id),
+	);
 	const { experiment, choose } = useTrafficExperiment();
 	// Arriving without a project opens on the active projects, not on all of them:
 	// eighteen empty blocks are eighteen blocks of stage the busy two could have
@@ -331,7 +354,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const [filter, setFilter] = useState("all");
 	// `delivery` (above) governs messages only and `kinds` governs every event, so
 	// a message filter can never silently swallow a notification.
-	const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(() => new Set(ALL_KINDS));
+	const [kinds, setKinds] = useState<ReadonlySet<TrafficTimelineEventKind>>(() => new Set(ALL_KINDS));
 	const [until, setUntil] = useState<number | null>(null);
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
@@ -354,10 +377,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			buildTimeline({
 				records: trafficRecords(data.rows),
 				tasks: data.tasks,
+				notifications: notifications.events,
 				start,
 				end,
 			}),
-		[data.rows, data.tasks, start, end],
+		[data.rows, data.tasks, notifications.events, start, end],
 	);
 	const scopeProjects = useMemo(
 		() =>
@@ -378,6 +402,24 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		[data.rows, scopeProjects],
 	);
 	const records = useMemo(() => trafficRecords(scopedRows), [scopedRows]);
+	/**
+	 * The window's notifications, narrowed to the scope by either end.
+	 *
+	 * An UNANCHORED notification — the archive recorded no project at either end,
+	 * a `dev3 notify` from a plain shell — belongs to no board, so it appears under
+	 * `All projects` (which filters nothing) and not under a named or `active`
+	 * scope. Attaching it to a nearby board to keep it on screen would be an
+	 * invented answer, which is exactly what the archive exists not to do.
+	 */
+	const scopedNotifications = useMemo(
+		() =>
+			notifications.events.filter(
+				(event) =>
+					admits(scopeProjects, event.target?.projectId) ||
+					admits(scopeProjects, event.origin?.projectId),
+			),
+		[notifications.events, scopeProjects],
+	);
 	const scopedTasks = useMemo(
 		() =>
 			data.tasks.filter(
@@ -424,10 +466,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			buildTimeline({
 				records: timeRows,
 				tasks: scopedAllTasks,
+				notifications: scopedNotifications,
 				start,
 				end,
 			}),
-		[timeRows, scopedAllTasks, start, end],
+		[timeRows, scopedAllTasks, scopedNotifications, start, end],
 	);
 	const kindsPresent = useMemo(
 		() => availableKinds(availableTimeline),
@@ -446,21 +489,41 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			),
 		[timeRows, showMessages, filter, pair, query],
 	);
-	// Recorded task movements ride the same timeline as messages, so an hour
-	// where the board moved and nobody said anything still has steps to play. The
-	// window bounds are applied inside the builder so every arm is clipped by exactly
-	// the same interval rather than each caller being trusted to have done it.
+	/**
+	 * The search box narrows notifications too — on their own text and their own
+	 * endpoints, never on a message's.
+	 *
+	 * The DELIVERY filter deliberately does not apply: it names a message's
+	 * verdict, and a notification's outcome is a different vocabulary. Running it
+	 * here would silently swallow every notification the moment a reader narrowed
+	 * to `delivered` messages.
+	 */
+	const replayNotifications = useMemo(() => {
+		const needle = query.toLocaleLowerCase();
+		if (!needle) return scopedNotifications;
+		return scopedNotifications.filter((event) =>
+			`${event.row.message} ${event.target?.seq ?? ""} ${event.origin?.seq ?? ""} ${event.target?.title ?? ""} ${event.origin?.title ?? ""}`
+				.toLocaleLowerCase()
+				.includes(needle),
+		);
+	}, [scopedNotifications, query]);
+	// Recorded task movements and archived notifications ride the same timeline as
+	// messages, so an hour where the board moved, or where only a notification
+	// fired, still has steps to play. The window bounds are applied inside the
+	// builder so every arm is clipped by exactly the same interval rather than each
+	// caller being trusted to have done it.
 	const timeline = useMemo(
 		() =>
 			buildTimeline({
 				records: replayRecords,
 				tasks: scopedAllTasks,
+				notifications: replayNotifications,
 				start,
 				end,
 			}).filter((event) => kinds.has(event.kind)),
 		// `delivery: "all"` because `replayRecords` already applied it to the message
 		// arm along with pair and query; running it twice would be the same answer.
-		[replayRecords, scopedAllTasks, start, end, kinds],
+		[replayRecords, scopedAllTasks, replayNotifications, start, end, kinds],
 	);
 	// A filter hiding everything and an empty window are different answers, and the
 	// entry window is one hour — on a quiet morning it is legitimately empty.
@@ -503,6 +566,49 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					.includes(query.toLocaleLowerCase());
 			}),
 		[timeRows, showMessages, filter, pair, selected, query, experiment, cursorAt],
+	);
+	/**
+	 * The notifications the list shows: the same window, the same replay cut-off and
+	 * the same card selection the messages obey.
+	 *
+	 * `pair` is a message route (a sender/recipient edge) and is deliberately not
+	 * applied — a notification has no edge to compare against, and treating it as
+	 * a non-match would hide it the moment a reader clicked a wire.
+	 */
+	const visibleNotifications = useMemo(
+		() =>
+			(kinds.has("notification") ? replayNotifications : []).filter((event) => {
+				if (event.at < start || event.at >= end) return false;
+				if (experiment === "2" && cursorAt !== null && event.at > cursorAt)
+					return false;
+				if (!selected) return true;
+				const ends = [event.target, event.origin].map((end) =>
+					end ? endpointKey(end.projectId, end.taskId) : null,
+				);
+				return ends.includes(selected);
+			}),
+		[replayNotifications, kinds, start, end, experiment, cursorAt, selected],
+	);
+	/** One list, newest first — the order the message list already reads in. */
+	const listItems = useMemo(
+		(): TrafficListItem[] =>
+			[
+				...visible.map(
+					(record): TrafficListItem => ({
+						at: Date.parse(record.row.at),
+						kind: "message",
+						record,
+					}),
+				),
+				...visibleNotifications.map(
+					(notification): TrafficListItem => ({
+						at: notification.at,
+						kind: "notification",
+						notification,
+					}),
+				),
+			].sort((a, b) => b.at - a.at),
+		[visible, visibleNotifications],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(
@@ -560,7 +666,10 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// fires only when nothing else owns the key. keymap.ts lists it display-only.
 	const playPause = useRef(playback.playPause);
 	playPause.current = playback.playPause;
-	const spaceArmed = experiment === "2" && replayRecords.length > 0;
+	// Armed by the TIMELINE, not by the message list: a window whose only recorded
+	// events are task movements or notifications is replayable, and Space is the
+	// transport's own control.
+	const spaceArmed = experiment === "2" && playback.events.length > 0;
 	useGlobalShortcut(
 		(event) => {
 			if (!spaceArmed || event.code !== "Space") return;
@@ -618,12 +727,64 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			</button>
 		);
 	}
+	// "Reading the log…" covers the notification archive too. It is a third source
+	// behind one readout, and a screen that says `Live` while the archive is still
+	// being read is claiming to show everything that just happened while a whole
+	// kind of event is still missing from the list.
 	const liveLabel =
-		data.loading || data.historyLoading
+		data.loading || data.historyLoading || notifications.status === "loading"
 			? t("traffic.loading")
 			: (experiment === "2" ? playback.index < 0 && !calendarDay : until === null)
 				? t("traffic.orbit.live")
 				: t("traffic.orbit.history");
+	/** The notification the replay cursor is standing on, if it is on one at all. */
+	const currentNotificationKey =
+		playback.current?.kind === "notification" ? playback.current.key : null;
+	/**
+	 * One archived notification in the list.
+	 *
+	 * Not a button: there is nothing behind it to open — the archive row IS the
+	 * whole record, and a control that does nothing is worse than plain text. The
+	 * message is rendered in full rather than clipped, because a notification is
+	 * usually one short line and the clipped half is the half that mattered.
+	 *
+	 * Both endpoints are shown as the archive recorded them, including the nulls:
+	 * an unrecorded sender says so instead of borrowing the target's identity.
+	 */
+	function notificationRow(event: TrafficNotificationEvent) {
+		const row = event.row;
+		const seq = (end: typeof event.target) =>
+			end ? (end.seq === null ? "#?" : `#${end.seq}`) : null;
+		const from = seq(event.origin);
+		const to = seq(event.target);
+		return (
+			<div
+				key={event.key}
+				className="traffic-notification"
+				data-level={event.level}
+				data-outcome={event.outcome}
+				data-testid="traffic-notification-row"
+				aria-current={event.key === currentNotificationKey ? "true" : undefined}
+			>
+				<span className="traffic-message-meta">
+					<b>
+						{from ?? t("traffic.notification.unrecordedSender")}
+						{to ? ` → ${to}` : ""}
+					</b>
+					<time dateTime={row.at}>{format(row.at)}</time>
+				</span>
+				<strong className="streamer-private">{row.message}</strong>
+				<span className="traffic-notification-tail">
+					<span className={`traffic-notification-level level-${event.level}`}>
+						{t(NOTIFICATION_LEVEL_LABEL[event.level])}
+					</span>
+					<span className="traffic-verdict">
+						{t(NOTIFICATION_OUTCOME_LABEL[event.outcome])}
+					</span>
+				</span>
+			</div>
+		);
+	}
 	const filters = (
 		<>
 			<Select
@@ -687,9 +848,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 								id: "kind",
 								label: t("traffic.filter.kinds"),
 								values: ALL_KINDS.filter((kind) => kindsPresent.has(kind)),
-								labelKey: (value) => KIND_LABEL[value as TimelineKind],
+								labelKey: (value) => KIND_LABEL[value as TrafficTimelineEventKind],
 								selected: kinds,
-								onChange: (next) => setKinds(next as ReadonlySet<TimelineKind>),
+								onChange: (next) => setKinds(next as ReadonlySet<TrafficTimelineEventKind>),
 							},
 						]}
 					/>
@@ -1108,8 +1269,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							</div>
 							<div className="traffic-list">
 								{tab === "messages" ? (
-									visible.length ? (
-										visible.map(rowButton)
+									listItems.length ? (
+										listItems.map((item) =>
+											item.kind === "message"
+												? rowButton(item.record)
+												: notificationRow(item.notification),
+										)
 									) : (
 										<p className="traffic-empty">
 											{data.loading

@@ -10,6 +10,7 @@ const paths = {
 	plus: "M5 12h14M12 5v14",
 	replay: "M3 11a9 9 0 1 1 2 7M3 4v7h7",
 	message: "M4 4h16v12H9l-5 4ZM8 8h8M8 12h5",
+	bell: "M6 16v-5a6 6 0 1 1 12 0v5l2 3H4ZM10 22h4",
 	check: "m4 12.5 5.5 5.5L20 6",
 	cross: "M6 6l12 12M18 6 6 18",
 	// Head and shoulders. The smallest mark that reads as a person rather than a

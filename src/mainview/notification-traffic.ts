@@ -104,6 +104,9 @@ export function resetNotificationTrafficStore(): void {
 	refetchTimer = null;
 	state = EMPTY;
 	lastQuery = { limit: 500, projectIds: null };
-	loadVersion = 0;
+	// Bumped, never reset to 0: a read still in flight across the reset would
+	// otherwise match the version of the NEXT read and patch the fresh store with
+	// the page it was asked for before the reset.
+	loadVersion++;
 	listeners.clear();
 }

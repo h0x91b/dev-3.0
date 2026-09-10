@@ -10,9 +10,9 @@
  * so it is exactly what the screen can already prove happened — never a running
  * status, never a coordinator, never "the project exists". A project with a
  * coordinator and no events is out; a project with events and no coordinator is
- * in. The timeline is also where a further event kind lands (§5.9's notification
- * arm is a control value with no arm behind it yet), so that kind becomes
- * evidence of activity here the day it becomes an event, with nothing to change.
+ * in. The timeline is also where a further event kind lands — the notification
+ * arm is a real event now and counts as evidence here, and any kind after it
+ * becomes evidence the day it becomes an event.
  */
 
 import type { TrafficTimelineEvent } from "./traffic-timeline";
@@ -35,7 +35,10 @@ export function isAggregateScope(scope: string | undefined): boolean {
  *
  * A message counts for both ends: the sender's project is as much a participant
  * as the recipient's, and a cross-project message that only counted its
- * destination would drop the board the work came from.
+ * destination would drop the board the work came from. A notification counts
+ * both of its ends for the same reason — and counts NEITHER when the archive
+ * recorded neither, because a notification sent from a plain shell is evidence
+ * that something happened, not evidence about which board it happened on.
  */
 export function activeProjectIds(
 	events: readonly TrafficTimelineEvent[],
@@ -44,6 +47,12 @@ export function activeProjectIds(
 	for (const event of events) {
 		if (event.kind === "task") {
 			ids.add(event.node.projectId);
+			continue;
+		}
+		if (event.kind === "notification") {
+			const { target, origin } = event.notification;
+			if (target) ids.add(target.projectId);
+			if (origin) ids.add(origin.projectId);
 			continue;
 		}
 		const { row } = event.record;

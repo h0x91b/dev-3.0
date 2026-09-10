@@ -7,11 +7,14 @@ import {
 	indexAtOrAfter,
 	messageAt,
 	messageEvents,
+	notificationTimelineEvents,
 	sortTimeline,
 	taskEvents,
 	TIMELINE_KIND_RANK,
 	type TrafficTimelineEvent,
 } from "../components/agent-traffic/traffic-timeline";
+import { notificationEvents } from "../notification-event";
+import type { NotificationLogRow } from "../../shared/notification-log";
 
 const T0 = Date.parse("2026-09-08T12:00:00.000Z");
 const at = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
@@ -35,6 +38,15 @@ const record = (key: string, minutes: number, over: Partial<AgentMessageLogRow> 
 		toProjectId: "p", kind: "immediate", body: key, bodyKind: "text", status: "delivered", ...over,
 	} as AgentMessageLogRow,
 });
+
+// Rows arrive newest first, exactly as the reader returns them.
+const notifyRow = (minutes: number, over: Partial<NotificationLogRow> = {}): NotificationLogRow => ({
+	v: 1, at: at(minutes), mode: "toast", level: "info", message: `notify ${minutes}`,
+	taskId: "b", taskSeq: 2, projectId: "p", sourceTaskId: "a", sourceSeq: 1,
+	outcome: "delivered", ...over,
+});
+const notifications = (rows: NotificationLogRow[]) =>
+	notificationEvents([...rows].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
 
 const shape = (events: TrafficTimelineEvent[]) =>
 	events.map((event) => `${event.at - T0}:${event.kind}`);
@@ -69,7 +81,7 @@ describe("timeline assembly", () => {
 		});
 		// A message must never land on a card that has not appeared yet.
 		expect(timeline.map((event) => event.kind)).toEqual(["task", "message"]);
-		expect(TIMELINE_KIND_RANK).toEqual({ task: 0, message: 1 });
+		expect(TIMELINE_KIND_RANK).toEqual({ task: 0, message: 1, notification: 2 });
 	});
 
 	it("is stable and total: the same input always gives the same sequence", () => {
@@ -120,6 +132,81 @@ describe("timeline assembly", () => {
 			kind: "task", node: { projectId: "p", taskId: "t1" }, seq: 11, title: "Task 11",
 		});
 		expect(event.nodeKey).toBe(JSON.stringify(["p", "t1"]));
+	});
+});
+
+describe("notification arm", () => {
+	it("gives a notification-only window steps of its own", () => {
+		const timeline = buildTimeline({
+			records: [],
+			tasks: [],
+			notifications: notifications([notifyRow(12), notifyRow(40)]),
+			...WINDOW,
+		});
+		// The whole point: nothing moved, nobody wrote, and the hour still replays.
+		expect(shape(timeline)).toEqual(["720000:notification", "2400000:notification"]);
+	});
+
+	it("interleaves all three kinds by time", () => {
+		const timeline = buildTimeline({
+			records: [record("m", 20)],
+			tasks: [task("t1", 11, [created(5, "todo")])],
+			notifications: notifications([notifyRow(35)]),
+			...WINDOW,
+		});
+		expect(shape(timeline)).toEqual([
+			"300000:task", "1200000:message", "2100000:notification",
+		]);
+	});
+
+	it("puts a same-instant notification after the card and the message", () => {
+		const timeline = buildTimeline({
+			records: [record("m", 7)],
+			tasks: [task("t1", 11, [created(7, "todo")])],
+			notifications: notifications([notifyRow(7)]),
+			...WINDOW,
+		});
+		expect(timeline.map((event) => event.kind)).toEqual([
+			"task", "message", "notification",
+		]);
+	});
+
+	it("clips to the same window as every other arm", () => {
+		const timeline = buildTimeline({
+			records: [],
+			tasks: [],
+			notifications: notifications([notifyRow(-5), notifyRow(30), notifyRow(90)]),
+			...WINDOW,
+		});
+		expect(shape(timeline)).toEqual(["1800000:notification"]);
+	});
+
+	it("reuses the normalizer's key and instant instead of minting new ones", () => {
+		const [event] = notifications([notifyRow(9)]);
+		const [wrapped] = notificationTimelineEvents([event]);
+		expect(wrapped).toMatchObject({ kind: "notification", key: event.key, at: event.at });
+		expect(wrapped.notification).toBe(event);
+	});
+
+	it("does not blank the flying wire while the cursor sits on a notification", () => {
+		const timeline = buildTimeline({
+			records: [record("m", 10)],
+			tasks: [],
+			notifications: notifications([notifyRow(20)]),
+			...WINDOW,
+		});
+		expect(messageAt(timeline, 1)?.key).toBe("m");
+	});
+
+	it("keeps a window with no notifications byte-identical to before the arm", () => {
+		const input = {
+			records: [record("m", 10)],
+			tasks: [task("t1", 11, [created(5, "todo")])],
+			...WINDOW,
+		};
+		expect(buildTimeline(input)).toEqual(
+			buildTimeline({ ...input, notifications: [] }),
+		);
 	});
 });
 
