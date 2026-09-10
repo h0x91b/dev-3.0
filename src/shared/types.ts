@@ -3092,11 +3092,12 @@ export const DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES = 5;
 export const AGENT_LAUNCH_AUTO_APPROVE_MIN_MS = 5_000;
 export const AGENT_LAUNCH_AUTO_APPROVE_MAX_MS = 24 * 60 * 60 * 1000;
 
-/** Units the delay picker offers. Stored value stays minutes, so seconds are fractional. */
-export const AUTO_APPROVE_UNITS = ["seconds", "minutes", "hours"] as const;
-export type AutoApproveUnit = (typeof AUTO_APPROVE_UNITS)[number];
-
-const UNIT_MINUTES: Record<AutoApproveUnit, number> = { seconds: 1 / 60, minutes: 1, hours: 60 };
+/** The delay as the picker shows it: hours, minutes and seconds side by side. */
+export interface AutoApproveHms {
+	hours: number;
+	minutes: number;
+	seconds: number;
+}
 
 /**
  * Resolve the configured auto-approve delay in ms; `0` means "never auto-approve".
@@ -3111,25 +3112,22 @@ export function agentLaunchAutoApproveMs(settings: Pick<GlobalSettings, "agentLa
 	return Math.min(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS, Math.max(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS, ms));
 }
 
-/** Split a stored minutes value into the largest unit that keeps it a whole number. */
-export function splitAutoApproveMinutes(minutes: number): { amount: number; unit: AutoApproveUnit } {
-	const ms = Math.round(minutes * 60_000);
-	if (ms % 3_600_000 === 0) return { amount: ms / 3_600_000, unit: "hours" };
-	if (ms % 60_000 === 0) return { amount: ms / 60_000, unit: "minutes" };
-	return { amount: Math.round(ms / 1_000), unit: "seconds" };
+/** Split a stored minutes value into the hours/minutes/seconds the picker shows. */
+export function splitAutoApproveHms(minutes: number): AutoApproveHms {
+	const total = Math.max(0, Math.round((Number.isFinite(minutes) ? minutes : 0) * 60));
+	return {
+		hours: Math.floor(total / 3_600),
+		minutes: Math.floor((total % 3_600) / 60),
+		seconds: total % 60,
+	};
 }
 
-/** Build a stored minutes value from a picker amount, clamped into the accepted range. */
-export function autoApproveMinutesFrom(amount: number, unit: AutoApproveUnit): number {
-	if (!Number.isFinite(amount) || amount <= 0) return DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES;
-	const ms = Math.round(amount * UNIT_MINUTES[unit] * 60_000);
+/** Build a stored minutes value from the picker fields, clamped into the accepted range. */
+export function autoApproveMinutesFromHms(hms: AutoApproveHms): number {
+	const part = (value: number) => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+	const ms = (part(hms.hours) * 3_600 + part(hms.minutes) * 60 + part(hms.seconds)) * 1_000;
 	const clamped = Math.min(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS, Math.max(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS, ms));
 	return clamped / 60_000;
-}
-
-/** Largest amount the picker accepts for a unit, so the input can clamp before it stores. */
-export function maxAutoApproveAmount(unit: AutoApproveUnit): number {
-	return Math.floor(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS / (UNIT_MINUTES[unit] * 60_000));
 }
 
 /**

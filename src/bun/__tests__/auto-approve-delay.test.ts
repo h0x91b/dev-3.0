@@ -4,31 +4,38 @@ import {
 	AGENT_LAUNCH_AUTO_APPROVE_MIN_MS,
 	DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES,
 	agentLaunchAutoApproveMs,
-	autoApproveMinutesFrom,
-	maxAutoApproveAmount,
-	splitAutoApproveMinutes,
+	autoApproveMinutesFromHms,
+	splitAutoApproveHms,
 } from "../../shared/types";
 
-describe("auto-approve delay — the three units are all representable", () => {
-	// The whole point of the amount+unit picker: these three had to become
-	// storable without a new on-disk key, so an older build still reads them.
+describe("auto-approve delay — the hours/minutes/seconds picker", () => {
+	// The whole point of the three fields: they had to become storable without a
+	// new on-disk key, so an older build still reads them.
 	it.each([
-		["15 seconds", 15, "seconds" as const, 15_000],
-		["10 minutes", 10, "minutes" as const, 600_000],
-		["1 hour", 1, "hours" as const, 3_600_000],
-	])("stores and resolves %s", (_label, amount, unit, expectedMs) => {
-		const minutes = autoApproveMinutesFrom(amount, unit);
+		["15 seconds", { hours: 0, minutes: 0, seconds: 15 }, 15_000],
+		["10 minutes", { hours: 0, minutes: 10, seconds: 0 }, 600_000],
+		["1 hour", { hours: 1, minutes: 0, seconds: 0 }, 3_600_000],
+		["1h 30m 45s", { hours: 1, minutes: 30, seconds: 45 }, 5_445_000],
+	])("stores and resolves %s", (_label, hms, expectedMs) => {
+		const minutes = autoApproveMinutesFromHms(hms);
 		expect(agentLaunchAutoApproveMs({ agentLaunchAutoApproveMinutes: minutes })).toBe(expectedMs);
 	});
 
-	it("round-trips a stored value back to the unit a human would have picked", () => {
-		expect(splitAutoApproveMinutes(autoApproveMinutesFrom(15, "seconds"))).toEqual({ amount: 15, unit: "seconds" });
-		expect(splitAutoApproveMinutes(autoApproveMinutesFrom(10, "minutes"))).toEqual({ amount: 10, unit: "minutes" });
-		expect(splitAutoApproveMinutes(autoApproveMinutesFrom(1, "hours"))).toEqual({ amount: 1, unit: "hours" });
+	it("round-trips a stored value back into the three fields", () => {
+		const hms = { hours: 2, minutes: 7, seconds: 9 };
+		expect(splitAutoApproveHms(autoApproveMinutesFromHms(hms))).toEqual(hms);
 	});
 
-	it("keeps 90 minutes as minutes rather than inventing 1.5 hours", () => {
-		expect(splitAutoApproveMinutes(90)).toEqual({ amount: 90, unit: "minutes" });
+	it("splits 90 minutes into 1 hour 30 minutes", () => {
+		expect(splitAutoApproveHms(90)).toEqual({ hours: 1, minutes: 30, seconds: 0 });
+	});
+
+	it("reads the stored default without leftover seconds", () => {
+		expect(splitAutoApproveHms(DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES)).toEqual({
+			hours: 0,
+			minutes: 5,
+			seconds: 0,
+		});
 	});
 });
 
@@ -52,14 +59,18 @@ describe("auto-approve delay — zero, missing and nonsense", () => {
 		expect(agentLaunchAutoApproveMs({ agentLaunchAutoApproveMinutes: 0.001 })).toBe(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS);
 	});
 
-	it("clamps through the picker too, so the input cannot store an out-of-range amount", () => {
-		expect(autoApproveMinutesFrom(500, "hours")).toBe(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS / 60_000);
-		expect(autoApproveMinutesFrom(0, "minutes")).toBe(DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES);
+	it("clamps through the picker too, so the fields cannot store an out-of-range delay", () => {
+		expect(autoApproveMinutesFromHms({ hours: 500, minutes: 0, seconds: 0 })).toBe(AGENT_LAUNCH_AUTO_APPROVE_MAX_MS / 60_000);
+		expect(autoApproveMinutesFromHms({ hours: 0, minutes: 0, seconds: 0 })).toBe(AGENT_LAUNCH_AUTO_APPROVE_MIN_MS / 60_000);
 	});
 
-	it("offers the picker a per-unit ceiling matching the clamp", () => {
-		expect(maxAutoApproveAmount("hours")).toBe(24);
-		expect(maxAutoApproveAmount("minutes")).toBe(24 * 60);
-		expect(maxAutoApproveAmount("seconds")).toBe(24 * 60 * 60);
+	it("reads an empty or negative field as zero for that unit, keeping the others", () => {
+		// An emptied input arrives as NaN; it must not wipe the whole delay.
+		expect(autoApproveMinutesFromHms({ hours: Number.NaN, minutes: 10, seconds: -3 })).toBe(10);
+	});
+
+	it("never shows negative fields for a nonsense stored value", () => {
+		expect(splitAutoApproveHms(Number.NaN)).toEqual({ hours: 0, minutes: 0, seconds: 0 });
+		expect(splitAutoApproveHms(-5)).toEqual({ hours: 0, minutes: 0, seconds: 0 });
 	});
 });
