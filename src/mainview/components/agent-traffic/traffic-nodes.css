@@ -121,13 +121,37 @@
 }
 .traffic-wire {
 	fill: none;
-	stroke: rgb(var(--agent) / 0.3);
+	/* --wire is set per edge to one of the 16 --wire-N tokens; --agent is the
+	   fallback for a wire drawn before a colour was assigned. */
+	stroke: rgb(var(--wire, var(--agent)) / 0.55);
 	stroke-linecap: round;
 	stroke-linejoin: round;
 	transition: opacity 200ms;
 }
 .traffic-wire.is-active {
-	stroke: rgb(var(--agent) / 0.76);
+	stroke: rgb(var(--wire, var(--agent)) / 0.95);
+}
+/* The wire body dims under its own running wave, so the wave reads as movement
+   rather than as a second wire. */
+.traffic-wire.has-flow {
+	stroke: rgb(var(--wire, var(--agent)) / 0.32);
+}
+.traffic-wire.has-flow.is-active {
+	stroke: rgb(var(--wire, var(--agent)) / 0.5);
+}
+/* Direction: the dash pattern runs from sender to recipient, one cycle per
+   --flow-duration. Offset decreases, which is what moves the pattern toward the
+   end of the path; growing it would run the wave backwards. */
+.traffic-wire-flow {
+	fill: none;
+	stroke: rgb(var(--wire, var(--agent)) / 0.92);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	animation: traffic-wire-flow var(--flow-duration, 1.2s) linear infinite;
+}
+@keyframes traffic-wire-flow {
+	from { stroke-dashoffset: 0; }
+	to { stroke-dashoffset: calc(-1 * var(--flow-cycle, 41px)); }
 }
 .traffic-wire.verdict-held,
 .traffic-wire.verdict-unconfirmed {
@@ -937,6 +961,11 @@
 	}
 	.traffic-view[data-experiment="2"] button:active {
 		transform: none;
+	}
+	/* The wave is not rendered at all under reduced motion (TrafficNodes drops it),
+	   so this only covers a wave already on screen when the setting flips. */
+	.traffic-wire-flow {
+		animation: none;
 	}
 }
 

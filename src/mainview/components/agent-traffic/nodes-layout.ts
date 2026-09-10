@@ -1,4 +1,5 @@
 import { createTrafficRouter } from "./nodes-routing";
+import { baseBus, laneGridLines, planLanes, type LanePlan } from "./wire-lanes";
 import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-model";
 
 /** Card footprint and the gaps between cards, in scene units (= CSS px at scale 1). */
@@ -36,6 +37,10 @@ export interface PlacedEdge {
 	messages: number;
 	/** Delivery status of the most recent attempt on this pair. */
 	status: string;
+	/** Lane this wire took in its corridor; 0 when it is alone there. */
+	lane: number;
+	/** 1..WIRE_COLORS — which --wire-N token paints it. Stable per pair. */
+	colorIndex: number;
 	lastAt: number;
 	subject: string;
 }
@@ -219,15 +224,22 @@ export function layoutTraffic(
 	});
 
 	const edges: PlacedEdge[] = [];
-	const route = createTrafficRouter(placed);
+	const routable: { key: string; pair: PairState; a: PlacedNode; b: PlacedNode }[] = [];
 	for (const [key, pair] of state) {
 		const a = positions.get(pair.from);
 		const b = positions.get(pair.to);
-		if (!a || !b) continue;
-		const points = route(wire(a, b), a, b);
+		if (a && b) routable.push({ key, pair, a, b });
+	}
+	// Lanes are planned across the whole scene before routing: a wire's port and bus
+	// depend on how many neighbours share them, and the router's grid has to know
+	// every lane coordinate up front or a fanned-out wire falls off the grid.
+	const lanes = planLanes(routable.map(({ key, a, b }) => ({ key, a, b })));
+	const route = createTrafficRouter(placed, laneGridLines(lanes));
+	for (const { key, pair, a, b } of routable) {
+		const points = route(wire(a, b, lanes.get(key)), a, b);
 		// A blocked endpoint never gets an unsafe straight-line fallback.
 		if (!points) continue;
-		edges.push({ key, ...pair, points });
+		edges.push({ key, ...pair, points, lane: lanes.get(key)?.lane ?? 0, colorIndex: wireColorIndex(key) });
 	}
 	return {
 		placed, edges, groups,
@@ -239,7 +251,7 @@ export function layoutTraffic(
 }
 
 /** Routes retain sender-to-recipient direction even when the sender is below. */
-function wire(a: PlacedNode, b: PlacedNode): { x: number; y: number }[] {
+function wire(a: PlacedNode, b: PlacedNode, plan?: LanePlan): { x: number; y: number }[] {
 	if (Math.abs(a.y - b.y) < 30) {
 		const right = b.x > a.x;
 		const start = { x: a.x + (right ? a.width : 0), y: a.y + a.height * 0.52 };
@@ -250,13 +262,24 @@ function wire(a: PlacedNode, b: PlacedNode): { x: number; y: number }[] {
 	}
 	const down = b.y > a.y;
 	const [top, bottom] = down ? [a, b] : [b, a];
-	const start = { x: top.x + top.width / 2, y: top.y + top.height };
-	const end = { x: bottom.x + bottom.width / 2, y: bottom.y };
-	const bus = top.node.task?.taskType === "coordinator"
-		? Math.min(end.y - 38, start.y + 54)
-		: (start.y + end.y) / 2;
+	const start = { x: plan?.exitX ?? top.x + top.width / 2, y: top.y + top.height };
+	const end = { x: plan?.entryX ?? bottom.x + bottom.width / 2, y: bottom.y };
+	const bus = plan?.bus ?? baseBus(top, bottom);
 	const points = [start, { x: start.x, y: bus }, { x: end.x, y: bus }, end];
 	return down ? points : points.reverse();
+}
+
+/** How many --wire-N tokens index.css defines, in both themes. */
+export const WIRE_COLORS = 16;
+
+/** FNV-1a over the pair key: a connection keeps its colour as neighbours come and go. */
+export function wireColorIndex(key: string): number {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < key.length; index += 1) {
+		hash ^= key.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return (hash % WIRE_COLORS) + 1;
 }
 
 /** Rounded-corner path through a polyline — the wire as the browser draws it. */

@@ -57,11 +57,14 @@ class Frontier {
 	}
 }
 
+/** Ports and bus lines a lane plan adds; without them the grid cannot carry a fanned-out wire. */
+export interface RouteGridLines { xs: number[]; ys: number[] }
+
 /** A shared corridor grid bounds routing work by card coordinates, not pixels. */
-export function createTrafficRouter(boxes: RouteBox[]) {
+export function createTrafficRouter(boxes: RouteBox[], extra: RouteGridLines = { xs: [], ys: [] }) {
 	const obstacles = boxes.map(box => ({ left: box.x - CLEARANCE, right: box.x + box.width + CLEARANCE, top: box.y - CLEARANCE, bottom: box.y + box.height + CLEARANCE }));
-	const xs = [...new Set(boxes.flatMap((box, i) => [obstacles[i].left, obstacles[i].right, box.x + box.width / 2]))].sort((a, b) => a - b);
-	const ys = [...new Set(boxes.flatMap((box, i) => [obstacles[i].top, obstacles[i].bottom, box.y + box.height * .52]))].sort((a, b) => a - b);
+	const xs = [...new Set([...boxes.flatMap((box, i) => [obstacles[i].left, obstacles[i].right, box.x + box.width / 2]), ...extra.xs])].sort((a, b) => a - b);
+	const ys = [...new Set([...boxes.flatMap((box, i) => [obstacles[i].top, obstacles[i].bottom, box.y + box.height * .52]), ...extra.ys])].sort((a, b) => a - b);
 	const xIndex = new Map(xs.map((x, index) => [x, index]));
 	const yIndex = new Map(ys.map((y, index) => [y, index]));
 	const columns = xs.length;

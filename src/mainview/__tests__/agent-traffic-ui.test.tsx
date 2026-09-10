@@ -1199,6 +1199,40 @@ it("draws no user marker for a sender-less message that proved nothing", async (
 	expect(screen.queryByTestId("traffic-user-card")).toBeNull();
 });
 
+it("paints each wire with its own colour token and runs the flow wave on delivered traffic", async () => {
+	// This suite's default is reduced-motion, so the wave has to be asked for.
+	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+		matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
+		addListener() {}, removeListener() {}, dispatchEvent: () => false,
+	}) as unknown as MediaQueryList);
+	try {
+		setPage([row()]);
+		renderLog();
+		await messageRows(1);
+		const wire = document.querySelector<SVGPathElement>(".traffic-wire")!;
+		// The colour is a reference to a --wire-N token, never a literal colour.
+		expect(wire.style.getPropertyValue("--wire")).toMatch(/^var\(--wire-([1-9]|1[0-6])\)$/);
+		const flow = document.querySelector<SVGPathElement>(".traffic-wire-flow")!;
+		expect(flow).not.toBeNull();
+		expect(flow.getAttribute("d")).toBe(wire.getAttribute("d"));
+		expect(wire.classList.contains("has-flow")).toBe(true);
+		// A dash and a matching cycle, or the wave has nothing to move.
+		expect(flow.style.strokeDasharray).not.toBe("");
+		expect(flow.style.getPropertyValue("--flow-cycle")).toMatch(/px$/);
+		expect(flow.style.getPropertyValue("--flow-duration")).toMatch(/s$/);
+	} finally {
+		media.mockRestore();
+	}
+});
+
+it("drops the flow wave under reduced motion but keeps the wire", async () => {
+	setPage([row()]);
+	renderLog();
+	await messageRows(1);
+	expect(document.querySelector(".traffic-wire")).not.toBeNull();
+	expect(document.querySelector(".traffic-wire-flow")).toBeNull();
+});
+
 it("Focus reveals a hibernated task selected from the task list without waking it", async () => {
 	taskExtras.value = { "task-c": { hibernated: true } };
 	setPage([row()]);

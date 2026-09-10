@@ -216,6 +216,25 @@ html {
 	/* Agent-to-agent traffic: violet, the only hue no state token owns, so
 	   "one agent wrote to another" never reads as status/error/success. */
 	--agent: 178 152 253;
+	/* Traffic wires: 16 categorical hues, one per connection, so two wires in
+	   the same corridor never read as one. Equal OKLCH lightness (0.74) and equal
+	   share (94%) of each hue's own maximum chroma — no wire looks louder than its neighbour. */
+	--wire-1: 130 169 250;     /* oklch(0.74 94% 264) */
+	--wire-2: 165 157 250;     /* oklch(0.74 94% 286.5) */
+	--wire-3: 202 138 250;     /* oklch(0.74 94% 309) */
+	--wire-4: 251 100 237;     /* oklch(0.74 94% 331.5) */
+	--wire-5: 251 119 178;     /* oklch(0.74 94% 354) */
+	--wire-6: 251 127 137;     /* oklch(0.74 94% 16.5) */
+	--wire-7: 251 133 94;      /* oklch(0.74 94% 39) */
+	--wire-8: 241 144 35;      /* oklch(0.74 94% 61.5) */
+	--wire-9: 213 162 36;      /* oklch(0.74 94% 84) */
+	--wire-10: 183 176 36;      /* oklch(0.74 94% 106.5) */
+	--wire-11: 134 192 37;      /* oklch(0.74 94% 129) */
+	--wire-12: 42 202 108;      /* oklch(0.74 94% 151.5) */
+	--wire-13: 42 197 164;      /* oklch(0.74 94% 174) */
+	--wire-14: 42 193 196;      /* oklch(0.74 94% 196.5) */
+	--wire-15: 41 189 224;      /* oklch(0.74 94% 219) */
+	--wire-16: 75 180 250;      /* oklch(0.74 94% 241.5) */
 	--favorite: 249 182 61;    /* gold star for a saved favorite combo */
 	--awake: 244 148 86;
 	--awake-hover: 239 108 1;
@@ -344,6 +363,25 @@ html {
 	--warning-fill-hover: 82 67 7;
 	/* Agent-to-agent traffic — deepened so violet ink carries on tinted paper. */
 	--agent: 109 40 217;
+	/* Traffic wires: 16 categorical hues, one per connection, so two wires in
+	   the same corridor never read as one. Equal OKLCH lightness (0.58) and equal
+	   share (94%) of each hue's own maximum chroma — darkened for light paper. */
+	--wire-1: 53 109 247;      /* oklch(0.58 94% 264) */
+	--wire-2: 119 86 247;      /* oklch(0.58 94% 286.5) */
+	--wire-3: 170 33 242;      /* oklch(0.58 94% 309) */
+	--wire-4: 197 30 186;      /* oklch(0.58 94% 331.5) */
+	--wire-5: 213 29 131;      /* oklch(0.58 94% 354) */
+	--wire-6: 221 30 75;       /* oklch(0.58 94% 16.5) */
+	--wire-7: 203 74 22;       /* oklch(0.58 94% 39) */
+	--wire-8: 174 102 22;      /* oklch(0.58 94% 61.5) */
+	--wire-9: 153 116 23;      /* oklch(0.58 94% 84) */
+	--wire-10: 131 126 23;      /* oklch(0.58 94% 106.5) */
+	--wire-11: 95 138 23;       /* oklch(0.58 94% 129) */
+	--wire-12: 27 146 76;       /* oklch(0.58 94% 151.5) */
+	--wire-13: 27 142 118;      /* oklch(0.58 94% 174) */
+	--wire-14: 27 139 141;      /* oklch(0.58 94% 196.5) */
+	--wire-15: 27 136 162;      /* oklch(0.58 94% 219) */
+	--wire-16: 26 130 191;      /* oklch(0.58 94% 241.5) */
 	--favorite: 162 113 15;    /* deeper gold reads on a light canvas */
 	--awake: 189 94 15;
 	--awake-hover: 161 72 8;

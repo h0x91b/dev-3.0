@@ -5,6 +5,7 @@ import {
 	CARD_WIDTH,
 	layoutTraffic,
 	pointAt,
+	WIRE_COLORS,
 	wirePath,
 } from "../components/agent-traffic/nodes-layout";
 import { createTrafficRouter } from "../components/agent-traffic/nodes-routing";
@@ -286,8 +287,14 @@ describe("obstacle-aware traffic routing", () => {
 		const hub = result.placed.find(p => p.node.id === "hub")!;
 		for (const edge of result.edges) {
 			const sender = result.placed.find(p => p.node.key === edge.from)!;
-			expect(edge.points[0]).toEqual({ x: sender.x + sender.width / 2, y: sender.y });
-			expect(edge.points[edge.points.length - 1]).toEqual({ x: hub.x + hub.width / 2, y: hub.y + hub.height });
+			// Ports fan out across the card edge now, so the x is a lane, not the centre.
+			const last = edge.points[edge.points.length - 1];
+			expect(edge.points[0].y).toBe(sender.y);
+			expect(edge.points[0].x).toBeGreaterThan(sender.x);
+			expect(edge.points[0].x).toBeLessThan(sender.x + sender.width);
+			expect(last.y).toBe(hub.y + hub.height);
+			expect(last.x).toBeGreaterThan(hub.x);
+			expect(last.x).toBeLessThan(hub.x + hub.width);
 		}
 		assertClear(result);
 	});
@@ -346,6 +353,90 @@ describe("obstacle-aware traffic routing", () => {
 		const target = { x: 304, y: 0, width: 100, height: 100 };
 		const route = createTrafficRouter([source, blocker, target]);
 		expect(route([{ x: 100, y: 52 }, { x: 304, y: 52 }], source, target)).toBeNull();
+	});
+
+	/** Segments of a polyline, as axis-aligned runs, for overlap comparisons. */
+	function runs(points: { x: number; y: number }[]) {
+		return points.slice(1).map((point, index) => {
+			const previous = points[index];
+			return point.y === previous.y
+				? { axis: "h" as const, at: point.y, from: Math.min(previous.x, point.x), to: Math.max(previous.x, point.x) }
+				: { axis: "v" as const, at: point.x, from: Math.min(previous.y, point.y), to: Math.max(previous.y, point.y) };
+		});
+	}
+
+	/** Total length two different wires draw on top of each other. */
+	function overlap(result: ReturnType<typeof scene>) {
+		const all = result.edges.flatMap((edge) => runs(edge.points).map((run) => ({ ...run, key: edge.key })));
+		let total = 0;
+		for (let i = 0; i < all.length; i++) {
+			for (let j = i + 1; j < all.length; j++) {
+				const a = all[i], b = all[j];
+				if (a.key === b.key || a.axis !== b.axis || Math.abs(a.at - b.at) > 0.5) continue;
+				total += Math.max(0, Math.min(a.to, b.to) - Math.max(a.from, b.from));
+			}
+		}
+		return total;
+	}
+
+	it("gives every wire out of a coordinator its own lane instead of one shared trunk", () => {
+		// One row of recipients: ports and bus lines are the whole geometry, so nothing
+		// may be drawn on top of anything.
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 5 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map((t) => row("hub", t.id)));
+		expect(result.edges).toHaveLength(5);
+		expect(overlap(result)).toBe(0);
+		// Distinct ports on the coordinator's bottom edge, and distinct bus lines.
+		expect(new Set(result.edges.map((edge) => edge.points[0].x)).size).toBe(5);
+		expect(new Set(result.edges.map((edge) => edge.points[1].y)).size).toBe(5);
+		expect(new Set(result.edges.map((edge) => edge.lane)).size).toBe(5);
+		assertClear(result);
+	});
+
+	it("keeps ports and bus lines separate even when wires cross a second row", () => {
+		// Reaching the second row means sharing the vertical gaps between the cards of
+		// the first, and those channels belong to the router's A*, not to the lane plan.
+		// So ports and buses must still be unique, while a bounded amount of shared
+		// vertical run is expected — the assertion pins that budget instead of pretending
+		// it is zero.
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 8 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map((t) => row("hub", t.id)));
+		expect(result.edges).toHaveLength(8);
+		expect(new Set(result.edges.map((edge) => edge.points[0].x)).size).toBe(8);
+		// A detoured wire's second point is wherever A* took it, so uniqueness is
+		// asserted on the ports the lane plan owns, not on the whole polyline.
+		expect(new Set(result.edges.map((edge) => edge.points[edge.points.length - 1].x)).size).toBeGreaterThan(1);
+		expect(overlap(result)).toBeLessThan(300);
+		assertClear(result);
+	});
+
+	it("keeps lanes deterministic across identical scenes", () => {
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 6 }, (_, i) => task(`t${i}`, i + 2))];
+		const rows = tasks.slice(1).map((t) => row("hub", t.id));
+		expect(scene(tasks, rows).edges.map((edge) => edge.points)).toEqual(scene(tasks, rows).edges.map((edge) => edge.points));
+	});
+
+	it("assigns a stable wire colour per pair, unchanged when neighbours appear", () => {
+		const tasks = [coordinator("hub", 1), task("a", 2), task("b", 3)];
+		const two = scene(tasks, [row("hub", "a"), row("hub", "b")]);
+		const three = scene([...tasks, task("c", 4)], [row("hub", "a"), row("hub", "b"), row("hub", "c")]);
+		const colourOf = (result: ReturnType<typeof scene>, id: string) =>
+			result.edges.find((edge) => edge.key.includes(endpointKey("p", id)))!.colorIndex;
+		expect(colourOf(two, "a")).toBe(colourOf(three, "a"));
+		expect(colourOf(two, "b")).toBe(colourOf(three, "b"));
+		for (const edge of three.edges) {
+			expect(edge.colorIndex).toBeGreaterThanOrEqual(1);
+			expect(edge.colorIndex).toBeLessThanOrEqual(WIRE_COLORS);
+		}
+	});
+
+	it("still routes every wire when lanes compress in a crowded corridor", () => {
+		// 20 wires out of one coordinator: more lanes than the corridor can space out,
+		// so the plan compresses. Compression must never drop a wire off the grid.
+		const tasks = [coordinator("hub", 1), ...Array.from({ length: 20 }, (_, i) => task(`t${i}`, i + 2))];
+		const result = scene(tasks, tasks.slice(1).map((t) => row("hub", t.id)));
+		expect(result.edges).toHaveLength(20);
+		assertClear(result);
 	});
 
 	describe("project grouping", () => {

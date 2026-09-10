@@ -5,6 +5,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type CSSProperties,
 } from "react";
 import { getTaskOverview } from "../../../shared/types";
 import { useT } from "../../i18n";
@@ -79,6 +80,11 @@ interface Flight {
 	tempo: number;
 }
 const FLOW_MS = 2400;
+/** The running wave on a wire: lit length, dark gap, and speed in on-screen px per second.
+ *  One speed for every wire — a per-wire speed reads as noise instead of direction. */
+const FLOW_DASH = 15;
+const FLOW_GAP = 26;
+const FLOW_SPEED = 34;
 const DROP_MS = 1200;
 const DROP_GAP_MS = 500;
 const DROP_FADE_MS = 200;
@@ -705,28 +711,55 @@ export default function TrafficNodes({
 					viewBox={`0 0 ${scene.width} ${scene.height}`}
 					aria-hidden="true"
 				>
-					{scene.edges.map((edge) => {
+					{scene.edges.flatMap((edge) => {
 						const visiblePair = visiblePairs.get(edge.key);
-						if (replaying && !visiblePair) return null;
+						if (replaying && !visiblePair) return [];
 						const count = visiblePair?.count ?? 0;
-						return (
+						const status = visiblePair?.status ?? edge.status;
+						const dim = !visiblePair;
+						const active = activeEdge?.key === edge.key;
+						const width =
+							(count >= 8
+								? 4.2
+								: count >= 5
+									? 3.1
+									: count >= 3
+										? 2.25
+										: count === 2
+											? 1.65
+											: 1) / view.scale;
+						const d = wirePath(edge.points);
+						// A wave on a dim or undelivered wire would fight the meaning those
+						// states carry, so the flow only runs on live, delivered traffic.
+						const flow = !reduced && !dim && status !== "not-delivered";
+						const colour = { "--wire": `var(--wire-${edge.colorIndex})` } as CSSProperties;
+						return [
 							<path
 								key={edge.key}
-								d={wirePath(edge.points)}
-								className={`traffic-wire verdict-${visiblePair?.status ?? edge.status} ${!visiblePair ? "is-dim" : ""} ${activeEdge?.key === edge.key ? "is-active" : ""}`}
-								strokeWidth={
-									(count >= 8
-										? 4.2
-										: count >= 5
-											? 3.1
-											: count >= 3
-												? 2.25
-												: count === 2
-													? 1.65
-													: 1) / view.scale
-								}
-							/>
-						);
+								d={d}
+								style={colour}
+								className={`traffic-wire verdict-${status} ${dim ? "is-dim" : ""} ${active ? "is-active" : ""} ${flow ? "has-flow" : ""}`}
+								strokeWidth={width}
+							/>,
+							...(flow
+								? [
+									// Lengths divide by the scene scale so the wave keeps one
+									// on-screen size and speed at every zoom, like strokeWidth.
+									<path
+										key={`${edge.key}:flow`}
+										d={d}
+										className="traffic-wire-flow"
+										strokeWidth={width}
+										style={{
+											...colour,
+											strokeDasharray: `${FLOW_DASH / view.scale} ${FLOW_GAP / view.scale}`,
+											"--flow-cycle": `${(FLOW_DASH + FLOW_GAP) / view.scale}px`,
+											"--flow-duration": `${((FLOW_DASH + FLOW_GAP) / FLOW_SPEED).toFixed(2)}s`,
+										} as CSSProperties}
+									/>,
+								]
+								: []),
+						];
 					})}
 					{flights.flatMap((flight) => {
 						if (reduced || !flight.points.length) return [];
