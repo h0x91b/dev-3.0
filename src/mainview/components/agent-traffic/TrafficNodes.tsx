@@ -819,7 +819,6 @@ export default function TrafficNodes({
 							<Card
 								key={placed.node.key}
 								placed={placed}
-								messageCount={messageCounts.get(placed.node.key) ?? 0}
 								selected={selected === placed.node.key}
 								dim={
 									selected !== null &&
@@ -1075,14 +1074,12 @@ function UserCard({
 		>
 			<TrafficIcon name="user" />
 			<strong>{t("traffic.node.you")}</strong>
-			<span className="traffic-node-count">{messageCount}</span>
 		</button>
 	);
 }
 
 function Card({
 	placed,
-	messageCount,
 	selected,
 	dim,
 	active,
@@ -1098,7 +1095,6 @@ function Card({
 	onFocus,
 }: {
 	placed: PlacedNode;
-	messageCount: number;
 	selected: boolean;
 	dim: boolean;
 	active: boolean;
@@ -1183,7 +1179,6 @@ function Card({
 					{node.task?.taskType === "coordinator" && (
 						<em>{t("traffic.orbit.coordinator")}</em>
 					)}
-					<span className="traffic-node-count">{messageCount}</span>
 				</span>
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}

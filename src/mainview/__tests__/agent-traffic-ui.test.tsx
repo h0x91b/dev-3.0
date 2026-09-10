@@ -1186,7 +1186,14 @@ it("draws the user as a sender for a message they proved they sent", async () =>
 	// None of the task grammar leaks onto a person: no seq, no status line.
 	expect(marker.textContent).not.toContain("#");
 	// And it is a real endpoint, so the recipient card is drawn beside it.
+	const [card] = screen.getAllByTestId("traffic-node-card");
 	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(1);
+	// The person is the origin of the conversation, so they sit above it.
+	expect(parseFloat(marker.style.top)).toBeLessThan(parseFloat(card.style.top));
+	// A bare number on a card explains nothing; the wire's thickness carries volume.
+	expect(document.querySelectorAll(".traffic-node-count")).toHaveLength(0);
+	// The count survives where it is spelled out — the marker's accessible name.
+	expect(marker.getAttribute("aria-label")).toContain("1 recorded message");
 });
 
 it("draws no user marker for a sender-less message that proved nothing", async () => {

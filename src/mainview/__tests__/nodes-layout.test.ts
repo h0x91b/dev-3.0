@@ -69,6 +69,24 @@ describe("layoutTraffic", () => {
 		expect(edges).toHaveLength(2);
 	});
 
+	it("places the user above the coordinator and every task", () => {
+		const tasks = [coordinator("a", 11), task("b", 22), task("c", 33)];
+		const rows = [
+			row(null as unknown as string, "a", { fromSeq: null, origin: "user" }),
+			row("a", "b"),
+			row("a", "c"),
+		];
+		const { placed } = scene(tasks, rows);
+		const you = placed.find((node) => node.node.user);
+		expect(you).toBeDefined();
+		for (const other of placed.filter((node) => !node.node.user)) {
+			expect(other.y).toBeGreaterThan(you?.y as number);
+		}
+		// Centred over the grid the same way the coordinator is, not parked in it.
+		const hub = placed.find((node) => node.hub)!;
+		expect((you as { x: number }).x + CARD_WIDTH / 2).toBe(hub.x + hub.width / 2);
+	});
+
 	it("places five workers in the first row below the coordinator", () => {
 		const tasks = [coordinator("hub", 1), ...Array.from({ length: 6 }, (_, i) => task(`t${i}`, i + 2))];
 		const { placed } = scene(tasks, tasks.slice(1).map(t => row("hub", t.id)));
