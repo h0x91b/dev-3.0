@@ -12,7 +12,7 @@ export interface Rect {
 	height: number;
 }
 
-/** Persisted geometry of the main window, restored across app restarts (e.g. updates). */
+/** Persisted geometry of one window, restored across app restarts (e.g. updates). */
 export interface WindowState {
 	/** Last *windowed* frame (never the fullscreen rect, so we have a sane size to exit fullscreen into). */
 	frame: Rect;
@@ -60,21 +60,33 @@ function isValidState(s: unknown): s is WindowState {
 	);
 }
 
-export function loadWindowState(path: string = STATE_PATH): WindowState | null {
+/**
+ * Every window that was open when the app last shut down, in creation order.
+ * Empty when the file is missing or holds nothing usable.
+ *
+ * The file also carries the first window's fields at the top level, so an older
+ * install that only knows the single-window shape still restores its main
+ * window from the same file (the on-disk layout is shared between versions).
+ */
+export function loadWindowStates(path: string = STATE_PATH): WindowState[] {
 	try {
-		if (!existsSync(path)) return null;
-		const raw = JSON.parse(readFileSync(path, "utf-8"));
-		return isValidState(raw) ? raw : null;
+		if (!existsSync(path)) return [];
+		const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+		const list = raw?.windows;
+		if (Array.isArray(list)) return list.filter(isValidState);
+		return isValidState(raw) ? [raw] : [];
 	} catch (err) {
 		log.warn("Failed to load window state", { error: String(err) });
-		return null;
+		return [];
 	}
 }
 
-export function saveWindowState(state: WindowState, path: string = STATE_PATH): void {
+export function saveWindowStates(states: WindowState[], path: string = STATE_PATH): void {
 	try {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, JSON.stringify(state), "utf-8");
+		// `...states[0]` is the compatibility half: older versions read only these
+		// top-level fields and would otherwise see an unreadable file.
+		writeFileSync(path, JSON.stringify({ ...states[0], windows: states }), "utf-8");
 	} catch (err) {
 		log.warn("Failed to save window state", { error: String(err) });
 	}

@@ -2,13 +2,22 @@ import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
 import { composeWindowTitle } from "./app-utils";
-import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, offscreenFrameClamp, type DisplayLike, type Rect } from "./window-state";
+import { loadWindowStates, saveWindowStates, resolveRestoreFrame, displayContaining, offscreenFrameClamp, type DisplayLike, type Rect, type WindowState } from "./window-state";
 import { isFreshStartMode } from "./fresh-start";
+import { isQuitConfirmed } from "./quit-manager";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
 
 const log = createLogger("window-manager");
 
-type WindowEntry = { window: BrowserWindow; id: number };
+type WindowEntry = {
+	window: BrowserWindow;
+	id: number;
+	/**
+	 * Last known *windowed* frame — kept per window because getFrame() while the
+	 * window is in fullscreen returns the fullscreen rect, not the size to exit into.
+	 */
+	lastWindowedFrame: Rect | null;
+};
 
 // Registry of every dev-3.0 window that is currently open.
 // We keep our own set (in addition to Electrobun's internal BrowserWindowMap)
@@ -18,43 +27,64 @@ const windows = new Set<WindowEntry>();
 let focusedWindow: BrowserWindow | null = null;
 let seq = 0;
 
-// Debounced persistence of the main window's geometry so we can restore it after
-// an update restart (otherwise the window jumps to center on relaunch).
+// Debounced persistence of every open window's geometry so a restart can put
+// them all back (otherwise they jump to a centered cascade on relaunch).
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-// Last known *windowed* frame — kept separately because getFrame() while the
-// window is in fullscreen returns the fullscreen rect, not the size to exit into.
-let lastWindowedFrame: Rect | null = null;
 
-function captureWindowState(win: BrowserWindow): void {
-	// Fresh-start (dev) mode never persists geometry — it must not clobber the
-	// shared ~/.dev3.0/window-state.json that the real install restores from.
-	if (isFreshStartMode()) return;
+function entryState(entry: WindowEntry): WindowState | null {
 	try {
+		const win = entry.window;
 		const fullscreen = win.isFullScreen();
 		const frame = win.getFrame();
-		if (!fullscreen) lastWindowedFrame = frame;
-		const windowed = lastWindowedFrame ?? frame;
+		if (!fullscreen) entry.lastWindowedFrame = frame;
+		const windowed = entry.lastWindowedFrame ?? frame;
 		const displays = Screen.getAllDisplays();
 		const disp = displayContaining(fullscreen ? frame : windowed, displays) ?? Screen.getPrimaryDisplay();
-		saveWindowState({ frame: windowed, fullscreen, displayId: disp.id, displayBounds: disp.bounds });
+		return { frame: windowed, fullscreen, displayId: disp.id, displayBounds: disp.bounds };
 	} catch (err) {
-		log.debug("captureWindowState failed", { error: String(err) });
+		log.debug("captureWindowState failed", { id: entry.id, error: String(err) });
+		return null;
 	}
 }
 
-function scheduleWindowStateSave(win: BrowserWindow): void {
-	if (saveTimer) clearTimeout(saveTimer);
-	saveTimer = setTimeout(() => captureWindowState(win), 500);
+/** Snapshot every open window, in creation order, into the shared state file. */
+function captureAllWindowStates(): void {
+	// Fresh-start (dev) mode never persists geometry — it must not clobber the
+	// shared ~/.dev3.0/window-state.json that the real install restores from.
+	if (isFreshStartMode()) return;
+	const states: WindowState[] = [];
+	for (const entry of windows) {
+		const state = entryState(entry);
+		if (state) states.push(state);
+	}
+	// Nothing left to record: keep the previous snapshot rather than writing an
+	// empty session, so quitting from a window-less dock still reopens a window
+	// where the user last had one.
+	if (!states.length) return;
+	saveWindowStates(states);
 }
 
-/** Persist the focused window's geometry immediately (called on quit / update restart). */
+function scheduleWindowStateSave(): void {
+	if (saveTimer) clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => captureAllWindowStates(), 500);
+}
+
+/** Persist every open window's geometry immediately (called on quit / update restart). */
 export function flushWindowState(): void {
 	if (saveTimer) {
 		clearTimeout(saveTimer);
 		saveTimer = null;
 	}
-	const win = getFocusedWindow();
-	if (win) captureWindowState(win);
+	captureAllWindowStates();
+}
+
+/**
+ * The windows to reopen at launch, in creation order. Empty in fresh-start (dev)
+ * mode and on a first run — the caller then opens its usual single window.
+ */
+export function loadWindowSession(): WindowState[] {
+	if (isFreshStartMode()) return [];
+	return loadWindowStates();
 }
 
 /**
@@ -126,6 +156,12 @@ export interface CreateAppWindowOptions {
 	 * `<script>` tag instead).
 	 */
 	preload?: string;
+	/**
+	 * Geometry this window is being restored into (one entry of the persisted
+	 * session). Omitted for a window the user opens now — only the very first
+	 * window of a launch falls back to the saved primary geometry.
+	 */
+	restore?: WindowState | null;
 }
 
 /**
@@ -162,18 +198,19 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		},
 	});
 
-	// Restore the *first* window to its last position/screen (incl. macOS
-	// fullscreen). Extra windows keep the centered cascade so they don't stack.
+	// Restore a window to its last position/screen (incl. macOS fullscreen):
+	// either the slot the launch handed us, or — for the first window of a run
+	// with no explicit slot — the saved primary geometry. A window the user opens
+	// while others are up keeps the centered cascade so they don't stack.
 	// In fresh-start (dev) mode we skip the restore entirely and always open a
 	// default centered, windowed frame — no geometry, no fullscreen.
 	let frame: Rect;
 	let restoreFullScreen = false;
-	const saved = windows.size === 0 && !isFreshStartMode() ? loadWindowState() : null;
+	const saved = opts.restore ?? (windows.size === 0 ? loadWindowSession()[0] ?? null : null);
 	const restored = saved ? resolveRestoreFrame(saved, Screen.getAllDisplays()) : null;
 	if (restored) {
 		frame = restored.frame;
 		restoreFullScreen = restored.fullscreen;
-		lastWindowedFrame = restored.frame;
 		log.info("Restoring window geometry", { fullscreen: restoreFullScreen, ...restored.frame });
 	} else {
 		// ~95% of the primary display work area, centered. Additional windows are
@@ -199,6 +236,15 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		...(opts.preload ? { preload: opts.preload } : {}),
 	});
 
+	// The `frame` option above only reaches the FIRST window of the process —
+	// every later one opens stacked on the existing window, ignoring both the
+	// cascade offset and a restored geometry (measured on macOS: three windows
+	// asked for three frames, all three landed on the first one's). We re-apply
+	// the frame ourselves at dom-ready: called right after the constructor the
+	// same call lands on the wrong window, because the native side is still
+	// creating this one. Skipped when restoring into fullscreen, which macOS owns.
+	const needsFrameApply = windows.size > 0 && !restoreFullScreen;
+
 	// Windows draws a system-fallback icon in the window and the taskbar because
 	// electrobun never assigns one to its window class; we set it ourselves from
 	// the icon already embedded in our executables. No-op off Windows, where the
@@ -208,7 +254,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	self = win;
 
 	const id = ++seq;
-	const entry: WindowEntry = { window: win, id };
+	const entry: WindowEntry = { window: win, id, lastWindowedFrame: restored ? restored.frame : frame };
 	windows.add(entry);
 	focusedWindow = win;
 	log.info("Window created", { id, total: windows.size });
@@ -226,6 +272,11 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 			focusedWindow = firstWindow();
 		}
 		log.info("Window closed", { id, remaining: windows.size });
+		// A window the user closed on purpose must not come back on the next
+		// launch, so re-snapshot what is left. During a quit every window closes
+		// at once — that is teardown, not a decision, and the session written by
+		// flushWindowState must survive it.
+		if (!isQuitConfirmed()) captureAllWindowStates();
 		opts.onClosed?.(win, windows.size);
 	});
 
@@ -234,8 +285,8 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	// which must not touch the shared persisted state (captureWindowState also
 	// short-circuits, but not attaching avoids pointless timers).
 	if (!isFreshStartMode()) {
-		win.on("move", () => scheduleWindowStateSave(win));
-		win.on("resize", () => scheduleWindowStateSave(win));
+		win.on("move", () => scheduleWindowStateSave());
+		win.on("resize", () => scheduleWindowStateSave());
 	}
 
 	if (restoreFullScreen) {
@@ -262,6 +313,13 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		win.webview.on("dom-ready", () => {
 			if (nudged) return; // a reload re-fires dom-ready; one nudge per window
 			nudged = true;
+			if (needsFrameApply) {
+				try {
+					win.setFrame(frame.x, frame.y, frame.width, frame.height);
+				} catch (err) {
+					log.warn("Applying the window frame failed", { error: String(err) });
+				}
+			}
 			setTimeout(() => {
 				try {
 					const size = win.getSize();
