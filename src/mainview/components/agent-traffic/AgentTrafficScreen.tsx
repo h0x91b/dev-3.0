@@ -6,7 +6,6 @@ import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { getOverlayLayerElements } from "../../utils/overlay-layers";
 import { isTypingContext } from "../../utils/typing-context";
-import { useReducedMotion } from "../../utils/useReducedMotion";
 import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
 import Select from "../Select";
@@ -548,50 +547,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	useEffect(() => {
 		markTrafficSeen();
 	}, []);
-	// Autoplay the trailing hour ONCE per entry to this screen.
-	//
-	// The ref, not a piece of state, is what makes "once" true: the window's start
-	// slides with the clock and a live append arrives at any moment, so an effect
-	// keyed off the data would restart the replay under the user's cursor — and a
-	// manual pause has to stand. It arms on the first render where the load has
-	// settled, INCLUDING a settled load that found nothing, so an empty window
-	// stays parked instead of springing to life when the next event lands. Reduced
-	// motion keeps the cursor at the start of the window and skips the playing.
-	//
-	// It counts `playback.events`, not the message list: an hour with no messages
-	// but with recorded task movements is NOT an empty window, and this replays it.
-	//
-	// The load gate below covers both arms the timeline has — messages and tasks
-	// both come from `data`. A notification arm would add a third, and its settled
-	// signal must read Seq 1825's `status === "ready" || status === "failed"` — NOT
-	// `!notifications.loading`, which is true before the first read has even been
-	// asked for and would arm this one-shot latch on a stream that never came.
-	const reducedMotion = useReducedMotion();
-	const autoplayed = useRef(false);
-	const enterReplay = useRef(startEntryReplay);
-	enterReplay.current = startEntryReplay;
-	const eventCount = playback.events.length;
-	useEffect(() => {
-		if (autoplayed.current || experiment !== "2") return;
-		if (data.loading || data.historyLoading) return;
-		autoplayed.current = true;
-		if (!eventCount) return;
-		enterReplay.current(reducedMotion);
-	}, [experiment, data.loading, data.historyLoading, eventCount, reducedMotion]);
-
-	/**
-	 * Put the cursor on the first event of the entry window and start playing (or,
-	 * under reduced motion, just park it there).
-	 *
-	 * `seekToTime` rather than `seek(0)`: it lands on the first event at or after
-	 * the window's start and returns false without moving anything when every
-	 * recorded event precedes it. A clamp to the newest event would turn "nothing
-	 * happened in this hour" into "the hour started here", which is the reading the
-	 * empty-window rule exists to prevent.
-	 */
-	function startEntryReplay(parkOnly: boolean) {
-		playback.seekToTime(start, !parkOnly);
-	}
+	// Entry is Live, with the camera following. No cursor is placed and nothing
+	// plays on arrival: the screen's first job is to show what is happening now,
+	// and an automatic replay of the trailing hour hijacked the stage before the
+	// reader had asked for anything. Replay stays fully available — the transport's
+	// Play (and Space) start it from the window's beginning on demand.
 	// Space toggles the replay, the way it does in a media player — same action as
 	// the transport's Play/Pause button, including its restart-when-finished
 	// semantics. Hand-written and non-remappable: `Space` is a `RESERVED_CODE` in
