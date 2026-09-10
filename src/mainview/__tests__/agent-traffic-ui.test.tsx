@@ -1628,13 +1628,19 @@ describe("Replay reconstructs the board at the cursor", () => {
 	 * into the earlier part of the replay.
 	 *
 	 * The timeline that produces, oldest first:
-	 *   1 task  created        (-25)   task-b appears, To Do
-	 *   2 task  -> in-progress (-22)
-	 *   3 msg   to task-c      (-21)
-	 *   4 msg   First exchange (-20)
-	 *   5 task  -> completed   (-15)   ← a step with NO message anywhere near it
-	 *   6 msg   Second exchange(-10)
+	 *   1 task  created           (-25)   task-b appears, Your Review
+	 *   2 task  -> in-progress    (-22)
+	 *   3 msg   to task-c         (-21)
+	 *   4 msg   First exchange    (-20)
+	 *   5 task  -> completed      (-15)   ← a step with NO message anywhere near it
+	 *   6 msg   Second exchange   (-10)
 	 * task-c has no movements at all, so it contributes no steps and no history.
+	 *
+	 * task-b is deliberately born into Your Review rather than To Do: a To Do card
+	 * is not drawn at all (see `kanbanOrder`), so a fixture starting there could
+	 * assert nothing about the cursor. Every case below — no future-status leak,
+	 * forwards/backwards symmetry, an unknown past, and the card withheld until its
+	 * recorded creation — needs a status the stage actually draws.
 	 */
 	function setUpHistory() {
 		setPage([
@@ -1646,8 +1652,8 @@ describe("Replay reconstructs the board at the cursor", () => {
 			"task-b": {
 				status: "completed",
 				movements: [
-					{ id: "m1", at: ago(25), kind: "created", to: "todo", toColumnId: null },
-					{ id: "m2", at: ago(22), kind: "status", from: "todo", to: "in-progress", fromColumnId: null, toColumnId: null },
+					{ id: "m1", at: ago(25), kind: "created", to: "review-by-user", toColumnId: null },
+					{ id: "m2", at: ago(22), kind: "status", from: "review-by-user", to: "in-progress", fromColumnId: null, toColumnId: null },
 					{ id: "m3", at: ago(15), kind: "status", from: "in-progress", to: "completed", fromColumnId: null, toColumnId: null },
 				],
 			},
@@ -1720,7 +1726,7 @@ describe("Replay reconstructs the board at the cursor", () => {
 
 	it("never reads the current completed status back into the past", async () => {
 		await replayFromStart();
-		expect(card("#22").textContent).toContain("To Do");
+		expect(card("#22").textContent).toContain("Your Review");
 		await next();
 		expect(card("#22").textContent).toContain("Agent is Working");
 		expect(card("#22").textContent).not.toContain("Completed");

@@ -1,3 +1,4 @@
+import type { KanbanOrder } from "./kanban-order";
 import { createTrafficRouter } from "./nodes-routing";
 import { baseBus, laneGridLines, planLanes, type LanePlan } from "./wire-lanes";
 import { fromKey, toKey, type TrafficNode, type TrafficRecord } from "./traffic-model";
@@ -61,6 +62,11 @@ export interface SceneOptions {
 	showQuiet?: boolean;
 	/** Draw the hibernated band. Off by default. */
 	showParked?: boolean;
+	/**
+	 * Board column order, from [[kanbanOrder]]. Absent = plain seq order, which is
+	 * what a caller with no project list (and the layout's own unit tests) gets.
+	 */
+	board?: KanbanOrder;
 }
 
 interface PairState {
@@ -109,7 +115,12 @@ function pairs(records: TrafficRecord[]): Map<string, PairState> {
 /** Cards that go in the grid — not the user marker, not a coordinator. */
 const isWorker = (node: TrafficNode) => !node.user && node.task?.taskType !== "coordinator";
 
-/** Stable task ordering keeps replay and new message volume from moving cards. */
+/**
+ * Message volume never moves a card: the order is the board's column order (when
+ * `options.board` is given) and then seq, so a busy task cannot climb the stage.
+ * The board column is read at the replay cursor, so scrubbing back does move a
+ * card that has since been completed back to where it actually was.
+ */
 export function layoutTraffic(
 	nodes: TrafficNode[],
 	records: TrafficRecord[],
@@ -134,7 +145,14 @@ export function layoutTraffic(
 		}
 	}
 
-	const sorted = [...nodes].sort((a, b) =>
+	const board = options.board;
+	// To Do is board backlog, not conversation, so it never reaches the stage — a
+	// message it exchanged does not buy it a card. Its wires go with it: an edge
+	// needs BOTH endpoints placed, so nothing is left dangling. Hidden here only —
+	// the message log and the replay timeline keep every row either way.
+	const eligible = board ? nodes.filter(node => !board.todo(node)) : nodes;
+	const sorted = [...eligible].sort((a, b) =>
+		(board ? board.rank(a) - board.rank(b) : 0) ||
 		(a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER) ||
 		a.key.localeCompare(b.key),
 	);
