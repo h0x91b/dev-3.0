@@ -682,8 +682,29 @@ describe("TerminalView – drag-and-drop", () => {
 			});
 		});
 		await waitFor(() => {
-			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploads/notes.txt");
+			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploads/notes.txt ");
 		});
+	});
+
+	it("spaces the pasted path off text the user already typed", async () => {
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/shot.png" } as any);
+		// Cursor sits right after "look at" on the current input line.
+		mockBufferActive.cursorX = 7;
+		const cells = "look at";
+		(mockBufferActive as Record<string, unknown>).getLine = () => ({
+			getCell: (x: number) => (cells[x] ? { getChars: () => cells[x], getWidth: () => 1 } : undefined),
+		});
+
+		await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		dispatchDrop(terminal, [new File(["shot"], "shot.png", { type: "image/png", lastModified: 1711600000000 })]);
+
+		await waitFor(() => {
+			expect(lastWebSocket?.send).toHaveBeenCalledWith(" /tmp/uploads/shot.png ");
+		});
+
+		mockBufferActive.cursorX = 0;
+		delete (mockBufferActive as Record<string, unknown>).getLine;
 	});
 });
 
