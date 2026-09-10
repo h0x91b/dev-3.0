@@ -25,6 +25,15 @@ import {
 	type TaskProjection,
 } from "./task-history";
 import {
+	burstPieces,
+	CAMERA_COOLDOWN_MS,
+	CELEBRATION_MS,
+	liveCompletions,
+	replayCompletion,
+	type CompletionCelebration,
+} from "./completion-celebration";
+import { formatDuration } from "../../utils/productivityStats";
+import {
 	fromKey,
 	nodeSeq,
 	toKey,
@@ -378,6 +387,82 @@ export default function TrafficNodes({
 	exchangeRef.current = exchange;
 	const frameCardRef = useRef(frameCard);
 	frameCardRef.current = frameCard;
+
+	/**
+	 * A task reaching `completed` gets one bounded celebration on its card.
+	 *
+	 * One slot, not a queue: a second completion arriving mid-burst replaces the
+	 * card being celebrated. The camera obeys a cooldown on top of that, so five
+	 * completions inside a second produce one move rather than five — a queue
+	 * would instead walk the camera across five cards long after the moment.
+	 */
+	const [celebration, setCelebration] = useState<CompletionCelebration | null>(
+		null,
+	);
+	const celebratedMovements = useRef<Set<string>>(new Set());
+	const seededCompletions = useRef(false);
+	const lastCameraMove = useRef(0);
+	const lastReplayIndex = useRef(-1);
+	const nodeByKeyRef = useRef(nodeByKey);
+	nodeByKeyRef.current = nodeByKey;
+	const followRef = useRef(follow);
+	followRef.current = follow;
+	const celebrate = useCallback(
+		(next: CompletionCelebration, moveCamera: boolean) => {
+			// Visible scope only. A completion on a card the current filters keep off
+			// the stage is silent — nothing is force-shown and no filter is opened.
+			if (!nodeByKeyRef.current.has(next.nodeKey)) return;
+			setCelebration(next);
+			const now = Date.now();
+			if (
+				moveCamera &&
+				followRef.current &&
+				now - lastCameraMove.current >= CAMERA_COOLDOWN_MS
+			) {
+				lastCameraMove.current = now;
+				frameCardRef.current(next.nodeKey);
+			}
+		},
+		[],
+	);
+	useEffect(() => {
+		if (!celebration) return;
+		const timer = setTimeout(() => setCelebration(null), CELEBRATION_MS);
+		return () => clearTimeout(timer);
+	}, [celebration]);
+	// Live. The first pass only seeds the seen-set, so opening the screen on a
+	// board full of finished tasks is silent and a remount replays nothing. It
+	// keeps seeding while replaying or paused: the set must stay current, or
+	// returning to live would fire every completion that happened meanwhile.
+	useEffect(() => {
+		if (!ready) return;
+		const seeding = !seededCompletions.current || replaying || paused;
+		seededCompletions.current = true;
+		const found = liveCompletions(
+			nodes,
+			celebratedMovements.current,
+			Date.now(),
+			seeding,
+		);
+		const newest = found[found.length - 1];
+		if (newest) celebrate(newest, true);
+	}, [nodes, ready, replaying, paused, celebrate]);
+	// Replay. Forward crossings only: scrubbing backwards over a completion is
+	// silent, and standing still on one does not re-fire. Re-crossing it forward
+	// does celebrate again — a re-watch is a new crossing.
+	useEffect(() => {
+		if (!replaying || !playback) {
+			lastReplayIndex.current = -1;
+			return;
+		}
+		const previous = lastReplayIndex.current;
+		lastReplayIndex.current = playback.index;
+		if (playback.index <= previous) return;
+		const found = replayCompletion(playback.current, nodes);
+		// No camera here: the follow effect below already frames the card of every
+		// recorded task step. Two owners of one camera is exactly how it thrashes.
+		if (found) celebrate(found, false);
+	}, [playback?.revision, replaying, nodes, celebrate]);
 	resizeFollow.current = follow && ready ? () => {
 		if (overviewMode.current || !followedRecord) fitRef.current(true);
 		else exchange(followedRecord);
@@ -694,6 +779,7 @@ export default function TrafficNodes({
 								}
 								project={projectById.get(placed.node.projectId)}
 								latest={latest.get(placed.node.key)}
+								celebrating={celebration?.nodeKey === placed.node.key}
 								onSelect={(key) => {
 									manual();
 									onSelect(key);
@@ -702,6 +788,16 @@ export default function TrafficNodes({
 							/>
 						);
 					})}
+					{/* Outside the card, because the card clips its overflow and a
+					    burst that stays inside it is not a burst. */}
+					{celebration && nodeByKey.has(celebration.nodeKey) && (
+						<CompletionBurst
+							key={celebration.key}
+							placed={nodeByKey.get(celebration.nodeKey)!}
+							celebration={celebration}
+							reduced={reduced}
+						/>
+					)}
 				</div>
 			</div>
 			{active && labelPoint && (
@@ -796,6 +892,73 @@ export default function TrafficNodes({
 	);
 }
 
+/**
+ * The celebration itself: a bounded burst plus a badge naming what happened and,
+ * when the movement log can prove one, how long it took.
+ *
+ * Reduced motion drops every particle and keeps the badge. Motion is never the
+ * only channel here — the badge carries the icon, the word and the number on its
+ * own, so the static treatment loses decoration and no information.
+ */
+function CompletionBurst({
+	placed,
+	celebration,
+	reduced,
+}: {
+	placed: PlacedNode;
+	celebration: CompletionCelebration;
+	reduced: boolean;
+}) {
+	const t = useT();
+	const pieces = useMemo(
+		() => (reduced ? [] : burstPieces(celebration.key)),
+		[celebration.key, reduced],
+	);
+	const duration = celebration.duration;
+	const elapsed = duration
+		? duration.ms < 60_000
+			? t("traffic.celebration.underMinute")
+			: formatDuration(duration.ms)
+		: null;
+	const line = !duration
+		? t("traffic.celebration.completed")
+		: duration.basis === "work-start"
+			? t("traffic.celebration.worked", { duration: elapsed! })
+			: t("traffic.celebration.age", { duration: elapsed! });
+	return (
+		<div
+			className="traffic-celebration"
+			data-testid="traffic-celebration"
+			data-basis={duration?.basis ?? "unknown"}
+			data-reduced={reduced ? "true" : undefined}
+			style={{
+				left: placed.x,
+				top: placed.y,
+				width: placed.width,
+				height: placed.height,
+			}}
+		>
+			{pieces.map((piece, index) => (
+				<i
+					key={index}
+					aria-hidden="true"
+					className="traffic-celebration-piece"
+					style={{
+						["--piece-angle" as string]: `${piece.angle}deg`,
+						["--piece-distance" as string]: `${piece.distance}px`,
+						["--piece-spin" as string]: `${piece.spin}deg`,
+						["--piece-delay" as string]: `${piece.delay}ms`,
+					}}
+				/>
+			))}
+			<span className="traffic-celebration-badge" role="status">
+				<TrafficIcon name="check" />
+				{line}
+			</span>
+		</div>
+	);
+}
+
 function Card({
 	placed,
 	messageCount,
@@ -809,6 +972,7 @@ function Card({
 	inkColor,
 	project,
 	latest,
+	celebrating,
 	onSelect,
 	onFocus,
 }: {
@@ -828,6 +992,7 @@ function Card({
 		customStatusLabels?: Record<string, string>;
 	};
 	latest?: TrafficRecord;
+	celebrating: boolean;
 	onSelect: (key: string) => void;
 	onFocus: (key: string) => void;
 }) {
@@ -870,7 +1035,7 @@ function Card({
 			data-testid="traffic-node-card"
 			data-history={limited ?? undefined}
 			data-unborn={unborn ? "true" : undefined}
-			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""}`}
+			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""} ${celebrating ? "is-celebrating" : ""}`}
 			style={{
 				left: placed.x,
 				top: placed.y,

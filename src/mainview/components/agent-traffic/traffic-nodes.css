@@ -1101,3 +1101,116 @@
 	background: rgb(var(--accent-fill-hover));
 	color: white;
 }
+
+/* ── Completion celebration ──────────────────────────────────────────────────
+   A bounded, run-once burst over the card that just reached `completed`, plus a
+   badge naming the verdict and — only when the movement log proves one — how
+   long it took. Keyframes rather than transitions because this is a staged
+   sequence that plays once (better-ui #4); the badge is a static cue that
+   survives `prefers-reduced-motion`, so motion is never the only channel. */
+.traffic-celebration {
+	position: absolute;
+	pointer-events: none;
+	z-index: 3;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+}
+.traffic-node-card.is-celebrating {
+	box-shadow:
+		0 0 0 2px rgb(var(--success) / 0.9),
+		0 10px 30px rgb(var(--success) / 0.22),
+		0 8px 22px rgb(0 0 0 / 0.13);
+}
+.traffic-celebration-badge {
+	position: relative;
+	top: -14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	max-width: 100%;
+	padding: 4px 10px 4px 8px;
+	border-radius: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	white-space: nowrap;
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-elevated));
+	box-shadow:
+		inset 0 0 0 1px rgb(var(--success) / 0.6),
+		0 6px 16px rgb(0 0 0 / 0.18);
+	/* better-ui #7: scale 0.25 → 1, opacity 0 → 1, blur 4px → 0. */
+	animation: traffic-celebration-badge 320ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+.traffic-celebration-badge .traffic-icon {
+	width: 13px;
+	height: 13px;
+	/* 2px stroke beside the 600-weight word it labels. */
+	stroke-width: 2;
+	color: rgb(var(--success));
+}
+@keyframes traffic-celebration-badge {
+	from {
+		opacity: 0;
+		transform: scale(0.25);
+		filter: blur(4px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+		filter: blur(0);
+	}
+}
+.traffic-celebration-piece {
+	position: absolute;
+	left: 50%;
+	top: 8px;
+	width: 6px;
+	height: 6px;
+	border-radius: 1.5px;
+	background: rgb(var(--success));
+	opacity: 0;
+	animation: traffic-celebration-piece 1100ms cubic-bezier(0.2, 0, 0, 1)
+		var(--piece-delay) both;
+}
+.traffic-celebration-piece:nth-child(3n) {
+	background: rgb(var(--accent));
+}
+.traffic-celebration-piece:nth-child(3n + 1) {
+	background: rgb(var(--agent));
+	border-radius: 50%;
+}
+@keyframes traffic-celebration-piece {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, 0) rotate(0deg) scale(0.4);
+	}
+	18% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+		/* Translate first, then spin the piece: rotating before the offset would
+		   rotate the direction too and collapse the fan. */
+		transform: translate(-50%, 0)
+			translate(
+				calc(cos(var(--piece-angle)) * var(--piece-distance)),
+				calc(sin(var(--piece-angle)) * var(--piece-distance))
+			)
+			rotate(var(--piece-spin))
+			scale(1);
+	}
+}
+/* Static success treatment: the badge stays, every particle goes. The card ring
+   is a colour change, not motion, so it stays too. */
+.traffic-celebration[data-reduced="true"] .traffic-celebration-badge {
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.traffic-celebration-piece {
+		display: none;
+	}
+	.traffic-celebration-badge {
+		animation: none;
+	}
+}
