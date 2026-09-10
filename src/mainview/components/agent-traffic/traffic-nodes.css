@@ -131,17 +131,10 @@
 .traffic-wire.is-active {
 	stroke: rgb(var(--wire, var(--agent)) / 0.95);
 }
-/* The wire body dims under its own running wave, so the wave reads as movement
-   rather than as a second wire. */
-.traffic-wire.has-flow {
-	stroke: rgb(var(--wire, var(--agent)) / 0.32);
-}
-.traffic-wire.has-flow.is-active {
-	stroke: rgb(var(--wire, var(--agent)) / 0.5);
-}
 /* Direction: the dash pattern runs from sender to recipient, one cycle per
    --flow-duration. Offset decreases, which is what moves the pattern toward the
-   end of the path; growing it would run the wave backwards. */
+   end of the path; growing it would run the wave backwards. The element only
+   exists while a message is in transit, so an idle wire carries no animation. */
 .traffic-wire-flow {
 	fill: none;
 	stroke: rgb(var(--wire, var(--agent)) / 0.92);

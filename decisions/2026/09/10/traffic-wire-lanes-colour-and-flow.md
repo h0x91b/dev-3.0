@@ -43,13 +43,16 @@ post-processing step over routed points, and cannot be introduced without teachi
   a literal colour.
 - **Status still wins over identity.** `.traffic-wire.verdict-not-delivered` keeps `--danger` and its
   dash, declared after the palette rule, so "this failed" is never repainted as "this is connection #7".
-- Flow: a second `<path>` per delivered wire with a 15/26 dash, animated by decreasing
-  `stroke-dashoffset` one cycle per `--flow-duration`. Decreasing is the direction that moves the pattern
-  toward the end of the path — the path runs sender → recipient, so the wave runs the same way. Dash
-  lengths divide by `view.scale`, exactly like `strokeWidth`, so the wave keeps one on-screen size and
-  one speed (34 px/s) at every zoom. One speed for every wire: a per-wire speed reads as noise, not as
-  direction. The wave is not rendered at all when `useReducedMotion()` is true, on a dim wire, or on an
-  undelivered one.
+- Flow: **the wave belongs to a message in transit, not to the wire.** It is rendered per entry of the
+  existing `flights` state — the same state that already drives the flight drops, created on a live or
+  replayed message and dropped after `FLOW_MS`. An idle wire carries no animation and no extra element
+  at all. The wave rides `flight.points`, which `launch()` already reverses for a reply travelling back
+  up the graph, so it always runs sender → recipient. It is a 15/26 dash animated by *decreasing*
+  `stroke-dashoffset` one cycle per `--flow-duration`; decreasing is what moves a pattern toward the end
+  of a path. Dash lengths divide by `view.scale`, exactly like `strokeWidth`, so the wave keeps one
+  on-screen size and one speed (34 px/s) at every zoom. One speed for every wire: a per-wire speed reads
+  as noise, not as direction. Nothing is rendered when `useReducedMotion()` is true or for an
+  undelivered attempt.
 
 ## Risks
 
@@ -61,7 +64,9 @@ post-processing step over routed points, and cannot be introduced without teachi
 - A crowded corridor compresses lane steps until wires nearly touch again; the plan degrades instead of
   dropping wires, and a test covers 20 wires out of one coordinator.
 - 16 hues are more colour than this screen carried before. Mitigated by keeping lightness and chroma
-  share equal across hues, painting the wire body at 0.32–0.55 alpha, and leaving status colours in charge.
+  share equal across hues, painting the wire body at 0.55 alpha, and leaving status colours in charge.
+- The wave overlaps the flight drops in time: both mark the same message. Kept because the drops predate
+  this change and were not part of the request; if the pair reads as noise, the drops are the half to drop.
 - A missing `--wire-N` token would fail silently (the wire falls back to violet), so
   `wire-tokens.test.ts` asserts all 16 exist in both themes as raw RGB triplets; it was verified to fail
   when one token is renamed.
@@ -77,3 +82,8 @@ post-processing step over routed points, and cannot be introduced without teachi
   signal the lane already carries.
 - **Arrowheads for direction** — no marker infrastructure exists in this SVG, and an arrow at one end
   says less than a wave along the whole run.
+- **A wave running on every delivered wire at all times** — shipped first and rejected by the user on
+  sight: a screen where nothing is being sent should stand still, and permanent motion on a dozen wires
+  reads as load, not as traffic. Two tests pin the new rule (`leaves an idle wire still`, and the wave
+  appearing only between the send and `FLOW_MS`), both verified to fail against a mutant that animates
+  every wire always.

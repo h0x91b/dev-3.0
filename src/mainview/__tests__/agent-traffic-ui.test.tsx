@@ -1199,37 +1199,14 @@ it("draws no user marker for a sender-less message that proved nothing", async (
 	expect(screen.queryByTestId("traffic-user-card")).toBeNull();
 });
 
-it("paints each wire with its own colour token and runs the flow wave on delivered traffic", async () => {
-	// This suite's default is reduced-motion, so the wave has to be asked for.
-	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-		matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
-		addListener() {}, removeListener() {}, dispatchEvent: () => false,
-	}) as unknown as MediaQueryList);
-	try {
-		setPage([row()]);
-		renderLog();
-		await messageRows(1);
-		const wire = document.querySelector<SVGPathElement>(".traffic-wire")!;
-		// The colour is a reference to a --wire-N token, never a literal colour.
-		expect(wire.style.getPropertyValue("--wire")).toMatch(/^var\(--wire-([1-9]|1[0-6])\)$/);
-		const flow = document.querySelector<SVGPathElement>(".traffic-wire-flow")!;
-		expect(flow).not.toBeNull();
-		expect(flow.getAttribute("d")).toBe(wire.getAttribute("d"));
-		expect(wire.classList.contains("has-flow")).toBe(true);
-		// A dash and a matching cycle, or the wave has nothing to move.
-		expect(flow.style.strokeDasharray).not.toBe("");
-		expect(flow.style.getPropertyValue("--flow-cycle")).toMatch(/px$/);
-		expect(flow.style.getPropertyValue("--flow-duration")).toMatch(/s$/);
-	} finally {
-		media.mockRestore();
-	}
-});
-
-it("drops the flow wave under reduced motion but keeps the wire", async () => {
+it("paints each wire with its own colour token and leaves an idle wire still", async () => {
 	setPage([row()]);
 	renderLog();
 	await messageRows(1);
-	expect(document.querySelector(".traffic-wire")).not.toBeNull();
+	const wire = document.querySelector<SVGPathElement>(".traffic-wire")!;
+	// The colour is a reference to a --wire-N token, never a literal colour.
+	expect(wire.style.getPropertyValue("--wire")).toMatch(/^var\(--wire-([1-9]|1[0-6])\)$/);
+	// Nothing is in transit, so nothing animates: no wave element at all.
 	expect(document.querySelector(".traffic-wire-flow")).toBeNull();
 });
 
@@ -1519,6 +1496,72 @@ it("minimap navigation hands camera control away from Follow", async () => {
 		expect(document.querySelector(".traffic-nodes")).toHaveAttribute("data-follow", "false");
 	} finally {
 		rendered.unmount(); width.mockRestore(); height.mockRestore();
+	}
+});
+
+it.each([
+	{ status: "delivered" as const, wave: 1 },
+	// A failure is not a flowing message, so it never gets the wave.
+	{ status: "not-delivered" as const, wave: 0 },
+])("$status runs the flow wave only while the message is in transit", async ({ status, wave }) => {
+	vi.useFakeTimers();
+	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+		matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
+		addListener() {}, removeListener() {}, dispatchEvent: () => false,
+	}));
+	const frames = new Map<number, FrameRequestCallback>();
+	let frameId = 0;
+	vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
+	vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+	const advance = (ms: number) => act(() => {
+		vi.advanceTimersByTime(ms);
+		const pending = [...frames.values()]; frames.clear();
+		pending.forEach(callback => callback(performance.now()));
+	});
+	setPage([row({ status })]);
+	const rendered = renderLog();
+	try {
+		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		// Standing still before anything is sent: no wave anywhere.
+		expect(document.querySelectorAll(".traffic-wire-flow")).toHaveLength(0);
+		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+		advance(0);
+		expect(document.querySelectorAll(".traffic-wire-flow")).toHaveLength(wave);
+		if (wave) {
+			const flow = document.querySelector<SVGPathElement>(".traffic-wire-flow")!;
+			// It rides the flight's own polyline, and carries a dash with a cycle to move.
+			expect(flow.getAttribute("d")).toBeTruthy();
+			expect(flow.style.strokeDasharray).not.toBe("");
+			expect(flow.style.getPropertyValue("--flow-cycle")).toMatch(/px$/);
+			expect(flow.style.getPropertyValue("--flow-duration")).toMatch(/s$/);
+			expect(flow.style.getPropertyValue("--wire")).toMatch(/^var\(--wire-([1-9]|1[0-6])\)$/);
+		}
+		// The flight ends after FLOW_MS, and the wave goes with it — back to still.
+		advance(2500);
+		expect(document.querySelectorAll(".traffic-wire-flow")).toHaveLength(0);
+		expect(document.querySelector(".traffic-wire")).not.toBeNull();
+	} finally {
+		rendered.unmount(); media.mockRestore(); vi.unstubAllGlobals(); vi.useRealTimers();
+	}
+});
+
+it("keeps the wave off entirely under reduced motion, even mid-flight", async () => {
+	vi.useFakeTimers();
+	const frames = new Map<number, FrameRequestCallback>();
+	let frameId = 0;
+	vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
+	vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+	setPage([row()]);
+	const rendered = renderLog();
+	try {
+		// This suite's default is reduced-motion, so no stub is needed here.
+		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
+		act(() => { vi.advanceTimersByTime(0); });
+		expect(document.querySelectorAll(".traffic-wire-flow")).toHaveLength(0);
+		expect(document.querySelector(".traffic-wire")).not.toBeNull();
+	} finally {
+		rendered.unmount(); vi.unstubAllGlobals(); vi.useRealTimers();
 	}
 });
 

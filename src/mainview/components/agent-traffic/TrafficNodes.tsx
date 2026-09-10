@@ -80,11 +80,20 @@ interface Flight {
 	tempo: number;
 }
 const FLOW_MS = 2400;
-/** The running wave on a wire: lit length, dark gap, and speed in on-screen px per second.
- *  One speed for every wire — a per-wire speed reads as noise instead of direction. */
+/** The wave that runs a wire while a message is travelling it: lit length, dark gap,
+ *  and speed in on-screen px per second. One speed for every wire — a per-wire speed
+ *  reads as noise instead of direction. */
 const FLOW_DASH = 15;
 const FLOW_GAP = 26;
 const FLOW_SPEED = 34;
+
+/** Thicker wire, more messages on that pair. Shared by the wire and its wave. */
+function wireWidth(count: number): number {
+	if (count >= 8) return 4.2;
+	if (count >= 5) return 3.1;
+	if (count >= 3) return 2.25;
+	return count === 2 ? 1.65 : 1;
+}
 const DROP_MS = 1200;
 const DROP_GAP_MS = 500;
 const DROP_FADE_MS = 200;
@@ -711,54 +720,45 @@ export default function TrafficNodes({
 					viewBox={`0 0 ${scene.width} ${scene.height}`}
 					aria-hidden="true"
 				>
-					{scene.edges.flatMap((edge) => {
+					{scene.edges.map((edge) => {
 						const visiblePair = visiblePairs.get(edge.key);
-						if (replaying && !visiblePair) return [];
+						if (replaying && !visiblePair) return null;
 						const count = visiblePair?.count ?? 0;
-						const status = visiblePair?.status ?? edge.status;
-						const dim = !visiblePair;
-						const active = activeEdge?.key === edge.key;
-						const width =
-							(count >= 8
-								? 4.2
-								: count >= 5
-									? 3.1
-									: count >= 3
-										? 2.25
-										: count === 2
-											? 1.65
-											: 1) / view.scale;
-						const d = wirePath(edge.points);
-						// A wave on a dim or undelivered wire would fight the meaning those
-						// states carry, so the flow only runs on live, delivered traffic.
-						const flow = !reduced && !dim && status !== "not-delivered";
-						const colour = { "--wire": `var(--wire-${edge.colorIndex})` } as CSSProperties;
-						return [
+						return (
 							<path
 								key={edge.key}
-								d={d}
-								style={colour}
-								className={`traffic-wire verdict-${status} ${dim ? "is-dim" : ""} ${active ? "is-active" : ""} ${flow ? "has-flow" : ""}`}
-								strokeWidth={width}
+								d={wirePath(edge.points)}
+								style={{ "--wire": `var(--wire-${edge.colorIndex})` } as CSSProperties}
+								className={`traffic-wire verdict-${visiblePair?.status ?? edge.status} ${!visiblePair ? "is-dim" : ""} ${activeEdge?.key === edge.key ? "is-active" : ""}`}
+								strokeWidth={wireWidth(count) / view.scale}
+							/>
+						);
+					})}
+					{/* The wave belongs to a message in transit, not to the wire: an idle
+					    wire stands still. It rides `flight.points`, which already run
+					    sender → recipient even when the reply goes back up the graph. */}
+					{flights.flatMap((flight) => {
+						if (reduced || !flight.points.length) return [];
+						const status = flight.record.row.status;
+						if (status === "not-delivered") return [];
+						const key = [fromKey(flight.record.row), toKey(flight.record.row)].sort().join("|");
+						const edge = edgeByKey.get(key);
+						if (!edge) return [];
+						// Lengths divide by the scene scale so the wave keeps one on-screen
+						// size and speed at every zoom, like strokeWidth above.
+						return [
+							<path
+								key={`${flight.record.key}:${flight.started}:flow`}
+								d={wirePath(flight.points)}
+								className="traffic-wire-flow"
+								strokeWidth={wireWidth(visiblePairs.get(key)?.count ?? 0) / view.scale}
+								style={{
+									"--wire": `var(--wire-${edge.colorIndex})`,
+									strokeDasharray: `${FLOW_DASH / view.scale} ${FLOW_GAP / view.scale}`,
+									"--flow-cycle": `${(FLOW_DASH + FLOW_GAP) / view.scale}px`,
+									"--flow-duration": `${((FLOW_DASH + FLOW_GAP) / FLOW_SPEED).toFixed(2)}s`,
+								} as CSSProperties}
 							/>,
-							...(flow
-								? [
-									// Lengths divide by the scene scale so the wave keeps one
-									// on-screen size and speed at every zoom, like strokeWidth.
-									<path
-										key={`${edge.key}:flow`}
-										d={d}
-										className="traffic-wire-flow"
-										strokeWidth={width}
-										style={{
-											...colour,
-											strokeDasharray: `${FLOW_DASH / view.scale} ${FLOW_GAP / view.scale}`,
-											"--flow-cycle": `${(FLOW_DASH + FLOW_GAP) / view.scale}px`,
-											"--flow-duration": `${((FLOW_DASH + FLOW_GAP) / FLOW_SPEED).toFixed(2)}s`,
-										} as CSSProperties}
-									/>,
-								]
-								: []),
 						];
 					})}
 					{flights.flatMap((flight) => {
