@@ -435,7 +435,7 @@ export interface CommandOptions {
 	/** The LLM backend selected for this agent. The provider registry decides how
 	 *  the pinned model is delivered: via injected env (Claude on Bedrock —
 	 *  ANTHROPIC_MODEL, --model omitted) or via a rewritten --model value plus
-	 *  routing args (Codex on Bedrock — `-c model_provider="amazon-bedrock"`). */
+	 *  routing args (Codex on Bedrock — `-c model_provider="amazon-bedrock-runtime"`). */
 	llmProvider?: LlmProvider;
 	/** Per-launch managed account selection (agent account switcher). `undefined`
 	 *  → use the registry default (the preselect); `null` → force the system

@@ -182,11 +182,12 @@ Keep form markup native and opt into the polished controls with one attribute. T
   <label class="check field full"><input type="checkbox" checked> Include experimental presets</label>
   <fieldset class="option-group field full"><legend>Review mode</legend><div class="choice-grid"><label class="check"><input type="radio" name="mode" checked> Automatic</label><label class="check"><input type="radio" name="mode"> Manual</label></div></fieldset>
   <label class="switch field full"><input type="checkbox" checked><span aria-hidden="true"></span> Auto-refresh</label>
+  <div class="field full"><label for="notes">Notes</label><textarea id="notes" rows="3" placeholder="Anything the agent should know…"></textarea></div>
   <div class="form-actions field full"><button type="reset">Reset</button><button class="primary" type="submit">Apply</button></div>
 </form>
 ```
 
-`.controls` is a two-column grid; `.field.full` spans both. `.check`, `.switch`, and `.option-group` skin native checkbox, radio, and switch markup without report JavaScript. A `.segmented` group of buttons (`<button class="active">`) toggles a view; report code flips `.active` and calls `remount()` on the chart. When report code changes an enhanced select or range, call `dev3Artifact.setControl(element, value)` so the native value, visual control, events, and output stay synchronized. `dev3Artifact.toast("Saved")` shows the transient message in `#toast`.
+`.controls` is a two-column grid; `.field.full` spans both. `.check`, `.switch`, and `.option-group` skin native checkbox, radio, and switch markup without report JavaScript. Every other standard control is skinned on the element itself — text, search, number, date, email, password, `textarea`, a plain `<select>` (its own caret, no `data-ui-select` needed), `select[multiple]`, `file`, `color`, checkbox and radio glyphs, plus placeholder, hover, focus ring, `:disabled`, `:read-only` and `:user-invalid` states. A `.field` wrapper adds the label and the full width; without one the control still looks right, so a control dropped straight into a panel or a table cell never needs styles of its own. A `.segmented` group of buttons (`<button class="active">`) toggles a view; report code flips `.active` and calls `remount()` on the chart. When report code changes an enhanced select or range, call `dev3Artifact.setControl(element, value)` so the native value, visual control, events, and output stay synchronized. `dev3Artifact.toast("Saved")` shows the transient message in `#toast`.
 
 ## Menus, dropdowns, and anything that opens over the report
 

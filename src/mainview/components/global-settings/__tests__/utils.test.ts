@@ -176,8 +176,8 @@ describe("global-settings utils", () => {
 	it("Codex on Bedrock: rewrites --model to the mapped id and shows the routing args", () => {
 		const config: AgentConfiguration = { id: "c", name: "Codex", model: "gpt-5.6-sol" };
 		const { command, envLine } = buildCommandPreview("codex", config, "bedrock-codex");
-		expect(command).toContain("--model openai.gpt-5.6-sol");
-		expect(command).toContain(`-c 'model_provider="amazon-bedrock"'`);
+		expect(command).toContain("--model global.openai.gpt-5.6-sol");
+		expect(command).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
 		// Codex is routed entirely via CLI args — no provider env is injected.
 		expect(envLine).toBeNull();
 	});

@@ -128,6 +128,39 @@ describe("confirm service", () => {
 		expect(await screen.findByText("AI agent request")).toBeInTheDocument();
 	});
 
+	// Same contract as the launch dialog: an agent request holds a blocked CLI, so
+	// a stray click on empty space must not answer it.
+	it("ignores backdrop clicks on agent-initiated confirms", async () => {
+		const user = userEvent.setup();
+		renderHost();
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Agent asks", message: "M", agentInitiated: true, confirmLabel: "Confirm" });
+		});
+
+		const dialog = await screen.findByRole("dialog");
+		await user.click(dialog.parentElement!);
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		await expect(result!).resolves.toBe(false);
+	});
+
+	it("still dismisses an ordinary confirm on a backdrop click", async () => {
+		const user = userEvent.setup();
+		renderHost();
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Plain ask", message: "M", confirmLabel: "Confirm" });
+		});
+
+		const dialog = await screen.findByRole("dialog");
+		await user.click(dialog.parentElement!);
+
+		await expect(result!).resolves.toBe(false);
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+
 	it("does not show the AI agent badge for regular confirms", async () => {
 		renderHost();
 		act(() => {

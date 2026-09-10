@@ -11,12 +11,13 @@
 .traffic-inspector[hidden] {
 	display: none;
 }
-.traffic-backdrop:has(.traffic-view[data-experiment="2"]) {
+.traffic-screen:has(.traffic-view[data-experiment="2"]) {
 	padding: 0;
 }
-.traffic-dialog:has(.traffic-view[data-experiment="2"]) {
+.traffic-frame:has(.traffic-view[data-experiment="2"]) {
 	border-radius: 0;
 	max-width: none;
+	box-shadow: none;
 }
 .traffic-view[data-experiment="2"] {
 	position: relative;
@@ -324,9 +325,81 @@
 		),
 		rgb(var(--surface-elevated));
 }
-.traffic-node-card.is-completed .traffic-node-state,
-.traffic-node-card.is-cancelled .traffic-node-state {
+/* A finished card must read as finished from across the stage, so the verdict is
+   a filled stamp carrying its own icon and word — colour is never the only cue.
+   The status rule at the top of the card stays 2px for everything else and goes
+   full-bleed and thicker here, which is the one difference the eye catches at
+   overview zoom. */
+.traffic-node-card.is-completed::before,
+.traffic-node-card.is-cancelled::before {
+	inset: 0 0 auto;
+	height: 4px;
+	opacity: 1;
+}
+.traffic-node-stamp {
+	display: inline-flex;
+	align-items: center;
+	align-self: flex-start;
+	gap: 5px;
+	max-width: 100%;
+	padding: 3px 9px 3px 7px;
+	border-radius: 6px;
+	font-size: 12px;
 	font-weight: 600;
+	letter-spacing: 0.01em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--node-ink);
+	background: color-mix(in srgb, var(--node-status) 20%, transparent);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--node-status) 55%, transparent);
+}
+.traffic-node-stamp .traffic-icon {
+	width: 13px;
+	height: 13px;
+	/* 2px stroke beside the 600-weight word it labels. */
+	stroke-width: 2;
+}
+.traffic-node-compact .traffic-node-stamp {
+	padding: 2px 7px 2px 5px;
+	font-size: 10px;
+	gap: 4px;
+}
+.traffic-node-compact .traffic-node-stamp .traffic-icon {
+	width: 11px;
+	height: 11px;
+}
+/* Not a warning and not an error — an absence. Muted, never coloured like a
+   status, so it cannot be mistaken for one. */
+.traffic-node-history {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.traffic-node-history .traffic-icon {
+	width: 12px;
+	height: 12px;
+}
+/* Frozen in place but not yet born: the layout is computed from every node in
+   the window, so a card appearing mid-replay never shifts its neighbours. */
+.traffic-node-card.is-unborn {
+	opacity: 0;
+	pointer-events: none;
+	transform: scale(0.96);
+	transition:
+		opacity 220ms cubic-bezier(0.2, 0, 0, 1),
+		transform 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.traffic-node-card:not(.is-unborn) {
+	transition:
+		opacity 260ms cubic-bezier(0.2, 0, 0, 1),
+		transform 260ms cubic-bezier(0.2, 0, 0, 1);
 }
 .traffic-nodes-bands {
 	position: absolute;
@@ -644,6 +717,41 @@
 	text-align: right;
 }
 /* The presentation picker, shaped like the diff viewer's mode segments. */
+/* One filter axis as a row of independent toggles — same shell as the
+   presentation segments beside it, but multi-select, so the pressed state is
+   `aria-pressed` rather than `aria-checked`. */
+.traffic-toggles {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid rgb(var(--border-default) / 0.7);
+	border-radius: 9px;
+	background: rgb(var(--surface-base) / 0.5);
+	flex-shrink: 0;
+}
+.traffic-toggles button {
+	padding: 6px 12px;
+	min-height: 30px;
+	border: 0;
+	border-radius: 7px;
+	font-size: 12px;
+	font-weight: 600;
+	color: rgb(var(--text-tertiary));
+	background: transparent;
+}
+.traffic-toggles button:hover:not(:disabled) {
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-elevated));
+}
+.traffic-toggles button[aria-pressed="true"] {
+	color: white;
+	background: rgb(var(--accent-fill));
+}
+.traffic-toggles button[aria-pressed="true"]:hover:not(:disabled) {
+	background: rgb(var(--accent-fill-hover));
+}
+
 .traffic-experiment {
 	display: inline-flex;
 	align-items: center;
@@ -761,9 +869,16 @@
 }
 @media (prefers-reduced-motion: reduce) {
 	.traffic-node-card,
+	/* Both card selectors carry a `:not()`, so the bare class alone would lose on
+	   specificity and the fade would survive reduced motion. */
+	.traffic-node-card.is-unborn,
+	.traffic-node-card:not(.is-unborn),
 	.traffic-wire,
 	.traffic-play-icons > svg {
 		transition: none;
+	}
+	.traffic-node-card.is-unborn {
+		transform: none;
 	}
 	.traffic-view[data-experiment="2"] button:active {
 		transform: none;
@@ -870,10 +985,6 @@
 	.traffic-transport > select {
 		padding: 4px;
 	}
-}
-
-.traffic-sheet:has(.traffic-view[data-experiment="2"]) {
-	height: calc(85dvh - 80px);
 }
 
 .traffic-period-trigger {

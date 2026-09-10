@@ -160,12 +160,14 @@ ux_architecture:
         - "project-settings" # per-project config (tabs: global | project | worktree)
         - "changelog"        # what's new
         - "stats"            # productivity stats dashboard (Velocity Cockpit)
+        - "agent-traffic"    # agent-to-agent traffic (flagged; ninth-destination exception)
         - "gauge-demo"       # debug/dev surface
         - "viewport-lab"     # debug/dev surface
       mechanism: "GlobalHeader breadcrumbs + back/forward history (HISTORY_LIMIT=15) + native application menu 'View'"
       allowed: ["destination", "workspace", "major_product_area"]
       forbidden: ["one_off_action", "filter", "temporary_state", "object_specific_control"]
-      max_top_level_items: 8   # fully spent by the list above; debug screens (gauge-demo, viewport-lab) stay menu-only
+      max_top_level_items: 8   # spent by the list above; debug screens (gauge-demo, viewport-lab) stay menu-only
+      budget_exception: "agent-traffic is a ninth route that costs the budget nothing: no nav item, no permanent entry, invisible while its flag is off. A tenth needs the same proof."
       max_depth: 2
       status: "observed"
       evidence: ["src/mainview/state.ts (Route)", "src/mainview/components/GlobalHeader.tsx", "src/bun/application-menu.ts"]
@@ -211,9 +213,9 @@ ux_architecture:
         status: "observed"
       agent_traffic_readout:
         budget: 1
-        spec: "Presence follows recorded traffic; unread is only the per-browser badge (first look initializes it, cap 9+). The labelled kebab row stays; the conditional pill opens the overlay directly. Never key presence off unread. Violet --agent is identity, not severity; warning requires an unread unproven delivery. No reply obligation is inferred from the newest recipient."
-        narrow: "NEVER on the bar. The labelled kebab row opens the same overlay as a BottomSheet; >=44px target."
-        flag: "experimentalAgentTraffic (Settings -> System -> Advanced Experience), default OFF, and off leaves NO trace: no kebab row, pill, keymap listing, menu row, palette command or tip. A greyed row is a trace."
+        spec: "Presence follows recorded traffic; unread is only the per-browser badge (first look initializes it, cap 9+). Kebab row stays, pill is conditional, and presence is never keyed off unread. Warning tone needs an unread unproven delivery; violet --agent and no-inferred-reply: bible 5.9."
+        narrow: "NEVER on the bar. The labelled kebab row navigates; >=44px target."
+        flag: "experimentalAgentTraffic (Settings -> System -> Advanced Experience), default OFF, and off leaves NO trace: no entry point of any kind, and a greyed row is a trace."
         status: "proposed"
       ambient_resource_readout:
         budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
@@ -271,14 +273,15 @@ ux_architecture:
         split_controls: 1       # only dev_server_control; one budget slot, two focus stops
       status: "observed"
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
-    agent_traffic_log:
+    agent_traffic_screen:
       purpose: "Live map of recorded message attempts, with lists and an inspector."
       allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task"]
-      forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter", "inferred_reply_obligation"]
-      narrow_form: "bottom_sheet"
-      entry_point: "Header pill, kebab row, Shift+Cmd/Ctrl+M, View menu, palette; one overlay, no old log or new screen."
-      note: "Push/fs, no poll. Pulses/verdicts; reduced motion stops flights/glides. Current state/overview; nodes stable, wires dodge cards. Counted quiet/parked bands; replay reveals endpoints unwoken. Absent pick means 2; the radio mounts a stage, not the feature. In 2: frozen replay/steps/speed/slider under graph, cursor verdicts, Live exits; Follow/24h frames pairs; idle overview; named project blocks, 5-wide; calendar loads local days; Focus in details; manual/minimap pan drops Follow. Space toggles replay unless a field/control owns it; navigation closes it. WebGL optional. Subject/body fallback, retention/pages: bible 5.9. No invented ownership, reply or intent."
-      evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
+      forbidden: ["send_message", "task_lifecycle_action", "importance_filter", "inferred_reply_obligation", "own_chrome_above_the_header"]
+      narrow_form: "same_screen"   # filters fold into a BottomSheet inside it
+      entry_point: "Pill, kebab row, Shift+Cmd/Ctrl+M, View menu and palette all navigate to the route; one screen, no second log."
+      entry: "The id on the route is the initial SCOPE, never a breadcrumb claim, and the analytics path carries no ids; Escape or a repeat of the shortcut steps back, and the flag going off navigates away. Each entry is fresh: trailing hour (named on the picker), cursor at its start, replay started ONCE once the data settles. Empty windows stay parked and a later arrival must not start one; re-render, refresh and live append never restart it; a manual pause stands; reduced motion parks the cursor. Entry alone — Live and the day calendar unchanged."
+      note: "Space toggles replay unless a field/control owns it. Everything else — stage choice, pulses, verdicts, camera, bands, project blocks, calendar days, subject fallback, retention: bible 5.9."
+      evidence: ["src/mainview/components/agent-traffic/AgentTrafficScreen.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."
       allowed: ["notes", "secondary_edit"]

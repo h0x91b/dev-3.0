@@ -46,6 +46,15 @@ export type Route =
 	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
+	/**
+	 * Agent traffic. The id seeds the screen's scope filter with the project the
+	 * user came from; it is NOT a location, and the field is deliberately not
+	 * called `projectId` — the screen is global, shows every project's traffic,
+	 * and several call sites read a bare `"projectId" in route` as "the user is
+	 * inside this project", which here would put a project in the breadcrumb and
+	 * in the task switcher's scope.
+	 */
+	| { screen: "agent-traffic"; scopeProjectId?: string }
 	| { screen: "gauge-demo" }
 	| { screen: "viewport-lab" }
 	| { screen: "native-pane-layout-lab" };

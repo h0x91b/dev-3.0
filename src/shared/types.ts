@@ -13,6 +13,7 @@ export type { TelemetryProfile } from "./telemetry-profile";
 import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage } from "./agent-message-log";
+import type { NotificationLogPage } from "./notification-log";
 import type { LowBatteryStatus } from "./low-battery";
 export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
 
@@ -1530,7 +1531,7 @@ export const LLM_PROVIDER = {
 export type LlmProvider = (typeof LLM_PROVIDER)[keyof typeof LLM_PROVIDER];
 
 /** Bedrock cross-region inference-profile prefix (the `<geo>.` part of the model id). */
-export type BedrockGeo = "global" | "us" | "eu" | "apac";
+export type BedrockGeo = "global" | "us" | "eu" | "jp";
 
 /**
  * Per-provider connection settings. Generic across providers so a new backend
@@ -1543,7 +1544,7 @@ export type BedrockGeo = "global" | "us" | "eu" | "apac";
 export interface ProviderSettings {
 	/**
 	 * Cross-region inference-profile prefix baked into the mapped model ids
-	 * (`global.` | `us.` | `eu.` | `apac.`). Bedrock-only. Changing it
+	 * (`global.` | `us.` | `eu.` | `jp.`). Bedrock-only. Changing it
 	 * re-populates every non-overridden row of the model table. Defaults to
 	 * "global". This is the id prefix only — NOT the AWS_REGION env (the
 	 * customer's global Claude config owns credentials/region).
@@ -5190,10 +5191,6 @@ export type AppRPCSchema = {
 				params: { agentId: string; path: string };
 				response: void;
 			};
-			checkCodexBedrockConfig: {
-				params: void;
-				response: { configured: boolean };
-			};
 			getChangelogs: {
 				params: void;
 				response: ChangelogEntry[];
@@ -5384,6 +5381,18 @@ export type AppRPCSchema = {
 			readAgentMessageLog: {
 				params: { projectId: string; limit?: number };
 				response: AgentMessageLogPage;
+			};
+			/**
+			 * Read the global `dev3 notify` archive, newest first.
+			 *
+			 * Deliberately not per project: a notification can be sent with no task and
+			 * therefore no project, so splitting the stream by project would make
+			 * "every notification, in order" unanswerable. `projectIds` narrows it, and
+			 * a row with no project is always kept.
+			 */
+			readNotificationLog: {
+				params: { limit?: number; projectIds?: string[] };
+				response: NotificationLogPage;
 			};
 			taskPaneState: {
 				params: { taskId: string };
@@ -6040,6 +6049,13 @@ export type AppRPCSchema = {
 			 */
 			/** A durable append completed; refresh the recipient project log, including failed attempts. */
 			agentMessageLogChanged: { projectId: string };
+			/**
+			 * A notification row was appended to the global archive by THIS instance.
+			 * No payload: the archive is one global stream, so there is nothing to
+			 * scope the refresh to. Another instance's appends are not announced —
+			 * that needs a filesystem watcher, which a read API does not.
+			 */
+			notificationLogChanged: Record<string, never>;
 			agentMessage: {
 				/** Receiving task — the click target, and the inbox that got the text. */
 				taskId: string;

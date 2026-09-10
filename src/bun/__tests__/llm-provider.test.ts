@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	BEDROCK_GEOS,
+	bedrockModelServedInGeo,
+	normalizeBedrockGeo,
 	buildProviderEnv,
 	defaultModelMap,
 	getProviderDefinition,
@@ -11,7 +14,7 @@ import {
 	thirdPartyProvidersForAgent,
 	wantsLongContext,
 } from "../../shared/llm-provider";
-import { LLM_PROVIDER } from "../../shared/types";
+import { type BedrockGeo, LLM_PROVIDER } from "../../shared/types";
 
 describe("normalizeAlias", () => {
 	it("strips the [1m] marker", () => {
@@ -43,9 +46,11 @@ describe("getProviderDefinition", () => {
 		const def = getProviderDefinition(LLM_PROVIDER.BedrockCodex);
 		expect(def?.id).toBe(LLM_PROVIDER.BedrockCodex);
 		expect(def?.agentCommand).toBe("codex");
-		expect(def?.enableArgs).toEqual(["-c", 'model_provider="amazon-bedrock"']);
+		// The Bedrock Runtime provider: the OpenAI-compatible `amazon-bedrock`
+		// endpoint does not serve gpt-6-astra (verified 2026-09-09, 404).
+		expect(def?.enableArgs).toEqual(["-c", 'model_provider="amazon-bedrock-runtime"']);
 		expect(def?.modelEnv).toBeUndefined();
-		expect(def?.usesGeo).toBe(false);
+		expect(def?.usesGeo).toBe(true);
 	});
 	it("returns undefined for the Anthropic default and unknown ids", () => {
 		expect(getProviderDefinition(LLM_PROVIDER.Native)).toBeUndefined();
@@ -66,8 +71,23 @@ describe("mapModelForProvider", () => {
 		expect(mapModelForProvider("sonnet", LLM_PROVIDER.BedrockClaude, "eu")).toBe(
 			"eu.anthropic.claude-sonnet-4-6",
 		);
-		expect(mapModelForProvider("claude-fable-5", LLM_PROVIDER.BedrockClaude, "apac")).toBe(
-			"apac.anthropic.claude-fable-5",
+		expect(mapModelForProvider("claude-opus-4-8", LLM_PROVIDER.BedrockClaude, "jp")).toBe(
+			"jp.anthropic.claude-opus-4-8",
+		);
+	});
+	it("offers jp, not apac: no current-generation model has an apac. profile", () => {
+		expect(BEDROCK_GEOS).toEqual(["global", "us", "eu", "jp"]);
+	});
+	it("uses Bedrock's dated ids for the families that carry one", () => {
+		// Verified live 2026-09-09: the bare family id is rejected with 400 for these two.
+		expect(mapModelForProvider("haiku", LLM_PROVIDER.BedrockClaude)).toBe(
+			"global.anthropic.claude-haiku-4-5-20251001-v1:0",
+		);
+		expect(mapModelForProvider("claude-haiku-4-5", LLM_PROVIDER.BedrockClaude, "us")).toBe(
+			"us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		);
+		expect(mapModelForProvider("anthropic/claude-opus-4-6", LLM_PROVIDER.BedrockClaude)).toBe(
+			"global.anthropic.claude-opus-4-6-v1",
 		);
 	});
 	it("resolves the 'sonnet' shorthand to its family", () => {
@@ -149,13 +169,28 @@ describe("providerOmitsModelFlag", () => {
 });
 
 describe("providerPinnedModel (bedrock-codex)", () => {
-	it("maps a codex alias to the flat openai.<family> Bedrock id (no geo prefix)", () => {
+	it("maps a codex alias to a <geo>.openai.<family> inference profile, global by default", () => {
+		// Bedrock Runtime rejects the bare `openai.<family>` id ("on-demand
+		// throughput isn't supported"); the profile form was verified live 2026-09-09.
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-6-astra")).toBe(
+			"global.openai.gpt-6-astra",
+		);
 		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toBe(
-			"openai.gpt-5.6-sol",
+			"global.openai.gpt-5.6-sol",
 		);
-		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.5")).toBe(
-			"openai.gpt-5.5",
+	});
+	it("applies the selected geo to the codex id", () => {
+		expect(
+			providerPinnedModel(LLM_PROVIDER.BedrockCodex, { "bedrock-codex": { geo: "us" } }, "gpt-5.6-sol"),
+		).toBe("us.openai.gpt-5.6-sol");
+	});
+	it("treats a stored geo it no longer offers (apac) as the default", () => {
+		const stale = { bedrock: { geo: "apac" as unknown as BedrockGeo } };
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockClaude, stale, "claude-opus-5")).toBe(
+			"global.anthropic.claude-opus-5",
 		);
+		expect(normalizeBedrockGeo("apac" as unknown as BedrockGeo)).toBe("global");
+		expect(normalizeBedrockGeo("eu")).toBe("eu");
 	});
 	it("a per-model manual override wins over the map", () => {
 		expect(
@@ -240,6 +275,25 @@ describe("buildProviderEnv", () => {
 		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-fable-5");
 		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe("1");
 		expect(env.ANTHROPIC_MODEL).toBe("global.anthropic.claude-fable-5");
+	});
+});
+
+describe("bedrockModelServedInGeo", () => {
+	// Snapshot of `aws bedrock list-inference-profiles` per region, 2026-09-09.
+	it("knows Fable is global/us only and jp carries only the 4.x generation", () => {
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-1[1m]", "eu")).toBe(false);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5", "us")).toBe(true);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "eu")).toBe(true);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "jp")).toBe(false);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-4-8[1m]", "jp")).toBe(true);
+	});
+	it("knows OpenAI models only have global and us profiles", () => {
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "global")).toBe(true);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "eu")).toBe(false);
+	});
+	it("never flags a model it has no data for", () => {
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-future-9", "eu")).toBe(true);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.Native, "claude-fable-5", "eu")).toBe(true);
 	});
 });
 

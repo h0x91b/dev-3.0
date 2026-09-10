@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrafficRecord } from "../components/agent-traffic/traffic-model";
+import { messageEvents } from "../components/agent-traffic/traffic-timeline";
 import { useTrafficPlayback } from "../components/agent-traffic/useTrafficPlayback";
 
 function record(key: string, second: number): TrafficRecord {
@@ -27,10 +28,14 @@ const second = record("second", 2);
 const third = record("third", 3);
 const records = [third, second, first];
 const defaultInterval = 1629;
+// The hook walks a timeline union now, so the fixtures are wrapped once here.
+// `currentRecord` unwraps back to the very same record object, which is what the
+// identity assertions below rely on.
+const baseEvents = messageEvents(records);
 
-function setup(initial = { records, enabled: true, scopeKey: "project" }) {
+function setup(initial = { events: baseEvents, enabled: true, scopeKey: "project" }) {
 	return renderHook(
-		(props) => useTrafficPlayback(props.records, props.enabled, props.scopeKey),
+		(props) => useTrafficPlayback(props.events, props.enabled, props.scopeKey),
 		{ initialProps: initial },
 	);
 }
@@ -41,10 +46,10 @@ describe("traffic playback", () => {
 
 	it("starts in live mode with chronological events without mutating the log", () => {
 		const { result } = setup();
-		expect(result.current.events).toEqual([first, second, third]);
+		expect(result.current.events.flatMap((event) => (event.kind === "message" ? [event.record] : []))).toEqual([first, second, third]);
 		expect(records).toEqual([third, second, first]);
 		expect(result.current.index).toBe(-1);
-		expect(result.current.current).toBeNull();
+		expect(result.current.currentRecord).toBeNull();
 		expect(result.current.playing).toBe(false);
 		expect(result.current.speed).toBe(1);
 		expect(vi.getTimerCount()).toBe(0);
@@ -53,14 +58,14 @@ describe("traffic playback", () => {
 	it("activates immediately, advances at the selected pace, and stays at the end", () => {
 		const { result } = setup();
 		act(() => result.current.playPause());
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		expect(result.current.revision).toBe(1);
 		act(() => vi.advanceTimersByTime(defaultInterval - 1));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		act(() => vi.advanceTimersByTime(defaultInterval));
-		expect(result.current.current).toBe(third);
+		expect(result.current.currentRecord).toBe(third);
 		expect(result.current.revision).toBe(3);
 		expect(result.current.playing).toBe(true);
 		act(() => vi.advanceTimersByTime(defaultInterval - 1));
@@ -81,11 +86,11 @@ describe("traffic playback", () => {
 		expect(result.current.ended).toBe(false);
 		expect(vi.getTimerCount()).toBe(0);
 		act(() => vi.advanceTimersByTime(10000));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => result.current.playPause());
 		expect(result.current.revision).toBe(1);
 		act(() => vi.advanceTimersByTime(defaultInterval));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 	});
 
 	it("changes pace during playback and ignores invalid speeds", () => {
@@ -93,9 +98,9 @@ describe("traffic playback", () => {
 		act(() => result.current.playPause());
 		act(() => result.current.setSpeed(2));
 		act(() => vi.advanceTimersByTime(813));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		act(() => {
 			result.current.setSpeed(0);
 			result.current.setSpeed(-1);
@@ -110,23 +115,23 @@ describe("traffic playback", () => {
 		expect(result.current.intervalMs).toBeCloseTo(duration);
 		act(() => result.current.playPause());
 		act(() => vi.advanceTimersByTime(Math.floor(duration) - 1));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 	});
 
 	it("steps, seeks and clamps while pausing; repeated activation triggers a new revision", () => {
 		const { result } = setup();
 		act(() => result.current.step(-1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		act(() => result.current.step(-1));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => result.current.step(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		act(() => result.current.seek(100));
-		expect(result.current.current).toBe(third);
+		expect(result.current.currentRecord).toBe(third);
 		act(() => result.current.seek(-100));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		const revision = result.current.revision;
 		act(() => result.current.seek(0));
 		expect(result.current.revision).toBe(revision + 1);
@@ -134,7 +139,7 @@ describe("traffic playback", () => {
 		expect(result.current.revision).toBe(revision + 2);
 		expect(result.current.playing).toBe(true);
 		act(() => result.current.step(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		expect(result.current.playing).toBe(false);
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -142,11 +147,11 @@ describe("traffic playback", () => {
 	it("steps from live relative to the latest event and clamps forward at that event", () => {
 		const { result } = setup();
 		act(() => result.current.step(1));
-		expect(result.current.current).toBe(third);
+		expect(result.current.currentRecord).toBe(third);
 		expect(result.current.playing).toBe(false);
 		act(() => result.current.live());
 		act(() => result.current.step(-1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
@@ -161,17 +166,17 @@ describe("traffic playback", () => {
 			...records.map((item) => ({ ...item, row: { ...item.row } })),
 			earlier,
 		];
-		rerender({ records: fresh, enabled: true, scopeKey: "project" });
+		rerender({ events: messageEvents(fresh), enabled: true, scopeKey: "project" });
 		expect(result.current.events).toBe(snapshot);
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 		act(() => result.current.step(1));
-		expect(result.current.current).toBe(third);
+		expect(result.current.currentRecord).toBe(third);
 		act(() => result.current.restart());
-		expect(result.current.current).toBe(earlier);
+		expect(result.current.currentRecord).toBe(earlier);
 		expect(result.current.events).toHaveLength(5);
 		act(() => result.current.live());
 		expect(result.current.index).toBe(-1);
-		expect(result.current.current).toBeNull();
+		expect(result.current.currentRecord).toBeNull();
 		expect(result.current.playing).toBe(false);
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -182,27 +187,27 @@ describe("traffic playback", () => {
 		act(() => vi.advanceTimersByTime(2000));
 		act(() => result.current.restart());
 		act(() => vi.advanceTimersByTime(defaultInterval - 1));
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		act(() => vi.advanceTimersByTime(1));
-		expect(result.current.current).toBe(second);
+		expect(result.current.currentRecord).toBe(second);
 	});
 
 	it("releases timers and replay state when disabled, changing scope, or unmounting", () => {
 		const { result, rerender, unmount } = setup();
 		act(() => result.current.playPause());
-		rerender({ records, enabled: false, scopeKey: "project" });
+		rerender({ events: baseEvents, enabled: false, scopeKey: "project" });
 		expect(result.current.index).toBe(-1);
 		expect(vi.getTimerCount()).toBe(0);
 		act(() => result.current.playPause());
 		expect(result.current.playing).toBe(false);
-		rerender({ records, enabled: true, scopeKey: "project" });
+		rerender({ events: baseEvents, enabled: true, scopeKey: "project" });
 		expect(result.current.index).toBe(-1);
 		act(() => result.current.playPause());
-		rerender({ records: [third], enabled: true, scopeKey: "another-project" });
-		expect(result.current.events).toEqual([third]);
+		rerender({ events: messageEvents([third]), enabled: true, scopeKey: "another-project" });
+		expect(result.current.events.flatMap((event) => (event.kind === "message" ? [event.record] : []))).toEqual([third]);
 		expect(result.current.index).toBe(-1);
 		expect(vi.getTimerCount()).toBe(0);
-		rerender({ records, enabled: true, scopeKey: "another-project" });
+		rerender({ events: baseEvents, enabled: true, scopeKey: "another-project" });
 		act(() => result.current.playPause());
 		expect(vi.getTimerCount()).toBe(1);
 		unmount();
@@ -211,7 +216,7 @@ describe("traffic playback", () => {
 
 	it("leaves empty history idle and gives a single event its full playback duration", () => {
 		const { result, rerender } = setup({
-			records: [],
+			events: [],
 			enabled: true,
 			scopeKey: "project",
 		});
@@ -224,17 +229,77 @@ describe("traffic playback", () => {
 		expect(result.current.index).toBe(-1);
 		expect(result.current.revision).toBe(0);
 		expect(vi.getTimerCount()).toBe(0);
-		rerender({ records: [first], enabled: true, scopeKey: "project" });
+		rerender({ events: messageEvents([first]), enabled: true, scopeKey: "project" });
 		act(() => result.current.playPause());
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		expect(result.current.playing).toBe(true);
 		expect(vi.getTimerCount()).toBe(1);
 		act(() => vi.advanceTimersByTime(defaultInterval - 1));
 		expect(result.current.playing).toBe(true);
 		act(() => vi.advanceTimersByTime(1));
 		expect(result.current.playing).toBe(false);
-		expect(result.current.current).toBe(first);
+		expect(result.current.currentRecord).toBe(first);
 		expect(result.current.revision).toBe(1);
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	describe("seekToTime — the entry range", () => {
+		const atSecond = (second: number) => Date.UTC(2026, 8, 7, 10, 0, second);
+
+		it("lands on the first event at or after the time and reports that it did", () => {
+			const { result } = setup();
+			let landed = false;
+			act(() => { landed = result.current.seekToTime(atSecond(2)); });
+			expect(landed).toBe(true);
+			expect(result.current.currentRecord).toBe(second);
+			expect(result.current.cursor.at).toBe(atSecond(2));
+			// Between two events it moves forward, never back onto the earlier one.
+			act(() => { result.current.seekToTime(atSecond(1) + 500); });
+			expect(result.current.currentRecord).toBe(second);
+		});
+
+		it("moves nothing and says so when every event precedes the range", () => {
+			const { result } = setup();
+			let landed = true;
+			act(() => { landed = result.current.seekToTime(atSecond(30)); });
+			// A silent jump to the top would read as "the hour started here".
+			expect(landed).toBe(false);
+			expect(result.current.index).toBe(-1);
+			expect(result.current.cursor.at).toBeNull();
+		});
+
+		it("does not start playing unless asked, and a manual pause survives a re-seek", () => {
+			const { result } = setup();
+			act(() => { result.current.seekToTime(atSecond(0)); });
+			expect(result.current.playing).toBe(false);
+			expect(vi.getTimerCount()).toBe(0);
+			act(() => { result.current.seekToTime(atSecond(0), true); });
+			expect(result.current.playing).toBe(true);
+			act(() => result.current.playPause());
+			expect(result.current.playing).toBe(false);
+			// An entry seek repeated on an already-paused replay must not resume it.
+			act(() => { result.current.seekToTime(atSecond(2)); });
+			expect(result.current.playing).toBe(false);
+			expect(vi.getTimerCount()).toBe(0);
+		});
+
+		it("rejects a non-finite time instead of clamping to the top", () => {
+			const { result } = setup();
+			act(() => { expect(result.current.seekToTime(Number.NaN)).toBe(false); });
+			expect(result.current.index).toBe(-1);
+		});
+	});
+
+	describe("cursor", () => {
+		it("is live until a step, then carries the time and the kind", () => {
+			const { result } = setup();
+			expect(result.current.cursor).toMatchObject({ at: null, index: -1, total: 3, kind: null });
+			act(() => result.current.seek(0));
+			expect(result.current.cursor).toMatchObject({
+				at: Date.UTC(2026, 8, 7, 10, 0, 1), index: 0, total: 3, kind: "message", playing: false,
+			});
+			act(() => result.current.live());
+			expect(result.current.cursor.at).toBeNull();
+		});
 	});
 });

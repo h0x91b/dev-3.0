@@ -19,7 +19,6 @@ vi.mock("../../../rpc", () => ({
 			),
 			setActiveAgentAccount: vi.fn(),
 			toggleFavoriteAgent: vi.fn(() => Promise.resolve({})),
-			checkCodexBedrockConfig: vi.fn(() => Promise.resolve({ configured: true })),
 			// The preset editor asks for the model catalog; an empty one keeps the
 			// roles block hidden, which is this suite's subject.
 			modelCatalogGet: vi.fn(() => Promise.resolve({ providers: [], models: [] })),
@@ -112,29 +111,6 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		expect(screen.queryByRole("button", { name: "settings.providerBedrock" })).toBeNull();
 	});
 
-	it("Codex on Bedrock: model table derives flat openai.<family> ids and hides the geo toggle", async () => {
-		const user = userEvent.setup();
-		render(
-			<I18nProvider>
-				<AgentSettingsSection
-					t={identityT as never}
-					agents={DEFAULT_AGENTS.map((a) =>
-						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
-					)}
-					globalSettings={baseSettings}
-					onAgentsChange={vi.fn()}
-					onDefaultAgentChange={vi.fn()}
-					onDefaultConfigChange={vi.fn()}
-					onGlobalSettingsChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await expandAgent(user, "Codex");
-		expect(screen.getByPlaceholderText("openai.gpt-5.6-sol")).toBeTruthy();
-		// Bedrock's OpenAI ids carry no geo prefix → no inference-profile selector.
-		expect(screen.queryByRole("button", { name: "global" })).toBeNull();
-	});
-
 	it("selecting Bedrock persists llmProvider on the Claude agent", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
@@ -196,8 +172,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		expect(screen.getAllByText("settings.providerModelRevert").length).toBeGreaterThan(0);
 	});
 
-	it("Codex on Bedrock: warns when ~/.codex/config.toml lacks the provider section", async () => {
-		vi.mocked(api.request.checkCodexBedrockConfig).mockResolvedValueOnce({ configured: false });
+	it("Codex on Bedrock: offers the geo toggle and a <geo>.openai.<family> inference-profile id", async () => {
 		const user = userEvent.setup();
 		render(
 			<I18nProvider>
@@ -215,30 +190,28 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 			</I18nProvider>,
 		);
 		await expandAgent(user, "Codex");
-		expect(await screen.findByText("settings.providerBedrockCodexConfigMissing")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "global" })).toBeTruthy();
+		expect(screen.getByPlaceholderText("global.openai.gpt-6-astra")).toBeTruthy();
+		// The config.toml preflight is gone: the provider is built into codex.
+		expect(screen.queryByText("settings.providerBedrockCodexConfigMissing")).toBeNull();
 	});
 
-	it("Codex on Bedrock: no warning when the provider section exists (default mock)", async () => {
+	it("marks the rows a geo does not serve, and only those", async () => {
 		const user = userEvent.setup();
-		render(
-			<I18nProvider>
-				<AgentSettingsSection
-					t={identityT as never}
-					agents={DEFAULT_AGENTS.map((a) =>
-						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
-					)}
-					globalSettings={baseSettings}
-					onAgentsChange={vi.fn()}
-					onDefaultAgentChange={vi.fn()}
-					onDefaultConfigChange={vi.fn()}
-					onGlobalSettingsChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await expandAgent(user, "Codex");
-		// Let the preflight promise resolve before asserting the negative.
-		expect(screen.getByPlaceholderText("openai.gpt-5.6-sol")).toBeTruthy();
-		expect(screen.queryByText("settings.providerBedrockCodexConfigMissing")).toBeNull();
+		renderSection({ llmProvider: "bedrock", providerConfig: { bedrock: { geo: "eu" } } });
+		await expandAgent(user, "Claude");
+		const notServed = screen.getAllByText("settings.providerModelNotServed");
+		// Fable 5 and Fable 5.1 have no eu. profile; every other preset family does.
+		expect(notServed.length).toBe(2);
+		expect(screen.getByPlaceholderText("eu.anthropic.claude-opus-5[1m]")).toBeTruthy();
+	});
+
+	it("reads a stored apac geo as global instead of deriving a dead id", async () => {
+		const user = userEvent.setup();
+		renderSection({ llmProvider: "bedrock", providerConfig: { bedrock: { geo: "apac" as never } } });
+		await expandAgent(user, "Claude");
+		expect(screen.getByPlaceholderText("global.anthropic.claude-opus-4-8[1m]")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "apac" })).toBeNull();
 	});
 
 	it("a stale provider id (base command changed to codex) renders no provider fields", async () => {

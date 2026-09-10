@@ -260,6 +260,50 @@ describe("bundled artifact starter contract", () => {
 		expect(app).toContain("takes no arguments");
 	});
 
+	// A control only looked right when the author remembered a `.field` wrapper or
+	// a `data-ui-*` attribute, so a hand-written panel shipped a raw UA textarea
+	// and a native select next to the styled form above it.
+	it("skins every standard control on the element itself, not only inside .field", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const html = readFileSync(htmlPath, "utf8");
+
+		// The shell hangs off the elements; `.field` is left with the width only.
+		expect(css).toContain("input:where(:not(.choices__input)), textarea, select {");
+		// The width is `.field`'s only remaining job, and a glyph or a submit
+		// button must never take it.
+		expect(css).toContain(
+			'.field input:where(:not([type="checkbox"], [type="radio"], [type="submit"], [type="reset"], [type="button"])), .field select, .field textarea { width: 100%; }',
+		);
+		// A textarea was the one control with no rule at all, down to its font.
+		expect(css).toContain("button, input, select, textarea { font: inherit; }");
+		expect(css).toMatch(/textarea \{[^}]*field-sizing: content;/);
+		expect(css).toMatch(/textarea \{[^}]*resize: vertical;/);
+		// A plain <select> draws its own caret, so it needs no `data-ui-select` to
+		// stop being native chrome — and the caret is a token, not a data URI.
+		expect(css).toMatch(/select \{[^}]*appearance: none;/);
+		expect(css).toContain("linear-gradient(135deg, rgb(var(--dev3-text-muted)) 50%, transparent 50%)");
+		// A shorthand `background` next to the caret would silently wipe it.
+		expect(css).toContain(".table-tools input, .table-tools select {");
+		expect(css).toMatch(/\.table-tools input, \.table-tools select \{[^}]*background-color: rgb\(var\(--dev3-surface-base\)\);/);
+		// Glyphs, not `.check` rows: a checkbox in prose or a table cell matches.
+		expect(css).toContain('input:where([type="checkbox"], [type="radio"]) {');
+		expect(css).toContain('input[type="checkbox"]:indeterminate');
+		for (const rule of [
+			"::placeholder",
+			":user-invalid",
+			'input[type="file"]::file-selector-button',
+			'input[type="color"]::-webkit-color-swatch',
+			'input[type="search"]',
+			"select[multiple]",
+			"textarea:read-only",
+		]) {
+			expect(css).toContain(rule);
+		}
+		// The demo carries the control the reports were getting wrong.
+		expect(html).toContain('<textarea id="scenarioNotes"');
+		expect(docs).toContain("| Any other input |");
+	});
+
 	it("scales the whole report from one root text size, including chart labels", () => {
 		const html = readFileSync(htmlPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");
@@ -539,8 +583,10 @@ describe("bundled artifact starter contract", () => {
 		// their budgets only have to stay far below an inlined library — these are
 		// ~25x under one, and both sat at 98%+ of the previous caps before the
 		// responsive-table work, which left no room for any real change. The CSS
-		// cap moved again for the gold/viz palette and the tone classes.
-		expect(statSync(cssPath).size).toBeLessThan(44_000);
+		// cap moved again for the gold/viz palette and the tone classes, and once
+		// more for the full standard-control set (textarea, plain select caret,
+		// file, color, invalid and disabled states).
+		expect(statSync(cssPath).size).toBeLessThan(54_000);
 		expect(statSync(appPath).size).toBeLessThan(34_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

@@ -397,9 +397,9 @@ describe("launchArgs — provider routing args (registry promise)", () => {
 		"%s emits options.providerArgs (shell-quoted)",
 		(base) => {
 			const cmd = launch(base, cfg({ model: undefined }), {
-				providerArgs: ["-c", 'model_provider="amazon-bedrock"'],
+				providerArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'],
 			});
-			expect(cmd).toContain(`-c 'model_provider="amazon-bedrock"'`);
+			expect(cmd).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
 		},
 	);
 
@@ -407,9 +407,9 @@ describe("launchArgs — provider routing args (registry promise)", () => {
 		const cmd = launch(
 			"codex",
 			cfg({ model: undefined, additionalArgs: ["-c", 'model_provider="my-own"'] }),
-			{ providerArgs: ["-c", 'model_provider="amazon-bedrock"'] },
+			{ providerArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'] },
 		);
-		const injected = cmd.indexOf('model_provider="amazon-bedrock"');
+		const injected = cmd.indexOf('model_provider="amazon-bedrock-runtime"');
 		const user = cmd.indexOf('model_provider="my-own"');
 		expect(injected).toBeGreaterThan(-1);
 		expect(user).toBeGreaterThan(injected);

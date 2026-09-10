@@ -1,5 +1,7 @@
 # 163 — Codex on Bedrock: flag-delivered provider, fully derived model ids
 
+> Superseded on 2026-09-09 by `decisions/2026/09/09/codex-bedrock-runtime-provider-geo-prefix.md`: the provider is now `amazon-bedrock-runtime` and the id is `<geo>.openai.<family>` — the flat-id claim below was true of codex's OpenAI-compatible endpoint only, which no longer serves the default preset's model. The delivery mechanism (rewritten `--model` + `enableArgs`) stands.
+
 ## Context
 
 The Codex agent needed Amazon Bedrock support like Claude already had (provider registry in `src/shared/llm-provider.ts`). Claude's Bedrock integration delivers the pinned model via env (`CLAUDE_CODE_USE_BEDROCK=1` + `ANTHROPIC_MODEL`, `--model` omitted). Codex has no equivalent model env var, and its Bedrock model ids follow a different scheme.

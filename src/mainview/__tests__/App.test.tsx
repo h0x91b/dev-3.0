@@ -171,10 +171,10 @@ vi.mock("../labs/native-pane/NativePaneLayoutLab", () => ({
 vi.mock("../components/ProjectTerminal", () => ({
 	default: () => <div data-testid="project-terminal-screen" />,
 }));
-// The log's own data loading lives in agent-traffic-ui.test.tsx; here only its
-// mount/unmount around navigation matters.
-vi.mock("../components/agent-traffic/AgentTrafficLog", () => ({
-	default: () => <div data-testid="agent-traffic-log-dialog" />,
+// The screen's own data loading lives in agent-traffic-ui.test.tsx; here only
+// its routing matters.
+vi.mock("../components/agent-traffic/AgentTrafficScreen", () => ({
+	default: () => <div data-testid="agent-traffic-screen" />,
 }));
 vi.mock("../components/TaskImageViewer", () => ({
 	default: ({ initialIndex, newIds }: { initialIndex: number; newIds?: string[] }) => (
@@ -195,9 +195,11 @@ vi.mock("../confirm", () => ({
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 import { setStreamerMode } from "../streamer-mode";
-import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
+import { setAgentTrafficEnabledForTests, syncAgentTrafficFromGlobalSettings } from "../agent-traffic-flag";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../agent-traffic-events";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
+
 const mockedApplyZoom = vi.mocked(applyZoom);
 
 async function renderApp() {
@@ -852,6 +854,31 @@ describe("App keyboard shortcuts", () => {
 			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 		];
 
+	/**
+	 * Run `body` with the agent-traffic beta on, from two projects and a board route.
+	 * App feeds the module mirror from the loaded settings on mount, so the flag has
+	 * to be true in the settings the mock returns as well as in the mirror.
+	 */
+	async function withTrafficBeta(body: () => Promise<void>) {
+		setAgentTrafficEnabledForTests(true);
+		try {
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				experimentalAgentTraffic: true,
+			});
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+			await body();
+		} finally {
+			setAgentTrafficEnabledForTests(false);
+		}
+	}
+
 		// Task-view preservation is gated on the `dev3-task-open-mode` setting.
 		// Remove it between tests so the default ("split") applies unless a test opts in.
 		afterEach(() => {
@@ -947,36 +974,50 @@ describe("App keyboard shortcuts", () => {
 			expect(after).toHaveAttribute("data-task-view", "false");
 		});
 
-		// Regression: the traffic log covers the whole screen and survived every
-		// navigation, so Cmd+2 switched project *behind* it and read as a dead key.
-		it("closes the agent traffic log so the project it switched to is visible", async () => {
-			setAgentTrafficEnabledForTests(true);
-			try {
-				// App feeds the module mirror from the loaded settings on mount, so the
-				// beta has to be on in the settings the mock returns as well.
-				vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
-					defaultAgentId: "builtin-claude",
-					defaultConfigId: "claude-default",
-					taskSortOrder: "oldest-first",
-					updateChannel: "stable",
-					experimentalAgentTraffic: true,
-				});
-				vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-				vi.mocked(api.request.getLastRoute).mockResolvedValue({
-					route: JSON.stringify({ screen: "project", projectId: "p1" }),
-				});
-
+		// Agent traffic used to be an overlay that covered the whole screen and
+		// survived every navigation, so Cmd+2 switched project *behind* it and read
+		// as a dead key. As a route it simply gets replaced.
+		it("leaves the agent traffic screen when it switches project", async () => {
+			await withTrafficBeta(async () => {
 				await renderApp();
 				await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
-				expect(screen.getByTestId("agent-traffic-log-dialog")).toBeInTheDocument();
+				expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+				// The app header comes with the screen — the overlay had none. (The
+				// label is on both the <header> and its <nav>, hence the query.)
+				expect(document.querySelector('header[aria-label="Application header"]')).not.toBeNull();
 
 				await userEvent.keyboard("{Meta>}2{/Meta}");
 
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
-				expect(screen.queryByTestId("agent-traffic-log-dialog")).toBeNull();
-			} finally {
-				setAgentTrafficEnabledForTests(false);
-			}
+				expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+			});
+		});
+
+		it("steps back to where it was opened from, by shortcut and by Escape", async () => {
+			await withTrafficBeta(async () => {
+				await renderApp();
+				await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+				expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+				// The same key that opened it leaves it — what the overlay's toggle did.
+				await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+				expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+
+				await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+				expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+				await userEvent.keyboard("{Escape}");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+			});
+		});
+
+		it("navigates when any entry point fires the open event", async () => {
+			await withTrafficBeta(async () => {
+				await renderApp();
+				await act(async () => {
+					window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
+				});
+				expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+			});
 		});
 	});
 
@@ -1415,7 +1456,19 @@ describe("App keyboard shortcuts", () => {
 		afterEach(() => {
 			setStreamerMode(false);
 			delete document.documentElement.dataset.streamer;
+			setAgentTrafficEnabledForTests(false);
 		});
+
+		/** Flip the beta on the way production does: through the settings mirror. */
+		function enableTrafficBeta() {
+			act(() => {
+				syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: true });
+			});
+		}
+
+		function toastButton() {
+			return screen.findByRole("button", { name: "#7 Coordinator → #42 Receiver — check the payload" });
+		}
 
 		async function renderWithBoard() {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
@@ -1453,6 +1506,89 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
 			});
+		});
+
+		it("opens the traffic screen instead of the task when the beta is on", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+
+			await userEvent.click(await toastButton());
+
+			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+			// It is a route, not an overlay: the app header and Back come with it.
+			expect(document.querySelector('header[aria-label="Application header"]')).not.toBeNull();
+			// The fallback must NOT fire as well — that would navigate behind the screen.
+			expect(screen.queryByTestId("project-screen")).toBeNull();
+
+			// Back returns to where the click came from, in one press.
+			await userEvent.click(screen.getByRole("button", { name: /^Back/ }));
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+		});
+
+		// The toast outlives the toggle, so the destination cannot be captured when
+		// the toast is built — it has to be decided at click time.
+		it("follows a beta switched on after the toast was already on screen", async () => {
+			await renderWithBoard();
+			dispatchAgentMessage();
+			enableTrafficBeta();
+
+			await userEvent.click(await toastButton());
+
+			expect(screen.getByTestId("agent-traffic-screen")).toBeInTheDocument();
+		});
+
+		// The shortcut toggles the screen; a toast has nothing to toggle back to, so
+		// it stays put. Navigating again would push a second identical route and make
+		// the next Back press do nothing visible.
+		it("stays put, and adds no history entry, when the click lands on the screen itself", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+
+			dispatchAgentMessage();
+			await userEvent.click(await toastButton());
+
+			expect(screen.getAllByTestId("agent-traffic-screen")).toHaveLength(1);
+
+			// One Back leaves the screen. A duplicated entry would land on it again.
+			await userEvent.click(screen.getByRole("button", { name: /^Back/ }));
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+		});
+
+		// Keyboard parity: the toast's hit area is a real button, and Enter on it
+		// must reach the same destination a pointer click does.
+		it("opens the traffic screen from the keyboard too", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+
+			(await toastButton()).focus();
+			await userEvent.keyboard("{Enter}");
+
+			expect(screen.getByTestId("agent-traffic-screen")).toBeInTheDocument();
+		});
+
+		// An ordinary `dev3 notify` toast is not traffic — the beta must not steal
+		// its click away from the task it points at.
+		it("leaves an unrelated CLI toast pointing at its task", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+					detail: { taskId: "t-receiver", projectId: "p1", message: "build finished", level: "success" },
+				}));
+			});
+
+			await userEvent.click(await screen.findByRole("button", { name: /build finished/ }));
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
+			});
+			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 		});
 
 		it("drops the toast when the SENDER's project is sensitive on camera", async () => {

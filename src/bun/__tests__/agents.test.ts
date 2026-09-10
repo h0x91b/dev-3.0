@@ -193,14 +193,14 @@ describe("resolveAgentCommand — resume", () => {
 	it("Codex on Bedrock: keeps --model and appends the model_provider routing args", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: "openai.gpt-5.6-sol" }),
+			makeConfig({ model: "global.openai.gpt-5.6-sol" }),
 			makeCtx({ taskDescription: "Some task" }),
 			{ llmProvider: "bedrock-codex" },
 		);
 		// Codex has no model env var: the model rides the (rewritten) --model flag
 		// and the backend is selected via a -c config override.
-		expect(cmd).toContain("--model openai.gpt-5.6-sol");
-		expect(cmd).toContain(`-c 'model_provider="amazon-bedrock"'`);
+		expect(cmd).toContain("--model global.openai.gpt-5.6-sol");
+		expect(cmd).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
 	});
 
 	it("keeps --model when no provider is selected (native default)", () => {
@@ -1307,7 +1307,7 @@ describe("applyProviderModel — flag-delivered backends rewrite the model alias
 	it("rewrites a codex alias to the mapped Bedrock id", () => {
 		const config = makeConfig({ model: "gpt-5.6-sol" });
 		const result = applyProviderModel(config, codexOnBedrock());
-		expect(result?.model).toBe("openai.gpt-5.6-sol");
+		expect(result?.model).toBe("global.openai.gpt-5.6-sol");
 		// Original config is not mutated.
 		expect(config.model).toBe("gpt-5.6-sol");
 	});
@@ -1342,7 +1342,7 @@ describe("resolveLaunchConfig — the shared launch-time model pipeline", () => 
 		const agent = makeAgent({ baseCommand: "codex", llmProvider: "bedrock-codex" });
 		const config = makeConfig({ model: "gpt-5.6-sol" });
 		const result = resolveLaunchConfig(config, agent, "codex", {});
-		expect(result?.model).toBe("openai.gpt-5.6-sol");
+		expect(result?.model).toBe("global.openai.gpt-5.6-sol");
 	});
 
 	it("applies the session-env model override after the provider step (claude)", () => {

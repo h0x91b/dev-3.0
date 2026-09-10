@@ -165,11 +165,16 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 		onRespond(true, { variants, priority });
 	}
 
+	// The backdrop deliberately does not dismiss: a CLI is blocked on this answer,
+	// so a stray click on empty space must not decline someone's launch. Declining
+	// stays deliberate — the Decline button or Escape. Its only job is to swallow
+	// the press, which keeps focus on the autofocused Decline instead of dropping
+	// it on `body`.
 	return (
 		<div
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
 			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onRespond(false);
+				if (e.target === e.currentTarget) e.preventDefault();
 			}}
 		>
 			<div

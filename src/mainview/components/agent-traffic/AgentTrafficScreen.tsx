@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
 import { useLocale, useT, type TranslationKey } from "../../i18n";
-import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { getOverlayLayerElements } from "../../utils/overlay-layers";
 import { isTypingContext } from "../../utils/typing-context";
-import { useFocusTrap } from "../../utils/useFocusTrap";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
 import Select from "../Select";
 import { AgentTrafficIcon } from "../HeaderIcons";
-import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
 import TrafficPlayback from "./TrafficPlayback";
@@ -34,12 +31,16 @@ import {
 	routeKey,
 	type TrafficRecord,
 } from "./traffic-model";
+import {
+	buildTimeline,
+	type TrafficTimelineEvent,
+} from "./traffic-timeline";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
 interface Props {
+	/** The project the user came from; seeds the scope filter, nothing else. */
 	projectId: string | null;
-	onClose: () => void;
 	onOpenTask: (taskId: string, projectId: string) => void;
 }
 const runtimeKeys = {
@@ -63,54 +64,19 @@ const verdictKey = (status: string): TranslationKey => {
 	}
 };
 
-export default function AgentTrafficLog(props: Props) {
-	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const t = useT();
-	const body = <TrafficView {...props} />;
-	return narrow ? (
-		<BottomSheet
-			open
-			onClose={props.onClose}
-			title={t("traffic.label")}
-			testId="agent-traffic-log-sheet"
-		>
-			<div className="traffic-sheet">{body}</div>
-		</BottomSheet>
-	) : (
-		createPortal(
-			<TrafficDialog onClose={props.onClose}>{body}</TrafficDialog>,
-			document.body,
-		)
-	);
-}
-
-function TrafficDialog({
-	children,
-	onClose,
-}: {
-	children: React.ReactNode;
-	onClose: () => void;
-}) {
-	const t = useT();
-	const ref = useFocusTrap<HTMLDivElement>();
-	useEscapeKey(onClose);
+/**
+ * The Agent traffic screen: one routed destination, the same on every width.
+ *
+ * It used to be a modal dialog (a portal, a focus trap, an Escape-dismiss and a
+ * BottomSheet on phones), which cost it the app header, Back/Forward and a screen
+ * path in analytics. It is a route now — the shell above it is the ordinary one,
+ * so this component owns nothing but its own content.
+ */
+export default function AgentTrafficScreen(props: Props) {
 	return (
-		<div
-			className="traffic-backdrop"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget) onClose();
-			}}
-		>
-			<div
-				ref={ref}
-				tabIndex={-1}
-				role="dialog"
-				aria-modal="true"
-				aria-label={t("traffic.label")}
-				className="traffic-dialog"
-				data-testid="agent-traffic-log-dialog"
-			>
-				{children}
+		<div className="traffic-screen" data-testid="agent-traffic-screen">
+			<div className="traffic-frame">
+				<TrafficView {...props} />
 			</div>
 		</div>
 	);
@@ -183,10 +149,164 @@ function ExperimentPicker({
 	);
 }
 
-function TrafficView({ projectId, onClose, onOpenTask }: Props) {
+/**
+ * The kinds of event the replay timeline carries.
+ *
+ * A superset of `TrafficTimelineEventKind`, which the timeline now carries for
+ * real: `task` and `message` are events, `notification` is a control value with
+ * no arm behind it yet. The two coincide the moment the notification arm lands,
+ * and this alias goes away then — the widened kind is why it cannot go away now.
+ *
+ * The LEVEL axis's VALUES, order and `traffic.notification.level.*` keys belong to
+ * Seq 1825 and are deliberately not restated here — but its LAYOUT is this
+ * screen's, and it is built: see {@link FilterAxes}, which lays out any number of
+ * axes identically. The level axis is one {@link FilterAxis} object away, and that
+ * object is assembled from their exports, not from a copy of them.
+ */
+type TimelineKind = "task" | "message" | "notification";
+const ALL_KINDS: readonly TimelineKind[] = ["task", "message", "notification"];
+
+const KIND_LABEL: Record<TimelineKind, TranslationKey> = {
+	task: "traffic.kind.task",
+	message: "traffic.kind.message",
+	notification: "traffic.kind.notification",
+};
+
+/**
+ * The kinds this window can offer a control over — **never** the kinds currently
+ * selected, and never the kinds left visible after filtering.
+ *
+ * The distinction is the whole safety of the control: derive it from the filtered
+ * timeline and a reader who narrows to one kind watches the group collapse to one
+ * option, or vanish, taking with it the only way back. Availability is a property
+ * of the window; selection is a property of the reader.
+ *
+ * Takes the window's PRE-filter union and returns the kinds present in it. Never
+ * the selection: narrowing must not remove the control that undoes the narrowing.
+ */
+export function availableKinds(
+	timeline: readonly TrafficTimelineEvent[],
+): ReadonlySet<TimelineKind> {
+	return new Set(timeline.map((event) => event.kind));
+}
+
+/**
+ * One filter axis, described without naming its vocabulary.
+ *
+ * `values` and `labelKey` are supplied by whoever owns the axis — the kind axis
+ * fills them in from this file, the level axis from Seq 1825's
+ * `NOTIFICATION_LEVELS` and `notificationLevelKey`. Nothing about a level is
+ * declared here, and the layout does not care which axis it is drawing.
+ *
+ * `selected` may be null, meaning "everything", so an axis can be laid out before
+ * its values are known and a default never has to be spelled out twice.
+ */
+export interface FilterAxis {
+	id: string;
+	label: string;
+	values: readonly string[];
+	labelKey: (value: string) => TranslationKey;
+	selected: ReadonlySet<string> | null;
+	onChange: (next: ReadonlySet<string>) => void;
+}
+
+/**
+ * Every filter axis, laid out as one run of groups in the toolbar.
+ *
+ * An axis appears only when the window can offer more than one of its values:
+ * a toggle over a value that cannot occur is a dead control, and a one-option
+ * group is noise. Availability is computed pre-filter ({@link availableKinds}),
+ * so narrowing the selection never removes the control that would undo it.
+ */
+export function FilterAxes({ axes }: { axes: readonly FilterAxis[] }) {
+	return (
+		<>
+			{axes
+				.filter((axis) => axis.values.length > 1)
+				.map((axis) => (
+					<FilterToggles
+						key={axis.id}
+						label={axis.label}
+						values={axis.values}
+						selected={axis.selected ?? new Set(axis.values)}
+						labelKey={axis.labelKey}
+						onChange={axis.onChange}
+						testIdPrefix={`traffic-${axis.id}`}
+					/>
+				))}
+		</>
+	);
+}
+
+/**
+ * A multi-select row of toggles for one filter axis, shaped like the existing
+ * toolbar segments.
+ *
+ * Never a radiogroup: the axes are independent sets, and turning two kinds off is
+ * a normal thing to want. The last enabled value cannot be turned off — an empty
+ * axis is "show nothing", which the reader would have to undo by guessing which
+ * control did it.
+ */
+function FilterToggles({
+	label,
+	values,
+	selected,
+	labelKey,
+	onChange,
+	testIdPrefix,
+}: {
+	label: string;
+	values: readonly string[];
+	selected: ReadonlySet<string>;
+	labelKey: (value: string) => TranslationKey;
+	onChange: (next: ReadonlySet<string>) => void;
+	testIdPrefix: string;
+}) {
+	const t = useT();
+	return (
+		<div className="traffic-toggles" role="group" aria-label={label}>
+			{values.map((value) => {
+				const on = selected.has(value);
+				return (
+					<button
+						key={value}
+						type="button"
+						aria-pressed={on}
+						disabled={on && selected.size === 1}
+						data-testid={`${testIdPrefix}-${value}`}
+						onClick={() => {
+							const next = new Set(selected);
+							if (on) next.delete(value);
+							else next.add(value);
+							if (next.size) onChange(next);
+						}}
+					>
+						{t(labelKey(value))}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
+/**
+ * The window a fresh entry to the screen picks, and nothing else.
+ *
+ * An hour, because the question the screen answers on arrival is "what did my
+ * agents just say to each other" — replaying a whole day is minutes of watching
+ * before the cursor reaches anything recent. The period picker names it on
+ * screen, wider windows are one click away, and a calendar day still loads
+ * retained history. `Live` deliberately keeps returning to its own 24 hours:
+ * that control is not part of the entry rule.
+ */
+const ENTRY_WINDOW = "hour";
+/** What `Live` returns to — unchanged, and deliberately not {@link ENTRY_WINDOW}. */
+const LIVE_WINDOW = "day";
+
+function TrafficView({ projectId, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
-	const [windowSize, setWindowSize] = useState("day");
+	const [windowSize, setWindowSize] = useState(ENTRY_WINDOW);
 	const now = Date.now();
 	const { start, end } = trafficPeriodBounds(windowSize, now);
 	const calendarDay = isCalendarDay(windowSize);
@@ -198,6 +318,9 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	const [pair, setPair] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState("all");
+	// `delivery` (above) governs messages only and `kinds` governs every event, so
+	// a message filter can never silently swallow a notification.
+	const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(() => new Set(ALL_KINDS));
 	const [until, setUntil] = useState<number | null>(null);
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
@@ -246,9 +369,36 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 			),
 		[records, start, end, until, experiment],
 	);
+	const showMessages = kinds.has("message");
+	const scopedAllTasks = useMemo(
+		() => (scope === "all" ? data.tasks : data.tasks.filter((task) => task.projectId === scope)),
+		[data.tasks, scope],
+	);
+	/**
+	 * What the window CAN carry, before any filter runs.
+	 *
+	 * Availability must never depend on the filter: derive it from the filtered
+	 * timeline and turning a kind off removes the very control that turns it back
+	 * on, stranding the reader with data they cannot restore.
+	 */
+	const availableTimeline = useMemo(
+		() =>
+			buildTimeline({
+				records: timeRows,
+				tasks: scopedAllTasks,
+				start,
+				end,
+			}),
+		[timeRows, scopedAllTasks, start, end],
+	);
+	const kindsPresent = useMemo(
+		() => availableKinds(availableTimeline),
+		[availableTimeline],
+	);
+
 	const replayRecords = useMemo(
 		() =>
-			timeRows.filter(
+			(showMessages ? timeRows : []).filter(
 				({ row }) =>
 					(filter === "all" || row.status === filter) &&
 					(!pair || routeKey(row) === pair) &&
@@ -256,24 +406,54 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 						.toLocaleLowerCase()
 						.includes(query.toLocaleLowerCase()),
 			),
-		[timeRows, filter, pair, query],
+		[timeRows, showMessages, filter, pair, query],
 	);
+	// Recorded task movements ride the same timeline as messages, so an hour
+	// where the board moved and nobody said anything still has steps to play. The
+	// window bounds are applied inside the builder so every arm is clipped by exactly
+	// the same interval rather than each caller being trusted to have done it.
+	const timeline = useMemo(
+		() =>
+			buildTimeline({
+				records: replayRecords,
+				tasks: scopedAllTasks,
+				start,
+				end,
+			}).filter((event) => kinds.has(event.kind)),
+		// `delivery: "all"` because `replayRecords` already applied it to the message
+		// arm along with pair and query; running it twice would be the same answer.
+		[replayRecords, scopedAllTasks, start, end, kinds],
+	);
+	// A filter hiding everything and an empty window are different answers, and the
+	// entry window is one hour — on a quiet morning it is legitimately empty.
+	const filtering =
+		filter !== "all" ||
+		Boolean(pair) ||
+		query.trim().length > 0 ||
+		kinds.size < ALL_KINDS.length;
+	// Every filter input belongs in this key: changing one changes the timeline's
+	// length, and a cursor that survives that points at an event which is no longer
+	// there. Field order matches the key Seq 1823 assembles at integration.
+	const kindKey = [...kinds].sort().join(",");
 	const playback = useTrafficPlayback(
-		replayRecords,
+		timeline,
 		experiment === "2",
-		`${scope}:${windowSize}:${filter}:${pair}:${query}`,
+		`${scope}:${windowSize}:${filter}:${kindKey}:${pair}:${query}`,
 	);
 	const graphRecords =
 		playback.index < 0
 			? replayRecords
-			: playback.events.slice(0, playback.index + 1);
+			: playback.events
+					.slice(0, playback.index + 1)
+					.flatMap((event) => (event.kind === "message" ? [event.record] : []));
+	const cursorAt = playback.cursor.at;
 	const visible = useMemo(
 		() =>
-			timeRows.filter(({ row }) => {
+			(showMessages ? timeRows : []).filter(({ row }) => {
 				if (
 					experiment === "2" &&
-					playback.current &&
-					Date.parse(row.at) > Date.parse(playback.current.row.at)
+					cursorAt !== null &&
+					Date.parse(row.at) > cursorAt
 				)
 					return false;
 				if (filter !== "all" && row.status !== filter) return false;
@@ -284,7 +464,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					.toLocaleLowerCase()
 					.includes(query.toLocaleLowerCase());
 			}),
-		[timeRows, filter, pair, selected, query, experiment, playback.current],
+		[timeRows, showMessages, filter, pair, selected, query, experiment, cursorAt],
 	);
 	const nodes = useMemo(() => {
 		const endpoints = new Set(
@@ -332,6 +512,50 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 	useEffect(() => {
 		markTrafficSeen();
 	}, []);
+	// Autoplay the trailing hour ONCE per entry to this screen.
+	//
+	// The ref, not a piece of state, is what makes "once" true: the window's start
+	// slides with the clock and a live append arrives at any moment, so an effect
+	// keyed off the data would restart the replay under the user's cursor — and a
+	// manual pause has to stand. It arms on the first render where the load has
+	// settled, INCLUDING a settled load that found nothing, so an empty window
+	// stays parked instead of springing to life when the next event lands. Reduced
+	// motion keeps the cursor at the start of the window and skips the playing.
+	//
+	// It counts `playback.events`, not the message list: an hour with no messages
+	// but with recorded task movements is NOT an empty window, and this replays it.
+	//
+	// The load gate below covers both arms the timeline has — messages and tasks
+	// both come from `data`. A notification arm would add a third, and its settled
+	// signal must read Seq 1825's `status === "ready" || status === "failed"` — NOT
+	// `!notifications.loading`, which is true before the first read has even been
+	// asked for and would arm this one-shot latch on a stream that never came.
+	const reducedMotion = useReducedMotion();
+	const autoplayed = useRef(false);
+	const enterReplay = useRef(startEntryReplay);
+	enterReplay.current = startEntryReplay;
+	const eventCount = playback.events.length;
+	useEffect(() => {
+		if (autoplayed.current || experiment !== "2") return;
+		if (data.loading || data.historyLoading) return;
+		autoplayed.current = true;
+		if (!eventCount) return;
+		enterReplay.current(reducedMotion);
+	}, [experiment, data.loading, data.historyLoading, eventCount, reducedMotion]);
+
+	/**
+	 * Put the cursor on the first event of the entry window and start playing (or,
+	 * under reduced motion, just park it there).
+	 *
+	 * `seekToTime` rather than `seek(0)`: it lands on the first event at or after
+	 * the window's start and returns false without moving anything when every
+	 * recorded event precedes it. A clamp to the newest event would turn "nothing
+	 * happened in this hour" into "the hour started here", which is the reading the
+	 * empty-window rule exists to prevent.
+	 */
+	function startEntryReplay(parkOnly: boolean) {
+		playback.seekToTime(start, !parkOnly);
+	}
 	// Space toggles the replay, the way it does in a media player — same action as
 	// the transport's Play/Pause button, including its restart-when-finished
 	// semantics. Hand-written and non-remappable: `Space` is a `RESERVED_CODE` in
@@ -481,21 +705,33 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 							{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
 						</button>
 					)}
-					<button
-						onClick={onClose}
-						aria-label={t("common.close")}
-						title={t("common.close")}
-					>
-						×
-					</button>
 				</div>
 			</header>
 			<div className="traffic-toolbar">
+				{/* One control per axis, in the toolbar the other view controls already
+				    live in — never a second filter cluster. It renders only once the
+				    timeline can actually carry more than one kind: a toggle over a kind
+				    that cannot occur is a dead control, and a one-option group is noise.
+				    Seq 1825's level group joins it here on the same terms. */}
+				{experiment === "2" && (
+					<FilterAxes
+						axes={[
+							{
+								id: "kind",
+								label: t("traffic.filter.kinds"),
+								values: ALL_KINDS.filter((kind) => kindsPresent.has(kind)),
+								labelKey: (value) => KIND_LABEL[value as TimelineKind],
+								selected: kinds,
+								onChange: (next) => setKinds(next as ReadonlySet<TimelineKind>),
+							},
+						]}
+					/>
+				)}
 				<ExperimentPicker
 					value={experiment}
 					onChange={(value) => {
 						choose(value);
-						if (value === "1" && calendarDay) setWindowSize("day");
+						if (value === "1" && calendarDay) setWindowSize(LIVE_WINDOW);
 					}}
 				/>
 				{experiment === "2" && narrowControls ? (
@@ -531,7 +767,15 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 						{data.projects.find((project) => project.id === scope)?.name ??
 							t("traffic.orbit.allProjects")}
 					</strong>
-					<p>{t("traffic.orbit.currentTasks")}</p>
+					{/* Only a live cursor rebuilds anything: Experiment 1 has none at
+					    all, and Experiment 2 on Live is showing the board as it is. Both
+					    of those really are current, and claiming otherwise would be a lie
+					    on screen in the opposite direction. */}
+					<p>
+						{experiment === "2" && playback.cursor.at !== null
+							? t("traffic.replay.reconstructedTasks")
+							: t("traffic.orbit.currentTasks")}
+					</p>
 				</div>
 				<div className="traffic-stat">
 					<b>
@@ -591,6 +835,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 					{experiment === "2" ? (
 						<TrafficPlayback
 							loading={data.loading || data.historyLoading}
+							emptyKey={filtering ? "traffic.noneMatch" : "traffic.emptyWindow"}
 							playback={playback}
 							onInspect={(key) => {
 								setRecordKey(key);
@@ -598,7 +843,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 							}}
 							historical={calendarDay}
 							onLive={() => {
-								setWindowSize("day");
+								setWindowSize(LIVE_WINDOW);
 								setFollowRequest((value) => value + 1);
 								playback.live();
 							}}
@@ -865,7 +1110,7 @@ function TrafficView({ projectId, onClose, onOpenTask }: Props) {
 										<p className="traffic-empty">
 											{data.loading
 												? t("traffic.loading")
-												: t("traffic.noneMatch")}
+												: t(filtering ? "traffic.noneMatch" : "traffic.emptyWindow")}
 										</p>
 									)
 								) : (

@@ -635,6 +635,17 @@ describe("analyticsLocationForRoute", () => {
 		expect(a).toBe(b);
 	});
 
+	// The traffic route carries the project the user came from as a scope seed, so
+	// the guard above has to hold for a field that is NOT called projectId too.
+	it("gives the agent traffic screen one fixed path, scope seed or not", () => {
+		const bare = analyticsLocationForRoute({ screen: "agent-traffic" });
+		const scoped = analyticsLocationForRoute({ screen: "agent-traffic", scopeProjectId: "p1" });
+		expect(bare.path).toBe("/app/agent-traffic");
+		expect(scoped.path).toBe(bare.path);
+		expect(scoped.screen).toBe("agent-traffic");
+		expect(JSON.stringify(scoped)).not.toContain("p1");
+	});
+
 	it("falls back to a generic /app hit for an unknown route", () => {
 		const loc = analyticsLocationForRoute({ screen: "totally-new" } as unknown as Route);
 		expect(loc.path).toBe("/app");
@@ -663,6 +674,23 @@ describe("trackPageView / trackDiffView", () => {
 		expect(hit.events[0].name).toBe("page_view");
 		expect(hit.events[0].params.page_location).toBe("https://dev3.local/app/project/task");
 		expect(hit.events[0].params.page_title).toBe("Task");
+	});
+
+	it("emits the traffic screen's page_view with no scope id in it", () => {
+		trackPageView({ screen: "agent-traffic", scopeProjectId: "proj-secret" });
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].params.page_location).toBe("https://dev3.local/app/agent-traffic");
+		expect(JSON.stringify(hit)).not.toContain("proj-secret");
+	});
+
+	it("sends nothing for the traffic screen once telemetry is opted out", () => {
+		setRuntimeTelemetryOptOut(true);
+		try {
+			trackPageView({ screen: "agent-traffic", scopeProjectId: "proj-secret" });
+			expect(gaHits(fetchMock)).toHaveLength(0);
+		} finally {
+			setRuntimeTelemetryOptOut(false);
+		}
 	});
 
 	it("emits a diff page_view under /app/project/diff", () => {

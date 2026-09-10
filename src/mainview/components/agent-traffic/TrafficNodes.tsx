@@ -21,12 +21,17 @@ import {
 	type PlacedNode,
 } from "./nodes-layout";
 import {
+	projectTaskAt,
+	type TaskProjection,
+} from "./task-history";
+import {
 	fromKey,
 	nodeSeq,
 	toKey,
 	type TrafficNode,
 	type TrafficRecord,
 } from "./traffic-model";
+import type { TrafficTimelineEvent } from "./traffic-timeline";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
@@ -69,6 +74,17 @@ const DROP_FADE_MS = 200;
 const FOLLOW_IDLE_MS = 3500;
 const MIN_SCALE = 0.14;
 
+/** Latest message on the timeline, for the camera and the wire that only speak messages. */
+function lastMessageRecord(
+	events?: TrafficTimelineEvent[],
+): TrafficRecord | undefined {
+	for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+		const event = events![i];
+		if (event.kind === "message") return event.record;
+	}
+	return undefined;
+}
+
 export default function TrafficNodes({
 	nodes,
 	records,
@@ -93,21 +109,41 @@ export default function TrafficNodes({
 	const [follow, setFollow] = useState(true);
 	const [pendingFocus, setPendingFocus] = useState<string | null>(null);
 	const replaying = !!playback && playback.index >= 0;
+	// The cursor is the ONLY input to the historical projection, and the projection
+	// is a pure function of it — which is what makes scrubbing backwards reverse the
+	// stage exactly, with no accumulated state to unwind. Deliberately NOT folded
+	// into `nodes` upstream: the layout must stay frozen while cards appear, so
+	// `scene` keeps depending on the full node set and only Card props move.
+	const cursorAt = playback?.cursor.at ?? null;
+	const projections = useMemo(() => {
+		const result = new Map<string, TaskProjection>();
+		for (const node of nodes)
+			result.set(node.key, projectTaskAt(node.task, cursorAt));
+		return result;
+	}, [nodes, cursorAt]);
+	// Every card the timeline touches, whichever kind of event touched it: a task
+	// event names its own card, a message names both ends.
 	const replayKeys = new Set(
 		replaying
-			? playback.events.flatMap((record) => [
-					fromKey(record.row),
-					toKey(record.row),
-				])
+			? playback.events.flatMap((event) =>
+					event.kind === "message"
+						? [fromKey(event.record.row), toKey(event.record.row)]
+						: [event.nodeKey],
+				)
 			: [],
 	);
 	const followedRecord = follow
-		? (playback?.current ?? playback?.events[playback.events.length - 1])
+		? (playback?.currentRecord ?? lastMessageRecord(playback?.events))
 		: undefined;
+	const followedTaskKey =
+		follow && playback?.current?.kind === "task"
+			? playback.current.nodeKey
+			: undefined;
 	const replayParked = nodes.some(
 		(node) =>
 			node.task?.hibernated &&
 			(replayKeys.has(node.key) ||
+				node.key === followedTaskKey ||
 				(followedRecord &&
 					[fromKey(followedRecord.row), toKey(followedRecord.row)].includes(
 						node.key,
@@ -302,6 +338,26 @@ export default function TrafficNodes({
 		[nodeByKey, edgeByKey, move, reduced, sceneBounds, playback?.playing, playback?.intervalMs],
 	);
 
+	/**
+	 * Frame one card, for a timeline step that names a card rather than a pair — a
+	 * recorded board movement. Same camera helper as `exchange`, so a task step and
+	 * a message step move the view in the same way rather than two ways.
+	 */
+	const frameCard = useCallback(
+		(nodeKey: string) => {
+			const viewport = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
+			const node = nodeByKey.get(nodeKey);
+			if (!viewport.width || !viewport.height || !node) return;
+			overviewMode.current = false;
+			move(
+				frameExchange(viewport, [node], [], sceneBounds),
+				reduced,
+				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
+			);
+		},
+		[nodeByKey, move, reduced, sceneBounds, playback?.playing, playback?.intervalMs],
+	);
+
 	const launch = useCallback(
 		(record: TrafficRecord) => {
 			const from = fromKey(record.row),
@@ -320,22 +376,32 @@ export default function TrafficNodes({
 	launchRef.current = launch;
 	const exchangeRef = useRef(exchange);
 	exchangeRef.current = exchange;
+	const frameCardRef = useRef(frameCard);
+	frameCardRef.current = frameCard;
 	resizeFollow.current = follow && ready ? () => {
 		if (overviewMode.current || !followedRecord) fitRef.current(true);
 		else exchange(followedRecord);
 	} : null;
 	useEffect(() => {
 		setFlights([]);
-		if (!playback?.current) return;
-		launchRef.current(playback.current);
+		// Only a message flies. A task step legitimately launches nothing, and must
+		// not re-fly the previous message.
+		if (playback?.current?.kind !== "message") return;
+		launchRef.current(playback.current.record);
 	}, [playback?.revision, replaying]);
 	useEffect(() => {
 		if (!follow) return;
 		if (!ready) return;
-		const event =
-			playback?.current ?? playback?.events[playback.events.length - 1];
-		if (event && (replaying || Date.now() - Date.parse(event.row.at) < FOLLOW_IDLE_MS)) {
-			exchangeRef.current(event);
+		const current = playback?.current;
+		if (current?.kind === "task") {
+			frameCardRef.current(current.nodeKey);
+			return;
+		}
+		const event = current ?? playback?.events[playback.events.length - 1];
+		const record =
+			event?.kind === "message" ? event.record : lastMessageRecord(playback?.events);
+		if (event && record && (replaying || Date.now() - event.at < FOLLOW_IDLE_MS)) {
+			exchangeRef.current(record);
 		} else {
 			overviewMode.current = true;
 			fitRef.current();
@@ -372,7 +438,7 @@ export default function TrafficNodes({
 		if (!follow || !ready || (replaying && !playback?.playing && !playback?.ended)) return;
 		const latest = playback?.events[playback.events.length - 1];
 		const delay = playback?.ended || !latest ? 0 : replaying ? FOLLOW_IDLE_MS :
-			Math.max(0, FOLLOW_IDLE_MS - (Date.now() - Date.parse(latest.row.at)));
+			Math.max(0, FOLLOW_IDLE_MS - (Date.now() - latest.at));
 		const timer = setTimeout(() => {
 			overviewMode.current = true;
 			fitRef.current();
@@ -439,7 +505,13 @@ export default function TrafficNodes({
 		});
 	};
 	const drag = useRef<{ id: number; x: number; y: number } | null>(null);
-	const active = playback?.ended ? undefined : playback?.current ?? flights[flights.length - 1]?.record;
+	// The lit wire and its subject bubble are message-only. On a task step the wire
+	// that was lit stays lit rather than blanking, and no new one lights up.
+	const active = playback?.ended
+		? undefined
+		: playback?.current?.kind === "message"
+			? playback.current.record
+			: (playback?.currentRecord ?? flights[flights.length - 1]?.record);
 	const activeFrom = active && fromKey(active.row),
 		activeTo = active && toKey(active.row);
 	const activeEdge =
@@ -585,40 +657,51 @@ export default function TrafficNodes({
 					})}
 				</svg>
 				<div className="traffic-nodes-cards">
-					{scene.placed.map((placed) => (
-						<Card
-							key={placed.node.key}
-							placed={placed}
-							messageCount={messageCounts.get(placed.node.key) ?? 0}
-							selected={selected === placed.node.key}
-							dim={
-								selected !== null &&
-								selected !== placed.node.key &&
-								!scene.edges.some(
-									(e) =>
-										(e.from === selected && e.to === placed.node.key) ||
-										(e.to === selected && e.from === placed.node.key),
-								)
-							}
-							active={
-								activeFrom === placed.node.key || activeTo === placed.node.key
-							}
-							scale={view.scale}
-							statusColor={
-								placed.node.task ? colors[placed.node.task.status] : undefined
-							}
-							inkColor={
-								placed.node.task ? ink[placed.node.task.status] : undefined
-							}
-							project={projectById.get(placed.node.projectId)}
-							latest={latest.get(placed.node.key)}
-							onSelect={(key) => {
-								manual();
-								onSelect(key);
-							}}
-							onFocus={focus}
-						/>
-					))}
+					{scene.placed.map((placed) => {
+						const projection =
+							projections.get(placed.node.key) ??
+							projectTaskAt(placed.node.task, cursorAt);
+						return (
+							<Card
+								key={placed.node.key}
+								placed={placed}
+								messageCount={messageCounts.get(placed.node.key) ?? 0}
+								selected={selected === placed.node.key}
+								dim={
+									selected !== null &&
+									selected !== placed.node.key &&
+									!scene.edges.some(
+										(e) =>
+											(e.from === selected && e.to === placed.node.key) ||
+											(e.to === selected && e.from === placed.node.key),
+									)
+								}
+								active={
+									activeFrom === placed.node.key ||
+									activeTo === placed.node.key
+								}
+								scale={view.scale}
+								projection={projection}
+								replaying={replaying}
+								// A null status leaves both undefined, so the card falls back
+								// to the neutral tertiary ink. An unknown past must never be
+								// painted in a status colour.
+								statusColor={
+									projection.status ? colors[projection.status] : undefined
+								}
+								inkColor={
+									projection.status ? ink[projection.status] : undefined
+								}
+								project={projectById.get(placed.node.projectId)}
+								latest={latest.get(placed.node.key)}
+								onSelect={(key) => {
+									manual();
+									onSelect(key);
+								}}
+								onFocus={focus}
+							/>
+						);
+					})}
 				</div>
 			</div>
 			{active && labelPoint && (
@@ -701,7 +784,14 @@ export default function TrafficNodes({
 					{t("traffic.nodes.follow")}
 				</button>
 			</div>
-			<p className="traffic-map-caption">{t("traffic.nodes.legend")}</p>
+			<p className="traffic-map-caption">
+				{t("traffic.nodes.legend")}
+				{/* The movement log records creation, status and custom-column moves and
+				    nothing else, so these three dimensions are the CURRENT ones on a
+				    replayed card. Said once on the stage rather than as a per-card badge
+				    the log has nothing per-card to justify. */}
+				{replaying && ` · ${t("traffic.nodes.currentOnlyDimensions")}`}
+			</p>
 		</div>
 	);
 }
@@ -713,6 +803,8 @@ function Card({
 	dim,
 	active,
 	scale,
+	projection,
+	replaying,
 	statusColor,
 	inkColor,
 	project,
@@ -726,6 +818,8 @@ function Card({
 	dim: boolean;
 	active: boolean;
 	scale: number;
+	projection: TaskProjection;
+	replaying: boolean;
 	statusColor?: string;
 	inkColor?: string;
 	project?: {
@@ -739,20 +833,44 @@ function Card({
 }) {
 	const t = useT();
 	const { node } = placed;
+	// Every status the card shows comes from the projection, never from
+	// `node.task.status` — reading the live status here is exactly the bug.
 	const finished =
-		node.task?.status === "completed" || node.task?.status === "cancelled"
-			? node.task.status
+		projection.status === "completed" || projection.status === "cancelled"
+			? projection.status
 			: null;
 	const state = placed.parked
 		? t("task.hibernatedBadge")
-		: node.task
-			? getStatusLabel(node.task.status, t, project)
-			: t("traffic.orbit.historical");
+		: projection.status
+			? getStatusLabel(projection.status, t, project)
+			: node.task
+				? // Known to be a task, unknown what state it was in. Said plainly
+					// instead of borrowing today's status for the past.
+					t("traffic.node.statusUnrecorded")
+				: t("traffic.orbit.historical");
+	// Kept in the DOM at its frozen position so cards appear without the layout
+	// reflowing around them; hidden from the accessibility tree and untabbable
+	// while it has not happened yet.
+	const unborn = !projection.present;
+	// Only worth saying while a cursor is claiming to show the past. A task whose
+	// history predates capture, or whose earliest moves were evicted by the cap,
+	// must say so rather than let the live status read as a reconstruction.
+	const limited = replaying && node.task && projection.confidence !== "recorded"
+		? projection.confidence
+		: null;
+	const limitedLabel =
+		limited === "unrecorded"
+			? t("traffic.node.historyUnrecorded")
+			: limited === "partial"
+				? t("traffic.node.historyPartial")
+				: null;
 	return (
 		<button
 			type="button"
 			data-testid="traffic-node-card"
-			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""}`}
+			data-history={limited ?? undefined}
+			data-unborn={unborn ? "true" : undefined}
+			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""}`}
 			style={{
 				left: placed.x,
 				top: placed.y,
@@ -762,10 +880,12 @@ function Card({
 				["--node-ink" as string]: inkColor ?? "rgb(var(--text-tertiary))",
 				["--node-inverse" as string]: 1 / scale,
 			}}
-			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}`}
+			aria-hidden={unborn || undefined}
+			tabIndex={unborn ? -1 : undefined}
+			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}${limitedLabel ? ` · ${limitedLabel}` : ""}`}
 			aria-pressed={selected}
-			onClick={() => onSelect(node.key)}
-			onDoubleClick={() => onFocus(node.key)}
+			onClick={() => !unborn && onSelect(node.key)}
+			onDoubleClick={() => !unborn && onFocus(node.key)}
 		>
 			<span className="traffic-node-full">
 				<span className="traffic-node-head">
@@ -779,14 +899,20 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				<span className="traffic-node-state">
-					{finished === "completed"
-						? "✓ "
-						: finished === "cancelled"
-							? "× "
-							: ""}
-					{state}
-				</span>
+				{finished ? (
+					<span className={`traffic-node-stamp is-${finished}`}>
+						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
+						{state}
+					</span>
+				) : (
+					<span className="traffic-node-state">{state}</span>
+				)}
+				{limitedLabel && (
+					<span className="traffic-node-history">
+						<TrafficIcon name="unknown" />
+						{limitedLabel}
+					</span>
+				)}
 				<span className="traffic-node-overview streamer-private">
 					{(node.task && getTaskOverview(node.task)) ||
 						t("traffic.orbit.noOverview")}
@@ -805,10 +931,14 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				<span className="traffic-node-state">
-					{finished === "completed" ? "✓ " : ""}
-					{state}
-				</span>
+				{finished ? (
+					<span className={`traffic-node-stamp is-${finished}`}>
+						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
+						{state}
+					</span>
+				) : (
+					<span className="traffic-node-state">{state}</span>
+				)}
 			</span>
 		</button>
 	);
