@@ -10,7 +10,6 @@ import { useReducedMotion } from "../../utils/useReducedMotion";
 import { getStatusLabel } from "../../utils/statusLabel";
 import BottomSheet from "../BottomSheet";
 import Select from "../Select";
-import { AgentTrafficIcon } from "../HeaderIcons";
 import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
 import TrafficPlayback from "./TrafficPlayback";
@@ -658,6 +657,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			</button>
 		);
 	}
+	const liveLabel =
+		data.loading || data.historyLoading
+			? t("traffic.loading")
+			: (experiment === "2" ? playback.index < 0 && !calendarDay : until === null)
+				? t("traffic.orbit.live")
+				: t("traffic.orbit.history");
 	const filters = (
 		<>
 			<Select
@@ -708,46 +713,6 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			<span className="sr-only" role="status">
 				{t.plural("traffic.orbit.messageCount", visible.length)}
 			</span>
-			<header className="traffic-header">
-				<AgentTrafficIcon className="w-5 h-5 text-agent" />
-				<h2>{t("traffic.label")}</h2>
-				<div className="traffic-header-tail">
-					<span className="traffic-live" role="status">
-						{data.loading || data.historyLoading
-							? t("traffic.loading")
-							: (
-										experiment === "2"
-											? playback.index < 0 && !calendarDay
-											: until === null
-								  )
-								? t("traffic.orbit.live")
-								: t("traffic.orbit.history")}
-					</span>
-					{experiment === "2" && (
-						<button
-							className="traffic-replay-start"
-							onClick={() => {
-								clearSelection();
-								setShowInspector(false);
-								setFollowRequest((value) => value + 1);
-								playback.restart();
-							}}
-							disabled={!playback.events.length}
-						>
-							<TrafficIcon name="replay" />
-							{t("traffic.replay.restart")}
-						</button>
-					)}
-					{experiment === "1" && (
-						<button
-							onClick={() => setPaused((value) => !value)}
-							aria-pressed={paused}
-						>
-							{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
-						</button>
-					)}
-				</div>
-			</header>
 			<div className="traffic-toolbar">
 				{/* One control per axis, in the toolbar the other view controls already
 				    live in — never a second filter cluster. It renders only once the
@@ -791,6 +756,40 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 						{t("traffic.orbit.messages")}
 					</button>
 				)}
+				{/* The route's breadcrumb already names this screen, so it owns no title
+				    row of its own; the live/history readout and the one stage action ride
+				    at the end of the toolbar the other view controls already live in. */}
+				<div className="traffic-toolbar-tail">
+					<span className="traffic-live" role="status" title={liveLabel}>
+						{liveLabel}
+					</span>
+					{experiment === "2" && (
+						<button
+							className="traffic-replay-start"
+							onClick={() => {
+								clearSelection();
+								setShowInspector(false);
+								setFollowRequest((value) => value + 1);
+								playback.restart();
+							}}
+							disabled={!playback.events.length}
+							aria-label={t("traffic.replay.restart")}
+						>
+							<TrafficIcon name="replay" />
+							<span className="traffic-action-label">
+								{t("traffic.replay.restart")}
+							</span>
+						</button>
+					)}
+					{experiment === "1" && (
+						<button
+							onClick={() => setPaused((value) => !value)}
+							aria-pressed={paused}
+						>
+							{t(paused ? "traffic.orbit.resume" : "traffic.orbit.pause")}
+						</button>
+					)}
+				</div>
 			</div>
 			{experiment === "2" && narrowControls && (
 				<BottomSheet

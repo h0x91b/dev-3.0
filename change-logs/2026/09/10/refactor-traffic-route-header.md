@@ -1,0 +1,1 @@
+Agent traffic no longer draws its own title row: the route's breadcrumb already names the screen, so the live/history readout and the stage action (Replay in Experiment 2, the animation toggle in Experiment 1) now ride at the end of the existing filter toolbar. The graph gets that whole row of height back, and on a phone the stage action stays reachable instead of being hidden.
