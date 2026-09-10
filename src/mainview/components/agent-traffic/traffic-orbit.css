@@ -519,6 +519,96 @@
 	background: rgb(var(--warning) / 0.12);
 	color: rgb(var(--warning-strong));
 }
+
+/* A group of labelled buttons has nothing to give: squeezed under the generic
+   `> div` width caps it does not shrink, it paints its last button over the
+   neighbouring control. Both groups therefore keep their natural width at every
+   width, and the wrapping the narrow toolbar already does moves them instead. */
+.traffic-toolbar > .traffic-toggles,
+.traffic-toolbar > .traffic-experiment {
+	flex: 0 0 auto;
+	min-width: 0;
+	max-width: none;
+}
+
+/* Above the collapse breakpoint the toolbar is one nowrap row, so something has
+   to give when the window narrows — and by default it is the tail, the only
+   child with `min-width: 0`. The readout collapsed to zero and the stage action
+   was cut by the edge, while the two selects sat at their full 240px. The
+   shrink budget belongs to the selects and the search field; the tail carries
+   the live status and the one stage action. */
+@media (min-width: 701px) {
+	.traffic-toolbar > .traffic-toolbar-tail {
+		flex: 0 0 auto;
+	}
+}
+/* Experiment 1 has no filter sheet to collapse into, and its own stage action
+   carries a label three words long in some translations, so below 900 it wraps
+   instead of hanging its last button past the edge. Experiment 2 keeps its
+   deliberate nowrap row here — that rule is more specific and still wins. */
+@media (max-width: 900px) {
+	.traffic-toolbar {
+		flex-wrap: wrap;
+	}
+}
+/* Between the collapse breakpoint and the width where everything fits at full
+   size, the selects alone cannot free enough room: the tail compacts the same
+   way it already does below 900 — icon-only stage action, tighter gaps, a capped
+   readout — and the selects go down to a still-readable floor.
+
+   The upper bound comes from the longest translation, not from English: the live
+   readout reads "Live" (36px) against "В реальном времени" (137px), and the two
+   button groups are another 74px wider in Russian. Full size fits from ~1310px
+   in English and only from ~1790px in Russian, so the band covers where SOME
+   locale needs it and English merely loses a label its tooltip still carries. */
+@media (min-width: 701px) and (max-width: 1500px) {
+	.traffic-toolbar {
+		gap: 8px;
+	}
+	.traffic-toolbar > div:not(.traffic-toolbar-tail) {
+		min-width: 96px;
+	}
+	.traffic-toolbar input {
+		min-width: 72px;
+	}
+	.traffic-toolbar > .traffic-toolbar-tail {
+		gap: 6px;
+	}
+	.traffic-toolbar-tail .traffic-action-label {
+		display: none;
+	}
+	.traffic-toolbar-tail .traffic-replay-start {
+		padding: 6px 8px;
+	}
+	.traffic-toolbar-tail .traffic-live {
+		max-width: 92px;
+	}
+}
+/* The tightest strip the one-row toolbar has to survive: around the width where
+   the filters collapse into their sheet, with every button group still on
+   screen. The groups cannot drop a button, so they give up padding instead. The
+   band deliberately reaches past the collapse point — the first pixels above it
+   are the widest the inline row ever has to be. */
+@media (min-width: 701px) and (max-width: 1050px) {
+	.traffic-toolbar {
+		padding-left: 12px;
+		padding-right: 12px;
+	}
+	.traffic-toolbar > div:not(.traffic-toolbar-tail) {
+		min-width: 88px;
+	}
+	.traffic-toggles button,
+	.traffic-experiment button,
+	.traffic-list-toggle {
+		padding-left: 8px;
+		padding-right: 8px;
+		font-size: 11px;
+	}
+	.traffic-toolbar-tail .traffic-live {
+		max-width: 64px;
+		font-size: 11px;
+	}
+}
 @media (max-width: 1050px) {
 	.traffic-screen {
 		padding: 12px;

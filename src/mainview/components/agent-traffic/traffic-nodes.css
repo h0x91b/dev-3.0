@@ -1044,10 +1044,13 @@
 	.traffic-view[data-experiment="2"] .traffic-replay-start {
 		padding: 6px 8px;
 	}
+	/* Natural width, never grown and never squeezed: the picker is two labelled
+	   buttons, and growing it here left the collapsed filter row short of the
+	   space the buttons themselves need. */
 	.traffic-view[data-experiment="2"] .traffic-experiment {
 		min-width: 0;
 		max-width: none;
-		flex: 1;
+		flex: 0 0 auto;
 	}
 	.traffic-view[data-experiment="2"] .traffic-experiment button {
 		white-space: nowrap;
