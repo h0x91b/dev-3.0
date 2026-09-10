@@ -1579,6 +1579,19 @@ describe("Replay reconstructs the board at the cursor", () => {
 		expect(card("#22").getAttribute("data-history")).toBeNull();
 	});
 
+	it("draws the lifecycle rail from the replayed status, and a bare strip without one", async () => {
+		await replayFromStart();
+		await next();
+		const rail = card("#22").querySelector(".traffic-node-rail")!;
+		// The same stage ring the Kanban card and the Active Tasks row carry, reading
+		// the projection at the cursor — in-progress is stage 2 — not today's status.
+		expect(rail.querySelector("[role='img']")!.getAttribute("aria-label")).toBe("Stage 2 of 7");
+		// Silent to assistive tech: the card's own aria-label already says the status.
+		expect(rail.getAttribute("aria-hidden")).toBe("true");
+		// task-c has no recorded past, so there is no stage to claim: strip only.
+		expect(card("#33").querySelector(".traffic-node-rail")!.children.length).toBe(0);
+	});
+
 	it("drops every historical marker on Live and shows the states as they are", async () => {
 		await replayFromStart();
 		await userEvent.click(screen.getByRole("button", { name: "Live" }));

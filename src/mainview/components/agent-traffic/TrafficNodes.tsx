@@ -14,6 +14,7 @@ import {
 	useStatusColorsInk,
 } from "../../hooks/useStatusColors";
 import { useReducedMotion } from "../../utils/useReducedMotion";
+import PipelineRing from "../PipelineRing";
 import {
 	layoutTraffic,
 	pointAt,
@@ -1022,6 +1023,10 @@ function Card({
 	const limited = replaying && node.task && projection.confidence !== "recorded"
 		? projection.confidence
 		: null;
+	// The lifecycle rail the rest of the app draws down the left edge of a task
+	// card. It carries the projected status, so a parked card and a card with no
+	// recorded state get the bare strip — a ring would claim a stage neither has.
+	const railStatus = placed.parked ? null : (projection.status ?? null);
 	return (
 		<button
 			type="button"
@@ -1045,9 +1050,15 @@ function Card({
 			onClick={() => !unborn && onSelect(node.key)}
 			onDoubleClick={() => !unborn && onFocus(node.key)}
 		>
+			{/* Hidden from assistive tech: the card's own aria-label already says the
+			    status, and the ring would only repeat the stage as a second voice. */}
+			<span className="traffic-node-rail" aria-hidden="true">
+				{railStatus && (
+					<PipelineRing status={railStatus} size="compact" tooltip={false} />
+				)}
+			</span>
 			<span className="traffic-node-full">
 				<span className="traffic-node-head">
-					<i className="traffic-node-dot" aria-hidden="true" />
 					<b>{nodeSeq(node)}</b>
 					{node.task?.taskType === "coordinator" && (
 						<em>{t("traffic.orbit.coordinator")}</em>
