@@ -31,6 +31,20 @@ window down at once and must not shrink the session written by `flushWindowState
 An empty snapshot is never written — quitting from a window-less dock keeps the last
 known geometry, matching the previous behaviour.
 
+## The part that is not obvious: `frame` reaches only the first window
+
+Measured on macOS with three restored windows: Electrobun's `new BrowserWindow({ frame })`
+places the FIRST window of the process and nothing after it — windows two and three
+opened stacked on window one, ignoring the geometry the constructor was given (the same
+is true of the pre-existing centered cascade, whose offset never applied either). So
+`createAppWindow` re-applies the frame with `win.setFrame()` for every window but the
+first.
+
+The call has to wait for `dom-ready`. Issued immediately after the constructor, the
+frame landed on the *wrong* window — with three windows restored, one of them ended up
+carrying another one's geometry while a third never moved. The native side is still
+creating the window at that point.
+
 ## Risks
 
 macOS cannot restore a fullscreen window's Space, so several restored fullscreen windows
