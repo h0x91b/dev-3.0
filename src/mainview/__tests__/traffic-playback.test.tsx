@@ -1,8 +1,18 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Task } from "../../shared/types";
 import type { TrafficRecord } from "../components/agent-traffic/traffic-model";
-import { messageEvents } from "../components/agent-traffic/traffic-timeline";
+import {
+	messageEvents,
+	taskEvents,
+	type TrafficTimelineEvent,
+} from "../components/agent-traffic/traffic-timeline";
 import { useTrafficPlayback } from "../components/agent-traffic/useTrafficPlayback";
+
+/** Seconds past 10:00, as an ISO instant — fractions land between two messages. */
+function at(second: number): string {
+	return new Date(Date.UTC(2026, 8, 7, 10, 0, 0) + second * 1000).toISOString();
+}
 
 function record(key: string, second: number): TrafficRecord {
 	return {
@@ -300,6 +310,77 @@ describe("traffic playback", () => {
 			});
 			act(() => result.current.live());
 			expect(result.current.cursor.at).toBeNull();
+		});
+	});
+
+	describe("a snapshot taken before the load settled", () => {
+		// Board movements and notifications arrive after the first messages, so a
+		// Play pressed during the load froze a timeline missing whole kinds of
+		// event — and only a filter change or a Restart ever brought them back.
+		const late = taskEvents(
+			[
+				{
+					id: "receiver",
+					projectId: "project",
+					seq: 2,
+					movements: [
+						{ id: "m1", at: at(1.5), kind: "created", to: "todo" },
+						{ id: "m2", at: at(2.5), kind: "moved", from: "todo", to: "in-progress" },
+					],
+				} as unknown as Task,
+			],
+			Date.UTC(2026, 8, 7, 10, 0, 0),
+			Date.UTC(2026, 8, 7, 11, 0, 0),
+		);
+		const settled = [...baseEvents, ...late];
+
+		function loading(events: TrafficTimelineEvent[] = baseEvents) {
+			return renderHook(
+				(props: { events: TrafficTimelineEvent[]; ready: boolean }) =>
+					useTrafficPlayback(props.events, true, "project", props.ready),
+				{ initialProps: { events, ready: false } },
+			);
+		}
+
+		it("re-takes it when the late arms land, holding the reader in place", () => {
+			const { result, rerender } = loading();
+			act(() => result.current.playPause());
+			expect(result.current.events).toHaveLength(3);
+			rerender({ events: settled, ready: true });
+			expect(result.current.events.map((event) => event.kind)).toEqual([
+				"message", "task", "message", "task", "message",
+			]);
+			// Same event under the cursor, same playback state — only the index moved.
+			expect(result.current.currentRecord).toBe(first);
+			expect(result.current.index).toBe(0);
+			expect(result.current.playing).toBe(true);
+			act(() => vi.advanceTimersByTime(defaultInterval));
+			expect(result.current.current?.kind).toBe("task");
+		});
+
+		it("re-takes it once, then holds against everything that arrives later", () => {
+			const { result, rerender } = loading();
+			act(() => result.current.seek(2));
+			rerender({ events: settled, ready: true });
+			expect(result.current.events).toHaveLength(5);
+			expect(result.current.currentRecord).toBe(third);
+			expect(result.current.index).toBe(4);
+			const held = result.current.events;
+			rerender({
+				events: [...settled, ...messageEvents([record("latest", 9)])],
+				ready: true,
+			});
+			expect(result.current.events).toBe(held);
+			expect(result.current.index).toBe(4);
+		});
+
+		it("leaves a reader who never started in live mode", () => {
+			const { result, rerender } = loading();
+			rerender({ events: settled, ready: true });
+			expect(result.current.index).toBe(-1);
+			expect(result.current.events).toHaveLength(5);
+			expect(result.current.playing).toBe(false);
+			expect(vi.getTimerCount()).toBe(0);
 		});
 	});
 });
