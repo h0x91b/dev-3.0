@@ -236,6 +236,15 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		...(opts.preload ? { preload: opts.preload } : {}),
 	});
 
+	// The `frame` option above only reaches the FIRST window of the process —
+	// every later one opens stacked on the existing window, ignoring both the
+	// cascade offset and a restored geometry (measured on macOS: three windows
+	// asked for three frames, all three landed on the first one's). We re-apply
+	// the frame ourselves at dom-ready: called right after the constructor the
+	// same call lands on the wrong window, because the native side is still
+	// creating this one. Skipped when restoring into fullscreen, which macOS owns.
+	const needsFrameApply = windows.size > 0 && !restoreFullScreen;
+
 	// Windows draws a system-fallback icon in the window and the taskbar because
 	// electrobun never assigns one to its window class; we set it ourselves from
 	// the icon already embedded in our executables. No-op off Windows, where the
@@ -304,6 +313,13 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		win.webview.on("dom-ready", () => {
 			if (nudged) return; // a reload re-fires dom-ready; one nudge per window
 			nudged = true;
+			if (needsFrameApply) {
+				try {
+					win.setFrame(frame.x, frame.y, frame.width, frame.height);
+				} catch (err) {
+					log.warn("Applying the window frame failed", { error: String(err) });
+				}
+			}
 			setTimeout(() => {
 				try {
 					const size = win.getSize();

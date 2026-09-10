@@ -98,6 +98,13 @@ function spawn(restore?: WindowState) {
 	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {}, restore });
 }
 
+/** Fire every dom-ready listener the window registered. */
+function domReady(win: FakeWindow): void {
+	for (const call of win.webview.on.mock.calls as [string, () => void][]) {
+		if (call[0] === "dom-ready") call[1]();
+	}
+}
+
 /** The persisted session, read back exactly the way a launch reads it. */
 function savedSession(): WindowState[] {
 	return loadWindowSession();
@@ -213,8 +220,7 @@ describe("restoring a saved session", () => {
 		spawn({ ...onExternal, fullscreen: true });
 		const win = createdWindows[0];
 		// The fullscreen call is deferred to dom-ready, then a short timeout.
-		const domReady = win.webview.on.mock.calls.find((c: unknown[]) => c[0] === "dom-ready")?.[1] as () => void;
-		domReady();
+		domReady(win);
 		vi.advanceTimersByTime(200);
 		expect(win.setFullScreen).toHaveBeenCalledWith(true);
 	});
@@ -234,6 +240,23 @@ describe("restoring a saved session", () => {
 		spawn({ frame: { x: 900, y: 600, width: 1600, height: 1000 }, fullscreen: false, displayId: 1, displayBounds: LAPTOP.bounds });
 
 		expect(createdWindows[0].frame).toEqual({ x: 0, y: 0, width: 1280, height: 720 });
+	});
+
+	it("re-applies the frame of a second window at dom-ready, which the create option alone never reaches", () => {
+		spawn();
+		spawn(onExternal);
+		const win = createdWindows[1];
+		expect(win.setFrame).not.toHaveBeenCalled(); // too early at construction — it would move the wrong window
+
+		domReady(win);
+
+		expect(win.setFrame).toHaveBeenCalledWith(2100, 100, 1000, 800);
+	});
+
+	it("leaves the first window's frame to the create option", () => {
+		spawn(onExternal);
+		domReady(createdWindows[0]);
+		expect(createdWindows[0].setFrame).not.toHaveBeenCalled();
 	});
 
 	it("a window opened while others are up is not given the saved geometry", () => {
