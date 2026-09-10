@@ -37,6 +37,7 @@ import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-promp
 import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
 import { agentMessageHoldKey, holdAgentMessage } from "./agent-message-hold";
+import { noteDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { createLogger } from "./logger";
 import { forwardToOwner, resolvePaneOwner } from "./native-pane-owner";
 import type { NativeTaskTerminal } from "./native-task-terminal";
@@ -170,6 +171,11 @@ async function bindPane(task: Task, paneId: string): Promise<NativeTaskTerminal 
  * rather than a phantom success.
  */
 export async function deliverNativePromptAsOwner(params: NativePromptDeliveryParams): Promise<boolean> {
+	// The sender's process already holds a receipt for this text, but the pane's
+	// prompt-submit hook reaches whichever process owns the task's CLI socket —
+	// which, on a forwarded delivery, may be this one. A receipt on both sides is
+	// what keeps a forwarded peer message from being recorded as the user.
+	noteDev3TypedPrompt(params.taskId, params.text);
 	const terminal = nativePaneTerminal(params.taskId, params.paneId);
 	if (!terminal) return false;
 	if (terminal.hostRole() !== "writer") {

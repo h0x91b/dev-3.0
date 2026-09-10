@@ -29,6 +29,7 @@ import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
+import { recordTerminalPromptSubmission } from "./agent-terminal-prompt-log";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
 import type { PaneInputProgram } from "../shared/pane-input";
@@ -1674,7 +1675,42 @@ const handlers: Record<string, Handler> = {
 			await captureCodexPaneSession(project, task.id, paneId, sessionId);
 		}
 
+		// Codex carries the submitted text on the same payload, so recording rides
+		// on the status hook rather than costing the pane a second dev3 process.
+		if (event === "UserPromptSubmit" && typeof params.prompt === "string") {
+			recordTerminalPromptSubmission({
+				project,
+				task: updated,
+				harness: "codex",
+				prompt: params.prompt,
+				sessionId,
+				submissionId: typeof params.turnId === "string" ? params.turnId : null,
+			});
+		}
+
 		return updated;
+	},
+
+	/**
+	 * A harness reported that a prompt was submitted in a task's pane. Whether
+	 * that was the human is decided in `recordTerminalPromptSubmission`, which
+	 * throws out everything dev3 itself typed before writing anything.
+	 *
+	 * Returns the verdict rather than a bare ok, so a suppressed submission is
+	 * distinguishable from a recorded one in the hook's own logs and tests.
+	 */
+	"task.promptSubmitted": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const harness = params.harness === "codex" ? "codex" : "claude";
+		const outcome = recordTerminalPromptSubmission({
+			project,
+			task,
+			harness,
+			prompt: typeof params.prompt === "string" ? params.prompt : "",
+			sessionId: typeof params.sessionId === "string" ? params.sessionId : null,
+			submissionId: typeof params.submissionId === "string" ? params.submissionId : null,
+		});
+		return { outcome };
 	},
 
 	// Claude Code's StopFailure hook: an API error ended the turn, so the agent is

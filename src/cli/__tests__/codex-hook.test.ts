@@ -86,6 +86,46 @@ describe("handleCodexHook", () => {
 		expect(stdout).toBe("{}");
 	});
 
+	it("carries the submitted prompt and its turn id on UserPromptSubmit", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({
+				hook_event_name: "UserPromptSubmit",
+				session_id: "session-3",
+				turn_id: "turn-8",
+				prompt: "rebase and push",
+				transcript_path: "/tmp/rollout.jsonl",
+			}),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "UserPromptSubmit",
+			sessionId: "session-3",
+			prompt: "rebase and push",
+			turnId: "turn-8",
+		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
+		// The rollout transcript is never read: that would be conversation capture,
+		// not one submission.
+		expect(JSON.stringify(mockSend.mock.calls[0]![2])).not.toContain("rollout");
+	});
+
+	it("carries no prompt on the other lifecycle events", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({ hook_event_name: "Stop", session_id: "s", prompt: "leftover" }),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("prompt");
+	});
+
 	it("is a successful no-op outside a dev3 task", async () => {
 		await handleCodexHook(
 			JSON.stringify({ hook_event_name: "Stop" }),

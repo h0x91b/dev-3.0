@@ -49,6 +49,7 @@ import {
 	validAltClickPanes,
 } from "../tmux";
 import { markAgentPane } from "../agent-prompt";
+import { noteDev3TypedPrompt } from "../agent-typed-prompt-claims";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../temp-paths";
 import { stopSetupFailureWatch, watchSetupFailure } from "../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
@@ -713,6 +714,11 @@ export async function launchTaskPty(
 		projectPath: project.path,
 		worktreePath,
 	};
+	// The brief reaches the agent as a launch argument, and Claude Code fires
+	// UserPromptSubmit for it exactly as if the user had typed it. Leave the
+	// receipt here or every task's own description is recorded as the user's
+	// first message.
+	noteDev3TypedPrompt(task.id, ctx.taskDescription);
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
@@ -1063,6 +1069,9 @@ export async function launchColumnAgent(
 		projectPath: project.path,
 		worktreePath,
 	};
+	// A column agent runs in the same worktree, so its own launch prompt reaches
+	// the prompt-submit hook under this task's id too.
+	noteDev3TypedPrompt(task.id, prompt);
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;

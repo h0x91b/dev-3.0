@@ -60,7 +60,7 @@ Injected into `.claude/settings.local.json`.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
-| `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working |
+| `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working. A **second** entry on the same event, `dev3 hook claude-prompt`, reads the payload's `prompt` and `prompt_id` and reports the submission for Agent traffic; the status-move entry above is untouched, so recording can never cost a task its board position |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
 | `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |
 | `PermissionRequest` | → `user-questions` | Agent needs user approval for a tool call |
@@ -81,6 +81,8 @@ Generated in each task's `.codex/hooks.json` and **declared in `~/.codex/config.
 | `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
 | `PostToolUse` | → `in-progress` | Clears the waiting state after an approved tool finishes |
 | `Stop` | → `review-by-ai` / `review-by-user` | One atomic server-side transition selects the correct review target and returns valid JSON to Codex |
+
+The `UserPromptSubmit` payload also carries the submitted `prompt` and a `turn_id`, both forwarded on the existing `task.agentHook` request so a human's terminal prompt reaches Agent traffic without a second dev3 process per prompt. Whether a submission was the human is decided app-side against the receipts dev3 leaves for everything it types itself (`decisions/2026/09/10/prove-a-terminal-prompt-is-the-user.md`).
 
 Beyond status, the `SessionStart`/`UserPromptSubmit` hook payloads carry the Codex `session_id` (the resumable rollout id), and the hook process inherits `$TMUX_PANE`. dev3 records that id onto the matching `sessionState` pane so recovery can `codex resume <id>` the exact per-pane session — Codex has no launch-time session-id flag, so this is the only way to target a specific session (see decision 125).
 

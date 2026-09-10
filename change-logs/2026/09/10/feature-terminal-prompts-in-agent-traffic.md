@@ -1,0 +1,3 @@
+Short: Your terminal prompts in agent traffic
+
+Prompts you type into a task's terminal now appear in Agent traffic as your own messages, on Claude Code and Codex. dev3 records what it types into every pane and matches the harness's prompt-submit hook against it, so a peer's message, a Send to agent click, a held burst and the task brief handed to the agent at launch are never mistaken for you, and nothing is counted twice. Prompts the harness submits by itself, such as a subagent completion notice, stay unattributed rather than becoming yours. Only a short preview is stored, never the prompt itself.

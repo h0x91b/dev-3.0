@@ -31,6 +31,7 @@ import { holdMessageForAgentPane, holdMessageForPane, sendPromptToAgentPane, sen
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
+import { noteDev3TypedPrompt } from "./agent-typed-prompt-claims";
 
 /**
  * Text appended once at the end of the agent's turn, after every message in the
@@ -69,6 +70,12 @@ export async function deliverAgentPrompt(
 	// settings file behind us. Done at hold time too: a held message may land many
 	// seconds later, but nothing else runs on its behalf in between.
 	await refreshClaudeHooksForTask(task);
+
+	// That same UserPromptSubmit is indistinguishable from the user typing, so
+	// leave the receipt BEFORE the text can be submitted: this is the one seam
+	// every dev3-caused prompt passes through, which is what makes the receipts a
+	// complete set rather than a list of the paths someone remembered.
+	noteDev3TypedPrompt(task.id, prompt);
 
 	if (taskTerminalBackendIdentity(task) === "native") {
 		// The native arm folds the trailer in NOW rather than at release time, so a
