@@ -1,5 +1,12 @@
 # Agent traffic becomes a destination, and entry replays the trailing hour
 
+> Partly superseded on 2026-09-10 by
+> `decisions/2026/09/10/agent-traffic-enters-live-not-replaying.md`: entry no longer
+> autoplays the trailing hour — the screen opens on Live with the camera following, and
+> replay is started deliberately. Everything else here (the route, `scopeProjectId`, the
+> nav-budget exception, the deleted overlay) still holds, as does the `ENTRY_WINDOW =
+> "hour"` period default.
+
 ## Context
 
 Agent traffic shipped as a fullscreen modal: a portal with a focus trap, an Escape

@@ -523,12 +523,12 @@ describe("AgentTrafficScreen live orbit", () => {
 // Two presentations, one feature. The picker chooses between them; the Settings
 // toggle still decides whether any of it exists (agent-traffic-flag.test.tsx).
 /**
- * Entering the screen is its own contract: the trailing hour, the cursor at that
- * hour's start, and the replay started exactly once. What these guard is the
- * "once" — the window's start slides with the clock and a live message can land
- * at any moment, so a naive effect restarts the replay under the user's hands.
+ * Entering the screen is its own contract: Live, with the camera following, and
+ * nothing playing. The screen used to replay the trailing hour by itself, which
+ * took the stage before the reader had asked for anything. Replay is still there
+ * — it just has to be asked for, and it still starts at the window's beginning.
  */
-describe("AgentTrafficScreen entry replay", () => {
+describe("AgentTrafficScreen entry", () => {
 	/** The tests' default is reduced-motion; motion has to be asked for. */
 	function allowMotion() {
 		return vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
@@ -539,8 +539,12 @@ describe("AgentTrafficScreen entry replay", () => {
 
 	const counter = () => document.querySelector(".traffic-event-counter")?.textContent;
 	const playLabel = () => screen.getByTestId("traffic-play").getAttribute("aria-label");
+	const liveActive = () =>
+		screen.getByRole("button", { name: "Live" }).className.includes("is-active");
+	const following = () =>
+		document.querySelector(".traffic-nodes")?.getAttribute("data-follow");
 
-	it("starts the trailing hour from its first message, playing", async () => {
+	it("opens on Live with the camera following and no replay running", async () => {
 		const media = allowMotion();
 		try {
 			setPage([
@@ -549,51 +553,83 @@ describe("AgentTrafficScreen entry replay", () => {
 				row({ subject: "Newest" }),
 			]);
 			renderLog();
-			await waitFor(() => expect(playLabel()).toBe("Pause replay"));
-			expect(counter()).toBe("1 / 3");
-			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
+			await waitFor(() => expect(counter()).toBe("3 / 3"));
+			// No cursor: the readout stands on the newest event, Live is the active
+			// mode, the transport is idle and the stage is following.
+			expect(playLabel()).toBe("Play replay");
+			expect(liveActive()).toBe(true);
+			expect(following()).toBe("true");
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Newest");
+			// A settled load with motion allowed is exactly where the old autoplay
+			// fired; nothing may start it after the fact either.
+			await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+			expect(playLabel()).toBe("Play replay");
+			expect(liveActive()).toBe(true);
 		} finally {
 			media.mockRestore();
 		}
 	});
 
-	it("does not restart when a live message arrives mid-replay", async () => {
+	it("keeps taking live arrivals while it sits on Live", async () => {
+		const media = allowMotion();
+		try {
+			setPage([row({ at: new Date(Date.now() - 30 * 60000).toISOString(), subject: "First" })]);
+			renderLog();
+			await waitFor(() => expect(counter()).toBe("1 / 1"));
+			setPage([...page.value.rows, row({ subject: "Arrived while watching" })]);
+			act(() => noteTrafficArrival("proj-1"));
+			await waitFor(() => expect(counter()).toBe("2 / 2"));
+			expect(playLabel()).toBe("Play replay");
+			expect(liveActive()).toBe(true);
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain(
+				"Arrived while watching",
+			);
+		} finally {
+			media.mockRestore();
+		}
+	});
+
+	it("still replays the window from its first event when Play is pressed", async () => {
 		const media = allowMotion();
 		try {
 			setPage([
-				row({ at: new Date(Date.now() - 30 * 60000).toISOString(), subject: "First" }),
-				row({ at: new Date(Date.now() - 10 * 60000).toISOString(), subject: "Second" }),
+				row({ at: new Date(Date.now() - 50 * 60000).toISOString(), subject: "Oldest in the hour" }),
+				row({ at: new Date(Date.now() - 20 * 60000).toISOString(), subject: "Middle" }),
+				row({ subject: "Newest" }),
 			]);
 			renderLog();
-			await waitFor(() => expect(playLabel()).toBe("Pause replay"));
-			fireEvent.click(screen.getByRole("button", { name: "Next message" }));
-			expect(counter()).toBe("2 / 2");
-			setPage([...page.value.rows, row({ subject: "Arrived while watching" })]);
-			act(() => noteTrafficArrival("proj-1"));
-			// The replay's event list is frozen, so the cursor stays where the user
-			// left it and the arrival does not extend the run under them.
-			await act(async () => { await Promise.resolve(); });
-			expect(counter()).toBe("2 / 2");
-			expect(playLabel()).toBe("Play replay");
-			// It did land in the data, though — Live shows all three.
+			await waitFor(() => expect(counter()).toBe("3 / 3"));
+			await userEvent.click(screen.getByTestId("traffic-play"));
+			expect(counter()).toBe("1 / 3");
+			expect(playLabel()).toBe("Pause replay");
+			expect(liveActive()).toBe(false);
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
+			// And Live hands the stage back.
 			await userEvent.click(screen.getByRole("button", { name: "Live" }));
 			expect(counter()).toBe("3 / 3");
+			expect(playLabel()).toBe("Play replay");
 		} finally {
 			media.mockRestore();
 		}
 	});
 
-	it("leaves an empty hour parked, and keeps it parked when a message lands", async () => {
+	it("re-entering the screen comes back on Live, not on the last cursor", async () => {
 		const media = allowMotion();
 		try {
-			setPage([row({ at: new Date(Date.now() - 5 * 3600000).toISOString(), subject: "Hours ago" })]);
+			setPage([
+				row({ at: new Date(Date.now() - 50 * 60000).toISOString(), subject: "Oldest in the hour" }),
+				row({ subject: "Newest" }),
+			]);
+			const first = renderLog();
+			await waitFor(() => expect(counter()).toBe("2 / 2"));
+			await userEvent.click(screen.getByTestId("traffic-play"));
+			expect(counter()).toBe("1 / 2");
+			first.unmount();
 			renderLog();
-			await waitFor(() => expect(counter()).toBe("0 / 0"));
+			await waitFor(() => expect(counter()).toBe("2 / 2"));
 			expect(playLabel()).toBe("Play replay");
-			setPage([...page.value.rows, row({ subject: "Just now" })]);
-			act(() => noteTrafficArrival("proj-1"));
-			await waitFor(() => expect(counter()).toBe("1 / 1"));
-			expect(playLabel()).toBe("Play replay");
+			expect(liveActive()).toBe(true);
+			expect(following()).toBe("true");
 		} finally {
 			media.mockRestore();
 		}
@@ -615,17 +651,6 @@ describe("AgentTrafficScreen entry replay", () => {
 				"Nothing matches this filter.",
 			),
 		);
-	});
-
-	it("parks the cursor at the start instead of playing under reduced motion", async () => {
-		setPage([
-			row({ at: new Date(Date.now() - 40 * 60000).toISOString(), subject: "Oldest in the hour" }),
-			row({ subject: "Newest" }),
-		]);
-		renderLog();
-		await waitFor(() => expect(counter()).toBe("1 / 2"));
-		expect(playLabel()).toBe("Play replay");
-		expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
 	});
 });
 
@@ -788,11 +813,9 @@ describe("AgentTrafficScreen route header", () => {
 			row({ subject: "Second" }),
 		]);
 		renderLog();
-		await waitFor(() => expect(counter()).toBe("1 / 2"));
-		// Live drops the cursor, so a counter back at the first event can only come
-		// from the button restarting the replay.
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
-		await waitFor(() => expect(counter()).not.toBe("1 / 2"));
+		// Entry has no cursor, so a counter at the first event can only come from
+		// the button starting the replay.
+		await waitFor(() => expect(counter()).toBe("2 / 2"));
 		await userEvent.click(screen.getByRole("button", { name: "Replay" }));
 		await waitFor(() => expect(counter()).toBe("1 / 2"));
 	});
@@ -924,11 +947,9 @@ describe("AgentTrafficScreen presentation picker", () => {
 		]);
 		renderLog();
 		await messageRows(2);
-		// The routed screen autoplays its entry window, so the cursor starts in the
-		// PAST and the cards are reconstructed. This assertion is about the live card
-		// treatment, so return to Live first — under a cursor, a task with no
-		// recorded movements is correctly "Status not recorded", not "Completed".
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		// Entry is Live, so the cards already carry their current treatment — under a
+		// replay cursor, a task with no recorded movements would correctly read
+		// "Status not recorded" rather than "Completed".
 		await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
 		const cards = nodeCards() as HTMLElement[];
 		const asleep = cards.find((card) =>
@@ -1460,9 +1481,8 @@ it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s send
 	const rendered = renderLog();
 	try {
 		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-		// Entry autoplays the trailing hour; this test is about the live flights, so
-		// hand the cursor back to Live before stepping.
-		fireEvent.click(screen.getByRole("button", { name: "Live" }));
+		// Entry is already Live; this test is about the live flights, so step from
+		// there.
 		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
 		advance(0);
 		expect(document.querySelectorAll("circle.traffic-flight")).toHaveLength(1);
@@ -1670,10 +1690,8 @@ describe("Replay reconstructs the board at the cursor", () => {
 		setUpHistory();
 		renderLog();
 		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
-		// Entry autoplay lands the cursor in the past, so the claim is true on arrival.
-		await waitFor(() => expect(summary()).toContain("rebuilt from recorded board moves"));
-		// Experiment 2 on Live shows the board as it is, so it must not claim a rebuild.
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		// Entry is Live, and experiment 2 on Live shows the board as it is, so it
+		// must not claim a rebuild.
 		expect(summary()).toContain("Task states are current");
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
@@ -1691,10 +1709,8 @@ describe("Replay reconstructs the board at the cursor", () => {
 		setUpHistory();
 		renderLog();
 		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
-		// Entry autoplay already put the cursor in the past, so the disclosure is
-		// there on arrival — it belongs to the cursor, not to a click.
-		await waitFor(() => expect(caption()).toContain("Hibernation"));
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		// Entry is Live, and the disclosure belongs to the cursor — no cursor, no
+		// disclosure.
 		expect(caption()).not.toContain("Hibernation");
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
