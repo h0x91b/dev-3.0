@@ -1269,8 +1269,32 @@ export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect())
 }
 
 /**
- * Pure: ensure a parsed Claude Code settings object has both
- *   1. the dev3 CLI bash command allow-listed (no approval prompt), and
+ * The dev3 exception dev3 declares for Claude Code's auto-mode classifier.
+ *
+ * The classifier is a second gate that runs after the permission rules, and it
+ * reads its `autoMode` config ONLY from `~/.claude/settings.json`, managed
+ * settings, or `--settings` — never from a repo's `.claude/settings*.json`, so a
+ * checked-in file cannot grant itself exceptions. A worktree-scoped rule
+ * therefore cannot clear it, and without this entry `dev3 task move --status
+ * completed` reads to the classifier as an agent destroying a working directory
+ * and comes back as `Blocked by classifier`.
+ *
+ * Entries are prose, not tool patterns — the classifier reads them as
+ * natural-language rules. This one names the dev3 CLI and nothing else.
+ */
+export const DEV3_AUTO_MODE_ALLOW_ENTRY =
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry.";
+
+/**
+ * Splices the classifier's built-in rules back in. An `allow` array without it
+ * REPLACES the whole built-in list, so a user who has not taken ownership of the
+ * list must keep it — and one who deliberately dropped it keeps it dropped.
+ */
+const AUTO_MODE_DEFAULTS = "$defaults";
+
+/**
+ * Pure: ensure a parsed Claude Code settings object has
+ *   1. the dev3 CLI bash command allow-listed (no approval prompt),
  *   2. the dev3 sockets DIRECTORY in `sandbox.network.allowUnixSockets`, so
  *      Claude Code's macOS seatbelt sandbox lets the CLI connect to the running
  *      app's Unix socket (`~/.dev3.0/sockets/<pid>.sock`). Without it the connect
@@ -1280,8 +1304,11 @@ export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect())
  * Uses the sockets DIRECTORY, not a `*.sock` glob: each allowUnixSockets entry
  * compiles to a seatbelt `(subpath ...)` rule — a literal directory-prefix match
  * with no `*` expansion — so the directory covers the PID-named socket across app
- * restarts while a glob would match nothing. Mutates `settings` in place and
- * returns whether anything changed (so the caller can skip a needless write).
+ * restarts while a glob would match nothing.
+ *
+ * And 3. the dev3 exception in `autoMode.allow` — the only scope the auto-mode
+ * classifier reads it from. Mutates `settings` in place and returns whether
+ * anything changed (so the caller can skip a needless write).
  */
 export function applyClaudeSettings(settings: Record<string, unknown>, socketsPath: string): boolean {
 	let changed = false;
@@ -1308,6 +1335,19 @@ export function applyClaudeSettings(settings: Record<string, unknown>, socketsPa
 	network.allowUnixSockets = sockets;
 	sandbox.network = network;
 	settings.sandbox = sandbox;
+
+	// 3. autoMode.allow — tell the classifier what the dev3 CLI is.
+	const autoMode = (settings.autoMode ?? {}) as Record<string, unknown>;
+	const autoAllow = Array.isArray(autoMode.allow) ? (autoMode.allow as string[]) : [];
+	if (!autoAllow.includes(DEV3_AUTO_MODE_ALLOW_ENTRY)) {
+		// An empty list is Claude Code's own default state, not a deliberate
+		// opt-out, so the built-ins have to be spliced back in with it.
+		if (autoAllow.length === 0) autoAllow.push(AUTO_MODE_DEFAULTS);
+		autoAllow.push(DEV3_AUTO_MODE_ALLOW_ENTRY);
+		changed = true;
+	}
+	autoMode.allow = autoAllow;
+	settings.autoMode = autoMode;
 
 	return changed;
 }

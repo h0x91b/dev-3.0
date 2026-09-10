@@ -14,6 +14,7 @@ import type { MatcherGroup } from "../../shared/agent-hooks";
 import {
 	CODEX_DEV3_HOOK_COMMAND,
 	DEV3_BASH_PERMISSION,
+	dev3BashPermissions,
 	ensureDefaultMode,
 	ensureDevPermission,
 	getCodexHookTargetStatus,
@@ -628,7 +629,7 @@ describe("writeClaudeHooks", () => {
 		expect(content.permissions.allow).toEqual([
 			"WebFetch(domain:developers.openai.com)",
 			"Bash(gh:*)",
-			DEV3_BASH_PERMISSION,
+			...dev3BashPermissions(),
 		]);
 		expect(content.permissions.defaultMode).toBe("auto");
 		expect(content.enabledMcpjsonServers).toEqual(["local-trino", "playwright"]);
@@ -1091,6 +1092,38 @@ describe("mergeClaudeHooks with malformed settings", () => {
 	});
 });
 
+describe("dev3BashPermissions — every spelling the agent may type", () => {
+	const POSIX = { cli: "~/.dev3.0/bin/dev3", posixShell: true };
+	const WINDOWS = { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false };
+
+	// The skill and hook text dev3 generates spells the CLI as an absolute path,
+	// while the protocol tells the agent to type a bare `dev3`. Claude Code matches
+	// the literal command text, so a worktree missing either rule prompts for
+	// commands dev3 itself put in front of the agent.
+	it("covers both the bare CLI and the POSIX absolute path", () => {
+		expect(dev3BashPermissions(POSIX)).toEqual(["Bash(dev3:*)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+	});
+
+	it("covers the quoted absolute dev3.exe on Windows", () => {
+		expect(dev3BashPermissions(WINDOWS)).toEqual([
+			"Bash(dev3:*)",
+			'Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)',
+		]);
+	});
+
+	it("emits one rule when the dialect already is the bare CLI", () => {
+		expect(dev3BashPermissions({ cli: "dev3", posixShell: true })).toEqual(["Bash(dev3:*)"]);
+	});
+
+	it("writes both rules once, however often the hooks are re-asserted", () => {
+		const first = ensureDevPermission({}, POSIX);
+		const second = ensureDevPermission(ensureDevPermission(first, POSIX), POSIX) as {
+			permissions: { allow: string[] };
+		};
+		expect(second.permissions.allow).toEqual(["Bash(dev3:*)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+	});
+});
+
 describe("ensureDevPermission / ensureDefaultMode with malformed settings", () => {
 	it.each([
 		["permissions is a string", { permissions: "all" }],
@@ -1102,14 +1135,14 @@ describe("ensureDevPermission / ensureDefaultMode with malformed settings", () =
 			permissions: Record<string, unknown>;
 		};
 		expect(Object.keys(result.permissions)).toEqual(["allow"]);
-		expect(result.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
+		expect(result.permissions.allow).toEqual(dev3BashPermissions());
 	});
 
 	it("replaces a non-array allow rather than throwing", () => {
 		const result = ensureDevPermission({ permissions: { allow: "Bash(gh:*)" } }) as {
 			permissions: { allow: string[] };
 		};
-		expect(result.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
+		expect(result.permissions.allow).toEqual(dev3BashPermissions());
 	});
 
 	it("keeps sibling permission keys", () => {
@@ -1119,7 +1152,7 @@ describe("ensureDevPermission / ensureDefaultMode with malformed settings", () =
 
 		expect(result.permissions.deny).toEqual(["Bash(rm:*)"]);
 		expect(result.permissions.defaultMode).toBe("auto");
-		expect(result.permissions.allow).toEqual(["Bash(gh:*)", DEV3_BASH_PERMISSION]);
+		expect(result.permissions.allow).toEqual(["Bash(gh:*)", ...dev3BashPermissions()]);
 	});
 
 	it.each([
@@ -1156,7 +1189,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 
 		const content = read();
 		expect(content.hooks?.Stop).toHaveLength(1);
-		expect(content.permissions.allow).toEqual(["Bash(gh:*)", DEV3_BASH_PERMISSION]);
+		expect(content.permissions.allow).toEqual(["Bash(gh:*)", ...dev3BashPermissions()]);
 	});
 
 	it("installs hooks over a file whose hooks key is the wrong shape", () => {
@@ -1196,7 +1229,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		writeClaudeHooks(tmp);
 
 		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
+		expect(shared.permissions.allow).toEqual(dev3BashPermissions());
 		expect(read().hooks?.Stop).toHaveLength(1);
 	});
 });
@@ -1256,7 +1289,7 @@ describe("writeClaudeHooks write suppression", () => {
 		expect(writeClaudeHooks(tmp)).toBe(false);
 
 		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
+		expect(shared.permissions.allow).toEqual(dev3BashPermissions());
 	});
 });
 
