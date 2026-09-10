@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessageLogRow } from "../../shared/agent-message-log";
 import type { NotificationLogRow } from "../../shared/notification-log";
 import type { Task, TaskMovement, TaskStatus } from "../../shared/types";
@@ -187,6 +187,76 @@ describe("the notification preview on the traffic stage", () => {
 
 	it("shows nothing while the cursor is on a message rather than a notification", () => {
 		render(draw(playbackStub(null)));
+		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
+	});
+});
+
+/** Live: the cursor stands nowhere, so `index` is -1 and `current` is null. */
+function livePlayback(events: TrafficTimelineEvent[]): ReturnType<typeof useTrafficPlayback> {
+	return {
+		...playbackStub(null),
+		events,
+		index: -1,
+		cursor: { at: null, index: -1, total: events.length, playing: false, kind: null },
+	} as unknown as ReturnType<typeof useTrafficPlayback>;
+}
+
+/** An arrival stamped against the real clock, which is what freshness is measured on. */
+function arrival(msAgo: number, over: Partial<NotificationLogRow> = {}): TrafficTimelineEvent {
+	return notificationEvent({ at: new Date(Date.now() - msAgo).toISOString(), ...over });
+}
+
+describe("the notification preview in Live Follow", () => {
+	afterEach(() => vi.useRealTimers());
+
+	it("previews a notification that arrives while Live is running", () => {
+		const { rerender } = render(draw(livePlayback([])));
+		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
+
+		rerender(draw(livePlayback([arrival(200)])));
+		const cloud = screen.getByTestId("traffic-notification-cloud");
+		expect(cloud.dataset.level).toBe("success");
+		expect(cloud.textContent).toContain("backfill finished, 4812 rows written");
+	});
+
+	it("stays silent on the first archive read, however much it carries", () => {
+		render(
+			draw(
+				livePlayback([
+					arrival(400, { message: "one" }),
+					arrival(300, { message: "two" }),
+					arrival(200, { message: "three" }),
+				]),
+			),
+		);
+		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
+	});
+
+	it("stays silent for a row that is merely new to this reader, not new in time", () => {
+		const { rerender } = render(draw(livePlayback([])));
+		rerender(draw(livePlayback([arrival(60_000)])));
+		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
+	});
+
+	it("takes the preview back down after its bounded lifetime", () => {
+		vi.useFakeTimers();
+		const { rerender } = render(draw(livePlayback([])));
+		rerender(draw(livePlayback([arrival(200)])));
+		expect(screen.getByTestId("traffic-notification-cloud")).toBeTruthy();
+
+		act(() => void vi.advanceTimersByTime(6100));
+		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
+	});
+
+	it("does not re-preview a notification the archive hands back unchanged", () => {
+		vi.useFakeTimers();
+		const events = [arrival(200)];
+		const { rerender } = render(draw(livePlayback([])));
+		rerender(draw(livePlayback(events)));
+		act(() => void vi.advanceTimersByTime(6100));
+
+		// A refetch returning the same row: a different array, the same key.
+		rerender(draw(livePlayback([...events])));
 		expect(screen.queryByTestId("traffic-notification-cloud")).toBeNull();
 	});
 });

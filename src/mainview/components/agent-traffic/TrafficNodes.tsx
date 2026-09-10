@@ -44,6 +44,7 @@ import {
 	type TrafficRecord,
 } from "./traffic-model";
 import type { TrafficTimelineEvent } from "./traffic-timeline";
+import type { TrafficNotificationEvent } from "../../notification-event";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
@@ -99,6 +100,11 @@ const DROP_MS = 1200;
 const DROP_GAP_MS = 500;
 const DROP_FADE_MS = 200;
 const FOLLOW_IDLE_MS = 3500;
+/** A live notification is only previewed while it is genuinely fresh, and only for
+ *  a bounded moment — same freshness window a live message flight already uses, so
+ *  a refetch, a reconnect backlog or the first archive read stay silent. */
+const LIVE_NOTIFICATION_FRESH_MS = 10000;
+const LIVE_NOTIFICATION_MS = 6000;
 const MIN_SCALE = 0.14;
 
 /** Latest message on the timeline, for the camera and the wire that only speak messages. */
@@ -200,6 +206,9 @@ export default function TrafficNodes({
 	const camera = useRef<number>(0);
 	const overviewMode = useRef(true);
 	const known = useRef<Set<string> | null>(null);
+	const knownNotifications = useRef<Set<string> | null>(null);
+	const [liveNotification, setLiveNotification] =
+		useState<TrafficNotificationEvent | null>(null);
 	const edgeByKey = useMemo(
 		() => new Map(scene.edges.map((edge) => [edge.key, edge])),
 		[scene.edges],
@@ -582,6 +591,39 @@ export default function TrafficNodes({
 		}
 		known.current = current;
 	}, [layoutRecords, ready, paused, replaying, follow]);
+	// Live. The replay cursor never moves in Live, so the cloud needs its own arrival
+	// path — the same shape the message flight above already has. The first pass only
+	// seeds the seen-set, so opening the screen on an archive full of notifications is
+	// silent; it keeps seeding while replaying, or returning to Live would show every
+	// notification that fired meanwhile. The freshness window is what makes a refetch
+	// that re-delivers old rows, and a reconnect backlog, silent too.
+	useEffect(() => {
+		if (!ready) return;
+		const seen = new Set<string>();
+		let newest: TrafficNotificationEvent | undefined;
+		const first = !knownNotifications.current;
+		for (const event of playback?.events ?? []) {
+			if (event.kind !== "notification") continue;
+			seen.add(event.key);
+			if (
+				!first &&
+				!knownNotifications.current!.has(event.key) &&
+				Date.now() - event.at < LIVE_NOTIFICATION_FRESH_MS &&
+				(!newest || event.at > newest.at)
+			)
+				newest = event.notification;
+		}
+		knownNotifications.current = seen;
+		if (newest && !replaying && !paused) setLiveNotification(newest);
+	}, [playback?.events, ready, replaying, paused]);
+	useEffect(() => {
+		if (!liveNotification) return;
+		const timer = setTimeout(
+			() => setLiveNotification(null),
+			LIVE_NOTIFICATION_MS,
+		);
+		return () => clearTimeout(timer);
+	}, [liveNotification]);
 	useEffect(() => {
 		if (!flights.length) return;
 		let raf = 0;
@@ -641,10 +683,14 @@ export default function TrafficNodes({
 	// when the archive recorded no sender. An unattributed notification stays in
 	// the inspector list, where it can say so in words; inventing a sender on the
 	// stage is the one thing the archive exists not to do.
-	const activeNotification =
-		!playback?.ended && playback?.current?.kind === "notification"
+	// In Live the cursor stands nowhere, so the preview comes from the arrival the
+	// effect above caught instead. Replay keeps deciding alone: a replay step that is
+	// not a notification shows nothing, exactly as before.
+	const activeNotification = replaying
+		? !playback?.ended && playback?.current?.kind === "notification"
 			? playback.current.notification
-			: undefined;
+			: undefined
+		: (liveNotification ?? undefined);
 	const notificationSender = activeNotification?.origin
 		? nodeByKey.get(
 				endpointKey(
