@@ -47,6 +47,7 @@ import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { imageFilesFromClipboard } from "./utils/clipboardImageFiles";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
+import { spaceDroppedPaths } from "./terminal-drop-spacing";
 import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
 import { createOsc8Tracker, createOsc8LinkProvider } from "./terminal-osc8-links";
 import { cellFromMouseEvent } from "./terminal-cell-hit";
@@ -2583,7 +2584,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		}
 
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
-			wsRef.current.send(text);
+			const cursor = termRef.current?.buffer?.active;
+			const line = cursor?.getLine?.((cursor.baseY ?? 0) + (cursor.cursorY ?? 0));
+			wsRef.current.send(spaceDroppedPaths(text, line, cursor?.cursorX ?? 0));
 		}
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 	}
