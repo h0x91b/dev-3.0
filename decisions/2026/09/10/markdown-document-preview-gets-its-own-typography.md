@@ -18,10 +18,14 @@ per-level heading rhythm, borderless tinted code chips, an accent-tinted table h
 rows, an accent blockquote wash, coloured list markers and a gradient `hr`. The comment scope is
 untouched, so PR threads keep their compact look.
 
-Colour follows one rule from `better-colors`: one hue, one meaning. `--accent` stays the link
-hue, so inline code chips are neutral ink on a neutral wash; the colour the user asked for comes
-from structure (heading rules, table header, quote bar, markers), never from re-using the link
-colour decoratively.
+Colour comes from the app's existing tokens and **no new ones**. A first pass introduced a
+teal `--md-chrome` on the `better-colors` argument that `--accent` already means "link" inside
+prose; that was rejected on review — a hue nothing else in dev3 uses reads as a foreign palette,
+which is worse than the overlap it avoided. Structural chrome (heading rules, the h3 bar, list
+markers, checkboxes, the table header, the `hr`) is therefore `--accent`, and everything that
+repeats often or would collide is a neutral wash off `--text-primary`: code chips, table zebra,
+and the blockquote — whose bar stays `--border-active`, because an accent-tinted block with a
+left bar is already `.dev3-md-commented`, the marker for a block carrying a review comment.
 
 ## Risks
 
@@ -36,4 +40,6 @@ quote backgrounds — both are transparent tints, and the block wash stays visib
 A separate `.dev3-md-reader` class applied only by `FilePreviewModal` would have left the diff
 preview dense; the two surfaces show the same whole documents and should not diverge. Rewriting
 `.dev3-pr-md` itself was rejected because GitHub comment threads genuinely want the compact
-rhythm — a two-line reply with `1.75` leading and `1.5rem` heading gaps looks broken.
+rhythm — a two-line reply with `1.75` leading and `1.5rem` heading gaps looks broken. A dedicated
+document hue (the rejected `--md-chrome`) is recorded above; `--agent` violet was never an option,
+since it means agent traffic.
