@@ -41,6 +41,49 @@ export function stageCeiling(viewport: Viewport, calibrated: number): number {
 }
 
 /**
+ * Lowest zoom at which a card still carries its identity — seq, title, status.
+ * Below it every card is a bare coloured rectangle: `.traffic-nodes[data-detail="cell"]`
+ * hides the whole card body, so the tier boundary and this floor are one number.
+ */
+export const IDENTITY_SCALE = 0.36;
+
+/** Above this a card shows every row it has, not just the compact three. */
+export const FULL_DETAIL_SCALE = 0.7;
+
+export function detailTier(scale: number): "cell" | "compact" | "full" {
+	return scale < IDENTITY_SCALE
+		? "cell"
+		: scale < FULL_DETAIL_SCALE
+			? "compact"
+			: "full";
+}
+
+/**
+ * Zoom the overview opens at, for a scene of `content` on a stage of `viewport`.
+ *
+ * `floor` is what keeps a phone out of the `cell` tier. A 390px stage fits the
+ * whole graph only at ~18%, where the stage is nine blank rectangles and the
+ * screen carries no information at all; framing a centred, legible part of it
+ * instead leaves pan and zoom to reach the rest. Passed as 0 when the user asked
+ * for the whole graph by hand, which stays a true fit.
+ */
+export function overviewScale(
+	viewport: Viewport,
+	content: Viewport,
+	calibrated: number,
+	floor = 0,
+): number {
+	return Math.max(
+		floor,
+		Math.min(
+			stageCeiling(viewport, calibrated),
+			(viewport.width - 52) / content.width,
+			(viewport.height - 80) / content.height,
+		),
+	);
+}
+
+/**
  * Pull a camera back inside the scene so it never frames emptiness.
  *
  * Framing a pair centres on that pair, which is right on a stage the scene

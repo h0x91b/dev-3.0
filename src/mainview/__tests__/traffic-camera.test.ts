@@ -1,7 +1,11 @@
 import {
+	FULL_DETAIL_SCALE,
+	IDENTITY_SCALE,
 	MAX_SCALE,
 	clampToBounds,
+	detailTier,
 	frameExchange,
+	overviewScale,
 	stageCeiling,
 } from "../components/agent-traffic/traffic-camera";
 import type { PlacedNode } from "../components/agent-traffic/nodes-layout";
@@ -131,5 +135,40 @@ describe("clamping the framed pair to the scene", () => {
 		const camera = clampToBounds({ x: -9999, y: 9999, scale: 1 }, fourK, flat);
 		expect(camera.x + 200).toBeCloseTo(fourK.width / 2);
 		expect(camera.y + 150).toBeCloseTo(fourK.height / 2);
+	});
+});
+
+describe("overview framing floor", () => {
+	// The graph the phone report was measured on: nine cards in three rows.
+	const graph = { width: 1852, height: 1074 };
+	const phone = { width: 390, height: 419 };
+	const laptop = { width: 1440, height: 603 };
+	const fourK = { width: 3840, height: 1863 };
+
+	it("opens a phone stage in a tier where a card still has its identity", () => {
+		expect(overviewScale(phone, graph, 0.85)).toBeLessThan(IDENTITY_SCALE);
+		expect(detailTier(overviewScale(phone, graph, 0.85))).toBe("cell");
+		const floored = overviewScale(phone, graph, 0.85, IDENTITY_SCALE);
+		expect(floored).toBe(IDENTITY_SCALE);
+		expect(detailTier(floored)).not.toBe("cell");
+	});
+
+	it("leaves a stage that already fits legibly untouched", () => {
+		for (const stage of [laptop, fourK]) {
+			const plain = overviewScale(stage, graph, 0.85);
+			expect(plain).toBeGreaterThan(IDENTITY_SCALE);
+			expect(overviewScale(stage, graph, 0.85, IDENTITY_SCALE)).toBe(plain);
+		}
+	});
+
+	it("keeps a hand-asked fit a true fit, floor or not", () => {
+		expect(overviewScale(phone, graph, 0.85, 0)).toBe(overviewScale(phone, graph, 0.85));
+	});
+
+	it("puts the tier boundary exactly where the card body appears", () => {
+		expect(detailTier(IDENTITY_SCALE - 0.001)).toBe("cell");
+		expect(detailTier(IDENTITY_SCALE)).toBe("compact");
+		expect(detailTier(FULL_DETAIL_SCALE - 0.001)).toBe("compact");
+		expect(detailTier(FULL_DETAIL_SCALE)).toBe("full");
 	});
 });

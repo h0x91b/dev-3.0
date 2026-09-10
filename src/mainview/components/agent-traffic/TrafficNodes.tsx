@@ -48,7 +48,7 @@ import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
-import { MAX_SCALE, frameExchange, stageCeiling } from "./traffic-camera";
+import { IDENTITY_SCALE, MAX_SCALE, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
 	projects?: {
@@ -250,14 +250,14 @@ export default function TrafficNodes({
 	);
 	useEffect(() => () => cancelAnimationFrame(camera.current), []);
 	const fitNodes = useCallback(
-		(targets: Pick<PlacedNode, "x" | "y" | "width" | "height">[], maximum: number, instant = false) => {
+		(targets: Pick<PlacedNode, "x" | "y" | "width" | "height">[], maximum: number, instant = false, floor = 0) => {
 			const box = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
 			if (!box.width || !box.height || !targets.length) return;
 			const left = Math.min(...targets.map((p) => p.x)) - 70;
 			const top = Math.min(...targets.map((p) => p.y)) - 86;
 			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
 			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
-			const scale = Math.min(stageCeiling(box, maximum), (box.width - 52) / width, (box.height - 80) / height);
+			const scale = overviewScale(box, { width, height }, maximum, floor);
 			move(
 				{
 					scale,
@@ -269,8 +269,17 @@ export default function TrafficNodes({
 		},
 		[move],
 	);
+	/**
+	 * The automatic overview — on open, on resize, and whenever Live Follow falls
+	 * back to it — never goes below the tier where a card carries its identity.
+	 * On a phone the whole graph fits only at ~18%, and a stage of blank coloured
+	 * rectangles cannot be read at all; a centred, legible part of it can, and pan
+	 * and zoom reach the rest. `exact` is the user asking for the whole graph by
+	 * hand (the Fit button, the minimap), which stays a true fit.
+	 */
 	const fit = useCallback(
-		(instant = false) => fitNodes(scene.groups.length ? scene.groups : scene.placed, 0.85, instant),
+		(instant = false, exact = false) =>
+			fitNodes(scene.groups.length ? scene.groups : scene.placed, 0.85, instant, exact ? 0 : IDENTITY_SCALE),
 		[fitNodes, scene.placed, scene.groups],
 	);
 	/** The scene's outer edge with the same padding `fitNodes` leaves around it. */
@@ -628,8 +637,7 @@ export default function TrafficNodes({
 	const activeRecipient = activeTo ? nodeByKey.get(activeTo) : undefined;
 	const labelPoint = activeEdge ? pointAt(activeEdge.points, 0.5) : activeRecipient ?
 		{ x: activeRecipient.x + activeRecipient.width / 2, y: activeRecipient.y } : undefined;
-	const detail =
-		view.scale < 0.36 ? "cell" : view.scale < 0.7 ? "compact" : "full";
+	const detail = detailTier(view.scale);
 	const visiblePairs = new Map<
 		string,
 		{ count: number; status: string; at: number }
@@ -905,7 +913,7 @@ export default function TrafficNodes({
 					width={frame.current?.clientWidth ?? 0}
 					height={frame.current?.clientHeight ?? 0}
 					onNavigate={(target) => { manual(); move(target, true); }}
-					onFit={() => { manual(); overviewMode.current = true; fit(); }}
+					onFit={() => { manual(); overviewMode.current = true; fit(false, true); }}
 				/>
 			)}
 			<div className="traffic-camera-controls">
@@ -926,7 +934,7 @@ export default function TrafficNodes({
 					onClick={() => {
 						manual();
 						overviewMode.current = true;
-						fit();
+						fit(false, true);
 					}}
 					aria-label={t("traffic.nodes.fit")}
 				>
