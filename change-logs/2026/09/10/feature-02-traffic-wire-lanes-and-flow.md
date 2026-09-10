@@ -1,0 +1,3 @@
+Short: Traffic wires get lanes, colour and flow
+
+Agent traffic (Experiment 2) no longer draws every connection on one shared trunk: wires leaving a card fan out across its edge, each takes its own bus line in the corridor below, and each connection keeps a stable colour from a new set of 16 categorical wire tokens. While a message is travelling a wire, a wave runs along it from sender to recipient at one speed for every wire, so direction is readable at a glance; an idle wire stands still, the wave is dropped entirely under `prefers-reduced-motion`, and thickness still tracks the message count.
