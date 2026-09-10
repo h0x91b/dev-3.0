@@ -1545,10 +1545,10 @@ describe("App keyboard shortcuts", () => {
 		it("stays put, and adds no history entry, when the click lands on the screen itself", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
+			dispatchAgentMessage();
 			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
 			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
 
-			dispatchAgentMessage();
 			await userEvent.click(await toastButton());
 
 			expect(screen.getAllByTestId("agent-traffic-screen")).toHaveLength(1);
@@ -1589,6 +1589,46 @@ describe("App keyboard shortcuts", () => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
 			});
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+		});
+
+		// The traffic screen already shows the message in full; a toast on top of it
+		// previews what is right there and covers its own destination.
+		it("raises no toast while this window is on the traffic screen", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+
+			dispatchAgentMessage();
+
+			expect(screen.queryByText("#7 Coordinator → #42 Receiver")).not.toBeInTheDocument();
+		});
+
+		// Off the screen the toast is the only signal there is — the beta being on
+		// must not silence it board-wide.
+		it("still raises the toast on another route with the beta on", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+
+			expect(await toastButton()).toBeInTheDocument();
+		});
+
+		// Suppression is about THIS message on ITS screen, not about muting the
+		// traffic screen: an ordinary `dev3 notify` still gets through there.
+		it("leaves an unrelated CLI toast visible on the traffic screen", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+					detail: { taskId: "t-receiver", projectId: "p1", message: "build finished", level: "success" },
+				}));
+			});
+
+			expect(await screen.findByRole("button", { name: /build finished/ })).toBeInTheDocument();
 		});
 
 		it("drops the toast when the SENDER's project is sensitive on camera", async () => {

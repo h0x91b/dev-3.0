@@ -1672,6 +1672,10 @@ function App() {
 				preview: string;
 			};
 			if (!taskId || !preview) return;
+			// This window is already showing the traffic screen, where the message
+			// lands in full — a toast previewing it would cover its own destination.
+			// Per window, via this renderer's own route: another window keeps its toast.
+			if (getAgentTrafficEnabled() && routeRef.current.screen === "agent-traffic") return;
 			// Either side sensitive on camera drops the whole toast: it names both.
 			if (isProjectSilencedForDisplay(projectId) || isProjectSilencedForDisplay(fromProjectId)) return;
 			const from = [`#${fromSeq}`, fromTitle].filter(Boolean).join(" ");
