@@ -177,6 +177,7 @@ const common = {
 	"traffic.orbit.history": "History",
 	"traffic.orbit.resume": "Resume animation",
 	"traffic.orbit.pause": "Pause animation",
+	"traffic.orbit.activeProjects": "All active projects",
 	"traffic.orbit.allProjects": "All projects",
 	"traffic.orbit.project": "Project",
 	"traffic.orbit.search": "Search tasks and messages",

@@ -189,6 +189,7 @@ const common = {
 	"traffic.orbit.history": "История",
 	"traffic.orbit.resume": "Продолжить анимацию",
 	"traffic.orbit.pause": "Приостановить анимацию",
+	"traffic.orbit.activeProjects": "Активные проекты",
 	"traffic.orbit.allProjects": "Все проекты",
 	"traffic.orbit.project": "Проект",
 	"traffic.orbit.search": "Поиск задач и сообщений",

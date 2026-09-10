@@ -21,6 +21,7 @@ import {
 	type TrafficNode,
 	type TrafficRecord,
 } from "./traffic-model";
+import { ALL_PROJECTS, isAggregateScope } from "./traffic-scope";
 
 interface Props {
 	projects?: { id: string; name: string }[];
@@ -167,8 +168,10 @@ export default function TrafficOrbit(props: Props) {
 						labelPriority.set(key, 1000 + records.length - index);
 				}
 			}
-			const scope = latest.current.scope ?? "all";
-			const all = scope === "all";
+			const scope = latest.current.scope ?? ALL_PROJECTS;
+			// Any aggregate scope has no single project to pin as the primary lane;
+			// the narrowing itself already happened upstream of these nodes.
+			const all = isAggregateScope(scope);
 			const projects = [
 				...new Set([
 					...input.map((node) => node.projectId),
