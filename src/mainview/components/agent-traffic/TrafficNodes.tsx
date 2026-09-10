@@ -744,6 +744,27 @@ export default function TrafficNodes({
 				</svg>
 				<div className="traffic-nodes-cards">
 					{scene.placed.map((placed) => {
+						// The user marker never reaches `Card`: it has no task to project.
+						if (placed.node.user)
+							return (
+								<UserCard
+									key={placed.node.key}
+									placed={placed}
+									messageCount={messageCounts.get(placed.node.key) ?? 0}
+									selected={selected === placed.node.key}
+									dim={selected !== null && selected !== placed.node.key}
+									active={
+										activeFrom === placed.node.key ||
+										activeTo === placed.node.key
+									}
+									scale={view.scale}
+									onSelect={(key) => {
+										manual();
+										onSelect(key);
+									}}
+									onFocus={focus}
+								/>
+							);
 						const projection =
 							projections.get(placed.node.key) ??
 							projectTaskAt(placed.node.task, cursorAt);
@@ -957,6 +978,58 @@ function CompletionBurst({
 				{line}
 			</span>
 		</div>
+	);
+}
+
+/**
+ * The person using the app, drawn as its own thing rather than through {@link Card}.
+ *
+ * Deliberately not a branch inside `Card`: it shares none of the task grammar
+ * there — no status, no overview, no seq, no replay projection, all of which
+ * would print something false about a human ("status not recorded", "#—"). It
+ * also keeps this feature out of a function another task owns.
+ */
+function UserCard({
+	placed,
+	messageCount,
+	selected,
+	dim,
+	active,
+	scale,
+	onSelect,
+	onFocus,
+}: {
+	placed: PlacedNode;
+	messageCount: number;
+	selected: boolean;
+	dim: boolean;
+	active: boolean;
+	scale: number;
+	onSelect: (key: string) => void;
+	onFocus: (key: string) => void;
+}) {
+	const t = useT();
+	return (
+		<button
+			type="button"
+			data-testid="traffic-user-card"
+			className={`traffic-node-card traffic-user-card ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""}`}
+			style={{
+				left: placed.x,
+				top: placed.y,
+				width: placed.width,
+				height: placed.height,
+				["--node-inverse" as string]: 1 / scale,
+			}}
+			aria-label={`${t("traffic.node.you")} · ${t.plural("traffic.orbit.messageCount", messageCount)}`}
+			aria-pressed={selected}
+			onClick={() => onSelect(placed.node.key)}
+			onDoubleClick={() => onFocus(placed.node.key)}
+		>
+			<TrafficIcon name="user" />
+			<strong>{t("traffic.node.you")}</strong>
+			<span className="traffic-node-count">{messageCount}</span>
+		</button>
 	);
 }
 

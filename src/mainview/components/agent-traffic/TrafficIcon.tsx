@@ -12,6 +12,9 @@ const paths = {
 	message: "M4 4h16v12H9l-5 4ZM8 8h8M8 12h5",
 	check: "m4 12.5 5.5 5.5L20 6",
 	cross: "M6 6l12 12M18 6 6 18",
+	// Head and shoulders. The smallest mark that reads as a person rather than a
+	// task at the sizes this scene zooms through.
+	user: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 21a7.5 7.5 0 0 1 15 0",
 } as const;
 export default function TrafficIcon({ name }: { name: keyof typeof paths }) {
 	return (

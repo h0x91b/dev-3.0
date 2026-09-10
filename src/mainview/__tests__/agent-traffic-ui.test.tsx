@@ -1173,6 +1173,32 @@ it("Follow reveals its hibernated endpoint and replay never uses a future delive
 	).toBe(true);
 });
 
+it("draws the user as a sender for a message they proved they sent", async () => {
+	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user" })]);
+	renderLog();
+	const [messageRow] = await messageRows(1);
+	// The list and the graph must say the same thing: an em-dash here beside a
+	// "You" on the canvas reads as two different facts about one message.
+	expect(messageRow.textContent).toContain("You → #22");
+
+	const marker = screen.getByTestId("traffic-user-card");
+	expect(marker.textContent).toContain("You");
+	// None of the task grammar leaks onto a person: no seq, no status line.
+	expect(marker.textContent).not.toContain("#");
+	// And it is a real endpoint, so the recipient card is drawn beside it.
+	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(1);
+});
+
+it("draws no user marker for a sender-less message that proved nothing", async () => {
+	// The dev3 hand-off shape. Identical to the case above but for `origin`, and
+	// it stays out of the message list too — which is why this one cannot wait on
+	// a message row the way the case above does.
+	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined })]);
+	renderLog();
+	await screen.findByTestId("traffic-node-scene");
+	expect(screen.queryByTestId("traffic-user-card")).toBeNull();
+});
+
 it("Focus reveals a hibernated task selected from the task list without waking it", async () => {
 	taskExtras.value = { "task-c": { hibernated: true } };
 	setPage([row()]);

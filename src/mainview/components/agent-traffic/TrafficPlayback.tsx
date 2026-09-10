@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { useTrafficPlayback } from "./useTrafficPlayback";
 import type { TrafficTimelineEvent } from "./traffic-timeline";
 import TrafficIcon from "./TrafficIcon";
+import { senderLabel } from "./traffic-model";
 
 type Props = {
 	playback: ReturnType<typeof useTrafficPlayback>;
@@ -179,7 +180,7 @@ function describeEvent(
 		const { row } = event.record;
 		return {
 			icon: "message",
-			lead: `${row.fromSeq == null ? "—" : `#${row.fromSeq}`} → #${row.toSeq}`,
+			lead: `${senderLabel(row, t("traffic.node.you"))} → #${row.toSeq}`,
 			text: row.subject || row.body.slice(0, 120),
 			private: true,
 		};

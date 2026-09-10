@@ -170,6 +170,7 @@ const common = {
 	"traffic.celebration.age": "Completada · {duration} desde su creación",
 	"traffic.celebration.underMinute": "menos de un minuto",
 	"traffic.node.statusUnrecorded": "Estado no registrado",
+	"traffic.node.you": "Tú",
 	"traffic.nodes.currentOnlyDimensions": "La hibernación, el proyecto y la variante no se registran: se muestran los actuales",
 	"traffic.nodes.follow": "Seguir",
 	"traffic.nodes.focus": "Enfocar",

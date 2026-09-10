@@ -11,6 +11,7 @@ import {
 } from "../shared/types";
 import * as data from "./data";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
+import type { AgentMessageOrigin } from "../shared/agent-message-log";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
@@ -115,6 +116,9 @@ async function recordMessageAttempt(task: Task, message: ScheduledMessage, deliv
 			toProjectId: task.projectId,
 			// A queued item carries the time it was queued for; an immediate send has none.
 			kind: message.at ? "scheduled" : "immediate",
+			// Carried from the call site, never inferred here: a null `source` is
+			// four different things and only two of them are the user.
+			...(message.origin ? { origin: message.origin } : {}),
 			...(message.at ? { scheduledFor: message.at } : {}),
 			...(message.subject ? { subject: message.subject } : {}),
 			body: message.text,
@@ -271,6 +275,8 @@ export async function scheduleMessage(
 		source?: AgentMessageSource | null;
 		/** The sender's one-liner; stored with the message and logged at fire time. */
 		subject?: string | null;
+		/** Set only by a caller that can prove a human queued this. */
+		origin?: AgentMessageOrigin;
 	},
 ): Promise<Task> {
 	const validated = validateText(input.text);
@@ -295,6 +301,7 @@ export async function scheduleMessage(
 		at: at.toISOString(),
 		target: normalizeTarget(input.target),
 		...(input.source ? { source: input.source } : {}),
+		...(input.origin ? { origin: input.origin } : {}),
 		...(spilledPath ? { spilledPath } : {}),
 	};
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
@@ -343,7 +350,7 @@ export async function sendMessageImmediately(
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-	opts: { hold?: boolean; subject?: string | null } = {},
+	opts: { hold?: boolean; subject?: string | null; origin?: AgentMessageOrigin } = {},
 ): Promise<AgentPromptDelivery & { spilledPath: string | null }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
@@ -361,6 +368,7 @@ export async function sendMessageImmediately(
 		at: "",
 		target: normalizeTarget(target),
 		...(source ? { source } : {}),
+		...(opts.origin ? { origin: opts.origin } : {}),
 		...(spilledPath ? { spilledPath } : {}),
 	};
 	const delivery = await deliverToTarget(task, message, opts.hold !== false);

@@ -12,7 +12,7 @@ import type { TelemetryProfile } from "./telemetry-profile";
 export type { TelemetryProfile } from "./telemetry-profile";
 import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
-import type { AgentMessageLogPage } from "./agent-message-log";
+import type { AgentMessageLogPage, AgentMessageOrigin } from "./agent-message-log";
 import type { NotificationLogPage } from "./notification-log";
 import type { LowBatteryStatus } from "./low-battery";
 export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
@@ -2705,6 +2705,12 @@ export interface ScheduledMessage {
 	target: ScheduledMessageTarget;
 	/** Set when another task's agent sent it — wraps the text at fire time. */
 	source?: AgentMessageSource;
+	/**
+	 * Provenance carried from the moment of authoring to the moment of delivery,
+	 * because a "Send later" fires hours after the user wrote it and nothing at
+	 * fire time could tell who did. Additive and optional in `tasks.json`.
+	 */
+	origin?: AgentMessageOrigin;
 	/**
 	 * The file the real body was written to when it was too large to type, leaving
 	 * {@link text} a pointer to it. Carried so the message log can say a row holds a

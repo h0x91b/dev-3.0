@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMessageLogRow } from "../../shared/agent-message-log";
 import type { Task } from "../../shared/types";
-import { endpointKey, nodeSeq, routeKey, trafficNodes, trafficRecords } from "../components/agent-traffic/traffic-model";
+import { USER_ENDPOINT_ID, endpointKey, fromKey, nodeSeq, routeKey, trafficNodes, trafficRecords } from "../components/agent-traffic/traffic-model";
 
 const row = (overrides: Partial<AgentMessageLogRow> = {}): AgentMessageLogRow => ({
 	v: 1, at: "2026-09-05T10:00:00.000Z", fromTaskId: "sender", fromSeq: 11,
@@ -34,6 +34,42 @@ describe("traffic model", () => {
 	it("does not merge equal ids across projects or invent human nodes", () => {
 		expect(trafficNodes([task(), task({ projectId: "second" })], [])).toHaveLength(2);
 		expect(trafficNodes([], [row({ fromTaskId: null, fromSeq: null })])).toHaveLength(1);
+	});
+
+	it("gives a proven user message a sender endpoint in the recipient's project", () => {
+		const userRow = row({ fromTaskId: null, fromSeq: null, fromProjectId: undefined, origin: "user" });
+		expect(fromKey(userRow)).toBe(endpointKey("second", USER_ENDPOINT_ID));
+		const nodes = trafficNodes([], [userRow]);
+		const marker = nodes.find(node => node.user);
+		expect(marker).toMatchObject({ projectId: "second", seq: null });
+		// No task behind it, so nothing downstream can read a status off the human.
+		expect(marker?.task).toBeUndefined();
+	});
+
+	it("still invents nothing for a sender-less row that proved nothing", () => {
+		// An artifact submit, a dev3 hand-off and a `dev3 message` run outside a
+		// worktree all look exactly like this, and none of them is the user.
+		const anonymous = row({ fromTaskId: null, fromSeq: null });
+		expect(fromKey(anonymous)).toBeNull();
+		expect(trafficNodes([], [anonymous]).some(node => node.user)).toBe(false);
+	});
+
+	it("keeps one user endpoint per project rather than one per message", () => {
+		const nodes = trafficNodes([], [
+			row({ fromTaskId: null, fromSeq: null, origin: "user" }),
+			row({ fromTaskId: null, fromSeq: null, origin: "user", toTaskId: "other", at: "2026-09-05T10:02:00.000Z" }),
+			row({ fromTaskId: null, fromSeq: null, origin: "user", toProjectId: "third", at: "2026-09-05T10:03:00.000Z" }),
+		]);
+		expect(nodes.filter(node => node.user).map(node => node.projectId).sort()).toEqual(["second", "third"]);
+	});
+
+	it("cannot collide with a task whose id happens to be the sentinel", () => {
+		const nodes = trafficNodes([task({ id: USER_ENDPOINT_ID, projectId: "second" })], [
+			row({ fromTaskId: null, fromSeq: null, origin: "user" }),
+		]);
+		// The task keeps its own identity: a real task is never redrawn as the human.
+		expect(nodes.filter(node => node.id === USER_ENDPOINT_ID)).toHaveLength(1);
+		expect(nodes.find(node => node.id === USER_ENDPOINT_ID)?.user).toBeUndefined();
 	});
 
 	it("folds reverse cross-project direction without conflating other projects", () => {

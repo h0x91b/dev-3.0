@@ -48,6 +48,28 @@ export type AgentMessageBodyKind = "text" | "spill-pointer";
 /** Immediate `dev3 message` send versus a queued "Send later" fire. */
 export type AgentMessageLogKind = "immediate" | "scheduled";
 
+/**
+ * Who submitted the message, on the rows where dev3 can prove it.
+ *
+ * `"user"` is stamped at the call site by the few paths that are provably a human
+ * acting in this app — never derived from a row's shape. A null sender is NOT the
+ * user: it is also a dev3 hand-off, an artifact form submit, and a `dev3 message`
+ * run outside a worktree, which are three different things wearing the same face.
+ * Absent therefore means unknown, and a reader must treat it as unknown.
+ */
+export type AgentMessageOrigin = "user";
+
+/**
+ * The one place that answers "did the user send this?".
+ *
+ * A predicate rather than an inline comparison so the rule cannot be re-derived
+ * differently in the two renderers and the store — the failure it guards against
+ * is one surface quietly deciding a null sender is good enough.
+ */
+export function isUserOrigin(row: Pick<AgentMessageLogRow, "origin">): boolean {
+	return row.origin === "user";
+}
+
 /** One delivered (or attempted) message. Written once, never amended. */
 export interface AgentMessageLogRow {
 	v: number;
@@ -63,6 +85,13 @@ export interface AgentMessageLogRow {
 	toTitle?: string;
 	toProjectId: string;
 	kind: AgentMessageLogKind;
+	/**
+	 * Provenance, when it is provable. Absent on every row written before this
+	 * existed and on every path that cannot prove who acted — see
+	 * {@link AgentMessageOrigin}. Additive and optional: an older app reads the row
+	 * and ignores the field.
+	 */
+	origin?: AgentMessageOrigin;
 	/** ISO time the message was queued for, on `scheduled` rows only. */
 	scheduledFor?: string;
 	/**

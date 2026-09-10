@@ -966,7 +966,9 @@ async function scheduleMessage(params: {
 }): Promise<Task> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	return scheduleMessageCore(project, task, { text: params.text, at: params.at, target: params.target });
+	// The only caller is ScheduleMessageModal, so a human typed this. Stamped at
+	// queue time because the fire happens hours later, when nothing could tell.
+	return scheduleMessageCore(project, task, { text: params.text, at: params.at, target: params.target, origin: "user" });
 }
 
 /** Cancel one pending scheduled message (chip → "Cancel"). */
