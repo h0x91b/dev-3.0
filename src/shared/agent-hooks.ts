@@ -52,6 +52,13 @@ export function codexHookCommand(dialect: HookCliDialect = DEFAULT_DIALECT): str
 
 export const CODEX_DEV3_HOOK_COMMAND = codexHookCommand();
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
+/**
+ * Reads the submitted prompt off stdin so agent traffic can show the human who
+ * started a turn. A SECOND entry beside the status move rather than a rewrite of
+ * it: every task's board status depends on that command, and folding a new job
+ * into it would put recording and status sync in one blast radius.
+ */
+export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
 export const CODEX_STATUS_HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
@@ -219,6 +226,13 @@ export function buildClaudeHooks(
 	return {
 		UserPromptSubmit: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
+			{
+				hooks: [{
+					type: "command",
+					command: `${dialect.cli} ${CLAUDE_PROMPT_HOOK_SUBCOMMAND}`,
+					timeout: 5,
+				}],
+			},
 		],
 		PreToolUse: [
 			{ hooks: [{ type: "command", command: workingCmd }] },

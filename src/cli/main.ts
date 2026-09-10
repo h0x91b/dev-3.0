@@ -30,6 +30,7 @@ import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
+import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
@@ -211,6 +212,16 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter. It intentionally remains successful when
 		// the app is offline so a status-sync failure can never block Codex.
 		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "claude-prompt") {
+		// Internal: Claude Code's UserPromptSubmit, read for recording only. It
+		// never blocks or fails the prompt — the status move is a separate entry
+		// on the same event.
+		return await handleClaudePrompt(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

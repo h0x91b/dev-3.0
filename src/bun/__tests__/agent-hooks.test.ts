@@ -34,7 +34,8 @@ describe("buildClaudeHooks", () => {
 		expect(hooks).toHaveProperty("PostToolUse");
 		expect(hooks).toHaveProperty("PermissionRequest");
 		expect(hooks).toHaveProperty("Stop");
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		// Two entries: the status move, plus the recorder that reads the prompt.
+		expect(hooks.UserPromptSubmit).toHaveLength(2);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
@@ -49,6 +50,17 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain("--status in-progress");
 		expect(cmd).toContain("--if-status-not review-by-ai");
 		expect(cmd).not.toContain("review-by-user");
+	});
+
+	it("records the prompt from a SECOND entry, leaving the status move untouched", () => {
+		const hooks = buildClaudeHooks();
+		const [move, record] = hooks.UserPromptSubmit;
+
+		// The status move is what every task's board position depends on, so the
+		// recorder is added beside it rather than folded into it.
+		expect(move!.hooks[0]!.command).toContain("task move --status in-progress");
+		expect(record!.hooks[0]!.command).toBe(`${DEV3_CLI} hook claude-prompt`);
+		expect(record!.hooks[0]!.timeout).toBe(5);
 	});
 
 	it("PreToolUse hook moves to in-progress with --if-status-not guard", () => {
@@ -166,7 +178,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
@@ -228,7 +240,8 @@ describe("mergeClaudeHooks", () => {
 
 		expect(result.hooks).toBeDefined();
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		// Two entries: the status move, plus the recorder that reads the prompt.
+		expect(hooks.UserPromptSubmit).toHaveLength(2);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
@@ -281,7 +294,8 @@ describe("mergeClaudeHooks", () => {
 		const second = mergeClaudeHooks(first as Record<string, unknown>);
 		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		// Two entries: the status move, plus the recorder that reads the prompt.
+		expect(hooks.UserPromptSubmit).toHaveLength(2);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
@@ -479,7 +493,8 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		// Two entries: the status move, plus the recorder that reads the prompt.
+		expect(hooks.UserPromptSubmit).toHaveLength(2);
 		expect(hooks.Stop).toHaveLength(1);
 		expect(hooks.Stop[0].hooks[0].command).toContain("task move --status");
 		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);

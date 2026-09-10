@@ -9,6 +9,10 @@ import { sendRequest } from "../socket-client";
 interface CodexHookPayload {
 	event: CodexStatusHookEvent;
 	sessionId?: string;
+	/** The submitted text, on `UserPromptSubmit` only. */
+	prompt?: string;
+	/** Codex's own per-turn identity — how a redelivered hook is recognised. */
+	turnId?: string;
 }
 
 function parsePayload(rawInput: string): CodexHookPayload | null {
@@ -16,6 +20,8 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 		const parsed = JSON.parse(rawInput) as {
 			hook_event_name?: unknown;
 			session_id?: unknown;
+			prompt?: unknown;
+			turn_id?: unknown;
 		};
 		if (typeof parsed.hook_event_name !== "string") return null;
 		if (!CODEX_STATUS_HOOK_EVENTS.includes(parsed.hook_event_name as CodexStatusHookEvent)) {
@@ -24,6 +30,8 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 		return {
 			event: parsed.hook_event_name as CodexStatusHookEvent,
 			...(typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}),
+			...(typeof parsed.prompt === "string" && parsed.prompt.trim() ? { prompt: parsed.prompt } : {}),
+			...(typeof parsed.turn_id === "string" ? { turnId: parsed.turn_id } : {}),
 		};
 	} catch {
 		return null;
@@ -59,6 +67,10 @@ export async function handleCodexHook(
 				event: payload.event,
 				...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 				...(paneId ? { paneId } : {}),
+				// Carried on the status hook so a submitted prompt costs the pane no
+				// second dev3 process; what happens to it is decided app-side.
+				...(payload.event === "UserPromptSubmit" && payload.prompt ? { prompt: payload.prompt } : {}),
+				...(payload.turnId ? { turnId: payload.turnId } : {}),
 			}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 			if (!response.ok) {
 				process.stderr.write(`dev3 Codex hook: ${response.error || "status update failed"}\n`);
