@@ -786,6 +786,11 @@ export default function TrafficNodes({
 				className="traffic-nodes-scene"
 				data-testid="traffic-node-scene"
 				style={{
+					/* Sized, not collapsed: every card is absolutely positioned, so without
+					   these the transformed layer measures 0x0 while painting the whole
+					   graph. The wires <svg> already carries the same two numbers. */
+					width: scene.width,
+					height: scene.height,
 					transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
 				}}
 			>

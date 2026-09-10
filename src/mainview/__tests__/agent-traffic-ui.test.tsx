@@ -1217,6 +1217,21 @@ it("paints each wire with its own colour token and leaves an idle wire still", a
 	expect(document.querySelector(".traffic-wire-flow")).toBeNull();
 });
 
+it("sizes the transformed scene layer to the graph it paints", async () => {
+	// Every card inside is absolutely positioned, so without an explicit size the
+	// scene collapses to 0x0 while painting the whole graph — the layer shape that
+	// left card fragments on screen until a pan repainted them.
+	setPage([row()]);
+	renderLog();
+	await messageRows(1);
+	const scene = screen.getByTestId("traffic-node-scene");
+	const wires = document.querySelector<SVGSVGElement>(".traffic-nodes-wires")!;
+	expect(scene.style.width).toBe(`${wires.getAttribute("width")}px`);
+	expect(scene.style.height).toBe(`${wires.getAttribute("height")}px`);
+	expect(Number.parseFloat(scene.style.width)).toBeGreaterThan(0);
+	expect(Number.parseFloat(scene.style.height)).toBeGreaterThan(0);
+});
+
 it("Focus reveals a hibernated task selected from the task list without waking it", async () => {
 	taskExtras.value = { "task-c": { hibernated: true } };
 	setPage([row()]);
