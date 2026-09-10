@@ -2,9 +2,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
-	loadWindowState,
-	saveWindowState,
+	loadWindowStates,
+	saveWindowStates,
 	displayContaining,
 	resolveRestoreFrame,
 	type WindowState,
@@ -29,21 +30,50 @@ const baseState: WindowState = {
 	displayBounds: { x: 0, y: 0, width: 1920, height: 1080 },
 };
 
-describe("loadWindowState / saveWindowState", () => {
-	it("round-trips a valid state", () => {
+const secondState: WindowState = {
+	frame: { x: 2100, y: 40, width: 900, height: 600 },
+	fullscreen: true,
+	displayId: 2,
+	displayBounds: { x: 1920, y: 0, width: 2560, height: 1440 },
+};
+
+describe("loadWindowStates / saveWindowStates", () => {
+	it("round-trips every window of a session, in order", () => {
 		const path = tmpFile();
-		saveWindowState(baseState, path);
-		expect(loadWindowState(path)).toEqual(baseState);
+		saveWindowStates([baseState, secondState], path);
+		expect(loadWindowStates(path)).toEqual([baseState, secondState]);
 	});
 
-	it("returns null when the file does not exist", () => {
-		expect(loadWindowState(join(tmpdir(), "nope-does-not-exist.json"))).toBeNull();
+	it("also writes the first window at the top level, so an older install still restores it", () => {
+		const path = tmpFile();
+		saveWindowStates([baseState, secondState], path);
+		const raw = JSON.parse(readFileSync(path, "utf-8"));
+		expect(raw.frame).toEqual(baseState.frame);
+		expect(raw.fullscreen).toBe(baseState.fullscreen);
+		expect(raw.displayId).toBe(baseState.displayId);
 	});
 
-	it("returns null for structurally invalid state", () => {
+	it("reads a file written by the old single-window format", () => {
 		const path = tmpFile();
-		saveWindowState({ ...baseState, frame: { x: 0, y: 0, width: 0, height: 0 } } as WindowState, path);
-		expect(loadWindowState(path)).toBeNull();
+		writeFileSync(path, JSON.stringify(baseState), "utf-8");
+		expect(loadWindowStates(path)).toEqual([baseState]);
+	});
+
+	it("returns an empty session when the file does not exist", () => {
+		expect(loadWindowStates(join(tmpdir(), "nope-does-not-exist.json"))).toEqual([]);
+	});
+
+	it("drops structurally invalid entries and keeps the good ones", () => {
+		const path = tmpFile();
+		const broken = { ...baseState, frame: { x: 0, y: 0, width: 0, height: 0 } };
+		writeFileSync(path, JSON.stringify({ ...baseState, windows: [broken, secondState] }), "utf-8");
+		expect(loadWindowStates(path)).toEqual([secondState]);
+	});
+
+	it("returns an empty session for a wholly invalid file", () => {
+		const path = tmpFile();
+		writeFileSync(path, "{not json", "utf-8");
+		expect(loadWindowStates(path)).toEqual([]);
 	});
 });
 

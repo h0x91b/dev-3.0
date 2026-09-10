@@ -51,7 +51,8 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
+import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
+import type { WindowState } from "./window-state";
 import { pushEverywhere } from "./push-targets";
 import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
@@ -453,9 +454,10 @@ function failDesktopLaunch(timeoutMs: number): void {
 	void hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
 }
 
-async function openMainWindow() {
+async function openMainWindow(restore?: WindowState) {
 	const buildChannel = await Updater.localInfo.channel();
 	return createAppWindow({
+		restore,
 		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
@@ -493,8 +495,18 @@ setOpenNewWindow(() => {
 	void openMainWindow();
 });
 
-await openMainWindow();
+// Reopen every window the last session ended with, each on its own saved
+// screen/geometry. A first run (or fresh-start dev mode) has no session and
+// gets the usual single window.
+const restoreSession = loadWindowSession();
+if (restoreSession.length > 1) log.info("Restoring window session", { windows: restoreSession.length });
+const primaryWindow = await openMainWindow(restoreSession[0]);
 log.info("Main window created");
+for (const state of restoreSession.slice(1)) await openMainWindow(state);
+// Creation order decides key focus, so hand it back to the primary window.
+if (restoreSession.length > 1) {
+	try { primaryWindow.focus(); } catch (err) { log.debug("Focusing the restored primary window failed", { error: String(err) }); }
+}
 readiness.arm();
 
 // Wire push messages. Every push in this file goes through `pushEverywhere`, so
