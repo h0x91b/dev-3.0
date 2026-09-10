@@ -192,8 +192,10 @@
 	text-decoration: underline;
 	text-underline-offset: 2px;
 }
+/* `--accent-hover` is the fill token: on dark it goes deeper, so a link would
+   dim on hover. Text and icons lift through `--accent-emphasis`. */
 .dev3-pr-md a:hover {
-	color: rgb(var(--accent-hover));
+	color: rgb(var(--accent-emphasis));
 }
 .dev3-pr-md code {
 	font-family: 'JetBrainsMono Nerd Font Mono', monospace;
@@ -216,6 +218,12 @@
 }
 .dev3-pr-md pre code {
 	white-space: inherit;
+}
+/* Streamdown emits one span per source line and carries the line break in the
+   markup, not in the text — without this every fence collapses into one
+   run-on line. (Its own stylesheet does this; we do not import it.) */
+.dev3-pr-md pre code > span {
+	display: block;
 }
 .dev3-pr-md pre code {
 	background: transparent;
@@ -292,26 +300,267 @@
 }
 
 /* ---- Markdown document preview (.dev3-md-doc) ----
-   The per-file diff preview renders whole .md files, so headings keep a real
-   hierarchy (PR comments flatten them all to one compact size). */
+   Whole .md files, not GitHub replies: a document type scale with real heading
+   hierarchy and reading rhythm. Structural chrome — heading rules, the h3 bar,
+   list markers, checkboxes, the table head, the rule — is `--accent`, the app's
+   own hue; everything else (code chips, quote, zebra) is a neutral wash off
+   `--text-primary`, so the page carries one colour, not a second palette. */
+.dev3-md-doc {
+	font-size: 0.9375rem;
+	line-height: 1.75;
+}
+.dev3-md-doc p,
+.dev3-md-doc ul,
+.dev3-md-doc ol,
+.dev3-md-doc blockquote,
+.dev3-md-doc pre,
+.dev3-md-doc table {
+	margin: 0.875rem 0;
+}
+.dev3-md-doc h1,
+.dev3-md-doc h2,
+.dev3-md-doc h3,
+.dev3-md-doc h4,
+.dev3-md-doc h5,
+.dev3-md-doc h6 {
+	font-weight: 700;
+	line-height: 1.3;
+	letter-spacing: -0.01em;
+}
 .dev3-md-doc h1 {
-	font-size: 1.375rem;
-	margin: 0.875rem 0 0.375rem;
+	font-size: 1.5rem;
+	margin: 0 0 1rem;
 }
 .dev3-md-doc h2 {
 	font-size: 1.1875rem;
-	margin: 0.75rem 0 0.375rem;
+	margin: 1.875rem 0 0.625rem;
 }
 .dev3-md-doc h3 {
+	position: relative;
 	font-size: 1.0625rem;
+	margin: 1.5rem 0 0.5rem;
+	padding-left: 0.75rem;
 }
-.dev3-md-doc h4 {
-	font-size: 1rem;
+/* The bar replaces a rule: an h3 is a sub-section, so its marker leads the text
+   instead of closing the block off. */
+.dev3-md-doc h3::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0.2em;
+	bottom: 0.2em;
+	width: 3px;
+	border-radius: 999px;
+	background: rgb(var(--accent));
 }
-.dev3-md-doc h1,
-.dev3-md-doc h2 {
-	border-bottom: 1px solid rgb(var(--border-default));
-	padding-bottom: 0.25rem;
+.dev3-md-doc h4,
+.dev3-md-doc h5,
+.dev3-md-doc h6 {
+	font-size: 0.9375rem;
+	margin: 1.25rem 0 0.375rem;
+	color: rgb(var(--text-secondary));
+}
+/* A fading rule instead of a full-width border: it reads as a title underline
+   rather than a divider that also cuts off the text below it. */
+.dev3-md-doc h1::after,
+.dev3-md-doc h2::after {
+	content: "";
+	display: block;
+	margin-top: 0.5rem;
+	border-radius: 2px;
+	background: linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent) / 0));
+}
+.dev3-md-doc h1::after {
+	height: 2px;
+}
+.dev3-md-doc h2::after {
+	height: 1px;
+	background: linear-gradient(90deg, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0));
+}
+.dev3-md-doc ul,
+.dev3-md-doc ol {
+	padding-left: 1.5rem;
+}
+.dev3-md-doc li {
+	margin: 0.3125rem 0;
+}
+.dev3-md-doc li::marker {
+	color: rgb(var(--accent));
+	font-weight: 700;
+}
+.dev3-md-doc li > ul,
+.dev3-md-doc li > ol {
+	margin: 0.3125rem 0;
+}
+/* A task-list item carries its own box, so the disc would be a second marker. */
+.dev3-md-doc li:has(> input[type="checkbox"]) {
+	list-style: none;
+}
+.dev3-md-doc input[type="checkbox"] {
+	accent-color: rgb(var(--accent));
+	width: 0.9em;
+	height: 0.9em;
+	margin-right: 0.375rem;
+	vertical-align: -0.1em;
+}
+.dev3-md-doc a {
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 3px;
+	text-decoration-color: rgb(var(--accent) / 0.5);
+}
+.dev3-md-doc a:hover {
+	text-decoration-color: currentColor;
+}
+/* Chip, not box: a path-heavy document renders dozens of these, and a border on
+   every one turns the page into a grid. Size is relative so a `code` span in a
+   heading grows with it. */
+.dev3-md-doc code {
+	font-size: 0.875em;
+	/* Neutral, not accent: a chip is not a link, and a document is full of them. */
+	background: rgb(var(--text-primary) / 0.08);
+	border: none;
+	border-radius: 0.3125rem;
+	padding: 0.1em 0.35em;
+	/* A long path wraps mid-chip; each fragment keeps its own padding and
+	   corners instead of one chip sliced open across two lines. */
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+}
+.dev3-md-doc pre {
+	font-size: 0.8125rem;
+	line-height: 1.65;
+	border-radius: 0.625rem;
+	padding: 0.875rem 1rem;
+}
+.dev3-md-doc pre code {
+	font-size: inherit;
+	background: transparent;
+	padding: 0;
+}
+/* Streamdown nests a fence and a table in two padded, bordered boxes of its own,
+   each drawn with shadcn tokens this app does not define — three frames around
+   one block. The document scope keeps exactly one: the `pre` / `table` itself. */
+.dev3-md-doc [data-streamdown="code-block"],
+.dev3-md-doc [data-streamdown="table-wrapper"] {
+	margin: 0.875rem 0;
+	padding: 0;
+	border: none;
+	background: none;
+	gap: 0.25rem;
+}
+.dev3-md-doc [data-streamdown="code-block-body"],
+.dev3-md-doc [data-streamdown="table-wrapper"] > div {
+	padding: 0;
+	border: none;
+	background: none;
+	border-radius: 0;
+}
+.dev3-md-doc [data-streamdown="code-block"] > pre,
+.dev3-md-doc [data-streamdown="code-block-body"] > pre,
+.dev3-md-doc [data-streamdown="table-wrapper"] table {
+	margin: 0;
+}
+/* Same treatment for a mermaid fence: the diagram box is the single frame, the
+   language row above it is a label rather than a 2rem-tall empty strip. */
+.dev3-md-doc [data-streamdown="mermaid-block"] {
+	margin: 0.875rem 0;
+	padding: 0;
+	border: none;
+	background: none;
+	gap: 0.25rem;
+}
+.dev3-md-doc [data-streamdown="mermaid-block"] > div:has([data-streamdown="mermaid"]) {
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 0.625rem;
+	background: rgb(var(--surface-base));
+}
+.dev3-md-doc [data-streamdown="code-block-header"],
+.dev3-md-doc [data-streamdown="mermaid-block"] > div:first-child {
+	height: auto;
+	padding-left: 0.125rem;
+	font-family: var(--dev3-mono-stack);
+	font-size: 0.6875rem;
+	letter-spacing: 0.06em;
+	color: rgb(var(--text-muted));
+}
+/* Neutral bar and wash: an accent-tinted block with a left bar is already taken
+   in this stylesheet — `.dev3-md-commented` marks a block carrying a review
+   comment, and a quote must not look like one. */
+.dev3-md-doc blockquote {
+	border-left: 3px solid rgb(var(--border-active));
+	border-radius: 0 0.5rem 0.5rem 0;
+	background: rgb(var(--text-primary) / 0.045);
+	padding: 0.625rem 0.875rem;
+	color: rgb(var(--text-secondary));
+}
+.dev3-md-doc blockquote > :first-child {
+	margin-top: 0;
+}
+.dev3-md-doc blockquote > :last-child {
+	margin-bottom: 0;
+}
+/* `<details>` arrives with no styling at all — a bare disclosure triangle over
+   body text reads as a stray line rather than a collapsed section. */
+.dev3-md-doc details {
+	margin: 0.875rem 0;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 0.625rem;
+	background: rgb(var(--text-primary) / 0.03);
+	padding: 0.5rem 0.875rem;
+}
+.dev3-md-doc summary {
+	cursor: pointer;
+	font-weight: 600;
+	color: rgb(var(--text-secondary));
+}
+.dev3-md-doc details[open] > summary {
+	margin-bottom: 0.375rem;
+}
+.dev3-md-doc hr {
+	height: 2px;
+	border: none;
+	border-radius: 2px;
+	margin: 1.875rem 0;
+	background: linear-gradient(
+		90deg,
+		rgb(var(--accent) / 0) 0%,
+		rgb(var(--accent) / 0.55) 50%,
+		rgb(var(--accent) / 0) 100%
+	);
+}
+.dev3-md-doc img {
+	border-radius: 0.5rem;
+}
+/* The comment scope keeps the table on `display: block` so a wide one scrolls;
+   that same block clips the rounded corners of the header row. */
+.dev3-md-doc table {
+	border-collapse: separate;
+	border-spacing: 0;
+	border: 1px solid rgb(var(--border-default));
+	border-radius: 0.625rem;
+	/* The comment scope's `display: block` makes the frame stretch the full
+	   column while the rows keep their own width — the border has to hug the
+	   content, and `max-width` leaves a wide table scrolling. */
+	width: max-content;
+	max-width: 100%;
+}
+.dev3-md-doc th,
+.dev3-md-doc td {
+	border: none;
+	border-bottom: 1px solid rgb(var(--border-default) / 0.55);
+	padding: 0.4375rem 0.75rem;
+}
+.dev3-md-doc tr:last-child > td {
+	border-bottom: none;
+}
+.dev3-md-doc th {
+	background: rgb(var(--accent) / 0.14);
+	border-bottom: 1px solid rgb(var(--accent) / 0.3);
+	color: rgb(var(--text-primary));
+	font-weight: 700;
+}
+.dev3-md-doc tbody tr:nth-child(even) > td {
+	background: rgb(var(--text-primary) / 0.05);
 }
 
 /* ---- Markdown rich diff (.dev3-md-diff) ----
