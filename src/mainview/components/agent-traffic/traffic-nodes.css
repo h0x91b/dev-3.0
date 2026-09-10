@@ -207,6 +207,12 @@
 	padding: 15px 17px;
 	height: 100%;
 }
+/* Never let flex shrink a clamped block below a whole line — a shrunk line box
+   is the half-cut glyph row that made these cards look broken. */
+.traffic-node-full > * {
+	flex: 0 0 auto;
+	min-height: 0;
+}
 .traffic-node-head {
 	display: flex;
 	align-items: center;
@@ -369,22 +375,6 @@
 .traffic-node-compact .traffic-node-stamp .traffic-icon {
 	width: 11px;
 	height: 11px;
-}
-/* Not a warning and not an error — an absence. Muted, never coloured like a
-   status, so it cannot be mistaken for one. */
-.traffic-node-history {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	font-size: 11px;
-	color: rgb(var(--text-tertiary));
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.traffic-node-history .traffic-icon {
-	width: 12px;
-	height: 12px;
 }
 /* Frozen in place but not yet born: the layout is computed from every node in
    the window, so a card appearing mid-replay never shifts its neighbours. */

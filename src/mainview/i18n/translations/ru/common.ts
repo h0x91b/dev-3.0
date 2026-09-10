@@ -179,8 +179,6 @@ const common = {
 	"traffic.celebration.age": "Завершена · {duration} с создания",
 	"traffic.celebration.underMinute": "меньше минуты",
 	"traffic.node.statusUnrecorded": "Статус не записан",
-	"traffic.node.historyUnrecorded": "История не записана",
-	"traffic.node.historyPartial": "Ранняя история не сохранилась",
 	"traffic.nodes.currentOnlyDimensions": "Хибернация, проект и вариант не записываются — они показаны текущими",
 	"traffic.nodes.follow": "Следовать",
 	"traffic.nodes.focus": "Фокус",

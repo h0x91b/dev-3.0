@@ -169,8 +169,6 @@ const common = {
 	"traffic.celebration.age": "Completed · {duration} since created",
 	"traffic.celebration.underMinute": "under a minute",
 	"traffic.node.statusUnrecorded": "Status not recorded",
-	"traffic.node.historyUnrecorded": "History not recorded",
-	"traffic.node.historyPartial": "Earlier history missing",
 	"traffic.nodes.currentOnlyDimensions": "Hibernation, project and variant are not recorded, so those stay current",
 	"traffic.nodes.follow": "Follow",
 	"traffic.nodes.focus": "Focus",

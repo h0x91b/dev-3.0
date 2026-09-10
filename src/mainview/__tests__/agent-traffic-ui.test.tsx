@@ -1255,7 +1255,11 @@ it("Follow settles once on the pair and holds the same framing for its reply", a
 		const resized = stage.style.transform;
 		fireEvent.click(screen.getByRole("button", { name: "Fit everything on screen" }));
 		advance(600);
-		expect(stage.style.transform).not.toBe(resized);
+		// Here the followed pair IS the whole scene and both cards are the same
+		// height, so fitting everything lands on the frame Follow already held.
+		// What Fit owes this test is the mode change, not different numbers —
+		// framing itself is covered in traffic-camera.test.ts.
+		expect(stage.style.transform).toBe(resized);
 		expect(screen.getByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "false");
 		fireEvent.click(screen.getByRole("button", { name: "Follow" }));
 		advance(600);
@@ -1305,7 +1309,13 @@ it("Follow returns to overview after live inactivity and replay completion but k
 	const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1400);
 	const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(640);
 	const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 640));
-	setPage([row({ subject: "Current pair" }), row({ toTaskId: "task-c", toSeq: 33, at: new Date(Date.now() - 60000).toISOString() })]);
+	// The live pair is worker↔worker: it sits in one row of the scene, so following
+	// it frames something the overview does not. A pair including the coordinator
+	// spans every row this scene has and would frame the scene itself.
+	setPage([
+		row({ fromTaskId: "task-b", fromSeq: 22, fromTitle: "Worker", toTaskId: "task-c", toSeq: 33, toTitle: "Other worker", subject: "Current pair" }),
+		row({ toTaskId: "task-c", toSeq: 33, at: new Date(Date.now() - 60000).toISOString() }),
+	]);
 	const rendered = renderLog();
 	try {
 		await act(async () => { await vi.advanceTimersByTimeAsync(1); });
@@ -1320,6 +1330,7 @@ it("Follow returns to overview after live inactivity and replay completion but k
 		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
 		fireEvent.click(screen.getByRole("button", { name: "Next message" }));
 		const paused = stage.style.transform;
+		expect(paused).not.toBe(overview);
 		act(() => vi.advanceTimersByTime(10000));
 		expect(stage.style.transform).toBe(paused);
 		fireEvent.click(screen.getByRole("button", { name: /^Replay$/ }));

@@ -12,7 +12,6 @@ const paths = {
 	message: "M4 4h16v12H9l-5 4ZM8 8h8M8 12h5",
 	check: "m4 12.5 5.5 5.5L20 6",
 	cross: "M6 6l12 12M18 6 6 18",
-	unknown: "M9 9a3 3 0 1 1 3 3v2M12 18.5v.5",
 } as const;
 export default function TrafficIcon({ name }: { name: keyof typeof paths }) {
 	return (
