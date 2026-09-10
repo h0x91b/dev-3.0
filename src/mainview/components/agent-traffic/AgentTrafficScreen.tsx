@@ -359,7 +359,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const [paused, setPaused] = useState(false);
 	const [tab, setTab] = useState("messages");
 	const [showInspector, setShowInspector] = useState(false);
-	const narrowControls = useNarrowViewport(900);
+	// Where the inline filters stop fitting, measured rather than guessed, and
+	// measured in the LONGEST locale rather than in English: Russian runs the two
+	// button groups 74px wider and the live readout 137px against English's 36px,
+	// so the row is still over the edge at 1150px there while English fits from
+	// 1000px. One number has to serve every translation, so it is the widest one.
+	// Below it the filters live in the sheet the screen already has — reachable in
+	// one click, which a stage action cut by the window edge is not.
+	const narrowControls = useNarrowViewport(1200);
 	const [showFilters, setShowFilters] = useState(false);
 	const [focusRequest, setFocusRequest] = useState(0);
 	const [followRequest, setFollowRequest] = useState(0);
