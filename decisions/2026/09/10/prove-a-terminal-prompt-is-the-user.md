@@ -40,9 +40,9 @@ dev3 answers the hook by elimination, and keeps a receipt for every elimination.
 - `recordTerminalPromptSubmission` (`src/bun/agent-terminal-prompt-log.ts`) throws a submission out
   if it opens with a dev3 envelope, if it opens with ANY pseudo-XML tag, if it consumes a receipt,
   or if its submission id was already seen.
-- The tag rule (`looksMachineGenerated`) is deliberately wider than any list dev3 could keep
-  current: harness-generated prompts wear a tag, dev3 leaves no receipt for them because dev3 did
-  not type them, and an unknown future one must stay unclassified rather than become the user.
+- The tag rule (`looksMachineGenerated`) is wider than any list dev3 could keep current, but it is
+  **not sufficient** — see the falsified assumption below. It catches the tagged harness prompts
+  and nothing else.
 - What survives every one of those tests is stamped `origin: "user"` and written as an ordinary
   message-log row.
 - Matching is by containment with length floors (`src/shared/agent-terminal-prompt.ts`), because
@@ -55,6 +55,42 @@ dev3 answers the hook by elimination, and keeps a receipt for every elimination.
 - Only a clamped one-line preview is stored. The prompt body is read in-process to classify it and
   dropped — recording every prompt would be a far wider data set than the message log and would
   routinely capture pasted secrets.
+
+## Falsified after this was written — the guarantee is not established
+
+The assumption that harness-generated prompts are recognisable by shape did not survive contact.
+Seq1863's teammate experiment (2026-09-10, raw payloads in
+`/Users/arsenyp/dev3-reports/teammate-message-origin/`) observed a `UserPromptSubmit` in the lead's
+own session that nobody typed: 5 898 characters opening with `# Autonomous loop check`, plain
+Markdown, no tag. Its payload keys are **byte-identical** to a human prompt's — `cwd`,
+`hook_event_name`, `permission_mode`, `prompt`, `prompt_id`, `scratchpad_dir`, `session_id`,
+`transcript_path` — so there is no structural field to branch on. What triggered it is unknown and
+one bounded retry did not reproduce it.
+
+Consequence, stated plainly: **dev3 cannot prove that an unclaimed, untagged submission came from a
+human.** Subtraction bounds what dev3 caused, not what the harness causes.
+
+### The owner decided the looser rule is what he wants
+
+Asked to choose between narrowing the field to a provable `"terminal"`, parking the feature, and
+building positive keystroke evidence, Arseny ruled (verbatim, 2026-09-10):
+
+> «Я не очень понимаю, в том плане, что если тебе кто-то послал при помощи dev3 message-а, то он в
+> XML-е обёрнутый. А все остальные случаи можно считать спокойно за юзера. То есть даже если ты сам
+> себе сделаешь postpone сообщения обратно, ну типа сделал postpone, чтобы сообщение послалось через
+> 5 минут, ну хер с ним, пусть он показывает, как будто от юзера.»
+
+So `origin: "user"` stays, and the residual imprecision is accepted by the person it misleads: a
+peer message is excluded because it is wrapped, and everything else counts as him. The
+`# Autonomous loop check` prompt would be shown as his — that is the accepted cost, not an
+oversight. A text-prefix blacklist remains rejected: it would grow forever behind a harness nobody
+controls, and the tag rule already removes the obvious machine chatter (subagent completion
+notices) without pretending to be exhaustive.
+
+The same experiment closed the teammate question in the other direction: a teammate *delivery* does
+not raise `UserPromptSubmit` at all, only text a human types in the teammate's pane does. The
+session-mismatch guard this record proposed as future work is therefore unnecessary and was not
+built.
 
 ## Risks
 
@@ -69,10 +105,8 @@ dev3 answers the hook by elimination, and keeps a receipt for every elimination.
   simply records nothing — the prompt field is optional on the wire.
 - Three of five harnesses (Cursor Agent, Gemini CLI, OpenCode) have no hooks, so their terminal
   prompts stay invisible. Stated, not worked around.
-- **Teammate sessions remain unknown.** A Claude Code teammate's prompt was not exercised, and if it
-  raises `UserPromptSubmit` without a leading tag it would be recorded as the user. The discriminator
-  that would settle it — comparing the payload's `session_id` against the session dev3 pre-assigned
-  to the pane's lead agent, and refusing to classify on a proven mismatch — is not built here.
+- **Untagged harness prompts are recorded as the user**, and the payload offers nothing to
+  distinguish them from a human's. Accepted by the owner rather than solved; see his ruling above.
 - **Nothing has been observed end to end in a running app.** Every dev3-side behaviour above is
   covered by unit tests only; what was verified live is the harness half (which payloads arrive,
   and when).
