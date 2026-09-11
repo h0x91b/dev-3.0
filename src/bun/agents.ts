@@ -16,7 +16,7 @@ import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
-import { ensureAgentSystemPromptFile, systemPromptNeedsFile } from "./agent-system-prompt-file";
+import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
 export { claudeModelFamily } from "../shared/agent-accounts";
@@ -516,16 +516,22 @@ export function resolveAgentCommand(
 
 /**
  * The file this adapter's protocol body was written to, or undefined when the
- * platform can carry it inline (every POSIX platform) or the adapter has no
- * flag that takes a file.
+ * adapter has no flag that takes a file or the write failed (the adapter then
+ * falls back to the inline body).
  *
- * Only Claude has one (`--append-system-prompt-file`). Codex delivers the body
- * through `-c developer_instructions=…` and the rest concatenate it onto the
- * prompt, so on Windows those launches are still over the ceiling — a separate
- * per-agent channel, not something this function can paper over.
+ * The file is used on every platform, not only where the command line is too
+ * short to carry the body. Inline, the ~29 KB of protocol prose sits in the
+ * agent's argv, where `pkill -f` / `pgrep -f` and `ps` see it: any pattern that
+ * appears as an ordinary word in that prose matches every running agent, so one
+ * agent's routine cleanup SIGTERMed all of its siblings (#1734).
+ *
+ * Only Claude has such a flag (`--append-system-prompt-file`). Codex delivers
+ * the body through `-c developer_instructions=…` and the rest concatenate it
+ * onto the prompt, so on Windows those launches are still over the ceiling — a
+ * separate per-agent channel, not something this function can paper over.
  */
 function systemPromptFileFor(adapter: { command: string; skillBody?: string }): string | undefined {
-	if (!systemPromptNeedsFile() || adapter.command !== "claude" || !adapter.skillBody) return undefined;
+	if (adapter.command !== "claude" || !adapter.skillBody) return undefined;
 	return ensureAgentSystemPromptFile("claude", adapter.skillBody) ?? undefined;
 }
 

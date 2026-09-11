@@ -138,10 +138,14 @@ describe("the launch call site", () => {
 		expect(cmd).toContain(powerShellNativeArg("Fix the login bug"));
 	});
 
-	it("resolveAgentCommand still emits the POSIX escape on POSIX", () => {
+	it("resolveAgentCommand uses the file on POSIX too, and still quotes the rest the POSIX way", () => {
 		asPlatform("darwin");
 		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
-		expect(cmd).toContain("'\\''");
+		// The protocol body no longer sits in argv (#1734): its own single quotes
+		// used to show up here as the '\'' escape sequence.
+		expect(cmd).toContain("--append-system-prompt-file");
+		expect(cmd).not.toContain("'\\''");
+		expect(cmd).toContain("'Fix the login bug'");
 	});
 
 	it("resolveAgentCommand spells a resolved binary path as a command", () => {
@@ -187,7 +191,7 @@ describe("the command-line ceiling", () => {
 		expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
 	});
 
-	it("without a file the body is still inline — POSIX is unchanged", () => {
+	it("without a file the body is still inline (the fallback when the write failed)", () => {
 		const cmd = claudeAdapter.launchArgs("claude", undefined, CTX, {}).join(" ");
 		expect(cmd).toContain("--append-system-prompt ");
 		expect(cmd).not.toContain("--append-system-prompt-file");

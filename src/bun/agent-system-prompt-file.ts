@@ -24,7 +24,11 @@ const log = createLogger("agent-system-prompt");
 
 export const AGENT_PROMPTS_DIR = join(DEV3_HOME, "data", "agent-prompts");
 
-/** True when this platform cannot carry the protocol on the command line. */
+/**
+ * True when this platform cannot carry the protocol on the command line at all.
+ * The file is preferred everywhere (the inline body is visible to `pkill -f`);
+ * this is the floor below which the inline fallback is not even a launch.
+ */
 export function systemPromptNeedsFile(platform: NodeJS.Platform = process.platform): boolean {
 	return launchDialectId(platform) === "windows-powershell";
 }
@@ -32,7 +36,8 @@ export function systemPromptNeedsFile(platform: NodeJS.Platform = process.platfo
 /**
  * Write (once) the body for `name` and return its path, or null when the write
  * fails — the caller then falls back to the inline form, which is broken on
- * Windows but is still better than refusing to launch.
+ * Windows and exposes the body in argv elsewhere, but is still better than
+ * refusing to launch.
  */
 export function ensureAgentSystemPromptFile(name: string, body: string): string | null {
 	const path = join(AGENT_PROMPTS_DIR, `${name}.md`);
