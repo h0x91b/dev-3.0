@@ -1744,3 +1744,76 @@ describe("pull-request badges", () => {
 		expect(screen.getByLabelText("PR is mergeable — click to open the PR — Mergeable")).toHaveAttribute("title", "Mergeable");
 	});
 });
+
+describe("ActiveTasksSidebar — revealing the selected task", () => {
+	const VIEWPORT = 100;
+	const ROW_HEIGHT = 60;
+	const HEADER_HEIGHT = 20;
+
+	/** happy-dom has no layout: rows stack by document order under a sticky header. */
+	function stubLayout() {
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+			const rect = (top: number, bottom: number) =>
+				({ top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top, toJSON() {} }) as DOMRect;
+			const container = document.querySelector('[data-help-id="sidebar.active-tasks"]');
+			if (this === container) return rect(0, VIEWPORT);
+			if (this.hasAttribute("data-sidebar-tier-header")) return rect(0, HEADER_HEIGHT);
+			if (this.hasAttribute("data-task-id")) {
+				const index = Array.from(document.querySelectorAll("[data-task-id]")).indexOf(this);
+				const top = HEADER_HEIGHT + index * ROW_HEIGHT - (container?.scrollTop ?? 0);
+				return rect(top, top + ROW_HEIGHT);
+			}
+			return rect(0, 0);
+		});
+	}
+
+	function sidebar(tasks: Task[]) {
+		return (
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={tasks} activeTaskId="t1" dispatch={vi.fn()}
+					navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>
+		);
+	}
+
+	// Waiting tier, so a selected task that starts working sinks below them.
+	const others = [
+		makeTask({ id: "t2", seq: 2, status: "in-progress" }),
+		makeTask({ id: "t3", seq: 3, status: "in-progress" }),
+	];
+	// Highest seq, so once it starts working it sorts last inside the waiting tier.
+	const selectedIdle = makeTask({ id: "t1", seq: 9, status: "user-questions" });
+	const selectedWorking = makeTask({ id: "t1", seq: 9, status: "in-progress" });
+
+	beforeEach(stubLayout);
+	afterEach(() => vi.restoreAllMocks());
+
+	function list() {
+		return document.querySelector('[data-help-id="sidebar.active-tasks"]') as HTMLElement;
+	}
+
+	it("scrolls the selected task back into view when its status reorders the list", () => {
+		const { rerender } = render(sidebar([selectedIdle, ...others]));
+		expect(list().scrollTop).toBe(0);
+
+		rerender(sidebar([selectedWorking, ...others]));
+
+		expect(list().scrollTop).toBeGreaterThan(0);
+	});
+
+	it("stays put when a background task updates and the selection has not moved", () => {
+		const { rerender } = render(sidebar([selectedIdle, ...others]));
+		list().scrollTop = 40;
+
+		rerender(sidebar([selectedIdle, ...others.map((t) => ({ ...t, overview: "fresh" }))]));
+
+		expect(list().scrollTop).toBe(40);
+	});
+
+	it("keeps the selected row addressable and the tier header measurable", () => {
+		render(sidebar([selectedIdle, ...others]));
+
+		expect(list().querySelector('[data-task-id="t1"]')).not.toBeNull();
+		expect(list().querySelector("[data-sidebar-tier] [data-sidebar-tier-header]")).not.toBeNull();
+	});
+});
