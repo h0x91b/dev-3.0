@@ -2780,8 +2780,13 @@ function App() {
 				e.preventDefault();
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project" && (route.activeTaskId || route.taskView)) {
-				e.preventDefault();
-				navigate({ screen: "project", projectId: route.projectId });
+				// Inside a task view Escape belongs to the agent, not to navigation:
+				// it is how you interrupt the running agent. The old "step back to
+				// the board" branch fired whenever focus was not inside the first
+				// [data-terminal] node — a second native pane, a just-clicked header
+				// button — and threw the user out mid-interrupt. No preventDefault:
+				// the keystroke stays unconsumed so the terminal keeps receiving it.
+				return;
 			} else if (route.screen === "project") {
 				e.preventDefault();
 				navigate({ screen: "dashboard" });

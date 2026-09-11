@@ -29,7 +29,7 @@ const keymap = {
 	"keymap.shortcut.goTo": "Перейти к… (D дашборд · P проект · T задачи · S настройки · цифра = проект N; P/T + цифра = доска/задачи проекта N)",
 	"keymap.shortcut.zoomOutToSpace": "Выйти на доску пространства",
 	"keymap.shortcut.focusSearch": "Фокус в поиск",
-	"keymap.shortcut.escape": "Закрыть диалог / шаг назад",
+	"keymap.shortcut.escape": "Закрыть диалог / шаг назад (кроме открытой задачи — там его получает агент)",
 	"keymap.shortcut.newTask": "Новая задача",
 	"keymap.shortcut.addProject": "Добавить проект",
 	"keymap.shortcut.newWindow": "Новое окно",

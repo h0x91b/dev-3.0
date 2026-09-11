@@ -2224,6 +2224,51 @@ describe("App keyboard shortcuts", () => {
 				zone.remove();
 			}
 		});
+
+		it("Escape inside a task view does not navigate, and stays unconsumed for the terminal", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+			await renderApp();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
+
+			// Focus deliberately outside any [data-terminal] node: the old guard only
+			// skipped navigation while the terminal held focus, which is exactly how
+			// an interrupt turned into "back to the board".
+			(document.body as HTMLElement).focus();
+
+			// Registered after the app's own window listener, so it observes whether
+			// the app consumed the key. Unconsumed is what lets the shell have it.
+			let prevented: boolean | null = null;
+			const observe = (e: KeyboardEvent) => { prevented = e.defaultPrevented; };
+			window.addEventListener("keydown", observe);
+			try {
+				await userEvent.keyboard("{Escape}");
+			} finally {
+				window.removeEventListener("keydown", observe);
+			}
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
+			expect(prevented).toBe(false);
+		});
+
+		it("Escape in the split task view (taskView, no active task) does not navigate either", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", taskView: true }),
+			});
+			await renderApp();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-view", "true");
+
+			await userEvent.keyboard("{Escape}");
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-view", "true");
+		});
 	});
 
 	describe("project switching (Cmd+1..9)", () => {
