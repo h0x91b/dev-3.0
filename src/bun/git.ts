@@ -1903,11 +1903,101 @@ const PATCH_ID_CMD = ["git", "patch-id", "--stable"];
 // has none, so we synthesise a zero SHA header.
 const FAKE_COMMIT_HEADER = new TextEncoder().encode(`commit ${"0".repeat(40)}\n\n`);
 
+/**
+ * Reflog messages that mean "this branch produced a commit of its own". A branch
+ * that only ever moved by `branch:`/`checkout:`/`reset:` entries never did.
+ *
+ * `rebase` is deliberately absent: its finish entry records the tip the branch
+ * was replayed onto, which for an empty branch is the base itself — proof of
+ * nothing. A rebase that kept real commits still leaves its `commit:` entries.
+ */
+const WORK_PRODUCING_REFLOG_RE = /^(commit|merge|cherry-pick|am|revert|pull|applypatch)\b/;
+/** How many distinct reflog tips to ancestry-test before giving up. */
+const REFLOG_PROOF_LIMIT = 10;
+
+/**
+ * Positive proof that a branch with **no commits of its own** against `ref` got
+ * there by having its work merged, rather than by never having written any.
+ *
+ * Both states are the same graph — HEAD is an ancestor of `ref` either way — so
+ * only history outside the graph can tell them apart. The branch's own reflog
+ * is that history: a tip it once committed (or rebased/cherry-picked) that is
+ * now contained in `ref` is work that landed. A brand-new branch has only its
+ * `branch: Created from ...` entry and yields nothing. A pruned or foreign
+ * reflog yields nothing either, which errs toward "not merged" on purpose.
+ *
+ * The graph still answers one case on its own: a plain (non-fast-forward) merge
+ * leaves a merge commit in `ref` whose parent is our HEAD, and that holds even
+ * for a branch this machine never committed on (a PR-review checkout).
+ *
+ * No `gh` call here — callers own their own PR proof, and this runs on every
+ * poll of every fresh task.
+ */
+async function isMergedWithoutOwnCommits(worktreePath: string, ref: string): Promise<boolean> {
+	const [headShaResult, branchResult] = await Promise.all([
+		run(["git", "rev-parse", "HEAD"], worktreePath),
+		run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath),
+	]);
+	if (!headShaResult.ok || !headShaResult.stdout) return false;
+	const headSha = headShaResult.stdout;
+	assertSafeRef(headSha, "headSha");
+	assertSafeRef(ref, "ref");
+
+	// A merge commit in `ref` that has HEAD as one of its parents.
+	const mergesResult = await run(
+		["git", "rev-list", "--merges", "--parents", "--max-count=500", `${headSha}..${ref}`],
+		worktreePath,
+	);
+	if (mergesResult.ok && mergesResult.stdout) {
+		for (const line of mergesResult.stdout.split("\n")) {
+			if (line.split(" ").slice(1).includes(headSha)) {
+				log.info("isContentMergedInto", { ref, method: "merge-commit-parent", merged: true });
+				return true;
+			}
+		}
+	}
+
+	const branch = branchResult.ok ? branchResult.stdout : "";
+	if (!branch || branch === "HEAD") return false;
+	assertSafeRef(branch, "branch");
+	const reflogResult = await run(
+		["git", "log", "-g", "--format=%H%x09%gs", "--max-count=200", `refs/heads/${branch}`],
+		worktreePath,
+	);
+	if (!reflogResult.ok || !reflogResult.stdout) return false;
+
+	const tips: string[] = [];
+	for (const line of reflogResult.stdout.split("\n")) {
+		const [sha, message = ""] = line.split("\t");
+		if (!sha || !WORK_PRODUCING_REFLOG_RE.test(message)) continue;
+		if (!tips.includes(sha)) tips.push(sha);
+		if (tips.length >= REFLOG_PROOF_LIMIT) break;
+	}
+	for (const tip of tips) {
+		assertSafeRef(tip, "reflogTip");
+		if ((await run(["git", "merge-base", "--is-ancestor", tip, ref], worktreePath)).ok) {
+			log.info("isContentMergedInto", { ref, method: "reflog-tip", tip, merged: true });
+			return true;
+		}
+	}
+	log.info("isContentMergedInto", { ref, method: "no-own-commits", merged: false });
+	return false;
+}
+
 export async function isContentMergedInto(
 	worktreePath: string,
 	ref: string,
 	project?: Pick<Project, "githubAuthHost" | "githubAuthLogin">,
 ): Promise<boolean> {
+	// A branch with nothing of its own against `ref` makes every content strategy
+	// below trivially say "merged" — which is how a brand-new task branch that had
+	// not written a line got a "Branch merged → complete the task?" prompt. Ask
+	// for positive proof instead of reading the empty diff as a delivered merge.
+	const aheadResult = await run(["git", "rev-list", "--count", `${ref}..HEAD`], worktreePath);
+	if (aheadResult.ok && aheadResult.stdout === "0") {
+		return await isMergedWithoutOwnCommits(worktreePath, ref);
+	}
+
 	// Strategy 1: merge-tree comparison.
 	// Compute a hypothetical merge of ref and HEAD. If the resulting tree
 	// matches ref's tree, all of HEAD's changes are already incorporated —

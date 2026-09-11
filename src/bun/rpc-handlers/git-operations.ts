@@ -299,15 +299,16 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	log.debug("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
 	// ahead === 0 means HEAD is an ancestor of `ref`: every commit of this branch
-	// is already in the base, so content strategies would trivially say "merged".
-	// Git alone cannot tell "merged, then rebased away" from "brand-new branch,
-	// nothing committed yet" — only this task's own merged PR proves work landed.
-	// No PR (or no GitHub / offline) ⇒ not merged, never a false positive.
+	// is already in the base. `isContentMergedInto` owns that case now — it demands
+	// positive proof that work landed (a merge commit carrying HEAD, or a reflog tip
+	// this branch committed and `ref` now contains) instead of reading the empty
+	// diff of a brand-new branch as a merge. This task's own merged PR still proves
+	// the "squash-merged, then rebased away" shape that leaves no local trace.
 	const prNumberForMergeProof = prInfo?.number ?? null;
-	const mergedByContent = status.ahead > 0
-		? await git.isContentMergedInto(task.worktreePath, ref, project) === true
-		: prNumberForMergeProof != null
-			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true;
+	const mergedByContent = await git.isContentMergedInto(task.worktreePath, ref, project) === true
+		|| (status.ahead === 0
+			&& prNumberForMergeProof != null
+			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true);
 	const mergeCompletionFingerprint = mergedByContent
 		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
 		: null;
