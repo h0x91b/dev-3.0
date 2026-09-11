@@ -18,3 +18,16 @@
 export function isFreshStartMode(): boolean {
 	return process.env.DEV3_FRESH_START === "1";
 }
+
+/**
+ * Whether the windows opened BY A LAUNCH may take foreground. A dev launch fires
+ * while the user is working in another app — often fullscreen on another Space —
+ * so activating would yank them out of it. An ordinary launch is the user opening
+ * the app and must come to the front as always.
+ *
+ * Windows the user opens later (Cmd+Shift+N, a notification click) are unaffected:
+ * they activate in every mode.
+ */
+export function shouldActivateLaunchWindow(): boolean {
+	return !isFreshStartMode();
+}

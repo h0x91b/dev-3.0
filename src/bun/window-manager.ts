@@ -162,6 +162,13 @@ export interface CreateAppWindowOptions {
 	 * window of a launch falls back to the saved primary geometry.
 	 */
 	restore?: WindowState | null;
+	/**
+	 * Whether showing the window also activates the app (macOS
+	 * `activateIgnoringOtherApps:`). False orders the window in without taking
+	 * foreground, so a launch cannot pull the user out of a fullscreen app or
+	 * switch their Space. Defaults to true — only the dev launch opts out.
+	 */
+	activate?: boolean;
 }
 
 /**
@@ -233,6 +240,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		url: opts.url,
 		rpc,
 		frame,
+		activate: opts.activate ?? true,
 		...(opts.preload ? { preload: opts.preload } : {}),
 	});
 
