@@ -11,6 +11,9 @@ type Viewport = { width: number; height: number };
 /** Highest zoom the stage ever reaches, framed or hand-driven. */
 export const MAX_SCALE = 2.2;
 
+/** Scene padding above and below the content — framing and the bounds share it. */
+export const SCENE_PAD_Y = 86;
+
 /** The scene's outer edge, padding included — what a camera may never overshoot. */
 export interface SceneBounds {
 	left: number;

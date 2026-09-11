@@ -113,9 +113,10 @@
 	background: rgb(var(--surface-raised) / 0.25);
 	pointer-events: none;
 }
+/* `top` and `width` come from the inline style — both depend on the zoom, see
+   group-heading.ts. The name hangs above the frame, never inside it. */
 .traffic-project-heading {
 	position: absolute;
-	top: 20px;
 	left: 24px;
 	transform-origin: top left;
 	font-size: 13px;
