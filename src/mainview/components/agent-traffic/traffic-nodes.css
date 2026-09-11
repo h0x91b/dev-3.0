@@ -653,6 +653,65 @@
 	top: -22px;
 	transform: scaleY(-1);
 }
+/* The `dev3 notify` preview over the card that sent it. Its own silhouette, so a
+   notification never reads as one more message between two cards. */
+.traffic-notification-cloud {
+	--cloud-tone: var(--agent);
+	position: absolute;
+	z-index: 4;
+	pointer-events: none;
+	transform: translate(-50%, -100%);
+}
+.traffic-notification-cloud.is-below {
+	transform: translate(-50%, 0);
+}
+.traffic-notification-cloud.level-success {
+	--cloud-tone: var(--success);
+}
+.traffic-notification-cloud.level-error {
+	--cloud-tone: var(--danger);
+}
+.traffic-notification-cloud-outline {
+	position: absolute;
+	inset: 0;
+	overflow: visible;
+	fill: rgb(var(--surface-overlay));
+	stroke: rgb(var(--cloud-tone) / 0.55);
+	stroke-width: 1.5;
+	filter: drop-shadow(0 8px 22px rgb(0 0 0 / 0.28));
+}
+.traffic-notification-cloud-body {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	width: max-content;
+}
+.traffic-notification-cloud-level {
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: rgb(var(--cloud-tone));
+}
+.traffic-notification-cloud-body strong {
+	display: -webkit-box;
+	max-width: 250px;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.25;
+}
+/* Zoomed out the cloud sits over a card a fraction of its size, so the text drops
+   to one line and the level word carries the meaning on its own. */
+.traffic-notification-cloud.is-compact .traffic-notification-cloud-body strong {
+	-webkit-line-clamp: 1;
+	max-width: 168px;
+	font-size: 11px;
+}
 .traffic-playback {
 	margin: 0 16px 8px;
 	background: rgb(var(--surface-raised) / 0.88);
