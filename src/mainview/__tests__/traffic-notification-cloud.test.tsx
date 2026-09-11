@@ -6,7 +6,10 @@ import type { Task, TaskMovement, TaskStatus } from "../../shared/types";
 import { I18nProvider } from "../i18n";
 import { notificationEvents } from "../notification-event";
 import TrafficNodes from "../components/agent-traffic/TrafficNodes";
-import { notificationCloud } from "../components/agent-traffic/notification-cloud";
+import {
+	notificationCloud,
+	notificationCloudPuffs,
+} from "../components/agent-traffic/notification-cloud";
 import {
 	endpointKey,
 	trafficRecords,
@@ -156,6 +159,60 @@ describe("the notification cloud outline", () => {
 		expect(compact.path).toContain("C");
 	});
 
+	it("trails exactly two puffs toward the card, shrinking as they go", () => {
+		const cloud = notificationCloud(220, 34, false);
+		// The card sits well to the left of a cloud leaning off its shoulder.
+		const puffs = notificationCloudPuffs(cloud, 40, false);
+		expect(puffs).toHaveLength(2);
+		const [near, far] = puffs;
+		// Smaller the further it gets, or it reads as a second cloud rather than a
+		// thought trailing off.
+		expect(far.rx).toBeLessThan(near.rx);
+		expect(far.ry).toBeLessThan(near.ry);
+		// Diagonal, not a vertical column: straight down reads as a leader line.
+		expect(far.cx).toBeLessThan(near.cx);
+		expect(far.cy).toBeGreaterThan(near.cy);
+		// Below the body, and inside the drawn box on every side.
+		expect(near.cy - near.ry).toBeGreaterThan(cloud.content.y + cloud.content.height);
+		expect(far.cy + far.ry).toBeLessThanOrEqual(cloud.height);
+		expect(far.cx - far.rx).toBeGreaterThan(0);
+	});
+
+	it("aims the far puff at the card, wherever the card is", () => {
+		const cloud = notificationCloud(220, 34, false);
+		// The far puff lands ON the target, so the trail ends over the card and not
+		// at a fixed offset that happens to miss it.
+		expect(notificationCloudPuffs(cloud, 40, false)[1].cx).toBeCloseTo(40);
+		expect(notificationCloudPuffs(cloud, 200, false)[1].cx).toBeCloseTo(200);
+		// A card directly underneath gets a straight trail rather than a bent one.
+		const straight = notificationCloudPuffs(cloud, cloud.width / 2, false);
+		expect(straight[0].cx).toBeCloseTo(cloud.width / 2);
+		expect(straight[1].cx).toBeCloseTo(cloud.width / 2);
+	});
+
+	it("flips the trail above the body when the cloud hangs below its card", () => {
+		const above = notificationCloud(220, 34, false, false);
+		const below = notificationCloud(220, 34, false, true);
+		// Same box either way — only the side the trail leaves from changes.
+		expect(below.height).toBe(above.height);
+		expect(below.content.y).toBeGreaterThan(above.content.y);
+		const puffs = notificationCloudPuffs(below, 40, false);
+		for (const puff of puffs) {
+			expect(puff.cy).toBeLessThan(below.content.y);
+			expect(puff.cy - puff.ry).toBeGreaterThanOrEqual(0);
+		}
+		// Still the far one that is further out.
+		expect(puffs[1].cy).toBeLessThan(puffs[0].cy);
+	});
+
+	it("keeps the compact trail smaller than the full one", () => {
+		const full = notificationCloud(220, 34, false);
+		const compact = notificationCloud(220, 34, true);
+		expect(notificationCloudPuffs(compact, 40, true)[0].rx).toBeLessThan(
+			notificationCloudPuffs(full, 40, false)[0].rx,
+		);
+	});
+
 	it("survives a box narrower than its own corners without a negative step", () => {
 		const { path } = notificationCloud(6, 14, true);
 		expect(path).not.toContain("NaN");
@@ -170,6 +227,9 @@ describe("the notification preview on the traffic stage", () => {
 		expect(cloud.dataset.level).toBe("success");
 		expect(cloud.textContent).toContain("backfill finished, 4812 rows written");
 		expect(cloud.textContent).toContain("success");
+		// The trail is what says WHICH card this belongs to, so it is not optional
+		// decoration: a cloud with no puffs floats unattributed.
+		expect(cloud.querySelectorAll(".traffic-notification-cloud-puff")).toHaveLength(2);
 	});
 
 	it("marks an error apart from an info, in words and not only in colour", () => {

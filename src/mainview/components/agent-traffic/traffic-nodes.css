@@ -747,6 +747,14 @@
 	stroke-width: 1.5;
 	filter: drop-shadow(0 8px 22px rgb(0 0 0 / 0.28));
 }
+/* The trail shares the body's fill and stroke, so it reads as the same object
+   drifting off rather than two decorations that happen to sit nearby. */
+.traffic-notification-cloud-puff {
+	fill: rgb(var(--surface-overlay));
+	stroke: rgb(var(--cloud-tone) / 0.55);
+	stroke-width: 1.5;
+	paint-order: stroke fill;
+}
 .traffic-notification-cloud-body {
 	position: absolute;
 	display: flex;
