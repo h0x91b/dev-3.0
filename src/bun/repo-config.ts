@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
-import { DEV3_REPO_CONFIG_KEYS, remapColumnAgents } from "../shared/types";
+import { DEV3_REPO_CONFIG_KEYS, remapColumnAgents, repoConfigEnabled } from "../shared/types";
 import { sanitizeEnvMap } from "../shared/env-text";
 import { createLogger } from "./logger";
 import * as git from "./git";
@@ -163,8 +163,11 @@ export function resolveConfigProvenance(
 	configPath?: string,
 ): Record<string, ResolvedConfigSource> {
 	const basePath = configPath ?? project.path;
-	const localConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`);
-	const repoConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`);
+	// With repo config off there are no file layers to attribute to, so every key
+	// resolves to project/default/unset — matching what the cascade actually did.
+	const enabled = repoConfigEnabled(project);
+	const localConfig = enabled ? readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`) : null;
+	const repoConfig = enabled ? readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`) : null;
 	const provenance: Record<string, ResolvedConfigSource> = {};
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
 		if (effective(localConfig?.[key]) !== undefined) {
@@ -307,7 +310,10 @@ async function applyConfigCascade(
  */
 export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
 	const basePath = configPath ?? project.path;
-	return applyConfigCascade(project, pathConfigLayers(basePath), basePath);
+	// `useRepoConfig: false` removes the file layers entirely: the cascade is the
+	// Project object then DEFAULTS, and no .dev3 file is even opened.
+	const layers = repoConfigEnabled(project) ? pathConfigLayers(basePath) : [];
+	return applyConfigCascade(project, layers, basePath);
 }
 
 /**
@@ -345,6 +351,11 @@ export async function resolveOperationalProjectConfig(
 	if (!worktreePath || worktreePath === project.path) {
 		return resolveProjectConfig(project);
 	}
+	// Repo config switched off: no layer from either path, so a worktree's own
+	// .dev3 files are as invisible as the main checkout's.
+	if (!repoConfigEnabled(project)) {
+		return applyConfigCascade(project, [], worktreePath);
+	}
 	// Worktree files first, then main checkout's — both as [local, repo].
 	const layers = [
 		...pathConfigLayers(worktreePath, opts?.foreignCode !== true),
@@ -377,6 +388,11 @@ export async function migrateProjectConfig(project: Project, configPath?: string
 	const basePath = configPath ?? project.path;
 	const repoPath = `${basePath}/${CONFIG_FILE}`;
 	const localPath = `${basePath}/${LOCAL_CONFIG_FILE}`;
+
+	// Off means dev3 writes no repo file at all — least of all one it would then
+	// refuse to read. This runs on every project load, so it is also what keeps a
+	// disabled project from growing a .dev3/config.json behind the user's back.
+	if (!repoConfigEnabled(project)) return;
 
 	// A deleted project folder must not be resurrected by mkdirSync in saveRepoConfig
 	if (!existsSync(basePath)) return;

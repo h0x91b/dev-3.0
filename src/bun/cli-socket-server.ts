@@ -5,7 +5,7 @@ import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
@@ -2246,6 +2246,11 @@ const handlers: Record<string, Handler> = {
 		const worktreePath = params.worktreePath as string | undefined;
 		const project = await data.getProject(projectId);
 		const configPath = worktreePath || project.path;
+		// migrateProjectConfig is a no-op while repo config is off, so exporting
+		// would report a path it never wrote. Say why instead.
+		if (!repoConfigEnabled(project)) {
+			throw new Error("Repository dev3 configuration is disabled for this project — enable \"Use repository dev3 configuration\" in Project Settings first.");
+		}
 		await repoConfig.migrateProjectConfig(project, configPath);
 		return { path: `${configPath}/.dev3/config.json` };
 	},
@@ -2274,6 +2279,9 @@ const handlers: Record<string, Handler> = {
 			),
 			sources: provenance,
 			hasRepoConfig: hasRepoFile,
+			// The file may exist and still be irrelevant — say so rather than
+			// letting "exists" imply its values are in the table above.
+			repoConfigIgnored: !repoConfigEnabled(project),
 		};
 	},
 

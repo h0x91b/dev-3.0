@@ -55,9 +55,13 @@ export async function handleConfig(
 			settings: Record<string, unknown>;
 			sources: Record<string, string>;
 			hasRepoConfig: boolean;
+			repoConfigIgnored?: boolean;
 		};
 
-		process.stdout.write(`Repo config (.dev3/config.json): ${result.hasRepoConfig ? "exists" : "not found"}\n\n`);
+		const repoState = result.repoConfigIgnored
+			? `${result.hasRepoConfig ? "exists" : "not found"} — IGNORED (\"Use repository dev3 configuration\" is off)`
+			: (result.hasRepoConfig ? "exists" : "not found");
+		process.stdout.write(`Repo config (.dev3/config.json): ${repoState}\n\n`);
 
 		printTable(
 			["FIELD", "VALUE", "SOURCE"],

