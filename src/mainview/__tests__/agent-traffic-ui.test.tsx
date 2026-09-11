@@ -1181,19 +1181,50 @@ it("draws the user as a sender for a message they proved they sent", async () =>
 	// "You" on the canvas reads as two different facts about one message.
 	expect(messageRow.textContent).toContain("You → #22");
 
-	const marker = screen.getByTestId("traffic-user-card");
-	expect(marker.textContent).toContain("You");
-	// None of the task grammar leaks onto a person: no seq, no status line.
-	expect(marker.textContent).not.toContain("#");
-	// And it is a real endpoint, so the recipient card is drawn beside it.
-	const [card] = screen.getAllByTestId("traffic-node-card");
+	// The person takes no place on the stage: only the recipient has a card, no
+	// wire runs out of a human, and nothing permanent stands in for one. They
+	// are drawn only while a message of theirs is playing — the next test.
 	expect(screen.getAllByTestId("traffic-node-card")).toHaveLength(1);
-	// The person is the origin of the conversation, so they sit above it.
-	expect(parseFloat(marker.style.top)).toBeLessThan(parseFloat(card.style.top));
+	expect(screen.queryByTestId("traffic-user-speaker")).toBeNull();
+	expect(document.querySelectorAll(".traffic-wire")).toHaveLength(0);
 	// A bare number on a card explains nothing; the wire's thickness carries volume.
 	expect(document.querySelectorAll(".traffic-node-count")).toHaveLength(0);
-	// The count survives where it is spelled out — the marker's accessible name.
-	expect(marker.getAttribute("aria-label")).toContain("1 recorded message");
+});
+
+it("puts the person over the task they wrote to, with their words above their head", async () => {
+	const subject = "Rework the traffic marker";
+	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user", subject })]);
+	renderLog();
+	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
+	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+	const speaker = screen.getByTestId("traffic-user-speaker");
+	const bubble = screen.getByTestId("traffic-user-speech");
+	expect(bubble.textContent).toBe(subject);
+	// Bubble, then head, then the card that received the message.
+	expect(bubble.parentElement).toBe(speaker);
+	const [card] = screen.getAllByTestId("traffic-node-card");
+	expect(parseFloat(speaker.style.top)).toBeLessThan(parseFloat(card.style.top));
+	expect(speaker.style.left).toBe(card.style.left);
+	// And the wire's own subject bubble does not say the same thing twice.
+	expect(document.querySelector(".traffic-edge-subject")).toBeNull();
+});
+
+it("takes the person away again once another message is playing", async () => {
+	setPage([
+		row({ toTaskId: "task-b", toSeq: 33, toTitle: "Worker", subject: "Agent to agent" }),
+		row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user",
+			at: new Date(Date.now() - 60000).toISOString(), subject: "Human to agent" }),
+	]);
+	renderLog();
+	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
+	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
+	// Replay opens on the older message, which is the person's.
+	expect(screen.getByTestId("traffic-user-speech").textContent).toBe("Human to agent");
+	await userEvent.click(screen.getByRole("button", { name: "Next message" }));
+	// The next message is between two agents, so the human is gone — their old
+	// words must never hang over a conversation they are not part of.
+	expect(screen.queryByTestId("traffic-user-speaker")).toBeNull();
+	expect(document.querySelector(".traffic-edge-subject")?.textContent).toBe("Agent to agent");
 });
 
 it("draws no user marker for a sender-less message that proved nothing", async () => {
@@ -1203,7 +1234,7 @@ it("draws no user marker for a sender-less message that proved nothing", async (
 	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined })]);
 	renderLog();
 	await screen.findByTestId("traffic-node-scene");
-	expect(screen.queryByTestId("traffic-user-card")).toBeNull();
+	expect(screen.queryByTestId("traffic-user-speaker")).toBeNull();
 });
 
 it("paints each wire with its own colour token and leaves an idle wire still", async () => {

@@ -69,22 +69,26 @@ describe("layoutTraffic", () => {
 		expect(edges).toHaveLength(2);
 	});
 
-	it("places the user above the coordinator and every task", () => {
+	it("keeps the person off the stage: no card of their own and no wire", () => {
 		const tasks = [coordinator("a", 11), task("b", 22), task("c", 33)];
 		const rows = [
 			row(null as unknown as string, "a", { fromSeq: null, origin: "user" }),
 			row("a", "b"),
 			row("a", "c"),
 		];
-		const { placed } = scene(tasks, rows);
-		const you = placed.find((node) => node.node.user);
-		expect(you).toBeDefined();
-		for (const other of placed.filter((node) => !node.node.user)) {
-			expect(other.y).toBeGreaterThan(you?.y as number);
-		}
-		// Centred over the grid the same way the coordinator is, not parked in it.
+		const { placed, edges } = scene(tasks, rows);
+		// A person has no lifetime on the board, so nothing permanent stands for
+		// them: TrafficNodes draws them over the recipient while their message
+		// plays, and the grid closes over them again afterwards.
+		expect(placed.some((node) => node.node.user)).toBe(false);
+		expect(placed).toHaveLength(3);
+		expect(edges.map((edge) => [edge.from, edge.to].join(" → ")).some((pair) => pair.includes("dev3:user"))).toBe(false);
+		// The coordinator is back at the top of its own grid, nothing above it.
 		const hub = placed.find((node) => node.hub)!;
-		expect((you as { x: number }).x + CARD_WIDTH / 2).toBe(hub.x + hub.width / 2);
+		for (const other of placed.filter((node) => !node.hub)) {
+			expect(other.y).toBeGreaterThan(hub.y);
+		}
+		expect(hub.y).toBe(0);
 	});
 
 	it("places five workers in the first row below the coordinator", () => {
