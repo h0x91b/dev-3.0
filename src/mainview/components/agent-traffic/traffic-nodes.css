@@ -99,6 +99,13 @@
 .traffic-nodes-scene {
 	transform-origin: 0 0;
 }
+/* Fills the scene instead of collapsing to nothing: the cards inside are all
+   absolutely positioned, so a zero-height box would paint the whole graph from
+   a layer that measures 0x0. The scene's size comes from the inline style. */
+.traffic-nodes-cards {
+	width: 100%;
+	height: 100%;
+}
 .traffic-project-group {
 	position: absolute;
 	border: 1px solid rgb(var(--border-default) / 0.4);
