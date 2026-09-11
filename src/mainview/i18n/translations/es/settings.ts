@@ -236,7 +236,7 @@ const settings = {
 	"settings.suggestCompletingTasksAfterMerge": "Sugerir completar tareas tras un merge",
 	"settings.suggestCompletingTasksAfterMergeDesc": "Desactivado, una rama fusionada muestra un aviso informativo en lugar de preguntar si se completa la tarea.",
 	"settings.agentLaunchAutoApprove": "Aprobar solo las solicitudes de inicio de los agentes",
-	"settings.agentLaunchAutoApproveDesc": "Cuando un agente pide iniciar otra tarea, el diálogo se aprueba solo pasado este tiempo para no dejar al agente esperando. Rechazar sigue cancelándolo. Nunca se aplica a las solicitudes de finalización.",
+	"settings.agentLaunchAutoApproveDesc": "Cuando un agente pide iniciar otra tarea, el diálogo se aprueba solo pasado este tiempo para no dejar al agente esperando. Si tocas el diálogo, la cuenta atrás se detiene definitivamente y espera tu respuesta. Rechazar sigue cancelándolo. Nunca se aplica a las solicitudes de finalización.",
 	"settings.agentLaunchAutoApproveOff": "Nunca — esperar siempre mi respuesta",
 	"settings.autoApproveHours": "horas",
 	"settings.autoApproveMinutes": "minutos",

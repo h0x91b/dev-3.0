@@ -40,6 +40,7 @@ const common = {
 	"agentLaunch.launching": "Iniciando…",
 	"agentLaunch.decline": "Rechazar",
 	"agentLaunch.autoApproveIn": "Se inicia solo en {time}",
+	"agentLaunch.autoApproveHeld": "Esperando tu respuesta",
 
 	// Navegación estilo Vimium
 	"hint.legend.jump": "ir",
