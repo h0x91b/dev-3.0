@@ -42,6 +42,7 @@ interface CodexConfig {
 	projects?: Record<string, { trust_level?: string; sandbox_mode?: string }>;
 	profiles?: Record<string, Record<string, unknown>>;
 	permissions?: Record<string, CodexPermissionsProfile | undefined>;
+	tui?: Record<string, unknown>;
 }
 
 interface CodexConfigOptions {
@@ -899,7 +900,23 @@ export function ensureCodexConfig(
 		}
 	}
 
-	// --- 6. Ensure dev3's status hooks are declared in the file ---
+	// --- 6. Seed [tui] whimsy = false once ---
+	// Codex's "Astra composer stars" repaint the area behind the input every
+	// 150ms for as long as the composer is on screen (its own
+	// tui/src/bottom_pane/chat_composer/sparkle.rs). Measured on codex-cli
+	// 0.154.0: an idle pane emits ~187 KB in 20 seconds and nothing else. In a
+	// dev3 pane that is pure cost — the animation is decorative, it inflates
+	// every terminal it runs in, and the effect only exists at all because the
+	// model happens to be named `*astra*`.
+	//
+	// Written ONLY when the key is absent, never forced: a user who sets it back
+	// to `true` keeps it across restarts. Codex's own default is `true`, so
+	// nobody spells it out and in practice every install gets the quiet default.
+	if (parsed.tui?.whimsy === undefined) {
+		config = upsertSectionLine(config, "[tui]", "whimsy", "false");
+	}
+
+	// --- 7. Ensure dev3's status hooks are declared in the file ---
 	config = ensureDev3HooksBlock(config, options.dialect);
 
 	return config;
