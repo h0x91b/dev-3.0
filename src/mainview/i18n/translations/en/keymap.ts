@@ -32,7 +32,7 @@ const keymap = {
 	"keymap.shortcut.goTo": "Go to… (D dashboard · P project · T tasks · S settings · digit = project N; P/T + digit = project N board/tasks)",
 	"keymap.shortcut.zoomOutToSpace": "Zoom out to the space board",
 	"keymap.shortcut.focusSearch": "Focus search",
-	"keymap.shortcut.escape": "Close dialog / step back",
+	"keymap.shortcut.escape": "Close dialog / step back (not inside a task — the agent gets it)",
 	"keymap.shortcut.newTask": "New task",
 	"keymap.shortcut.addProject": "Add project",
 	"keymap.shortcut.newWindow": "New window",
