@@ -88,6 +88,9 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	// --- Open-source models dev3 recommends through the catalog ---
 	// Priced so a routed session is costed like any other, and so the launcher
 	// can show what a slot would cost before the user connects anything.
+	// V4.1 Flash prices off-peak at half of this; the peak rate is what we show,
+	// so a quoted cost is never lower than the bill.
+	{ match: (id) => id.includes("deepseek-v4.1-flash"), rate: { input: 0.3, output: 1.2, cacheRead: 0.006 } },
 	{ match: (id) => id.includes("deepseek-v4-flash"), rate: { input: 0.14, output: 0.28 } },
 	{ match: (id) => id.includes("deepseek-v4-pro"), rate: { input: 1.32, output: 3.96 } },
 	{ match: (id) => id.includes("glm-5.2"), rate: { input: 1.19, output: 3.74 } },

@@ -64,9 +64,10 @@ export interface CatalogModel {
 }
 
 /** Provider-native ids known to publish a 1M-token window. Checked against the
- *  providers' own catalogs on 2026-08-18; a family match, because a dated point
+ *  providers' own catalogs on 2026-08-18, DeepSeek V4.1 Flash on 2026-09-11; a
+ *  family match, because a dated point
  *  release keeps the window of the family it belongs to. */
-const MILLION_TOKEN_MODEL_IDS = ["glm-5.2", "kimi-k3", "qwen3.8", "deepseek-v4-flash"];
+const MILLION_TOKEN_MODEL_IDS = ["glm-5.2", "kimi-k3", "qwen3.8", "deepseek-v4-flash", "deepseek-v4.1-flash"];
 
 export function hasMillionTokenWindow(modelId: string): boolean {
 	const id = modelId.toLowerCase();

@@ -58,11 +58,11 @@ describe("AgentConfigPicker — models the user has not connected", () => {
 		await waitFor(() => expect(modelCatalogGet).toHaveBeenCalled());
 
 		await user.click(screen.getByLabelText("Model"));
-		const offered = await screen.findByText("GLM 5.2");
+		const offered = await screen.findByText("DeepSeek V4.1 Flash");
 		expect(offered.closest("button")).toHaveAttribute("aria-disabled", "true");
 		// The number is the whole argument. A row that says only "DeepSeek" asks
 		// the user to go and look the price up somewhere else.
-		expect(screen.getByText("$4/M vs Opus 5")).toBeTruthy();
+		expect(screen.getByText("$1/M vs Opus 5")).toBeTruthy();
 	});
 
 	it("goes quiet once the user has a provider of their own — any provider", async () => {
@@ -222,12 +222,14 @@ describe("a curated list that moved on after the user was seeded", () => {
 		expect(screen.getAllByText("kimi-k3").length).toBeGreaterThan(0);
 		// The tier this revision added is offered as a whole preset, marked as new.
 		expect(screen.getByText("new preset")).toBeTruthy();
-		// `glm-5.2` is already bound on the existing preset, so the rebind does not
-		// mention it: an unchanged role is not a change, and listing it would inflate
-		// what the user is agreeing to.
+		// The Opus slot really moves off `glm-5.2`, so the rebind shows both sides of
+		// it. The roles that were never bound show only where they land.
 		const rebind = screen.getByTestId("recommended-update-tier-practical");
-		expect(rebind.textContent).not.toContain("glm-5.2");
-		expect(screen.getByTestId("recommended-update-tier-smart").textContent).toContain("glm-5.2");
+		expect(rebind.textContent).toContain("glm-5.2");
+		expect(rebind.textContent).toContain("ds-v41-flash");
+		// The tier the user does not have yet is a whole new preset: nothing of
+		// theirs is on its "from" side.
+		expect(screen.getByTestId("recommended-update-tier-smart").textContent).not.toContain("glm-5.2");
 		expect(modelCatalogSave).not.toHaveBeenCalled();
 		expect(saveAgents).not.toHaveBeenCalled();
 

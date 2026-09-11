@@ -664,7 +664,7 @@ const settings = {
 	"connect.title": "Conectar un proveedor",
 	"connect.subtitle": "Tus propios modelos a través del proxy local de dev3. No toca tu suscripción de Claude ni de ChatGPT.",
 	"connect.recommended": "Recomendado",
-	"connect.descOpenrouter": "Una clave, cientos de modelos. dev3 nombra cuatro y escribe dos preajustes listos: diario e inteligente.",
+	"connect.descOpenrouter": "Una clave, cientos de modelos. dev3 nombra tres y escribe dos preajustes listos: diario e inteligente.",
 	"connect.descOllama": "Modelos en esta máquina. Sin clave ni factura — tú eliges qué sirve.",
 	"connect.descFireworks": "Modelos open-source alojados y rápidos. Eliges cuáles al conectar.",
 	"connect.descBaseten": "Modelos open-source alojados. Eliges cuáles al conectar.",

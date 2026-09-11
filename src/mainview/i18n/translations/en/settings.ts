@@ -664,7 +664,7 @@ const settings = {
 	"connect.title": "Connect a provider",
 	"connect.subtitle": "Your own models, served through dev3's local proxy. Nothing here touches your Claude or ChatGPT subscription.",
 	"connect.recommended": "Recommended",
-	"connect.descOpenrouter": "One key, hundreds of models. dev3 names four of them and writes two ready-to-run presets: everyday and smart.",
+	"connect.descOpenrouter": "One key, hundreds of models. dev3 names three of them and writes two ready-to-run presets: everyday and smart.",
 	"connect.descOllama": "Models running on this machine. No key, no bill — you name what it serves.",
 	"connect.descFireworks": "Fast hosted open-source models. You name what to use after connecting.",
 	"connect.descBaseten": "Hosted open-source models. You name what to use after connecting.",

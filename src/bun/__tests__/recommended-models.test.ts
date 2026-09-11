@@ -18,7 +18,7 @@ import {
 } from "../../shared/recommended-models";
 import type { CodingAgent, ModelCatalogView } from "../../shared/types";
 import { resolveModelRate } from "../../shared/agent-pricing";
-import { isValidCatalogModelName } from "../../shared/model-catalog";
+import { hasMillionTokenWindow, isValidCatalogModelName } from "../../shared/model-catalog";
 
 describe("the curated list itself", () => {
 	it("gives every recommendation a name the wire format accepts", () => {
@@ -47,6 +47,25 @@ describe("the curated list itself", () => {
 			const theirs = resolveModelRate(CLAUDE_ROLE_BUILTIN_MODEL[model.pricedAgainst])!;
 			expect(ours.output, model.modelId).toBeLessThan(theirs.output);
 		}
+	});
+
+	// The workhorse the list is built around. Verified against OpenRouter's live
+	// catalog on 2026-09-11: a typo here is an unroutable 404 at launch, and the
+	// two ids it replaced would quietly cost the user more.
+	it("routes the everyday slots to DeepSeek V4.1 Flash and nothing it replaced", () => {
+		const ids = RECOMMENDED_MODELS.map((model) => model.modelId);
+		expect(ids).toContain("deepseek/deepseek-v4.1-flash");
+		expect(ids).not.toContain("z-ai/glm-5.2");
+		expect(ids).not.toContain("deepseek/deepseek-v4-flash-0731");
+	});
+
+	it("prices and sizes that id under its own name, not its predecessor's", () => {
+		// `deepseek-v4-flash` does not match `deepseek-v4.1-flash` — a dot is not a
+		// dash — so both tables need their own row or the model falls through.
+		expect(resolveModelRate("deepseek/deepseek-v4.1-flash")).toEqual(
+			expect.objectContaining({ input: 0.3, output: 1.2 }),
+		);
+		expect(hasMillionTokenWindow("deepseek/deepseek-v4.1-flash")).toBe(true);
 	});
 
 	it("uses distinct names and distinct ids", () => {
@@ -85,19 +104,22 @@ describe("the tiers", () => {
 		expect(smart.launchSlot).toBe("fable");
 	});
 
-	it("never puts the cheapest model in Codex review", () => {
+	it("never downgrades Codex review below the subagents it reviews", () => {
+		// Was "strictly pricier than the subagent". One model now serves both the
+		// everyday and the escalation class, so a tier may legitimately run the same
+		// model in both slots; what must never happen is review being the CHEAPER one.
 		for (const tier of RECOMMENDED_TIERS) {
 			const rate = (name: string) =>
 				resolveModelRate(RECOMMENDED_MODELS.find((model) => model.name === name)!.modelId)!.output;
-			expect(rate(tier.codex.review), tier.id).toBeGreaterThan(rate(tier.codex.subagent));
+			expect(rate(tier.codex.review), tier.id).toBeGreaterThanOrEqual(rate(tier.codex.subagent));
 		}
 	});
 
-	it("makes the smart tier genuinely smarter where the work happens, not only on the slot you escalate to", () => {
-		// Two tiers that differ only in the premium slot would be the same tier in
-		// everyday use: Claude Code does its work on opus/sonnet.
-		const everyday = (tier: typeof practical) => [tier.claude.opus, tier.claude.sonnet].join("+");
-		expect(everyday(smart)).not.toBe(everyday(practical));
+	it("makes the smart tier genuinely different on the model a session actually starts on", () => {
+		// Two tiers that run the same model on the slot the session launches on would
+		// be the same tier in everyday use, whatever the other slots say.
+		const launch = (tier: typeof practical) => tier.claude[tier.launchSlot];
+		expect(launch(smart)).not.toBe(launch(practical));
 	});
 
 	it("keeps the practical tier's label, so an already-seeded preset stays the tier it always was", () => {
