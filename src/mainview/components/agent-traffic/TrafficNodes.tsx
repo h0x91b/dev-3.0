@@ -52,7 +52,9 @@ import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
 import TrafficNotificationCloud from "./TrafficNotificationCloud";
-import { IDENTITY_SCALE, MAX_SCALE, detailTier, frameExchange, overviewScale } from "./traffic-camera";
+import { cellSeqFontSize, cellSeqInk } from "./cell-seq";
+import { headingTop, headingWidth } from "./group-heading";
+import { IDENTITY_SCALE, MAX_SCALE, SCENE_PAD_Y, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
 	/** Board columns come off these, so the stage orders cards the way the Kanban does. */
@@ -280,9 +282,9 @@ export default function TrafficNodes({
 			const box = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
 			if (!box.width || !box.height || !targets.length) return;
 			const left = Math.min(...targets.map((p) => p.x)) - 70;
-			const top = Math.min(...targets.map((p) => p.y)) - 86 - speakerPad;
+			const top = Math.min(...targets.map((p) => p.y)) - SCENE_PAD_Y - speakerPad;
 			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
-			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
+			const height = Math.max(...targets.map((p) => p.y + p.height)) + SCENE_PAD_Y - top;
 			const scale = overviewScale(box, { width, height }, maximum, floor);
 			move(
 				{
@@ -315,9 +317,9 @@ export default function TrafficNodes({
 		if (!targets.length) return undefined;
 		return {
 			left: Math.min(...targets.map((p) => p.x)) - 70,
-			top: Math.min(...targets.map((p) => p.y)) - 86 - speakerPad,
+			top: Math.min(...targets.map((p) => p.y)) - SCENE_PAD_Y - speakerPad,
 			right: Math.max(...targets.map((p) => p.x + p.width)) + 70,
-			bottom: Math.max(...targets.map((p) => p.y + p.height)) + 86,
+			bottom: Math.max(...targets.map((p) => p.y + p.height)) + SCENE_PAD_Y,
 		};
 	}, [scene.groups, scene.placed, speakerPad]);
 	const resizeFollow = useRef<(() => void) | null>(null);
@@ -819,7 +821,7 @@ export default function TrafficNodes({
 			>
 				{scene.groups.map(group => (
 					<div key={group.projectId} className="traffic-project-group" style={{ left: group.x, top: group.y, width: group.width, height: group.height }}>
-						<div className="traffic-project-heading" style={{ transform: `scale(${1 / view.scale})`, width: Math.max(40, (group.width - 48) * view.scale) }}>
+						<div className="traffic-project-heading" style={{ top: headingTop(view.scale), transform: `scale(${1 / view.scale})`, width: headingWidth(group.width, view.scale) }}>
 							{projectById.get(group.projectId)?.name ?? t("traffic.orbit.project")}
 						</div>
 					</div>
@@ -1233,6 +1235,9 @@ function Card({
 	// card. It carries the projected status, so a parked card and a card with no
 	// recorded state get the bare strip — a ring would claim a stage neither has.
 	const railStatus = placed.parked ? null : (projection.status ?? null);
+	// No `#` at the cell tier: the glyph costs a fifth of the width and the
+	// number is already unmistakable.
+	const cellLabel = nodeSeq(node).replace(/^#/, "");
 	return (
 		<button
 			type="button"
@@ -1290,6 +1295,18 @@ function Card({
 						{latest.row.subject || latest.row.body.slice(0, 100)}
 					</span>
 				)}
+			</span>
+			{/* The whole card at the cell tier: the body is hidden there, and a
+			    rectangle with no number on it cannot be told from its neighbour. */}
+			<span
+				className="traffic-node-cell"
+				aria-hidden="true"
+				style={{
+					fontSize: cellSeqFontSize(cellLabel, placed.width, placed.height),
+					color: cellSeqInk(statusColor),
+				}}
+			>
+				{cellLabel}
 			</span>
 			<span className="traffic-node-compact">
 				<span className="traffic-node-head">
