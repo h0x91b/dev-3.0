@@ -496,6 +496,14 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 						<div className="truncate text-sm font-medium text-fg">{current.title}</div>
 						<div className="truncate text-micro text-fg-muted">{current.name}</div>
 					</div>
+					{/* Everything but Close scrolls sideways once the panel is too narrow
+					    for the full row; Close stays pinned outside it, because a docked
+					    panel can be dragged narrower than its own toolbar and the way out
+					    must never be the button that gets clipped. */}
+					<div
+						data-testid="artifact-viewer-actions"
+						className="artifact-toolbar-scroll flex min-w-0 items-center gap-2 overflow-x-auto overscroll-x-contain"
+					>
 					<HelpSpot topicId="viewer.artifact" />
 					{group && (
 						<ArtifactVersionPicker
@@ -507,7 +515,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 					{artifacts.length > 1 && (
 						<>
 							<button type="button" className={iconButton} disabled={index === 0} onClick={() => go(-1)} aria-label={t("artifactViewer.previous")}><span style={{ fontFamily: ICON }}></span></button>
-							<span className="font-mono text-xs text-fg-3 tabular-nums">{index + 1} / {artifacts.length}</span>
+							<span className="flex-shrink-0 whitespace-nowrap font-mono text-xs text-fg-3 tabular-nums">{index + 1} / {artifacts.length}</span>
 							<button type="button" className={iconButton} disabled={index === artifacts.length - 1} onClick={() => go(1)} aria-label={t("artifactViewer.next")}><span style={{ fontFamily: ICON }}></span></button>
 						</>
 					)}
@@ -540,6 +548,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 						title={t("artifactViewer.openInBrowser")}
 					><span style={{ fontFamily: ICON }}>{""}</span></button>
 					<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
+					</div>
 					<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
 				</header>
 				{pendingDraft && !draftIsHere && !draftDismissed && (
