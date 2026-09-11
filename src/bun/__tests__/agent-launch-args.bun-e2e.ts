@@ -26,6 +26,11 @@
  *
  * The POSIX legs are the control that none of this changed macOS/Linux.
  *
+ * Since h0x91b/dev-3.0#1734 the file channel is used on EVERY platform: the
+ * inline body also sat in every agent's `argv`, where `pkill -f` matches it, so
+ * one agent's cleanup pattern SIGTERMed every sibling agent. The inline legs
+ * below stay as measurements of what the OS allows, not of what dev3 emits.
+ *
  * The "agent binary" is this runner's own `bun`, with a probe script as its
  * first argument — a real executable with ordinary C-runtime argument parsing,
  * which a `.cmd` shim would not be (cmd.exe parses its own way and would prove
@@ -242,7 +247,7 @@ try {
 			"the protocol itself is deliverable inline at its current size",
 		);
 
-		// The shape dev3 actually launches on Windows: a path, not a body.
+		// The shape dev3 actually launches everywhere: a path, not a body.
 		const promptFile = join(root, "claude.md");
 		writeFileSync(promptFile, CLAUDE_SKILL_BODY, "utf8");
 		const { code } = await runAgent(process.execPath, ["--append-system-prompt-file", promptFile]);

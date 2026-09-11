@@ -49,8 +49,11 @@ export const claudeAdapter: AgentAdapter = {
 		}
 
 		if (!options?.skipSystemPrompt) {
-			// The body is ~34 000 characters, which is past the Windows command-line
-			// ceiling on its own, so there it travels as a file the backend wrote.
+			// The body travels as a file the backend wrote: it is past the Windows
+			// command-line ceiling, and on POSIX an argv copy is what `pkill -f`
+			// pattern-matches against (h0x91b/dev-3.0#1734). Every dev3 launch goes
+			// through `resolveAgentCommand`, which always supplies the file; the
+			// inline branch is what a caller with no backend behind it gets.
 			if (options?.systemPromptFile) {
 				args.push("--append-system-prompt-file", quoteIfUnsafe(options.systemPromptFile));
 			} else {

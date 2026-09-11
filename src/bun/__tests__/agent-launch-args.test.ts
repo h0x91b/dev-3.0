@@ -5,7 +5,6 @@ import { resolveAgentCommand, buildResumeCommand, DEV3_SYSTEM_PROMPT, type Templ
 import type { CodingAgent } from "../../shared/types";
 import { claudeAdapter } from "../../shared/agent-adapters/claude";
 import { CLAUDE_SKILL_BODY } from "../../shared/agent-skill-content";
-import { systemPromptNeedsFile } from "../agent-system-prompt-file";
 import { AGENT_SKILL_BODY_LIMIT, WINDOWS_COMMAND_LINE_LIMIT } from "../../shared/agent-command-line-budget";
 
 // ---------------------------------------------------------------------------
@@ -127,9 +126,9 @@ describe("commandToken", () => {
 describe("the launch call site", () => {
 	it("resolveAgentCommand emits no POSIX escape on Windows", () => {
 		// Not a synthetic string: this is the prompt every Claude launch carries,
-		// and the apostrophes in it are what killed the .ps1 parse. On Windows it
-		// now travels as a file (the ceiling below), so what must be gone from the
-		// command line is the POSIX escape — in the prompt and everywhere else.
+		// and the apostrophes in it are what killed the .ps1 parse. It now travels
+		// as a file on every platform, so what must be gone from the command line
+		// is the POSIX escape — in the prompt and everywhere else.
 		expect(DEV3_SYSTEM_PROMPT).toContain("'");
 		asPlatform("win32");
 		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
@@ -140,8 +139,17 @@ describe("the launch call site", () => {
 
 	it("resolveAgentCommand still emits the POSIX escape on POSIX", () => {
 		asPlatform("darwin");
-		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+		// The protocol no longer supplies the apostrophes (it travels as a file on
+		// every platform now), so the escape is proved on the user's own text.
+		const cmd = resolveAgentCommand(agent("claude"), undefined, { ...CTX, taskDescription: "the task's title" });
 		expect(cmd).toContain("'\\''");
+	});
+
+	it("resolveAgentCommand keeps the protocol out of argv on POSIX too", () => {
+		asPlatform("darwin");
+		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+		expect(cmd).toContain("--append-system-prompt-file");
+		expect(cmd).not.toContain(DEV3_SYSTEM_PROMPT.slice(0, 200));
 	});
 
 	it("resolveAgentCommand spells a resolved binary path as a command", () => {
@@ -172,10 +180,13 @@ describe("the command-line ceiling", () => {
 		expect(CLAUDE_SKILL_BODY.length).toBeGreaterThan(WINDOWS_COMMAND_LINE_LIMIT / 2);
 	});
 
-	it("only Windows needs the file", () => {
-		expect(systemPromptNeedsFile("win32")).toBe(true);
-		expect(systemPromptNeedsFile("darwin")).toBe(false);
-		expect(systemPromptNeedsFile("linux")).toBe(false);
+	it("every platform gets the file — the ceiling on Windows, argv exposure everywhere", () => {
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			asPlatform(platform);
+			const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+			expect(cmd, platform).toContain("--append-system-prompt-file");
+			expect(cmd.length, platform).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
+		}
 	});
 
 	it("Claude takes a path, and the command line then fits with room to spare", () => {
@@ -187,7 +198,10 @@ describe("the command-line ceiling", () => {
 		expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
 	});
 
-	it("without a file the body is still inline — POSIX is unchanged", () => {
+	// The pure adapter still has an inline branch for a caller with no backend
+	// behind it. dev3 itself never takes it: `resolveAgentCommand` always writes
+	// the file and throws when it cannot (guarded above and in the golden matrix).
+	it("without a file the body is inline — the adapter's own fallback", () => {
 		const cmd = claudeAdapter.launchArgs("claude", undefined, CTX, {}).join(" ");
 		expect(cmd).toContain("--append-system-prompt ");
 		expect(cmd).not.toContain("--append-system-prompt-file");

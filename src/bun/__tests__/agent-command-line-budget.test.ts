@@ -93,14 +93,17 @@ describe("the protocol body fits the budget", () => {
 	}
 });
 
-// Claude's protocol reaches it as a FILE on Windows, and that is an
-// optimisation which can fail (an unwritable `~/.dev3.0`), in which case the
-// launch falls back to the inline body. Mocking the write away measures that
-// fallback — the worst case — and keeps the test from writing into the real
-// `~/.dev3.0` of whoever runs it.
+// Claude's protocol reaches it as a FILE on every platform, so what rides the
+// command line is a path. Mocked to a realistic Windows path — long, spaced,
+// non-ASCII — so the budget is measured against the worst path a real install
+// produces, and the test writes nothing into whoever runs it.
 vi.mock("../agent-system-prompt-file", async () => {
 	const actual = await vi.importActual<typeof import("../agent-system-prompt-file")>("../agent-system-prompt-file");
-	return { ...actual, ensureAgentSystemPromptFile: () => null };
+	return {
+		...actual,
+		ensureAgentSystemPromptFile: (name: string, body: string) =>
+			`C:\\Users\\Александр Петров\\AppData\\Local\\.dev3.0\\data\\agent-prompts\\${name}-${actual.systemPromptFileDigest(body)}.md`,
+	};
 });
 
 describe("the whole Windows command line fits", () => {

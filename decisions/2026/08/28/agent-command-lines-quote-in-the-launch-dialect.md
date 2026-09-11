@@ -84,6 +84,12 @@ On Windows the protocol also stops travelling on the command line at all:
 2.1.112 that the flag exists and applies the file's content. POSIX keeps the
 inline form, so nothing about a macOS or Linux launch changes.
 
+> Partly superseded on 2026-09-11 by
+> `decisions/2026/09/11/claude-system-prompt-always-travels-as-a-file.md`: POSIX
+> no longer keeps the inline form, and the file name is now content-addressed
+> (`claude-<sha256:16>.md`, not `claude.md`). The inline body also sat in every
+> agent's `argv`, where `pkill -f` matched it and killed sibling agents.
+
 **The file only covers Claude**, because only Claude has a flag that takes a
 path. Codex carries the protocol in `-c developer_instructions=`, and Cursor and
 OpenCode concatenate it onto the prompt, so for them the body is on the command

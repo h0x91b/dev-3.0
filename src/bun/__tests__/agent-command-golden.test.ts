@@ -12,6 +12,8 @@ import {
 } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
+import { ensureAgentSystemPromptFile } from "../agent-system-prompt-file";
+import { quoteIfUnsafe } from "../../shared/agent-adapters/shell";
 
 // ---------------------------------------------------------------------------
 // Golden / characterization test (Seam A) — decision 124 / AgentAdapter spec.
@@ -22,14 +24,18 @@ import { setCurrentUiTheme } from "../theme-state";
 // stable sentinels (<CLAUDE_BODY>, <CODEX_DEV_INSTR>, <GENERIC_BODY>) so this
 // test guards flags / quoting / delivery-channel / ordering — NOT the protocol
 // prose (which changes often and is not load-bearing for command assembly).
-// The wrapper around each body (e.g. `--append-system-prompt '<CLAUDE_BODY>'`
-// vs `-c <CODEX_DEV_INSTR>`) stays visible, so a lost quote or a wrong delivery
-// channel still fails the test.
+// The wrapper around each body (e.g. `--append-system-prompt-file
+// <CLAUDE_BODY_FILE>` vs `-c <CODEX_DEV_INSTR>`) stays visible, so a lost quote
+// or a wrong delivery channel still fails the test.
 // ---------------------------------------------------------------------------
 
-/** Redact the three skill bodies to sentinels, matching how each is embedded. */
+/** Redact the three skill bodies to sentinels, matching how each is embedded.
+ *  Claude's body is never embedded at all — it reaches the agent as a file whose
+ *  name carries the body's content hash, so the PATH is redacted instead. */
 function redact(cmd: string): string {
 	const claudeBody = shellEscape(DEV3_SYSTEM_PROMPT);
+	const promptFile = ensureAgentSystemPromptFile("claude", DEV3_SYSTEM_PROMPT);
+	cmd = cmd.split(quoteIfUnsafe(promptFile)).join("<CLAUDE_BODY_FILE>");
 	const codexBody = shellEscape(`developer_instructions=${JSON.stringify(DEV3_SYSTEM_PROMPT_CODEX)}`);
 	// The generic body is concatenated onto the prompt then shell-escaped as a
 	// whole, so its apostrophes are rewritten ('→'\''). Redact the escaped inner.
@@ -111,21 +117,21 @@ function buildCases(): Case[] {
 // Captured against the pre-refactor code (reproduce-first). The AgentAdapter
 // migration must reproduce every one of these strings verbatim.
 const EXPECTED: Record<string, string> = {
-	"claude/fresh": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/fresh-empty": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY>",
-	"claude/resume-nosid": "claude --continue --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY>",
-	"claude/resume-sid": "claude --resume 11111111-1111-1111-1111-111111111111 --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY>",
-	"claude/preassign-sid": "claude --session-id 11111111-1111-1111-1111-111111111111 --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
+	"claude/fresh": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/fresh-empty": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE>",
+	"claude/resume-nosid": "claude --continue --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE>",
+	"claude/resume-sid": "claude --resume 11111111-1111-1111-1111-111111111111 --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE>",
+	"claude/preassign-sid": "claude --session-id 11111111-1111-1111-1111-111111111111 --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"claude/skipSysPrompt": "claude --model sonnet --allow-dangerously-skip-permissions -- 'Fix the login bug'",
-	"claude/statusline": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> --settings /tmp/s.json -- 'Fix the login bug'",
-	"claude/pm-plan": "claude --model sonnet --permission-mode plan --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/pm-acceptEdits": "claude --model sonnet --permission-mode acceptEdits --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/pm-bypassPermissions": "claude --model sonnet --permission-mode bypassPermissions --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/pm-dontAsk": "claude --model sonnet --permission-mode dontAsk --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/effort": "claude --model sonnet --allow-dangerously-skip-permissions --effort high --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/budget": "claude --model sonnet --allow-dangerously-skip-permissions --max-budget-usd 12 --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
-	"claude/addargs": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> --foo bar -- 'Fix the login bug'",
-	"claude/appendPrompt": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug\n\nExtra: Fix bug'",
+	"claude/statusline": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> --settings /tmp/s.json -- 'Fix the login bug'",
+	"claude/pm-plan": "claude --model sonnet --permission-mode plan --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/pm-acceptEdits": "claude --model sonnet --permission-mode acceptEdits --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/pm-bypassPermissions": "claude --model sonnet --permission-mode bypassPermissions --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/pm-dontAsk": "claude --model sonnet --permission-mode dontAsk --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/effort": "claude --model sonnet --allow-dangerously-skip-permissions --effort high --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/budget": "claude --model sonnet --allow-dangerously-skip-permissions --max-budget-usd 12 --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
+	"claude/addargs": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> --foo bar -- 'Fix the login bug'",
+	"claude/appendPrompt": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug\n\nExtra: Fix bug'",
 	"codex/fresh": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/fresh-empty": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR>",
 	"codex/resume-nosid": "codex resume --last --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR>",
@@ -201,9 +207,9 @@ const EXPECTED: Record<string, string> = {
 	"aider/budget": "aider --model sonnet --max-budget-usd 12 -- 'Fix the login bug'",
 	"aider/addargs": "aider --model sonnet --foo bar -- 'Fix the login bug'",
 	"aider/appendPrompt": "aider --model sonnet -- 'Fix the login bug\n\nExtra: Fix bug'",
-	"claude/provider-bedrock": "claude --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
+	"claude/provider-bedrock": "claude --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"codex/provider-bedrock": "codex --model global.openai.gpt-5.6-sol -c 'model_provider=\"amazon-bedrock-runtime\"' -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"claude/model-1m": "claude --model 'claude-opus-4-8[1m]' --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
+	"claude/model-1m": "claude --model 'claude-opus-4-8[1m]' --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"codex/theme-profile": "codex --model gpt-5.6-sol -p dev3-dark -c 'default_permissions=\"dev3\"' -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 };
 
@@ -239,6 +245,19 @@ describe("resolveAgentCommand — golden matrix (structural, byte-identical)", (
 	it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
 		const out = resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
 		expect(redact(out)).toBe(EXPECTED[c.name]);
+	});
+
+	// The protocol in argv is what `pkill -f` matches against, so one agent's
+	// cleanup killed every sibling (h0x91b/dev-3.0#1734). No Claude launch, on any
+	// platform or option, may carry a sentence of it on the command line.
+	it.each(["darwin", "linux", "win32"] as const)("no Claude command line carries the protocol on %s", (platform) => {
+		Object.defineProperty(process, "platform", { value: platform, configurable: true });
+		const sentence = DEV3_SYSTEM_PROMPT.split("\n").find((line) => line.length > 60) ?? "";
+		expect(sentence.length).toBeGreaterThan(60);
+		for (const c of cases.filter((x) => x.base === "claude")) {
+			const out = resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
+			expect(out, c.name).not.toContain(sentence);
+		}
 	});
 });
 
