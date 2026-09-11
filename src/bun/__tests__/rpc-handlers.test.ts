@@ -13850,16 +13850,6 @@ describe("toggleTaskWatch", () => {
 });
 
 describe("handlers.createPullRequest", () => {
-	// The handoff asks the host whether a `dev3://` handler is registered, so every
-	// expectation about the footer is platform-dependent — and CI shards run on Linux
-	// while this was written on macOS. Pin macOS for the block; the tests that assert
-	// the footer's ABSENCE set their own platform and this restores it.
-	const hostPlatform = process.platform;
-	const setPlatform = (value: string) =>
-		Object.defineProperty(process, "platform", { value, configurable: true });
-	beforeEach(() => setPlatform("darwin"));
-	afterEach(() => setPlatform(hostPlatform));
-
 	/**
 	 * The guarded sends this handoff performed. One stage is ONE `if-shell` command
 	 * list, so counting these counts stages that actually reached the server.
@@ -13955,27 +13945,30 @@ describe("handlers.createPullRequest", () => {
 		// Two stages, both guarded and both aimed at the pinned pane: the text, then Enter.
 		const sends = guardedSends();
 		expect(sends).toHaveLength(2);
-		expect(typedText(sends[0])).toContain("gh pr create");
+		expect(typedText(sends[0])).toContain("dev3 pr create");
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
 	});
 
-	it("keeps the deep-link block last so nothing is appended inside it", async () => {
+	// `dev3 pr create` pushes the branch and opens the pull request itself. Naming the
+	// raw commands as well invites the agent to do it by hand, which is how the footer
+	// used to be pasted with somebody else's task id.
+	it("hands over the dev3 command and tells the agent not to run git push / gh itself", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		tmuxWithLivePanes();
 
-		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id, autoMerge: true });
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
 		const prompt = typedText(guardedSends()[0]);
-		expect(prompt.indexOf("gh pr merge --auto")).toBeLessThan(prompt.indexOf("dev3://task/task-1"));
-		expect(prompt.trimEnd().endsWith("Settings → Tasks.)_")).toBe(true);
+		expect(prompt).toContain("dev3 pr create");
+		expect(prompt).toContain("do not run git push or gh pr create yourself");
 	});
 
 	// A newline reaches the pane as a raw byte and can submit the prompt early on an
 	// agent that reads it as Enter, so the whole handoff stays on one line.
-	it("sends a single-line prompt even with the deep link appended", async () => {
+	it("sends a single-line prompt", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -13984,61 +13977,32 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const prompt = typedText(guardedSends()[0]);
-		expect(prompt).toContain("dev3://task/task-1");
-		expect(prompt).not.toContain("\n");
+		expect(typedText(guardedSends()[0])).not.toContain("\n");
 	});
 
-	it("omits the deep link when the user turned the setting off", async () => {
+	/**
+	 * The footer, its platform gate and the user's `prOriginTaskLink` preference all
+	 * live inside `dev3 pr create` now (covered by src/cli/__tests__/pr.test.ts). The
+	 * handoff must therefore carry no footer text at all — and must not read settings,
+	 * because a second copy of that decision is a second thing to get wrong.
+	 */
+	it("carries no footer text and reads no settings", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(loadSettings).mockResolvedValueOnce({ prOriginTaskLink: false } as never);
 		tmuxWithLivePanes();
 
-		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
-
-		const prompt = typedText(guardedSends()[0]);
-		expect(prompt).not.toContain("dev3://task/task-1");
-		expect(prompt).toContain("gh pr create");
-	});
-
-	// Only macOS registers a `dev3://` handler, so anywhere else the footer would put
-	// a dead link in front of everyone reading a public PR. The host platform decides
-	// before the preference does — and the preference is never rewritten on disk.
-	it.each(["win32", "linux"])("omits the deep link on %s even with the setting stored on", async (platform) => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(loadSettings).mockResolvedValueOnce({ prOriginTaskLink: true } as never);
-		tmuxWithLivePanes();
-		setPlatform(platform);
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
 		const prompt = typedText(guardedSends()[0]);
 		expect(prompt).not.toContain("dev3://task/task-1");
 		expect(prompt).not.toContain("open.html?task=task-1");
-		expect(prompt).toContain("gh pr create");
+		expect(loadSettings).not.toHaveBeenCalled();
 		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
-	it("tells the agent to append a deep link back to the origin task", async () => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		tmuxWithLivePanes();
-
-		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
-
-		const prompt = typedText(guardedSends()[0]);
-		expect(prompt).toContain("dev3://task/task-1");
-		expect(prompt).toContain("https://dev3.h0x91b.com/open.html?task=task-1");
-	});
-
-	it("sends the auto-merge variant prompt when autoMerge is set", async () => {
+	it("asks for auto-merge through the command's own flag when autoMerge is set", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -14047,8 +14011,10 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id, autoMerge: true });
 
-		expect(typedText(guardedSends()[0])).toContain("gh pr create");
-		expect(typedText(guardedSends()[0])).toContain("gh pr merge --auto");
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).toContain("dev3 pr create");
+		expect(prompt).toContain("--auto-merge");
+		expect(prompt).not.toContain("gh pr merge");
 	});
 
 	it("does not enable auto-merge in the default prompt", async () => {
@@ -14060,7 +14026,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(typedText(guardedSends()[0])).not.toContain("gh pr merge --auto");
+		expect(typedText(guardedSends()[0])).not.toContain("--auto-merge");
 	});
 
 	it("reports a proven no-pane as not-delivered, and sends nothing", async () => {

@@ -103,6 +103,9 @@ Commands:
                                          Push this branch and open a pull request for it via gh
                                          (needs an authenticated gh — exits 23 before pushing if not;
                                           inside a task the body links back to the originating task)
+  dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]
+                                         Set (or clear) auto-merge on an existing pull request —
+                                         defaults to the one for the branch checked out here
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running

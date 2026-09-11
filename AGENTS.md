@@ -172,11 +172,15 @@ gh auth switch --user h0x91b 2>/dev/null || true
 
 (No-op for collaborators without that account.)
 
-**PRs are squash-merged.** Always pass the strategy flag: `gh pr merge --auto --squash <branch>` — a bare `gh pr merge --auto` fails non-interactively.
+### Opening a PR — `dev3 pr`, not `gh` by hand
+
+**`dev3 pr create --title "..." --description "..."`** is the way in. It pushes the branch, opens the pull request through `gh`, targets the task's own base branch, and ends the description with the deep link back to the originating task — so nobody hand-writes that footer or pastes the wrong task id. A missing or logged-out `gh` exits `23` before anything is pushed. Long body: `--description @<file>`.
+
+**PRs are squash-merged**, and auto-merge is `dev3 pr auto-merge` (squash by default; `--strategy merge|rebase`, `--off` to clear) or `--auto-merge` on `pr create`. Raw `gh pr merge --auto --squash <branch>` still works, but a bare `gh pr merge --auto` fails non-interactively — which is the trap `dev3 pr auto-merge` exists to remove. Reach for `gh` directly only for a flag `dev3 pr` does not pass through (`gh pr view`/`diff`/`checks` are reads and unaffected).
 
 ### Rebase before push / PR
 
-Before pushing a PR branch or running `gh pr create`, rebase on the live base first: `git fetch origin main && git rebase origin/main` (resolve conflicts before continuing). Keeps PRs conflict-free and CI honest.
+Before `dev3 pr create` (it pushes) or any push of a PR branch, rebase on the live base first: `git fetch origin main && git rebase origin/main` (resolve conflicts before continuing). Keeps PRs conflict-free and CI honest.
 
 ### Task completion
 
@@ -414,7 +418,7 @@ bun run test:watch    # watch mode
 Two gates, escalating. Committing itself has no gate — commit freely, verify before the work leaves the machine.
 
 1. **Before `git push`** — `bun run lint` plus the tests covering what you touched. A push that breaks type-checking is unacceptable even if the tests pass.
-2. **Before `gh pr create` and before enabling auto-merge** — the full suite green **on CI**, for the head you actually pushed. **Do not run `bun run test:full` locally**: it and every other unfiltered run are reserved for CI/PR validation (the Local E2E policy in [`/verify-changes`](.claude/skills/verify-changes/SKILL.md)), and on a shared dev box it cannot be taken green at all — the box is never quiet, so its failures are load, not evidence (`decisions/2026/08/27/cap-total-vitest-worker-count.md`). What you owe locally is `bun run test` plus the suites around what you touched: the file you edited is NOT sufficient on its own, because sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). **After any rebase, run that local set again and re-read CI on the new head** — a rebase pulls in code no earlier run ever saw. Enable auto-merge on a green CI, never on a green local run.
+2. **Before `dev3 pr create` and before enabling auto-merge** — the full suite green **on CI**, for the head you actually pushed. **Do not run `bun run test:full` locally**: it and every other unfiltered run are reserved for CI/PR validation (the Local E2E policy in [`/verify-changes`](.claude/skills/verify-changes/SKILL.md)), and on a shared dev box it cannot be taken green at all — the box is never quiet, so its failures are load, not evidence (`decisions/2026/08/27/cap-total-vitest-worker-count.md`). What you owe locally is `bun run test` plus the suites around what you touched: the file you edited is NOT sufficient on its own, because sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). **After any rebase, run that local set again and re-read CI on the new head** — a rebase pulls in code no earlier run ever saw. Enable auto-merge on a green CI, never on a green local run.
 
 ### Manual UI QA in a browser
 

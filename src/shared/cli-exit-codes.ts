@@ -161,6 +161,6 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_GH_UNAVAILABLE",
 		code: CLI_EXIT_CODE_GH_UNAVAILABLE,
 		description:
-			"`dev3 pr create` found no usable GitHub CLI: `gh` is not installed, or it is installed but not authenticated. NOTHING was pushed and no pull request was opened — the check runs before the push precisely so a logged-out `gh` cannot be discovered halfway through. Distinct from exit 1, which means the push or `gh pr create` itself failed.",
+			"A `dev3 pr` subcommand (`create`, `auto-merge`) found no usable GitHub CLI: `gh` is not installed, or it is installed but not authenticated. NOTHING was pushed and no pull request was opened or changed — the check runs before the push precisely so a logged-out `gh` cannot be discovered halfway through. Distinct from exit 1, which means the push or `gh pr create` itself failed.",
 	},
 ] as const;

@@ -310,6 +310,96 @@ describe("dev3 pr create — auto-merge", () => {
 	});
 });
 
+describe("dev3 pr auto-merge", () => {
+	it("squashes the current branch's pull request by default", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("auto-merge", args(), null, d);
+
+		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--squash"]);
+		expect(stdoutOutput).toContain("Auto-merge   enabled (squash)");
+	});
+
+	it("accepts a strategy and an explicit pull request", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("auto-merge", { positional: ["1722"], flags: { strategy: "rebase" } }, null, d);
+
+		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--rebase", "1722"]);
+		expect(stdoutOutput).toContain("on 1722");
+	});
+
+	it("clears auto-merge with --off", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("auto-merge", args({ off: "true" }), null, d);
+
+		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--disable-auto"]);
+		expect(stdoutOutput).toContain("cleared");
+	});
+
+	it("runs in the task's worktree", async () => {
+		const { deps: d, calls } = deps({}, { cwd: "/somewhere/else" });
+
+		await handlePr("auto-merge", args(), ctx({ worktreePath: "/wt" }), d);
+
+		expect(ran(calls, "gh", ["pr", "merge"])!.cwd).toBe("/wt");
+	});
+
+	it("needs an authenticated gh too", async () => {
+		const { deps: d, calls } = deps({ "gh auth status": fail("logged out") });
+
+		await expect(handlePr("auto-merge", args(), null, d)).rejects.toThrow("EXIT_23");
+
+		expect(ran(calls, "gh", ["pr", "merge"])).toBeUndefined();
+	});
+
+	it("rejects --off together with --strategy", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("auto-merge", args({ off: "true", strategy: "squash" }), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects a strategy gh does not have", async () => {
+		const { deps: d } = deps();
+		await expect(handlePr("auto-merge", args({ strategy: "fastforward" }), null, d)).rejects.toThrow("EXIT_3");
+	});
+
+	/**
+	 * `dev3 pr auto-merge --off 1722` parses as `off="1722"` with NO positional, because
+	 * a bare `--flag` swallows the next token. Read as a boolean that is "not true", it
+	 * did the exact opposite of the request — it ENABLED auto-merge on the branch's own
+	 * pull request, and one of ours merged that way. It must refuse instead.
+	 */
+	it("refuses --off with a value instead of silently enabling auto-merge", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("auto-merge", args({ off: "1722" }), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(calls).toEqual([]);
+		expect(stderrOutput).toContain("takes no value");
+		expect(stderrOutput).toContain("dev3 pr auto-merge 1722 --off");
+	});
+
+	it("surfaces what gh said when it cannot be enabled", async () => {
+		const { deps: d } = deps({ "gh pr merge": fail("Pull request is not mergeable") });
+
+		await expect(handlePr("auto-merge", args(), null, d)).rejects.toThrow("EXIT_1");
+
+		expect(stderrOutput).toContain("not mergeable");
+	});
+
+	it("never touches git — the pull request already exists", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("auto-merge", args(), null, d);
+
+		expect(calls.every((c) => c.command === "gh")).toBe(true);
+	});
+});
+
 describe("dev3 pr create — refusals", () => {
 	it("requires --title", async () => {
 		const { deps: d, calls } = deps();
@@ -326,6 +416,24 @@ describe("dev3 pr create — refusals", () => {
 	it("rejects unknown flags", async () => {
 		const { deps: d } = deps();
 		await expect(handlePr("create", args({ title: "T", bogus: "1" }), null, d)).rejects.toThrow("EXIT_3");
+	});
+
+	// Same value-eating trap as `--off`: a switch that got a value was mistyped.
+	it("refuses --draft with a value", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", args({ title: "T", draft: "yes" }), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(calls).toEqual([]);
+	});
+
+	it("refuses --description with no value", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", args({ title: "T", description: "true" }), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(calls).toEqual([]);
+		expect(stderrOutput).toContain("--description needs a value");
 	});
 
 	it("rejects an unknown subcommand", async () => {

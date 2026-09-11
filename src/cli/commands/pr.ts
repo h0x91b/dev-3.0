@@ -8,8 +8,8 @@ import { DEV3_HOME } from "../../bun/paths";
 import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shared/deep-link";
 import { CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
 
-const USAGE =
-	'Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]';
+const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
+       dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]`;
 
 /** Merge strategies `gh pr merge` accepts; `--auto-merge` with no value means squash. */
 const MERGE_METHODS = ["squash", "merge", "rebase"] as const;
@@ -57,8 +57,8 @@ export const realPrDeps: PrDeps = {
 };
 
 /**
- * `dev3 pr create` — push the current branch and open a pull request for it in
- * one step, with the origin-task footer already appended.
+ * `dev3 pr` — the pull-request verbs that used to be a hand-written `gh` recipe:
+ * `create` (push + open, footer included) and `auto-merge` (set or clear it).
  *
  * It is `gh` end to end and deliberately so: `gh` is the only forge client dev3
  * speaks, and an unauthenticated `gh` is refused up front (exit 23) rather than
@@ -70,10 +70,43 @@ export async function handlePr(
 	context: CliContext | null,
 	deps: PrDeps = realPrDeps,
 ): Promise<void> {
-	if (subcommand !== "create") {
-		exitUsage(`Unknown subcommand: dev3 pr ${subcommand ?? ""}`.trim() + `\n${USAGE}`);
+	if (subcommand === "create") return await createPr(args, context, deps);
+	if (subcommand === "auto-merge") return await setAutoMerge(args, context, deps);
+	exitUsage(`Unknown subcommand: dev3 pr ${subcommand ?? ""}`.trim() + `\n${USAGE}`);
+}
+
+/**
+ * `dev3 pr auto-merge` — enable (or with `--off` clear) auto-merge on a pull
+ * request that already exists. With no argument `gh` resolves the pull request
+ * of the branch checked out here, which is the case that matters: a task that
+ * got its approval to merge after the pull request was opened.
+ */
+async function setAutoMerge(args: ParsedArgs, context: CliContext | null, deps: PrDeps): Promise<void> {
+	rejectUnknownFlags(args, ["strategy", "off"]);
+
+	const off = requireValuelessFlag(args, "off");
+	if (off && args.flags.strategy !== undefined) {
+		exitUsage("--off clears auto-merge, so it takes no --strategy.");
 	}
-	await createPr(args, context, deps);
+	const strategy = off ? null : (resolveMergeMethod(args.flags.strategy ?? "true", "--strategy") as MergeMethod);
+	const target = args.positional[0]?.trim();
+
+	requireAuthenticatedGh(deps);
+
+	const cwd = context?.worktreePath ?? deps.cwd;
+	const ghArgs = off ? ["pr", "merge", "--disable-auto"] : ["pr", "merge", "--auto", `--${strategy}`];
+	if (target) ghArgs.push(target);
+
+	const res = deps.run("gh", ghArgs, cwd);
+	if (res.status !== 0) {
+		exitError(
+			off ? "gh could not clear auto-merge" : `gh could not enable auto-merge (${strategy})`,
+			res.stderr.trim() || res.stdout.trim(),
+		);
+	}
+
+	const which = target ? ` on ${target}` : "";
+	process.stdout.write(off ? `Auto-merge   cleared${which}\n` : `Auto-merge   enabled (${strategy})${which}\n`);
 }
 
 async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDeps): Promise<void> {
@@ -83,7 +116,13 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 
 	const title = (args.flags.title ?? "").trim();
 	if (!title) exitUsage(`--title is required.\n${USAGE}`);
+	const draft = requireValuelessFlag(args, "draft");
 	const mergeMethod = resolveMergeMethod(args.flags["auto-merge"]);
+	// `--description` with nothing after it parses as the string "true", which would
+	// publish a PR body of "true" or silently an empty one. Neither is what was meant.
+	if (args.flags.description === "true") {
+		exitUsage('--description needs a value: --description "..." , --description @file, or drop the flag.');
+	}
 
 	requireAuthenticatedGh(deps);
 
@@ -104,7 +143,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 
 	const ghArgs = ["pr", "create", "--title", title, "--body", prBody(args.flags.description, context, deps)];
 	if (base) ghArgs.push("--base", base);
-	if (args.flags.draft === "true") ghArgs.push("--draft");
+	if (draft) ghArgs.push("--draft");
 
 	const created = deps.run("gh", ghArgs, cwd);
 	if (created.status !== 0) {
@@ -131,13 +170,28 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
 }
 
-/** `--auto-merge` absent → null; bare → squash; otherwise the named strategy. */
-function resolveMergeMethod(raw: string | undefined): MergeMethod | null {
+/**
+ * A switch that takes no value, refused rather than reinterpreted when it got one.
+ * `dev3 pr auto-merge --off 1722` parses as `off="1722"` with no positional, which
+ * read as "off is not set" and silently did the OPPOSITE — it ENABLED auto-merge on
+ * the branch's own pull request. A refusal cannot do that; it names the fix instead.
+ */
+function requireValuelessFlag(args: ParsedArgs, flag: string): boolean {
+	const raw = args.flags[flag];
+	if (raw === undefined) return false;
+	if (raw === "true") return true;
+	exitUsage(
+		`--${flag} takes no value (got "${raw}"). A positional argument goes BEFORE the switch, e.g. \`dev3 pr auto-merge ${raw} --${flag}\`.`,
+	);
+}
+
+/** Flag absent → null; passed with no value → squash; otherwise the named strategy. */
+function resolveMergeMethod(raw: string | undefined, flag = "--auto-merge"): MergeMethod | null {
 	if (raw === undefined) return null;
 	if (raw === "true") return "squash";
 	const value = raw.trim().toLowerCase();
 	if (!(MERGE_METHODS as readonly string[]).includes(value)) {
-		exitUsage(`--auto-merge takes one of ${MERGE_METHODS.join(", ")} (default squash), got "${raw}".`);
+		exitUsage(`${flag} takes one of ${MERGE_METHODS.join(", ")} (default squash), got "${raw}".`);
 	}
 	return value as MergeMethod;
 }
@@ -196,7 +250,7 @@ function taskBaseBranch(context: CliContext | null): string | undefined {
  * public pull request), when the user opted out, and outside a task worktree.
  */
 function prBody(description: string | undefined, context: CliContext | null, deps: PrDeps): string {
-	const body = description === undefined || description === "true" ? "" : description.trim();
+	const body = description?.trim() ?? "";
 	if (!context?.taskId) return body;
 	if (!deepLinkSchemeRegistered(deps.platform) || !deps.originTaskLinkEnabled()) return body;
 	return `${body}${buildTaskPrDeepLinkSection(context.taskId)}`;

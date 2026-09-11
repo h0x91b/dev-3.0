@@ -18,8 +18,6 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
-import { buildTaskPrDeepLinkLine, deepLinkSchemeRegistered } from "../../shared/deep-link";
-import { loadSettings } from "../settings";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
 	scheduleMessage as scheduleMessageCore,
@@ -683,27 +681,18 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 }
 
 /**
- * PR handoff prompt. `deepLinkLine` is the footer content the agent appends so the
- * PR carries a deep link back to the originating task (one source of truth in
- * `shared/deep-link.ts`), or null when the user opted out.
+ * PR handoff prompt. `dev3 pr create` is the whole recipe now: it pushes the
+ * branch, opens the pull request through `gh`, targets the task's own base branch
+ * and appends the origin-task footer itself (from `shared/deep-link.ts`, honouring
+ * the user's opt-out) — so the prompt no longer carries the footer text, and the
+ * agent can no longer paste it with the wrong task id.
  *
- * Two rules hold this together:
- *  - The whole prompt stays on ONE line. It is typed into the pane as raw bytes, so
- *    an embedded newline can submit it early on an agent that reads `\n` as Enter —
- *    hence the `---` divider is described in words rather than embedded.
- *  - The link goes LAST. It ends the prompt, and any sentence behind it would read
- *    as part of the line the agent was told to copy exactly.
+ * The prompt stays on ONE line: it is typed into the pane as raw bytes, and an
+ * embedded newline can submit it early on an agent that reads `\n` as Enter.
  */
-function createPrAgentPrompt(deepLinkLine: string | null, autoMerge: boolean): string {
-	const base =
-		"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
-	const merge = autoMerge
-		? " Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass."
-		: "";
-	const deepLink = deepLinkLine
-		? ` End the PR description with a blank line, then a \`---\` divider on its own line, then exactly this line so reviewers can jump straight back to the originating dev3 task: ${deepLinkLine}`
-		: "";
-	return base + merge + deepLink;
+function createPrAgentPrompt(autoMerge: boolean): string {
+	const flag = autoMerge ? " --auto-merge" : "";
+	return `Please open a pull request for this branch by running: dev3 pr create --title "..." --description "..."${flag} — it pushes the branch, opens the PR through gh and ends the description with a link back to this dev3 task, so do not run git push or gh pr create yourself and do not write that footer by hand. Choose the title and description from the work in this conversation (pass a long description with --description @<file> rather than inline).`;
 }
 
 const COMMIT_AGENT_PROMPT =
@@ -734,15 +723,10 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 		throw new Error("Create pull request needs a GitHub remote — `gh` is the only forge client dev3 speaks");
 	}
 
-	// Only macOS registers a `dev3://` handler, so anywhere else the footer would
-	// publish a dead link into a public PR — the host decides before the preference does.
-	const linkOptOut =
-		!deepLinkSchemeRegistered(process.platform) || (await loadSettings()).prOriginTaskLink === false;
-	const prompt = createPrAgentPrompt(
-		linkOptOut ? null : buildTaskPrDeepLinkLine(task.id),
-		params.autoMerge ?? false,
-	);
-	const delivery = await deliverAgentPrompt(task, prompt);
+	// The footer's two gates (no `dev3://` handler on this platform, and the user's
+	// `prOriginTaskLink` preference) now live in `dev3 pr create` itself, so this
+	// handoff neither reads settings nor builds the line.
+	const delivery = await deliverAgentPrompt(task, createPrAgentPrompt(params.autoMerge ?? false));
 	log.info("← createPullRequest", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
 	return { delivery };
 }
