@@ -7,7 +7,7 @@ import {
 	useState,
 	type CSSProperties,
 } from "react";
-import { getTaskOverview } from "../../../shared/types";
+import { getTaskOverview, type BoardProject } from "../../../shared/types";
 import { useT } from "../../i18n";
 import { getStatusLabel } from "../../utils/statusLabel";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../../hooks/useStatusColors";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import PipelineRing from "../PipelineRing";
+import { kanbanOrder } from "./kanban-order";
 import {
 	layoutTraffic,
 	pointAt,
@@ -51,11 +52,11 @@ import TrafficMessageBubble from "./TrafficMessageBubble";
 import { IDENTITY_SCALE, MAX_SCALE, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
-	projects?: {
-		id: string;
+	/** Board columns come off these, so the stage orders cards the way the Kanban does. */
+	projects?: (BoardProject & {
 		name: string;
 		customStatusLabels?: Record<string, string>;
-	}[];
+	})[];
 	scope?: string;
 	nodes: TrafficNode[];
 	records: TrafficRecord[];
@@ -138,8 +139,10 @@ export default function TrafficNodes({
 	// The cursor is the ONLY input to the historical projection, and the projection
 	// is a pure function of it — which is what makes scrubbing backwards reverse the
 	// stage exactly, with no accumulated state to unwind. Deliberately NOT folded
-	// into `nodes` upstream: the layout must stay frozen while cards appear, so
-	// `scene` keeps depending on the full node set and only Card props move.
+	// into `nodes` upstream: `scene` keeps depending on the full node set, so a card
+	// appearing never re-flows the grid. Column ORDER does follow the cursor, via
+	// `board` below — a card completed after the replayed instant must not already
+	// be sorted with the finished ones.
 	const cursorAt = playback?.cursor.at ?? null;
 	const projections = useMemo(() => {
 		const result = new Map<string, TaskProjection>();
@@ -180,13 +183,21 @@ export default function TrafficNodes({
 						node.key,
 					))),
 	);
+	const board = useMemo(
+		() =>
+			kanbanOrder(projects ?? [], nodes, (node) =>
+				projections.get(node.key) ?? projectTaskAt(node.task, cursorAt),
+			),
+		[projects, nodes, projections, cursorAt],
+	);
 	const scene = useMemo(
 		() =>
 			layoutTraffic(nodes, layoutRecords, {
 				showQuiet,
 				showParked: showParked || replayParked,
+				board,
 			}),
-		[nodes, layoutRecords, showQuiet, showParked, replayParked],
+		[nodes, layoutRecords, showQuiet, showParked, replayParked, board],
 	);
 	const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
 	const viewRef = useRef(view);
