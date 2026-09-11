@@ -1723,6 +1723,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;
 	sensitive?: boolean;
+	/** Turns reading of this project's `.dev3/` config files on or off. */
+	useRepoConfig?: boolean;
 	/** Blank string clears the project override and falls back to global. */
 	reviewModePrompt?: string;
 	/** Blank string clears the project override and falls back to global. */
@@ -1809,6 +1811,26 @@ export interface Project {
 	 * project added before this existed, which is exactly who the offer is for.
 	 */
 	conversationImportOfferedAt?: string;
+	/**
+	 * When `false`, dev3 never reads `.dev3/config.json` or
+	 * `.dev3/config.local.json` for this project — not from the checkout and not
+	 * from a task worktree. Settings resolve from this record plus built-in
+	 * defaults, and Project Settings saves land here instead of in a repo file.
+	 *
+	 * Deliberately NOT part of {@link Dev3RepoConfig}: a repository must not be
+	 * able to grant itself back the trust the user withdrew. Absent means ON, so
+	 * every existing project keeps today's behaviour. See {@link repoConfigEnabled}.
+	 */
+	useRepoConfig?: boolean;
+}
+
+/**
+ * Whether dev3 may read this project's `.dev3/` config files at all.
+ * Absent `useRepoConfig` means yes — the default that preserves the behaviour
+ * every project had before the setting existed.
+ */
+export function repoConfigEnabled(project: Pick<Project, "useRepoConfig">): boolean {
+	return project.useRepoConfig !== false;
 }
 
 /**

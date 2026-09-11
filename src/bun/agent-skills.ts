@@ -256,6 +256,8 @@ EOF
 
 **Always ask the user** which file to save to before writing. Suggest repo config as default.
 
+**A project can opt out entirely.** Project Settings → Project Config has a **Use repository dev3 configuration** switch (on by default). While it is off, dev3 reads neither file for that project and refuses to write them, so writing a config there accomplishes nothing — tell the user to switch it back on first.
+
 ## CLI commands
 
 - \`dev3 config show\` — display effective config with source per field
@@ -807,6 +809,7 @@ Off the main flow entirely.
 - **"What is this screen?" → help mode.** Click the \`?\` in the header (or press ⇧⌘/) — every zone on screen gets an (i) badge; click one to learn what it does.
 - **A quick shell at the repo root → Project Terminal (⌘\\\`).** Next to it, the **Git Pull** button pulls the project's main worktree without touching a terminal — a blue dot on it means origin has new commits.
 - **Run project scripts and Makefile targets** — the ƒ Scripts button lists them; pick one and it runs in a live pane.
+- **Don't want a repo's dev3 config running on your machine → switch it off.** Project Settings → Project Config has **Use repository dev3 configuration**, on by default. Off, dev3 stops reading \`.dev3/config.json\` and \`.dev3/config.local.json\` for that project — in the checkout and in every task worktree — so its setup, dev, cleanup, env and agent settings never run; settings come from dev3 and saves land in dev3. The choice is stored only in dev3: no file appears in the repo and \`.gitignore\` is untouched. Nothing already running is restarted, and switching back on restores every value at once.
 - **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
 - **Machine running out of RAM → hibernate a task.** The header shows how many gigabytes are still free; hover it for the breakdown of who ate the rest, dev3's own tasks included. **Hibernate**, on the open task's session bar, stops that task's agent, terminal, and dev server and frees its ports, while the worktree, your uncommitted changes, notes, and PR state stay untouched. It asks for confirmation first, and spells out the one thing that does not survive: the terminal scrollback. The card greys out and sinks below the live tasks; waking is explicit — open its terminal and pick a plain shell or a resume of the agent's conversation.
 - **Rate limit closing in → hot-swap the account.** The header carries live Claude/Codex rate-limit usage and yellows near the cap; click it to land in **Settings → Agent Accounts**, where several logins per agent CLI sit side by side and the active one switches without a re-login (add one by running the login command dev3 hands you, then verify — or import the login you already have). The switch applies to every *new* agent session dev3 launches — new tasks, spawned agents, bug hunters, auto-review — while running sessions keep theirs, and each launch can pick a non-default account. An **API profile** replaces the subscription login entirely: the Anthropic API, an Anthropic-compatible gateway (OpenRouter, a LiteLLM proxy), or Bedrock, with per-model overrides.

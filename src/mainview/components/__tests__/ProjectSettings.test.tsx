@@ -1062,4 +1062,46 @@ describe("environment variables editor", () => {
 			expect(screen.getByTitle("/tmp/test")).toHaveTextContent("/tmp/test");
 		});
 	});
+	describe("Use repository dev3 configuration", () => {
+		it("is on by default, so nothing about existing projects changes", async () => {
+			await renderProjectSettings();
+			await goToProjectTab();
+			expect(screen.getByLabelText("Use repository dev3 configuration")).toHaveAttribute("aria-checked", "true");
+			expect(screen.queryByText(/Repository configuration is ignored/i)).not.toBeInTheDocument();
+		});
+
+		it("saves the flag on its own, carrying no resolved field along", async () => {
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			mockSave.mockResolvedValue({ ...mockProject, useRepoConfig: false });
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			await user.click(screen.getByLabelText("Use repository dev3 configuration"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", useRepoConfig: false });
+			});
+		});
+
+		it("says the repository config is ignored, naming the file that is not read", async () => {
+			(api.request.getProjectConfigFiles as ReturnType<typeof vi.fn>)
+				.mockResolvedValue({ hasRepoConfig: true, hasLocalConfig: false });
+			await renderProjectSettings(mockProject, { useRepoConfig: false });
+			await goToProjectTab();
+
+			expect(screen.getByText(/\.dev3\/config\.json exists but is not read/i)).toBeInTheDocument();
+			expect(screen.queryByText(/These settings are overridden by/i)).not.toBeInTheDocument();
+		});
+
+		it("replaces the worktree config editor with an explanation instead of hiding the tab", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { useRepoConfig: false }, [mockTaskWithWorktree]);
+			await user.click(screen.getByText("Worktree Config"));
+
+			expect(screen.getByText(/worktree \.dev3 files are neither read nor written/i)).toBeInTheDocument();
+			expect(screen.queryByLabelText(/Worktree config layer/i)).not.toBeInTheDocument();
+		});
+	});
 });
