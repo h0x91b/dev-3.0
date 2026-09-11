@@ -10,6 +10,7 @@ import {
 	PANE_ID_FORMAT,
 	PANE_IN_MODE_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
+	CLIENT_NAME_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 } from "../formats";
@@ -205,6 +206,25 @@ describe("list/parse methods", () => {
 		const rows = await sessions.listSessions(SESSION_OVERVIEW_FORMAT);
 		expect(rows[0]).toMatchObject({ name: "dev3-a", windowCount: 1, createdAt: 123, cwd: "/tmp" });
 		expect(argvOf(sessionsSpawn)[3]).toBe("list-sessions");
+	});
+
+	it("listClients parses client names for the session", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "/dev/ttys004\n/dev/ttys009\n" });
+		const rows = await client.listClients(CLIENT_NAME_FORMAT, { target: "dev3-abc" });
+		expect(rows).toEqual([{ name: "/dev/ttys004" }, { name: "/dev/ttys009" }]);
+		expect(argvOf(spawnFn)).toEqual([
+			"tmux", "-L", "dev3", "list-clients", "-t", "dev3-abc", "-F", CLIENT_NAME_FORMAT.formatString,
+		]);
+	});
+
+	it("refreshClient targets one client tty and never resizes it", async () => {
+		const { client, spawnFn } = makeClient();
+		await client.refreshClient({ target: "/dev/ttys004" });
+		const argv = argvOf(spawnFn);
+		expect(argv).toEqual(["tmux", "-L", "dev3", "refresh-client", "-t", "/dev/ttys004"]);
+		// A size flag here would reach the program in the pane and bring back the
+		// full-transcript replay this call exists to avoid.
+		expect(argv).not.toContain("-C");
 	});
 
 	it("displayMessage returns the first parsed row or null", async () => {

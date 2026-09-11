@@ -275,6 +275,14 @@ export const SESSION_OVERVIEW_FORMAT = tmuxFormat()
 	.tail("cwd", "pane_current_path")
 	.build();
 
+/**
+ * Attached clients of one session (`list-clients -t`). `client_name` is the tty
+ * path, which is the only accepted target-client spelling for `refresh-client`.
+ */
+export const CLIENT_NAME_FORMAT = tmuxFormat()
+	.tail("name", "client_name")
+	.build();
+
 /** Status-bar reservation probe (`display-message`) for the layout snapshot. */
 export const STATUS_GEOMETRY_FORMAT = tmuxFormat()
 	.number("clientHeight", "client_height")
