@@ -192,6 +192,9 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const [available, setAvailable] = useState<string[] | null>(null);
 	const [listError, setListError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	/** Separate from `busy`: listing may start the proxy first, which takes
+	 *  seconds, and a button that looks idle the whole time reads as dead. */
+	const [listing, setListing] = useState(false);
 	/** Only to count which presets a deletion would break — never edited here. */
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 
@@ -368,15 +371,21 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	};
 
 	/** Live model ids, so the id field is a choice rather than a guess. Only a
-	 *  successful listing counts — an error must never look like "no models". */
+	 *  successful listing counts — an error must never look like "no models".
+	 *  The backend starts the proxy itself if it is down, so the status the panel
+	 *  shows is stale the moment this returns. */
 	const loadAvailable = async () => {
 		setListError(null);
+		setListing(true);
 		try {
 			const { models } = await api.request.modelCatalogListModels({});
 			setAvailable(models);
 		} catch (err) {
 			setAvailable(null);
 			setListError(String(err));
+		} finally {
+			setListing(false);
+			void refreshStatus();
 		}
 	};
 
@@ -397,7 +406,11 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 		: savedProviderCount === 0
 			? t("catalog.startNeedsProvider")
 			: null;
-	const listReason = !status?.binaryAvailable ? null : !status?.running ? t("catalog.listNeedsProxy") : null;
+	// Listing does not need a running proxy: the backend starts it on demand. A
+	// saved provider is the only real precondition — and while the Start button
+	// is on screen it already says that, so this caption would just repeat it.
+	const listReason =
+		status?.binaryAvailable && savedProviderCount === 0 && status.running ? t("catalog.listNeedsProvider") : null;
 
 	const proxyPanel = (
 		<div className="space-y-3 rounded-xl border border-edge bg-raised p-4">
@@ -436,19 +449,19 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 								</button>
 							</Gated>
 						)}
-						{/* Listing needs a running proxy. Starting one is the button above's
-						    job — two buttons that both start it is how the first got called dead. */}
+						{/* Listing brings the proxy up by itself, so it is not gated on the
+						    button above — requiring a manual start was friction over nothing. */}
 						<Gated reason={listReason}>
 							<button
 								type="button"
 								onClick={loadAvailable}
-								disabled={busy || !status?.binaryAvailable || !status?.running}
+								disabled={busy || listing || !status?.binaryAvailable || savedProviderCount === 0}
 								className={BUTTON_CLASS}
 							>
-								{t("catalog.refreshModels")}
+								{listing ? t("catalog.refreshModelsBusy") : t("catalog.refreshModels")}
 							</button>
 						</Gated>
-						{listError ? (
+						{listing ? null : listError ? (
 							<span className="text-xs text-warning-strong">{t("catalog.listUnavailable")}</span>
 						) : available === null ? null : available.length > 0 ? (
 							<span className="text-xs text-fg-3">{t.plural("catalog.listLoaded", available.length)}</span>

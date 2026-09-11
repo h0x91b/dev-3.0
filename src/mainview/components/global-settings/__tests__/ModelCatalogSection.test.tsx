@@ -351,12 +351,74 @@ describe("the live model list", () => {
 		expect(screen.getByRole("button", { name: "catalog.refreshModels" })).toHaveProperty("disabled", true);
 	});
 
-	// Two buttons that both started the proxy is what made the disabled one look
-	// broken; starting it now has exactly one owner.
-	it("does not offer to load models while the proxy is down, and says why", async () => {
+	// The backend starts the proxy itself when it lists models, so requiring a
+	// manual start was friction over a step that does not exist.
+	it("loads models with the proxy stopped, and lets the backend start it", async () => {
+		vi.mocked(api.request.modelCatalogListModels).mockResolvedValue({ models: ["openrouter/a"] });
 		renderSection();
-		expect(await screen.findByText("catalog.listNeedsProxy")).toBeTruthy();
+		const load = await screen.findByRole("button", { name: "catalog.refreshModels" });
+		expect(await screen.findByText("catalog.proxyStopped")).toBeTruthy();
+		expect(load).toHaveProperty("disabled", false);
+		expect(screen.queryByText("catalog.listNeedsProvider")).toBeNull();
+
+		await userEvent.click(load);
+		expect(await screen.findByText("catalog.listLoaded|1")).toBeTruthy();
+	});
+
+	// Both buttons want a saved provider. Saying it twice, side by side, reads as
+	// two different problems — the Start button next door owns that sentence.
+	it("cannot list anything before a provider is saved, and does not repeat the reason", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue({ providers: [], models: [] });
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ providerCount: 0, modelCount: 0 }));
+		renderSection();
+		expect(await screen.findByText("catalog.startNeedsProvider")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "catalog.refreshModels" })).toHaveProperty("disabled", true);
+		expect(screen.queryByText("catalog.listNeedsProvider")).toBeNull();
+	});
+
+	it("says why it cannot list anything once the Start button is gone", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue({ providers: [], models: [] });
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(
+			status({ running: true, port: 1, providerCount: 0, modelCount: 0 }),
+		);
+		renderSection();
+		expect(await screen.findByText("catalog.listNeedsProvider")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "catalog.refreshModels" })).toHaveProperty("disabled", true);
+	});
+
+	// Starting the proxy can take seconds. A button that stays idle the whole
+	// time is what makes a first-time user click it again and call it broken.
+	it("says it is working while the listing is in flight", async () => {
+		let release: (value: { models: string[] }) => void = () => {};
+		vi.mocked(api.request.modelCatalogListModels).mockReturnValue(
+			new Promise((resolve) => {
+				release = resolve;
+			}) as never,
+		);
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.refreshModels" }));
+		const busyButton = await screen.findByRole("button", { name: "catalog.refreshModelsBusy" });
+		expect(busyButton).toHaveProperty("disabled", true);
+
+		release({ models: ["openrouter/a"] });
+		expect(await screen.findByText("catalog.listLoaded|1")).toBeTruthy();
+	});
+
+	// A failure leaves the button live: the fix for "the proxy was still coming
+	// up" is pressing it again, so it must not stay stuck in the error state.
+	it("keeps the button usable after a failure, and clears the error on the retry", async () => {
+		vi.mocked(api.request.modelCatalogListModels)
+			.mockRejectedValueOnce(new Error("proxy would not start"))
+			.mockResolvedValueOnce({ models: ["openrouter/a"] });
+		renderSection();
+		const load = await screen.findByRole("button", { name: "catalog.refreshModels" });
+		await userEvent.click(load);
+		expect(await screen.findByText("catalog.listUnavailable")).toBeTruthy();
+		expect(load).toHaveProperty("disabled", false);
+
+		await userEvent.click(load);
+		expect(await screen.findByText("catalog.listLoaded|1")).toBeTruthy();
+		expect(screen.queryByText("catalog.listUnavailable")).toBeNull();
 	});
 
 	it("says how many ids it loaded, instead of rendering nothing on success", async () => {
