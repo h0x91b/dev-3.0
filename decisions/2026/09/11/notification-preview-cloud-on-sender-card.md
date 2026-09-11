@@ -39,9 +39,16 @@ Three rulings:
    the whole point of a preview, and colour alone does not survive a colour-blind
    reader or a screenshot. It reuses the inspector's existing
    `traffic.notification.level.*` keys, so this shipped with no new strings.
-3. **No puff trail and no camera motion.** The trail in the reference cost real
-   height for decoration; the anchor over the card already says which card sent
-   it. An off-frame sender gets no preview, and the stage never pans on its own
+3. **A two-puff trail, and no camera motion.** The first cut shipped without the
+   trail, on the argument that the anchor over the card already says which card
+   sent it. On screen it did not: a cloud floating above a row of cards reads as
+   belonging to the row, not to one card. Two ellipses drifting diagonally out of
+   the body's card-facing edge fix that, and they cost about 28px of height (15px
+   compact) — paid deliberately. Two, not the reference's three: a third adds
+   height without adding meaning at these sizes. They drift sideways rather than
+   straight down, because a vertical column of puffs reads as a dotted leader
+   line instead of the thought-bubble grammar everybody already knows.
+   An off-frame sender still gets no preview, and the stage never pans on its own
    to bring one back.
 
 ## Risks

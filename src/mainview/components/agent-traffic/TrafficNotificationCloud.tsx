@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { NotificationLogLevel } from "../../../shared/notification-log";
 import { useT } from "../../i18n";
-import { notificationCloud } from "./notification-cloud";
+import { notificationCloud, notificationCloudPuffs } from "./notification-cloud";
 
 /**
  * What `dev3 notify` said, previewed over the card that sent it.
@@ -50,15 +50,31 @@ export default function TrafficNotificationCloud({
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [message, compact]);
-	const cloud = notificationCloud(box.width, box.height, compact);
-	// Above the card by default, below it when the card sits too close to the top
-	// edge for the cloud to fit — the same rule the message bubble follows.
-	const below = anchor.y < cloud.height + 16;
-	const left = Math.max(
+	// Measured once to learn the height, then rebuilt with the side settled: the
+	// trail flips to the other edge when the cloud hangs below its card, and that
+	// changes where the body sits inside the same box.
+	const below = anchor.y < notificationCloud(box.width, box.height, compact).height + 16;
+	const cloud = notificationCloud(box.width, box.height, compact, below);
+	// Leaning off to one side, not centred over the card. Centred, the trail has
+	// nowhere diagonal to go: it drops straight down through the gap between two
+	// neighbouring cards and points at nothing. Leaning puts the body over the
+	// space beside the card and lets the puffs walk back onto it.
+	const lean = Math.min(cloud.width * 0.3, 70);
+	const centre = Math.max(
 		cloud.width / 2 + 8,
-		Math.min(width - cloud.width / 2 - 8, anchor.x),
+		Math.min(width - cloud.width / 2 - 8, anchor.x + lean),
 	);
-	const top = anchor.y + (below ? 14 : -10);
+	// The trail's small end all but touches the card, which is the whole point of
+	// it: 2px of clearance, not the 10px a tail-less cloud wanted.
+	const top = anchor.y + (below ? 2 : -2);
+	// Where the card is, in the cloud's own pixel space. Derived from the CLAMPED
+	// position, so a cloud shoved sideways by the frame's edge still aims its trail
+	// at the card rather than at where it wanted to be.
+	const puffs = notificationCloudPuffs(
+		cloud,
+		anchor.x - (centre - cloud.width / 2),
+		compact,
+	);
 	// An off-frame sender gets no preview at all rather than a cloud pinned to the
 	// edge pointing at nothing: the stage never moves on its own to bring it back.
 	const offFrame =
@@ -69,7 +85,7 @@ export default function TrafficNotificationCloud({
 			data-testid="traffic-notification-cloud"
 			data-level={level}
 			style={{
-				left,
+				left: centre,
 				top,
 				width: cloud.width,
 				height: cloud.height,
@@ -84,6 +100,16 @@ export default function TrafficNotificationCloud({
 				aria-hidden="true"
 			>
 				<path d={cloud.path} />
+				{puffs.map((puff) => (
+					<ellipse
+						key={`${puff.cx}:${puff.cy}`}
+						className="traffic-notification-cloud-puff"
+						cx={puff.cx}
+						cy={puff.cy}
+						rx={puff.rx}
+						ry={puff.ry}
+					/>
+				))}
 			</svg>
 			<div
 				ref={ref}
