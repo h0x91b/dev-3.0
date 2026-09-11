@@ -21,6 +21,7 @@ export const CLI_EXIT_CODE_EVENT_CURSOR_INVALID = 19;
 export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 20;
 export const CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID = 21;
 export const CLI_EXIT_CODE_CANCELLATION_DECLINED = 22;
+export const CLI_EXIT_CODE_GH_UNAVAILABLE = 23;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -155,5 +156,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_CANCELLATION_DECLINED,
 		description:
 			"`dev3 task move --status cancelled` asked the user for approval and the user declined. The task keeps its current status and the session stays alive. Distinct from exit 6 so an agent cleaning up after itself can tell a refused cancellation apart from a refused completion — the two ask for very different things, and only cancellation throws the work away.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_GH_UNAVAILABLE",
+		code: CLI_EXIT_CODE_GH_UNAVAILABLE,
+		description:
+			"`dev3 pr create` found no usable GitHub CLI: `gh` is not installed, or it is installed but not authenticated. NOTHING was pushed and no pull request was opened — the check runs before the push precisely so a logged-out `gh` cannot be discovered halfway through. Distinct from exit 1, which means the push or `gh pr create` itself failed.",
 	},
 ] as const;

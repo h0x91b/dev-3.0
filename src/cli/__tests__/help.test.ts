@@ -140,6 +140,7 @@ describe("registry coverage", () => {
 		"label",
 		"config",
 		"dev-server",
+		"pr",
 	];
 
 	for (const cmd of dispatched) {
@@ -169,6 +170,15 @@ describe("the singular `project` alias", () => {
 		expect(hasCommandHelp("project")).toBe(true);
 		expect(getCommandHelp("project")).toBe(getCommandHelp("projects"));
 		expect(renderHelp("project", "list")).toContain("dev3 projects list");
+	});
+});
+
+describe("pr create help", () => {
+	it("names the gh precondition, its exit code, and the auto-merge strategies", () => {
+		const out = renderHelp("pr", "create")!;
+		expect(out).toContain("--auto-merge");
+		expect(out).toContain("squash");
+		expect(out).toContain("exits 23");
 	});
 });
 
