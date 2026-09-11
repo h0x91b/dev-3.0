@@ -25,6 +25,13 @@ import {
 	type PlacedNode,
 } from "./nodes-layout";
 import {
+	placeSpeaker,
+	SPEAKER_GAP,
+	SPEAKER_HEIGHT,
+	SPEAKER_WIDTH,
+	type SpeakerPlacement,
+} from "./speaker-placement";
+import {
 	projectTaskAt,
 	type TaskProjection,
 } from "./task-history";
@@ -231,6 +238,11 @@ export default function TrafficNodes({
 		() => new Map(scene.placed.map((node) => [node.node.key, node])),
 		[scene.placed],
 	);
+	/** The cards as they stand now, for the camera's speaker placement. */
+	const placedRef = useRef(scene.placed);
+	placedRef.current = scene.placed;
+	/** Where the person stands right now, or null when nobody is speaking. */
+	const speakerRef = useRef<SpeakerPlacement | null>(null);
 	const projectById = useMemo(
 		() => new Map((projects ?? []).map((project) => [project.id, project])),
 		[projects],
@@ -310,16 +322,22 @@ export default function TrafficNodes({
 			fitNodes(scene.groups.length ? scene.groups : scene.placed, 0.85, instant, exact ? 0 : IDENTITY_SCALE),
 		[fitNodes, scene.placed, scene.groups],
 	);
-	/** The scene's outer edge with the same padding `fitNodes` leaves around it. */
+	/**
+	 * The scene's outer edge with the same padding `fitNodes` leaves around it —
+	 * and, when a person may speak, room on every side rather than only above.
+	 * This box is what the camera clamps an exchange to, so a pair standing below
+	 * or beside the outermost card is pushed back off-screen without it.
+	 */
 	const sceneBounds = useMemo(() => {
 		const targets: { x: number; y: number; width: number; height: number }[] =
 			scene.groups.length ? scene.groups : scene.placed;
 		if (!targets.length) return undefined;
+		const sideways = speakerPad ? SPEAKER_WIDTH + SPEAKER_GAP : 0;
 		return {
-			left: Math.min(...targets.map((p) => p.x)) - 70,
+			left: Math.min(...targets.map((p) => p.x)) - 70 - sideways,
 			top: Math.min(...targets.map((p) => p.y)) - SCENE_PAD_Y - speakerPad,
-			right: Math.max(...targets.map((p) => p.x + p.width)) + 70,
-			bottom: Math.max(...targets.map((p) => p.y + p.height)) + SCENE_PAD_Y,
+			right: Math.max(...targets.map((p) => p.x + p.width)) + 70 + sideways,
+			bottom: Math.max(...targets.map((p) => p.y + p.height)) + SCENE_PAD_Y + speakerPad,
 		};
 	}, [scene.groups, scene.placed, speakerPad]);
 	const resizeFollow = useRef<(() => void) | null>(null);
@@ -398,11 +416,10 @@ export default function TrafficNodes({
 				[sender.node.key, recipient.node.key].sort().join("|"),
 			);
 			// A message from a person has no sender card and no wire: the human is
-			// drawn over the recipient, so the frame has to hold the strip above it
-			// or the camera centres the card and the speaker falls off the top.
-			const speaking = isUserOrigin(record.row)
-				? [{ ...recipient, y: recipient.y - SPEAKER_RESERVE, height: SPEAKER_RESERVE }]
-				: [];
+			// drawn beside the recipient, so the frame has to hold the box they will
+			// actually take — wherever the collision search puts it — or the camera
+			// centres the card and the speaker falls off the edge.
+			const speaking = isUserOrigin(record.row) ? [placeSpeaker(recipient, placedRef.current)] : [];
 			move(
 				frameExchange(viewport, sender ? [sender, recipient] : [recipient, ...speaking], edge?.points ?? [], sceneBounds),
 				reduced,
@@ -423,8 +440,12 @@ export default function TrafficNodes({
 			const node = nodeByKey.get(nodeKey);
 			if (!viewport.width || !viewport.height || !node) return;
 			overviewMode.current = false;
+			// A board move does not take the person away — the step before it may
+			// still be theirs, exactly as the wire it lit stays lit. So whoever is
+			// on the stage is framed with the card, or their words go under the
+			// toolbar while they are still being said.
 			move(
-				frameExchange(viewport, [node], [], sceneBounds),
+				frameExchange(viewport, [node, ...(speakerRef.current ? [speakerRef.current] : [])], [], sceneBounds),
 				reduced,
 				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
 			);
@@ -728,13 +749,16 @@ export default function TrafficNodes({
 	// message — no card in the grid, no wire, nothing left behind. Text, lifetime
 	// and hidden-while-offscreen behaviour are the wire bubble's; only the anchor
 	// and the fact that a human is drawn at all are new.
+	// Where they stand is decided against the cards as they are laid out right
+	// now, so a replay step that reorders the grid moves the pair with it.
 	const speaker = active && activeRecipient && isUserOrigin(active.row)
 		? {
-			at: activeRecipient,
+			at: placeSpeaker(activeRecipient, scene.placed),
 			text: active.row.subject || active.row.body.slice(0, 120),
 			failed: active.row.status === "not-delivered",
 		}
 		: null;
+	speakerRef.current = speaker?.at ?? null;
 	const labelPoint = activeEdge ? pointAt(activeEdge.points, 0.5) : activeRecipient ?
 		{ x: activeRecipient.x + activeRecipient.width / 2, y: activeRecipient.y } : undefined;
 	const detail = detailTier(view.scale);
@@ -833,6 +857,21 @@ export default function TrafficNodes({
 					viewBox={`0 0 ${scene.width} ${scene.height}`}
 					aria-hidden="true"
 				>
+					{/* Only when the pair had to move: a short run from them to the card
+					    they are talking to, so standing elsewhere never costs the reader
+					    the answer to "to whom?". Same scale-invariant stroke as a wire. */}
+					{speaker?.at.tether && (
+						<line
+							data-testid="traffic-speaker-tether"
+							className="traffic-speaker-tether"
+							x1={speaker.at.tether.from.x}
+							y1={speaker.at.tether.from.y}
+							x2={speaker.at.tether.to.x}
+							y2={speaker.at.tether.to.y}
+							strokeWidth={2 / view.scale}
+							strokeDasharray={`${6 / view.scale} ${5 / view.scale}`}
+						/>
+					)}
 					{scene.edges.map((edge) => {
 						const visiblePair = visiblePairs.get(edge.key);
 						if (replaying && !visiblePair) return null;
@@ -1128,10 +1167,8 @@ function CompletionBurst({
 	);
 }
 
-/** Air between the person's feet and the top edge of the card they wrote to. */
-const SPEAKER_GAP = 18;
 /** Strip the camera keeps clear above the cards for a person who may speak. */
-const SPEAKER_RESERVE = 210;
+const SPEAKER_RESERVE = SPEAKER_HEIGHT + SPEAKER_GAP;
 
 /**
  * The person using the app, for as long as one of their messages is playing.
@@ -1144,7 +1181,7 @@ const SPEAKER_RESERVE = 210;
  * false about a person.
  */
 function UserSpeaker({ at, text, failed }: {
-	at: PlacedNode;
+	at: SpeakerPlacement;
 	text: string;
 	failed: boolean;
 }) {
@@ -1153,16 +1190,21 @@ function UserSpeaker({ at, text, failed }: {
 		<div
 			data-testid="traffic-user-speaker"
 			className="traffic-user-speaker"
-			// Anchored by its feet — the CSS lifts it by its own height, so a
-			// two-line bubble grows upwards instead of pushing into the card.
-			style={{ left: at.x, top: at.y - SPEAKER_GAP, width: at.width }}
+			data-placement={at.natural ? "above" : "displaced"}
+			// The box is the pair's real footprint, the same one the collision
+			// search and the camera used — bubble, air, head and label — so what is
+			// reserved on the stage is what is drawn on it.
+			style={{ left: at.x, top: at.y, width: at.width, height: at.height }}
 			aria-label={t("traffic.node.you")}
 		>
 			<span
 				data-testid="traffic-user-speech"
 				className={`traffic-user-speech streamer-private ${failed ? "is-failed" : ""}`}
 			>
-				{text}
+				{/* The clamp lives on the inner span, which carries no padding: on a
+				    padded box WebKit hides the overflow at the content edge and the
+				    padding below it shows the top of the next line, sliced. */}
+				<span className="traffic-user-speech-text">{text}</span>
 			</span>
 			<span className="traffic-user-disc"><TrafficIcon name="user" /></span>
 			<strong>{t("traffic.node.you")}</strong>

@@ -1203,8 +1203,16 @@ it("puts the person over the task they wrote to, with their words above their he
 	// Bubble, then head, then the card that received the message.
 	expect(bubble.parentElement).toBe(speaker);
 	const [card] = screen.getAllByTestId("traffic-node-card");
-	expect(parseFloat(speaker.style.top)).toBeLessThan(parseFloat(card.style.top));
-	expect(speaker.style.left).toBe(card.style.left);
+	// Nothing stands in that space here, so the pair keeps it: centred on the card,
+	// clear of its top edge, and no tether to explain a move they did not make.
+	expect(speaker.dataset.placement).toBe("above");
+	expect(parseFloat(speaker.style.top) + parseFloat(speaker.style.height))
+		.toBeLessThan(parseFloat(card.style.top));
+	expect(parseFloat(speaker.style.left) + parseFloat(speaker.style.width) / 2)
+		.toBe(parseFloat(card.style.left) + parseFloat(card.style.width) / 2);
+	expect(screen.queryByTestId("traffic-speaker-tether")).toBeNull();
+	// Four lines of what they said, in a box that does not slice the fifth.
+	expect(bubble.firstElementChild?.className).toBe("traffic-user-speech-text");
 	// And the wire's own subject bubble does not say the same thing twice.
 	expect(document.querySelector(".traffic-edge-subject")).toBeNull();
 });

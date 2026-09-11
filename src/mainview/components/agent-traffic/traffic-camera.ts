@@ -123,7 +123,9 @@ export function clampToBounds(
 
 export function frameExchange(
 	viewport: Viewport,
-	nodes: PlacedNode[],
+	// Rectangles, not cards: the transient speaker is framed the same way and has
+	// no node behind it.
+	nodes: Pick<PlacedNode, "x" | "y" | "width" | "height">[],
 	route: Point[],
 	bounds?: SceneBounds,
 ): CameraView {
