@@ -13,6 +13,12 @@ const COORDINATOR_HEIGHT = CARD_HEIGHT;
 const GAP_X = 52;
 const ROW_STEP = 360;
 const COORDINATOR_STEP = 340;
+/** What a node occupies on the stage. */
+function footprint(node: TrafficNode): { width: number; height: number } {
+	return node.task?.taskType === "coordinator"
+		? { width: COORDINATOR_WIDTH, height: COORDINATOR_HEIGHT }
+		: { width: CARD_WIDTH, height: CARD_HEIGHT };
+}
 
 export interface PlacedNode {
 	node: TrafficNode;
@@ -112,8 +118,8 @@ function pairs(records: TrafficRecord[]): Map<string, PairState> {
 	return found;
 }
 
-/** Cards that go in the grid — not the user marker, not a coordinator. */
-const isWorker = (node: TrafficNode) => !node.user && node.task?.taskType !== "coordinator";
+/** Cards that go in the grid, as opposed to the coordinator above it. */
+const isWorker = (node: TrafficNode) => node.task?.taskType !== "coordinator";
 
 /**
  * Message volume never moves a card: the order is the board's column order (when
@@ -122,10 +128,16 @@ const isWorker = (node: TrafficNode) => !node.user && node.task?.taskType !== "c
  * card that has since been completed back to where it actually was.
  */
 export function layoutTraffic(
-	nodes: TrafficNode[],
+	allNodes: TrafficNode[],
 	records: TrafficRecord[],
 	options: SceneOptions = {},
 ): TrafficScene {
+	// The person never takes a place on the stage. They are not a work item with
+	// a lifetime: they appear over whichever task they just wrote to, say their
+	// piece and are gone, so a permanent marker and a permanent fan of wires from
+	// it would both claim a presence that does not exist. TrafficNodes draws that
+	// appearance transiently, from the message that is playing.
+	const nodes = allNodes.filter((node) => !node.user);
 	const byKey = new Map(nodes.map((node) => [node.key, node]));
 	const state = pairs(records);
 	const partners = new Map<string, Set<string>>();
@@ -182,8 +194,7 @@ export function layoutTraffic(
 		const coordinator = node.task?.taskType === "coordinator";
 		const position: PlacedNode = {
 			node, x, y,
-			width: coordinator ? COORDINATOR_WIDTH : CARD_WIDTH,
-			height: coordinator ? COORDINATOR_HEIGHT : CARD_HEIGHT,
+			...footprint(node),
 			partners: partners.get(node.key)?.size ?? 0,
 			messages: messages.get(node.key) ?? 0,
 			hub: coordinator && !node.task?.hibernated,
@@ -205,12 +216,8 @@ export function layoutTraffic(
 			? Math.min(columns, Math.max(...bands.map(members => members.filter(isWorker).length)))
 			: columns;
 		const workerWidth = occupiedColumns ? occupiedColumns * (CARD_WIDTH + GAP_X) - GAP_X : 0;
-		// The centred rows above the grid: the user marker, then any coordinator.
-		const headWidth = Math.max(
-			bands.some(members => members.some(node => node.user)) ? CARD_WIDTH : 0,
-			bands.some(members => members.some(node => node.task?.taskType === "coordinator")) ? COORDINATOR_WIDTH : 0,
-		);
-		const gridWidth = Math.max(workerWidth, headWidth);
+		const hasCoordinator = bands.some(members => members.some(node => node.task?.taskType === "coordinator"));
+		const gridWidth = Math.max(workerWidth, hasCoordinator ? COORDINATOR_WIDTH : 0);
 		const workerOffset = grouped ? (gridWidth - workerWidth) / 2 : 0;
 		const offsetX = grouped ? groupX + 32 : 0;
 		const offsetY = grouped ? groupY + 96 : 0;
@@ -218,18 +225,11 @@ export function layoutTraffic(
 		let contentHeight = 0;
 		const add = (node: TrafficNode, x: number, y: number) => {
 			place(node, offsetX + x, offsetY + y);
-			contentHeight = Math.max(contentHeight, y + (node.task?.taskType === "coordinator" ? COORDINATOR_HEIGHT : CARD_HEIGHT) + 28);
+			contentHeight = Math.max(contentHeight, y + footprint(node).height + 28);
 		};
 		const band = (members: TrafficNode[]) => {
-			// The person is the origin of the conversation, so they sit above it:
-			// user marker first, then the coordinator, then the task grid.
-			const you = members.filter(node => node.user);
-			const coordinators = members.filter(node => !node.user && node.task?.taskType === "coordinator");
+			const coordinators = members.filter(node => node.task?.taskType === "coordinator");
 			const normal = members.filter(isWorker);
-			for (const node of you) {
-				add(node, (gridWidth - CARD_WIDTH) / 2, cursorY);
-				cursorY += COORDINATOR_STEP;
-			}
 			for (const node of coordinators) {
 				add(node, (gridWidth - COORDINATOR_WIDTH) / 2, cursorY);
 				cursorY += COORDINATOR_STEP;

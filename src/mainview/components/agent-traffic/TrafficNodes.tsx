@@ -7,6 +7,7 @@ import {
 	useState,
 	type CSSProperties,
 } from "react";
+import { isUserOrigin } from "../../../shared/agent-message-log";
 import { getTaskOverview, type BoardProject } from "../../../shared/types";
 import { useT } from "../../i18n";
 import { getStatusLabel } from "../../utils/statusLabel";
@@ -270,12 +271,16 @@ export default function TrafficNodes({
 		[reduced],
 	);
 	useEffect(() => () => cancelAnimationFrame(camera.current), []);
+	// A person appears above the card they wrote to, which above the top row is
+	// outside the cards' own bounds — so the framing keeps that strip clear, or
+	// the human's head and words are cut off by the top edge of the stage.
+	const speakerPad = records.some(({ row }) => isUserOrigin(row)) ? SPEAKER_RESERVE : 0;
 	const fitNodes = useCallback(
 		(targets: Pick<PlacedNode, "x" | "y" | "width" | "height">[], maximum: number, instant = false, floor = 0) => {
 			const box = { width: frame.current?.clientWidth ?? 0, height: frame.current?.clientHeight ?? 0 };
 			if (!box.width || !box.height || !targets.length) return;
 			const left = Math.min(...targets.map((p) => p.x)) - 70;
-			const top = Math.min(...targets.map((p) => p.y)) - 86;
+			const top = Math.min(...targets.map((p) => p.y)) - 86 - speakerPad;
 			const width = Math.max(...targets.map((p) => p.x + p.width)) + 70 - left;
 			const height = Math.max(...targets.map((p) => p.y + p.height)) + 86 - top;
 			const scale = overviewScale(box, { width, height }, maximum, floor);
@@ -288,7 +293,7 @@ export default function TrafficNodes({
 				instant,
 			);
 		},
-		[move],
+		[move, speakerPad],
 	);
 	/**
 	 * The automatic overview — on open, on resize, and whenever Live Follow falls
@@ -310,11 +315,11 @@ export default function TrafficNodes({
 		if (!targets.length) return undefined;
 		return {
 			left: Math.min(...targets.map((p) => p.x)) - 70,
-			top: Math.min(...targets.map((p) => p.y)) - 86,
+			top: Math.min(...targets.map((p) => p.y)) - 86 - speakerPad,
 			right: Math.max(...targets.map((p) => p.x + p.width)) + 70,
 			bottom: Math.max(...targets.map((p) => p.y + p.height)) + 86,
 		};
-	}, [scene.groups, scene.placed]);
+	}, [scene.groups, scene.placed, speakerPad]);
 	const resizeFollow = useRef<(() => void) | null>(null);
 	const fitRef = useRef(fit);
 	fitRef.current = fit;
@@ -390,8 +395,14 @@ export default function TrafficNodes({
 			const edge = sender && edgeByKey.get(
 				[sender.node.key, recipient.node.key].sort().join("|"),
 			);
+			// A message from a person has no sender card and no wire: the human is
+			// drawn over the recipient, so the frame has to hold the strip above it
+			// or the camera centres the card and the speaker falls off the top.
+			const speaking = isUserOrigin(record.row)
+				? [{ ...recipient, y: recipient.y - SPEAKER_RESERVE, height: SPEAKER_RESERVE }]
+				: [];
 			move(
-				frameExchange(viewport, sender ? [sender, recipient] : [recipient], edge?.points ?? [], sceneBounds),
+				frameExchange(viewport, sender ? [sender, recipient] : [recipient, ...speaking], edge?.points ?? [], sceneBounds),
 				reduced,
 				playback?.playing ? Math.min(500, playback.intervalMs * 0.9) : 500,
 			);
@@ -710,6 +721,18 @@ export default function TrafficNodes({
 				),
 			)
 		: undefined;
+	// The person only exists while they are speaking. They appear over the task
+	// they wrote to, with what they said above their head, and go again with the
+	// message — no card in the grid, no wire, nothing left behind. Text, lifetime
+	// and hidden-while-offscreen behaviour are the wire bubble's; only the anchor
+	// and the fact that a human is drawn at all are new.
+	const speaker = active && activeRecipient && isUserOrigin(active.row)
+		? {
+			at: activeRecipient,
+			text: active.row.subject || active.row.body.slice(0, 120),
+			failed: active.row.status === "not-delivered",
+		}
+		: null;
 	const labelPoint = activeEdge ? pointAt(activeEdge.points, 0.5) : activeRecipient ?
 		{ x: activeRecipient.x + activeRecipient.width / 2, y: activeRecipient.y } : undefined;
 	const detail = detailTier(view.scale);
@@ -870,28 +893,8 @@ export default function TrafficNodes({
 					})}
 				</svg>
 				<div className="traffic-nodes-cards">
+					{speaker && <UserSpeaker at={speaker.at} text={speaker.text} failed={speaker.failed} />}
 					{scene.placed.map((placed) => {
-						// The user marker never reaches `Card`: it has no task to project.
-						if (placed.node.user)
-							return (
-								<UserCard
-									key={placed.node.key}
-									placed={placed}
-									messageCount={messageCounts.get(placed.node.key) ?? 0}
-									selected={selected === placed.node.key}
-									dim={selected !== null && selected !== placed.node.key}
-									active={
-										activeFrom === placed.node.key ||
-										activeTo === placed.node.key
-									}
-									scale={view.scale}
-									onSelect={(key) => {
-										manual();
-										onSelect(key);
-									}}
-									onFocus={focus}
-								/>
-							);
 						const projection =
 							projections.get(placed.node.key) ??
 							projectTaskAt(placed.node.task, cursorAt);
@@ -948,7 +951,7 @@ export default function TrafficNodes({
 					)}
 				</div>
 			</div>
-			{active && labelPoint && (
+			{active && labelPoint && !speaker && (
 				<TrafficMessageBubble
 					subject={active.row.subject || active.row.body.slice(0, 120)}
 					anchor={{ x: view.x + labelPoint.x * view.scale, y: view.y + labelPoint.y * view.scale }}
@@ -1123,54 +1126,45 @@ function CompletionBurst({
 	);
 }
 
+/** Air between the person's feet and the top edge of the card they wrote to. */
+const SPEAKER_GAP = 18;
+/** Strip the camera keeps clear above the cards for a person who may speak. */
+const SPEAKER_RESERVE = 210;
+
 /**
- * The person using the app, drawn as its own thing rather than through {@link Card}.
+ * The person using the app, for as long as one of their messages is playing.
  *
- * Deliberately not a branch inside `Card`: it shares none of the task grammar
- * there — no status, no overview, no seq, no replay projection, all of which
- * would print something false about a human ("status not recorded", "#—"). It
- * also keeps this feature out of a function another task owns.
+ * Drawn over the recipient rather than placed in the scene: a human is not a
+ * work item with a lifetime on the board, so a permanent card in the grid — and
+ * the permanent fan of wires out of it — would claim a presence nobody has. Not
+ * a branch of {@link Card} either: it shares none of the task grammar there (no
+ * status, no seq, no replay projection), all of which would print something
+ * false about a person.
  */
-function UserCard({
-	placed,
-	messageCount,
-	selected,
-	dim,
-	active,
-	scale,
-	onSelect,
-	onFocus,
-}: {
-	placed: PlacedNode;
-	messageCount: number;
-	selected: boolean;
-	dim: boolean;
-	active: boolean;
-	scale: number;
-	onSelect: (key: string) => void;
-	onFocus: (key: string) => void;
+function UserSpeaker({ at, text, failed }: {
+	at: PlacedNode;
+	text: string;
+	failed: boolean;
 }) {
 	const t = useT();
 	return (
-		<button
-			type="button"
-			data-testid="traffic-user-card"
-			className={`traffic-node-card traffic-user-card ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""}`}
-			style={{
-				left: placed.x,
-				top: placed.y,
-				width: placed.width,
-				height: placed.height,
-				["--node-inverse" as string]: 1 / scale,
-			}}
-			aria-label={`${t("traffic.node.you")} · ${t.plural("traffic.orbit.messageCount", messageCount)}`}
-			aria-pressed={selected}
-			onClick={() => onSelect(placed.node.key)}
-			onDoubleClick={() => onFocus(placed.node.key)}
+		<div
+			data-testid="traffic-user-speaker"
+			className="traffic-user-speaker"
+			// Anchored by its feet — the CSS lifts it by its own height, so a
+			// two-line bubble grows upwards instead of pushing into the card.
+			style={{ left: at.x, top: at.y - SPEAKER_GAP, width: at.width }}
+			aria-label={t("traffic.node.you")}
 		>
-			<TrafficIcon name="user" />
+			<span
+				data-testid="traffic-user-speech"
+				className={`traffic-user-speech streamer-private ${failed ? "is-failed" : ""}`}
+			>
+				{text}
+			</span>
+			<span className="traffic-user-disc"><TrafficIcon name="user" /></span>
 			<strong>{t("traffic.node.you")}</strong>
-		</button>
+		</div>
 	);
 }
 
