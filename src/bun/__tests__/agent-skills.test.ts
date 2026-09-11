@@ -176,7 +176,9 @@ describe("dev3 skill content", () => {
 
 	it("teaches the backend-neutral pane commands, so a Windows agent is not sent to a binary it has no chance of finding", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("## Panes — run long commands next to yourself");
+			expect(skill).toContain("## Panes — for what the user wants to watch");
+			// A pane is opt-in: the user asked, or the process outlives the turn. Slowness alone is not a trigger.
+			expect(skill).toContain("**Your own shell is the default.**");
 			expect(skill).toContain("dev3 pane list");
 			expect(skill).toContain("dev3 pane run");
 			expect(skill).toContain("dev3 pane logs");

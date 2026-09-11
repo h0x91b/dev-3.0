@@ -226,21 +226,20 @@ For ANY question about project configuration — setup/dev/cleanup scripts, clon
 `;
 
 const SKILL_PANES = `
-## Panes — run long commands next to yourself
+## Panes — for what the user wants to watch
 
-Your terminal has panes the user watches live. **Never assume which backend you are on** — dev3 runs tmux and a native backend, and tmux does not exist on Windows at all. \`dev3 pane list\` names the backend, every pane, which is yours, and what a screen read can do here.
-
-Anything long-running or streaming (build, test run, watcher, log tail) goes in a neighbouring pane instead of blocking your own tool call, read back from the run's log — which works on every backend and OS:
+\`dev3 pane run\` puts one command in a pane beside yours, on every backend and OS, where the user sees it live. **Your own shell is the default.** Open a pane in two cases: the user asked to watch something run ("run the build on the right"), or the process must outlive your turn — a watcher, a log tail, a long-lived process someone keeps an eye on. Everything else stays inline — builds, test suites, checks — however long they take. A pane is a window into the user's terminal, not a way to free up your own tool call.
 
 \`\`\`bash
-dev3 pane run "bun run build" --label Build   # opens a pane to your right, prints a run id
-dev3 pane logs <run-id> [--lines 400]         # outcome + tail (1..2000, default 200)
-dev3 pane close <run-id>                      # close that pane (kills the command)
+dev3 pane list                                 # which backend you are on — never assume, tmux is absent on Windows
+dev3 pane run "npm run watch" --label Watch    # opens a pane to your right, prints a run id
+dev3 pane logs <run-id> [--lines 400]          # outcome + tail (1..2000, default 200)
+dev3 pane close <run-id>                       # close that pane (kills the command)
 \`\`\`
 
-The outcome line distinguishes **still running** from **finished, exit code N** — never read a quiet tail as a finished command. Runs are non-interactive (stdin closed): builds, tests, servers, watchers. Quick one-shot commands stay inline in your own shell, and the canonical dev server is \`dev3 dev-server start\`, not a pane run.
+The outcome line distinguishes **still running** from **finished, exit code N** — never read a quiet tail as a finished command. Runs are non-interactive: stdin is closed. The canonical dev server is \`dev3 dev-server start\`, not a pane run.
 
-**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run as you go, and again before ending a turn, so \`dev3 pane list\` shows nothing of yours but work still needed. A watcher, dev server or red build parked in their terminal is litter they must clear. The auto-close timer is a backstop for abandoned panes, not a substitute: exit 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes so the user still sees it. Closing destroys nothing — the output stays in the run's log.
+**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run as you go, and again before ending a turn, so \`dev3 pane list\` shows nothing of yours but work still needed. The auto-close timer is a backstop for abandoned panes, not a substitute: exit 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes so the user still sees it. Closing destroys nothing — the output stays in the run's log.
 
 Reading the SCREEN of a pane you did not start ("look at the error on the right") is a different thing and **tmux-only today**: \`dev3 peek --pane <N>\` returns a tail on tmux, only the pane summary on native. On tmux you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load \`/dev3-tmux\`. On native those commands do not exist.
 `;
