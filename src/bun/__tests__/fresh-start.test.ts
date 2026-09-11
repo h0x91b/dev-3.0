@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { isFreshStartMode } from "../fresh-start";
+import { isFreshStartMode, shouldActivateLaunchWindow } from "../fresh-start";
 
 const ORIGINAL = process.env.DEV3_FRESH_START;
 
@@ -24,5 +24,17 @@ describe("isFreshStartMode", () => {
 			process.env.DEV3_FRESH_START = v;
 			expect(isFreshStartMode()).toBe(false);
 		}
+	});
+});
+
+describe("shouldActivateLaunchWindow", () => {
+	it("an ordinary launch still comes to the front", () => {
+		delete process.env.DEV3_FRESH_START;
+		expect(shouldActivateLaunchWindow()).toBe(true);
+	});
+
+	it("a dev launch opens without taking foreground", () => {
+		process.env.DEV3_FRESH_START = "1";
+		expect(shouldActivateLaunchWindow()).toBe(false);
 	});
 });

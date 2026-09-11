@@ -21,6 +21,7 @@ type FakeWindow = {
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
 	frame?: { x: number; y: number; width: number; height: number };
+	activate?: boolean;
 };
 
 const globalBag = globalThis as typeof globalThis & { __fakeWindows: FakeWindow[] };
@@ -41,9 +42,11 @@ vi.mock("electrobun/bun", () => {
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
 		frame?: { x: number; y: number; width: number; height: number };
+		activate?: boolean;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		constructor(opts?: any) {
 			this.frame = opts?.frame;
+			this.activate = opts?.activate;
 			const handlers: Record<string, () => void> = {};
 			this.webview = {
 				rpc: { send: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, { get(t, p: string) { if (!(p in t)) t[p] = vi.fn(); return t[p]; } }) },
@@ -98,8 +101,8 @@ afterEach(() => {
 	else process.env.DEV3_FRESH_START = ORIGINAL;
 });
 
-function spawn() {
-	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {} });
+function spawn(activate?: boolean) {
+	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {}, ...(activate === undefined ? {} : { activate }) });
 }
 
 /** Fire every registered dom-ready listener, then let their timers run. */
@@ -148,6 +151,20 @@ describe("window-manager fresh-start mode", () => {
 		expect(createdWindows[0].getSize).not.toHaveBeenCalled();
 		expect(createdWindows[0].setSize).not.toHaveBeenCalled();
 		expect(createdWindows[0].setFullScreen).not.toHaveBeenCalled();
+	});
+
+	// A dev launch fires while the user is in another app, often fullscreen on
+	// another Space: taking foreground would yank them out of it.
+	it("takes foreground by default — an ordinary launch behaves as before", () => {
+		delete process.env.DEV3_FRESH_START;
+		spawn();
+		expect(createdWindows[0].activate).toBe(true);
+	});
+
+	it("opens without taking foreground when the caller asks not to activate", () => {
+		process.env.DEV3_FRESH_START = "1";
+		spawn(false);
+		expect(createdWindows[0].activate).toBe(false);
 	});
 
 	it("nudges the first paint only once, even if dom-ready fires again", () => {

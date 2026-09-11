@@ -51,6 +51,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
+import { shouldActivateLaunchWindow } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import type { WindowState } from "./window-state";
 import { pushEverywhere } from "./push-targets";
@@ -454,10 +455,11 @@ function failDesktopLaunch(timeoutMs: number): void {
 	void hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
 }
 
-async function openMainWindow(restore?: WindowState) {
+async function openMainWindow(restore?: WindowState, activate = true) {
 	const buildChannel = await Updater.localInfo.channel();
 	return createAppWindow({
 		restore,
+		activate,
 		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
@@ -500,9 +502,14 @@ setOpenNewWindow(() => {
 // gets the usual single window.
 const restoreSession = loadWindowSession();
 if (restoreSession.length > 1) log.info("Restoring window session", { windows: restoreSession.length });
-const primaryWindow = await openMainWindow(restoreSession[0]);
-log.info("Main window created");
-for (const state of restoreSession.slice(1)) await openMainWindow(state);
+// A dev launch (`bun run dev` / the task dev server) must not pull the user out
+// of whatever they are doing: the window opens without activating the app, so no
+// foreground steal and no Space switch away from a fullscreen app. Only these
+// launch windows — a window the user opens later still comes to the front.
+const activateOnLaunch = shouldActivateLaunchWindow();
+const primaryWindow = await openMainWindow(restoreSession[0], activateOnLaunch);
+log.info("Main window created", { activate: activateOnLaunch });
+for (const state of restoreSession.slice(1)) await openMainWindow(state, activateOnLaunch);
 // Creation order decides key focus, so hand it back to the primary window.
 if (restoreSession.length > 1) {
 	try { primaryWindow.focus(); } catch (err) { log.debug("Focusing the restored primary window failed", { error: String(err) }); }
