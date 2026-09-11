@@ -175,4 +175,18 @@ describe("TaskArtifactViewer presentation", () => {
 		expect(viewer).toHaveAttribute("data-presentation", "docked");
 		expect(document.documentElement).toHaveAttribute("data-artifact-viewer", "open");
 	});
+
+	// A docked panel can be dragged narrower than its own toolbar. Everything else
+	// may scroll out of sight there; Close may not, or the panel has no way out.
+	it("keeps Close out of the row that scrolls when the panel is narrow", async () => {
+		mountDock();
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact(), { ...artifact(), id: "a2", title: "Second" }]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const actions = await screen.findByTestId("artifact-viewer-actions");
+
+		expect(actions.contains(screen.getByTestId("artifact-viewer-close"))).toBe(false);
+		expect(actions.className).toContain("overflow-x-auto");
+		for (const id of ["artifact-viewer-search", "artifact-viewer-theme", "artifact-viewer-open-browser", "artifact-viewer-fullscreen"]) {
+			expect(actions.contains(screen.getByTestId(id))).toBe(true);
+		}
+	});
 });

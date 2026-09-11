@@ -609,6 +609,19 @@ body, #root {
 	display: none;
 }
 
+/* ---- Artifact viewer toolbar: scrolls sideways, no visible bar ----
+   A 7px always-on bar inside a 40px toolbar would eat the row's height and
+   clip the icons it is supposed to give access to. */
+
+.artifact-toolbar-scroll {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.artifact-toolbar-scroll::-webkit-scrollbar {
+	display: none;
+}
+
 /* ---- Collapsed kanban column vertical label ---- */
 
 .kanban-col-vertical-label {
