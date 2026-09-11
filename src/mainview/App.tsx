@@ -10,10 +10,11 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
+import { useAgents } from "./hooks/useAgents";
 import { isRemote } from "./utils/platform";
 import { isTypingContext } from "./utils/typing-context";
 import { installHorizontalWheelBridge } from "./utils/horizontal-wheel";
@@ -477,8 +478,10 @@ function App() {
 			document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
 		});
 	}, []);
-	const [agents, setAgents] = useState<CodingAgent[]>([]);
-	const [agentSettingsLoaded, setAgentSettingsLoaded] = useState(false);
+	// Live for the app's lifetime: the launch dialog this state feeds outlives
+	// every visit to Settings and every provider connect, so a fetch-once
+	// snapshot hid presets seeded or renamed after the first New Task modal.
+	const agents = useAgents();
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
@@ -2563,29 +2566,11 @@ function App() {
 		return () => window.removeEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
 	}, [openCreateTaskModal]);
 
-	// Load agents before the subsequent launch dialog opens. Skill autocomplete
-	// accepts both agent syntaxes because that dialog chooses the final agent.
-	const agentSettingsLoadingRef = useRef(false);
+	// Register agents with analytics so events like `task_moved` can carry a
+	// human-readable agent name, re-registering when a preset is renamed.
 	useEffect(() => {
-		if (!createTaskProjectId || agentSettingsLoaded || agentSettingsLoadingRef.current) return;
-		agentSettingsLoadingRef.current = true;
-		Promise.all([api.request.getAgents(), api.request.getGlobalSettings()])
-			.then(([nextAgents, nextSettings]) => {
-				setAgents(nextAgents);
-				setGlobalSettings(nextSettings);
-				setAgentSettingsLoaded(true);
-			})
-			.catch(() => {})
-			.finally(() => {
-				agentSettingsLoadingRef.current = false;
-			});
-	}, [agentSettingsLoaded, createTaskProjectId]);
-
-	// Register agents with analytics on mount so events like `task_moved` can
-	// carry a human-readable agent name (the modal load above is lazy).
-	useEffect(() => {
-		api.request.getAgents().then(registerAgents).catch(() => {});
-	}, []);
+		if (agents.length > 0) registerAgents(agents);
+	}, [agents]);
 
 	useEffect(() => {
 		function onOpenAddProjectModal() {

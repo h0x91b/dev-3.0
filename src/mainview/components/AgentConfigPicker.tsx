@@ -477,9 +477,9 @@ function AgentConfigPicker({
 				/>
 			)}
 
-			{/* Connecting seeds the catalog and the presets, and the agent list
-			    refreshes itself off the `agentsUpdated` push; only the catalog has no
-			    push of its own, so the picker re-reads it here. */}
+			{/* Connecting seeds the catalog and the presets. The presets arrive on the
+			    `agentsUpdated` push, which every owner of the `agents` prop must
+			    follow (`useAgents`); the catalog has no push, so re-read it here. */}
 			{connectOpen && (
 				<ConnectProviderModal
 					onClose={() => setConnectOpen(false)}

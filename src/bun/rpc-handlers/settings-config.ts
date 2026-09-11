@@ -303,6 +303,9 @@ async function toggleFavoriteAgent(params: { agentId: string; configId: string }
 	const favorites = toggleFavorite(settings.favorites ?? [], params.agentId, params.configId, Date.now());
 	const next: GlobalSettings = { ...settings, favorites };
 	await saveSettings(next);
+	// Every other surface keeps its own copy of the settings — the Settings
+	// screen's star would otherwise never reach the launch dialog's favorites.
+	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← toggleFavoriteAgent", { count: favorites.length });
 	return next;
 }
