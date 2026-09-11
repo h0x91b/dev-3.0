@@ -1,5 +1,5 @@
 // ── Agent-traffic feature flag ──
-// Whether the agent-to-agent traffic readout and its log exist at all. Beta, off
+// Whether the agent-to-agent traffic readout and its log exist at all. Beta, on
 // by default, lives in Settings → System → Advanced Experience next to BiDi.
 //
 // The value is a GlobalSettings field rather than localStorage so it follows the
@@ -14,7 +14,7 @@
 
 export const AGENT_TRAFFIC_FLAG_CHANGED_EVENT = "agent-traffic-flag-changed" as const;
 
-let enabled = false;
+let enabled = true;
 
 export function getAgentTrafficEnabled(): boolean {
 	return enabled;
@@ -24,7 +24,8 @@ export function getAgentTrafficEnabled(): boolean {
 export function syncAgentTrafficFromGlobalSettings(settings: {
 	experimentalAgentTraffic?: boolean;
 }): void {
-	const next = settings.experimentalAgentTraffic === true;
+	// Only an explicit false turns it off; absent means the user never chose.
+	const next = settings.experimentalAgentTraffic !== false;
 	if (next === enabled) return;
 	enabled = next;
 	window.dispatchEvent(

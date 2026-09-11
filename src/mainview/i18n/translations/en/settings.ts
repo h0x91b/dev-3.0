@@ -593,7 +593,7 @@ const settings = {
 	// Advanced Experience — beta behaviour, every entry ships off
 	"settings.categoryAdvancedExperience": "Advanced Experience",
 	"settings.categoryAdvancedExperienceDesc":
-		"Beta behaviour that is useful but not stable yet. Everything here is off by default.",
+		"Beta behaviour that is useful but not stable yet. Each entry says whether it is on by default.",
 	"settings.terminalBidi": "Right-to-left text in terminals (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",

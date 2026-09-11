@@ -639,7 +639,8 @@ function GlobalSettings({
 	const handleAgentTrafficToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
-				{ experimentalAgentTraffic: enabled ? true : undefined },
+				// Stored either way: an explicit false is the opt-out from a default-on beta.
+				{ experimentalAgentTraffic: enabled },
 				{
 					tracking: {
 						setting: "experimental_agent_traffic",

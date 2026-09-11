@@ -17,10 +17,10 @@ import { getAvailableTipsCount } from "../tips";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 
 /**
- * The agent-traffic beta ships off, and while off it must leave NO trace: no
- * header control, no listed shortcut, no menu row, no palette command, no tip.
+ * The agent-traffic beta ships on, and once switched off it must leave NO trace:
+ * no header control, no listed shortcut, no menu row, no palette command, no tip.
  * Each surface is asserted in both states, because "hidden" is only meaningful
- * next to a proof that it appears when the user opts in.
+ * next to a proof that it appears while the feature is on.
  */
 
 const page: AgentMessageLogPage = { rows: [], oldestDay: null, retentionDays: 30, hasMore: false };
@@ -72,27 +72,29 @@ function browserLabels(nodes: ReturnType<typeof buildBrowserMenu>): string[] {
 }
 
 describe("agent-traffic feature flag", () => {
-	it("defaults to off", () => {
-		expect(getAgentTrafficEnabled()).toBe(false);
+	it("is on for settings that carry no stored choice", () => {
+		setAgentTrafficEnabledForTests(false);
+		syncAgentTrafficFromGlobalSettings({});
+		expect(getAgentTrafficEnabled()).toBe(true);
 	});
 
-	it("only an explicit true switches it on, and the change is announced", () => {
+	it("only an explicit false switches it off, and the change is announced", () => {
 		const seen: boolean[] = [];
 		const listener = (e: Event) => seen.push((e as CustomEvent<boolean>).detail);
 		window.addEventListener("agent-traffic-flag-changed", listener);
 
 		syncAgentTrafficFromGlobalSettings({});
-		expect(getAgentTrafficEnabled()).toBe(false);
-
-		syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: true });
 		expect(getAgentTrafficEnabled()).toBe(true);
 
-		// Same value again is not a change — no second event.
-		syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: true });
 		syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: false });
+		expect(getAgentTrafficEnabled()).toBe(false);
+
+		// Same value again is not a change — no second event.
+		syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: false });
+		syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: true });
 
 		window.removeEventListener("agent-traffic-flag-changed", listener);
-		expect(seen).toEqual([true, false]);
+		expect(seen).toEqual([true, false, true]);
 	});
 
 	it.each(["bar", "menu", "sheet"] as const)("renders no %s control while off", (variant) => {

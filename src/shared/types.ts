@@ -1199,9 +1199,10 @@ export interface GlobalSettings {
 	 */
 	experimentalTerminalBidi?: boolean;
 	/**
-	 * Beta: the agent-traffic readout in the header and its 30-day log. Off by
-	 * default, and while off the feature leaves no trace — no header control, no
-	 * ⇧⌘M, no menu item, no palette command, no tip.
+	 * Beta: the agent-traffic readout in the header and its 30-day log. On by
+	 * default — absent means "never chose", and an explicit `false` is the user
+	 * saying "off", which must survive a restart. While off the feature leaves no
+	 * trace — no header control, no ⇧⌘M, no menu item, no palette command, no tip.
 	 */
 	experimentalAgentTraffic?: boolean;
 	/**

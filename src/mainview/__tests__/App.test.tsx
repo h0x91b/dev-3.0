@@ -1556,8 +1556,16 @@ describe("App keyboard shortcuts", () => {
 			});
 		}
 
+		/** The opted-out user: the beta ships on, so "off" is a stored false. */
+		function disableTrafficBeta() {
+			act(() => {
+				syncAgentTrafficFromGlobalSettings({ experimentalAgentTraffic: false });
+			});
+		}
+
 		it("names both sides and clicks through to the receiving task", async () => {
 			await renderWithBoard();
+			disableTrafficBeta();
 			dispatchAgentMessage();
 
 			expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
