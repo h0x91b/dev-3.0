@@ -343,11 +343,11 @@ describe("isContentMergedInto", () => {
 		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
 	});
 
-	it("returns true when the branch carries no changes at all (empty diff)", async () => {
+	it("returns false when the branch carries no changes at all (a brand-new task branch)", async () => {
 		g("git checkout -b task-branch", repo.local);
 		g("git push -u origin task-branch", repo.local);
 
-		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
 	});
 
 	it("returns true after cherry-picking every task commit onto main", async () => {
@@ -380,6 +380,115 @@ describe("isContentMergedInto", () => {
 		g('git commit -m "other PR"', repo.local);
 		g("git push origin main", repo.local);
 		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+	});
+});
+
+// A task branch that has written nothing is the same graph as one whose work was
+// merged: HEAD sits inside the base either way. These pin which side of that line
+// each real-world shape falls on — the false "Branch merged" prompt came from
+// reading the first shape as the second.
+describe("isContentMergedInto with a branch that has no commits of its own", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		ghPrListResponse = "[]";
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns false for a fresh branch in a repo with no remote at all", async () => {
+		g("git remote remove origin", repo.local);
+		g("git checkout -b task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "main")).toBe(false);
+	});
+
+	it("returns false for a fresh branch renamed before its first commit", async () => {
+		g("git checkout -b dev3/task-b498e2da", repo.local);
+		g("git branch -m feat/dev3-colony-grass-test-map", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "main")).toBe(false);
+	});
+
+	it("stays false for a fresh branch after the base advances", async () => {
+		g("git checkout -b task-branch", repo.local);
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "export const x = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "someone else"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+		// Re-running the detector must not drift — the poller asks every tick.
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+	});
+
+	it("returns false when the branch's own commits were discarded, never merged", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git reset --hard main", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "main")).toBe(false);
+	});
+
+	it("returns true after a plain merge commit lands the branch in the base", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "export const x = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "base moved on"', repo.local);
+		g("git merge --no-ff -m 'merge task-branch' task-branch", repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
+	it("returns true after a local fast-forward merge, which leaves no merge commit", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		g("git merge --ff-only task-branch", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "main")).toBe(true);
+	});
+
+	// Squash + rebase erases every local trace: the branch tip IS the base tip, byte
+	// for byte the same state an untouched branch that rebased onto the base is in.
+	// Only this task's own merged PR separates them, and that proof lives in the
+	// callers (getBranchStatus / the merge poller), not here.
+	it("returns false after a squash merge followed by a rebase onto the base", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "feature.ts"), "export const add = (a: number, b: number) => a + b;\n");
+		g("git add feature.ts", repo.local);
+		g('git commit -m "feat: add function"', repo.local);
+		g("git checkout main", repo.local);
+		g("git merge --squash task-branch", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+		g("git rebase origin/main", repo.local); // the branch's own commit is dropped as already applied
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+	});
+
+	it("returns false for an untouched branch that merely rebased onto the base", async () => {
+		g("git checkout -b task-branch", repo.local);
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "export const x = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "base moved on"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+		g("git rebase origin/main", repo.local);
 
 		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
 	});

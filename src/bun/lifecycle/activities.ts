@@ -255,14 +255,16 @@ async function checkMergedBranches(): Promise<void> {
 				let merged: boolean;
 				if (unpushed === -1) {
 					// origin/<branch> is gone: either never pushed, or pruned after
-					// the PR merged (delete_branch_on_merge). Content strategies are
-					// unsafe here (a never-pushed branch with zero commits would
-					// false-positive), but a merged PR whose head equals local HEAD
-					// is definitive. A squash merge followed by a rebase moves HEAD off
+					// the PR merged (delete_branch_on_merge). The content check no
+					// longer reads a branch with zero commits of its own as merged,
+					// so it is safe here too and catches a purely local merge; a
+					// merged PR whose head equals local HEAD stays definitive.
+					// A squash merge followed by a rebase moves HEAD off
 					// that oid, so also accept this task's own merged PR — but only
 					// once the branch has no commits of its own left (ahead === 0),
 					// otherwise post-merge work would read as merged.
-					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project)
+					merged = await git.isContentMergedInto(task.worktreePath!, ref, project)
+						|| await git.isBranchMergedViaGitHubPR(task.worktreePath!, project)
 						|| (task.prNumber != null
 							&& (await git.getBranchStatus(task.worktreePath!, ref)).ahead === 0
 							&& await github.isPullRequestMerged(project, task.worktreePath!, task.prNumber, branchName));

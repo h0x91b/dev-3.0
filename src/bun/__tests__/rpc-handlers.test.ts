@@ -5504,6 +5504,7 @@ describe("handlers.getBranchStatus", () => {
 			vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 			vi.mocked(git.canRebaseCleanly).mockResolvedValue(true);
+			vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 		}
 
 		it("reports merged when the task's own PR is merged (squash-merged, then rebased)", async () => {
@@ -5518,8 +5519,9 @@ describe("handlers.getBranchStatus", () => {
 
 			expect(result.mergedByContent).toBe(true);
 			expect(github.isPullRequestMerged).toHaveBeenCalledWith(project, "/tmp/wt", 1077, "dev3/t");
-			// Content strategies are pointless here — nothing of the branch is left.
-			expect(git.isContentMergedInto).not.toHaveBeenCalled();
+			// The local check runs first and finds nothing — squash + rebase leaves no
+			// local trace at all — so only the merged PR carries this verdict.
+			expect(git.isContentMergedInto).toHaveBeenCalled();
 		});
 
 		it("reports NOT merged for a brand-new branch sitting on the base tip", async () => {
@@ -5560,6 +5562,20 @@ describe("handlers.getBranchStatus", () => {
 			expect(result.mergedByContent).toBe(false);
 		});
 
+		it("reports merged with no PR at all when the local check proves the work landed", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(0);
+			vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(true);
+			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		});
+
 		it("still uses the content strategies when the branch has commits of its own", async () => {
 			const project = makeProject();
 			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t", prNumber: 42, prUrl: "https://gh/pr/42" });
@@ -5588,6 +5604,7 @@ describe("handlers.getBranchStatus", () => {
 			vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 			vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", exitCode: 0 } as any);
+			vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 		}
 
 		it("hides the badge and refuses the merge proof when the PR's head is a foreign branch", async () => {
@@ -12149,6 +12166,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(true);
 		setPushMessage(push);
 
@@ -12156,7 +12174,6 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		await vi.advanceTimersByTimeAsync(60_000);
 
 		expect(git.isBranchMergedViaGitHubPR).toHaveBeenCalledWith("/tmp/test-worktree", project);
-		expect(git.isContentMergedInto).not.toHaveBeenCalled();
 		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
 			taskId: task.id,
 			fingerprint: "v1:dev3/task-test:abc123",
@@ -12177,6 +12194,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
 		setPushMessage(push);
 
@@ -12184,6 +12202,34 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		await vi.advanceTimersByTimeAsync(60_000);
 
 		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	// A local-only project never pushes, so origin/<branch> is absent for every
+	// task — the PR proof can never fire there. The local merge check is the only
+	// thing that can, and it is safe now that a branch with no commits of its own
+	// no longer reads as merged.
+	it("prompts when the remote branch is gone but the branch was merged locally", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({ taskId: task.id }));
 	});
 
 	it("prompts when the remote branch is gone and the task's own PR merged, even though HEAD moved off the PR head (squash + rebase)", async () => {
@@ -12229,6 +12275,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 4, baseUnreachable: false });
 		vi.mocked(github.isPullRequestMerged).mockResolvedValue(true);
