@@ -330,14 +330,13 @@ Re-query \`list-panes\` / \`list-windows\` whenever you need a pane id — cache
 
 ## 3. When to use a tmux pane vs inline Bash
 
-Run a command **in a separate tmux pane** when at least one of these is true:
+**Inline Bash is the default.** Run a command **in a separate tmux pane** only when one of these is true:
 
-- It is **long-running** and the user benefits from watching live (dev server, build watcher, log tail, test watcher).
-- It produces **streaming logs** that the user might want to scroll through later.
-- You want to **demo or debug interactively** — let the user see exactly what happened, not a post-hoc summary.
-- The user explicitly says "run it in a pane / tab / window" or "so I can see it".
+- The user asked for it — "run it in a pane / tab / window", "so I can see it", "run the build on the right".
+- The process must **outlive your turn** and someone will watch it: a dev process, a watcher, a log tail.
+- You are **demoing or debugging in front of the user** and they need to see it happen, not a summary afterwards.
 
-Keep using **inline Bash** for quick one-shot commands (file reads, short git, type-checks, single test runs) where streaming visibility adds nothing.
+Everything else stays inline, builds, test suites and checks included, however long they take. Being slow is not a reason — a pane is a window into the user's terminal, not a way to free up your own tool call.
 
 **Do NOT use a tmux pane as a substitute for the canonical dev server** — the project has \`dev3 dev-server start\` for that, which is wired to \`devScript\` and the UI. Use ad-hoc panes for things the user wants to *watch alongside* the dev server, not to replace it.
 
@@ -440,7 +439,7 @@ Useful when you start a watcher in a pane and want to verify a few minutes later
 - **Killing user-owned panes/windows.** The user may have things running you cannot see (a debugger, a REPL, a long upload). Default to creating new panes; only destroy what you created yourself, or what the user explicitly asked you to remove.
 - **Running the canonical dev server in an ad-hoc pane.** Use \`dev3 dev-server start\` instead — it integrates with the UI and \`devScript\`. Ad-hoc panes are for things the user wants to *watch on the side*.
 - **Opening a new-window for a background process.** \`new-window\` hides the process behind a tab — the user has to click to see it. For celery, docker exec, watchers, log tails, dev servers — use \`split-window\` so the output sits next to the agent. Only open a new window when the user explicitly asks for a tab.
-- **Long-running commands stealing your tool slot.** Inline \`bun run dev\` from the Bash tool blocks your tool call for a long time. A tmux pane fires-and-forgets and you get your next tool call back immediately.
+- **Opening a pane to free up your own tool call.** A slow build or a long test run belongs inline — waiting is yours to do. Split only for a process that has to keep running after your turn ends, and only when the user will look at it.
 `;
 
 const CLAUDE_TMUX_SKILL = `---
