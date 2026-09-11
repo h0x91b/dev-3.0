@@ -465,6 +465,23 @@
 .traffic-nodes[data-detail="cell"] .traffic-node-card::before {
 	display: none;
 }
+.traffic-node-cell {
+	display: none;
+}
+/* The seq is the only thing left on the card here, so it owns the whole box.
+   Its size comes from the inline style — it scales with the card, not with the
+   zoom, so the number stays inside the rectangle at every scale. */
+.traffic-nodes[data-detail="cell"] .traffic-node-cell {
+	display: flex;
+	position: absolute;
+	inset: 0;
+	align-items: center;
+	justify-content: center;
+	font-weight: 700;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.02em;
+}
 .traffic-node-card.is-parked {
 	filter: grayscale(1);
 	opacity: 0.65;

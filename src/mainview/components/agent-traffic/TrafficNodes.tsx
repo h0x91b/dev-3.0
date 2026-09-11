@@ -52,6 +52,7 @@ import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
 import TrafficNotificationCloud from "./TrafficNotificationCloud";
+import { cellSeqFontSize, cellSeqInk } from "./cell-seq";
 import { IDENTITY_SCALE, MAX_SCALE, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
@@ -1233,6 +1234,9 @@ function Card({
 	// card. It carries the projected status, so a parked card and a card with no
 	// recorded state get the bare strip — a ring would claim a stage neither has.
 	const railStatus = placed.parked ? null : (projection.status ?? null);
+	// No `#` at the cell tier: the glyph costs a fifth of the width and the
+	// number is already unmistakable.
+	const cellLabel = nodeSeq(node).replace(/^#/, "");
 	return (
 		<button
 			type="button"
@@ -1290,6 +1294,18 @@ function Card({
 						{latest.row.subject || latest.row.body.slice(0, 100)}
 					</span>
 				)}
+			</span>
+			{/* The whole card at the cell tier: the body is hidden there, and a
+			    rectangle with no number on it cannot be told from its neighbour. */}
+			<span
+				className="traffic-node-cell"
+				aria-hidden="true"
+				style={{
+					fontSize: cellSeqFontSize(cellLabel, placed.width, placed.height),
+					color: cellSeqInk(statusColor),
+				}}
+			>
+				{cellLabel}
 			</span>
 			<span className="traffic-node-compact">
 				<span className="traffic-node-head">
