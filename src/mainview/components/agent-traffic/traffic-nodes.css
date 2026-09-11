@@ -237,12 +237,11 @@
 	pointer-events: none;
 	text-align: center;
 	color: rgb(var(--text-primary));
-	transform: translateY(-100%);
 	animation: traffic-speaker-in 0.22s cubic-bezier(0.2, 0, 0, 1);
 }
 @keyframes traffic-speaker-in {
-	from { opacity: 0; transform: translateY(calc(-100% + 6px)); }
-	to { opacity: 1; transform: translateY(-100%); }
+	from { opacity: 0; transform: translateY(6px); }
+	to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
 	.traffic-user-speaker {
@@ -274,17 +273,13 @@
 }
 /* What the person is saying, over their own head. Same bubble language as the
    wire subject, but glued to the person in scene space instead of chasing a
-   point on the wire — a speaker's words do not float away from the speaker. */
+   point on the wire — a speaker's words do not float away from the speaker.
+   In the flow of the pair, not absolute over it: the box the collision search
+   reserved is only honest if the bubble takes its share of it. */
 .traffic-user-speech {
 	--message-tone: var(--agent);
-	position: absolute;
-	bottom: calc(100% + 14px);
-	left: 50%;
-	transform: translateX(-50%);
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
+	position: relative;
+	margin-bottom: 6px;
 	width: max-content;
 	max-width: 264px;
 	padding: 9px 13px;
@@ -296,8 +291,27 @@
 	line-height: 1.35;
 	text-align: left;
 }
+/* Four lines, and the fourth is whole. The clamp sits here rather than on the
+   padded bubble because WebKit clips a -webkit-box at its content edge, so on a
+   padded box the line after the clamp shows through the padding, cut in half. */
+.traffic-user-speech-text {
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	/* The clamp already hides the fifth line; the 2px is slack against sub-pixel
+	   rounding, which would otherwise shave the bottom of the fourth. */
+	max-height: calc(4 * 1.35em + 2px);
+}
 .traffic-user-speech.is-failed {
 	--message-tone: var(--danger);
+}
+/* The run from a displaced pair to the card they wrote to. Accent, dashed and
+   short: it names a recipient, it is not a wire carrying traffic. */
+.traffic-speaker-tether {
+	stroke: rgb(var(--accent) / 0.75);
+	stroke-linecap: round;
+	fill: none;
 }
 .traffic-user-speech::after {
 	content: "";
