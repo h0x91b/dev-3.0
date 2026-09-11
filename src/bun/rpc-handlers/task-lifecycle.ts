@@ -4,7 +4,7 @@ import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, r
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -997,6 +997,15 @@ async function markAgentRequestShown(params: { requestId: string }): Promise<{ a
 }
 
 /**
+ * A user touched the dialog, so the launch waits for their explicit answer. The
+ * bun-side timer is the one that actually launches, which is why this has to
+ * reach it and not just hide the countdown.
+ */
+async function holdAgentLaunchAutoApprove(params: { requestId: string }): Promise<void> {
+	holdAutoApprove(params.requestId);
+}
+
+/**
  * Quick shell (⇧⌘`): spawns a FRESH scratch operation in the built-in Operations
  * board on every press — exactly like clicking "Scratch Task" there. The task
  * gets the normal `Scratch — HH:mm` title and a managed work dir, and is launched
@@ -1241,6 +1250,7 @@ export const taskLifecycleHandlers = {
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,
 	markAgentRequestShown,
+	holdAgentLaunchAutoApprove,
 	getTaskTerminalBackend,
 	setTaskTerminalBackend,
 	getNativeTerminalAvailability,

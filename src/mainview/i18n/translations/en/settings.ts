@@ -236,7 +236,7 @@ const settings = {
 	"settings.suggestCompletingTasksAfterMerge": "Suggest completing tasks after merge",
 	"settings.suggestCompletingTasksAfterMergeDesc": "When off, a merged branch shows an informational toast instead of asking to complete the task.",
 	"settings.agentLaunchAutoApprove": "Auto-approve agent launch requests",
-	"settings.agentLaunchAutoApproveDesc": "When an agent asks to start another task, the dialog approves itself after this long so the asking agent is not left waiting. Decline still cancels it. Never applies to completion requests.",
+	"settings.agentLaunchAutoApproveDesc": "When an agent asks to start another task, the dialog approves itself after this long so the asking agent is not left waiting. Touch the dialog and the countdown stops for good — it then waits for your answer. Decline still cancels it. Never applies to completion requests.",
 	"settings.agentLaunchAutoApproveOff": "Never — always wait for me",
 	"settings.autoApproveHours": "hours",
 	"settings.autoApproveMinutes": "minutes",

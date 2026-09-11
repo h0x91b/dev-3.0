@@ -43,6 +43,8 @@ interface PendingAgentRequest {
 	autoApproveMs: number;
 	/** When a client first drew this dialog. Undefined until one does. */
 	shownAt?: number;
+	/** Set once a user touched the dialog: the request then only ever gets an explicit answer. */
+	heldByUser?: boolean;
 	/** Last agent pick reported by a dialog; used when the timer fires. */
 	launchChoice?: AgentLaunchChoice;
 }
@@ -130,7 +132,7 @@ export function createAgentRequest(
  */
 export function markAgentRequestShown(requestId: string): number | null {
 	const entry = pendingByRequestId.get(requestId);
-	if (!entry || entry.shownAt !== undefined || !entry.autoApproveTimer || entry.autoApproveMs <= 0) {
+	if (!entry || entry.heldByUser || entry.shownAt !== undefined || !entry.autoApproveTimer || entry.autoApproveMs <= 0) {
 		return entry?.autoApproveAt ?? null;
 	}
 	entry.shownAt = Date.now();
@@ -144,6 +146,34 @@ export function markAgentRequestShown(requestId: string): number | null {
 	}, entry.autoApproveMs);
 	log.info("Countdown restarted when the dialog reached the screen", { requestId, autoApproveAt: entry.autoApproveAt });
 	return entry.autoApproveAt;
+}
+
+/**
+ * A user took this dialog over — cancel its auto-approval permanently.
+ *
+ * The countdown exists for an absent user; the moment somebody touches the
+ * dialog it would be launching a task behind the back of the person reading it.
+ * The flag outlives the timer on purpose: a re-display, a second window, or a
+ * retry that joins this request must not be able to re-arm it. Only an explicit
+ * Launch/Decline resolves it from here.
+ *
+ * Returns false for a request that is unknown or had no deadline to begin with.
+ */
+export function holdAgentRequestAutoApprove(requestId: string): boolean {
+	const entry = pendingByRequestId.get(requestId);
+	if (!entry) return false;
+	const wasArmed = entry.autoApproveTimer !== undefined || entry.autoApproveAt !== null;
+	entry.heldByUser = true;
+	if (entry.autoApproveTimer) clearTimeout(entry.autoApproveTimer);
+	entry.autoApproveTimer = undefined;
+	entry.autoApproveAt = null;
+	if (wasArmed) {
+		log.info("Auto-approval held — the user took the dialog over", { requestId, kind: entry.kind });
+		// Every client drew this dialog; the copies elsewhere must stop counting
+		// down to a launch that can no longer fire on its own.
+		getPushMessage()?.("agentLaunchAutoApproveHeld", { requestId });
+	}
+	return wasArmed;
 }
 
 /**

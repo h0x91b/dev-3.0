@@ -103,6 +103,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	agentCancellationRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentCancellationRequested", { detail: payload })),
 	agentLaunchRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentLaunchRequested", { detail: payload })),
 	agentRequestResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", { detail: payload })),
+	agentLaunchAutoApproveHeld: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentLaunchAutoApproveHeld", { detail: payload })),
 	updateAvailable: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateAvailable", { detail: payload })),
 	portsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:portsUpdated", { detail: payload })),
 	devServerUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:devServerUpdated", { detail: payload })),

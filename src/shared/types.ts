@@ -3108,8 +3108,13 @@ export interface AgentLaunchRequest {
 	autoApproveAt: number | null;
 }
 
-/** Minutes the launch dialog waits before approving itself when unconfigured. */
-export const DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES = 5;
+/**
+ * Minutes the launch dialog waits before approving itself when unconfigured.
+ * One minute: the delay only exists so an absent user does not strand the asking
+ * agent, and the countdown now stops the moment anyone touches the dialog, so
+ * waiting longer buys nothing.
+ */
+export const DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES = 1;
 
 /** Shortest and longest delay the picker accepts; anything else is clamped into the range. */
 export const AGENT_LAUNCH_AUTO_APPROVE_MIN_MS = 5_000;
@@ -5893,6 +5898,16 @@ export type AppRPCSchema = {
 				response: { autoApproveAt: number | null };
 			};
 			/**
+			 * The user took the dialog over — stop the countdown for good. Called on
+			 * the first real interaction (pointer, key, or an edited pick), never on
+			 * mount or on a programmatic update, so an unattended dialog still
+			 * launches on its own and an attended one waits for an explicit answer.
+			 */
+			holdAgentLaunchAutoApprove: {
+				params: { requestId: string };
+				response: void;
+			};
+			/**
 			 * Cheap liveness probe for the desktop RPC bridge watchdog. The renderer
 			 * pings this on wake/focus with a short timeout; a missed ping means the
 			 * Electrobun localhost socket has jammed and the bridge needs recovery.
@@ -5982,6 +5997,12 @@ export type AppRPCSchema = {
 			 * browsers — they can no longer decide anything.
 			 */
 			agentRequestResolved: { requestId: string; kind: "complete" | "launch"; taskId: string; projectId: string };
+			/**
+			 * Somebody took a launch dialog over, so its auto-approval is off. The
+			 * dialog is broadcast to every client, and a copy on another window would
+			 * otherwise keep counting down to a launch that can no longer happen.
+			 */
+			agentLaunchAutoApproveHeld: { requestId: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			/**
 			 * Dev-server state for one task, pushed only when it changes. Feeds the

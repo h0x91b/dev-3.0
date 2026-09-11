@@ -42,6 +42,7 @@ const common = {
 	"agentLaunch.launching": "Запускаю…",
 	"agentLaunch.decline": "Отказать",
 	"agentLaunch.autoApproveIn": "Запустится сам через {time}",
+	"agentLaunch.autoApproveHeld": "Ждёт вашего ответа",
 
 	// Навигация в стиле Vimium
 	"hint.legend.jump": "перейти",

@@ -37,6 +37,8 @@ vi.mock("../rpc", () => ({
 			// The dialog reports itself on screen so the bun side restarts the
 			// countdown; it answers with the deadline the timer will really use.
 			markAgentRequestShown: vi.fn(() => Promise.resolve({ autoApproveAt: null })),
+			// Cancels the bun-side timer once the user takes the dialog over.
+			holdAgentLaunchAutoApprove: vi.fn(() => Promise.resolve(undefined)),
 			// Reached by MemoryPressureBanner, which scales its forecast with the
 			// variant count; null = no pressure, so the banner renders nothing.
 			getSystemMemory: vi.fn(() => Promise.resolve(null)),
@@ -243,6 +245,9 @@ describe("AgentLaunchRequestModal", () => {
 });
 
 describe("AgentLaunchRequestModal — auto-approve countdown", () => {
+	// These assert on call counts, and the module-level mocks are shared.
+	beforeEach(() => vi.clearAllMocks());
+
 	it("says when the launch will happen on its own", async () => {
 		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
 
@@ -256,6 +261,109 @@ describe("AgentLaunchRequestModal — auto-approve countdown", () => {
 
 		await screen.findByText(/Asked by task #3/);
 		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+	});
+
+	it("keeps counting down while nobody touches the dialog", async () => {
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		// Mount, autofocus and the picker's own effects are not user activity.
+		await screen.findByTestId("agent-launch-countdown");
+		await waitFor(() => expect(screen.getByTestId("agent-launch-accept")).toBeEnabled());
+		expect(api.request.holdAgentLaunchAutoApprove).not.toHaveBeenCalled();
+	});
+
+	it("stops the countdown for good on the first click inside the dialog", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByText("Fix the parser"));
+
+		// The timer that launches lives in bun — hiding the countdown is not enough.
+		expect(api.request.holdAgentLaunchAutoApprove).toHaveBeenCalledWith({ requestId: "req-1" });
+		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+		expect(await screen.findByTestId("agent-launch-held")).toHaveTextContent("Waiting for your answer");
+		expect(onRespond).not.toHaveBeenCalled();
+	});
+
+	it("stops the countdown on a key press too", async () => {
+		const user = userEvent.setup();
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await waitFor(() => expect(screen.getByRole("button", { name: "Decline" })).toHaveFocus());
+		await user.keyboard("{Tab}");
+
+		expect(api.request.holdAgentLaunchAutoApprove).toHaveBeenCalledWith({ requestId: "req-1" });
+		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+	});
+
+	it("asks the bun side to hold only once, however much the user clicks", async () => {
+		const user = userEvent.setup();
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		const title = await screen.findByText("Fix the parser");
+		await user.click(title);
+		await user.click(title);
+		await user.click(await screen.findByTestId("agent-launch-add-variant"));
+
+		expect(api.request.holdAgentLaunchAutoApprove).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not let a late deadline from markAgentRequestShown revive a held countdown", async () => {
+		// The re-arm answer can land after the user has already taken over: the
+		// dialog reports itself on screen on mount, and the reply is a round trip.
+		let land!: (value: { autoApproveAt: number | null }) => void;
+		vi.mocked(api.request.markAgentRequestShown).mockReturnValueOnce(
+			new Promise((resolve) => { land = resolve; }),
+		);
+		const user = userEvent.setup();
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByText("Fix the parser"));
+		land({ autoApproveAt: Date.now() + 5 * 60_000 });
+
+		await screen.findByTestId("agent-launch-held");
+		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+	});
+
+	it("stops its countdown when another window takes the request over", async () => {
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+		await screen.findByTestId("agent-launch-countdown");
+
+		window.dispatchEvent(new CustomEvent("rpc:agentLaunchAutoApproveHeld", { detail: { requestId: "req-1" } }));
+
+		await waitFor(() => expect(screen.queryByTestId("agent-launch-countdown")).toBeNull());
+		expect(screen.getByTestId("agent-launch-held")).toBeInTheDocument();
+	});
+
+	it("ignores a hold that belongs to another request", async () => {
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+		await screen.findByTestId("agent-launch-countdown");
+
+		window.dispatchEvent(new CustomEvent("rpc:agentLaunchAutoApproveHeld", { detail: { requestId: "req-other" } }));
+
+		expect(screen.getByTestId("agent-launch-countdown")).toBeInTheDocument();
+	});
+
+	it("still launches on the button after a hold", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByText("Fix the parser"));
+		const launch = screen.getByTestId("agent-launch-accept");
+		await waitFor(() => expect(launch).toBeEnabled());
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, expect.objectContaining({ priority: "P2" }));
+	});
+
+	it("declines on the Decline button after a hold", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByText("Fix the parser"));
+		await user.click(screen.getByRole("button", { name: "Decline" }));
+
+		expect(onRespond).toHaveBeenCalledWith(false);
 	});
 });
 

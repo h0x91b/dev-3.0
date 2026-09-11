@@ -33,7 +33,7 @@ describe("auto-approve delay — the hours/minutes/seconds picker", () => {
 	it("reads the stored default without leftover seconds", () => {
 		expect(splitAutoApproveHms(DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES)).toEqual({
 			hours: 0,
-			minutes: 5,
+			minutes: 1,
 			seconds: 0,
 		});
 	});
@@ -46,6 +46,17 @@ describe("auto-approve delay — zero, missing and nonsense", () => {
 
 	it("falls back to the built-in default when nothing is stored", () => {
 		expect(agentLaunchAutoApproveMs({})).toBe(DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES * 60_000);
+	});
+
+	it("waits a minute out of the box", () => {
+		// The delay only covers an absent user — the countdown stops the moment
+		// anyone touches the dialog, so a longer unattended wait buys nothing.
+		expect(agentLaunchAutoApproveMs({})).toBe(60_000);
+	});
+
+	it("still honours a configured delay, and 'never' stays never", () => {
+		expect(agentLaunchAutoApproveMs({ agentLaunchAutoApproveMinutes: 30 })).toBe(30 * 60_000);
+		expect(agentLaunchAutoApproveMs({ agentLaunchAutoApproveMinutes: 0 })).toBe(0);
 	});
 
 	it.each([[-5], [Number.NaN], [Number.POSITIVE_INFINITY]])("reads %s as off rather than throwing", (value) => {
