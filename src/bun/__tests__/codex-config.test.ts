@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { load } from "js-toml";
 import {
 	ensureCodexConfig,
 	codexServersWithTransport,
@@ -979,74 +978,5 @@ describe.each([
 			expect((healed.match(/^command = /gm) ?? []).length).toBe(6);
 			expect(count(healed, ourCommandLine)).toBe(6);
 		}
-	});
-});
-
-// ── [tui] whimsy — Codex's Astra composer stars ──────────────────────────────
-//
-// The stars repaint behind the input every 150ms for as long as the composer is
-// visible, so an idle pane streams ~187 KB every 20 seconds for decoration. dev3
-// seeds the quiet default, and must never overrule a user who wants them back.
-
-describe("ensureCodexConfig — [tui] whimsy", () => {
-	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
-	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
-	const ensure = (content: string | null) =>
-		ensureCodexConfig(content, WORKTREES_PATH, SOCKETS_PATH);
-
-	it("seeds whimsy = false into a fresh config", () => {
-		const config = ensure(null);
-		expect(config).toContain("[tui]");
-		expect(config).toContain("whimsy = false");
-	});
-
-	it("adds whimsy to a [tui] section the user already has, keeping their other keys", () => {
-		const existing = `model = "gpt-6-astra"
-
-[tui]
-theme = "github"
-status_line = ["git-branch"]
-`;
-		const config = ensure(existing);
-		expect(config).toContain("whimsy = false");
-		expect(config).toContain('theme = "github"');
-		expect(config).toContain('status_line = ["git-branch"]');
-		// One [tui] section, not a second one appended below.
-		expect((config.match(/^\[tui\]$/gm) ?? []).length).toBe(1);
-	});
-
-	it("leaves an explicit whimsy = true alone — the user asked for the stars", () => {
-		const existing = `[tui]
-whimsy = true
-`;
-		const config = ensure(existing);
-		expect(config).toContain("whimsy = true");
-		expect(config).not.toContain("whimsy = false");
-	});
-
-	it("leaves an explicit whimsy = false alone rather than rewriting it", () => {
-		const existing = `[tui]
-whimsy = false
-`;
-		const config = ensure(existing);
-		expect((config.match(/^whimsy = /gm) ?? []).length).toBe(1);
-	});
-
-	it("is idempotent — a second pass adds nothing", () => {
-		const once = ensure(null);
-		const twice = ensure(once);
-		expect((twice.match(/^whimsy = /gm) ?? []).length).toBe(1);
-		expect((twice.match(/^\[tui\]$/gm) ?? []).length).toBe(1);
-	});
-
-	it("writes a config Codex can still parse", () => {
-		const config = ensure(`model = "gpt-6-astra"
-
-[tui]
-theme = "github"
-`);
-		const parsed = load(config) as { tui?: Record<string, unknown> };
-		expect(parsed.tui?.whimsy).toBe(false);
-		expect(parsed.tui?.theme).toBe("github");
 	});
 });

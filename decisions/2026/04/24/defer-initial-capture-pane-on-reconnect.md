@@ -1,12 +1,5 @@
 # 041 — Three fixes to eliminate the task-switch terminal glitch
 
-> Partly superseded on 2026-09-11 by
-> [`decisions/2026/09/11/tmux-refresh-client-instead-of-resize-nudge.md`](../../../2026/09/11/tmux-refresh-client-instead-of-resize-nudge.md):
-> the row-nudge resize dance is gone — the redraw now comes from tmux
-> `refresh-client`, because a fake resize reaches the pane's program and made
-> Codex re-emit its whole transcript on every task switch. The other two fixes
-> below still stand.
-
 ## Context
 
 Switching between tasks produced three distinct symptoms, all perceived as

@@ -1,5 +1,5 @@
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
-import TerminalView, { type TerminalHandle, TERMINAL_SYNC_GATE_TIMEOUT_MS, buildResizeRequest, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
+import TerminalView, { type TerminalHandle, TERMINAL_SYNC_GATE_TIMEOUT_MS, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { Terminal } from "ghostty-web";
@@ -1496,22 +1496,31 @@ describe("normalizePastedText", () => {
 	});
 });
 
-// ── buildResizeRequest — pins the no-nudge shape ─────────────────────────────
+// ── buildResizeDance — pins the nudge axis (decision 041) ────────────────────
 
-describe("buildResizeRequest", () => {
-	it("asks for exactly the proposed geometry", () => {
-		expect(buildResizeRequest(120, 30)).toBe("\x1b]resize;120;30\x07");
+describe("buildResizeDance", () => {
+	it("nudges rows, not columns, so text wrapping is stable between paints", () => {
+		const [nudge, correct] = buildResizeDance(120, 30);
+		// If a future refactor swaps this back to a column nudge, the
+		// "refresh / realign" task-switch flicker from issue cb75af7b
+		// will return. Keep the nudge on rows.
+		expect(nudge).toBe("\x1b]resize;120;31\x07");
+		expect(correct).toBe("\x1b]resize;120;30\x07");
 	});
 
-	it("is one message, not a nudge pair", () => {
-		// A fake resize reaches the program in the pane. Codex answers a height
-		// change by clearing its scrollback and re-emitting the whole transcript,
-		// so a nudge here makes a long conversation scroll past on every task
-		// switch. The redraw belongs to tmux (`refresh-client`, pty-server.ts).
-		const message = buildResizeRequest(80, 24);
-		expect(typeof message).toBe("string");
-		expect(message.match(/resize;/g)).toHaveLength(1);
-		expect(Number(message.match(/resize;\d+;(\d+)/)![1])).toBe(24);
+	it("uses the same column count for both messages", () => {
+		const [nudge, correct] = buildResizeDance(200, 60);
+		const nudgeCols = nudge.match(/resize;(\d+);/)![1];
+		const correctCols = correct.match(/resize;(\d+);/)![1];
+		expect(nudgeCols).toBe(correctCols);
+		expect(nudgeCols).toBe("200");
+	});
+
+	it("differs by exactly one row between nudge and correct", () => {
+		const [nudge, correct] = buildResizeDance(80, 24);
+		const nudgeRows = Number(nudge.match(/resize;\d+;(\d+)/)![1]);
+		const correctRows = Number(correct.match(/resize;\d+;(\d+)/)![1]);
+		expect(nudgeRows - correctRows).toBe(1);
 	});
 });
 
