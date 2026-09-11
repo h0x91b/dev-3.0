@@ -4,6 +4,7 @@ import type {
 	ColumnAgentConfig,
 	ColumnAgentFailureReason,
 	ColumnAgentIdentity,
+	CloneFailure,
 	CompletedDiffStats,
 	CustomColumn,
 	AppRPCSchema,
@@ -187,9 +188,28 @@ function derivedPreparationPath(project: Project, task: Task): string {
 	return `${git.taskDir(project, task)}/worktree`;
 }
 
-async function runCowClones(project: Project, worktreePath: string): Promise<void> {
-	if (!project.clonePaths?.length) return;
-	await clonePaths(project.path, worktreePath, project.clonePaths);
+/**
+ * A failed clone path does not abort the launch: the worktree is usable, and one
+ * missing cache would otherwise cost the user the whole task. It is recorded on
+ * the task instead, because cloning is the only hook that finishes BEFORE the
+ * agent starts — by the time anyone reads the log, the agent has already run
+ * without the file (issue #1728).
+ */
+async function runCowClones(project: Project, task: Task, worktreePath: string): Promise<void> {
+	const results = project.clonePaths?.length
+		? await clonePaths(project.path, worktreePath, project.clonePaths)
+		: [];
+	const failures: CloneFailure[] = results
+		.filter((r) => r.error)
+		.map((r) => ({ path: r.path, error: r.error! }));
+	// This step is the only writer of the field, so it also clears a previous
+	// launch's verdict — nothing downstream may reset it, the notice has to
+	// outlive the launch that produced it.
+	if (failures.length === 0 && !task.cloneFailures?.length) return;
+	const updated = await data.updateTask(project, task.id, {
+		cloneFailures: failures.length > 0 ? failures : null,
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 }
 
 async function preparationStep<T>(
@@ -302,7 +322,7 @@ async function prepareTask(
 			effect.runId,
 			"cloning-shared-paths",
 			"runCowClones",
-			() => runCowClones(resolved, worktree.worktreePath),
+			() => runCowClones(resolved, task, worktree.worktreePath),
 		);
 		await preparationStep(
 			task,

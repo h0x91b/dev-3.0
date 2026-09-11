@@ -132,6 +132,21 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		if (setupFailedExitCode == null) setSetupFailureDismissed(false);
 	}, [setupFailedExitCode]);
 
+	// Cloning finishes BEFORE the agent starts, so a path that never arrived has
+	// already changed what the agent read. Nothing in the pane shows it otherwise.
+	const cloneFailures = task?.cloneFailures ?? [];
+	const [cloneFailuresDismissed, setCloneFailuresDismissed] = useState(false);
+	useEffect(() => {
+		if (cloneFailures.length === 0) setCloneFailuresDismissed(false);
+	}, [cloneFailures.length]);
+
+	const dismissCloneFailures = useCallback(() => {
+		setCloneFailuresDismissed(true);
+		api.request.dismissCloneFailures({ taskId }).catch((err) => {
+			console.error("[TaskTerminal] dismissCloneFailures failed:", err);
+		});
+	}, [taskId]);
+
 	const dismissSetupFailure = useCallback(() => {
 		setSetupFailureDismissed(true);
 		api.request.dismissSetupFailure({ taskId }).catch((err) => {
@@ -495,6 +510,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	const showCloneFailures = cloneFailures.length > 0 && !cloneFailuresDismissed;
+	const cloneFailureDetail = cloneFailures.map((f) => `${f.path} — ${f.error}`).join("; ");
 	const showSetupFailure = setupFailedExitCode != null && !setupFailureDismissed;
 	const setupFailedTitle = t("terminal.setupFailedTitle", { code: String(setupFailedExitCode) });
 	const rerunSetupLabel = rerunningSetup ? t("terminal.setupRerunning") : t("terminal.setupFailedRerun");
@@ -507,7 +524,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		<div
 			data-testid="terminal-setup-failed-strip"
 			role="status"
-			className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-3 py-2 rounded-lg bg-raised border border-danger/40 shadow-lg max-w-[calc(100%-1rem)]"
+			className="flex items-center gap-3 px-3 py-2 rounded-lg bg-raised border border-danger/40 shadow-lg max-w-full"
 		>
 			<span className="text-danger shrink-0">⚠</span>
 			<div className="min-w-0">
@@ -582,9 +599,40 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		</div>
 	);
 
+	// A clone path that never arrived is the same kind of news as a failed setup
+	// script — read-only, non-blocking, and about the worktree rather than the
+	// session. It reuses the strip grammar and stacks under it when both fired.
+	const cloneFailedStrip = showCloneFailures && (
+		<div
+			data-testid="terminal-clone-failed-strip"
+			role="status"
+			className="flex items-center gap-3 px-3 py-2 rounded-lg bg-raised border border-danger/40 shadow-lg max-w-full"
+		>
+			<span className="text-danger shrink-0">⚠</span>
+			<div className="min-w-0">
+				<div className="text-fg text-sm font-medium truncate">
+					{t.plural("terminal.cloneFailedTitle", cloneFailures.length)}
+				</div>
+				<div className="text-fg-3 text-xs truncate" title={cloneFailureDetail}>{cloneFailureDetail}</div>
+			</div>
+			<button
+				onClick={dismissCloneFailures}
+				aria-label={t("terminal.cloneFailedDismiss")}
+				className="shrink-0 px-2 py-1 text-fg-3 rounded hover:bg-elevated-hover hover:text-fg transition-colors"
+			>
+				✕
+			</button>
+		</div>
+	);
+
 	const setupFailedNotice = (
 		<>
-			{setupFailedStrip}
+			{(setupFailedStrip || cloneFailedStrip) && (
+				<div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-stretch gap-2 max-w-[calc(100%-1rem)]">
+					{setupFailedStrip}
+					{cloneFailedStrip}
+				</div>
+			)}
 			{setupFailedCard}
 		</>
 	);

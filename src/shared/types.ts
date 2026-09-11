@@ -2246,6 +2246,14 @@ export interface TaskRuntimeState {
 	updatedAt: number;
 }
 
+/** One configured clone path that failed to copy into the worktree. */
+export interface CloneFailure {
+	/** The path as configured, relative to the project root. */
+	path: string;
+	/** Last stderr line plus the failing command's exit code. */
+	error: string;
+}
+
 export interface Task {
 	id: string;
 	seq: number;
@@ -2389,6 +2397,14 @@ export interface Task {
 	 * recovery in one case and destruction of a working agent in the other.
 	 */
 	setupFailedAgentRunning?: boolean | null;
+	/**
+	 * Clone paths whose source existed but did not reach the worktree. Cloning runs
+	 * before the agent launches, so the agent already read (or failed to read) these
+	 * files by the time anyone looks — the list is persisted rather than pushed so
+	 * the notice survives a closed window. Missing sources are skipped silently and
+	 * never land here. Cleared by the next launch and by dismissing the notice.
+	 */
+	cloneFailures?: CloneFailure[] | null;
 	/** Additive lifecycle runtime hint; older app versions ignore this field. */
 	runtimeState?: TaskRuntimeState;
 	/**
@@ -5029,6 +5045,11 @@ export type AppRPCSchema = {
 			};
 			/** Drop a setup-failure verdict the user has acknowledged. */
 			dismissSetupFailure: {
+				params: { taskId: string };
+				response: void;
+			};
+			/** Drop the clone-path failure list the user has acknowledged. */
+			dismissCloneFailures: {
 				params: { taskId: string };
 				response: void;
 			};

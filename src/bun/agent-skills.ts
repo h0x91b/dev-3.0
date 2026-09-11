@@ -159,7 +159,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`setupScript\` | Package manager install command. Detect from lockfile: \`bun.lockb\` → \`bun install\`, \`pnpm-lock.yaml\` → \`pnpm install\`, \`yarn.lock\` → \`yarn\`, \`package-lock.json\` → \`npm install\`. For Python: \`pip install -e .\` or \`poetry install\`. For Rust: \`cargo build\`. Chain multiple steps with \`&&\` if needed. |
    | \`devScript\` | The dev server command. Check \`package.json\` scripts for \`dev\`, \`start\`, \`serve\`. Use the full command: \`bun run dev\`, \`npm run dev\`, etc. If no dev server exists, leave empty. |
    | \`cleanupScript\` | Teardown hook that runs before the task worktree is removed — on \`completed\` / \`cancelled\`, when an active task is deleted (\`$DEV3_TASK_STATUS\` = \`deleted\`), or when task preparation is cancelled (\`$DEV3_TASK_STATUS\` = \`todo\`). Useful for copy-back, exports, cache cleanup, and tearing down per-worktree containers. Inside the script you can branch on \`$DEV3_TASK_STATUS\`, \`$DEV3_TASK_FROM_STATUS\`, and \`$DEV3_TASK_TO_STATUS\`, plus the workspace env vars from step 3b. |
-   | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
+   | \`clonePaths\` | Directories **and individual files** CoW-cloned from the project root into every new worktree instead of being re-downloaded or lost. Heavy dirs: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Single files matter just as much: a git-ignored \`.npmrc\`, \`.env\`, or a personal instruction file reaches the worktree only through here. Glob patterns are expanded. A path missing from the project root is skipped silently; a path that exists but fails to copy is logged as an error and shown on the task. |
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
@@ -236,7 +236,7 @@ EOF
 | \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.). Gets the workspace env vars from step 3b |
 | \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
 | \`cleanupScript\` | string | Runs before the task worktree is removed (\`completed\` / \`cancelled\` / task deleted / preparation cancelled) |
-| \`clonePaths\` | string[] | Dirs to CoW-clone into worktrees (faster than re-downloading) |
+| \`clonePaths\` | string[] | Files and dirs (globs allowed) CoW-cloned into every worktree. Runs BEFORE the agent launches — unlike \`setupScript\`, which in the default \`parallel\` mode starts alongside the already-running agent — so this is the only hook that can put a git-ignored file in place before the agent reads it. Missing sources are skipped |
 | \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
 | \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |
 | \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
