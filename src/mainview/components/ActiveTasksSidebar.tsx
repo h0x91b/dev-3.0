@@ -22,6 +22,7 @@ import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 import Tooltip from "./Tooltip";
 import { EyeIcon, PanelLeftIcon } from "./TaskIcons";
 import ActiveTaskRow from "./ActiveTaskRow";
+import { useRevealSelectedRow } from "../hooks/useRevealSelectedRow";
 import { useSpaces } from "../useSpaces";
 import SpaceIcon from "./SpaceIcon";
 import { spaceScopeProjectIds } from "../utils/spaceScope";
@@ -484,6 +485,24 @@ function ActiveTasksSidebar({
 		};
 	});
 
+	// Where the selected row sits in the rendered order. The reveal below fires on
+	// this key alone, so a status change that reorders the list scrolls it back
+	// into view while unrelated task updates leave the scroll position alone.
+	const listRef = useRef<HTMLDivElement>(null);
+	let selectedPositionKey: string | null = null;
+	if (activeTaskId) {
+		let index = 0;
+		for (const group of grouped) {
+			for (const task of group.tasks) {
+				if (task.id === activeTaskId && task.projectId === project?.id) {
+					selectedPositionKey = `${activeTaskId}:${group.key}:${index}`;
+				}
+				index++;
+			}
+		}
+	}
+	useRevealSelectedRow(listRef, activeTaskId ?? null, selectedPositionKey);
+
 	const handleSetPriority = useCallback(
 		async (task: Task, priority: TaskPriority) => {
 			try {
@@ -753,7 +772,7 @@ function ActiveTasksSidebar({
 			)}
 
 			{/* Task list */}
-			<div className="flex-1 overflow-y-auto overflow-x-hidden" data-help-id="sidebar.active-tasks">
+			<div ref={listRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-help-id="sidebar.active-tasks">
 				{effectiveScope !== "project" && globalLoading && grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{t("sidebar.globalLoading")}
@@ -771,7 +790,7 @@ function ActiveTasksSidebar({
 					</div>
 				) : (
 					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, tasks: groupTasks }, groupIdx) => (
-						<div key={groupKey}>
+						<div key={groupKey} data-sidebar-tier>
 							{/* Solid separator between readiness-tier blocks */}
 							{groupIdx > 0 && (
 								<div className="mx-3 border-t border-edge" />
@@ -780,7 +799,7 @@ function ActiveTasksSidebar({
 							{/* Tier header with count. No spinner: the WAITING tier merges
 							    working + AI-review + PRs, so a tier-wide spinner would mislead;
 							    the per-card rail busy-flow animation remains the cue. */}
-							<div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+							<div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint zone wash + left bar so the tier reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
@@ -820,7 +839,7 @@ function ActiveTasksSidebar({
 								const showProjectBadge = effectiveScope !== "project" && task.projectId !== project?.id;
 
 								return (
-									<div key={task.id}>
+									<div key={task.id} data-task-id={task.id}>
 										{/* Dashed separator between tasks within the same group */}
 										{idx > 0 && (
 											<div className="mx-3 border-t border-dashed border-edge" />
