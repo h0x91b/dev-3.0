@@ -25,12 +25,12 @@ import { PANE_RUN_AUTO_CLOSE_SECONDS, PANE_RUN_FAILED_AUTO_CLOSE_SECONDS } from 
  * replaced rather than softened.
  */
 export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
-	if (!deepLinkSchemeRegistered(platform)) {
-		return `**Do NOT append a dev3 origin-task footer to a pull request on this platform.** \`dev3://\` links only open the app where the OS registered the scheme, which is macOS today, so that footer would publish a dead link into a public PR (the \`https\` form only redirects back to the same scheme). Name the task by its \`seq\` number in plain text when a reviewer needs it.`;
-	}
-	return `**Link the PR back to this task.** Unless the user turned it off in dev3 settings, end every PR description for this task with a deep link back to it. Take \`<TASK_ID>\` from \`dev3 current\`; after your description add a blank line, a \`---\` line, then exactly this — GitHub strips \`dev3://\`, so the \`https\` form is the clickable one and the raw link is the copy-paste fallback:
+	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later.`;
 
-\`🔗 **Origin task in dev3:** [open in dev3](https://dev3.h0x91b.com/open.html?task=<TASK_ID>) · \\\`dev3://task/<TASK_ID>\\\`\``;
+	if (!deepLinkSchemeRegistered(platform)) {
+		return `${command} **It adds no origin-task footer here — and nor do you:** \`dev3://\` opens the app on macOS only, so it would be a dead link in a public PR.`;
+	}
+	return `${command} **It links the PR back to this task itself**, with the right id and the user's opt-out honoured — never hand-write that footer.`;
 }
 
 const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol

@@ -699,7 +699,7 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "pr",
-		summary: "Open a pull request for the branch checked out here (needs an authenticated `gh`).",
+		summary: "Open a pull request for the branch checked out here, and set its auto-merge (needs an authenticated `gh`).",
 		subcommands: [
 			{
 				name: "create",
@@ -718,9 +718,23 @@ const COMMANDS: CommandHelp[] = [
 					"Inside a task worktree the body ends with a link back to the originating task",
 					"(Settings → Tasks turns it off; it is also dropped where no dev3:// handler exists).",
 					"`gh` missing or logged out exits 23 BEFORE anything is pushed.",
-				"Takes no --task: the pull request is for the branch checked out here, so naming",
-				"another task would push one branch and describe another.",
+					"Takes no --task: the pull request is for the branch checked out here, so naming",
+					"another task would push one branch and describe another.",
 					"Needs no running app — it is git and gh against the current branch.",
+				],
+			},
+			{
+				name: "auto-merge",
+				usage: "dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]",
+				summary: "Enable auto-merge on a pull request that already exists (or clear it).",
+				details: [
+					"Without an argument gh resolves the pull request of the branch checked out here —",
+					"the case that matters: permission to merge arrived after the PR was already open.",
+					"--strategy <m>   squash (default), merge or rebase.",
+					"--off            Clear auto-merge instead of setting it; takes no --strategy.",
+					"The pull request goes BEFORE the switch (`dev3 pr auto-merge 1722 --off`):",
+					"a bare --off swallows the next token, so `--off 1722` is refused, not guessed.",
+					"`gh` missing or logged out exits 23, same as `pr create`.",
 				],
 			},
 		],
