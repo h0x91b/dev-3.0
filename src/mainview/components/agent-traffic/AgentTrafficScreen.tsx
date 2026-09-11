@@ -543,10 +543,18 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	// length, and a cursor that survives that points at an event which is no longer
 	// there. Field order matches the key Seq 1823 assembles at integration.
 	const kindKey = [...kinds].sort().join(",");
+	// All three arms of the timeline, and only ever asked once per load. An `idle`
+	// archive is deliberately NOT ready — nobody has asked it anything yet — while
+	// `failed` is, because a transport failure must not park replay forever.
+	const timelineReady =
+		!data.loading &&
+		!data.tasksLoading &&
+		(notifications.status === "ready" || notifications.status === "failed");
 	const playback = useTrafficPlayback(
 		timeline,
 		experiment === "2",
 		`${scope}:${windowSize}:${filter}:${kindKey}:${pair}:${query}`,
+		timelineReady,
 	);
 	const graphRecords =
 		playback.index < 0

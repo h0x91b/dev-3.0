@@ -15,6 +15,8 @@ interface PlaybackState {
 	playing: boolean;
 	ended: boolean;
 	revision: number;
+	/** Whether the timeline this snapshot froze was the finished one. */
+	ready: boolean;
 }
 
 /**
@@ -29,6 +31,16 @@ export function useTrafficPlayback(
 	timeline: TrafficTimelineEvent[],
 	enabled: boolean,
 	scopeKey: string,
+	/**
+	 * Whether every arm of the timeline has finished its first load.
+	 *
+	 * Defaults to true so a caller with nothing async keeps the plain behaviour.
+	 * A caller that loads messages, board movements and notifications separately
+	 * must pass the real answer: pressing Play mid-load otherwise freezes a
+	 * timeline that is missing whole kinds of event, and only a filter change or
+	 * a Restart ever brings them back.
+	 */
+	ready = true,
 ) {
 	const chronological = useMemo(() => sortTimeline(timeline), [timeline]);
 	const [speed, updateSpeed] = useState(1);
@@ -40,6 +52,7 @@ export function useTrafficPlayback(
 		playing: false,
 		ended: false,
 		revision: 0,
+		ready: true,
 	});
 	const active = enabled && state.scopeKey === scopeKey;
 	const events = active && state.events ? state.events : chronological;
@@ -58,6 +71,40 @@ export function useTrafficPlayback(
 			}));
 		}
 	}, [enabled, scopeKey, state.scopeKey]);
+
+	/**
+	 * Re-take a snapshot that was frozen too early — once, and without moving the
+	 * reader.
+	 *
+	 * The snapshot exists to protect a running replay from live arrivals, and that
+	 * stays: an event that shows up after the load settled is still ignored until
+	 * Restart or Live. This only covers the one case the snapshot cannot defend,
+	 * where it captured a timeline whose task and notification arms had not landed
+	 * yet. The cursor is carried over by event key, so play/pause and the reader's
+	 * position survive; card states are recomputed from the cursor's TIME, so a
+	 * movement inserted behind the cursor is already reflected on the board.
+	 */
+	useEffect(() => {
+		if (!ready || !enabled) return;
+		setState((previous) => {
+			if (previous.ready || !previous.events) return previous;
+			if (previous.scopeKey !== scopeKey) return previous;
+			const key = previous.events[previous.index]?.key;
+			const moved = key
+				? chronological.findIndex((event) => event.key === key)
+				: -1;
+			return {
+				...previous,
+				ready: true,
+				events: chronological,
+				index:
+					moved >= 0
+						? moved
+						: Math.min(previous.index, chronological.length - 1),
+				revision: previous.revision + 1,
+			};
+		});
+	}, [ready, enabled, scopeKey, chronological]);
 
 	useEffect(() => {
 		if (!playing) return;
@@ -96,6 +143,7 @@ export function useTrafficPlayback(
 				revision: previous.revision + 1,
 				playing: resume,
 				ended: false,
+				ready,
 			};
 		});
 	}
