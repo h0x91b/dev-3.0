@@ -23,6 +23,10 @@
 	position: relative;
 	background: rgb(var(--surface-base));
 }
+/* Stays in flow at every width. Floated over the stage it was anchored to the
+   view while the stage overlays are anchored to the stage, so the two drifted
+   apart with the toolbar's height and the quiet/parked pills landed on top of
+   these labels. */
 .traffic-view[data-experiment="2"] .traffic-summary {
 	gap: 18px;
 	padding: 10px 22px;
@@ -588,6 +592,11 @@
 	font-size: 10px;
 	color: rgb(var(--text-tertiary));
 	pointer-events: none;
+	/* Same plate as the band pills: bare text over the dot grid reads as noise. */
+	padding: 5px 8px;
+	border-radius: 7px;
+	background: rgb(var(--surface-raised) / 0.92);
+	box-shadow: inset 0 0 0 1px rgb(var(--border-default) / 0.5);
 }
 .traffic-icon {
 	width: 16px;
@@ -986,21 +995,6 @@
 	height: 20px;
 	border-radius: 2px;
 	background: rgb(var(--accent));
-}
-
-@media (min-width: 901px) {
-	.traffic-view[data-experiment="2"] .traffic-summary {
-		position: absolute;
-		top: 108px;
-		left: 0;
-		right: 0;
-		z-index: 2;
-		background: transparent;
-		pointer-events: none;
-	}
-	.traffic-view[data-experiment="2"] .traffic-nodes-bands {
-		top: 65px;
-	}
 }
 
 .traffic-filter-fields {
