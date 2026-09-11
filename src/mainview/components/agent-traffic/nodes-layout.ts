@@ -106,6 +106,9 @@ function pairs(records: TrafficRecord[]): Map<string, PairState> {
 	return found;
 }
 
+/** Cards that go in the grid — not the user marker, not a coordinator. */
+const isWorker = (node: TrafficNode) => !node.user && node.task?.taskType !== "coordinator";
+
 /** Stable task ordering keeps replay and new message volume from moving cards. */
 export function layoutTraffic(
 	nodes: TrafficNode[],
@@ -177,15 +180,19 @@ export function layoutTraffic(
 		const projectActive = active.filter(node => node.projectId === projectId);
 		const projectQuiet = quiet.filter(node => node.projectId === projectId);
 		const projectParked = parked.filter(node => node.projectId === projectId);
-		const normalCount = projectActive.filter(node => node.task?.taskType !== "coordinator").length;
+		const normalCount = projectActive.filter(isWorker).length;
 		const columns = normalCount > 24 ? 6 : 5;
 		const bands = [projectActive, ...(options.showQuiet ? [projectQuiet] : []), ...(options.showParked ? [projectParked] : [])];
 		const occupiedColumns = grouped
-			? Math.min(columns, Math.max(...bands.map(members => members.filter(node => node.task?.taskType !== "coordinator").length)))
+			? Math.min(columns, Math.max(...bands.map(members => members.filter(isWorker).length)))
 			: columns;
 		const workerWidth = occupiedColumns ? occupiedColumns * (CARD_WIDTH + GAP_X) - GAP_X : 0;
-		const hasCoordinator = bands.some(members => members.some(node => node.task?.taskType === "coordinator"));
-		const gridWidth = Math.max(workerWidth, hasCoordinator ? COORDINATOR_WIDTH : 0);
+		// The centred rows above the grid: the user marker, then any coordinator.
+		const headWidth = Math.max(
+			bands.some(members => members.some(node => node.user)) ? CARD_WIDTH : 0,
+			bands.some(members => members.some(node => node.task?.taskType === "coordinator")) ? COORDINATOR_WIDTH : 0,
+		);
+		const gridWidth = Math.max(workerWidth, headWidth);
 		const workerOffset = grouped ? (gridWidth - workerWidth) / 2 : 0;
 		const offsetX = grouped ? groupX + 32 : 0;
 		const offsetY = grouped ? groupY + 96 : 0;
@@ -196,8 +203,15 @@ export function layoutTraffic(
 			contentHeight = Math.max(contentHeight, y + (node.task?.taskType === "coordinator" ? COORDINATOR_HEIGHT : CARD_HEIGHT) + 28);
 		};
 		const band = (members: TrafficNode[]) => {
-			const coordinators = members.filter(node => node.task?.taskType === "coordinator");
-			const normal = members.filter(node => node.task?.taskType !== "coordinator");
+			// The person is the origin of the conversation, so they sit above it:
+			// user marker first, then the coordinator, then the task grid.
+			const you = members.filter(node => node.user);
+			const coordinators = members.filter(node => !node.user && node.task?.taskType === "coordinator");
+			const normal = members.filter(isWorker);
+			for (const node of you) {
+				add(node, (gridWidth - CARD_WIDTH) / 2, cursorY);
+				cursorY += COORDINATOR_STEP;
+			}
 			for (const node of coordinators) {
 				add(node, (gridWidth - COORDINATOR_WIDTH) / 2, cursorY);
 				cursorY += COORDINATOR_STEP;

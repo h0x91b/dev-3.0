@@ -303,10 +303,6 @@
 	font-size: 10px;
 	color: rgb(var(--success));
 }
-.traffic-node-count {
-	margin-left: auto;
-	font-family: var(--dev3-mono-stack);
-}
 /* The sidebar's title weight, not a headline: this is a task row that happens to
    sit on a stage, so it reads at the same pitch as everywhere else in the app. */
 .traffic-node-full > strong {
