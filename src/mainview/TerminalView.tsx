@@ -172,24 +172,25 @@ function proposeDimensionsWithoutScrollbarReserve(
 }
 
 /**
- * Build the single resize message a freshly-connected viewer sends to claim its
- * geometry. Exactly ONE size, never a nudge to a neighbouring size and back.
+ * Build the two-stage resize-dance WebSocket messages that force tmux to
+ * redraw on reconnect — including the same-size reconnect case where the
+ * kernel would otherwise skip SIGWINCH.
  *
- * This used to be a two-stage "dance" (rows+1, then rows) whose only job was to
- * make tmux repaint on a same-size reconnect, because the kernel skips SIGWINCH
- * when nothing changed. A fake resize reaches the program in the pane, and an
- * inline TUI that rebuilds its scrollback transcript on a height change — Codex
- * does — then re-emits the whole conversation, twice, which the user watches
- * scroll past on every task switch. The redraw now comes from tmux itself
- * (`refresh-client`, server side in pty-server.ts), which the program never
- * sees. See decisions/2026/09/11/tmux-refresh-client-instead-of-resize-nudge.md,
- * superseding the row-nudge half of decision 041.
+ * The nudge always targets **rows** (never columns) so the two paints
+ * share column width and therefore produce identical text wrapping. A
+ * column nudge makes every line re-wrap at a slightly narrower width and
+ * then at the target width, which is visible as a "refresh / realign"
+ * flicker on every task switch. See decision 041.
  *
- * Exported for unit testing — keeps the single-message shape pinned against
- * accidental reintroduction of a nudge.
+ * Exported for unit testing — keeps the nudge axis pinned against
+ * accidental refactors.
  */
-export function buildResizeRequest(cols: number, rows: number): string {
-	return encodeResizeSequence(cols, rows);
+export function buildResizeDance(cols: number, rows: number): [string, string] {
+	const nudgeRows = rows + 1;
+	return [
+		encodeResizeSequence(cols, nudgeRows),
+		encodeResizeSequence(cols, rows),
+	];
 }
 
 /**
@@ -612,11 +613,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// 2. Send RIS (Reset to Initial State) to PTY/tmux
 			ws.send("\x1bc");
 
-			// 3. Re-claim geometry; the server repaints the tmux client for us
-			//    when the size is unchanged (see buildResizeRequest).
+			// 3. Force tmux redraw via resize nudge — use the same
+			//    row-nudge as the WS-open reconnect path so Hard Reset
+			//    doesn't introduce a column-re-wrap flicker.
 			if (term) {
 				try {
-					ws.send(buildResizeRequest(term.cols, term.rows));
+					const [nudge, correct] = buildResizeDance(term.cols, term.rows);
+					ws.send(nudge);
+					setTimeout(() => {
+						if (ws.readyState === WebSocket.OPEN) {
+							ws.send(correct);
+						}
+					}, 50);
 				} catch { /* disposed */ }
 			}
 			debugLog("terminal", "[TerminalView] Hard reset sent");
@@ -1898,9 +1906,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				const dims = fit.proposeDimensions();
 				debugLog("terminal", "[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
-					// One size, no nudge — the server repaints the tmux client when the
-					// size is unchanged. See buildResizeRequest().
-					socket.send(buildResizeRequest(dims.cols, dims.rows));
+					// See buildResizeDance() — row-nudge keeps text wrapping
+					// identical between the two paints. See decision 041.
+					const [nudge, correct] = buildResizeDance(dims.cols, dims.rows);
+					socket.send(nudge);
+					setTimeout(() => {
+						if (socket === ws && socket.readyState === WebSocket.OPEN) {
+							socket.send(correct);
+						}
+					}, 50);
 				}
 			};
 
@@ -2356,7 +2370,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			try { dims = fit.proposeDimensions(); } catch { return; /* disposed */ }
 			if (!dims) return;
 
-			ws.send(buildResizeRequest(dims.cols, dims.rows));
+			const [nudge, correct] = buildResizeDance(dims.cols, dims.rows);
+			ws.send(nudge);
+			setTimeout(() => {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(correct);
+				}
+			}, 50);
 		}
 
 		document.addEventListener("visibilitychange", onVisibilityChange);

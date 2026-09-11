@@ -191,36 +191,6 @@ export class TmuxClient {
 		removeTmuxSocketFile(socket);
 	}
 
-	/** `list-clients -t` parsed through a typed format declaration. */
-	async listClients<T>(format: TmuxFormat<T>, opts: { target: string } & SocketOpt): Promise<T[]> {
-		const { stdout } = await this.runChecked(
-			opts.socket,
-			["list-clients", "-t", opts.target, "-F", format.formatString],
-		);
-		return format.parse(stdout);
-	}
-
-	/**
-	 * `refresh-client -t` — make tmux repaint one client from its OWN copy of the
-	 * pane, without touching the pane's size. The app in the pane sees nothing:
-	 * no SIGWINCH, no redraw request, no output at all.
-	 *
-	 * This is the redraw primitive for a viewer that reconnected at the size tmux
-	 * already has. The old trick — nudge the rows by one and back — reaches the
-	 * app, and an inline TUI that rebuilds its scrollback transcript on a height
-	 * change (Codex) then re-emits the whole conversation twice, which the user
-	 * watches scroll past. Measured on codex-cli 0.154.0 with a 287-row
-	 * transcript: the nudge made Codex clear its scrollback twice and write
-	 * 35 504 bytes; `refresh-client` repainted the same screen in 1 728 bytes
-	 * with zero bytes from Codex.
-	 *
-	 * `target` is a client tty path (`client_name`), the only spelling tmux
-	 * accepts here — a session name is rejected.
-	 */
-	refreshClient(opts: { target: string } & CommandOpts): Promise<void> {
-		return this.runCommand(opts.socket, ["refresh-client", "-t", opts.target], opts);
-	}
-
 	/** `list-sessions -F` parsed through a typed format declaration. */
 	async listSessions<T>(format: TmuxFormat<T>, opts?: SocketOpt): Promise<T[]> {
 		const { stdout } = await this.runChecked(opts?.socket, ["list-sessions", "-F", format.formatString]);

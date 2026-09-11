@@ -46,7 +46,6 @@ import {
 	PANE_ID_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
 	PANE_GEOMETRY_FORMAT,
-	CLIENT_NAME_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 } from "./tmux";
 
@@ -1621,28 +1620,6 @@ export function _nativeTakeoversInFlightForTests(): number {
 	return nativeTakeoverInFlight.size;
 }
 
-/**
- * Repaint every tmux client attached to this session, from tmux's own copy of
- * the pane. Best-effort: a client that detached between the list and the
- * refresh is not an error, and a failed repaint costs one missing initial paint,
- * never the session.
- */
-async function repaintTmuxClients(session: PtySession): Promise<void> {
-	const socket = session.tmuxSocket || DEFAULT_TMUX_SOCKET;
-	try {
-		const clients = await tmux.listClients(CLIENT_NAME_FORMAT, {
-			target: session.tmuxSessionName,
-			socket,
-		});
-		for (const client of clients) {
-			if (!client.name) continue;
-			await tmux.refreshClient({ target: client.name, socket, bestEffort: true });
-		}
-	} catch (err) {
-		log.debug("applyClientSizes repaint failed", { error: String(err) });
-	}
-}
-
 function applyClientSizes(session: PtySession): void {
 	const term = sessionShell(session);
 	if (!term) return;
@@ -1664,16 +1641,22 @@ function applyClientSizes(session: PtySession): void {
 
 	if (session.appliedCols === minCols && session.appliedRows === minRows) {
 		// A native viewer is repainted from the journal on attach, so it never needs
-		// the redraw below — and resizing would move a live shell for a client that
-		// merely reconnected.
+		// the redraw jiggle below — and jiggling would resize a live shell for a
+		// client that merely reconnected.
 		if (session.backend === "native") return;
 		// Target size is unchanged — typically a new, equal-or-larger viewer just
 		// connected. tmux does NOT emit a SIGWINCH / redraw for a same-size
 		// resize, so that viewer's freshly-mounted blank terminal would never get
-		// its initial paint. Ask tmux to repaint its own client instead of faking a
-		// resize: a nudged row count reaches the app, and Codex answers a height
-		// change by rebuilding its whole scrollback transcript (see refreshClient).
-		void repaintTmuxClients(session);
+		// its initial paint. Force a full redraw with a one-row jiggle (same trick
+		// as the WKWebView resize nudge in window-manager.ts).
+		try {
+			term.resize(minCols, Math.max(1, minRows - 1));
+			setTimeout(() => {
+				try { term.resize(minCols, minRows); } catch { /* ignore */ }
+			}, 16);
+		} catch (err) {
+			log.debug("applyClientSizes jiggle failed", { error: String(err) });
+		}
 		return;
 	}
 
