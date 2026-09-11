@@ -1980,6 +1980,20 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", settings);
 	});
 
+	// Starring a preset in Settings has to reach the launch dialog, which keeps
+	// its own copy of the settings: without the push the favorite was saved and
+	// invisible everywhere but the screen it was starred on.
+	it("broadcasts the settings after a favorite is toggled", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as GlobalSettings);
+		await handlers.toggleFavoriteAgent({ agentId: "builtin-claude", configId: "cfg-1" });
+		expect(push).toHaveBeenCalledWith(
+			"globalSettingsUpdated",
+			expect.objectContaining({
+				favorites: [expect.objectContaining({ agentId: "builtin-claude", configId: "cfg-1" })],
+			}),
+		);
+	});
+
 	// The renderer sends a whole snapshot taken when it loaded, and the analytics id
 	// is minted by the host afterwards — trusting the payload erased it, so the
 	// install got a fresh id (and lost its flag targeting) on every launch.

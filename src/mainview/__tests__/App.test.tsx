@@ -43,6 +43,13 @@ vi.mock("../rpc", () => ({
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 			getAgents: vi.fn().mockResolvedValue([]),
+			createTask: vi.fn(),
+			renameTask: vi.fn(),
+			setTaskLabels: vi.fn(),
+			spawnVariants: vi.fn(),
+			scheduleTaskLaunch: vi.fn(),
+			addAttempts: vi.fn(),
+			toggleTaskWatch: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -2117,6 +2124,118 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			expect(await screen.findByText("New Task")).toBeInTheDocument();
+		});
+	});
+
+	// The launch dialog that New Task opens is owned by App, and App used to load
+	// the presets exactly once per session. Connecting a provider from inside that
+	// dialog seeds new presets, and they stayed invisible until an app restart
+	// (Seq 1884): the offers vanished and nothing replaced them.
+	describe("New Task → launch dialog follows preset changes", () => {
+		const baseClaude = {
+			id: "builtin-claude",
+			name: "Claude",
+			baseCommand: "claude",
+			isDefault: true,
+			configurations: [{ id: "claude-default", name: "Default (Sonnet 5)", model: "claude-sonnet-5" }],
+			defaultConfigId: "claude-default",
+		};
+		const seededClaude = {
+			...baseClaude,
+			configurations: [
+				...baseClaude.configurations,
+				// The shape `seedPresetForTier` writes when a provider is connected:
+				// its own group label is what the Model field offers.
+				{
+					id: "best-value",
+					name: "Best value",
+					groupLabel: "Best value",
+					model: "claude-sonnet-5",
+					modelRoles: { main: "ds-v41-flash" },
+					seededTier: "practical" as const,
+				},
+			],
+		};
+
+		async function openLaunchDialogFromScratch() {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(api.request.createTask).mockResolvedValue({
+				id: "t-scratch",
+				seq: 7,
+				projectId: "p1",
+				title: "Scratch — 12:00",
+				description: "Scratch — 12:00",
+				status: "todo",
+				baseBranch: "main",
+				worktreePath: null,
+				branchName: null,
+				groupId: null,
+				variantIndex: null,
+				agentId: null,
+				configId: null,
+				createdAt: "2026-01-01T00:00:00Z",
+				updatedAt: "2026-01-01T00:00:00Z",
+			});
+
+			await renderApp();
+			await userEvent.keyboard("{Meta>}n{/Meta}");
+			await userEvent.click(await screen.findByText("Scratch Task"));
+			// The launch dialog's Model field — proof onCreateAndRun landed.
+			await waitFor(() => expect(document.getElementById("variant-0-model")).toBeTruthy());
+			return document.getElementById("variant-0-model") as HTMLButtonElement;
+		}
+
+		async function modelOptionLabels(modelButton: HTMLButtonElement): Promise<string[]> {
+			await userEvent.click(modelButton);
+			const overlays = document.querySelectorAll(".bg-overlay.border");
+			const dropdown = overlays[overlays.length - 1];
+			const labels = Array.from(dropdown?.querySelectorAll("button") ?? []).map((b) => b.textContent?.trim() ?? "");
+			await userEvent.click(modelButton);
+			return labels;
+		}
+
+		it("offers a preset seeded after the dialog opened", async () => {
+			vi.mocked(api.request.getAgents).mockResolvedValue([baseClaude]);
+			const modelButton = await openLaunchDialogFromScratch();
+
+			expect((await modelOptionLabels(modelButton)).join("|")).not.toContain("Best value");
+
+			// What `saveAgents` fans out when Connect a provider seeds the presets.
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentsUpdated", { detail: [seededClaude] }));
+			});
+
+			expect((await modelOptionLabels(modelButton)).join("|")).toContain("Best value");
+		});
+
+		it("renders a favorite pointing at a preset that arrived on the push", async () => {
+			vi.mocked(api.request.getAgents).mockResolvedValue([baseClaude]);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				favorites: [{ agentId: "builtin-claude", configId: "best-value", uses: 1, lastUsedAt: 1 }],
+			});
+			await openLaunchDialogFromScratch();
+
+			const favTrigger = document.getElementById("variant-0-favorites") as HTMLButtonElement;
+			await userEvent.click(favTrigger);
+			// Unresolvable against the pre-push list, so the chip is dropped.
+			expect(document.body.textContent).not.toContain("Best value");
+			await userEvent.click(favTrigger);
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentsUpdated", { detail: [seededClaude] }));
+			});
+
+			await userEvent.click(favTrigger);
+			await waitFor(() => expect(document.body.textContent).toContain("Best value"));
 		});
 	});
 
