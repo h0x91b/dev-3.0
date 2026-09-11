@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { Task, TaskMovement, TaskStatus } from "../../shared/types";
 import {
 	burstPieces,
+	CELEBRATION_FADE_MS,
+	CELEBRATION_MS,
 	completionDuration,
+	FIREWORK_FLIGHT_MS,
+	fireworkBursts,
 	liveCompletions,
 	LIVE_WINDOW_MS,
+	PIECE_FLIGHT_MS,
+	PIECE_WAVE_GAP_MS,
 	replayCompletion,
 } from "../components/agent-traffic/completion-celebration";
 import type { TrafficNode } from "../components/agent-traffic/traffic-model";
@@ -271,12 +277,60 @@ describe("burstPieces", () => {
 
 	it("stays inside a bounded spread", () => {
 		for (const piece of burstPieces("m2", 20)) {
-			expect(piece.distance).toBeGreaterThanOrEqual(42);
-			expect(piece.distance).toBeLessThanOrEqual(88);
+			expect(piece.distance).toBeGreaterThanOrEqual(46);
+			expect(piece.distance).toBeLessThanOrEqual(108);
 			expect(piece.angle).toBeGreaterThanOrEqual(-160);
 			expect(piece.angle).toBeLessThanOrEqual(0);
 			expect(piece.delay).toBeGreaterThanOrEqual(0);
-			expect(piece.delay).toBeLessThanOrEqual(100);
+		}
+	});
+
+	it("fires in two waves, both of them a full fan", () => {
+		const pieces = burstPieces("m2", 18);
+		const early = pieces.filter((piece) => piece.delay < PIECE_WAVE_GAP_MS);
+		const late = pieces.filter((piece) => piece.delay >= PIECE_WAVE_GAP_MS);
+		expect(early).toHaveLength(9);
+		expect(late).toHaveLength(9);
+		// Each wave spans the fan rather than half of it.
+		for (const wave of [early, late]) {
+			expect(Math.min(...wave.map((piece) => piece.angle))).toBeLessThan(-140);
+			expect(Math.max(...wave.map((piece) => piece.angle))).toBeGreaterThan(-40);
+		}
+	});
+
+	it("lands every piece before the celebration fades", () => {
+		for (const piece of burstPieces("m2", 18)) {
+			expect(piece.delay + PIECE_FLIGHT_MS).toBeLessThanOrEqual(
+				CELEBRATION_MS - CELEBRATION_FADE_MS,
+			);
+		}
+	});
+});
+
+describe("fireworkBursts", () => {
+	it("is deterministic, so a replayed completion draws the same show", () => {
+		expect(fireworkBursts("m2")).toEqual(fireworkBursts("m2"));
+		expect(fireworkBursts("m2")).not.toEqual(fireworkBursts("m9"));
+	});
+
+	it("draws a finite number of sparks and no more", () => {
+		const bursts = fireworkBursts("m2");
+		expect(bursts).toHaveLength(4);
+		expect(bursts.flatMap((burst) => burst.sparks)).toHaveLength(36);
+	});
+
+	it("keeps every burst clear of the badge above the card's top centre", () => {
+		for (const burst of fireworkBursts("m2")) {
+			// Either off to a shoulder, or high enough to clear the badge entirely.
+			expect(Math.abs(burst.x - 0.5) > 0.25 || burst.y < -0.15).toBe(true);
+		}
+	});
+
+	it("burns out before the celebration fades", () => {
+		for (const burst of fireworkBursts("m2")) {
+			expect(burst.delay + FIREWORK_FLIGHT_MS).toBeLessThanOrEqual(
+				CELEBRATION_MS - CELEBRATION_FADE_MS,
+			);
 		}
 	});
 });

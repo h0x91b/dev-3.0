@@ -182,6 +182,40 @@ describe("completion celebration on the traffic stage", () => {
 		expect(screen.queryByTestId("traffic-celebration")).toBeNull();
 	});
 
+	it("draws a bounded number of particles and clears all of them on expiry", () => {
+		// The shared setup forces reduced motion on; this is the full-motion case.
+		vi.stubGlobal("matchMedia", (query: string) => ({
+			matches: false,
+			media: query,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		}));
+		const { rerender } = render(
+			draw([node(task("task-a", 1, WORKING)), node(other)]),
+		);
+		rerender(draw([node(task("task-a", 1, DONE)), node(other)]));
+		const celebration = screen.getByTestId("traffic-celebration");
+		// Finite by construction: 18 confetti pieces, 4 fireworks of 9 sparks.
+		expect(
+			celebration.querySelectorAll(".traffic-celebration-piece"),
+		).toHaveLength(18);
+		expect(
+			celebration.querySelectorAll(".traffic-celebration-firework"),
+		).toHaveLength(4);
+		expect(
+			celebration.querySelectorAll(".traffic-celebration-spark"),
+		).toHaveLength(36);
+
+		act(() => {
+			vi.advanceTimersByTime(CELEBRATION_MS + 50);
+		});
+		// Nothing survives the single expiry timer — no orphan particle, no card ring.
+		expect(screen.queryByTestId("traffic-celebration")).toBeNull();
+		expect(document.querySelectorAll(".traffic-celebration-spark")).toHaveLength(0);
+		expect(document.querySelectorAll(".is-celebrating")).toHaveLength(0);
+		vi.unstubAllGlobals();
+	});
+
 	it("names the anchor as the task's creation when no work start is recorded", () => {
 		const born = [movement("a0", -90, "todo", "created")];
 		const { rerender } = render(draw([node(task("task-a", 1, born)), node(other)]));
@@ -226,6 +260,12 @@ describe("completion celebration on the traffic stage", () => {
 			expect(celebration.dataset.reduced).toBe("true");
 			expect(
 				celebration.querySelectorAll(".traffic-celebration-piece"),
+			).toHaveLength(0);
+			expect(
+				celebration.querySelectorAll(".traffic-celebration-firework"),
+			).toHaveLength(0);
+			expect(
+				celebration.querySelectorAll(".traffic-celebration-spark"),
 			).toHaveLength(0);
 			// Motion is never the only channel: the badge still says what happened.
 			expect(celebration.textContent).toContain("since work started");

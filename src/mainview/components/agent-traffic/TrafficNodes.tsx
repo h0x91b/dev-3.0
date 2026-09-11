@@ -37,6 +37,7 @@ import {
 } from "./task-history";
 import {
 	burstPieces,
+	fireworkBursts,
 	CAMERA_COOLDOWN_MS,
 	CELEBRATION_MS,
 	liveCompletions,
@@ -1101,8 +1102,14 @@ export default function TrafficNodes({
 }
 
 /**
- * The celebration itself: a bounded burst plus a badge naming what happened and,
- * when the movement log can prove one, how long it took.
+ * The celebration itself: two confetti waves and three small fireworks over the
+ * card, plus a badge naming what happened and, when the movement log can prove
+ * one, how long it took.
+ *
+ * Every particle is generated once per completion key and rendered as a fixed
+ * array of elements running CSS keyframes — no animation loop, no timer per
+ * piece. The whole overlay is removed by the single `CELEBRATION_MS` timer in
+ * the stage, so ten completions in a row still leave nothing running.
  *
  * Reduced motion drops every particle and keeps the badge. Motion is never the
  * only channel here — the badge carries the icon, the word and the number on its
@@ -1120,6 +1127,10 @@ function CompletionBurst({
 	const t = useT();
 	const pieces = useMemo(
 		() => (reduced ? [] : burstPieces(celebration.key)),
+		[celebration.key, reduced],
+	);
+	const fireworks = useMemo(
+		() => (reduced ? [] : fireworkBursts(celebration.key)),
 		[celebration.key, reduced],
 	);
 	const duration = celebration.duration;
@@ -1146,6 +1157,29 @@ function CompletionBurst({
 				height: placed.height,
 			}}
 		>
+			{fireworks.map((burst, index) => (
+				<i
+					key={`fw${index}`}
+					aria-hidden="true"
+					className="traffic-celebration-firework"
+					style={{
+						left: `${burst.x * 100}%`,
+						top: `${burst.y * 100}%`,
+					}}
+				>
+					{burst.sparks.map((spark, spark_index) => (
+						<i
+							key={spark_index}
+							className="traffic-celebration-spark"
+							style={{
+								["--spark-angle" as string]: `${spark.angle}deg`,
+								["--spark-distance" as string]: `${spark.distance}px`,
+								["--spark-delay" as string]: `${burst.delay}ms`,
+							}}
+						/>
+					))}
+				</i>
+			))}
 			{pieces.map((piece, index) => (
 				<i
 					key={index}

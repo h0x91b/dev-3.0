@@ -16,8 +16,18 @@ import type { Task, TaskMovement } from "../../../shared/types";
 import { positionSeed, type TrafficNode } from "./traffic-model";
 import type { TrafficTimelineEvent } from "./traffic-timeline";
 
-/** How long one celebration stays on the card, particles or not. */
-export const CELEBRATION_MS = 2400;
+/**
+ * How long one celebration stays on the card, particles or not.
+ *
+ * Three seconds is the whole show: two confetti waves, three small fireworks
+ * staggered behind them, then a short fade so the overlay leaves instead of
+ * being cut. Every generator below is sized against this number — the last
+ * particle must finish before the fade starts, or it disappears mid-flight.
+ */
+export const CELEBRATION_MS = 3000;
+
+/** When the overlay starts fading out, leaving {@link CELEBRATION_MS} clean. */
+export const CELEBRATION_FADE_MS = 320;
 
 /**
  * How fresh a live completion must be to be celebrated. A board reload hands us
@@ -186,26 +196,97 @@ export function replayCompletion(
 	);
 }
 
+/** One confetti flight, so a piece never outlives the fade. */
+export const PIECE_FLIGHT_MS = 1200;
+
+/** Gap between the two confetti waves. The second re-lights a dying burst. */
+export const PIECE_WAVE_GAP_MS = 760;
+
+/** One firework: the sparks all fly within this. */
+export const FIREWORK_FLIGHT_MS = 760;
+
+/**
+ * When each firework goes off, measured from the start of the celebration.
+ *
+ * The last one is timed to land right before the fade: with nothing after ~2.4s
+ * the final half-second read as the show being over early, badge and ring alone.
+ */
+export const FIREWORK_DELAYS_MS = [380, 1040, 1580, 1900] as const;
+
+function seededRandom(key: string): () => number {
+	let hash = positionSeed(key);
+	return () => {
+		hash = (hash * 1664525 + 1013904223) >>> 0;
+		return hash / 0x1_0000_0000;
+	};
+}
+
 /**
  * A stable spread for the burst, so the same completion draws the same shape on
  * every render. `Math.random()` here would reshuffle every piece on each React
  * pass and turn a bounded burst into a jitter.
+ *
+ * Two waves, not one long one: a single burst stretched over three seconds
+ * reads as slow motion, while a second wave landing while the first is still
+ * falling reads as a celebration that keeps going. Even indices fly in wave
+ * one, odd in wave two, so each wave is a full fan rather than half a fan.
  */
 export function burstPieces(
 	key: string,
-	count = 12,
+	count = 18,
 ): { angle: number; distance: number; spin: number; delay: number }[] {
-	let hash = positionSeed(key);
-	const next = () => {
-		hash = (hash * 1664525 + 1013904223) >>> 0;
-		return hash / 0x1_0000_0000;
-	};
-	return Array.from({ length: count }, (_, index) => ({
-		// Fan upwards and outwards, one piece per slice so nothing clumps.
-		angle: -160 + (index + next() * 0.8) * (140 / count),
-		distance: 42 + next() * 46,
-		spin: -220 + next() * 440,
-		// better-ui's stagger, scaled to the piece count.
-		delay: Math.round(index * (100 / count) * 10) / 10,
+	const next = seededRandom(key);
+	return Array.from({ length: count }, (_, index) => {
+		const wave = index % 2;
+		const slot = Math.floor(index / 2);
+		const perWave = Math.ceil(count / 2);
+		return {
+			// Fan upwards and outwards, one piece per slice so nothing clumps.
+			angle: -160 + (slot + next() * 0.8) * (140 / perWave),
+			distance: 46 + next() * 62,
+			spin: -260 + next() * 520,
+			// better-ui's stagger inside a wave, plus the wave's own offset.
+			delay:
+				wave * PIECE_WAVE_GAP_MS +
+				Math.round(slot * (110 / perWave) * 10) / 10,
+		};
+	});
+}
+
+export interface FireworkBurst {
+	/** Fraction of the card box, so a burst follows the card it belongs to. */
+	x: number;
+	y: number;
+	delay: number;
+	sparks: { angle: number; distance: number }[];
+}
+
+/**
+ * Small radial bursts around the card, staggered behind the confetti.
+ *
+ * Deliberately small and off to the sides: the badge owns the top centre and
+ * the card owns its own title, so a burst is placed in the margin around them
+ * and never over readable text. Seeded from the same key as the confetti, so a
+ * replayed completion draws the identical show.
+ */
+export function fireworkBursts(key: string, sparks = 9): FireworkBurst[] {
+	const next = seededRandom(`${key}:fireworks`);
+	// Left and right shoulders, then one high above — never the top centre,
+	// where the badge sits.
+	const spots = [
+		{ x: 0.1, y: 0.16 },
+		{ x: 0.9, y: 0.08 },
+		{ x: 0.46, y: -0.26 },
+		{ x: 0.82, y: -0.2 },
+	];
+	return spots.map((spot, index) => ({
+		x: spot.x + (next() - 0.5) * 0.08,
+		y: spot.y + (next() - 0.5) * 0.08,
+		delay: FIREWORK_DELAYS_MS[index],
+		sparks: Array.from({ length: sparks }, (_, spark) => ({
+			// A full ring, jittered so it reads as a burst and not as a gear.
+			angle: (spark + next() * 0.6) * (360 / sparks),
+			distance: 22 + next() * 26,
+		})),
 	}));
 }

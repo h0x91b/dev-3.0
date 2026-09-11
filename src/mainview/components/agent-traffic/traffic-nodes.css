@@ -1359,11 +1359,15 @@
 }
 
 /* ── Completion celebration ──────────────────────────────────────────────────
-   A bounded, run-once burst over the card that just reached `completed`, plus a
-   badge naming the verdict and — only when the movement log proves one — how
-   long it took. Keyframes rather than transitions because this is a staged
-   sequence that plays once (better-ui #4); the badge is a static cue that
-   survives `prefers-reduced-motion`, so motion is never the only channel. */
+   A bounded, run-once show over the card that just reached `completed`: two
+   confetti waves, three small fireworks staggered behind them, and a badge
+   naming the verdict and — only when the movement log proves one — how long it
+   took. The whole thing is three seconds, and the last particle lands before
+   the closing fade so nothing is cut mid-flight. Keyframes rather than
+   transitions because this is a staged sequence that plays once (better-ui #4);
+   the badge is a static cue that survives `prefers-reduced-motion`, so motion
+   is never the only channel. Timings live in `completion-celebration.ts`; the
+   numbers here mirror them. */
 .traffic-celebration {
 	position: absolute;
 	pointer-events: none;
@@ -1371,12 +1375,25 @@
 	display: flex;
 	align-items: flex-start;
 	justify-content: center;
+	/* The overlay leaves rather than being cut: 2680ms still, then 320ms out. */
+	animation: traffic-celebration-out 320ms cubic-bezier(0.2, 0, 0, 1) 2680ms both;
+}
+@keyframes traffic-celebration-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
 }
 .traffic-node-card.is-celebrating {
 	box-shadow:
 		0 0 0 2px rgb(var(--success) / 0.9),
 		0 10px 30px rgb(var(--success) / 0.22),
 		0 8px 22px rgb(0 0 0 / 0.13);
+	/* The ring is a colour change, not motion: it fades in and out with the
+	   overlay instead of snapping, and survives reduced motion untouched. */
+	transition: box-shadow 320ms cubic-bezier(0.2, 0, 0, 1);
 }
 .traffic-celebration-badge {
 	position: relative;
@@ -1426,7 +1443,7 @@
 	border-radius: 1.5px;
 	background: rgb(var(--success));
 	opacity: 0;
-	animation: traffic-celebration-piece 1100ms cubic-bezier(0.2, 0, 0, 1)
+	animation: traffic-celebration-piece 1200ms cubic-bezier(0.2, 0, 0, 1)
 		var(--piece-delay) both;
 }
 .traffic-celebration-piece:nth-child(3n) {
@@ -1444,8 +1461,8 @@
 	18% {
 		opacity: 1;
 	}
-	100% {
-		opacity: 0;
+	70% {
+		opacity: 1;
 		/* Translate first, then spin the piece: rotating before the offset would
 		   rotate the direction too and collapse the fan. */
 		transform: translate(-50%, 0)
@@ -1456,6 +1473,69 @@
 			rotate(var(--piece-spin))
 			scale(1);
 	}
+	100% {
+		opacity: 0;
+		/* The piece falls out of its arc instead of vanishing at the top of it —
+		   what makes a burst read as confetti rather than as a starburst. */
+		transform: translate(-50%, 0)
+			translate(
+				calc(cos(var(--piece-angle)) * var(--piece-distance)),
+				calc(sin(var(--piece-angle)) * var(--piece-distance) + 22px)
+			)
+			rotate(calc(var(--piece-spin) * 1.35))
+			scale(0.9);
+	}
+}
+/* Fireworks: a small ring of sparks going off beside the card, staggered behind
+   the confetti so the three seconds keep re-lighting instead of decaying once.
+   Positioned in the margin around the card — never over the title or the badge. */
+.traffic-celebration-firework {
+	position: absolute;
+	width: 0;
+	height: 0;
+}
+.traffic-celebration-spark {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 4px;
+	height: 4px;
+	margin: -2px 0 0 -2px;
+	border-radius: 50%;
+	background: rgb(var(--success));
+	opacity: 0;
+	box-shadow: 0 0 6px rgb(var(--success) / 0.7);
+	animation: traffic-celebration-spark 760ms cubic-bezier(0.2, 0, 0, 1)
+		var(--spark-delay) both;
+}
+.traffic-celebration-firework:nth-child(2) .traffic-celebration-spark {
+	background: rgb(var(--accent));
+	box-shadow: 0 0 6px rgb(var(--accent) / 0.7);
+}
+.traffic-celebration-firework:nth-child(3) .traffic-celebration-spark {
+	background: rgb(var(--agent));
+	box-shadow: 0 0 6px rgb(var(--agent) / 0.7);
+}
+.traffic-celebration-firework:nth-child(4) .traffic-celebration-spark {
+	background: rgb(var(--success));
+	box-shadow: 0 0 7px rgb(var(--success) / 0.8);
+}
+@keyframes traffic-celebration-spark {
+	0% {
+		opacity: 0;
+		transform: translate(0, 0) scale(0.4);
+	}
+	12% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+		transform: translate(
+				calc(cos(var(--spark-angle)) * var(--spark-distance)),
+				calc(sin(var(--spark-angle)) * var(--spark-distance) + 6px)
+			)
+			scale(0.5);
+	}
 }
 /* Static success treatment: the badge stays, every particle goes. The card ring
    is a colour change, not motion, so it stays too. */
@@ -1463,11 +1543,18 @@
 	animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
-	.traffic-celebration-piece {
+	.traffic-celebration-piece,
+	.traffic-celebration-firework {
 		display: none;
 	}
 	.traffic-celebration-badge {
 		animation: none;
+	}
+	/* The overlay still leaves on its own, by an opacity fade only — the one
+	   substitution reduced-motion asks for, rather than a hard cut. */
+	.traffic-celebration {
+		animation-duration: 200ms;
+		animation-delay: 2800ms;
 	}
 }
 
