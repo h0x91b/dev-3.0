@@ -79,7 +79,7 @@ export interface RecommendedModel {
  * Do NOT bump for a label, blurb, or price correction: nothing the user runs
  * changes, and the prompt is a promise that something did.
  */
-export const RECOMMENDED_REVISION = 3;
+export const RECOMMENDED_REVISION = 4;
 
 /**
  * The curated models, in the order the launcher lists them. Every tier below
@@ -106,19 +106,13 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
 	},
 	{
 		providerKind: "openrouter",
-		modelId: "z-ai/glm-5.2",
-		name: "glm-5.2",
-		label: "GLM 5.2",
+		// One model where there used to be two: cheap enough for the everyday
+		// slot, strong enough for the one you escalate to.
+		modelId: "deepseek/deepseek-v4.1-flash",
+		name: "ds-v41-flash",
+		label: "DeepSeek V4.1 Flash",
 		pricedAgainst: "opus",
-		blurbKey: "recommended.glm52",
-	},
-	{
-		providerKind: "openrouter",
-		modelId: "deepseek/deepseek-v4-flash-0731",
-		name: "ds-flash",
-		label: "DeepSeek V4 Flash",
-		pricedAgainst: "sonnet",
-		blurbKey: "recommended.dsFlash",
+		blurbKey: "recommended.dsV41Flash",
 	},
 ];
 
@@ -141,15 +135,15 @@ export const RECOMMENDED_TIERS: RecommendedTier[] = [
 		id: "practical",
 		label: SEEDED_GROUP_LABEL,
 		launchSlot: "opus",
-		claude: { fable: "qwen3.8-max", opus: "glm-5.2", sonnet: "ds-flash", haiku: "ds-flash" },
-		codex: { main: "glm-5.2", subagent: "ds-flash", review: "glm-5.2" },
+		claude: { fable: "qwen3.8-max", opus: "ds-v41-flash", sonnet: "ds-v41-flash", haiku: "ds-v41-flash" },
+		codex: { main: "ds-v41-flash", subagent: "ds-v41-flash", review: "ds-v41-flash" },
 	},
 	{
 		id: "smart",
 		label: SMART_GROUP_LABEL,
 		launchSlot: "fable",
-		claude: { fable: "kimi-k3", opus: "glm-5.2", sonnet: "glm-5.2", haiku: "ds-flash" },
-		codex: { main: "kimi-k3", subagent: "glm-5.2", review: "kimi-k3" },
+		claude: { fable: "kimi-k3", opus: "ds-v41-flash", sonnet: "ds-v41-flash", haiku: "ds-v41-flash" },
+		codex: { main: "kimi-k3", subagent: "ds-v41-flash", review: "kimi-k3" },
 	},
 ];
 
