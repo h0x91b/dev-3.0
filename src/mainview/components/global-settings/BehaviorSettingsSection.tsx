@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AUTO_APPROVE_UNITS, COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type AutoApproveUnit, type GlobalSettings, autoApproveMinutesFrom, maxAutoApproveAmount, splitAutoApproveMinutes } from "../../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type AutoApproveHms, type GlobalSettings, autoApproveMinutesFromHms, splitAutoApproveHms } from "../../../shared/types";
 import type { TFunction, TranslationKey } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
@@ -7,19 +7,19 @@ import SettingsToggle from "./SettingsToggle";
 
 const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
 
-const UNIT_LABEL_KEYS: Record<AutoApproveUnit, TranslationKey> = {
-	seconds: "settings.autoApproveUnitSeconds",
-	minutes: "settings.autoApproveUnitMinutes",
-	hours: "settings.autoApproveUnitHours",
-};
+const HMS_FIELDS: { field: keyof AutoApproveHms; labelKey: TranslationKey; max: number }[] = [
+	{ field: "hours", labelKey: "settings.autoApproveHours", max: 24 },
+	{ field: "minutes", labelKey: "settings.autoApproveMinutes", max: 59 },
+	{ field: "seconds", labelKey: "settings.autoApproveSeconds", max: 59 },
+];
 
 /**
- * Amount + unit picker for the launch dialog's auto-approve delay.
+ * Hours/minutes/seconds picker for the launch dialog's auto-approve delay.
  *
- * "Never" is its own switch rather than a zero in the amount list — `0 hours`
- * is not a sentence, and the stored `0` has to keep meaning "the user said
- * never", not "the amount happens to be empty". Switching it off remembers the
- * amount for the session so turning it back on does not lose a chosen 15 s.
+ * "Never" is its own switch rather than three zeros — the stored `0` has to keep
+ * meaning "the user said never", not "the fields happen to be empty". Switching
+ * it off remembers the delay for the session so turning it back on does not lose
+ * a chosen 15 s.
  */
 function AutoApproveDelayEntry({
 	t,
@@ -34,15 +34,15 @@ function AutoApproveDelayEntry({
 	const [remembered, setRemembered] = useState(
 		() => (enabled ? minutes : DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES),
 	);
-	const shown = splitAutoApproveMinutes(enabled ? minutes : remembered);
-	// Free text while typing: an intermediate "" or "1" must not be committed as
-	// a clamped value under the cursor. Committed on blur and on unit change.
-	const [draft, setDraft] = useState<string | null>(null);
+	const shown = splitAutoApproveHms(enabled ? minutes : remembered);
+	// Free text per field while typing: the stored value is clamped, so echoing it
+	// straight back would move digits under the cursor. Dropped on blur, when the
+	// field snaps to what was actually stored.
+	const [draft, setDraft] = useState<Partial<Record<keyof AutoApproveHms, string>>>({});
 
-	const commit = (amount: number, unit: AutoApproveUnit) => {
-		const next = autoApproveMinutesFrom(amount, unit);
+	const commit = (field: keyof AutoApproveHms, raw: string) => {
+		const next = autoApproveMinutesFromHms({ ...shown, [field]: Number(raw) });
 		setRemembered(next);
-		setDraft(null);
 		if (enabled) onChange(next);
 	};
 
@@ -61,33 +61,28 @@ function AutoApproveDelayEntry({
 				offLabel={t("settings.agentLaunchAutoApproveOff")}
 				onToggle={() => onChange(enabled ? 0 : remembered)}
 			/>
-			<div className="flex flex-wrap items-center gap-2 mt-3">
-				<input
-					type="number"
-					inputMode="numeric"
-					min={1}
-					max={maxAutoApproveAmount(shown.unit)}
-					step={1}
-					disabled={!enabled}
-					value={draft ?? String(shown.amount)}
-					aria-label={t("settings.agentLaunchAutoApproveAmount")}
-					onChange={(e) => setDraft(e.target.value)}
-					onBlur={() => commit(Number(draft ?? shown.amount), shown.unit)}
-					className="w-24 px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none disabled:opacity-50"
-				/>
-				<select
-					value={shown.unit}
-					disabled={!enabled}
-					aria-label={t("settings.agentLaunchAutoApproveUnit")}
-					onChange={(e) => commit(Number(draft ?? shown.amount), e.target.value as AutoApproveUnit)}
-					className="flex-1 min-w-[9rem] px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none disabled:opacity-50"
-				>
-					{AUTO_APPROVE_UNITS.map((unit) => (
-						<option key={unit} value={unit}>
-							{t(UNIT_LABEL_KEYS[unit])}
-						</option>
-					))}
-				</select>
+			<div className="flex items-end gap-3 mt-3">
+				{HMS_FIELDS.map(({ field, labelKey, max }) => (
+					<label key={field} className="flex flex-col gap-1.5">
+						<span className="text-fg-3 text-xs">{t(labelKey)}</span>
+						<input
+							type="number"
+							inputMode="numeric"
+							min={0}
+							max={max}
+							step={1}
+							disabled={!enabled}
+							value={draft[field] ?? String(shown[field])}
+							aria-label={t(labelKey)}
+							onChange={(e) => {
+								setDraft((d) => ({ ...d, [field]: e.target.value }));
+								commit(field, e.target.value);
+							}}
+							onBlur={() => setDraft((d) => ({ ...d, [field]: undefined }))}
+							className="w-20 px-3 py-3 bg-raised border border-edge rounded-xl text-fg text-sm text-center tabular-nums outline-none transition-colors duration-150 focus:border-edge-active disabled:opacity-50"
+						/>
+					</label>
+				))}
 			</div>
 		</div>
 	);
