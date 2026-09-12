@@ -46,8 +46,10 @@ import { buildTaskLifecycleEnv } from "./rpc-handlers/shared-pure";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "./task-terminal-backend-switch";
 import { DEV3_HOME } from "./paths";
 import { cliTransportFor, startCliListener } from "./cli-listener";
+import { CodexQuestionState } from "./codex-question-state";
 
 const log = createLogger("cli-socket");
+const codexQuestions = new CodexQuestionState();
 
 const MIN_PREFIX_LENGTH = ID_PREFIX_MIN_LENGTH;
 
@@ -1649,7 +1651,7 @@ const handlers: Record<string, Handler> = {
 		return updated;
 	},
 
-	"task.agentHook": async (params) => {
+	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const event = params.event as CodexStatusHookEvent;
 		if (!CODEX_STATUS_HOOK_EVENTS.includes(event)) {
@@ -1659,12 +1661,23 @@ const handlers: Record<string, Handler> = {
 		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
 		const rememberedResumeStatus = getCodexApprovalResumeStatus(resumeKey);
 
-		const target = getCodexHookTargetStatus(
+		const questionState = codexQuestions.apply(
+			task.id,
+			sessionId ?? "unknown",
 			event,
-			task.status,
-			project.autoReviewEnabled === true,
-			rememberedResumeStatus,
+			task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
+			typeof params.toolName === "string" ? params.toolName : undefined,
+			typeof params.toolUseId === "string" ? params.toolUseId : undefined,
+			Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,
+			typeof params.answeredQuestionId === "string" ? params.answeredQuestionId : undefined,
 		);
+		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
+			? questionState.resumeStatus : task.status;
+		let target = getCodexHookTargetStatus(event, currentStatus, project.autoReviewEnabled === true, rememberedResumeStatus);
+		if (questionState.pending) target = "user-questions";
+		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
+			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
+		}
 		const resumeStatus = event === "PermissionRequest"
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
@@ -1714,7 +1727,7 @@ const handlers: Record<string, Handler> = {
 		}
 
 		return updated;
-	},
+	}),
 
 	/**
 	 * A harness reported that a prompt was submitted in a task's pane. Whether

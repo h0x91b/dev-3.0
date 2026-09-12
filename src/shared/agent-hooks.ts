@@ -66,6 +66,8 @@ export const CODEX_STATUS_HOOK_EVENTS = [
 	"PermissionRequest",
 	"PostToolUse",
 	"Stop",
+	"Interrupt",
+	"SessionEnd",
 ] as const;
 export type CodexStatusHookEvent = typeof CODEX_STATUS_HOOK_EVENTS[number];
 
@@ -90,6 +92,9 @@ export function getCodexHookTargetStatus(
 			return currentStatus === "review-by-ai" ? null : "in-progress";
 		case "PermissionRequest":
 			return "user-questions";
+		case "Interrupt":
+		case "SessionEnd":
+			return null;
 		case "Stop":
 			if (currentStatus === "in-progress") {
 				return autoReviewEnabled ? "review-by-ai" : "review-by-user";
@@ -271,7 +276,7 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
 		command: codexHookCommand(dialect),
 		timeout: 5,
 	};
-	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*";
+	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*|^(functions\\.)?request_user_input(_async)?$";
 
 	return {
 		SessionStart: [
@@ -302,6 +307,8 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
 			},
 		],
 		Stop: [{ hooks: [handler] }],
+		Interrupt: [{ hooks: [handler] }],
+		SessionEnd: [{ hooks: [handler] }],
 	};
 }
 

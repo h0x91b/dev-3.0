@@ -486,6 +486,61 @@ describe("task.agentHook", () => {
 		});
 	}
 
+	it.each([
+		["request_user_input", "in-progress"], ["request_user_input_async", "in-progress"],
+		["request_user_input", "review-by-ai"], ["request_user_input_async", "review-by-ai"],
+	] as const)(
+		"keeps %s questions visible from %s across unrelated tools and Stop", async (toolName, initialStatus) => {
+			const project = makeProject({ autoReviewEnabled: true });
+			let storedTask = makeTask({ status: initialStatus });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockImplementation(async () => [storedTask]);
+			vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+				const { updates, result } = await mutator(storedTask);
+				storedTask = { ...storedTask, ...updates };
+				return { task: storedTask, result };
+			});
+			const hook = async (event: string, name?: string) => {
+				const response = await handleRequest(makeRequest("task.agentHook", {
+					taskId: storedTask.id, projectId: project.id, sessionId: `questions-${toolName}-${initialStatus}`,
+					event, toolName: name, toolUseId: "question-1",
+				}));
+				expect(response.ok).toBe(true);
+				storedTask = response.data as Task;
+			};
+			await hook(toolName === "request_user_input" ? "PreToolUse" : "PostToolUse", toolName);
+			expect(storedTask.status).toBe("user-questions");
+			await hook("PreToolUse", "Bash");
+			await hook("PostToolUse", "Bash");
+			expect(storedTask.status).toBe("user-questions");
+			if (toolName === "request_user_input_async") {
+				await hook("Stop");
+				expect(storedTask.status).toBe("user-questions");
+				await hook("UserPromptSubmit");
+			} else {
+				await hook("PostToolUse", toolName);
+			}
+			expect(storedTask.status).toBe(initialStatus);
+			await hook("Stop");
+			expect(storedTask.status).toBe(initialStatus === "review-by-ai" ? "review-by-user" : "review-by-ai");
+		},
+	);
+
+	it.each(["Interrupt", "SessionEnd"])("releases a blocking question on %s", async event => {
+		const project = makeProject();
+		let task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+		const params = { taskId: task.id, projectId: project.id, sessionId: `cancel-${event}` };
+		const question = await handleRequest(makeRequest("task.agentHook", {
+			...params, event: "PreToolUse", toolName: "request_user_input", toolUseId: "q",
+		}));
+		task = question.data as Task;
+		expect(task.status).toBe("user-questions");
+		mockAtomicHookUpdate(project, task);
+		const cancelled = await handleRequest(makeRequest("task.agentHook", { ...params, event }));
+		expect((cancelled.data as Task).status).toBe("review-by-user");
+	});
+
 	it("moves a resumed turn to in-progress", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "review-by-user" });

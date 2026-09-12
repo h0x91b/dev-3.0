@@ -67,7 +67,7 @@ posixOnly("Codex hook command guard (executed through a real shell)", () => {
 		const commands = Object.values(buildCodexHooks({ dialect: dialect() }))
 			.flat()
 			.flatMap((group) => group.hooks.map((hook) => hook.command));
-		expect(commands).toHaveLength(6);
+		expect(commands).toHaveLength(8);
 		for (const command of commands) {
 			expect(command).toContain('[ -z "$DEV3_TASK_ID" ]');
 		}
@@ -81,7 +81,7 @@ posixOnly("Codex hook command guard (executed through a real shell)", () => {
 			.split("\n")
 			.filter((line) => line.startsWith("command = "))
 			.map((line) => JSON.parse(line.slice("command = ".length)) as string);
-		expect(encoded).toHaveLength(6);
+		expect(encoded).toHaveLength(8);
 		for (const command of encoded) {
 			const result = spawnSync("/bin/sh", ["-c", command], {
 				env: { PATH: process.env.PATH ?? "" },

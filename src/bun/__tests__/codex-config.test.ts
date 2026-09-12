@@ -853,8 +853,8 @@ describe.each([
 	it("declares each status hook exactly once, however often it runs", () => {
 		let config = ensure(null);
 		for (let i = 0; i < 3; i++) config = ensure(config);
-		expect(dev3Handlers(config)).toBe(6);
-		expect(groups(config)).toBe(6);
+		expect(dev3Handlers(config)).toBe(8);
+		expect(groups(config)).toBe(8);
 	});
 
 	it("collapses a duplicated block whose opening marker was lost", () => {
@@ -862,11 +862,11 @@ describe.each([
 		// no longer starts with its marker, so the marker-based replace misses it and
 		// every launch appends one more copy.
 		const orphaned = ensure(null).replace("# >>> dev3 status hooks (generated — do not edit) >>>\n", "");
-		expect(dev3Handlers(orphaned)).toBe(6);
+		expect(dev3Handlers(orphaned)).toBe(8);
 
 		const healed = ensure(orphaned);
-		expect(dev3Handlers(healed)).toBe(6);
-		expect(groups(healed)).toBe(6);
+		expect(dev3Handlers(healed)).toBe(8);
+		expect(groups(healed)).toBe(8);
 		expect(ensure(healed)).toBe(healed);
 	});
 
@@ -892,9 +892,9 @@ describe.each([
 		expect(config).toContain("# my own notification hook — do not touch");
 		expect(config).toContain('trusted_hash = "sha256:abc"');
 		expect(config).toContain('model = "gpt-5"');
-		expect(dev3Handlers(config)).toBe(6);
+		expect(dev3Handlers(config)).toBe(8);
 		// Ours plus the user's one Stop group.
-		expect(groups(config)).toBe(7);
+		expect(groups(config)).toBe(9);
 	});
 
 	it("keeps a mixed group the user glued together, rather than guessing", () => {
@@ -916,12 +916,12 @@ describe.each([
 		const config = ensure(mixed);
 		expect(config).toContain('command = "~/bin/notify-me.sh"');
 		// The user's group survives untouched, so its dev3 handler is still counted.
-		expect(dev3Handlers(config)).toBe(7);
+		expect(dev3Handlers(config)).toBe(9);
 	});
 
 	it("writes the command this platform's hook runner can actually execute", () => {
 		const config = ensure(null);
-		expect(count(config, ourCommandLine)).toBe(6);
+		expect(count(config, ourCommandLine)).toBe(8);
 
 		if (dialect.posixShell) {
 			// The env guard is what keeps a foreign Codex session free (#1527).
@@ -960,9 +960,9 @@ describe.each([
 		const config = ensure(ensure(own));
 		expect(config).toContain('command = "~/.dev3.0/bin/dev3 task move --status in-progress"');
 		expect(config).toContain('command = "~/.dev3.0/bin/dev3 note add mine"');
-		expect(dev3Handlers(config)).toBe(6);
+		expect(dev3Handlers(config)).toBe(8);
 		// Ours plus the user's two groups.
-		expect(groups(config)).toBe(8);
+		expect(groups(config)).toBe(10);
 	});
 
 	it("still collects an orphan left by an older build, or by the other platform", () => {
@@ -973,11 +973,11 @@ describe.each([
 			// would have written it — then heal it with THIS dialect.
 			const foreign = orphaned.replaceAll(ourCommandLine, commandLine(spelling));
 			const healed = ensure(foreign);
-			expect(dev3Handlers(healed)).toBe(6);
-			expect(groups(healed)).toBe(6);
+			expect(dev3Handlers(healed)).toBe(8);
+			expect(groups(healed)).toBe(8);
 			// Nothing but the freshly written block is left.
-			expect((healed.match(/^command = /gm) ?? []).length).toBe(6);
-			expect(count(healed, ourCommandLine)).toBe(6);
+			expect((healed.match(/^command = /gm) ?? []).length).toBe(8);
+			expect(count(healed, ourCommandLine)).toBe(8);
 		}
 	});
 });

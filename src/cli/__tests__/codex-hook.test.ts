@@ -66,6 +66,40 @@ describe("handleCodexHook", () => {
 		expect(stderr).toBe("");
 	});
 
+	it("forwards question identity without its text or answers", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		await handleCodexHook(JSON.stringify({
+			hook_event_name: "PreToolUse", tool_name: "request_user_input", tool_use_id: "q-1",
+			tool_input: { questions: [{ question: "private question" }] },
+			tool_response: "private answer",
+		}), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[0]![2]).toEqual({
+			taskId: "task-1", projectId: "project-1", event: "PreToolUse",
+			toolName: "request_user_input", toolUseId: "q-1",
+		});
+		expect(stdout).toBe("{}");
+	});
+
+	it("correlates async answers with bounded Unicode titles without forwarding question text", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		const title = "é".repeat(256) + "truncated";
+		await handleCodexHook(JSON.stringify({
+			hook_event_name: "PostToolUse", tool_name: "request_user_input_async", tool_use_id: "batch-1",
+			tool_input: { questions: [{ title }, { title: "Second?\nChoose" }] },
+		}), SOCKET, CONTEXT);
+		const ids = mockSend.mock.calls[0]![2]!.questionIds as string[];
+		expect(ids).toHaveLength(2);
+		expect(JSON.stringify(mockSend.mock.calls[0]![2])).not.toContain("truncated");
+		await handleCodexHook(JSON.stringify({
+			hook_event_name: "UserPromptSubmit", prompt: `> ${"é".repeat(256)}\n\nMy answer`,
+		}), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[1]![2]!.answeredQuestionId).toBe(ids[0]);
+		await handleCodexHook(JSON.stringify({
+			hook_event_name: "UserPromptSubmit", prompt: "> Second? Choose\n\nAnother answer",
+		}), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[2]![2]!.answeredQuestionId).toBe(ids[1]);
+	});
+
 	it("forwards the pane id from $TMUX_PANE for per-pane Codex session capture", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		process.env.TMUX_PANE = "%42";
