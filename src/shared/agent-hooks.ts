@@ -307,8 +307,8 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
 			},
 		],
 		Stop: [{ hooks: [handler] }],
-		Interrupt: [{ hooks: [handler] }],
-		SessionEnd: [{ hooks: [handler] }],
+		Interrupt: [{ hooks: [{ ...handler, timeout: 3 }] }],
+		SessionEnd: [{ hooks: [{ ...handler, timeout: 3 }] }],
 	};
 }
 

@@ -1,0 +1,24 @@
+[
+  {
+    "event": "SessionStart"
+  },
+  {
+    "event": "UserPromptSubmit"
+  },
+  {
+    "event": "PreToolUse",
+    "toolName": "request_user_input_async",
+    "toolUseId": "question-1"
+  },
+  {
+    "event": "PostToolUse",
+    "toolName": "request_user_input_async",
+    "toolUseId": "question-1",
+    "questionIds": [
+      "427b6c768bc137a38bd04817d886c38e7f289e5a3fa76fb9c7dd49cce5f155e1"
+    ]
+  },
+  {
+    "event": "Stop"
+  }
+]

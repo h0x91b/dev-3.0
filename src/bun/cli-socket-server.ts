@@ -1726,6 +1726,24 @@ const handlers: Record<string, Handler> = {
 			});
 		}
 
+		const hookTrace = {
+			taskId: task.id,
+			sessionId,
+			event,
+			toolName: typeof params.toolName === "string" ? params.toolName : null,
+			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : null,
+			pendingQuestions: questionState.pending,
+			previousStatus: task.status,
+			targetStatus: target,
+			actualStatus: updated.status,
+			moveAccepted,
+		};
+		if (questionState.pending || questionState.resumeStatus || event === "SessionStart" || event === "Stop") {
+			log.info("Codex lifecycle hook", hookTrace);
+		} else {
+			log.debug("Codex lifecycle hook", hookTrace);
+		}
+
 		return updated;
 	}),
 

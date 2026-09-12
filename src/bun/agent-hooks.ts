@@ -86,6 +86,6 @@ export async function setupAgentHooks(
 		log.warn("Codex cannot bypass hook trust; status hooks will not fire", { worktreePath });
 		return null;
 	}
-	log.info("Codex status hooks active (declared in config.toml)", { worktreePath });
+	log.info("Codex hook files prepared; a fresh Codex process is required to load changes", { worktreePath });
 	return CODEX_HOOK_TRUST_BYPASS_FLAG;
 }

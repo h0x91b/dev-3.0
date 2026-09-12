@@ -19,3 +19,9 @@ Codex exposes no dedicated hook for dismissing an asynchronous question card; th
 ## Alternatives considered
 
 Mapping every question PreToolUse to PermissionRequest would incorrectly clear async questions at PostToolUse and ordinary activity. Parsing terminal text or scanning private transcripts would be brittle and unnecessary for the supported hooks. Adding a new Codex hook upstream could make dismissal exact, but cannot fix already installed clients.
+
+## Runtime verification
+
+The first manual retry reused Codex PID 4696, started at 13:39:38, although dev3 rewrote hook files at 14:27:05. Restarting the desktop app preserved that terminal and its old hook snapshot; before the primary app exited, CLI discovery also still selected the older primary backend. Updating the global CLI link alone cannot refresh a running Codex process.
+
+A fresh installed Codex 0.154.0 process was then driven by a loopback-only scripted Responses endpoint, using an isolated CODEX_HOME and a fake CLI socket. With the local built CLI pinned explicitly, it delivered SessionStart, UserPromptSubmit, PreToolUse(request_user_input_async), PostToolUse with question fingerprints, Stop, and SessionEnd. Codex caps Interrupt/SessionEnd hooks at three seconds, so those generated timeouts now respect the cap; local lifecycle logs record event, pending state, and before/target/actual status without question text.

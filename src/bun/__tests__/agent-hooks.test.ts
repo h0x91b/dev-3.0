@@ -365,10 +365,10 @@ describe("buildCodexHooks", () => {
 	it("every event calls one stable worktree-local handler", () => {
 		const hooks = buildCodexHooks();
 
-		for (const groups of Object.values(hooks)) {
+		for (const [event, groups] of Object.entries(hooks)) {
 			for (const group of groups) {
 				expect(group.hooks).toEqual([
-					{ type: "command", command: CODEX_DEV3_HOOK_COMMAND, timeout: 5 },
+					{ type: "command", command: CODEX_DEV3_HOOK_COMMAND, timeout: event === "Interrupt" || event === "SessionEnd" ? 3 : 5 },
 				]);
 			}
 		}

@@ -69,7 +69,9 @@ describe("codex config with Windows paths", () => {
 		expect(out).toContain('[projects."/Users/x/.dev3.0/worktrees"]');
 		expect(out).toContain('"/Users/x/.codex/skills" = "read"');
 		expect(out).toContain('"/Users/x/.dev3.0" = "write"');
-		expect(out).not.toContain("\\\\");
+		const parsed = load(out) as Record<string, any>;
+		expect(Object.keys(parsed.projects)).toEqual(["/Users/x/.dev3.0/worktrees"]);
+		expect(Object.keys(parsed.permissions.dev3.filesystem).every((path) => !path.includes("\\"))).toBe(true);
 	});
 });
 

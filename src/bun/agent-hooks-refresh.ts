@@ -12,8 +12,9 @@
  * is skipped entirely when the file already carries our hooks, so the steady
  * state costs one read.
  *
- * Claude only. Codex reads its dev3 hooks from a `-c hooks=...` override fixed at
- * launch, so rewriting `.codex/hooks.json` mid-session would change nothing.
+ * Claude only. Codex loads dev3 hooks from its config.toml snapshot at launch;
+ * rewriting the files does not refresh a running session. Restart Codex itself,
+ * not only the dev3 app that preserves its terminal.
  */
 
 import type { AgentFamily, Task } from "../shared/types";
