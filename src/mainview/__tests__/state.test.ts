@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
 import type { Route } from "../state";
 import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
 import type { AppState, AppAction } from "../state";
@@ -1385,5 +1385,35 @@ describe("reducer — the space a task was opened through", () => {
 			historyIndex: 2,
 		};
 		expect(reducer(state, { type: "goBack" }).route).toEqual(taskRoute);
+	});
+});
+
+// The navigation boundary Agent traffic's "Open task" goes through: an archived
+// task has no terminal, so it must not land on the Active Tasks pane.
+describe("taskOpenRoute", () => {
+	it("sends an archived task to its project board with the detail request", () => {
+		expect(taskOpenRoute("t1", "p1", "split", true)).toEqual({
+			screen: "project",
+			projectId: "p1",
+			taskDetailId: "t1",
+		});
+		expect(taskOpenRoute("t1", "p1", "fullscreen", true)).toEqual({
+			screen: "project",
+			projectId: "p1",
+			taskDetailId: "t1",
+		});
+	});
+
+	it("keeps an active task on its workspace in either open mode", () => {
+		expect(taskOpenRoute("t1", "p1", "split", false)).toEqual({
+			screen: "project",
+			projectId: "p1",
+			activeTaskId: "t1",
+		});
+		expect(taskOpenRoute("t1", "p1", "fullscreen", false)).toEqual({
+			screen: "task",
+			projectId: "p1",
+			taskId: "t1",
+		});
 	});
 });

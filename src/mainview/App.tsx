@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -804,16 +804,14 @@ function App() {
 
 	// Shared click-to-open path for every task notification surface. Exiting the
 	// ephemeral terminal view happens before applying the user's normal open mode.
+	// `archived` means the caller already knows the task is not active (completed,
+	// cancelled, todo): those have no terminal, so they land on their project's
+	// Kanban with the board's detail modal open — the same surface the card opens.
 	const openTaskFromNotification = useCallback(
-		(taskId: string, projectId: string) => {
+		(taskId: string, projectId: string, opts?: { archived?: boolean }) => {
 			setTerminalImmersiveActive(false);
 			if (!taskId || !projectId) return;
-			const openMode = getTaskOpenMode();
-			if (openMode === "fullscreen") {
-				navigate({ screen: "task", projectId, taskId });
-			} else {
-				navigate({ screen: "project", projectId, activeTaskId: taskId });
-			}
+			navigate(taskOpenRoute(taskId, projectId, getTaskOpenMode(), opts?.archived === true));
 		},
 		[navigate, setTerminalImmersiveActive],
 	);
@@ -3627,6 +3625,7 @@ function App() {
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
 						openUnresolvedComments={route.openUnresolvedComments}
+						taskDetailId={route.taskDetailId}
 					/>
 				);
 			case "project-terminal": {

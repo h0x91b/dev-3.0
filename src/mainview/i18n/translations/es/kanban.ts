@@ -90,6 +90,7 @@ const kanban = {
 	"task.draftBadge": "Borrador",
 	"task.draftHint": "Borrador sin terminar: haz clic para seguir escribiendo. Todavía nada puede iniciarlo.",
 	"task.hibernatedBadge": "Hibernada",
+	"task.detailGone": "Esa tarea ya no está en este tablero.",
 	"task.hibernatedHint": "Aparcada: el agente, la terminal y el servidor de desarrollo están detenidos. El worktree y tus cambios sin confirmar siguen intactos. Abre la tarea para despertarla.",
 	"task.hiddenFromSidebar": "Oculta en la barra lateral",
 	"task.hideFromSidebar": "Ocultar de la barra lateral",

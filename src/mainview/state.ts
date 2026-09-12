@@ -39,7 +39,13 @@ export type OpenSettingsSectionDetail =
  */
 export type Route =
 	| { screen: "dashboard" }
-	| { screen: "project"; projectId: string; spaceId?: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
+	/**
+	 * `taskDetailId` opens the board's own task-detail modal on arrival — the
+	 * surface a completed/cancelled/todo card opens when clicked. It rides the
+	 * board route (no `activeTaskId`) because such a task has no terminal to
+	 * select, so the Active Tasks pane would land on nothing.
+	 */
+	| { screen: "project"; projectId: string; spaceId?: string; activeTaskId?: string; taskView?: boolean; taskDetailId?: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "task"; projectId: string; spaceId?: string; taskId: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
@@ -179,6 +185,25 @@ export function taskClosedHomeRoute(projectId: string, openMode: TaskOpenMode): 
 	return openMode === "fullscreen"
 		? { screen: "project", projectId }
 		: { screen: "project", projectId, taskView: true };
+}
+
+/**
+ * Where a "open this task" click lands. An ACTIVE task goes to its workspace in
+ * the user's open mode. An ARCHIVED one (completed, cancelled, todo — anything
+ * with no terminal) goes to its project's Kanban with the board's detail modal
+ * open: the Active Tasks pane has nothing to show for it, which is what made
+ * such clicks look like they did nothing.
+ */
+export function taskOpenRoute(
+	taskId: string,
+	projectId: string,
+	openMode: TaskOpenMode,
+	archived: boolean,
+): Route {
+	if (archived) return { screen: "project", projectId, taskDetailId: taskId };
+	return openMode === "fullscreen"
+		? { screen: "task", projectId, taskId }
+		: { screen: "project", projectId, activeTaskId: taskId };
 }
 
 /**

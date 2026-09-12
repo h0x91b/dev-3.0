@@ -30,8 +30,8 @@ vi.mock("../../rpc", () => ({
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
 vi.mock("../KanbanBoard", () => ({
-	default: ({ onOpenUnresolvedComments }: { onOpenUnresolvedComments?: (task: Task) => void }) => (
-		<div data-testid="kanban">
+	default: ({ onOpenUnresolvedComments, detailTaskId }: { onOpenUnresolvedComments?: (task: Task) => void; detailTaskId?: string }) => (
+		<div data-testid="kanban" data-detail-task-id={detailTaskId ?? ""}>
 			<button type="button" data-testid="open-unresolved-from-board" onClick={() => onOpenUnresolvedComments?.({ id: "t1" } as Task)} />
 		</div>
 	),
@@ -419,5 +419,45 @@ describe("ProjectView — space as the subject", () => {
 		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalled());
 		expect(navigate).not.toHaveBeenCalledWith({ screen: "dashboard" });
 		expect(toast.info).not.toHaveBeenCalled();
+	});
+});
+
+// Agent traffic's "Open task" on a finished task lands here: the board route
+// carries the task id, and the board opens its detail modal for it.
+describe("ProjectView task-detail request", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.removeItem("dev3-task-open-mode");
+	});
+
+	const doneTask = { id: "t-done", projectId: "p1", status: "completed" } as Task;
+
+	it("hands the requested task id to the board", async () => {
+		vi.mocked(api.request.getTasks).mockResolvedValue([doneTask]);
+		const navigate = vi.fn();
+		renderView({
+			tasks: [doneTask],
+			navigate,
+			taskDetailId: "t-done",
+			route: { screen: "project", projectId: "p1", taskDetailId: "t-done" },
+		});
+		await waitFor(() =>
+			expect(screen.getByTestId("kanban").getAttribute("data-detail-task-id")).toBe("t-done"),
+		);
+		expect(toast.info).not.toHaveBeenCalled();
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("says so and drops the request when the task is gone", async () => {
+		vi.mocked(api.request.getTasks).mockResolvedValue([]);
+		const navigate = vi.fn();
+		renderView({
+			tasks: [],
+			navigate,
+			taskDetailId: "t-vanished",
+			route: { screen: "project", projectId: "p1", taskDetailId: "t-vanished" },
+		});
+		await waitFor(() => expect(toast.info).toHaveBeenCalled());
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
 	});
 });

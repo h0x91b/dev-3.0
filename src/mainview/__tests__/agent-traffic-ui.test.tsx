@@ -454,7 +454,7 @@ describe("AgentTrafficScreen live orbit", () => {
 		await userEvent.click(
 			await screen.findByRole("button", { name: "Open task" }),
 		);
-		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", { archived: false });
 	});
 
 	it("offers task inspection and navigation without WebGL", async () => {
@@ -471,7 +471,21 @@ describe("AgentTrafficScreen live orbit", () => {
 		expect(inspector.getByText("Current task overview")).toBeTruthy();
 		expect(onOpenTask).not.toHaveBeenCalled();
 		await userEvent.click(inspector.getByRole("button", { name: "Open task" }));
-		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1");
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", { archived: false });
+	});
+
+	// A completed task has no terminal, so the Active Tasks pane it used to open
+	// was always empty. The flag is what sends it to its board's detail modal.
+	it("marks a completed task's navigation as archived", async () => {
+		taskExtras.value = { "task-b": { status: "completed" } };
+		setPage([row()]);
+		const onOpenTask = vi.fn();
+		renderLog(onOpenTask);
+		await userEvent.click((await messageRows(1))[0]);
+		await userEvent.click(
+			await screen.findByRole("button", { name: "Open task" }),
+		);
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", { archived: true });
 	});
 
 	it("adds pushed durable traffic without reopening or losing the search", async () => {

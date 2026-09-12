@@ -121,6 +121,8 @@ async function renderBoardWith(props: Partial<React.ComponentProps<typeof Kanban
 					taskPorts={props.taskPorts ?? new Map()}
 					taskDevServers={props.taskDevServers ?? new Map()}
 					onOpenUnresolvedComments={props.onOpenUnresolvedComments}
+					detailTaskId={props.detailTaskId}
+					onCloseTaskDetail={props.onCloseTaskDetail}
 				/>
 			</I18nProvider>,
 		);
@@ -933,5 +935,65 @@ describe("KanbanBoard — space as the subject", () => {
 	it("no card carries a project mark on a project's own board", async () => {
 		await renderBoardWith({ tasks: [apiTask] });
 		expect(screen.queryByTestId("task-card-project-mark")).toBeNull();
+	});
+});
+
+// Agent traffic (and any other off-board caller) opens a finished task by id.
+// The card itself may not be on screen at all — a column renders only its first
+// 15 cards until expanded — so the modal must come from the task list, not the
+// rendered card.
+describe("detail modal requested by id", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	const buried = Array.from({ length: 20 }, (_, i) =>
+		makeTask({
+			id: `done-${i}`,
+			seq: 100 + i,
+			status: "completed",
+			title: `Finished ${i}`,
+			description: `Finished ${i}`,
+		}),
+	);
+
+	it("opens a completed task that no rendered card holds", async () => {
+		await renderBoardWith({ tasks: buried, detailTaskId: "done-19" });
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText("Finished 19")).toBeTruthy();
+		// Proof the card is genuinely off-screen: the column stops at 15.
+		expect(screen.getAllByText("Finished 19")).toHaveLength(1);
+	});
+
+	it("stays closed without a request and reports the close back to the route", async () => {
+		const onCloseTaskDetail = vi.fn();
+		const { rerender } = await renderBoardWith({ tasks: buried });
+		expect(screen.queryByRole("dialog")).toBeNull();
+		await act(async () => {
+			rerender(
+				<I18nProvider>
+					<KanbanBoard
+						project={project}
+						tasks={buried}
+						dispatch={vi.fn()}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+						taskDevServers={new Map()}
+						detailTaskId="done-3"
+						onCloseTaskDetail={onCloseTaskDetail}
+					/>
+				</I18nProvider>,
+			);
+		});
+		const dialog = await screen.findByRole("dialog");
+		await userEvent.click(within(dialog).getByRole("button", { name: /close/i }));
+		expect(onCloseTaskDetail).toHaveBeenCalled();
+	});
+
+	it("ignores an id the board does not hold", async () => {
+		await renderBoardWith({ tasks: buried, detailTaskId: "gone-forever" });
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 });
