@@ -41,8 +41,8 @@ let unlockHandlersInstalled = false;
 //  - UI-initiated moves (drag, card menu, info panel, terminal toolbar) play it
 //    locally and instantly via `playTaskCompletionSound`, then tell the backend
 //    (`clientPlayedSound` on the moveTask RPC) to skip its `taskSound` push.
-//    The push would otherwise fan out to EVERY connected renderer — a desktop
-//    window AND a remote browser on the same machine — and play a second time.
+//    The push would otherwise come back to a window and a remote browser on the
+//    same machine and play a second time.
 //  - Non-UI completions (CLI, branch-merge auto-complete, agent approval) have no
 //    renderer that played locally, so the backend pushes `taskSound` and
 //    `playTaskSoundFromPush` plays it.
@@ -83,7 +83,8 @@ export function playTaskCompletionSound(status: TaskSoundStatus): boolean {
 /**
  * Handle a bun `taskSound` push. Fired for completions no renderer played
  * locally (CLI, branch-merge, agent approval), and for the ones a renderer
- * could not play.
+ * could not play. Only one window is sent this push (src/bun/push-targets.ts) —
+ * module state here is per-renderer and cannot see another window's chime.
  */
 export function playTaskSoundFromPush(status: TaskSoundStatus): void {
 	void playTaskSound(status);

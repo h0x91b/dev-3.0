@@ -113,8 +113,8 @@ export async function moveTaskToStatus({
 		: { ...task, status: newStatus, customColumnId: null, movedAt: movedNow, statusEnteredAt: movedNow };
 	dispatch({ type: "updateTask", task: optimisticTask });
 	// When the UI plays the completion sound here, tell the backend to skip its
-	// own `taskSound` push — otherwise it fans out to every other connected
-	// renderer (e.g. a remote browser on the same machine) and plays twice.
+	// own `taskSound` push — otherwise it comes back to a window and to every
+	// attached remote browser, and the chime plays twice.
 	let clientPlayedSound = false;
 	if (terminal) {
 		dispatch({ type: "clearBell", taskId: task.id });

@@ -13,11 +13,24 @@
  * call reappears there.
  */
 
-import { broadcastToAllWindows } from "./window-manager";
+import { broadcastToAllWindows, sendToFocusedWindow } from "./window-manager";
 import { pushToBrowserClients } from "./remote-access-server";
+
+/**
+ * Events that are a SOUND, not state. Every window renders its own state, so
+ * state goes to all of them — but two windows on one machine share one pair of
+ * speakers, and a CLI/approval/merge completion broadcast that way chimes once
+ * per window for a single finished task. These go to the focused window alone.
+ *
+ * Browser clients keep the full fan-out on purpose: a phone on the LAN is a
+ * different device in a different room, and silencing it would break the
+ * remote-only setup this push exists for.
+ */
+const SINGLE_WINDOW_PUSHES = new Set(["taskSound"]);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function pushEverywhere(name: string, payload: any): void {
-	broadcastToAllWindows(name, payload);
+	if (SINGLE_WINDOW_PUSHES.has(name)) sendToFocusedWindow(name, payload);
+	else broadcastToAllWindows(name, payload);
 	pushToBrowserClients(name, payload);
 }
