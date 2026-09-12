@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-12 — A notification into agent traffic opens all projects
+
+An agent-message toast opens the traffic screen unscoped ("All active projects"); deliberate entries still seed the board in view — bible §5.7. Why: `decisions/2026/09/12/notification-entry-to-traffic-opens-all-projects.md`.
+
 ## 2026-09-08 — Agent traffic becomes the ninth destination, not an overlay
 
 Routed screen under the standard header with Back/Forward and a fixed anonymous screen path; entry autoplays the trailing hour once. Reverses the 2026-08-25 "still an overlay" ruling — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/08/agent-traffic-becomes-a-destination.md`.

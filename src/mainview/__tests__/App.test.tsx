@@ -179,9 +179,12 @@ vi.mock("../components/ProjectTerminal", () => ({
 	default: () => <div data-testid="project-terminal-screen" />,
 }));
 // The screen's own data loading lives in agent-traffic-ui.test.tsx; here only
-// its routing matters.
+// its routing matters — including the scope it is handed, since the real screen
+// seeds its project filter from this prop and `null` means "all active projects".
 vi.mock("../components/agent-traffic/AgentTrafficScreen", () => ({
-	default: () => <div data-testid="agent-traffic-screen" />,
+	default: ({ projectId }: { projectId: string | null }) => (
+		<div data-testid="agent-traffic-screen" data-scope-project-id={projectId ?? ""} />
+	),
 }));
 vi.mock("../components/TaskImageViewer", () => ({
 	default: ({ initialIndex, newIds }: { initialIndex: number; newIds?: string[] }) => (
@@ -203,7 +206,7 @@ import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEna
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 import { setStreamerMode } from "../streamer-mode";
 import { setAgentTrafficEnabledForTests, syncAgentTrafficFromGlobalSettings } from "../agent-traffic-flag";
-import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../agent-traffic-events";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "../agent-traffic-events";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 
@@ -1087,6 +1090,25 @@ describe("App keyboard shortcuts", () => {
 				expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
 			});
 		});
+
+		// A deliberate entry keeps seeding the board in view — only a notification
+		// click overrides that, and it does so by asking for all projects.
+		it("seeds the board in view for a deliberate entry, and all projects when asked", async () => {
+			await withTrafficBeta(async () => {
+				await renderApp();
+				await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+				expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute(
+					"data-scope-project-id",
+					"p1",
+				);
+
+				await userEvent.keyboard("{Escape}");
+				await act(async () => {
+					openAgentTrafficLog("all-projects");
+				});
+				expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
+			});
+		});
 	});
 
 	// Quick shell (⇧⌘`) spawns a scratch op in the built-in Operations board and
@@ -1601,6 +1623,32 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.click(screen.getByRole("button", { name: /^Back/ }));
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+		});
+
+		// The reported bug: standing on one board, a toast about traffic on ANOTHER
+		// board opened the screen scoped to the board in view, so the message that
+		// raised the toast was filtered out of its own destination. A notification
+		// click always lands on all active projects (no seeded project id).
+		it("opens at all active projects when the traffic belongs to another board", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2" });
+
+			await userEvent.click(await toastButton());
+
+			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
+		});
+
+		// Same rule when both ends sit on the board in view: the destination does not
+		// depend on where the message came from, only on how the screen was opened.
+		it("opens at all active projects for same-board traffic too", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+
+			await userEvent.click(await toastButton());
+
+			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
 		});
 
 		// The toast outlives the toggle, so the destination cannot be captured when
