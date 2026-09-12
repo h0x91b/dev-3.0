@@ -815,30 +815,38 @@ function TaskInfoPanel({
 	// that the lifecycle would ignore.
 	const completionIsForced = isCoordinatorTask(task);
 	const completionIsManual = taskCompletesManually(task);
+	const completionOwnerName = completionIsForced
+		? t("task.manualCompletionCoordinatorTooltip")
+		: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
 	const manualCompletionToggleButton = (
-		<Tooltip
-			content={completionIsForced
-				? t("task.manualCompletionCoordinatorTooltip")
-				: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
-			detail={t("ttip.task.manualCompletion")}
-		>
+		<Tooltip content={completionOwnerName} detail={t("ttip.task.manualCompletion")}>
 			<button
 				onClick={handleToggleManualCompletion}
 				disabled={completionIsForced}
-				aria-label={completionIsForced
-					? t("task.manualCompletionCoordinatorTooltip")
-					: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
+				aria-label={completionOwnerName}
 				aria-pressed={completionIsManual}
+				data-testid="task-completion-owner"
 				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 					completionIsManual
-						? "text-accent bg-accent/10 border border-accent/25"
+						? "warning-paper text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30"
 						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 				} ${completionIsForced ? "cursor-not-allowed" : ""}`}
 			>
-				{/* Icon only. Even the short "I decide" label cost bar width for a state
-				    the accent icon already carries; the full sentence lives in the
-				    tooltip and in the mobile sheet row. */}
+				{/* Amber, not accent: blue here is "a toggle is on", the same blue the
+				    watch bell two slots away wears, and the state was read as a bug
+				    rather than as a choice. Yellow is this bar's "deliberate hold"
+				    (same role as hibernate), and it is never the colour of an error or
+				    of a finished task. Off stays grey and wordless — the state that
+				    needs no explanation. */}
 				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} />
+				{/* Colour never carries the state alone: on a roomy bar the chip spells
+				    the mode out, in the same words as the merge dialog's third button —
+				    that dialog is where most people turn this on, and a shortened echo
+				    of it ("I decide") did not read as the same thing. Tight folds it
+				    back to the icon, where shape and hue still separate it. */}
+				{completionIsManual && !tight && (
+					<span className="text-micro font-semibold whitespace-nowrap">{t("task.manualCompletionEnabled")}</span>
+				)}
 			</button>
 		</Tooltip>
 	);
@@ -1422,12 +1430,23 @@ function TaskInfoPanel({
 								onClick={handleToggleManualCompletion}
 								disabled={completionIsForced}
 								aria-pressed={completionIsManual}
-								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "border-accent/30 bg-accent/10" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
+								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
 							>
-								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-accent" : "text-fg-3"}`} active={completionIsManual} />
-								<span className="flex-1 text-sm font-medium">{completionIsForced
-									? t("task.manualCompletionCoordinatorTooltip")
-									: completionIsManual ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
+								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} />
+								<span className="flex-1 min-w-0">
+									<span className="block text-sm font-medium">{completionIsManual
+										? t("task.manualCompletionEnabled")
+										: t("task.manualCompletion")}</span>
+									{/* A phone has no tooltip, so the row itself carries the
+									    consequence — the thing that reads as a bug when unsaid. */}
+									{completionIsManual && (
+										<span className="block text-micro font-normal leading-snug opacity-80">
+											{completionIsForced
+												? t("task.manualCompletionCoordinatorTooltip")
+												: t("task.manualCompletionConsequence")}
+										</span>
+									)}
+								</span>
 							</button>
 
 							{/* The bar may shed the diff badge on a narrow screen, so the diff

@@ -1680,11 +1680,13 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	58%, 100% { stroke-dashoffset: 0; }
 }
 .th-owner-check { stroke-dasharray: 1; stroke-dashoffset: 0; }
-.th-owner-check-idle { opacity: 0; }
+/* Idle hides the badge whole, not only its tick: the difference between "dev3
+   completes this" and "you do" has to be a shape you can read without hovering. */
+.th-owner-badge-idle, .th-owner-check-idle { opacity: 0; transition: opacity .15s ease-out; }
 .task-anim:hover .th-owner-person { animation: th-owner-person 2.4s ease-in-out infinite; }
 .task-anim:hover .th-owner-badge { transform-origin: 17.2px 16.8px; animation: th-owner-badge 2.4s ease-in-out infinite; }
 .task-anim:hover .th-owner-check { animation: th-owner-check 2.4s ease-in-out infinite; }
-.task-anim:hover .th-owner-check-idle { opacity: 1; }
+.task-anim:hover .th-owner-badge-idle, .task-anim:hover .th-owner-check-idle { opacity: 1; }
 
 /* -- Find bugs: the lens focuses in, the caught bug squirms -- */
 @keyframes th-fb-lens {

@@ -3084,17 +3084,32 @@ describe("TaskInfoPanel", () => {
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
 		});
 
-		it("carries completion ownership as an icon only, with the sentence in the name", async () => {
+		it("states active completion ownership in words, colour and the accessible name", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ manualCompletion: true }));
 			});
 
-			// The label cost bar width for a state the accent icon already carries; what
-			// the control does has to survive somewhere the user can reach — the name.
-			expect(screen.queryByText("I decide")).not.toBeInTheDocument();
-			const button = screen.getByLabelText(/complete it myself/i);
+			// Colour is never the only cue: the chip says who owns completion, and the
+			// name says what that suppresses — the thing the user read as a bug.
+			expect(screen.getAllByText("I’ll complete it myself").length).toBeGreaterThan(0);
+			const button = screen.getAllByTestId("task-completion-owner")[0];
 			expect(button).toHaveAttribute("aria-pressed", "true");
+			expect(button.getAttribute("aria-label")).toContain("won’t suggest completing");
+			expect(button.className).toContain("text-warning-strong");
+			expect(button.className).not.toContain("text-accent");
 			expect(button.querySelector("svg")).toBeTruthy();
+		});
+
+		it("keeps the off state quiet — no label, no colour", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: false }));
+			});
+
+			expect(screen.queryByText("I’ll complete it myself")).not.toBeInTheDocument();
+			const button = screen.getAllByTestId("task-completion-owner")[0];
+			expect(button).toHaveAttribute("aria-pressed", "false");
+			expect(button.className).toContain("text-fg-3");
+			expect(button.className).not.toContain("warning");
 		});
 
 		it("puts completion ownership to the RIGHT of the status chip", async () => {
@@ -4188,10 +4203,12 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 				renderPanel(makeTask({ manualCompletion: true }));
 			});
 
-			expect(screen.queryByText("I decide")).not.toBeInTheDocument();
+			expect(screen.queryByText("I’ll complete it myself")).not.toBeInTheDocument();
 			// The toggle itself stays reachable — only its text label goes.
 			expect(
-				screen.getAllByRole("button", { name: "I’ll complete it myself — merge prompts are off" }).length,
+				screen.getAllByRole("button", {
+					name: "I’ll complete it myself — dev3 won’t suggest completing this task after a merge",
+				}).length,
 			).toBeGreaterThan(0);
 		});
 

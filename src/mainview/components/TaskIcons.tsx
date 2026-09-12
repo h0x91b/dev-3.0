@@ -63,8 +63,10 @@ export function WatchIcon({ className }: TaskIconProps) {
 	);
 }
 
-// Completion owner: a person claims the final decision; the check appears on
-// hover and remains visible while completion prompts are disabled.
+// Completion owner: a person claims the final decision. Idle is a bare person —
+// the whole badge only appears on hover, as a preview of what the click does.
+// Active keeps the badge drawn and fills it, so on and off differ by a shape and
+// not by a 4px tick (outline idle / filled active, the house icon-state rule).
 export function CompletionOwnerIcon({ className, active = false }: TaskIconProps & { active?: boolean }) {
 	return (
 		<svg {...svgBase(className)}>
@@ -72,8 +74,14 @@ export function CompletionOwnerIcon({ className, active = false }: TaskIconProps
 				<circle cx="9" cy="7" r="2.8" />
 				<path d="M3.8 19c.5-4 2.2-6 5.2-6 2.2 0 3.8 1.1 4.7 3.2" />
 			</g>
-			<g className="th-owner-badge">
-				<circle cx="17.2" cy="16.8" r="4" />
+			<g className={`th-owner-badge${active ? "" : " th-owner-badge-idle"}`}>
+				<circle
+					cx="17.2"
+					cy="16.8"
+					r="4"
+					fill={active ? "currentColor" : "none"}
+					fillOpacity={active ? 0.2 : undefined}
+				/>
 				<path
 					d="m15.3 16.8 1.25 1.25 2.45-2.7"
 					pathLength={1}

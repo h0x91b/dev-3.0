@@ -1,5 +1,11 @@
 # 164 — Inspector bars adapt to the panel's width, not the viewport's
 
+> Partly superseded on 2026-09-12 by
+> `decisions/2026/09/12/completion-ownership-reads-as-a-mode.md`: the
+> completion-ownership chip is no longer icon-only. It carries the short label
+> whenever it is ON and the panel is not `tight`; OFF and `tight` stay wordless,
+> so the folding rule this record establishes is unchanged.
+
 ## Context
 
 On a ~1100px window the task inspector's two toolbars overlapped and clipped: the label
