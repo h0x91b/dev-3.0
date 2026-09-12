@@ -689,6 +689,87 @@ const BUG_HUNTER_OPENAI_YAML = `interface:
   default_prompt: "Use $dev3-bug-hunter to run a read-only bug hunt with a seeded exploration strategy in this codebase."
 `;
 
+// ---- dev3-coordinator skill (promote THIS task mid-conversation) ----
+//
+// The skill carries no copy of the coordinator brief. `dev3 task update --type
+// coordinator --print-role` resolves the effective one (project override, then
+// the Settings one, then the built-in COORDINATOR_PROMPT) and prints it, so the
+// startup preamble and this skill can never drift apart and an override is
+// honoured here too. Nothing in this file may promote a task on its own: the
+// body has no `!`-injected command, and installing it writes a file and nothing
+// else.
+
+const COORDINATOR_SKILL_DESCRIPTION =
+	// No double quotes in here: it is interpolated into a double-quoted YAML scalar,
+	// where a nested quote ends the string and the harness falls back to the H1.
+	"Turn the CURRENT dev3 task into a coordinator in the middle of its conversation, keeping all work, history, branch and identity. Use ONLY when the user explicitly invokes it — /dev3-coordinator, 'make this task a coordinator', 'switch me to coordinator mode'. Never run it on your own initiative, and never to promote a different task.";
+
+const COORDINATOR_SKILL_CONTENT = `---
+name: dev3-coordinator
+description: "${COORDINATOR_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# dev3-coordinator — become the coordinator of this board, right here
+
+Invoking this skill IS the user's explicit request to change **this** task's role. It is the only thing that may trigger it: never promote a task because the work looks coordination-shaped, because a skill was installed, or because you read this description while looking for something else.
+
+## What it does
+
+One command. Run it in this worktree, with no task selector — it must land on the task you are already in:
+
+\`\`\`bash
+dev3 task update --type coordinator --print-role
+\`\`\`
+
+It does three things:
+
+1. Sets the board type, so the card becomes a coordinator: dashed green, above every priority band, never auto-completed.
+2. Rewrites this task's description so the role brief is in it — that is what a future session of this task reads at launch.
+3. Prints the canonical coordinator brief to stdout. **That printed text is your standing instruction from that moment on**, and it replaces any earlier instruction about what this task is. Read it in full and follow it.
+
+The brief is printed rather than typed into your pane precisely because you are the agent being promoted: a delivery would arrive as a second copy in a second turn and look like the role changed twice.
+
+## What does NOT change
+
+Your conversation, your context, your finished work, the branch, the worktree, the task's id and number, its title, labels and priority — all of it stays exactly as it is. This is a role change, not a restart, and nothing here asks you to redo or abandon work already done.
+
+Permissions do not change either. Everything the user has and has not authorised in this session stays exactly as it was: becoming a coordinator authorises no push, no pull request, no merge, no publication, no completion.
+
+## Re-running it
+
+Harmless, by design. On a task that is already a coordinator nothing on the board changes and the same brief is printed again — run it when you want the brief back in front of you.
+
+## When the command fails
+
+Report the failure exactly as it happened and say the role did **not** change. A non-zero exit means the board still calls this task whatever it called it before; do not start behaving as a coordinator on a failed promotion, and do not claim the type changed.
+
+Two answers you may see, neither of them a failure:
+
+- \`Role: coordinator — printed below instead of typed into your own pane.\` — the promotion landed.
+- No \`Role:\` line at all, with the brief still printed — the task was already a coordinator.
+
+## If the CLI on this machine predates \`--print-role\`
+
+\`error: Unknown option: --print-role\` means the installed \`dev3\` is older than this skill, and it stopped before changing anything. Fall back to the plain form, which every version has:
+
+\`\`\`bash
+dev3 task update --type coordinator
+\`\`\`
+
+Same promotion, same preserved conversation — the only difference is that the brief is then typed into your pane as a message rather than printed here, so it arrives a few seconds later as its own turn. Tell the user which of the two ran.
+
+## Going back
+
+\`dev3 task update --type standard --print-role\` clears the role and prints the one line saying so. Same rule: only on the user's explicit word.
+`;
+
+const COORDINATOR_OPENAI_YAML = `interface:
+  display_name: "dev3 Coordinator"
+  short_description: "Turn this task into a coordinator without losing its conversation"
+  default_prompt: "Use \$dev3-coordinator when the user asks to make this task the board's coordinator."
+`;
+
 // ---- ask-dev3 skill (feature router / user education) ----
 
 const ASK_DEV3_SKILL_DESCRIPTION =
@@ -728,7 +809,7 @@ A starting situation that generates work, then merges onto the main flow.
 
 - **A bug report arrived** → make it a task with the repro as the description; the fix then flows through review and PR like any feature. Don't know where the bug lives? → **bug-hunter swarm**: a multi-variant task where each agent runs \`/dev3-bug-hunter\` with a seeded strategy, so different agents start from different corners of the codebase.
 - **"Review this PR"** → create a **PR review task**: paste the GitHub PR URL straight into the Create Task modal — dev3 fetches the branch into a worktree and the agent reviews the actual diff — runnable code, not a GitHub-tab skim. Such a task is marked **someone else's code** (eye glyph on the card, \`Code\` row in the inspector): dev3 will not run that branch's own \`.dev3\` setup/dev/cleanup scripts, env vars, MCP servers or agent hooks, using the project's own config instead. Nothing is read-only — edit, commit and push as usual — and one click in the inspector hands the branch its trust back if you deliberately want its scripts. In the diff, a file dev3 executes by itself wears a **RUNS** badge; read its commands rather than skimming.
-- **"I want an agent that runs the other agents"** → pick **Coordinator** in the Create Task modal's **Task type** row (under the description). It puts a built-in brief above your own text: manage other tasks, delegate anything that touches the repository, and report a self-contained status every time — the user never sees a coordinator's conversations with its children. Your own instruction goes below the separator, and the whole thing is ordinary description text, so edit it before starting. The brief is overridable in Settings → Tasks & Board and per project. A coordinator needs no branch, so it works on a virtual board too. An existing task becomes one (or stops being one) with \`dev3 task update --type coordinator|pr-review|standard\` — that rewrites the role preamble in the description AND tells the running agent, so the badge never claims a role its agent was not given. From the CLI you can also start it that way in one command: \`dev3 task create --title "..." --description "..." --type coordinator\` writes the same role brief above your text at creation; a review task is \`dev3 task create --pr <number> --title "..."\`, where \`--pr\` both implies \`pr-review\` and starts the worktree on the pull request's own branch (without it the task lands on the base branch with nothing to review). A coordinator card is dashed green, sorts above every priority, and always completes by hand. Every message dev3 delivers to a coordinator ends with a \`<dev3-board>\` snapshot — every task not parked in To Do, everything finished in the last 24 hours, each one's priority, and how long each one has been sitting in its column — so a child reporting in also tells it what else moved meanwhile, and it answers from the live board instead of spending a turn on \`dev3 task list\`. Your own typing does not carry one, so its brief tells it to re-read the board when you speak to it after a silence.
+- **"I want an agent that runs the other agents"** → pick **Coordinator** in the Create Task modal's **Task type** row (under the description). It puts a built-in brief above your own text: manage other tasks, delegate anything that touches the repository, create a task and ask to launch it in the same breath rather than asking twice, and report a self-contained status every time — the user never sees a coordinator's conversations with its children. Your own instruction goes below the separator, and the whole thing is ordinary description text, so edit it before starting. The brief is overridable in Settings → Tasks & Board and per project. A coordinator needs no branch, so it works on a virtual board too. An existing task becomes one (or stops being one) with \`dev3 task update --type coordinator|pr-review|standard\` — that rewrites the role preamble in the description AND tells the running agent, so the badge never claims a role its agent was not given. Mid-conversation, ask the agent you are already talking to for \`/dev3-coordinator\`: it promotes its OWN task and reads the brief out of the command's output, so the conversation, the work already done, the branch, the title, the labels and the priority all stay exactly as they are. From the CLI you can also start it that way in one command: \`dev3 task create --title "..." --description "..." --type coordinator\` writes the same role brief above your text at creation; a review task is \`dev3 task create --pr <number> --title "..."\`, where \`--pr\` both implies \`pr-review\` and starts the worktree on the pull request's own branch (without it the task lands on the base branch with nothing to review). A coordinator card is dashed green, sorts above every priority, and always completes by hand. Every message dev3 delivers to a coordinator ends with a \`<dev3-board>\` snapshot — every task not parked in To Do, everything finished in the last 24 hours, each one's priority, and how long each one has been sitting in its column — so a child reporting in also tells it what else moved meanwhile, and it answers from the live board instead of spending a turn on \`dev3 task list\`. Your own typing does not carry one, so its brief tells it to re-read the board when you speak to it after a silence.
 - **"Continue what we did in that other task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is *why* notes matter — they are weighted highest in that search.
 - **"What did every task record since I last looked?"** → \`dev3 events\`. One feed of the notes written by EVERY task on the board AND of every board movement — created, a status change (completed and cancelled included), a custom-column move — finished tasks included — a live task can still message you, a completed one cannot, and its notes are all that outlived its worktree. It is addressed by a **position, not a time window**: each run ends with a \`Cursor:\` line — one compact instant such as \`2026-08-28T20:22:22.303\` — plus the exact next command, and passing it back returns only what happened since. \`--from\` also takes an event id straight from the ID column (\`8eb2da3d\`) — the shortest form to carry, though a deleted or evicted note makes it exit 19 rather than pretend the board was quiet — or a plain date (\`2026-08-01\`) or a duration (\`2h\`, \`3d\`) when you deliberately want a window. Keep the cursor yourself; the app remembers nothing per caller, so the same cursor always gives the same answer. A bare \`dev3 events\` shows the last 24 hours and tells you, as a number, how many events are older than that window — so a lost cursor is visible instead of silent. \`--kind note\` or \`--kind move\` narrows it, and a cursor from a filtered run covers that kind only — the run says so. Movements are recorded from the version that shipped them onward; nothing older exists and none is invented. One line per event; \`dev3 note show <id> --task <seq>\` prints a note's full body.
 - **A new codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect its setup / dev / cleanup scripts, ports, and clone paths.
@@ -828,6 +909,7 @@ Off the main flow entirely.
 - **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
 - **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
 - **\`/dev3-share-artifact\`** — publish an HTML report as a gist and hand back a verified preview URL.
+- **\`/dev3-coordinator\`** — turn the task you are already in into a coordinator, keeping its conversation and work.
 
 ## When the map is not enough — read the source
 
@@ -1059,6 +1141,10 @@ export function getBugHunterSkillContent(): string {
 	return BUG_HUNTER_SKILL_CONTENT;
 }
 
+export function getCoordinatorSkillContent(): string {
+	return COORDINATOR_SKILL_CONTENT;
+}
+
 export function getAskDev3SkillContent(): string {
 	return ASK_DEV3_SKILL_CONTENT;
 }
@@ -1117,6 +1203,15 @@ const ASK_DEV3_SKILL_DIRS = [
 	".config/opencode/skills/ask-dev3",
 ];
 
+const COORDINATOR_SKILL_DIRS = [
+	".claude/skills/dev3-coordinator",
+	".cursor/skills/dev3-coordinator",
+	".agents/skills/dev3-coordinator",
+	".codex/skills/dev3-coordinator",
+	".opencode/skills/dev3-coordinator",
+	".config/opencode/skills/dev3-coordinator",
+];
+
 const SHARE_ARTIFACT_SKILL_DIRS = [
 	".claude/skills/dev3-share-artifact",
 	".cursor/skills/dev3-share-artifact",
@@ -1142,6 +1237,7 @@ export const MANAGED_SKILL_FILES = [
 	...BUG_HUNTER_SKILL_DIRS,
 	...ASK_DEV3_SKILL_DIRS,
 	...SHARE_ARTIFACT_SKILL_DIRS,
+	...COORDINATOR_SKILL_DIRS,
 ].map((dir) => `${dir}/SKILL.md`);
 
 const SHARED_SKILL_OPENAI_CONFIGS = [
@@ -1168,6 +1264,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/dev3-share-artifact",
 		content: SHARE_ARTIFACT_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-coordinator",
+		content: COORDINATOR_OPENAI_YAML,
 	},
 ];
 
@@ -1597,6 +1697,21 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 			log.info("share-artifact skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install share-artifact skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	for (const dir of COORDINATOR_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, COORDINATOR_SKILL_CONTENT, "utf-8");
+			log.info("coordinator skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install coordinator skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

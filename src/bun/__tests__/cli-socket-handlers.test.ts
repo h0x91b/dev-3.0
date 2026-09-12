@@ -2390,6 +2390,80 @@ describe("task.update", () => {
 			expect(deliverAgentPrompt).not.toHaveBeenCalled();
 		});
 
+		// /dev3-coordinator promotes the task its own agent is running in, so the
+		// brief travels back in the response instead of into that agent's pane.
+		it("prints the brief instead of typing it into the caller's own pane", async () => {
+			const project = makeProject();
+			const task = makeTask({ description: "coordinate my board" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+				printRole: true,
+			}));
+
+			expect(resp.ok).toBe(true);
+			const body = resp.data as { roleDelivery?: string; rolePrompt?: string };
+			expect(body.roleDelivery).toBe("printed");
+			expect(body.rolePrompt).toBe(COORDINATOR_PROMPT);
+			// The mid-conversation channel carries the same defaults as a coordinator
+			// that started as one — including create-and-launch.
+			expect(body.rolePrompt).toContain("CREATING A TASK MEANS STARTING IT");
+			expect(body.rolePrompt).toContain("a timeout is NOT a decline");
+			expect(deliverAgentPrompt).not.toHaveBeenCalled();
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+			expect(updates.taskType).toBe("coordinator");
+			expect(updates.description!.startsWith(COORDINATOR_PROMPT)).toBe(true);
+		});
+
+		// The whole reason the skill prints instead of carrying its own copy: a
+		// project that rewrote the brief must get ITS brief, not the built-in one.
+		it("prints the project's own brief when one overrides the built-in", async () => {
+			const project = { ...makeProject(), coordinatorPrompt: "You coordinate MY board, my way." };
+			const task = makeTask({ description: "coordinate my board" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+				printRole: true,
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect((resp.data as { rolePrompt?: string }).rolePrompt).toBe("You coordinate MY board, my way.");
+		});
+
+		it("re-prints the brief on a repeat that changes nothing on the board", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				taskType: "coordinator",
+				description: withPresetPrompt("coordinate my board", COORDINATOR_PROMPT),
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+				printRole: true,
+			}));
+
+			expect(resp.ok).toBe(true);
+			const body = resp.data as { roleDelivery?: string; rolePrompt?: string };
+			expect(body.rolePrompt).toBe(COORDINATOR_PROMPT);
+			expect(body.roleDelivery).toBeUndefined();
+			expect(data.updateTask).not.toHaveBeenCalled();
+			expect(deliverAgentPrompt).not.toHaveBeenCalled();
+		});
+
 		it("rejects an unknown type without writing anything", async () => {
 			const project = makeProject();
 			const task = makeTask();

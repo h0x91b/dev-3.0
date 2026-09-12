@@ -128,6 +128,10 @@ describe("the whole Windows command line fits", () => {
 	// 26 536 characters is that measured baseline (gemini; the custom-agent adapter
 	// measured 26 525). Raw prompt length is only a proxy for it, because the launch
 	// dialect escapes quotes and backticks — measure the serialized line instead.
+	//
+	// The create-and-launch default (2026-09-12) was folded into the rules it
+	// belongs to and paid for out of illustrations and justifications, so these two
+	// numbers did not move.
 	it("a coordinator task keeps the launch room it had before the events block", () => {
 		asPlatform("win32");
 		const coordinator = (brief: number) => ({

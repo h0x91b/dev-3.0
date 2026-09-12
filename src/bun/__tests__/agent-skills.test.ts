@@ -10,6 +10,7 @@ import {
 	getAskDev3SkillContent,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
+	getCoordinatorSkillContent,
 	getCodexSkillContent,
 	getGenericSkillContent,
 	getProjectConfigSkillContent,
@@ -25,6 +26,8 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
 import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { COORDINATOR_PROMPT } from "../../shared/types";
+import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 // The Claude SKILL.md is deliberately short (the protocol lives in the system
@@ -745,7 +748,94 @@ describe("dev3-share-artifact skill content", () => {
 	});
 });
 
+describe("dev3-coordinator skill content", () => {
+	it("is user-invocable and named for the slash command", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("name: dev3-coordinator");
+		expect(skill).toContain("user-invocable: true");
+	});
+
+	it("keeps ONE source of truth: it prints the canonical brief instead of copying it", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("dev3 task update --type coordinator --print-role");
+		// Any verbatim slice of the startup prompt in here is a second copy that
+		// would silently rot the next time COORDINATOR_PROMPT changes.
+		for (const line of COORDINATOR_PROMPT.split("\n")) {
+			if (line.trim().length < 40) continue;
+			expect(skill).not.toContain(line.trim());
+		}
+	});
+
+	it("cannot promote anything by being installed or discovered", () => {
+		const skill = getCoordinatorSkillContent();
+
+		// `!`-injected commands run at skill LOAD time — that is how the dev3 skill
+		// sets status, and exactly what must never happen here.
+		expect(skill).not.toContain("!`");
+		expect(skill).toContain("Invoking this skill IS the user's explicit request");
+		expect(skill).toContain("never promote a task because the work looks coordination-shaped");
+	});
+
+	it("promises preservation and grants no new permission", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("## What does NOT change");
+		expect(skill).toContain("becoming a coordinator authorises no push, no pull request, no merge, no publication, no completion");
+		expect(skill).toContain("## Re-running it");
+		expect(skill).toContain("Harmless, by design.");
+	});
+
+	// The skill ships ahead of the CLI binary on any machine that updated the app
+	// without updating dev3 — an unknown flag must not read as "promotion failed".
+	it("names the stale-CLI fallback and what it costs", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("error: Unknown option: --print-role");
+		expect(skill).toContain("it stopped before changing anything");
+		expect(skill).toContain("dev3 task update --type coordinator\n```");
+		expect(skill).toContain("typed into your pane as a message rather than printed here");
+	});
+
+	it("forbids claiming a role change the command did not make", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("say the role did **not** change");
+		expect(skill).toContain("do not claim the type changed");
+	});
+});
+
+// A nested `"` inside the double-quoted YAML scalar ends the description early;
+// the harness then shows the body's first heading instead and the triggering
+// phrases never reach the model. Nothing else in the pipeline complains.
+describe("managed skill frontmatter survives the parser that reads it", () => {
+	const skills: Array<[string, string]> = [
+		["dev3-coordinator", getCoordinatorSkillContent()],
+		["dev3-share-artifact", getShareArtifactSkillContent()],
+		["dev3-bug-hunter", getBugHunterSkillContent()],
+		["ask-dev3", getAskDev3SkillContent()],
+		["dev3", getClaudeSkillContent()],
+	];
+
+	it.each(skills)("parses %s with its whole description intact", (name, content) => {
+		const parsed = parseSkillFrontmatter(content);
+
+		expect(parsed.name).toBe(name);
+		expect(parsed.description).toBeTruthy();
+		expect(content).toContain(`description: "${parsed.description}"`);
+		// A `"` that is not backslash-escaped closes the scalar early.
+		expect(parsed.description).not.toMatch(/(^|[^\\])"/);
+	});
+});
+
 describe("managed skill installation surface", () => {
+	it("installs the coordinator skill for every supported agent", () => {
+		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
+			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-coordinator/SKILL.md`);
+		}
+	});
+
 	it("installs the share-artifact skill for every supported agent", () => {
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-share-artifact/SKILL.md`);
@@ -754,7 +844,7 @@ describe("managed skill installation surface", () => {
 
 	it("lists every managed skill exactly once so `dev3 install-skills` cannot drift", () => {
 		expect(new Set(MANAGED_SKILL_FILES).size).toBe(MANAGED_SKILL_FILES.length);
-		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-bug-hunter", "ask-dev3", "dev3-share-artifact"]) {
+		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-bug-hunter", "ask-dev3", "dev3-share-artifact", "dev3-coordinator"]) {
 			expect(MANAGED_SKILL_FILES.some((file) => file.includes(`/skills/${name}/`))).toBe(true);
 		}
 	});

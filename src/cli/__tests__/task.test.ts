@@ -690,6 +690,56 @@ describe("task update", () => {
 		});
 	});
 
+	// What /dev3-coordinator runs: promote the task this worktree is already in and
+	// read the brief here, rather than have it typed back into this same pane.
+	it("prints the role brief on --print-role for the auto-detected task", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "coordinator" },
+			titlePreserved: false,
+			roleDelivery: "printed",
+			rolePrompt: "You are the COORDINATOR of this board.",
+		}));
+
+		await handleTask("update", args([], { type: "coordinator", "print-role": "true" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			taskType: "coordinator",
+			printRole: true,
+		});
+		expect(stdoutOutput).toContain("Your role is now coordinator");
+		expect(stdoutOutput).toContain("You are the COORDINATOR of this board.");
+		expect(stderrOutput).toContain("printed below instead of typed into your own pane");
+	});
+
+	it("prints the brief again when a repeat changed nothing", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "coordinator" },
+			titlePreserved: false,
+			rolePrompt: "You are the COORDINATOR of this board.",
+		}));
+
+		await handleTask("update", args([], { type: "coordinator", "print-role": "true" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("You are the COORDINATOR of this board.");
+		expect(stderrOutput).not.toContain("Role:");
+	});
+
+	it("refuses --print-role against a task other than the caller's own", async () => {
+		await expect(
+			handleTask("update", args(["bbbbbbbb"], { type: "coordinator", "print-role": "true" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses --print-role without --type", async () => {
+		await expect(
+			handleTask("update", args([], { title: "new", "print-role": "true" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects an unknown --type before sending", async () => {
 		await expect(
 			handleTask("update", args(["aaaaaaaa"], { type: "overlord" }), SOCKET, null),

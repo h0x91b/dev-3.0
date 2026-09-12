@@ -316,7 +316,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]");
@@ -361,6 +361,17 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (args.flags.force === "true") {
 		params.force = true;
 	}
+	// `--print-role` means "I am the agent of this task, hand me my new brief here".
+	// Only the task this worktree auto-detects can say that, so an explicit selector
+	// is a usage error rather than a silently skipped delivery to somebody else.
+	const printRole = args.flags["print-role"] === "true";
+	if (printRole) {
+		if (rawType === undefined) exitUsage("--print-role only applies together with --type");
+		if (args.positional[0] || args.flags.task || args.flags["task-id"] || args.flags.id) {
+			exitUsage("--print-role prints YOUR OWN task's role brief, so it cannot target another task");
+		}
+		params.printRole = true;
+	}
 
 	if (
 		params.title === undefined
@@ -375,7 +386,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const resp = await sendRequest(socketPath, "task.update", params);
 	if (!resp.ok) exitError(resp.error || "Failed to update task");
 
-	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string };
+	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string; rolePrompt?: string };
 	const task = "task" in result ? result.task : result;
 	const titlePreserved = "task" in result ? Boolean(result.titlePreserved) : false;
 	// A role change is only real once the agent behind the badge has been told, so
@@ -385,7 +396,9 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		const role = task.taskType ?? "standard";
 		const note = roleDelivery === "delivered"
 			? `told the running agent it is now ${role}`
-			: roleDelivery === "unconfirmed"
+			: roleDelivery === "printed"
+				? `printed below instead of typed into your own pane`
+				: roleDelivery === "unconfirmed"
 				? `sent the role change to the running agent, but the backend cannot confirm it landed — check the pane before relying on it`
 				: roleDelivery === "no-session"
 					? `no running agent to tell; it reads the new role from the description when it starts`
@@ -398,6 +411,18 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
+	// The role brief goes to stdout as the command's payload: the agent that ran it
+	// reads it right here, and re-running prints the same text whether or not the
+	// type had to change.
+	const rolePrompt = "task" in result ? result.rolePrompt : undefined;
+	if (rolePrompt !== undefined) {
+		const role = task.taskType ?? "standard";
+		process.stdout.write(
+			rolePrompt
+				? `\nYour role is now ${role}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n\n${rolePrompt}\n`
+				: `\nThis task no longer carries a special role — you are an ordinary task agent again and may do the work yourself.\n`,
+		);
+	}
 	// The trap this exists for: a description is the agent's first prompt at
 	// launch and nothing re-delivers it, so rewriting a live task's brief reaches
 	// the board and not the agent. Docs are read once; the mistake happens here.
