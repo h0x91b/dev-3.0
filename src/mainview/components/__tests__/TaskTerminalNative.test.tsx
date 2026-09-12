@@ -231,6 +231,10 @@ describe("TaskTerminal (native multi-pane)", () => {
 			expect(paneScrollToBottom.get(url("pane-1"))).toHaveBeenCalledTimes(1);
 			expect(paneScrollToBottom.get(url("pane-2"))).not.toHaveBeenCalled();
 
+			// Another pane reporting "live" must not clear this pane's key.
+			act(() => { paneScrollSignals.get(url("pane-2"))?.(false); });
+			expect(screen.getByTestId("scroll-to-latest")).toBeInTheDocument();
+
 			act(() => { paneScrollSignals.get(url("pane-1"))?.(false); });
 			expect(screen.queryByTestId("scroll-to-latest")).not.toBeInTheDocument();
 		} finally {

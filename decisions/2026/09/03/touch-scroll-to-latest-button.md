@@ -21,17 +21,30 @@ status line, and slots in the key bar, composer row, or pane bar.
 ## Decision
 
 `ScrollToLatestButton` renders in `TaskTerminal` / `ProjectTerminal` only while `touchInput`
-holds and `TerminalView` reports `onScrolledIntoHistory(true)`. The tmux signal is the existing
-flag plus a 1.5 s poll of a new read-only RPC, `tmuxPanesInMode` (`pane_in_mode` over the task
-session), which lowers the flag when tmux already left copy-mode. `TerminalHandle.scrollToBottom`
-does both backends: `exitCopyModeAllPanes` and ghostty `scrollToBottom()`. `paste` / `submit`
-call the same exit first when the flag is up, so a composer prompt never lands in copy-mode.
+holds and `TerminalView` reports `onScrolledIntoHistory(true)`. That callback is the whole touch
+gate: hosts pass it only on touch, and `TerminalView.markTmuxCopyModeMayBeActive` arms the
+copy-mode poll only when a host passed it — a pointer scroll-up sets the flag (the desktop
+click-to-leave-copy-mode path still reads it) but never starts a poll or emits a signal.
+`TaskTerminal` keys the signal per pane (`scrolledUpKey`, `TMUX_VIEW` for the single tmux view)
+rather than holding a boolean, so a background pane's scroll-up cannot put the button on the
+focused pane, and a pane reporting "live" cannot clear another pane's key.
+
+The tmux signal is the existing flag plus a 1.5 s poll of a read-only RPC, `tmuxPanesInMode`,
+which lowers the flag when tmux already left copy-mode. The poll reads `pane_in_mode` over the
+sessions `copyModeSessions()` (`src/bun/rpc-handlers/tmux-pty.ts`) resolves for the key: the
+key's own session via `pty.getSessionTmuxName`, so a quick shell resolves to its `dev3-pt-<id>`
+session, plus the task's detached dev-server sibling — a project key deliberately has none.
+`TerminalHandle.scrollToBottom` does both backends: `exitCopyModeAllPanes` and ghostty
+`scrollToBottom()`. `paste` / `submit` call the same exit first while `copyModePending()` is
+true — the flag is up, or a cancel is already in flight (`copyModeExitRef`) — so a composer
+prompt never lands in copy-mode, even when two sends overlap one round trip.
 
 ## Risks
 
 The flag is a guess: a wheel-up inside a mouse-tracking TUI (vim, htop) never enters copy-mode,
 so the button shows for up to one poll tick before the poll clears it. The poll runs only while
-the flag is up, so an idle terminal costs nothing. The button covers ~2 rows of the canvas's
+the flag is up and a touch host is listening, so an idle terminal — and every desktop
+terminal — costs nothing. The button covers ~2 rows of the canvas's
 bottom-right while visible — accepted, since it exists only while the tail is off-screen anyway.
 
 ## Alternatives considered
