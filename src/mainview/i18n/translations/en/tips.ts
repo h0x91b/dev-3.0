@@ -26,7 +26,7 @@ const tips = {
 	"tip.agentNotes.title": "Agents leave notes",
 	"tip.agentNotes.body": "Agents record key decisions and findings as task notes. Check the Notes section in the task panel.",
 	"tip.doubleClickTodo.title": "Quick task creation",
-	"tip.doubleClickTodo.body": "Double-click empty space in the To Do column to instantly open the new task form.",
+	"tip.doubleClickTodo.body": "Double-click empty space in any board column to instantly open the new task form.",
 	"tip.rightClickOpen.title": "Open in your editor",
 	"tip.rightClickOpen.body": "Right-click any active task card to open its worktree in Finder, VS Code, Cursor, or other apps.",
 	"tip.terminalPreview.title": "Terminal preview",

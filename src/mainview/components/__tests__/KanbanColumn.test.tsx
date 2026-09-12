@@ -368,20 +368,20 @@ describe("KanbanColumn — double-click empty space to add task", () => {
 		expect(onAddTask).toHaveBeenCalledTimes(1);
 	});
 
-	it("does NOT call onAddTask when double-clicking in a non-todo column", async () => {
+	it("calls onAddTask when double-clicking empty space in a non-todo column", async () => {
 		const onAddTask = vi.fn();
 		renderBuiltinColumn({ onAddTask, status: "in-progress", label: "In Progress" });
 		const noTasksText = screen.getByText("No tasks");
 		await userEvent.dblClick(noTasksText);
-		expect(onAddTask).not.toHaveBeenCalled();
+		expect(onAddTask).toHaveBeenCalledTimes(1);
 	});
 
-	it("does NOT call onAddTask when double-clicking in a custom column", async () => {
+	it("calls onAddTask when double-clicking empty space in a custom column", async () => {
 		const onAddTask = vi.fn();
 		renderBuiltinColumn({ onAddTask, status: "todo", isCustomColumn: true, customColumnId: "col-x" });
 		const noTasksText = screen.getByText("No tasks");
 		await userEvent.dblClick(noTasksText);
-		expect(onAddTask).not.toHaveBeenCalled();
+		expect(onAddTask).toHaveBeenCalledTimes(1);
 	});
 
 	it("does NOT call onAddTask when double-clicking on a task card", async () => {
