@@ -3590,6 +3590,12 @@ export interface BranchStatus {
 	// anywhere, 0 = everything is on a remote (under this branch's name or any
 	// other), N = N commits missing from `origin/<branch>`. See `getUnpreservedCount`.
 	unpushed: number;
+	// Whether a ref other than this task's own branch still reaches HEAD — a local
+	// branch, a tag or a remote-tracking ref. Deleting the branch cannot destroy
+	// commits another ref holds, so this separates "preserved nowhere" from "not
+	// pushed, but kept in this repository". False whenever it could not be proven,
+	// including on a timeout. See `isPreservedOutsideBranch`.
+	preservedOutsideBranch: boolean;
 	mergedByContent: boolean; // true if git diff base HEAD is empty (squash/rebase merge)
 	diffFiles: number; // total files changed in branch vs base
 	diffInsertions: number; // total lines added in branch vs base
@@ -3628,6 +3634,9 @@ export interface UnsavedWork {
 	// anywhere, 0 = everything is on a remote (under this branch's name or any
 	// other), N = N commits missing from `origin/<branch>`. See `getUnpreservedCount`.
 	unpushed: number;
+	// See BranchStatus.preservedOutsideBranch — another ref still reaches HEAD, so
+	// deleting this branch destroys nothing. False whenever it could not be proven.
+	preservedOutsideBranch: boolean;
 	ahead: number; // commits ahead of the base branch, per the last known origin ref
 	baseUnreachable: boolean; // see BranchStatus.baseUnreachable — `ahead` is 0 and unknown
 }

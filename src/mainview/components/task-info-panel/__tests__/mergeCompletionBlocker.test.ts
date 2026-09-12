@@ -11,6 +11,7 @@ function makeStatus(overrides?: Partial<BranchStatus>): BranchStatus {
 		insertions: 0,
 		deletions: 0,
 		unpushed: 0,
+		preservedOutsideBranch: false,
 		mergedByContent: true,
 		diffFiles: 0,
 		diffInsertions: 0,
