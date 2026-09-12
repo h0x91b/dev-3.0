@@ -2250,14 +2250,30 @@ describe("TaskCard — native terminal backend mark", () => {
 
 describe("TaskCard dev-server control", () => {
 	const active = () => makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
-	const summary = (over?: Partial<DevServerSummary>): DevServerSummary => ({
-		taskId: "t1",
-		hasDevScript: true,
-		running: true,
-		ports: [5173, 9229],
-		conflictPorts: [],
-		...over,
-	});
+	/**
+	 * A one-server summary by default. The per-server list follows the top-level
+	 * ports unless the case supplies its own — the card reads the list, and a
+	 * fixture where the two disagree would prove nothing.
+	 */
+	const summary = (over?: Partial<DevServerSummary>): DevServerSummary => {
+		const base: DevServerSummary = {
+			taskId: "t1",
+			hasDevScript: true,
+			running: true,
+			ports: [5173, 9229],
+			conflictPorts: [],
+			declaredCount: 1,
+			runningCount: 1,
+			servers: [],
+			...over,
+		};
+		if (over?.servers) return base;
+		return {
+			...base,
+			runningCount: base.running ? 1 : 0,
+			servers: [{ name: "dev", isDefault: true, running: base.running, ports: base.ports }],
+		};
+	};
 
 	it("shows nothing when the task has no dev-server data", () => {
 		renderCard(active());
@@ -2282,6 +2298,45 @@ describe("TaskCard dev-server control", () => {
 		expect(screen.getByTestId("task-card-dev-control")).toHaveAttribute("data-dev-state", "starting");
 	});
 
+	// The card stays one control however many servers a task declares: a dot, a
+	// port and a count. Anything per-server belongs in the task's own header.
+	it("counts the running servers when a task declares several", () => {
+		renderCard(active(), { devServer: summary({
+			declaredCount: 3,
+			runningCount: 2,
+			ports: [5173],
+			servers: [
+				{ name: "dev", isDefault: true, running: true, ports: [5173] },
+				{ name: "api", isDefault: false, running: true, ports: [8080] },
+				{ name: "worker", isDefault: false, running: false, ports: [] },
+			],
+		}) });
+
+		expect(screen.getByTestId("task-card-dev-count").textContent).toBe("2/3");
+		expect(screen.getByTestId("task-card-dev-control").textContent).toContain(":5173");
+	});
+
+	it("shows no count for a single-server task", () => {
+		renderCard(active(), { devServer: summary() });
+		expect(screen.queryByTestId("task-card-dev-count")).toBeNull();
+	});
+
+	// The pill opens the DEFAULT server, not whichever one happens to be first
+	// in the list — the front end is what the user means by "open the app".
+	it("opens the default server's port even when another started first", () => {
+		renderCard(active(), { devServer: summary({
+			declaredCount: 2,
+			runningCount: 2,
+			ports: [8080, 5173],
+			servers: [
+				{ name: "api", isDefault: false, running: true, ports: [8080] },
+				{ name: "dev", isDefault: true, running: true, ports: [5173] },
+			],
+		}) });
+
+		expect(screen.getByTestId("task-card-dev-control").textContent).toContain(":5173");
+	});
+
 	it("disappears entirely when the server is stopped", () => {
 		renderCard(active(), { devServer: summary({ running: false, ports: [] }) });
 		expect(screen.queryByTestId("task-card-dev-control")).toBeNull();
@@ -2297,6 +2352,8 @@ describe("TaskCard dev-server control", () => {
 		renderCard(active(), { devServer: summary() });
 
 		await userEvent.click(within(screen.getByTestId("task-card-dev-control")).getByRole("button", { name: /stop the dev server/i }));
-		expect(api.request.stopDevServer).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		// `all`: a card-level stop is coarse on purpose — it takes down every dev
+		// server of the task, never one of several.
+		expect(api.request.stopDevServer).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", all: true });
 	});
 });

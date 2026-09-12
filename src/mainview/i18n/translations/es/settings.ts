@@ -405,6 +405,19 @@ const settings = {
 	"projectSettings.devScript": "Script de desarrollo",
 	"projectSettings.devScriptDesc":
 		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",
+	"projectSettings.devServers": "Servidores de desarrollo",
+	"projectSettings.devServersDesc":
+		"Cada servidor se inicia, se detiene y se reinicia por separado. La primera fila es el script de desarrollo del proyecto con su nombre fijo «dev»; añade una fila para una API, un worker o un back office. Cada servidor de una tarea recibe todos los puertos con nombre como DEV3_PORT_<NOMBRE>.",
+	"projectSettings.devServerName": "Nombre del servidor",
+	"projectSettings.devServerScript": "Script del servidor de desarrollo {name}",
+	"projectSettings.devServerPorts": "Puertos con nombre",
+	"projectSettings.devServerPortsPlaceholder": "nombres de puertos, p. ej. api, admin",
+	"projectSettings.devServerAdvanced": "Avanzado",
+	"projectSettings.devServerRemove": "Eliminar este servidor de desarrollo",
+	"projectSettings.devServerAdd": "+ Añadir servidor de desarrollo",
+	"projectSettings.devServerTitle": "Etiqueta visible",
+	"projectSettings.devServerCwd": "Directorio de trabajo, relativo al worktree",
+	"projectSettings.devServerEnv": "Entorno solo para este servidor",
 	"projectSettings.cleanupScript": "Script de limpieza",
 	"projectSettings.cleanupScriptDesc":
 		"Se ejecuta antes de eliminar el worktree — cuando una tarea se marca como Completed o Cancelled, se elimina una tarea activa o se cancela su preparación",

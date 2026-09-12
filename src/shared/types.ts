@@ -1657,11 +1657,38 @@ export interface ShellAvailability {
 	installed: Partial<Record<ShellFlavor, string>>;
 }
 
+/**
+ * One dev server a project declares by name. `devScript` declares the server
+ * named `dev` and is NOT written here — see `src/shared/dev-servers.ts`.
+ */
+export interface DevServerConfig {
+	/** The command to run, verbatim, exactly like `devScript`. */
+	script: string;
+	/**
+	 * Ports this server listens on, by name. Each becomes one pool port of the
+	 * task, delivered to EVERY server of that task as `DEV3_PORT_<NAME>` so the
+	 * front end knows where the API is.
+	 */
+	ports?: string[];
+	/** Extra environment for this server only. Layers between the project env and the caller's. */
+	env?: Record<string, string>;
+	/** Worktree-relative working directory (a monorepo package). Absent = the worktree root. */
+	cwd?: string;
+	/** Display label for the pane and the UI. Absent = the server's name. */
+	title?: string;
+}
+
 /** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
 export interface Dev3RepoConfig {
 	setupScript?: string;
 	setupScriptLaunchMode?: SetupScriptLaunchMode;
 	devScript?: string;
+	/**
+	 * Additional dev servers, by name. Independent of `devScript`, which keeps
+	 * declaring the server named `dev` — declaring `dev` here while `devScript`
+	 * is set is a config error, not a merge.
+	 */
+	devServers?: Record<string, DevServerConfig>;
 	cleanupScript?: string;
 	clonePaths?: string[];
 	defaultBaseBranch?: string;
@@ -1684,6 +1711,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"setupScript",
 	"setupScriptLaunchMode",
 	"devScript",
+	"devServers",
 	"cleanupScript",
 	"clonePaths",
 	"defaultBaseBranch",
@@ -1739,6 +1767,8 @@ export interface Project {
 	setupScript: string;
 	setupScriptLaunchMode?: SetupScriptLaunchMode;
 	devScript: string;
+	/** Dev servers beyond the one `devScript` declares, by name. Additive: absent = just `devScript`. */
+	devServers?: Record<string, DevServerConfig>;
 	cleanupScript: string;
 	defaultBaseBranch: string;
 	defaultCompareRef?: string;
@@ -4004,23 +4034,24 @@ export interface TmuxLayout {
 
 // ---- Task dev server ----
 
-export interface DevServerStatus {
-	projectId: string;
-	taskId: string;
+/**
+ * One declared dev server of a task: its identity, whether it is up, and the
+ * ports and processes that belong to IT rather than to the task as a whole.
+ */
+export interface DevServerEntry {
+	/** `dev` for the server `devScript` declares, else its key in `devServers`. */
+	name: string;
+	/** Display label for panes and the UI. */
+	title: string;
+	/** True for the server backed by `devScript` — the one an unnamed command means. */
+	isDefault: boolean;
 	running: boolean;
-	hasDevScript: boolean;
-	worktreePath: string | null;
-	tmuxSocket: string;
-	/** tmux only — empty on a native task, which has no tmux session of any kind. */
-	taskSessionName: string;
 	/** tmux only — empty on a native task, whose dev server runs in its pane. */
 	devSessionName: string;
-	/** Which terminal backend hosts this dev server. */
-	backend: TaskPaneBackendKind;
 	viewerPaneId: string | null;
 	panePids: number[];
-	assignedPorts: number[];
-	ports: PortInfo[];
+	/** This server's named ports and the pool port each resolved to. */
+	namedPorts: Record<string, number>;
 	/**
 	 * Listening ports bound by processes inside the dev-server tmux session's
 	 * own process tree (empty when stopped). Unlike `ports` (whole task session,
@@ -4053,14 +4084,44 @@ export interface DevServerStatus {
 	 */
 	extraEnvKeys: string[];
 	/**
-	 * Where this task's dev-server output is mirrored as plain text
-	 * (`<taskDir>/logs/dev-server.log`) — the file `dev3 dev-server logs` reads and
-	 * an agent greps instead of attaching to a pane. Null when the task has no
-	 * worktree to hang it off. The file itself may not exist yet: capture starts
-	 * with the server.
+	 * Where THIS server's output is mirrored as plain text
+	 * (`<taskDir>/logs/dev-server.log`, or `dev-server-<name>.log`) — the file
+	 * `dev3 dev-server logs` reads and an agent greps instead of attaching to a
+	 * pane. Null when the task has no worktree to hang it off. The file itself may
+	 * not exist yet: capture starts with the server.
 	 */
 	logPath: string | null;
 	resourceUsage?: ResourceUsage;
+}
+
+/**
+ * Every dev server of one task. A task can declare several, so this is an
+ * envelope: the facts that belong to the task live here, and the per-server
+ * facts live in {@link DevServerEntry}.
+ */
+export interface DevServerStatus {
+	projectId: string;
+	taskId: string;
+	/** True when at least one declared server is up. */
+	running: boolean;
+	/** True when the task declares any dev server at all. */
+	hasDevScript: boolean;
+	worktreePath: string | null;
+	tmuxSocket: string;
+	/** tmux only — empty on a native task, which has no tmux session of any kind. */
+	taskSessionName: string;
+	/** Which terminal backend hosts these dev servers. */
+	backend: TaskPaneBackendKind;
+	/** Every pool port of the task: the positional block first, then the named ones. */
+	assignedPorts: number[];
+	/** The task's named ports and the pool port each resolved to — every server gets all of them. */
+	namedPorts: Record<string, number>;
+	/** Ports detected across the whole task session, ascending by port. */
+	ports: PortInfo[];
+	/** One entry per declared server, in declaration order (`dev` first). */
+	servers: DevServerEntry[];
+	/** Config mistakes in the declaration (duplicate port, `dev` declared twice). */
+	configErrors: string[];
 	/**
 	 * Set only when the live state could not be read because tmux itself failed
 	 * to launch (e.g. macOS Full Disk Access lost). When present, `running` and
@@ -4082,14 +4143,30 @@ export interface DevServerSummary {
 	taskId: string;
 	/** No dev script resolved for this task's branch → the card shows no control. */
 	hasDevScript: boolean;
+	/** True when at least one declared server is up. */
 	running: boolean;
-	/** Ports the dev server itself is serving on, ascending. Empty while it boots. */
+	/** Ports the dev servers are serving on, ascending. Empty while they boot. */
 	ports: number[];
 	/**
 	 * Assigned pool ports held by a foreign process while the dev server is down
 	 * — the devScript will crash-loop on bind if started. Ascending.
 	 */
 	conflictPorts: number[];
+	/** How many dev servers this task declares. */
+	declaredCount: number;
+	/** How many of them are up. */
+	runningCount: number;
+	/** Per-server state, in declaration order — what the card's pill counts and opens. */
+	servers: DevServerSummaryEntry[];
+}
+
+/** One server's line in a board summary: enough to show a dot and open a port. */
+export interface DevServerSummaryEntry {
+	name: string;
+	isDefault: boolean;
+	running: boolean;
+	/** Ports this server is serving on, ascending. */
+	ports: number[];
 }
 
 // ---- Remote (headless `dev3 remote`) lifecycle ----
@@ -5083,22 +5160,25 @@ export type AppRPCSchema = {
 			// to the lifecycle DEV3_* vars and the assigned ports, and dev3-owned
 			// names are dropped outright (see `sanitizeDevServerEnv`). Omitting it on
 			// a start clears whatever the previous run was given.
+			// `server` names ONE declared dev server; absent means the default
+			// (`devScript`), or the only declared server when there is no default.
+			// `all` fans the action out over every declared server instead.
 			runDevServer: {
-				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string> };
+				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; server?: string; all?: boolean };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
-				params: { taskId: string; projectId: string; opId?: string };
+				params: { taskId: string; projectId: string; opId?: string; server?: string };
 				response: { running: boolean };
 			};
 			stopDevServer: {
-				params: { taskId: string; projectId: string; opId?: string };
+				params: { taskId: string; projectId: string; opId?: string; server?: string; all?: boolean };
 				response: DevServerStatus;
 			};
 			// Omitting `env` REUSES the extra env of the run being restarted, which is
 			// what keeps the UI's Restart button on the same configuration.
 			restartDevServer: {
-				params: { taskId: string; projectId: string; env?: Record<string, string> };
+				params: { taskId: string; projectId: string; env?: Record<string, string>; server?: string; all?: boolean };
 				response: DevServerStatus;
 			};
 			getDevServerStatus: {

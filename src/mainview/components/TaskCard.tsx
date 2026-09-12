@@ -614,7 +614,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Left half opens the lowest port, right half stops. A stopped server has
 	// nothing to open and nothing to stop, so the control disappears instead of
 	// sitting there inert and pulling the eye across the whole board.
-	const devPort = devServer?.ports[0] ?? null;
+	// Which port the pill opens: the default server's, else the first running
+	// one's. A task can run several servers, and the card stays one control.
+	const devServers = devServer?.servers ?? [];
+	const devPrimary = devServers.find((entry) => entry.isDefault && entry.running)
+		?? devServers.find((entry) => entry.running);
+	const devPort = devPrimary?.ports[0] ?? devServer?.ports[0] ?? null;
+	const devDeclared = devServer?.declaredCount ?? 0;
+	const devRunningCount = devServer?.runningCount ?? 0;
 	const devConflict = (devServer?.conflictPorts.length ?? 0) > 0;
 	// Running with nothing listening yet is a server still booting — the only
 	// honest reading, and it needs no extra state from the backend.
@@ -653,22 +660,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						? <span className="h-1.5 w-1.5 flex-shrink-0 animate-spin rounded-[1px] border border-current border-t-transparent" />
 						: <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current ${devServer.running ? "motion-safe:animate-pulse" : ""}`} />}
 					{devLabel}
+					{/* Several declared servers: how many of them are up, so the board
+					    stays scannable without a control per server. */}
+					{devDeclared > 1 && (
+						<span className="text-dense opacity-70" data-testid="task-card-dev-count">
+							{devRunningCount}/{devDeclared}
+						</span>
+					)}
 				</button>
 			</Tooltip>
 			{/* Danger INK on a hover tint, never a fill: stopping a dev server loses
 			    nothing, so it must not read as an error from across the room. */}
-			<Tooltip content={t("task.devStop")} detail={t("ttip.task.devStop")}>
+			<Tooltip content={devDeclared > 1 ? t("task.devStopAll") : t("task.devStop")} detail={t("ttip.task.devStop")}>
 				<button
 					onClick={async (e) => {
 						e.stopPropagation();
 						try {
-							await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
+							// A card-level action is coarse on purpose: it stops every
+							// server of the task, never one of several.
+							await api.request.stopDevServer({ taskId: task.id, projectId: project.id, all: true });
 						} catch (err) {
 							toast.error(t("task.devStopFailed", { error: String(err) }));
 						}
 					}}
 					className="flex h-full items-center border-l border-current/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
-					aria-label={t("task.devStop")}
+					aria-label={devDeclared > 1 ? t("task.devStopAll") : t("task.devStop")}
 					disabled={isDisabled || !devServer.running}
 				>
 					<span className="h-1.5 w-1.5 bg-current" />

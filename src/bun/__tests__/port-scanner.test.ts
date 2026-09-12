@@ -833,7 +833,7 @@ describe("poller", () => {
 	// such a task — the UI badge stayed empty (issue #1427).
 	it("includes an assigned port published for the task's dev server", async () => {
 		const taskId = "task-published-1";
-		recordDevServerStart(taskId, [10569], []);
+		recordDevServerStart(taskId, "dev", [10569], []);
 		const push = vi.fn();
 		const getActiveSessions = vi.fn().mockReturnValue([{ taskId, tmuxSocket: "dev3" }]);
 
@@ -853,12 +853,12 @@ describe("poller", () => {
 				{ port: 10569, pid: 1380, processName: "com.docker.backend" },
 			],
 		});
-		clearDevServerStart(taskId);
+		clearDevServerStart(taskId, "dev");
 	});
 
 	it("ignores a foreign holder that was already listening before the dev server started", async () => {
 		const taskId = "task-squatted-1";
-		recordDevServerStart(taskId, [10569], [{ port: 10569, pid: 1380, processName: "com.docker.backend" }]);
+		recordDevServerStart(taskId, "dev", [10569], [{ port: 10569, pid: 1380, processName: "com.docker.backend" }]);
 		const push = vi.fn();
 		const getActiveSessions = vi.fn().mockReturnValue([{ taskId, tmuxSocket: "dev3" }]);
 
@@ -875,7 +875,7 @@ describe("poller", () => {
 			taskId,
 			ports: [{ port: 3000, pid: 100, processName: "node" }],
 		});
-		clearDevServerStart(taskId);
+		clearDevServerStart(taskId, "dev");
 	});
 
 	it("ignores assigned-port holders for a task with no running dev server", async () => {

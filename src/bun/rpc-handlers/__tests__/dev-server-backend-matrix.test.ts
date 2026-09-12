@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 	getPortAssignments: vi.fn(() => [] as number[]),
 	allocatePorts: vi.fn(),
 	buildPortEnv: vi.fn(() => ({})),
+	buildNamedPortEnv: vi.fn(() => ({})),
 	buildProcessTree: vi.fn(async () => new Map<number, number[]>()),
 	collectDescendants: vi.fn(() => [] as number[]),
 	collectTaskPids: vi.fn(async () => new Set<number>()),
@@ -45,6 +46,8 @@ const mocks = vi.hoisted(() => ({
 	writeLaunchScript: vi.fn(async () => {}),
 	// tmux singleton — every method the dev-server paths could reach
 	tmuxHasSession: vi.fn(async () => false),
+	// How a tmux task's live dev servers are enumerated: one session per server.
+	tmuxListSessions: vi.fn(async () => [] as Array<{ name: string }>),
 	tmuxNewSessionDetached: vi.fn(async () => ({ stdout: "", stderr: "" })),
 	tmuxSplitWindow: vi.fn(async () => ({ paneId: "%7", stdout: "", stderr: "" })),
 	tmuxKillSession: vi.fn(async () => {}),
@@ -72,6 +75,7 @@ vi.mock("../../port-pool", () => ({
 	getPortAssignments: mocks.getPortAssignments,
 	allocatePorts: mocks.allocatePorts,
 	buildPortEnv: mocks.buildPortEnv,
+	buildNamedPortEnv: mocks.buildNamedPortEnv,
 }));
 
 vi.mock("../../port-scanner", () => ({
@@ -103,7 +107,12 @@ vi.mock("../../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
 vi.mock("../../agent-transcripts", () => ({ resolveResumableSessionId: vi.fn() }));
 vi.mock("../../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn() }));
 vi.mock("../../agent-prompt", () => ({ markAgentPane: vi.fn() }));
-vi.mock("../../native-task-panes", () => ({ nativeTaskPanesAlive: vi.fn(async () => false) }));
+vi.mock("../../native-task-panes", () => ({
+	nativeTaskPanesAlive: vi.fn(async () => false),
+	// How a native task's live dev servers are enumerated: each pane carries its
+	// server's script path in its launch command.
+	nativeTaskPaneCommands: vi.fn(async () => []),
+}));
 
 vi.mock("../shared-pure", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../shared-pure")>()),
@@ -114,6 +123,7 @@ vi.mock("../../tmux", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../../tmux")>()),
 	tmux: {
 		hasSession: mocks.tmuxHasSession,
+		listSessions: mocks.tmuxListSessions,
 		newSessionDetached: mocks.tmuxNewSessionDetached,
 		splitWindow: mocks.tmuxSplitWindow,
 		killSession: mocks.tmuxKillSession,
@@ -136,6 +146,7 @@ const TASK = { id: TASK_ID, title: "Dev server task", branchName: "feat/x", work
 /** Every tmux method the mocked singleton exposes — "no tmux at all" asserts on all of them. */
 const ALL_TMUX_CALLS = [
 	mocks.tmuxHasSession,
+	mocks.tmuxListSessions,
 	mocks.tmuxNewSessionDetached,
 	mocks.tmuxSplitWindow,
 	mocks.tmuxKillSession,
@@ -211,14 +222,15 @@ describe("runDevServer — native backend", () => {
 
 		const status = await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
 
-		expect(status).toMatchObject({
-			backend: "native",
+		expect(status).toMatchObject({ backend: "native", running: true, taskSessionName: "" });
+		expect(status.servers).toMatchObject([{
+			name: "dev",
+			isDefault: true,
 			running: true,
-			taskSessionName: "",
 			devSessionName: "",
 			viewerPaneId: "%99",
 			panePids: [777],
-		});
+		}]);
 	});
 });
 
@@ -247,7 +259,8 @@ describe("stopDevServer", () => {
 
 		// The 4th argument is the stop's correlation id, which has to reach the
 		// aux-pane close or the log cannot join request → close → reply (seq 1407).
-		expect(mocks.closeAuxPane).toHaveBeenCalledWith(TASK, "devServer", "dev3", expect.stringMatching(/^[0-9a-f]{8}$/));
+		// The 5th argument is the server's slot: one pane per declared dev server.
+		expect(mocks.closeAuxPane).toHaveBeenCalledWith(TASK, "devServer", "dev3", expect.stringMatching(/^[0-9a-f]{8}$/), "dev");
 		expect(mocks.tmuxKillSession).not.toHaveBeenCalled();
 		expect(liveness.alive()).toBe(false);
 	});

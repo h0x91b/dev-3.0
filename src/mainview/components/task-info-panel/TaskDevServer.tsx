@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "../../toast";
 import { createPortal } from "react-dom";
-import type { Project, Task } from "../../../shared/types";
+import type { DevServerStatus, Project, Task } from "../../../shared/types";
+import { resolveDevServers } from "../../../shared/dev-servers";
 import { api } from "../../rpc";
 import { traceDevServerOp, type DevServerTrace } from "../../dev-server-trace";
 
@@ -104,11 +105,132 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 	);
 }
 
+
+interface DevServerListProps {
+	position: { top: number; left: number };
+	servers: Array<{ name: string; title: string; isDefault: boolean }>;
+	status: DevServerStatus | null;
+	busy: string | null;
+	onStart: (name: string) => void;
+	onStop: (name: string) => void;
+	onRestart: (name: string) => void;
+	onStartAll: () => void;
+	onStopAll: () => void;
+	onClose: () => void;
+}
+
+/**
+ * One row per declared dev server: its state, the port it serves on, and its own
+ * start/stop/restart. The toolbar keeps ONE button however many servers a
+ * project declares — that is what this list is for.
+ */
+function DevServerList({ position, servers, status, busy, onStart, onStop, onRestart, onStartAll, onStopAll, onClose }: DevServerListProps) {
+	const t = useT();
+	const menuRef = useRef<HTMLDivElement>(null);
+	const { position: menuPos, visible } = useViewportClamp(menuRef, position);
+
+	useEscapeKey(onClose);
+	useEffect(() => {
+		function handleClick(event: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [onClose]);
+
+	const anyRunning = status?.servers.some((entry) => entry.running) === true;
+
+	return (
+		<div
+			ref={menuRef}
+			data-testid="dev-server-list"
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[17rem]"
+			style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
+			onClick={(event) => event.stopPropagation()}
+		>
+			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
+				{t("header.devServers")}
+			</div>
+			{servers.map((server) => {
+				const entry = status?.servers.find((candidate) => candidate.name === server.name);
+				const running = entry?.running === true;
+				const port = entry?.devPorts[0]?.port ?? entry?.publishedPorts[0]?.port ?? null;
+				return (
+					<div key={server.name} data-testid={`dev-server-row-${server.name}`} className="flex items-center gap-2 px-3 py-1.5">
+						<span
+							className={`w-2 h-2 rounded-full flex-shrink-0 ${running ? "bg-success" : "bg-fg-muted/40"}`}
+							aria-hidden
+						/>
+						<span className="flex-1 min-w-0 truncate text-sm text-fg-2" title={server.title}>{server.name}</span>
+						{port !== null && (
+							<button
+								onClick={() => window.open(`http://localhost:${port}`, "_blank")}
+								className="font-mono text-xs text-accent hover:text-accent-emphasis"
+								aria-label={t("header.devServerOpenPort", { port: String(port) })}
+							>
+								:{port}
+							</button>
+						)}
+						{running ? (
+							<>
+								<button
+									onClick={() => onRestart(server.name)}
+									disabled={busy === server.name}
+									className="text-xs text-fg-3 hover:text-fg px-1.5 py-0.5 rounded hover:bg-elevated-hover disabled:opacity-40"
+								>
+									{t("header.devServerRestart")}
+								</button>
+								<button
+									onClick={() => onStop(server.name)}
+									disabled={busy === server.name}
+									className="text-xs text-danger px-1.5 py-0.5 rounded hover:bg-elevated-hover disabled:opacity-40"
+								>
+									{t("header.devServerStop")}
+								</button>
+							</>
+						) : (
+							<button
+								onClick={() => onStart(server.name)}
+								disabled={busy === server.name}
+								className="text-xs text-fg-2 hover:text-fg px-1.5 py-0.5 rounded hover:bg-elevated-hover disabled:opacity-40"
+							>
+								{t("header.devServerStart")}
+							</button>
+						)}
+					</div>
+				);
+			})}
+			{status && status.configErrors.length > 0 && (
+				<p className="px-3 py-1.5 text-xs text-warning-strong">{status.configErrors.join("; ")}</p>
+			)}
+			<div className="mt-1 border-t border-edge pt-1 flex items-center gap-2 px-3 py-1">
+				<button
+					onClick={onStartAll}
+					className="text-xs text-fg-2 hover:text-fg px-1.5 py-0.5 rounded hover:bg-elevated-hover"
+				>
+					{t("header.devServerStartAll")}
+				</button>
+				<button
+					onClick={onStopAll}
+					disabled={!anyRunning}
+					className="text-xs text-danger px-1.5 py-0.5 rounded hover:bg-elevated-hover disabled:opacity-40"
+				>
+					{t("header.devServerStopAll")}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 export default function TaskDevServer({ task, project, isTaskActive, compact = false }: TaskDevServerProps) {
 	const t = useT();
 	const reducedMotion = useReducedMotion();
 	const resolvedProject = useResolvedTaskProject(task, project);
-	const hasDevScript = !!resolvedProject.devScript?.trim();
+	// The declared servers come from the same resolver the backend uses, so the
+	// button can never disagree with what a start would actually do.
+	const declaredServers = resolveDevServers(resolvedProject).servers;
+	const hasDevScript = declaredServers.length > 0;
+	const multiServer = declaredServers.length > 1;
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const devServerHintRef = useRef<HTMLDivElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
@@ -117,6 +239,49 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	const [devServerHintCopied, setDevServerHintCopied] = useState(false);
 	const [devServerHintPos, setDevServerHintPos] = useState({ top: 0, left: 0 });
 	const [devState, setDevState] = useState<DevServerState>("unknown");
+	const [devServerListOpen, setDevServerListOpen] = useState(false);
+	const [devServerListPos, setDevServerListPos] = useState({ top: 0, left: 0 });
+	const [devStatus, setDevStatus] = useState<DevServerStatus | null>(null);
+	const [busyServer, setBusyServer] = useState<string | null>(null);
+
+	async function refreshDevStatus() {
+		try {
+			const status = await api.request.getDevServerStatus({ taskId: task.id, projectId: project.id });
+			setDevStatus(status);
+			setDevState(status.running ? "running" : "stopped");
+		} catch (err) {
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
+		}
+	}
+
+	function openDevServerList() {
+		if (devServerBtnRef.current) {
+			const rect = devServerBtnRef.current.getBoundingClientRect();
+			setDevServerListPos({ top: rect.bottom + 4, left: rect.left });
+		}
+		setDevServerListOpen(true);
+		void refreshDevStatus();
+	}
+
+	/** One server's start/stop/restart from the list, then a fresh read. */
+	async function actOnServer(action: "start" | "stop" | "restart", server?: string, all?: boolean) {
+		setBusyServer(server ?? "*");
+		try {
+			const params = { taskId: task.id, projectId: project.id, ...(server ? { server } : {}), ...(all ? { all: true } : {}) };
+			const status = action === "start"
+				? await api.request.runDevServer(params)
+				: action === "stop"
+					? await api.request.stopDevServer(params)
+					: await api.request.restartDevServer(params);
+			setDevStatus(status);
+			setDevState(status.running ? "running" : "stopped");
+		} catch (err) {
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
+			void refreshDevStatus();
+		} finally {
+			setBusyServer(null);
+		}
+	}
 
 	// settle-to-render has to be measured AFTER React commits, not after the setState
 	// call returns — otherwise it reports the time to schedule a render, which is
@@ -274,6 +439,13 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		}
 
 		if (!isTaskActive || devState === "starting") {
+			return;
+		}
+
+		// Several declared servers cannot be collapsed into one click: which one
+		// would it start? The list is the control.
+		if (multiServer) {
+			openDevServerList();
 			return;
 		}
 
@@ -459,6 +631,22 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 						</button>
 					</div>
 				</div>,
+				document.body,
+			)}
+
+			{devServerListOpen && createPortal(
+				<DevServerList
+					position={devServerListPos}
+					servers={declaredServers}
+					status={devStatus}
+					busy={busyServer}
+					onStart={(name) => actOnServer("start", name)}
+					onStop={(name) => actOnServer("stop", name)}
+					onRestart={(name) => actOnServer("restart", name)}
+					onStartAll={() => actOnServer("start", undefined, true)}
+					onStopAll={() => actOnServer("stop", undefined, true)}
+					onClose={() => setDevServerListOpen(false)}
+				/>,
 				document.body,
 			)}
 
