@@ -100,6 +100,7 @@ vi.mock("../git", () => ({
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
 	getUnpreservedCount: vi.fn(),
+	isPreservedOutsideBranch: vi.fn().mockResolvedValue(false),
 	getBehindOriginCount: vi.fn().mockResolvedValue(0),
 	getBranchDiffStats: vi.fn(),
 	canRebaseCleanly: vi.fn(),
@@ -5402,7 +5403,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 });
+		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 });
 	});
 
 	// A project added from a local folder has no `origin`. Comparing against
@@ -5927,6 +5928,8 @@ describe("handlers.getUnsavedWork", () => {
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 3, behind: 0, baseUnreachable: false });
+		// clearAllMocks keeps implementations, so pin the safe default per test.
+		vi.mocked(git.isPreservedOutsideBranch).mockResolvedValue(false);
 	}
 
 	it("asks what is preserved anywhere, not what is on origin/<branch>", async () => {
@@ -5939,7 +5942,7 @@ describe("handlers.getUnsavedWork", () => {
 		expect(git.getUnpushedCount).not.toHaveBeenCalled();
 		// 0 with commits ahead is the cross-branch push (issue #1545): the dialog
 		// must stay silent, because nothing would be lost.
-		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 0, ahead: 3, baseUnreachable: false });
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 3, baseUnreachable: false });
 	});
 
 	it("keeps the never-pushed sentinel when nothing is preserved", async () => {
@@ -5947,7 +5950,18 @@ describe("handlers.getUnsavedWork", () => {
 		vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 
 		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: -1, ahead: 3, baseUnreachable: false });
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: -1, preservedOutsideBranch: false, ahead: 3, baseUnreachable: false });
+	});
+
+	it("carries the reachability sweep's answer through to the dialog", async () => {
+		setup();
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
+		vi.mocked(git.isPreservedOutsideBranch).mockResolvedValue(true);
+
+		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(git.isPreservedOutsideBranch).toHaveBeenCalledWith("/tmp/wt", "dev3/t");
+		expect(result.preservedOutsideBranch).toBe(true);
 	});
 
 	it("passes a partial count through", async () => {
@@ -5955,7 +5969,7 @@ describe("handlers.getUnsavedWork", () => {
 		vi.mocked(git.getUnpreservedCount).mockResolvedValue(2);
 
 		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 2, ahead: 3, baseUnreachable: false });
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 2, preservedOutsideBranch: false, ahead: 3, baseUnreachable: false });
 	});
 });
 

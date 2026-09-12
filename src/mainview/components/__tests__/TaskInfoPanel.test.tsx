@@ -168,6 +168,7 @@ const defaultBranchStatus: BranchStatus = {
 	insertions: 0,
 	deletions: 0,
 	unpushed: 0,
+	preservedOutsideBranch: false,
 	mergedByContent: false,
 	diffFiles: 0,
 	diffInsertions: 0,

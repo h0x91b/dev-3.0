@@ -217,7 +217,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
+		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
 	}
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
@@ -265,10 +265,11 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		return { pr: null, isGitHub: true };
 	})();
 
-	const [status, uncommitted, unpushed, remoteAhead, branchDiff, detected] = await Promise.all([
+	const [status, uncommitted, unpushed, preservedOutsideBranch, remoteAhead, branchDiff, detected] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpreservedCount(task.worktreePath, branchForPush),
+		git.isPreservedOutsideBranch(task.worktreePath, branchForPush),
 		// origin/<branch> was refreshed above, so this is the live answer to "would a
 		// plain push be refused as non-fast-forward".
 		hasRemote ? git.getBehindOriginCount(task.worktreePath, branchForPush) : Promise.resolve(0),
@@ -314,7 +315,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		: null;
 
 	const result = {
-		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
+		...status, canRebase, ...uncommitted, unpushed, preservedOutsideBranch, mergedByContent,
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileStats: branchDiff.fileStats,
 		prNumber, prUrl,
 		mergeCompletionFingerprint,
@@ -339,18 +340,19 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false };
+		return { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
 	}
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForPush = liveBranch ?? task.branchName ?? "";
 	const ref = await resolveCompareRef(project, resolveTaskCompareBaseBranch(task, project));
-	const [uncommitted, unpushed, counts] = await Promise.all([
+	const [uncommitted, unpushed, preservedOutsideBranch, counts] = await Promise.all([
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpreservedCount(task.worktreePath, branchForPush),
+		git.isPreservedOutsideBranch(task.worktreePath, branchForPush),
 		git.getBranchStatus(task.worktreePath, ref),
 	]);
-	return { ...uncommitted, unpushed, ahead: counts.ahead, baseUnreachable: counts.baseUnreachable };
+	return { ...uncommitted, unpushed, preservedOutsideBranch, ahead: counts.ahead, baseUnreachable: counts.baseUnreachable };
 }
 
 async function getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {

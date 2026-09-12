@@ -2219,6 +2219,58 @@ export async function getUnpreservedCount(
 	return parseInt(anywhere.stdout, 10) === 0 ? 0 : -1;
 }
 
+/**
+ * Bound for the reachability sweep below. Measured on a synthetic 500k-commit,
+ * 35k-ref repo: 86-93ms with no commit-graph, 38ms with one. This is ~20x that
+ * worst case, and stays well inside the completion dialog's own 4s confirm gate.
+ */
+const PRESERVATION_SWEEP_TIMEOUT_MS = 2000;
+
+/**
+ * Does any ref OTHER than this task's own branch still reach HEAD? That is the
+ * real question behind "will be lost": completing a task deletes the worktree and
+ * `refs/heads/<branchName>`, so commits that a local branch, a tag or a
+ * remote-tracking ref also reaches survive it untouched.
+ *
+ * Answered from refs already on disk, never the network — this runs in front of
+ * the completion dialog. Remote-tracking refs are deliberately NOT excluded:
+ * `removeWorktree` deletes only the local branch, so `origin/<branch>` outlives
+ * the task.
+ *
+ * `--exclude` takes the name with `refs/heads/` ALREADY STRIPPED and applies only
+ * to the `--branches` that follows it. Spelling it `refs/heads/<branch>` matches
+ * nothing, which silently leaves the branch in the negative set and makes HEAD
+ * answer for itself — every branch then reads as preserved.
+ *
+ * False is the answer to every doubt: a failed or timed-out `git`, an unknown
+ * branch name (a detached HEAD leaves nothing to exclude), and a repo with no
+ * other refs all report "not preserved". This flag's only power is to make a
+ * data-loss warning quieter, so unproven must never read as safe.
+ */
+export async function isPreservedOutsideBranch(
+	worktreePath: string,
+	branchName: string,
+): Promise<boolean> {
+	if (!branchName) return false;
+
+	const result = await run(
+		[
+			"git", "rev-list", "--count", "HEAD", "--not",
+			`--exclude=${branchName}`, "--branches", "--remotes", "--tags",
+		],
+		worktreePath,
+		{ timeoutMs: PRESERVATION_SWEEP_TIMEOUT_MS },
+	);
+	if (!result.ok) {
+		log.warn("isPreservedOutsideBranch failed — treating the branch as unpreserved", {
+			worktreePath, branchName, stderr: result.stderr,
+		});
+		return false;
+	}
+	const unreachable = parseInt(result.stdout, 10);
+	return unreachable === 0;
+}
+
 export async function getBehindOriginCount(
 	worktreePath: string,
 	branchName: string,
