@@ -601,11 +601,13 @@ function KanbanColumn({
 				ref={taskListRef}
 				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
 				onScroll={syncListClipped}
-				onDoubleClick={!isCustomColumn && status === "todo" ? (e) => {
-					// Only trigger when clicking empty space, not on a task card
+				onDoubleClick={(e) => {
+					// Only trigger when clicking empty space, not on a task card.
+					// Every column opens the same New Task form — the task still lands
+					// in To Do, exactly like Cmd+N.
 					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
 					onAddTask();
-				} : undefined}
+				}}
 			>
 				{visibleTasks.map((task) => (
 					<div key={task.id} data-task-id={task.id}>

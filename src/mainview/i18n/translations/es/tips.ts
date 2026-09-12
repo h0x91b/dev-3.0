@@ -26,7 +26,7 @@ const tips = {
 	"tip.agentNotes.title": "Los agentes dejan notas",
 	"tip.agentNotes.body": "Los agentes registran decisiones clave como notas de tarea. Revisa la sección de Notas en el panel de tareas.",
 	"tip.doubleClickTodo.title": "Creación rápida de tareas",
-	"tip.doubleClickTodo.body": "Haz doble clic en el espacio vacío de la columna Por Hacer para abrir el formulario de nueva tarea.",
+	"tip.doubleClickTodo.body": "Haz doble clic en el espacio vacío de cualquier columna del tablero para abrir el formulario de nueva tarea.",
 	"tip.rightClickOpen.title": "Abre en tu editor",
 	"tip.rightClickOpen.body": "Haz clic derecho en cualquier tarea activa para abrir su worktree en Finder, VS Code, Cursor u otras apps.",
 	"tip.terminalPreview.title": "Vista previa del terminal",
