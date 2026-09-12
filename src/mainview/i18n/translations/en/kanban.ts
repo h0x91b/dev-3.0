@@ -91,6 +91,7 @@ const kanban = {
 	"task.draftBadge": "Draft",
 	"task.draftHint": "Unfinished draft — click to keep writing. Nothing can start it yet.",
 	"task.hibernatedBadge": "Hibernated",
+	"task.detailGone": "That task is no longer on this board.",
 	"task.hibernatedHint": "Parked — agent, terminal and dev server stopped. The worktree and your uncommitted changes are untouched. Open the task to wake it.",
 	"task.hiddenFromSidebar": "Hidden from sidebar",
 	"task.hideFromSidebar": "Hide from sidebar",

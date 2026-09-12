@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getTaskOverview } from "../../../shared/types";
+import { ACTIVE_STATUSES, getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
 import { useLocale, useT, type TranslationKey } from "../../i18n";
 import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
@@ -26,7 +26,7 @@ import TrafficIcon from "./TrafficIcon";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
 import { useTrafficExperiment } from "./useTrafficExperiment";
-import type { AgentTrafficExperiment } from "../../../shared/types";
+import type { AgentTrafficExperiment, TaskStatus } from "../../../shared/types";
 import {
 	endpointKey,
 	trafficNodes,
@@ -58,8 +58,17 @@ import "./traffic-nodes.css";
 interface Props {
 	/** The project the user came from; seeds the scope filter, nothing else. */
 	projectId: string | null;
-	onOpenTask: (taskId: string, projectId: string) => void;
+	onOpenTask: (taskId: string, projectId: string, opts?: { archived?: boolean }) => void;
 }
+/**
+ * A task with no live terminal (completed, cancelled, todo) opens its board's
+ * detail modal instead of the Active Tasks pane — the same surface its Kanban
+ * card opens on click. ACTIVE_STATUSES is the same predicate the card uses.
+ */
+function isArchivedTask(task?: { status?: TaskStatus } | null): boolean {
+	return !!task?.status && !ACTIVE_STATUSES.includes(task.status);
+}
+
 const runtimeKeys = {
 	idle: "traffic.orbit.runtimeIdle",
 	preparing: "traffic.orbit.runtimePreparing",
@@ -1281,7 +1290,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 										<button
 											className="traffic-primary"
 											onClick={() =>
-												onOpenTask(record.row.toTaskId, record.row.toProjectId)
+												onOpenTask(record.row.toTaskId, record.row.toProjectId, {
+												archived: isArchivedTask(nodeMap.get(toKey(record.row))?.task),
+											})
 											}
 										>
 											{t("traffic.orbit.openTask")}
@@ -1337,7 +1348,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 											<button
 												className="traffic-primary"
 												onClick={() =>
-													onOpenTask(selectedNode.id, selectedNode.projectId)
+													onOpenTask(selectedNode.id, selectedNode.projectId, {
+											archived: isArchivedTask(selectedNode.task),
+										})
 												}
 											>
 												{t("traffic.orbit.openTask")}

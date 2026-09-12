@@ -13,6 +13,7 @@ import { api } from "../rpc";
 import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import CreateTaskModal from "./CreateTaskModal";
+import TaskDetailModal from "./TaskDetailModal";
 import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
@@ -52,6 +53,14 @@ interface KanbanBoardProps {
 	activeTaskId?: string;
 	disableGlobalFindShortcut?: boolean;
 	onOpenUnresolvedComments?: (task: Task) => void;
+	/**
+	 * Open the task-detail modal for this task — the same surface a completed,
+	 * cancelled or todo card opens on click. Asked for by id so a caller from
+	 * off-board (Agent traffic, a notification) does not need the card to be
+	 * rendered: a column shows only its first cards until it is expanded.
+	 */
+	detailTaskId?: string;
+	onCloseTaskDetail?: () => void;
 }
 
 function KanbanBoard({
@@ -69,6 +78,8 @@ function KanbanBoard({
 	activeTaskId,
 	disableGlobalFindShortcut = false,
 	onOpenUnresolvedComments,
+	detailTaskId,
+	onCloseTaskDetail,
 }: KanbanBoardProps) {
 	const t = useT();
 	// A space is the subject; without one everything below collapses to the single
@@ -528,6 +539,10 @@ function KanbanBoard({
 		return null;
 	}, [currentTip, displayTasks, tasks.length, collapseState]);
 
+	// Resolved from the full board set, not the filtered one: a label filter or a
+	// search query must not decide whether an explicitly requested task opens.
+	const detailTask = detailTaskId ? tasks.find((task) => task.id === detailTaskId) ?? null : null;
+
 	// Resolved from the live task list, so the popup closes by itself if the draft
 	// is promoted or deleted from somewhere else.
 	const editDraftTask = editDraftTaskId
@@ -709,6 +724,25 @@ function KanbanBoard({
 					onCreateAndRun={(task) => {
 						setEditDraftTaskId(null);
 						setLaunchModal({ task, targetStatus: "in-progress" });
+					}}
+				/>
+			)}
+			{detailTask && (
+				<TaskDetailModal
+					task={detailTask}
+					project={projectOfTask(detailTask)}
+					dispatch={dispatch}
+					onClose={() => onCloseTaskDetail?.()}
+					onOpenTask={() => {
+						const taskProject = projectOfTask(detailTask);
+						onCloseTaskDetail?.();
+						navigate(getTaskOpenMode() === "fullscreen"
+							? { screen: "task", projectId: taskProject.id, taskId: detailTask.id }
+							: { screen: "project", projectId: taskProject.id, activeTaskId: detailTask.id });
+					}}
+					onLaunchVariants={(task, targetStatus) => {
+						onCloseTaskDetail?.();
+						setLaunchModal({ task, targetStatus });
 					}}
 				/>
 			)}

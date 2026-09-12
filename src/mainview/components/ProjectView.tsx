@@ -50,6 +50,8 @@ interface ProjectViewProps {
 	onToggleTerminalFullscreen?: () => void;
 	skipCopyModeReset?: boolean;
 	openUnresolvedComments?: boolean;
+	/** Open the board's task-detail modal for this task once the board has loaded. */
+	taskDetailId?: string;
 }
 
 function ProjectView({
@@ -73,6 +75,7 @@ function ProjectView({
 	onToggleTerminalFullscreen,
 	skipCopyModeReset,
 	openUnresolvedComments,
+	taskDetailId,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -112,6 +115,12 @@ function ProjectView({
 			navigate({ screen: "project", projectId, activeTaskId: task.id, openUnresolvedComments: true });
 		}
 	}, [navigate, projectId]);
+
+	// Closing the detail modal leaves the task's own board on screen — the route
+	// keeps the space it was reached through, it just stops asking for the modal.
+	const closeTaskDetail = useCallback(() => {
+		navigate(spaceId ? { screen: "project", projectId, spaceId } : { screen: "project", projectId });
+	}, [navigate, projectId, spaceId]);
 
 	// A scheduled launch can push a new or changed task while this view's fetch is
 	// in flight. Collect those pushes and overlay them onto the snapshot instead of
@@ -225,6 +234,16 @@ function ProjectView({
 		unresolvedRouteKeyRef.current = routeKey;
 		inlineDiff.open(createUnresolvedCommentsDiffRequest(task, project));
 	}, [activeTaskId, inlineDiff.open, openUnresolvedComments, project, tasks]);
+
+	// A task asked for by id can be gone for good (deleted, or its board never
+	// held it). Say so once the board has actually loaded — a silent no-op would
+	// read as "the click did nothing".
+	useEffect(() => {
+		if (!taskDetailId || tasksStatus !== "ready") return;
+		if (tasks.some((candidate) => candidate.id === taskDetailId)) return;
+		toast.info(t("task.detailGone"));
+		closeTaskDetail();
+	}, [taskDetailId, tasksStatus, tasks, closeTaskDetail, t]);
 
 	// A project that left the space must not keep its cards on screen until the
 	// next fetch; membership decides what the board holds, not the task store.
@@ -360,6 +379,8 @@ function ProjectView({
 				taskDevServers={taskDevServers}
 				taskResourceUsage={taskResourceUsage}
 				onOpenUnresolvedComments={openUnresolvedFromBoard}
+				detailTaskId={taskDetailId}
+				onCloseTaskDetail={closeTaskDetail}
 			/>
 		</div>
 	);
