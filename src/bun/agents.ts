@@ -501,9 +501,9 @@ export function resolveAgentCommand(
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
-		// Windows caps a command line at 32 767 characters and the protocol is
-		// ~34 000, so there it has to reach the agent as a file. Resolved here
-		// because writing one is impure and the adapters are not.
+		// The protocol reaches Claude as a file on every platform: Windows cannot
+		// carry it on the command line, and POSIX argv is what `pkill -f` matches
+		// against. Resolved here because writing one is impure and adapters are not.
 		systemPromptFile: options?.skipSystemPrompt ? undefined : systemPromptFileFor(adapter),
 	};
 
@@ -516,8 +516,7 @@ export function resolveAgentCommand(
 
 /**
  * The file this adapter's protocol body was written to, or undefined when the
- * adapter has no flag that takes a file or the write failed (the adapter then
- * falls back to the inline body).
+ * adapter has no flag that takes one.
  *
  * The file is used on every platform, not only where the command line is too
  * short to carry the body. Inline, the ~29 KB of protocol prose sits in the
@@ -529,10 +528,13 @@ export function resolveAgentCommand(
  * the body through `-c developer_instructions=…` and the rest concatenate it
  * onto the prompt, so on Windows those launches are still over the ceiling — a
  * separate per-agent channel, not something this function can paper over.
+ *
+ * A failed write throws rather than falling back to the inline body: that
+ * fallback is the argv exposure being closed.
  */
 function systemPromptFileFor(adapter: { command: string; skillBody?: string }): string | undefined {
 	if (adapter.command !== "claude" || !adapter.skillBody) return undefined;
-	return ensureAgentSystemPromptFile("claude", adapter.skillBody) ?? undefined;
+	return ensureAgentSystemPromptFile("claude", adapter.skillBody);
 }
 
 /** Every raw arg a launch adds beyond the preset's own: the selected backend's

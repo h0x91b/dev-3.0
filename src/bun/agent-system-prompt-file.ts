@@ -1,23 +1,20 @@
 /**
- * The dev3 protocol delivered as a FILE instead of a command-line argument.
+ * The dev3 protocol delivered as a FILE instead of a command-line argument, on
+ * every platform. Two independent reasons, either one enough on its own:
  *
- * Windows caps a process command line at `WINDOWS_COMMAND_LINE_LIMIT`
- * characters, and the protocol used to be longer than that on its own, so no
- * Claude session could start there at all. The protocol is now inside
- * `AGENT_SKILL_BODY_LIMIT` and would fit — but it would eat four fifths of the
- * line, leaving the user's own task description to blow the ceiling instead. So
- * on Windows the body still travels as a file, and the whole line stays for the
- * task text. See decisions/2026/08/28/agent-command-lines-quote-in-the-launch-dialect.md.
- *
- * POSIX has no such ceiling worth caring about (`ARG_MAX` is 1 MB on macOS,
- * 2 MB on Linux), so it keeps the inline form and this file is never written
- * there. The dialect decides, not the caller.
+ * 1. Windows caps a process command line at `WINDOWS_COMMAND_LINE_LIMIT`
+ *    characters and the protocol is most of that by itself, leaving the user's
+ *    own task description to blow the ceiling. See
+ *    decisions/2026/08/28/agent-command-lines-quote-in-the-launch-dialect.md.
+ * 2. Inline, the body sits in every agent's `argv`, which is what `pkill -f` and
+ *    `pgrep -f` match against. Any pattern that occurs as an ordinary word in
+ *    that prose matched every running agent, so one agent's cleanup SIGTERMed
+ *    all of its siblings (h0x91b/dev-3.0#1734).
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEV3_HOME } from "./paths";
-import { launchDialectId } from "../shared/platform-launch";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-system-prompt");
@@ -25,34 +22,39 @@ const log = createLogger("agent-system-prompt");
 export const AGENT_PROMPTS_DIR = join(DEV3_HOME, "data", "agent-prompts");
 
 /**
- * True when this platform cannot carry the protocol on the command line at all.
- * The file is preferred everywhere (the inline body is visible to `pkill -f`);
- * this is the floor below which the inline fallback is not even a launch.
+ * Write (once) the body for `name` and return its path.
+ *
+ * Throws when it cannot be written. There is deliberately no inline fallback:
+ * on Windows the launch would be over the ceiling anyway, and on POSIX it would
+ * silently put the protocol back into argv — the exposure this file closes.
  */
-export function systemPromptNeedsFile(platform: NodeJS.Platform = process.platform): boolean {
-	return launchDialectId(platform) === "windows-powershell";
-}
-
-/**
- * Write (once) the body for `name` and return its path, or null when the write
- * fails — the caller then falls back to the inline form, which is broken on
- * Windows and exposes the body in argv elsewhere, but is still better than
- * refusing to launch.
- */
-export function ensureAgentSystemPromptFile(name: string, body: string): string | null {
+export function ensureAgentSystemPromptFile(name: string, body: string): string {
 	const path = join(AGENT_PROMPTS_DIR, `${name}.md`);
 	try {
 		mkdirSync(AGENT_PROMPTS_DIR, { recursive: true });
-		let current = "";
+		if (readIfPresent(path) === body) return path;
+		// Through a temp name in the same directory, because the reader is another
+		// process: a launching agent must see either the old body or the new one,
+		// never the middle of a rewrite.
+		const temp = `${path}.${process.pid}.tmp`;
 		try {
-			current = readFileSync(path, "utf-8");
-		} catch {
-			// missing — written below
+			writeFileSync(temp, body, "utf-8");
+			renameSync(temp, path);
+		} catch (err) {
+			rmSync(temp, { force: true });
+			throw err;
 		}
-		if (current !== body) writeFileSync(path, body, "utf-8");
 		return path;
 	} catch (err) {
 		log.warn("Failed to write the agent system-prompt file", { path, error: String(err) });
+		throw new Error(`Could not write the agent system-prompt file ${path}: ${String(err)}`);
+	}
+}
+
+function readIfPresent(path: string): string | null {
+	try {
+		return readFileSync(path, "utf-8");
+	} catch {
 		return null;
 	}
 }

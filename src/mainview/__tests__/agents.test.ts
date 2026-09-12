@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 // Mock bun-specific modules before importing agents
 vi.mock("../../bun/logger", () => ({
@@ -858,6 +859,9 @@ describe("resolveAgentCommand", () => {
 		expect(cmd).toContain("agent-prompts/claude.md");
 		// The body itself stays out of argv, where pkill -f would match it (#1734).
 		expect(cmd).not.toContain("dev-3.0");
+		// …and the file it names really holds the protocol, not just a path.
+		const promptFile = cmd.match(/--append-system-prompt-file (\S+)/)?.[1] ?? "";
+		expect(readFileSync(promptFile, "utf-8")).toContain("dev-3.0");
 	});
 
 	it("does not inject --append-system-prompt for non-claude agents", () => {
