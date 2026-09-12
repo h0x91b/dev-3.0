@@ -48,7 +48,11 @@ import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
-import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "./agent-traffic-events";
+import {
+	OPEN_AGENT_TRAFFIC_LOG_EVENT,
+	openAgentTrafficLog,
+	type OpenAgentTrafficLogDetail,
+} from "./agent-traffic-events";
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
 import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
@@ -1735,7 +1739,10 @@ function App() {
 					// toggle back to, and navigating again would stack a second identical
 					// history entry and make Back a dead key.
 					if (routeRef.current.screen === "agent-traffic") return;
-					openAgentTrafficLog();
+					// All projects, never the board in view: the message the toast is
+					// about may belong to any board, and seeding the current one hides
+					// exactly the traffic the click was asking to see.
+					openAgentTrafficLog("all-projects");
 				},
 			});
 		}
@@ -1756,11 +1763,15 @@ function App() {
 	// Everything that opens agent traffic goes through one event: the header
 	// readout, the native View menu and the command palette all fire it, and it
 	// lands as an ordinary navigation — so Back returns to wherever they were.
-	// The project in view rides along as the screen's initial scope.
+	// The project in view rides along as the screen's initial scope, unless the
+	// opener asked for all projects (a notification click — see the toast above).
 	useEffect(() => {
-		function onOpen() {
+		function onOpen(event: Event) {
 			if (!getAgentTrafficEnabled()) return;
-			navigate({ screen: "agent-traffic", scopeProjectId: projectIdForRoute(state.route) ?? undefined });
+			const scope = (event as CustomEvent<OpenAgentTrafficLogDetail>).detail?.scope ?? "current-project";
+			const scopeProjectId =
+				scope === "all-projects" ? undefined : projectIdForRoute(state.route) ?? undefined;
+			navigate({ screen: "agent-traffic", scopeProjectId });
 		}
 		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
