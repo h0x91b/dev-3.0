@@ -1549,7 +1549,7 @@ export interface InstallAgentSkillsOptions {
 	lowBattery?: boolean;
 }
 
-export function installAgentSkills(options: InstallAgentSkillsOptions = {}): void {
+export async function installAgentSkills(options: InstallAgentSkillsOptions = {}): Promise<void> {
 	const home = homedir();
 
 	// Install Claude-specific skill (with command injection). SKILL.md is short
@@ -1728,6 +1728,6 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 	installAgentsMd(options.lowBattery === true);
 	ensureClaudeSettings(home);
 	if (options.configureCodex !== false) {
-		ensureCodexConfigFile(home);
+		await ensureCodexConfigFile(home);
 	}
 }

@@ -7,7 +7,7 @@ import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
-import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, type CodexProfileLaunchFlag } from "./codex-config";
+import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride } from "./executable";
 import { DEV3_HOME } from "./paths";
 // Writer and pruner share one path constant: whatever registers an entry must
@@ -357,7 +357,7 @@ export function isClaudeCommand(baseCmd: string, family?: AgentFamily): boolean 
 }
 
 let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
-let cachedCodexProfileLaunchFlag: CodexProfileLaunchFlag | undefined;
+let cachedCodexProfileLaunchFlag: Promise<CodexProfileLaunchFlag> | undefined;
 
 /**
  * Test-only override for codex profile launch-flag detection.
@@ -366,6 +366,7 @@ let cachedCodexProfileLaunchFlag: CodexProfileLaunchFlag | undefined;
 export function __setCodexProfileV2Override(value: boolean | null): void {
 	codexProfileLaunchFlagOverride = value === null ? null : value ? "--profile-v2" : "--profile";
 	cachedCodexProfileLaunchFlag = undefined;
+	resetCodexHelpProbe();
 }
 
 /**
@@ -375,7 +376,7 @@ export function __setCodexProfileV2Override(value: boolean | null): void {
  * Feature-detected from `codex --help` and cached for the process lifetime —
  * version numbers do not map reliably to the rename. See issue #611.
  */
-function getCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
+async function getCodexProfileLaunchFlag(): Promise<CodexProfileLaunchFlag> {
 	if (codexProfileLaunchFlagOverride !== null) return codexProfileLaunchFlagOverride;
 	if (cachedCodexProfileLaunchFlag === undefined) {
 		cachedCodexProfileLaunchFlag = detectCodexProfileLaunchFlag();
@@ -383,33 +384,25 @@ function getCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
 	return cachedCodexProfileLaunchFlag;
 }
 
-/**
- * `codex --version`, cached for the process lifetime. The probe is a
- * synchronous child spawn — uncached it ran on EVERY task launch inside
- * ensureCodexTrust, blocking the main loop each time.
- */
-let cachedCodexVersion: string | null | undefined;
-export function getCodexVersionCached(): string | null {
-	if (cachedCodexVersion === undefined) {
-		cachedCodexVersion = detectCodexVersion();
-	}
-	return cachedCodexVersion;
+/** Startup and task restoration share one bounded, asynchronous version probe. */
+export function getCodexVersionCached(): Promise<string | null> {
+	return detectCodexVersion();
 }
 
-/** Reset the cached codex version. Exposed for test isolation. */
+/** Reset the shared probe for test isolation. */
 export function __resetCodexVersionCache(): void {
-	cachedCodexVersion = undefined;
+	resetCodexVersionProbe();
 }
 
 /** Resolve the impure Codex launch runtime (active UI theme → profile/theme,
  *  and the feature-detected profile launch flag) into pure data the CodexAdapter
  *  consumes. Only called for Codex launches so non-Codex agents never trigger the
  *  `codex --help` probe. */
-function codexLaunchRuntime(): CodexLaunchRuntime {
+async function codexLaunchRuntime(): Promise<CodexLaunchRuntime> {
 	return {
 		themedProfile: getCodexProfileForCurrentUiTheme(),
 		theme: getCodexThemeForCurrentUiTheme(),
-		profileLaunchFlag: getCodexProfileLaunchFlag(),
+		profileLaunchFlag: await getCodexProfileLaunchFlag(),
 	};
 }
 
@@ -478,12 +471,12 @@ export function supportsPreAssignedSessionId(baseCmd: string, family?: AgentFami
  * impure inputs the pure adapter needs — the third-party-provider skip-model
  * rule and the Codex theme/profile runtime — and threads them in.
  */
-export function resolveAgentCommand(
+export async function resolveAgentCommand(
 	agent: CodingAgent,
 	config: AgentConfiguration | undefined,
 	ctx: TemplateContext,
 	options?: CommandOptions,
-): string {
+): Promise<string> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
@@ -500,7 +493,7 @@ export function resolveAgentCommand(
 		providerArgs: launchExtraArgs(options),
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
-		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
+		codex: adapter.command === "codex" ? await codexLaunchRuntime() : undefined,
 		// The protocol reaches Claude as a file on every platform: Windows cannot
 		// carry it on the command line, and POSIX argv is what `pkill -f` matches
 		// against. Resolved here because writing one is impure and adapters are not.
@@ -825,7 +818,7 @@ export async function resolveCommandForAgent(
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
-	const command = resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
 	// The family rides alongside instead: a path override can pin one the stored
@@ -956,7 +949,7 @@ export async function resolveCommandForProject(
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
-		const command = resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
 		return {
 			command,
 			agent,
@@ -1051,6 +1044,9 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 		const worktreesPath = joinLikeHome(home, ".dev3.0", "worktrees");
 		const socketsPath = joinLikeHome(home, ".dev3.0", "sockets");
 
+		const codexVersion = await getCodexVersionCached();
+		if (codexVersion === null) return;
+
 		let content: string | null = null;
 		try {
 			content = readFileSync(CODEX_CONFIG, "utf-8");
@@ -1060,7 +1056,6 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 
 		if (content != null) backupUnparsableCodexConfig(CODEX_CONFIG, content);
 
-		const codexVersion = getCodexVersionCached();
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved], {
 			codexVersion,
 		});

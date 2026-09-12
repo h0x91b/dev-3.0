@@ -2,7 +2,7 @@
 
 ## Verdict
 
-The September 12 incident is localized to backend startup while restoring the Codex terminal. Two failed desktop processes stop logging immediately after Claude trust completes and before Codex trust completes. The leading suspect is the unbounded synchronous `codex --version` probe inside `ensureCodexTrust`, but the incident's exact blocking instruction is unconfirmed: both failed processes had exited before investigation. No application fix has been applied.
+The September 12 incident is localized to backend startup while restoring the Codex terminal. Two failed desktop processes stop logging immediately after Claude trust completes and before Codex trust completes. The leading suspect is the unbounded synchronous `codex --version` probe inside `ensureCodexTrust`, but the incident's exact blocking instruction is unconfirmed: both failed processes had exited before investigation. The follow-up patch now bounds Codex version/help probes asynchronously; it addresses the reproduced failure mechanism without claiming a sampled root cause for the original incident.
 
 ## Evidence
 
@@ -58,3 +58,25 @@ ps -axo pid,ppid,state,etime,pcpu,comm > /tmp/dev3-connecting-processes.txt
 The sample distinguishes a child-process wait from parsing, filesystem I/O, and unrelated synchronous work. These files are local diagnostics and should be reviewed before public sharing.
 
 The justified hardening direction is to move external Codex capability/version probes off the main event loop, bound their duration, drain child output concurrently, and share the probe result across startup and launch. A regression test should verify that a deliberately nonresponsive binary cannot stop unrelated RPC work and cannot leave restoration pending forever. Merely catching exceptions or caching the first synchronous call leaves the first-launch failure intact. File-stage timings would improve attribution, but timers within the backend cannot diagnose a permanently blocked backend by themselves.
+
+
+## Implemented hardening
+
+The version and help probes now share pending results, run asynchronously, and have a two-second deadline covering process exit and both output streams. Unknown versions leave existing config unchanged. A real Bun process with a deliberately nonresponsive executable returned unknown after 2,004 ms while 95 heartbeat ticks ran (exit 0); the previous synchronous probe produced zero ticks over 2,245 ms (exit 1).
+
+## Adjacent execution audit
+
+A separate OpenAI subagent performed the requested read-only scan; xAI was not available in this harness. These are code-level risks, not additional proven causes of the incident:
+
+| Area | Reachable risk | Follow-up |
+| --- | --- | --- |
+| Codex help | `codex-config.ts`: two synchronous unbounded capability probes on launch | Included in this patch. |
+| Account shell | `shell-env.ts`, `readAccountShell`: synchronous `dscl` / `getent`, reached at startup and after cache expiry | Bounded asynchronous discovery. |
+| Login shell environment | `shell-env.ts`, `runEnvDump`: SIGTERM timer does not bound exit or subsequent pipe reads | Bound exit plus concurrent pipe collection, with hard termination. |
+| Windows shortcuts | `windows-shortcuts/powershell-surface.ts`: synchronous PowerShell/COM operations at startup | Bound optional reconciliation and skip on failure. |
+| GitHub auth | `github.ts`: auth commands run before the enclosing operation deadline | Cover authentication with the deadline. |
+| Account credentials | `agent-accounts.ts`: `security find-generic-password` without deadline, undrained stderr | Bound credential collection with allowance for permission interaction. |
+| Process inspection | `worktree-reaper.ts` / `process-reaper.ts`: unbounded `lsof` during cleanup | Bound inspection; timeout must not be interpreted as no processes. |
+| User activity | `user-activity.ts`: unbounded `ioreg` in activity requests | Small deadline with unknown-activity fallback. |
+
+The remaining sites are intentionally separate follow-up scope. Their differing failure semantics need targeted tests; bulk-adding a timer can silently make cleanup or credential handling incorrect.

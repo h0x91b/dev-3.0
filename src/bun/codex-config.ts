@@ -5,7 +5,7 @@ import { buildCodexHooks, CODEX_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../s
 import { type CliVersion, isCliVersionAtLeast, parseCliVersion } from "../shared/agent-model-cli-requirements";
 import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
-import { spawnSync } from "./spawn";
+import { spawn } from "./spawn";
 import { DEV3_CODEX_DARK_PROFILE, DEV3_CODEX_LIGHT_PROFILE } from "./theme-state";
 
 const log = createLogger("codex-config");
@@ -657,15 +657,8 @@ export function pickCodexProfileLaunchFlag(helpText: string): CodexProfileLaunch
  * Falls back to `--profile` (the modern, post-rename flag) when help can't be
  * read — it is the safe default since `--profile-v2` is the flag that crashes.
  */
-export function detectCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
-	try {
-		const result = spawnSync(["codex", "--help"], { stdout: "pipe", stderr: "pipe" });
-		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
-		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
-		return pickCodexProfileLaunchFlag(`${stdout}\n${stderr}`);
-	} catch {
-		return "--profile";
-	}
+export async function detectCodexProfileLaunchFlag(): Promise<CodexProfileLaunchFlag> {
+	return pickCodexProfileLaunchFlag(await detectCodexHelp() ?? "");
 }
 
 /** The flag that runs enabled hooks without persisted per-hook trust. */
@@ -685,27 +678,65 @@ export function supportsCodexHookTrustBypass(helpText: string): boolean {
 }
 
 /** Probe the installed Codex's `--help`. Unreadable help means "assume not". */
-export function detectCodexHookTrustBypass(): boolean {
-	try {
-		const result = spawnSync(["codex", "--help"], { stdout: "pipe", stderr: "pipe" });
-		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
-		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
-		return supportsCodexHookTrustBypass(`${stdout}\n${stderr}`);
-	} catch {
-		return false;
-	}
+export async function detectCodexHookTrustBypass(): Promise<boolean> {
+	return supportsCodexHookTrustBypass(await detectCodexHelp() ?? "");
 }
 
-export function detectCodexVersion(): string | null {
-	try {
-		const result = spawnSync(["codex", "--version"], { stdout: "pipe", stderr: "pipe" });
-		if (result.exitCode !== 0) return null;
+let codexHelpProbe: Promise<string | null> | undefined;
 
-		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
-		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
-		return stdout.trim() || stderr.trim() || null;
-	} catch {
+function detectCodexHelp(): Promise<string | null> {
+	return codexHelpProbe ??= probeCodex("--help");
+}
+
+export function resetCodexHelpProbe(): void {
+	codexHelpProbe = undefined;
+}
+
+let codexVersionProbe: Promise<string | null> | undefined;
+
+export function resetCodexVersionProbe(): void {
+	codexVersionProbe = undefined;
+}
+
+export function detectCodexVersion(): Promise<string | null> {
+	return codexVersionProbe ??= probeCodex("--version");
+}
+
+async function probeCodex(flag: "--version" | "--help"): Promise<string | null> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let proc: ReturnType<typeof spawn> | undefined;
+	const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+	try {
+		proc = spawn(["codex", flag], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+		const read = async (stream: ReadableStream<Uint8Array> | undefined): Promise<string> => {
+			if (!stream) return "";
+			const reader = stream.getReader();
+			readers.push(reader);
+			const decoder = new TextDecoder();
+			let output = "";
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) return output + decoder.decode();
+				output += decoder.decode(value, { stream: true });
+				if (output.length > 65_536) throw new Error("Codex probe output exceeded limit");
+			}
+		};
+		const result = await Promise.race([
+			Promise.all([proc.exited, read(proc.stdout), read(proc.stderr)]),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new Error("Codex probe timed out after 2000ms")), 2_000);
+			}),
+		]);
+		const [exitCode, stdout, stderr] = result;
+		if (exitCode !== 0) return null;
+		return flag === "--help" ? `${stdout}\n${stderr}`.trim() || null : stdout.trim() || stderr.trim() || null;
+	} catch (err) {
+		try { proc?.kill(9); } catch { /* The child may already have exited. */ }
+		log.warn("Codex probe failed", { flag, error: String(err) });
 		return null;
+	} finally {
+		if (timer) clearTimeout(timer);
+		for (const reader of readers) void reader.cancel().catch(() => {});
 	}
 }
 
@@ -1526,11 +1557,12 @@ export function ensureCodexProfileFile(
  * Called after the app resolves the user's shell PATH during startup, and by
  * installAgentSkills() when the skills installer is invoked directly.
  */
-export function ensureCodexConfigFile(homePath: string): void {
+export async function ensureCodexConfigFile(homePath: string): Promise<void> {
 	const configPath = join(homePath, ".codex", "config.toml");
 	const worktreesPath = joinLike(homePath, ".dev3.0", "worktrees");
 	const socketsPath = joinLike(homePath, ".dev3.0", "sockets");
-	const codexVersion = detectCodexVersion();
+	const codexVersion = await detectCodexVersion();
+	if (codexVersion === null) return;
 	const syntax = getCodexSyntaxForVersion(codexVersion);
 
 	try {

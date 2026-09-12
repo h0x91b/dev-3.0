@@ -12,7 +12,7 @@ import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
-import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass } from "./codex-config";
+import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
 export {
 	buildClaudeHooks,
@@ -25,9 +25,9 @@ export {
 
 const log = createLogger("agent-hooks");
 
-/** `codex --help` is a synchronous child spawn, and this runs on every launch. */
-let cachedHookTrustBypass: boolean | undefined;
-function getCodexHookTrustBypassCached(): boolean {
+/** Concurrent launches share the same asynchronous capability probe. */
+let cachedHookTrustBypass: Promise<boolean> | undefined;
+function getCodexHookTrustBypassCached(): Promise<boolean> {
 	if (cachedHookTrustBypass === undefined) cachedHookTrustBypass = detectCodexHookTrustBypass();
 	return cachedHookTrustBypass;
 }
@@ -35,6 +35,7 @@ function getCodexHookTrustBypassCached(): boolean {
 /** Reset the cached probe. Exposed for test isolation. */
 export function __resetCodexHookTrustBypassCache(): void {
 	cachedHookTrustBypass = undefined;
+	resetCodexHelpProbe();
 }
 
 /**
@@ -46,7 +47,7 @@ export function __resetCodexHookTrustBypassCache(): void {
  * `options.family` is which CLI this command actually is, which beats the
  * command-name guess — without it a wrapper script silently got no hooks.
  */
-export function setupAgentHooks(
+export async function setupAgentHooks(
 	worktreePath: string,
 	baseCommand: string,
 	options?: {
@@ -64,7 +65,7 @@ export function setupAgentHooks(
 			baseCommand,
 			family: options?.family ?? "auto",
 		});
-		return Promise.resolve(null);
+		return null;
 	}
 
 	if (spec.kind === "claude") {
@@ -73,18 +74,18 @@ export function setupAgentHooks(
 			worktreePath,
 			permissionMode: spec.permissionMode,
 		});
-		return Promise.resolve(null);
+		return null;
 	}
 
 	// spec.kind === "codex"
 	writeCodexHooks(worktreePath);
-	if (!getCodexHookTrustBypassCached()) {
+	if (!(await getCodexHookTrustBypassCached())) {
 		// Worth a line: the definitions are in place, Codex reports them untrusted,
 		// and an untrusted hook is skipped in silence — so the board simply stops
 		// following this task and nothing else would say why.
 		log.warn("Codex cannot bypass hook trust; status hooks will not fire", { worktreePath });
-		return Promise.resolve(null);
+		return null;
 	}
 	log.info("Codex status hooks active (declared in config.toml)", { worktreePath });
-	return Promise.resolve(CODEX_HOOK_TRUST_BYPASS_FLAG);
+	return CODEX_HOOK_TRUST_BYPASS_FLAG;
 }

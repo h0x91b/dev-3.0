@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-toml";
 import {
 	backupUnparsableCodexConfig,
+	resetCodexVersionProbe,
 	ensureCodexConfig,
 	ensureCodexConfigFile,
 	joinLike,
@@ -144,18 +145,31 @@ describe("repairing an already-broken config", () => {
 });
 
 describe("ensureCodexConfigFile against a real home directory", () => {
-	it("writes a parsable config and repairs a broken one in place", () => {
+	beforeEach(() => resetCodexVersionProbe());
+	afterEach(() => vi.restoreAllMocks());
+	it("preserves the config when the version cannot be detected", async () => {
+		vi.spyOn(Bun, "spawn").mockImplementation(() => { throw new Error("ENOENT"); });
+		const home = mkdtempSync(join(tmpdir(), "dev3-codex-home-"));
+		mkdirSync(join(home, ".codex"), { recursive: true });
+		const configPath = join(home, ".codex", "config.toml");
+		writeFileSync(configPath, BROKEN_CONFIG);
+		await ensureCodexConfigFile(home);
+		expect(readFileSync(configPath, "utf-8")).toBe(BROKEN_CONFIG);
+		expect(existsSync(`${configPath}.dev3-backup`)).toBe(false);
+	});
+	it("writes a parsable config and repairs a broken one in place", async () => {
+		vi.spyOn(Bun, "spawn").mockReturnValue({ pid: 0, kill() {}, exited: Promise.resolve(0), stdout: new Response("codex-cli 0.154.0").body, stderr: new Response("").body } as never);
 		const home = mkdtempSync(join(tmpdir(), "dev3-codex-home-"));
 		mkdirSync(join(home, ".codex"), { recursive: true });
 		const configPath = join(home, ".codex", "config.toml");
 
-		ensureCodexConfigFile(home);
+		await ensureCodexConfigFile(home);
 		const fresh = readFileSync(configPath, "utf-8");
 		const parsed = load(fresh) as Record<string, any>;
 		expect(Object.keys(parsed.projects)).toContain(join(home, ".dev3.0", "worktrees"));
 
 		writeFileSync(configPath, BROKEN_CONFIG, "utf-8");
-		ensureCodexConfigFile(home);
+		await ensureCodexConfigFile(home);
 		const healed = readFileSync(configPath, "utf-8");
 		const healedParsed = load(healed) as Record<string, any>;
 		expect(healedParsed.model).toBe("gpt-5");

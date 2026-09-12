@@ -676,7 +676,7 @@ async function applyModelVersionNotice(
 	opts: { baseCmd: string; family: AgentFamily | undefined; launchModel: string | undefined; userShell?: string },
 ): Promise<string> {
 	if (agentKey(opts.baseCmd, opts.family) !== "codex") return command;
-	const support = evaluateCodexModelSupport(opts.launchModel, agents.getCodexVersionCached());
+	const support = evaluateCodexModelSupport(opts.launchModel, await agents.getCodexVersionCached());
 	if (support.status !== "too-old") return command;
 
 	log.warn("Codex CLI predates the launch model", {
