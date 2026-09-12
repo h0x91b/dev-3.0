@@ -1,0 +1,1 @@
+Define "bug hunter" and "hunt" in the glossary: a read-only helper agent in an extra pane of an existing task, sharing its worktree and id, reporting through [bug-hunt] notes and a final message to the main agent. Groundwork for the agent-initiated dev3 bug-hunt command.
