@@ -4051,6 +4051,14 @@ export interface DevServerStatus {
 	 * pushed to the renderer and written to logs. Empty for an ordinary start.
 	 */
 	extraEnvKeys: string[];
+	/**
+	 * Where this task's dev-server output is mirrored as plain text
+	 * (`<taskDir>/logs/dev-server.log`) — the file `dev3 dev-server logs` reads and
+	 * an agent greps instead of attaching to a pane. Null when the task has no
+	 * worktree to hang it off. The file itself may not exist yet: capture starts
+	 * with the server.
+	 */
+	logPath: string | null;
 	resourceUsage?: ResourceUsage;
 	/**
 	 * Set only when the live state could not be read because tmux itself failed

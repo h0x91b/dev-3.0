@@ -75,6 +75,12 @@ export interface TaskPaneLaunch {
 	/** What each backend runs. Often the same script, but not always. */
 	tmuxCommand: string;
 	nativeLaunch: TerminalLaunchSpec;
+	/**
+	 * Mirror the pane's output into this file as well. The native backend hands it
+	 * to the session host; on tmux the caller sets up its own `pipe-pane`, because
+	 * the dev server's tmux pane is not this pane but a nested session's.
+	 */
+	outputLogPath?: string;
 }
 
 export interface OpenAuxPaneSpec extends TaskPaneLaunch {
@@ -427,6 +433,7 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 			cwd,
 			env,
 			launch: spec.nativeLaunch,
+			outputLogPath: spec.outputLogPath,
 		});
 
 		if (spec.restoreFocus && previouslyActive && previouslyActive !== paneId) {

@@ -232,7 +232,7 @@ export async function splitNativeTaskPane(
 	taskId: string,
 	fromPaneId: string,
 	orientation: SplitOrientation,
-	spec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number },
+	spec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number; outputLogPath?: string },
 ): Promise<{ paneId: string; state: NativeTaskPanesState }> {
 	const { cwd, env } = spec;
 
@@ -258,9 +258,9 @@ export async function splitNativeTaskPane(
 	}
 
 	// Split through the contract; the default shell runs in the task's cwd/env.
-	let viewSpec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; orientation: SplitOrientation };
+	let viewSpec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; orientation: SplitOrientation; outputLogPath?: string };
 	if (spec?.launch) {
-		viewSpec = { cwd, env, launch: spec.launch, orientation };
+		viewSpec = { cwd, env, launch: spec.launch, orientation, outputLogPath: spec.outputLogPath };
 	} else {
 		// Default shell: use the platform default in the task's cwd/env.
 		const defaults = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
@@ -271,6 +271,7 @@ export async function splitNativeTaskPane(
 			env,
 			launch: { executable: shellLaunch.executable, argv: shellLaunch.argv },
 			orientation,
+			outputLogPath: spec.outputLogPath,
 		};
 	}
 

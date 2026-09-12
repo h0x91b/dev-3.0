@@ -296,6 +296,31 @@ describe("newSessionDetached", () => {
 		expect(spawnFn.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME });
 	});
 
+	it("chains pipe-pane onto the SAME invocation, after the command", async () => {
+		const { client, spawnFn } = makeClient({ stderr: "" });
+		await client.newSessionDetached({
+			sessionName: "dev3-dev-abc",
+			cwd: "/wt",
+			command: "bash dev.sh",
+			pipeTo: "'/bin/dev3' __dev-server-log '/tasks/abc/logs/dev-server.log'",
+		});
+		// One invocation is the whole point: a pipe-pane sent as a second tmux
+		// command attaches after the pane has already printed (measured: 4 runs in
+		// 5 lost the first line), which is the output that explains a crash.
+		expect(argvOf(spawnFn)).toEqual([
+			"tmux", "-L", "dev3", "-f", activeTmuxConfigPath(), "new-session", "-d",
+			"-s", "dev3-dev-abc", "-c", "/wt", "bash dev.sh",
+			";", "pipe-pane", "-o", "-t", "dev3-dev-abc",
+			"'/bin/dev3' __dev-server-log '/tasks/abc/logs/dev-server.log'",
+		]);
+	});
+
+	it("stays a plain new-session when nothing asked for a pipe", async () => {
+		const { client, spawnFn } = makeClient({ stderr: "" });
+		await client.newSessionDetached({ sessionName: "s", cwd: "/wt", command: "bash dev.sh" });
+		expect(argvOf(spawnFn)).not.toContain("pipe-pane");
+	});
+
 	it("throws TmuxError with captured stderr on failure", async () => {
 		const { client } = makeClient({ exited: Promise.resolve(1), stderr: "duplicate session" });
 		await expect(client.newSessionDetached({ sessionName: "s", cwd: "/wt" })).rejects.toMatchObject({

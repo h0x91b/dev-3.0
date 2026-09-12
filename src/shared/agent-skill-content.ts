@@ -181,9 +181,10 @@ const SKILL_DEV_SERVER_CONTROL = `
 
 \`dev3 dev-server status\` is low-risk. \`start\`, \`restart\` and \`stop\` have visible side effects — do not use them by default. Only when the user asked for dev-server control, the task is about \`devScript\`/ports/dev-server behavior, or you need the server up to verify a change; say what you are about to do first, prefer \`status\` before \`start\`, and stop it again afterwards unless asked to keep it running.
 
-Need it actually serving (curl, browser QA)? \`dev3 dev-server start --wait\` / \`restart --wait\` blocks until it listens on one of the task's assigned \`DEV3_PORT*\` ports (\`--timeout <sec>\`, default 120), whether bound by its own process tree or published for it, so a containerised \`devScript\` counts as ready too. An auxiliary port (HMR socket, sidecar) does not end the wait alone: it grants 10s more for an assigned port, then reports ready on what it has and says the assigned one never came up — so a \`devScript\` binding a fixed port returns instead of hanging. Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown before returning; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and WARNING lines only when a foreign process squatted an assigned port.
-`;
+Need it actually serving (curl, browser QA)? \`dev3 dev-server start --wait\` / \`restart --wait\` blocks until it listens on one of the task's assigned \`DEV3_PORT*\` ports (\`--timeout <sec>\`, default 120), whether bound by its own process tree or published for it, so a containerised \`devScript\` counts as ready too. An auxiliary port (HMR socket, sidecar) only grants 10s more for an assigned port, then reports ready on what it has — so a \`devScript\` binding a fixed port returns instead of hanging. Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown before returning; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and WARNING lines only when a foreign process squatted an assigned port.
 
+Its output also lands as plain text in \`<taskDir>/logs/dev-server.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it, and it greps.
+`;
 const SKILL_ARTIFACTS = `
 ## dev3 HTML artifacts
 

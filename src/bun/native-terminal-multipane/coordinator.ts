@@ -75,6 +75,8 @@ export interface PaneLaunchSpec {
 	cols?: number;
 	rows?: number;
 	timeoutMs?: number;
+	/** Mirror this pane's output to a plain-text file as well (dev-server panes only). */
+	outputLogPath?: string;
 }
 
 export interface PaneSnapshot {
@@ -462,6 +464,7 @@ export class NativeMultipaneCoordinator {
 				cols: spec.cols,
 				rows: spec.rows,
 				timeoutMs: spec.timeoutMs,
+				outputLogPath: spec.outputLogPath,
 			});
 			// Activate the new pane in the shared layout (clear zoom; new pane is focused).
 			this.publish({ ...rawTree, activePaneId: created, zoomedPaneId: null });

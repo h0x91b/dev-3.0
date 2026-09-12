@@ -78,9 +78,12 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, shellQuote, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { buildDevServerScript } from "../dev-server-script";
+import { resetDevServerLog } from "../dev-server-log";
+import { devServerLogPath, DEV_SERVER_LOG_SINK_VERB } from "../../shared/dev-server-log";
+import { dev3CliExecutable } from "../task-pane-runs";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -356,7 +359,29 @@ function refreshBoardDevServer(taskId: string): void {
 	schedulePortScanSoon();
 }
 
-async function buildDevServerStatus(task: Task, projectId: string, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
+/**
+ * The shell command `pipe-pane` feeds the dev pane's bytes to: dev3's own CLI,
+ * not `cat >> file`. That is what strips the escapes, collapses the progress
+ * bars and caps the size — and it is one program on every platform, unlike a
+ * shell pipeline (same reasoning as the pane runs, see `pane-exec.ts`).
+ */
+function devServerLogSinkCommand(logPath: string): string {
+	return `${shellQuote(dev3CliExecutable())} ${DEV_SERVER_LOG_SINK_VERB} ${shellQuote(logPath)}`;
+}
+
+/**
+ * Where this task's dev-server output is mirrored as plain text. Beside the
+ * worktree, never inside it — a log under `<worktree>/` would show up untracked
+ * in `git status`. Null for a task that has no worktree to hang it off.
+ */
+function devServerLogFileFor(project: Project, task: Task): string | null {
+	if (!task.worktreePath) return null;
+	return devServerLogPath(git.taskDir(project, task));
+}
+
+async function buildDevServerStatus(task: Task, project: Project, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
+	const projectId = project.id;
+	const logPath = devServerLogFileFor(project, task);
 	const resolvedSocket = socket ?? task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const taskSession = taskSessionName(task.id);
 	const devSession = devServerSessionName(task.id);
@@ -396,6 +421,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			publishedPorts: [],
 			portConflicts: [],
 			extraEnvKeys: Object.keys(readDevServerEnv(task.id)).sort(),
+			logPath,
 			tmuxError: err.message,
 		};
 	}
@@ -464,6 +490,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		publishedPorts,
 		portConflicts,
 		extraEnvKeys: Object.keys(readDevServerEnv(task.id)).sort(),
+		logPath,
 		resourceUsage,
 	};
 }
@@ -1222,6 +1249,11 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 		// the line is tmux-only. Use the app-resolved binary: a PATH tmux of a
 		// different version cannot talk to this server ("server exited unexpectedly").
 		const tmuxDetachCommand = native ? null : `"${tmux.binaryPath()}" detach-client 2>/dev/null || true`;
+		// One run's log is that run's output: an appended-to file would show a
+		// previous crash as if it had just happened. Cleared before anything can
+		// capture, so the file the status reports is never a stale one.
+		const logPath = devServerLogFileFor(project, task);
+		if (logPath) resetDevServerLog(logPath);
 		const wrappedScript = buildDevServerScript({
 			devScript: resolved.devScript,
 			envGroups: [
@@ -1258,6 +1290,9 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 				title: auxPaneTitle("devServer"),
 				tmuxCommand: `bash "${devScriptPath}"`,
 				nativeLaunch: generatedScriptLaunch(devScriptPath),
+				// The native session host mirrors this pane into the task log itself —
+				// there is no tmux here to pipe from, and the pane keeps its own tty.
+				...(logPath ? { outputLogPath: logPath } : {}),
 			});
 			log.info("← runDevServer done (native pane)", {
 				taskId: params.taskId,
@@ -1265,7 +1300,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 				paneId: handle.paneId,
 			});
 			refreshBoardDevServer(params.taskId);
-			return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+			return buildDevServerStatus(task, project, !!resolved.devScript.trim(), socket);
 		}
 
 		// Everything below hosts the dev server in a NESTED tmux session and views it
@@ -1282,6 +1317,11 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 				cwd: task.worktreePath,
 				env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
 				command: `bash "${devScriptPath}"`,
+				// Mirror the pane into the task's log file, chained onto this very
+				// invocation so the capture is on before the pane's first byte. The pane
+				// itself is untouched: the devScript keeps its own tty, so colours,
+				// progress bars and interactive keys behave exactly as before.
+				...(logPath ? { pipeTo: devServerLogSinkCommand(logPath) } : {}),
 				socket,
 			});
 			if (stderr.trim()) {
@@ -1339,7 +1379,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 			viewerPaneId,
 		});
 		refreshBoardDevServer(params.taskId);
-		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+		return buildDevServerStatus(task, project, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("runDevServer FAILED", {
 			taskId: params.taskId.slice(0, 8),
@@ -1394,7 +1434,7 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 			log.warn("stopDevServer: target session hosts this instance — acking before teardown", {
 				taskId: task.id.slice(0, 8),
 			});
-			const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+			const status = await buildDevServerStatus(task, project, !!resolved.devScript.trim(), socket);
 			setTimeout(() => {
 				killDevServerSession(task, socket, task.worktreePath, opId)
 					.then(clearPaneBorder)
@@ -1406,7 +1446,7 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 		await killDevServerSession(task, socket, task.worktreePath, opId);
 		clearPaneBorder().catch(() => {});
 		log.info("← stopDevServer done", { opId });
-		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+		return buildDevServerStatus(task, project, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("stopDevServer FAILED", {
 			taskId: params.taskId.slice(0, 8),
@@ -1457,7 +1497,7 @@ export async function getDevServerStatus(params: { taskId: string; projectId: st
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
-	const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim());
+	const status = await buildDevServerStatus(task, project, !!resolved.devScript.trim());
 	log.info("← getDevServerStatus", { running: status.running, ports: status.ports.length });
 	return status;
 }

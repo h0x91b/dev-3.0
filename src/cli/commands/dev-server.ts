@@ -1,6 +1,8 @@
 import type { CliResponse, DevServerStatus } from "../../shared/types";
 import { CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID } from "../../shared/cli-exit-codes";
 import { parseDevServerEnvPair } from "../../shared/dev-server-env";
+import { DEV_SERVER_LOG_DEFAULT_LINES, DEV_SERVER_LOG_MAX_LINES } from "../../shared/dev-server-log";
+import { readDevServerLogTail } from "../../bun/dev-server-log";
 import { isInstanceLossError, sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -63,6 +65,7 @@ function asStatus(data: unknown): DevServerStatus {
 		publishedPorts: raw.publishedPorts ?? [],
 		portConflicts: raw.portConflicts ?? [],
 		extraEnvKeys: raw.extraEnvKeys ?? [],
+		logPath: raw.logPath ?? null,
 	};
 }
 
@@ -153,6 +156,7 @@ function printStatusDetails(status: DevServerStatus): void {
 		["Pane:", status.viewerPaneId ?? "(none)"],
 		...(native ? [] : [["Socket:", status.tmuxSocket] as [string, string]]),
 		["Worktree:", status.worktreePath ?? "(none)"],
+		["Output Log:", status.logPath ?? "(none)"],
 		["Pane PIDs:", formatPids(status)],
 		["Assigned Ports:", formatAssignedPorts(status)],
 		["Detected Ports:", formatPortInfos(status.ports)],
@@ -335,6 +339,58 @@ async function runAction(
 	}
 }
 
+/**
+ * Print the tail of the dev server's own output.
+ *
+ * The status read gives the path; the file is read locally, because piping a
+ * 32 MB log through the socket to print 200 lines of it would be absurd. A file
+ * that is not there yet is a plain statement, not an error — a dev server that
+ * has never run has nothing to say, and exiting non-zero would make a perfectly
+ * ordinary state look like a failure.
+ */
+async function runLogs(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	const taskId = resolveTaskId(args, context);
+	if (!taskId) exitUsage("Usage: dev3 dev-server logs <task-id> [--lines N]");
+
+	const lines = parseLogLines(args);
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	const socketRef = { current: socketPath };
+	const resp = await sendWithInstanceFailover(socketRef, "devServer.status", params);
+	if (!resp.ok) exitError(resp.error || "Failed to read dev server status");
+	const status = asStatus(resp.data);
+	if (!status.logPath) {
+		exitError("This task has no worktree, so its dev server has no log file.");
+		return;
+	}
+
+	const tail = readDevServerLogTail(status.logPath, lines);
+	if (!tail.exists) {
+		process.stdout.write(
+			`No dev-server output captured yet for task ${status.taskId.slice(0, 8)}.\n`
+			+ `It will appear at ${status.logPath} once the dev server runs.\n`,
+		);
+		return;
+	}
+	process.stdout.write(`${status.logPath} (${tail.bytes} bytes, last ${lines} lines)\n`);
+	if (tail.text) process.stdout.write(`${tail.text}\n`);
+}
+
+function parseLogLines(args: ParsedArgs): number {
+	const raw = args.flags.lines;
+	if (raw === undefined) return DEV_SERVER_LOG_DEFAULT_LINES;
+	const parsed = parseInt(raw, 10);
+	if (isNaN(parsed) || parsed <= 0) {
+		exitUsage(`Invalid --lines value: ${raw} (expected a positive number)`);
+	}
+	if (parsed > DEV_SERVER_LOG_MAX_LINES) {
+		exitUsage(`--lines is capped at ${DEV_SERVER_LOG_MAX_LINES}; grep the file directly for more.`);
+	}
+	return parsed;
+}
+
 export async function handleDevServer(
 	subcommand: string | undefined,
 	args: ParsedArgs,
@@ -351,10 +407,12 @@ export async function handleDevServer(
 			return runAction("stop", args, socketPath, context);
 		case "restart":
 			return runAction("restart", args, socketPath, context);
+		case "logs":
+			return runLogs(args, socketPath, context);
 		default:
 			exitUsage(
 				`Unknown subcommand: dev-server ${subcommand}` +
-				"\nAvailable: dev-server start, dev-server stop, dev-server restart, dev-server status",
+				"\nAvailable: dev-server start, dev-server stop, dev-server restart, dev-server status, dev-server logs",
 			);
 	}
 }

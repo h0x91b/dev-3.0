@@ -209,6 +209,14 @@ export class TmuxClient {
 		cwd: string;
 		env?: Record<string, string>;
 		command?: string;
+		/**
+		 * Shell command to tee the new pane's output into, chained onto the SAME
+		 * tmux invocation. It has to be one invocation: a `pipe-pane` sent as a
+		 * second command attaches milliseconds too late and loses the pane's first
+		 * lines — measured at 4 runs out of 5 — which is exactly the output that
+		 * says why a dev server died on startup.
+		 */
+		pipeTo?: string;
 	} & SocketOpt): Promise<{ stderr: string }> {
 		// `-f` on every server-starting command: without it tmux falls back to
 		// /etc/tmux.conf + ~/.tmux.conf and the user's personal settings leak
@@ -219,6 +227,7 @@ export class TmuxClient {
 		}
 		args.push("-s", opts.sessionName, "-c", opts.cwd);
 		if (opts.command) args.push(opts.command);
+		if (opts.pipeTo) args.push(";", "pipe-pane", "-o", "-t", opts.sessionName, opts.pipeTo);
 		let proc: SpawnedProcess;
 		try {
 			proc = this.spawnFn(this.argv(opts.socket, args), {

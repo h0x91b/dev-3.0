@@ -445,6 +445,14 @@ const COMMANDS: CommandHelp[] = [
 				usage: "dev3 dev-server status [task-id]",
 				summary: "Show a task's dev server status, including dev-owned ports and port conflicts (default subcommand).",
 			},
+			{
+				name: "logs",
+				usage: "dev3 dev-server logs [task-id] [--lines N]",
+				summary:
+					"Print the tail of the dev server's own output. It is mirrored as plain text to"
+					+ " <taskDir>/logs/dev-server.log (the path is in `status`), so you can grep it instead of"
+					+ " watching the pane. Each start begins a fresh log.",
+			},
 		],
 	},
 	{
