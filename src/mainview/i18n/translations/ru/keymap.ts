@@ -45,6 +45,7 @@ const keymap = {
 	"keymap.shortcut.trafficReplayPlayPause": "Запустить или остановить воспроизведение трафика",
 	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
 	"keymap.shortcut.artifactSearch": "Поиск в открытом HTML-артефакте",
+	"keymap.shortcut.filePreviewSearch": "Поиск в открытом предпросмотре файла",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
 	"keymap.shortcut.openQuickShell": "Открыть быструю консоль",
 	"keymap.shortcut.terminalSearch": "Поиск в активном терминале (история tmux)",

@@ -264,7 +264,7 @@ describe("TaskArtifactViewer", () => {
 
 		screen.getByRole("button", { name: "Terminal" }).focus();
 		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
-		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+		expect(screen.getByTestId("find-bar")).toBeInTheDocument();
 
 		await userEvent.type(screen.getByPlaceholderText("Find in artifact"), "revenue");
 		await waitFor(() => expect(postMessage).toHaveBeenCalledWith(
@@ -273,7 +273,7 @@ describe("TaskArtifactViewer", () => {
 		));
 
 		replyFromFrame(frame, 1, 3, 0);
-		await waitFor(() => expect(screen.getByTestId("artifact-search-count")).toHaveTextContent("1/3"));
+		await waitFor(() => expect(screen.getByTestId("find-bar-count")).toHaveTextContent("1/3"));
 
 		await userEvent.click(screen.getByRole("button", { name: /next match/i }));
 		expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "dev3-artifact-find-step", delta: 1 }), "*");
@@ -287,7 +287,7 @@ describe("TaskArtifactViewer", () => {
 		const toggle = screen.getByTestId("artifact-viewer-search");
 		expect(toggle).toHaveTextContent("\uf002");
 		await userEvent.click(toggle);
-		expect(screen.getByTestId("artifact-search-bar")).toHaveTextContent("\uf002");
+		expect(screen.getByTestId("find-bar")).toHaveTextContent("\uf002");
 	});
 
 	it("opens find when the artifact relays its own ⌘F, and the header magnifier toggles it", async () => {
@@ -296,12 +296,12 @@ describe("TaskArtifactViewer", () => {
 		const relay = new MessageEvent("message", { data: { type: "dev3-artifact-find-open" } });
 		Object.defineProperty(relay, "source", { value: frame.contentWindow });
 		window.dispatchEvent(relay);
-		await waitFor(() => expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByTestId("find-bar")).toBeInTheDocument());
 
 		await userEvent.click(screen.getByTestId("artifact-viewer-search"));
-		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("find-bar")).not.toBeInTheDocument();
 		await userEvent.click(screen.getByTestId("artifact-viewer-search"));
-		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+		expect(screen.getByTestId("find-bar")).toBeInTheDocument();
 	});
 
 	it("keeps Escape and the arrow keys off artifact history while find is open", async () => {
@@ -310,7 +310,7 @@ describe("TaskArtifactViewer", () => {
 		await screen.findByTitle("Artifact a");
 		screen.getByTestId("artifact-viewer-close").focus();
 		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
-		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+		expect(screen.getByTestId("find-bar")).toBeInTheDocument();
 
 		// Arrows belong to the query caret, not to the artifact history.
 		fireEvent.keyDown(window, { key: "ArrowRight" });
@@ -318,7 +318,7 @@ describe("TaskArtifactViewer", () => {
 
 		// Escape unwinds one layer: find first, the viewer only after.
 		fireEvent.keyDown(window, { key: "Escape" });
-		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("find-bar")).not.toBeInTheDocument();
 		expect(onClose).not.toHaveBeenCalled();
 		// Focus must land back on the toggle, never on the iframe — key events inside
 		// the sandboxed document never reach this window, so the next Escape would die.

@@ -45,6 +45,7 @@ const keymap = {
 	"keymap.shortcut.trafficReplayPlayPause": "Reproducir o pausar la repetición del tráfico",
 	"keymap.shortcut.terminalFullscreen": "Alternar pantalla inmersiva del terminal (solo en terminal de tarea)",
 	"keymap.shortcut.artifactSearch": "Buscar en el artefacto HTML abierto",
+	"keymap.shortcut.filePreviewSearch": "Buscar en la vista previa del archivo",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
 	"keymap.shortcut.openQuickShell": "Abrir Shell rápido",
 	"keymap.shortcut.terminalSearch": "Buscar en el terminal activo (historial de tmux)",
