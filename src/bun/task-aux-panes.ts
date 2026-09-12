@@ -85,6 +85,10 @@ export interface TaskPaneLaunch {
 
 export interface OpenAuxPaneSpec extends TaskPaneLaunch {
 	purpose: AuxPanePurpose;
+	/** One pane of a slotted purpose (a dev server's script base). */
+	slot?: string;
+	/** Native pane to split off. Defaults to the pane that currently has focus. */
+	nativeAnchor?: string;
 }
 
 /**
@@ -118,6 +122,15 @@ interface AuxPanePurposeMeta {
 	/** English label shown for the pane in the pager and pane picker. */
 	title: string;
 	/**
+	 * Whether this purpose owns one pane PER SLOT rather than one per task. A task
+	 * runs one pane per declared dev server, so the dev-server marker has to end at
+	 * a boundary: a plain `…-dev` prefix also matches `…-dev-api.sh`, which would
+	 * make the default server's lookup find (and close) the API server's pane.
+	 * Every generated script name carries an extension, so a trailing `.` is that
+	 * boundary on both POSIX and Windows.
+	 */
+	slotted?: boolean;
+	/**
 	 * Whether replacing this purpose's pane must be PROVEN before a new one opens.
 	 * A dev server or a git operation is idempotent enough that a stubborn old pane
 	 * is cosmetic; two agents editing one worktree is not, so a column agent
@@ -127,15 +140,24 @@ interface AuxPanePurposeMeta {
 }
 
 const AUX_PANE_PURPOSES: Record<AuxPanePurpose, AuxPanePurposeMeta> = {
-	devServer: { scriptSuffix: "dev", title: "Dev Server", provenReplace: false },
+	devServer: { scriptSuffix: "dev", title: "Dev Server", provenReplace: false, slotted: true },
 	gitOp: { scriptSuffix: "git-", title: "Git", provenReplace: false },
 	columnAgent: { scriptSuffix: "col-agent", title: "Column Agent", provenReplace: true },
 	setupRerun: { scriptSuffix: "setup-rerun", title: "Setup", provenReplace: false },
 };
 
-/** The substring that identifies a purpose's pane in a launch command. */
-export function auxPaneMarker(taskId: string, purpose: AuxPanePurpose): string {
-	return dev3TaskTempPath(taskId, AUX_PANE_PURPOSES[purpose].scriptSuffix);
+/**
+ * The substring that identifies a purpose's pane in a launch command.
+ *
+ * For a slotted purpose, `slot` names ONE of its panes (a dev server's name);
+ * omitting it matches every pane the purpose owns, which is what a teardown
+ * wants. A slot IS the generated script's base name (`devServerScriptBase`), so
+ * the marker and the launch command cannot drift apart.
+ */
+export function auxPaneMarker(taskId: string, purpose: AuxPanePurpose, slot?: string): string {
+	const meta = AUX_PANE_PURPOSES[purpose];
+	if (!meta.slotted) return dev3TaskTempPath(taskId, meta.scriptSuffix);
+	return dev3TaskTempPath(taskId, slot ? `${slot}.` : meta.scriptSuffix);
 }
 
 /** The English label shown for an auxiliary pane in the pager and pane picker. */
@@ -175,8 +197,9 @@ async function findTmuxAuxPanes(
 	purpose: AuxPanePurpose,
 	socket: string,
 	strict = false,
+	slot?: string,
 ): Promise<string[]> {
-	const marker = auxPaneMarker(task.id, purpose);
+	const marker = auxPaneMarker(task.id, purpose, slot);
 	try {
 		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, { target: taskSessionName(task.id), socket });
 		return rows.filter((row) => row.startCommand.includes(marker)).map((row) => row.paneId);
@@ -190,8 +213,9 @@ async function findNativeAuxPanes(
 	task: Task,
 	purpose: AuxPanePurpose,
 	strict = false,
+	slot?: string,
 ): Promise<{ paneId: string; shellPid: number; alive: boolean }[]> {
-	const marker = auxPaneMarker(task.id, purpose);
+	const marker = auxPaneMarker(task.id, purpose, slot);
 	const panes = strict
 		? await readNativePanesStrictly(task)
 		: await nativeTaskPaneCommands(task.id);
@@ -225,20 +249,23 @@ export async function findAuxPanes(
 	task: Task,
 	purpose: AuxPanePurpose,
 	socket: string,
-	/** Fail instead of reporting an empty list when the lookup itself cannot run. */
-	options?: { strict?: boolean },
+	/**
+	 * `strict`: fail instead of reporting an empty list when the lookup itself
+	 * cannot run. `slot`: one pane of a slotted purpose; omitted means all of them.
+	 */
+	options?: { strict?: boolean; slot?: string },
 ): Promise<AuxPaneHandle[]> {
 	if (backendOf(task) === "native") {
-		const found = await findNativeAuxPanes(task, purpose, options?.strict === true);
+		const found = await findNativeAuxPanes(task, purpose, options?.strict === true, options?.slot);
 		return found.map(({ paneId }) => ({ backend: "native" as const, paneId }));
 	}
-	const paneIds = await findTmuxAuxPanes(task, purpose, socket, options?.strict === true);
+	const paneIds = await findTmuxAuxPanes(task, purpose, socket, options?.strict === true, options?.slot);
 	return paneIds.map((paneId) => ({ backend: "tmux" as const, paneId }));
 }
 
 /** The first pane this purpose owns, or null. */
-export async function findAuxPane(task: Task, purpose: AuxPanePurpose, socket: string): Promise<AuxPaneHandle | null> {
-	return (await findAuxPanes(task, purpose, socket))[0] ?? null;
+export async function findAuxPane(task: Task, purpose: AuxPanePurpose, socket: string, slot?: string): Promise<AuxPaneHandle | null> {
+	return (await findAuxPanes(task, purpose, socket, { slot }))[0] ?? null;
 }
 
 /**
@@ -246,16 +273,16 @@ export async function findAuxPane(task: Task, purpose: AuxPanePurpose, socket: s
  * pane whose command exited lingers as a dead pane showing its last output —
  * visible, but not alive.
  */
-export async function auxPaneAlive(task: Task, purpose: AuxPanePurpose, socket: string): Promise<boolean> {
+export async function auxPaneAlive(task: Task, purpose: AuxPanePurpose, socket: string, slot?: string): Promise<boolean> {
 	if (backendOf(task) === "native") {
-		return (await findNativeAuxPanes(task, purpose)).some((pane) => pane.alive);
+		return (await findNativeAuxPanes(task, purpose, false, slot)).some((pane) => pane.alive);
 	}
-	return (await findTmuxAuxPanes(task, purpose, socket)).length > 0;
+	return (await findTmuxAuxPanes(task, purpose, socket, false, slot)).length > 0;
 }
 
 /** The pid of the process running in the purpose's native pane, or null. */
-export async function nativeAuxPaneShellPid(task: Task, purpose: AuxPanePurpose): Promise<number | null> {
-	const found = await findNativeAuxPanes(task, purpose);
+export async function nativeAuxPaneShellPid(task: Task, purpose: AuxPanePurpose, slot?: string): Promise<number | null> {
+	const found = await findNativeAuxPanes(task, purpose, false, slot);
 	return found.find((pane) => pane.alive)?.shellPid ?? null;
 }
 
@@ -270,8 +297,9 @@ export async function closeAuxPane(
 	purpose: AuxPanePurpose,
 	socket: string,
 	opId?: string,
+	slot?: string,
 ): Promise<void> {
-	const handles = await findAuxPanes(task, purpose, socket);
+	const handles = await findAuxPanes(task, purpose, socket, { slot });
 	if (handles.length === 0) {
 		// A stop that owned nothing used to be completely silent, which left "there
 		// was no pane" and "the close never ran" indistinguishable in the log (seq 1407).
@@ -340,8 +368,8 @@ export class AuxPaneReplaceError extends Error {
  * LOOKUP: only an observed empty list may let a replacement open, so a lookup
  * that could not run fails the launch instead of reading as "there was nothing".
  */
-async function replaceAuxPanes(task: Task, purpose: AuxPanePurpose, socket: string): Promise<void> {
-	const existing = await findOwnedPanesStrictly(task, purpose, socket);
+async function replaceAuxPanes(task: Task, purpose: AuxPanePurpose, socket: string, slot?: string): Promise<void> {
+	const existing = await findOwnedPanesStrictly(task, purpose, socket, slot);
 	for (const handle of existing) {
 		try {
 			await closeTaskPane(task, handle, socket);
@@ -352,7 +380,7 @@ async function replaceAuxPanes(task: Task, purpose: AuxPanePurpose, socket: stri
 	}
 	// Re-read rather than trusting the closes: the pane set is the authority, and
 	// a pane that reappears (or was never listed) must still block the launch.
-	const remaining = await findOwnedPanesStrictly(task, purpose, socket);
+	const remaining = await findOwnedPanesStrictly(task, purpose, socket, slot);
 	if (remaining.length > 0) {
 		throw new AuxPaneReplaceError(purpose, remaining.map((handle) => handle.paneId));
 	}
@@ -363,9 +391,10 @@ async function findOwnedPanesStrictly(
 	task: Task,
 	purpose: AuxPanePurpose,
 	socket: string,
+	slot?: string,
 ): Promise<AuxPaneHandle[]> {
 	try {
-		return await findAuxPanes(task, purpose, socket, { strict: true });
+		return await findAuxPanes(task, purpose, socket, { strict: true, slot });
 	} catch (err) {
 		throw new AuxPaneUndecidableError(purpose, err);
 	}
@@ -381,11 +410,11 @@ async function findOwnedPanesStrictly(
  * because a dev server started.
  */
 export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle> {
-	const { task, purpose, socket } = spec;
+	const { task, purpose, socket, slot } = spec;
 	if (AUX_PANE_PURPOSES[purpose].provenReplace) {
-		await replaceAuxPanes(task, purpose, socket);
+		await replaceAuxPanes(task, purpose, socket, slot);
 	} else {
-		await closeAuxPane(task, purpose, socket);
+		await closeAuxPane(task, purpose, socket, undefined, slot);
 	}
 	const handle = await splitTaskPane({ ...spec, restoreFocus: true });
 	log.info("Opened auxiliary pane", {

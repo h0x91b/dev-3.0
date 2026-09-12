@@ -3,6 +3,7 @@ import { handleDevServer } from "../commands/dev-server";
 import type { CliContext } from "../context";
 import type { DevServerStatus, CliResponse } from "../../shared/types";
 import { parseArgs } from "../args";
+import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,18 +47,32 @@ const STATUS: DevServerStatus = {
 	tmuxSocket: "dev3",
 	backend: "tmux",
 	taskSessionName: "dev3-aaaaaaaa",
-	devSessionName: "dev3-dev-aaaaaaaa",
-	viewerPaneId: "%17",
-	panePids: [81231],
 	assignedPorts: [50001, 55930, 55937],
+	namedPorts: {},
 	ports: [{ port: 5173, pid: 81298, processName: "bun" }],
-	devPorts: [{ port: 5173, pid: 81298, processName: "bun" }],
-	publishedPorts: [],
-	portConflicts: [],
-	extraEnvKeys: [],
-	logPath: null,
-	resourceUsage: { cpu: 3.1, rss: 104857600 },
+	configErrors: [],
+	servers: [{
+		name: "dev",
+		title: "Dev Server",
+		isDefault: true,
+		running: true,
+		devSessionName: "dev3-dev-aaaaaaaa",
+		viewerPaneId: "%17",
+		panePids: [81231],
+		namedPorts: {},
+		logPath: null,
+		devPorts: [{ port: 5173, pid: 81298, processName: "bun" }],
+		publishedPorts: [],
+		portConflicts: [],
+		extraEnvKeys: [],
+		resourceUsage: { cpu: 3.1, rss: 104857600 },
+	}],
 };
+
+/** The same status with its single dev server's fields overridden. */
+function withServer(over: Partial<DevServerStatus["servers"][number]>, statusOver: Partial<DevServerStatus> = {}): DevServerStatus {
+	return { ...STATUS, ...statusOver, servers: [{ ...STATUS.servers[0], ...over }] };
+}
 
 function okResp(data: unknown): CliResponse {
 	return { id: "test-id", ok: true, data };
@@ -157,16 +172,11 @@ describe("dev-server status", () => {
 	// `tmuxError`, and the CLI prints last-known state + a diagnostic, exit 0.
 	it("renders an unknown state with a diagnostic when tmux is unreachable", async () => {
 		const degraded = {
-			...STATUS,
-			running: false,
-			viewerPaneId: null,
-			panePids: [],
-			ports: [],
-			devPorts: [],
-			portConflicts: [],
-			resourceUsage: undefined,
-			// assignedPorts survive (in-memory pool, no tmux) — "last-known state".
-			assignedPorts: [50001],
+			...withServer(
+				{ running: false, viewerPaneId: null, panePids: [], devPorts: [], portConflicts: [], resourceUsage: undefined },
+				// assignedPorts survive (in-memory pool, no tmux) — "last-known state".
+				{ running: false, ports: [], assignedPorts: [50001] },
+			),
 			tmuxError:
 				"tmux failed to spawn (/opt/homebrew/bin/tmux): ENOENT. The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.",
 		};
@@ -204,15 +214,10 @@ describe("dev-server start/stop/restart", () => {
 	});
 
 	it("stops the dev server with an explicit --project override", async () => {
-		mockSend.mockResolvedValue(okResp({
-			...STATUS,
-			running: false,
-			viewerPaneId: null,
-			panePids: [],
-			assignedPorts: [],
-			ports: [],
-			resourceUsage: undefined,
-		}));
+		mockSend.mockResolvedValue(okResp(withServer(
+			{ running: false, viewerPaneId: null, panePids: [], resourceUsage: undefined },
+			{ running: false, assignedPorts: [], ports: [] },
+		)));
 
 		await handleDevServer("stop", { positional: ["aaaaaaaa"], flags: { project: "other-proj" } }, SOCKET, CTX);
 
@@ -240,13 +245,12 @@ describe("dev-server start/stop/restart", () => {
 
 describe("dev-server port conflicts", () => {
 	it("prints a warning for each conflicting port holder", async () => {
-		mockSend.mockResolvedValue(okResp({
-			...STATUS,
+		mockSend.mockResolvedValue(okResp(withServer({
 			portConflicts: [
 				{ port: 50001, pid: 999, processName: "node" },
 				{ port: 55930, pid: 1001, processName: "python3" },
 			],
-		}));
+		})));
 
 		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
 
@@ -257,11 +261,10 @@ describe("dev-server port conflicts", () => {
 	// A container runtime publishes the port, so the listener is never in the
 	// pane's process tree. That is the healthy state, not a conflict (#1427).
 	it("prints published ports on their own line instead of a warning", async () => {
-		mockSend.mockResolvedValue(okResp({
-			...STATUS,
+		mockSend.mockResolvedValue(okResp(withServer({
 			devPorts: [],
 			publishedPorts: [{ port: 10569, pid: 1380, processName: "com.docker.backend" }],
-		}));
+		})));
 
 		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
 
@@ -294,13 +297,13 @@ describe("dev-server start --wait", () => {
 
 	// The assigned port is the one the caller is about to curl, so it is the only
 	// port that ends the wait immediately.
-	const ASSIGNED_UP = { ...STATUS, devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] };
+	const ASSIGNED_UP = withServer({ devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] });
 
 	it("polls status until the dev server opens its assigned port, then prints Ready", async () => {
 		vi.useFakeTimers();
 		let statusCalls = 0;
 		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			if (method === "devServer.start") return okResp(withServer({ devPorts: [] }));
 			statusCalls++;
 			return okResp(statusCalls >= 2 ? ASSIGNED_UP : { ...STATUS, devPorts: [] });
 		});
@@ -318,9 +321,9 @@ describe("dev-server start --wait", () => {
 	it("keeps waiting when only an auxiliary port is up, then reports the assigned one", async () => {
 		vi.useFakeTimers();
 		let statusCalls = 0;
-		const auxOnly = { ...STATUS, devPorts: [{ port: 5173, pid: 81298, processName: "bun" }] };
+		const auxOnly = withServer({ devPorts: [{ port: 5173, pid: 81298, processName: "bun" }] });
 		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			if (method === "devServer.start") return okResp(withServer({ devPorts: [] }));
 			statusCalls++;
 			return okResp(statusCalls >= 6 ? ASSIGNED_UP : auxOnly);
 		});
@@ -338,7 +341,7 @@ describe("dev-server start --wait", () => {
 	// that project until the timeout would be worse than a slightly early ready.
 	it("falls back to the auxiliary port once the grace window expires", async () => {
 		vi.useFakeTimers();
-		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [{ port: 3000, pid: 81298, processName: "bun" }] }));
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [{ port: 3000, pid: 81298, processName: "bun" }] })));
 
 		const promise = handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX);
 		await vi.advanceTimersByTimeAsync(11_000);
@@ -350,11 +353,10 @@ describe("dev-server start --wait", () => {
 
 	it("reports ready on any port when the task has no assigned ports", async () => {
 		vi.useFakeTimers();
-		mockSend.mockResolvedValue(okResp({
-			...STATUS,
-			assignedPorts: [],
-			devPorts: [{ port: 3000, pid: 81298, processName: "bun" }],
-		}));
+		mockSend.mockResolvedValue(okResp(withServer(
+			{ devPorts: [{ port: 3000, pid: 81298, processName: "bun" }] },
+			{ assignedPorts: [] },
+		)));
 
 		const promise = handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX);
 		await vi.advanceTimersByTimeAsync(1000);
@@ -373,12 +375,12 @@ describe("dev-server start --wait", () => {
 		// holder of anything else is never classified as published.
 		const published = { port: 50001, pid: 1380, processName: "com.docker.backend" };
 		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [], publishedPorts: [] });
+			if (method === "devServer.start") return okResp(withServer({ devPorts: [], publishedPorts: [] }));
 			statusCalls++;
 			return okResp(
 				statusCalls >= 2
-					? { ...STATUS, devPorts: [], publishedPorts: [published] }
-					: { ...STATUS, devPorts: [], publishedPorts: [] },
+					? withServer({ devPorts: [], publishedPorts: [published] })
+					: withServer({ devPorts: [], publishedPorts: [] }),
 			);
 		});
 
@@ -392,11 +394,10 @@ describe("dev-server start --wait", () => {
 
 	it("names the squatting process when the timeout elapses on a conflicted port", async () => {
 		vi.useFakeTimers();
-		mockSend.mockResolvedValue(okResp({
-			...STATUS,
+		mockSend.mockResolvedValue(okResp(withServer({
 			devPorts: [],
 			portConflicts: [{ port: 50001, pid: 999, processName: "node" }],
-		}));
+		})));
 
 		const promise = handleDevServer(
 			"start",
@@ -413,8 +414,8 @@ describe("dev-server start --wait", () => {
 	it("exits with an error when the timeout elapses before a port appears", async () => {
 		vi.useFakeTimers();
 		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.restart") return okResp({ ...STATUS, devPorts: [] });
-			return okResp({ ...STATUS, devPorts: [] });
+			if (method === "devServer.restart") return okResp(withServer({ devPorts: [] }));
+			return okResp(withServer({ devPorts: [] }));
 		});
 
 		const promise = handleDevServer(
@@ -432,8 +433,8 @@ describe("dev-server start --wait", () => {
 
 	it("exits with an error when the dev server dies while waiting", async () => {
 		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
-			return okResp({ ...STATUS, running: false, devPorts: [] });
+			if (method === "devServer.start") return okResp(withServer({ devPorts: [] }));
+			return okResp(withServer({ running: false, devPorts: [] }, { running: false }));
 		});
 
 		await expect(
@@ -443,7 +444,7 @@ describe("dev-server start --wait", () => {
 	});
 
 	it("rejects an invalid --timeout value", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [] }));
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
 
 		await expect(
 			handleDevServer("start", { positional: [], flags: { wait: "true", timeout: "zero" } }, SOCKET, CTX),
@@ -452,7 +453,7 @@ describe("dev-server start --wait", () => {
 	});
 
 	it("does not poll when --wait is not passed", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [] }));
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
 
 		await handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX);
 
@@ -545,11 +546,11 @@ describe("dev-server instance failover", () => {
 	it("keeps --wait polling alive across an instance loss mid-wait", async () => {
 		let statusCalls = 0;
 		mockSend.mockImplementation(async (socket: string, method: string) => {
-			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			if (method === "devServer.start") return okResp(withServer({ devPorts: [] }));
 			statusCalls++;
 			if (statusCalls === 1) throw appNotRunningError();
 			expect(socket).toBe(FALLBACK_SOCKET);
-			return okResp({ ...STATUS, devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] });
+			return okResp(withServer({ devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] }));
 		});
 		mockDiscoverExcluding.mockReturnValue(FALLBACK_SOCKET);
 
@@ -654,7 +655,7 @@ describe("dev-server --env", () => {
 
 	// Names only: a value can be a token, and this output lands in transcripts.
 	it("prints the extra env key names without their values", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, extraEnvKeys: ["DEV3_QA_SCOPE", "SECRET_TOKEN"] }));
+		mockSend.mockResolvedValue(okResp(withServer({ extraEnvKeys: ["DEV3_QA_SCOPE", "SECRET_TOKEN"] })));
 
 		await handleDevServer("status", parseArgs([]), SOCKET, CTX);
 
@@ -674,7 +675,7 @@ describe("dev-server --env", () => {
 	// poll is pointless, so the env goes with the start request only.
 	it("does not repeat the env on the --wait status polls", async () => {
 		// Ready on an assigned port right away, so the wait returns on its first poll.
-		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] }));
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] })));
 
 		await handleDevServer("start", parseArgs(["--wait", "--env", "SECRET_TOKEN=abc"]), SOCKET, CTX);
 
@@ -684,13 +685,145 @@ describe("dev-server --env", () => {
 	});
 });
 
+// A project with several dev servers: which one a bare command means, how the
+// CLI names them, and what it prints when it cannot guess.
+describe("dev-server with several declared servers", () => {
+	const MULTI: DevServerStatus = {
+		...STATUS,
+		running: true,
+		namedPorts: { api: 55930 },
+		servers: [
+			{ ...STATUS.servers[0], name: "dev", isDefault: true, running: true },
+			{
+				...STATUS.servers[0],
+				name: "api",
+				title: "API",
+				isDefault: false,
+				running: false,
+				devSessionName: "dev3-dev-aaaaaaaa-api",
+				viewerPaneId: null,
+				panePids: [],
+				namedPorts: { api: 55930 },
+				devPorts: [],
+				resourceUsage: undefined,
+			},
+		],
+	};
+
+	it("sends a plain server name as the server, keeping the task from context", async () => {
+		mockSend.mockResolvedValue(okResp(MULTI));
+
+		await handleDevServer("start", { positional: ["api"], flags: {} }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			server: "api",
+		}, { retryEmptyResponse: true });
+	});
+
+	// The positional has meant a task id since this command existed.
+	it("still reads a task-shaped positional as the task, and a second one as the server", async () => {
+		mockSend.mockResolvedValue(okResp(MULTI));
+
+		await handleDevServer("start", { positional: ["aaaaaaaa", "api"], flags: {} }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			server: "api",
+		}, { retryEmptyResponse: true });
+	});
+
+	it("--server settles a name that could be read as a task id", async () => {
+		mockSend.mockResolvedValue(okResp(MULTI));
+
+		await handleDevServer("start", { positional: [], flags: { server: "abcdef" } }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", expect.objectContaining({ server: "abcdef" }), expect.anything());
+	});
+
+	it("--all asks for every server", async () => {
+		mockSend.mockResolvedValue(okResp(MULTI));
+
+		await handleDevServer("stop", { positional: [], flags: { all: "true" } }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.stop", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			all: true,
+		}, { retryEmptyResponse: true });
+	});
+
+	it("refuses a name together with --all", async () => {
+		await expect(
+			handleDevServer("start", { positional: ["api"], flags: { all: "true" } }, SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("either a server name or --all");
+	});
+
+	it("prints one block per server, and the count instead of one state", async () => {
+		mockSend.mockResolvedValue(okResp(MULTI));
+
+		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("1 of 2 dev servers running");
+		expect(stdoutOutput).toContain("dev (default)");
+		expect(stdoutOutput).toContain("api");
+		expect(stdoutOutput).toContain("Named Ports:");
+		expect(stdoutOutput).toContain("api=55930");
+	});
+
+	// Its own exit code, so a script can fix the call instead of treating it as
+	// a misspelled command.
+	it("exits with the dedicated code when the backend cannot guess which server", async () => {
+		mockSend.mockResolvedValue({
+			id: "test-id",
+			ok: false,
+			error: "DEV3_DEV_SERVER_NAME_REQUIRED: this project declares several dev servers and none of them is the default — name one: api, web",
+		});
+
+		await expect(
+			handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED}`);
+		expect(stderrOutput).toContain("name one: api, web");
+		expect(stderrOutput).toContain("--all");
+		// The marker itself is machine plumbing, never shown to the reader.
+		expect(stderrOutput).not.toContain("DEV3_DEV_SERVER_NAME_REQUIRED");
+	});
+
+	// `--wait` is per server: the front end being up says nothing about the API.
+	it("waits on the named server's own port", async () => {
+		vi.useFakeTimers();
+		const apiUp = {
+			...MULTI,
+			servers: [
+				MULTI.servers[0],
+				{ ...MULTI.servers[1], running: true, devPorts: [{ port: 55930, pid: 900, processName: "bun" }] },
+			],
+		};
+		mockSend.mockImplementation(async (_socket: string, method: string) =>
+			okResp(method === "devServer.start" ? MULTI : apiUp));
+
+		const promise = handleDevServer("start", { positional: ["api"], flags: { wait: "true" } }, SOCKET, CTX);
+		await vi.advanceTimersByTimeAsync(1000);
+		await promise;
+
+		expect(stdoutOutput).toContain("Waiting for api");
+		expect(stdoutOutput).toContain("Ready: listening on 55930");
+		vi.useRealTimers();
+	});
+});
+
+// One log per dev server, so `logs` resolves a name exactly like `start` does.
 describe("dev-server logs", () => {
 	const LOG_ROOT = mkdtempSync(join(tmpdir(), "dev3-cli-devlog-"));
 	const LOG_PATH = join(LOG_ROOT, "dev-server.log");
+	const API_LOG = join(LOG_ROOT, "dev-server-api.log");
 
 	it("prints the tail of the captured output", async () => {
 		writeFileSync(LOG_PATH, "one\ntwo\nthree\n", "utf8");
-		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: LOG_PATH }));
+		mockSend.mockResolvedValue(okResp(withServer({ logPath: LOG_PATH })));
 
 		await handleDevServer("logs", parseArgs(["--lines", "2"]), SOCKET, CTX);
 
@@ -700,7 +833,7 @@ describe("dev-server logs", () => {
 	});
 
 	it("says nothing is captured yet instead of failing, when the file is not there", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: join(LOG_ROOT, "absent.log") }));
+		mockSend.mockResolvedValue(okResp(withServer({ logPath: join(LOG_ROOT, "absent.log") })));
 
 		await handleDevServer("logs", parseArgs([]), SOCKET, CTX);
 
@@ -709,16 +842,47 @@ describe("dev-server logs", () => {
 	});
 
 	it("refuses a --lines beyond the cap rather than pasting a whole log", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: LOG_PATH }));
+		mockSend.mockResolvedValue(okResp(withServer({ logPath: LOG_PATH })));
 
 		await expect(handleDevServer("logs", parseArgs(["--lines", "99999"]), SOCKET, CTX))
 			.rejects.toThrow(/EXIT_/);
 	});
 
 	it("reports a task with no worktree as having no log at all", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: null }));
+		mockSend.mockResolvedValue(okResp(withServer({ logPath: null })));
 
 		await expect(handleDevServer("logs", parseArgs([]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
 		expect(stderrOutput).toContain("no worktree");
+	});
+
+	// Each server writes its own file, so naming one reads that one.
+	it("reads the named server's own log", async () => {
+		writeFileSync(API_LOG, "api output\n", "utf8");
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			servers: [
+				{ ...STATUS.servers[0], logPath: LOG_PATH },
+				{ ...STATUS.servers[0], name: "api", isDefault: false, logPath: API_LOG },
+			],
+		}));
+
+		await handleDevServer("logs", parseArgs(["api"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain(API_LOG);
+		expect(stdoutOutput).toContain("api output");
+	});
+
+	it("refuses to guess which server's log, when there is no default", async () => {
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			servers: [
+				{ ...STATUS.servers[0], name: "api", isDefault: false, logPath: API_LOG },
+				{ ...STATUS.servers[0], name: "web", isDefault: false, logPath: LOG_PATH },
+			],
+		}));
+
+		await expect(handleDevServer("logs", parseArgs([]), SOCKET, CTX))
+			.rejects.toThrow(`EXIT_${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED}`);
+		expect(stderrOutput).toContain("api, web");
 	});
 });

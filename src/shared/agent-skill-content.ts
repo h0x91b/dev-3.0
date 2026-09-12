@@ -17,6 +17,7 @@ import {
 } from "./agent-message-hold-timing";
 import { deepLinkSchemeRegistered } from "./deep-link";
 import { PANE_RUN_AUTO_CLOSE_SECONDS, PANE_RUN_FAILED_AUTO_CLOSE_SECONDS } from "./pane-runs";
+import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "./cli-exit-codes";
 
 /**
  * How the agent should link a PR back to its task — or why it must not. The
@@ -179,27 +180,29 @@ Set it within the first minute, in the **same pass as the title and labels**. Th
 const SKILL_DEV_SERVER_CONTROL = `
 ## Dev Server Control
 
-\`dev3 dev-server status\` is low-risk. \`start\`, \`restart\` and \`stop\` have visible side effects — do not use them by default. Only when the user asked for dev-server control, the task is about \`devScript\`/ports/dev-server behavior, or you need the server up to verify a change; say what you are about to do first, prefer \`status\` before \`start\`, and stop it again afterwards unless asked to keep it running.
+\`dev3 dev-server status\` and \`logs\` are low-risk. \`start\`, \`restart\` and \`stop\` have visible side effects — use them only when the user asked for dev-server control, the task is about \`devScript\`/ports, or you need the server up to verify a change; say what you are about to do first, and stop it again afterwards unless asked to keep it running.
 
-Need it actually serving (curl, browser QA)? \`dev3 dev-server start --wait\` / \`restart --wait\` blocks until it listens on one of the task's assigned \`DEV3_PORT*\` ports (\`--timeout <sec>\`, default 120), whether bound by its own process tree or published for it, so a containerised \`devScript\` counts as ready too. An auxiliary port (HMR socket, sidecar) only grants 10s more for an assigned port, then reports ready on what it has — so a \`devScript\` binding a fixed port returns instead of hanging. Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown before returning; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and WARNING lines only when a foreign process squatted an assigned port.
+Need it actually serving (curl, browser QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120), bound by its own tree or published for it, so a containerised \`devScript\` counts as ready. Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process squatted an assigned port.
 
-Its output also lands as plain text in \`<taskDir>/logs/dev-server.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it, and it greps.
+A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`stop api\`, \`restart api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`status\` prints a block per server, \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`.
+
+Each server's output also lands as text in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it, and it greps.
 `;
 const SKILL_ARTIFACTS = `
 ## dev3 HTML artifacts
 
-Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or demo usually means a **dev3 HTML artifact** — not Claude Artifacts — whenever an interactive visual fits. Do not override explicit meanings: Claude Artifacts, CI/build artifacts, package outputs, files for another system.
+Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or demo usually means a **dev3 HTML artifact** — not Claude Artifacts — whenever an interactive visual fits. Do not override explicit meanings: Claude Artifacts, CI/build artifacts, package outputs, files for other systems.
 
-\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is a pristine task-local starter (\`dev3 artifact-template\` copies it in if the variable is missing; never invent a different template). The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` the depth behind it, \`index.html\` + \`report.js\` the edit surface, \`app.css\` + \`app.js\` the stable shell, \`dev3-icon.png\` the brand asset.
+\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is a pristine task-local starter (\`dev3 artifact-template\` copies it in if the variable is missing; never invent a different template). The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` the depth behind it, \`index.html\` + \`report.js\` the edit surface, \`app.css\` + \`app.js\` the shell, \`dev3-icon.png\` the brand asset.
 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` — never edit the pristine source.
-2. Read the copied \`AUTHORING.md\` (the card), then edit only \`index.html\` and \`report.js\` unless the format itself must change. Open a \`REFERENCE.md\` section only when the report needs it. Do not read the shell files for ordinary reports.
-3. Keep content and data local; external chart/UI libraries and live \`fetch\`/WebSocket are allowed as \`REFERENCE.md\` documents.
-4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit: \`index.html\` plus every CSS, JS, image and MP4/WebM clip (16 MB each, 48 MB together) under it. Keep assets beside or below the HTML with relative paths; only a file outside the directory goes after \`--assets\`.
+2. Read the copied \`AUTHORING.md\` (the card), then edit only \`index.html\` and \`report.js\` unless the format itself must change. Open a \`REFERENCE.md\` section only when the report needs one. Do not read the shell files for ordinary reports.
+3. Keep content and data local; external chart/UI libraries and live \`fetch\`/WebSocket are allowed, as \`REFERENCE.md\` says.
+4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit: \`index.html\` plus every CSS, JS, image and MP4/WebM clip (16 MB each, 48 MB together) under it. Keep assets beside or below the HTML with relative paths; only a file outside it goes after \`--assets\`.
 
-Re-running \`show-artifact\` **updates** the report: the same \`--title\` (or an explicit \`--artifact-id <slug>\`, which survives re-wording) adds a VERSION to the row the user already has. Revise by publishing again, never by inventing \`report-v2.html\`; \`--new\` only for a genuinely different report that happens to share a title.
+Re-running \`show-artifact\` **updates** the report: the same \`--title\` (or an explicit \`--artifact-id <slug>\`, which survives rewording) adds a VERSION to the row the user already has. Revise by publishing again, never by inventing \`report-v2.html\`; \`--new\` only for a genuinely different report that happens to share a title.
 
-Sharing it **outside** the app (a link, a phone, a GitHub comment) is a different job: load \`/dev3-share-artifact\`, which folds the report into one self-contained HTML and publishes it as a gist with a verified preview URL.
+Sharing it **outside** the app (a link, a phone, a GitHub comment) is a different job: load \`/dev3-share-artifact\`, which folds the report into one self-contained HTML and publishes it as a gist with a checked preview URL.
 `;
 
 const SKILL_GET_ATTENTION = `
@@ -238,9 +241,9 @@ dev3 pane logs <run-id> [--lines 400]          # outcome + tail (1..2000, defaul
 dev3 pane close <run-id>                       # close that pane (kills the command)
 \`\`\`
 
-The outcome line distinguishes **still running** from **finished, exit code N** — never read a quiet tail as a finished command. Runs are non-interactive: stdin is closed. The canonical dev server is \`dev3 dev-server start\`, not a pane run.
+The outcome line distinguishes **still running** from **finished, exit code N** — never read a quiet tail as finished. Runs are non-interactive: stdin is closed. The canonical dev server is \`dev3 dev-server start\`, not a pane run.
 
-**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run as you go, and again before ending a turn, so \`dev3 pane list\` shows nothing of yours but work still needed. The auto-close timer is a backstop for abandoned panes, not a substitute: exit 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes so the user still sees it. Closing destroys nothing — the output stays in the run's log.
+**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run as you go, and again before ending a turn, so \`dev3 pane list\` shows only work still needed. The auto-close timer is a backstop for abandoned panes, not a substitute: exit 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes so the user still sees it. Closing destroys nothing — the output stays in the run's log.
 
 Reading the SCREEN of a pane you did not start ("look at the error on the right") is a different thing and **tmux-only today**: \`dev3 peek --pane <N>\` returns a tail on tmux, only the pane summary on native. On tmux you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load \`/dev3-tmux\`. On native those commands do not exist.
 `;
@@ -256,9 +259,9 @@ If a peer **agent** started you instead, your first message says so, names the t
 const SKILL_PEEK = `
 ## Checking on a peer task without interrupting it
 
-\`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, how long since output) and the focused pane's tail. It never focuses, sends input, or takes ownership — the peeked agent cannot tell, and need not cooperate. With no \`--task\` it shows your own panes.
+\`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, time since output) and the focused pane's tail. It never focuses, sends input, or takes ownership — the peeked agent cannot tell. With no \`--task\` it shows your own panes.
 
-Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek costs nothing.
+Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek none.
 
 Read the tail yourself; peek deliberately does not classify state. \`last output unknown\` means the backend cannot say — never assume silence. On tmux the ages are per WINDOW, not per pane. A task with no live terminal is a successful answer naming the reason (draft, hibernated, not running), while \`could not read the terminal\` means the read failed and tells you NOTHING about progress. Native-backend tasks answer exactly that today (\`not-enabled\`), so the tail is a tmux-task tool for now; the pane summary works everywhere.
 `;

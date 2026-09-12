@@ -22,6 +22,7 @@ export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 20;
 export const CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID = 21;
 export const CLI_EXIT_CODE_CANCELLATION_DECLINED = 22;
 export const CLI_EXIT_CODE_GH_UNAVAILABLE = 23;
+export const CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED = 24;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -162,5 +163,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_GH_UNAVAILABLE,
 		description:
 			"A `dev3 pr` subcommand (`create`, `auto-merge`) found no usable GitHub CLI: `gh` is not installed, or it is installed but not authenticated. NOTHING was pushed and no pull request was opened or changed — the check runs before the push precisely so a logged-out `gh` cannot be discovered halfway through. Distinct from exit 1, which means the push or `gh pr create` itself failed.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED",
+		code: CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED,
+		description:
+			"`dev3 dev-server start|stop|restart` was called without naming a dev server on a project that declares several and has no default (no `devScript`), so NOTHING was started, stopped or restarted — there is no safe way to guess which process the caller meant. The message lists the declared names; pass one of them, or `--all` to act on every one. Distinct from exit 3 so automation can recognise this one case and retry with a name instead of treating it as a misspelled command.",
 	},
 ] as const;

@@ -423,6 +423,19 @@ const settings = {
 	"projectSettings.devScript": "Dev-скрипт",
 	"projectSettings.devScriptDesc":
 		"Запускается при старте dev-сервера для этого проекта",
+	"projectSettings.devServers": "Dev-серверы",
+	"projectSettings.devServersDesc":
+		"Каждый сервер запускается, останавливается и перезапускается отдельно. Первая строка — dev-скрипт проекта под фиксированным именем «dev»; добавьте строку для API, воркера или админки. Каждый сервер задачи получает все именованные порты как DEV3_PORT_<ИМЯ>.",
+	"projectSettings.devServerName": "Имя сервера",
+	"projectSettings.devServerScript": "Скрипт dev-сервера {name}",
+	"projectSettings.devServerPorts": "Именованные порты",
+	"projectSettings.devServerPortsPlaceholder": "имена портов, например api, admin",
+	"projectSettings.devServerAdvanced": "Дополнительно",
+	"projectSettings.devServerRemove": "Удалить этот dev-сервер",
+	"projectSettings.devServerAdd": "+ Добавить dev-сервер",
+	"projectSettings.devServerTitle": "Отображаемое имя",
+	"projectSettings.devServerCwd": "Рабочая директория относительно worktree",
+	"projectSettings.devServerEnv": "Переменные окружения только для этого сервера",
 	"projectSettings.cleanupScript": "Скрипт очистки",
 	"projectSettings.cleanupScriptDesc":
 		"Запускается перед удалением worktree — когда задача помечена как Completed или Cancelled, активная задача удалена или её подготовка отменена",

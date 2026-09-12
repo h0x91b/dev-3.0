@@ -32,6 +32,15 @@ export type DevServerStartSnapshot = {
 const startSnapshots = new Map<string, DevServerStartSnapshot>();
 
 /**
+ * A task runs one dev server per declared name, and each records its own
+ * pre-start snapshot: a port bound by the API server is not a squatter on the
+ * front end's ports just because the front end started later.
+ */
+function snapshotKey(taskId: string, server: string): string {
+	return `${taskId}::${server}`;
+}
+
+/**
  * Holders already classified as published for a task, remembered ACROSS
  * teardown. A published container normally outlives the stop that ends the run
  * it was published for: `tmux kill-session` HUPs `docker compose up` and the
@@ -59,20 +68,28 @@ export function clearCarriedPublished(taskId: string): void {
 	carriedPublished.delete(taskId);
 }
 
-/** Remember who held the task's assigned ports just before its devScript launched. */
-export function recordDevServerStart(taskId: string, assignedPorts: number[], preStartHolders: PortInfo[]): void {
+/** Remember who held the task's assigned ports just before one server launched. */
+export function recordDevServerStart(taskId: string, server: string, assignedPorts: number[], preStartHolders: PortInfo[]): void {
 	// A holder this task already published to is not a squatter just because it
 	// survived the previous stop — see `carriedPublished`.
 	const carried = new Set((carriedPublished.get(taskId) ?? []).map(holderKey));
-	startSnapshots.set(taskId, {
+	startSnapshots.set(snapshotKey(taskId, server), {
 		assignedPorts: [...assignedPorts],
 		preStartHolders: preStartHolders.filter((h) => !carried.has(holderKey(h))).map((h) => ({ ...h })),
 	});
 }
 
-/** Drop the snapshot once the dev server is torn down. */
-export function clearDevServerStart(taskId: string): void {
-	startSnapshots.delete(taskId);
+/** Drop one server's snapshot once it is torn down. */
+export function clearDevServerStart(taskId: string, server: string): void {
+	startSnapshots.delete(snapshotKey(taskId, server));
+}
+
+/** Drop every server's snapshot for a task — the whole task is going away. */
+export function clearDevServerStartsForTask(taskId: string): void {
+	const prefix = `${taskId}::`;
+	for (const key of [...startSnapshots.keys()]) {
+		if (key.startsWith(prefix)) startSnapshots.delete(key);
+	}
 }
 
 /**
@@ -82,8 +99,28 @@ export function clearDevServerStart(taskId: string): void {
  * published port disappears from the UI badge until the next start, never the
  * other way round.
  */
-export function getDevServerStartSnapshot(taskId: string): DevServerStartSnapshot | null {
-	return startSnapshots.get(taskId) ?? null;
+export function getDevServerStartSnapshot(taskId: string, server: string): DevServerStartSnapshot | null {
+	return startSnapshots.get(snapshotKey(taskId, server)) ?? null;
+}
+
+/**
+ * One snapshot covering every dev server of the task this process has running:
+ * the union of their assigned ports and of who held those ports before each
+ * started. What the board scan needs, which knows a task rather than a server.
+ */
+export function getTaskStartSnapshot(taskId: string): DevServerStartSnapshot | null {
+	const prefix = `${taskId}::`;
+	const ports = new Set<number>();
+	const holders = new Map<string, PortInfo>();
+	let found = false;
+	for (const [key, snapshot] of startSnapshots) {
+		if (!key.startsWith(prefix)) continue;
+		found = true;
+		for (const port of snapshot.assignedPorts) ports.add(port);
+		for (const holder of snapshot.preStartHolders) holders.set(holderKey(holder), holder);
+	}
+	if (!found) return null;
+	return { assignedPorts: [...ports].sort((a, b) => a - b), preStartHolders: [...holders.values()] };
 }
 
 /**
@@ -121,10 +158,13 @@ export function classifyAssignedPortOwners(
  */
 export function classifyAgainstStartSnapshot(
 	taskId: string,
+	server: string | null,
 	foreignHolders: PortInfo[],
 	running: boolean,
 ): AssignedPortOwners {
-	const snapshot = startSnapshots.get(taskId);
+	// `server: null` asks about the task as a whole (the board scan), which is the
+	// union of what its running servers were started against.
+	const snapshot = server === null ? getTaskStartSnapshot(taskId) : startSnapshots.get(snapshotKey(taskId, server));
 	if (!snapshot) return { published: [], conflicts: [...foreignHolders] };
 	const owners = classifyAssignedPortOwners(foreignHolders, snapshot.preStartHolders, running);
 	if (owners.published.length > 0) rememberPublished(taskId, owners.published);

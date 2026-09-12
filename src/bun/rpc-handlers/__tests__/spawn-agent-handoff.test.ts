@@ -67,7 +67,12 @@ vi.mock("../../settings", () => ({ loadSettings: vi.fn(), recordFavoriteUsages: 
 vi.mock("../../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 vi.mock("../../port-pool", () => ({ getPortAssignments: vi.fn(() => []), buildPortEnv: vi.fn(() => ({})) }));
 vi.mock("../../pty-server", () => ({ getSessionSocket: mocks.getSessionSocket }));
-vi.mock("../../native-task-panes", () => ({ nativeTaskPanesAlive: vi.fn(async () => false) }));
+vi.mock("../../native-task-panes", () => ({
+	nativeTaskPanesAlive: vi.fn(async () => false),
+	// How a native task's live dev servers are enumerated: each pane carries its
+	// server's script path in its launch command.
+	nativeTaskPaneCommands: vi.fn(async () => []),
+}));
 vi.mock("../settings-config", () => ({ resolveOperationalProjectConfig: vi.fn() }));
 vi.mock("../../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "native") }));
 vi.mock("../../process-reaper", () => ({ getPidCwd: vi.fn(), terminatePidsVerified: vi.fn(async () => []) }));

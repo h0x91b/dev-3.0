@@ -589,12 +589,14 @@ startPRDetectionPoller();
 // The board's dev-server read needs the native aux pane, which lives behind
 // `bun:ffi` — injected here instead of imported by the poller (see
 // `setNativeDevServerProbe`).
-setNativeDevServerProbe(async (task, socket) => {
+setNativeDevServerProbe(async (task, socket, serverName) => {
 	const { taskTerminalBackendIdentity } = await import("./task-terminal-backend");
 	if (taskTerminalBackendIdentity(task) !== "native") return null;
 	const { auxPaneAlive, nativeAuxPaneShellPid } = await import("./task-aux-panes");
-	const alive = await auxPaneAlive(task, "devServer", socket);
-	return { alive, rootPid: alive ? await nativeAuxPaneShellPid(task, "devServer") : null };
+	const { devServerScriptBase } = await import("../shared/dev-servers");
+	const slot = devServerScriptBase(serverName);
+	const alive = await auxPaneAlive(task, "devServer", socket, slot);
+	return { alive, rootPid: alive ? await nativeAuxPaneShellPid(task, "devServer", slot) : null };
 });
 
 // Start background port scan poller (detects listening TCP ports per task)

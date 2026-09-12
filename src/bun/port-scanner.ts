@@ -1,11 +1,12 @@
-import type { DevServerSummary, PortInfo, Project, Task } from "../shared/types";
+import type { DevServerSummary, DevServerSummaryEntry, PortInfo, Project, Task } from "../shared/types";
+import { resolveDevServers, type ResolvedDevServer } from "../shared/dev-servers";
 import { spawn } from "./spawn";
 import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, devServerSessionName, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
 import { getPortAssignments } from "./port-pool";
 import { resolveOperationalProjectConfig } from "./repo-config";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
-import { classifyAgainstStartSnapshot, getDevServerStartSnapshot, mergePortInfos } from "./dev-server-ports";
+import { classifyAgainstStartSnapshot, getTaskStartSnapshot, mergePortInfos } from "./dev-server-ports";
 
 const log = createLogger("port-scanner");
 
@@ -372,10 +373,10 @@ export async function scanTaskPorts(
  */
 function publishedAssignedPorts(taskId: string, lsofOutput: string): PortInfo[] {
 	if (!lsofOutput) return [];
-	const snapshot = getDevServerStartSnapshot(taskId);
+	const snapshot = getTaskStartSnapshot(taskId);
 	if (!snapshot || snapshot.assignedPorts.length === 0) return [];
 	const holders = parsePortHolders(lsofOutput, new Set(snapshot.assignedPorts));
-	return classifyAgainstStartSnapshot(taskId, holders, true).published;
+	return classifyAgainstStartSnapshot(taskId, null, holders, true).published;
 }
 
 // ── Dev-server board summaries ─────────────────────────────────────
@@ -386,7 +387,11 @@ function publishedAssignedPorts(taskId: string, lsofOutput: string): PortInfo[] 
  * `bun:ffi` through the Windows job API, and this file is reachable from the
  * renderer's module graph, where that import cannot be bundled.
  */
-export type NativeDevServerProbe = (task: Task, socket: string) => Promise<{ alive: boolean; rootPid: number | null } | null>;
+export type NativeDevServerProbe = (
+	task: Task,
+	socket: string,
+	serverName: string,
+) => Promise<{ alive: boolean; rootPid: number | null } | null>;
 
 let nativeDevServerProbe: NativeDevServerProbe | null = null;
 
@@ -397,23 +402,23 @@ export function setNativeDevServerProbe(probe: NativeDevServerProbe): void {
 /** taskId → serialized summary, so an unchanged board pushes nothing. */
 const devServerCache = new Map<string, string>();
 const devServerData = new Map<string, DevServerSummary>();
-/** taskId → the branch-config read behind `hasDevScript`, which touches disk. */
-const devScriptCache = new Map<string, { at: number; hasDevScript: boolean }>();
+/** taskId → the branch-config read behind the declared server list, which touches disk. */
+const devScriptCache = new Map<string, { at: number; servers: ResolvedDevServer[] }>();
 const DEV_SCRIPT_TTL_MS = 60_000;
 
 function ascendingPorts(infos: PortInfo[]): number[] {
 	return [...new Set(infos.map((info) => info.port))].sort((a, b) => a - b);
 }
 
-async function hasDevScriptFor(project: Project, task: Task): Promise<boolean> {
+async function declaredServersFor(project: Project, task: Task): Promise<ResolvedDevServer[]> {
 	const cached = devScriptCache.get(task.id);
-	if (cached && Date.now() - cached.at < DEV_SCRIPT_TTL_MS) return cached.hasDevScript;
+	if (cached && Date.now() - cached.at < DEV_SCRIPT_TTL_MS) return cached.servers;
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, {
 		foreignCode: task.foreignCode,
 	});
-	const hasDevScript = !!resolved.devScript?.trim();
-	devScriptCache.set(task.id, { at: Date.now(), hasDevScript });
-	return hasDevScript;
+	const servers = resolveDevServers(resolved).servers;
+	devScriptCache.set(task.id, { at: Date.now(), servers });
+	return servers;
 }
 
 /** Exported for tests: the whole board control is a function of this. */
@@ -425,33 +430,71 @@ export async function buildDevServerSummary(
 	tree: Map<number, number[]>,
 	paneMap?: Map<string, number[]>,
 ): Promise<DevServerSummary> {
-	const empty = { taskId: task.id, running: false, ports: [], conflictPorts: [] };
-	const hasDevScript = await hasDevScriptFor(project, task);
-	if (!hasDevScript) return { ...empty, hasDevScript: false };
+	const declared = await declaredServersFor(project, task);
+	if (declared.length === 0) return emptyDevServerSummary(task.id);
 
-	const devSession = devServerSessionName(task.id);
-	const nativeState = nativeDevServerProbe ? await nativeDevServerProbe(task, socket) : null;
-	const running = nativeState ? nativeState.alive : paneMap?.has(devSession) === true;
+	const entries: DevServerSummaryEntry[] = [];
+	for (const server of declared) {
+		const devSession = devServerSessionName(task.id, server.name);
+		const nativeState = nativeDevServerProbe ? await nativeDevServerProbe(task, socket, server.name) : null;
+		const running = nativeState ? nativeState.alive : paneMap?.has(devSession) === true;
+		if (!running) {
+			entries.push({ name: server.name, isDefault: server.isDefault, running: false, ports: [] });
+			continue;
+		}
+		const rootPid = nativeState?.rootPid ?? null;
+		const pids = nativeState
+			? new Set(rootPid ? [rootPid, ...collectDescendants(rootPid, tree)] : [])
+			: await collectTaskPids(socket, devSession, tree, paneMap);
+		const owned = pids.size > 0 && lsofOutput ? parseLsofOutput(lsofOutput, pids) : [];
+		entries.push({ name: server.name, isDefault: server.isDefault, running: true, ports: ascendingPorts(owned) });
+	}
 
-	if (!running) {
-		// An assigned port already taken while the server is down is the bind
+	const runningCount = entries.filter((entry) => entry.running).length;
+	if (runningCount === 0) {
+		// An assigned port already taken while the servers are down is the bind
 		// crash-loop waiting to happen — worth colouring red before the user
 		// presses start, not after the devScript dies.
 		const assigned = getPortAssignments(task.id);
 		const holders = lsofOutput && assigned.length > 0 ? parsePortHolders(lsofOutput, new Set(assigned)) : [];
-		return { ...empty, hasDevScript, conflictPorts: ascendingPorts(holders) };
+		return {
+			...emptyDevServerSummary(task.id),
+			hasDevScript: true,
+			declaredCount: declared.length,
+			conflictPorts: ascendingPorts(holders),
+			servers: entries,
+		};
 	}
 
-	const rootPid = nativeState?.rootPid ?? null;
-	const pids = nativeState
-		? new Set(rootPid ? [rootPid, ...collectDescendants(rootPid, tree)] : [])
-		: await collectTaskPids(socket, devSession, tree, paneMap);
-	const owned = pids.size > 0 && lsofOutput ? parseLsofOutput(lsofOutput, pids) : [];
 	// A containerised devScript never owns its published socket — the container
 	// runtime's daemon does — so ownership alone leaves a running server looking
 	// like it serves nothing (same fix as the task-level scan, issue #1427).
-	const ports = mergePortInfos(owned, publishedAssignedPorts(task.id, lsofOutput));
-	return { ...empty, hasDevScript, running: true, ports: ascendingPorts(ports) };
+	const published = publishedAssignedPorts(task.id, lsofOutput);
+	const ports = [...new Set([...entries.flatMap((entry) => entry.ports), ...published.map((info) => info.port)])];
+	return {
+		taskId: task.id,
+		hasDevScript: true,
+		running: true,
+		ports: ports.sort((a, b) => a - b),
+		conflictPorts: [],
+		declaredCount: declared.length,
+		runningCount,
+		servers: entries,
+	};
+}
+
+/** The summary of a task with no dev server at all — also the card's "no control" state. */
+export function emptyDevServerSummary(taskId: string): DevServerSummary {
+	return {
+		taskId,
+		hasDevScript: false,
+		running: false,
+		ports: [],
+		conflictPorts: [],
+		declaredCount: 0,
+		runningCount: 0,
+		servers: [],
+	};
 }
 
 let devPollInFlight = false;
@@ -487,7 +530,7 @@ async function collectDevServers(
 		devScriptCache.delete(taskId);
 		// The card has to lose its control when the whole session goes away —
 		// silence would leave the last known state frozen on the board.
-		pushMessageFn?.("devServerUpdated", { taskId, hasDevScript: false, running: false, ports: [], conflictPorts: [] });
+		pushMessageFn?.("devServerUpdated", emptyDevServerSummary(taskId));
 	}
 	if (sessions.length === 0) return;
 
