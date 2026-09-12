@@ -67,7 +67,7 @@ vi.mock("../file-lock", async (importOriginal) => {
 });
 
 import { FileLockTimeoutError } from "../file-lock";
-import { allocatePorts, releasePorts, getPortAssignments, getAllAssignments, buildPortEnv, _resetState } from "../port-pool";
+import { allocatePorts, releasePorts, getPortAssignments, getAllAssignments, buildPortEnv, buildNamedPortEnv, _resetState } from "../port-pool";
 
 describe("port-pool", () => {
 	beforeEach(() => {
@@ -102,11 +102,23 @@ describe("port-pool", () => {
 			expect(second).toEqual(first);
 		});
 
-		it("re-allocates if count changes", async () => {
+		// A task's port count grows whenever a dev server declares a new named
+		// port. Reallocating would move DEV3_PORT0 out from under a server that
+		// is already bound to it, so the existing ports have to stay put.
+		it("extends the assignment when the count grows, keeping the ports already handed out", async () => {
 			const first = await allocatePorts("task-3", 2);
 			expect(first).toHaveLength(2);
 			const second = await allocatePorts("task-3", 3);
 			expect(second).toHaveLength(3);
+			expect(second.slice(0, 2)).toEqual(first);
+			expect(new Set(second).size).toBe(3);
+		});
+
+		it("keeps the first ports when the count shrinks", async () => {
+			const first = await allocatePorts("task-3b", 3);
+			const second = await allocatePorts("task-3b", 2);
+			expect(second).toEqual(first.slice(0, 2));
+			expect(getPortAssignments("task-3b")).toEqual(second);
 		});
 
 		it("returns empty array for count 0", async () => {
@@ -285,6 +297,16 @@ describe("port-pool", () => {
 				DEV3_PORT1: "12001",
 				DEV3_PORT2: "12002",
 			});
+		});
+
+		// Every dev server of a task receives every named port, which is what lets
+		// the back office call the API without anyone wiring ports by hand.
+		it("names each port's variable after the port, not its position", () => {
+			expect(buildNamedPortEnv({ api: 12001, "back-office": 12002 })).toEqual({
+				DEV3_PORT_API: "12001",
+				DEV3_PORT_BACK_OFFICE: "12002",
+			});
+			expect(buildNamedPortEnv({})).toEqual({});
 		});
 
 		it("handles single port", () => {

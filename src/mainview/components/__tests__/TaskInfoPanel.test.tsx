@@ -19,6 +19,7 @@ vi.mock("../../rpc", () => ({
 			checkDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
 			restartDevServer: vi.fn(),
+			getDevServerStatus: vi.fn(),
 			getBranchStatus: vi.fn(),
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
 			prepareMergeCompletionPrompt: vi.fn(),
@@ -190,16 +191,25 @@ const defaultDevServerStatus: DevServerStatus = {
 	tmuxSocket: "dev3",
 	backend: "tmux",
 	taskSessionName: "dev3-t1",
-	devSessionName: "dev3-dev-t1",
-	viewerPaneId: "%17",
-	panePids: [12345],
 	assignedPorts: [],
+	namedPorts: {},
 	ports: [],
-	devPorts: [],
-	publishedPorts: [],
-	portConflicts: [],
-	extraEnvKeys: [],
+	configErrors: [],
+	servers: [{
+		name: "dev",
+		title: "Dev Server",
+		isDefault: true,
+		running: true,
+		devSessionName: "dev3-dev-t1",
+		viewerPaneId: "%17",
+		panePids: [12345],
+		namedPorts: {},
 		logPath: null,
+		devPorts: [],
+		publishedPorts: [],
+		portConflicts: [],
+		extraEnvKeys: [],
+	}],
 };
 
 function renderPanel(
@@ -1325,8 +1335,7 @@ describe("TaskInfoPanel", () => {
 				...defaultDevServerStatus,
 				backend: "native",
 				taskSessionName: "",
-				devSessionName: "",
-				viewerPaneId: "pane-3",
+				servers: [{ ...defaultDevServerStatus.servers[0], devSessionName: "", viewerPaneId: "pane-3" }],
 			});
 
 			await act(async () => {
@@ -1382,7 +1391,11 @@ describe("TaskInfoPanel", () => {
 		it("stops dev server from running menu", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-			mockedApi.request.stopDevServer.mockResolvedValue({ ...defaultDevServerStatus, running: false, viewerPaneId: null, panePids: [] });
+			mockedApi.request.stopDevServer.mockResolvedValue({
+				...defaultDevServerStatus,
+				running: false,
+				servers: [{ ...defaultDevServerStatus.servers[0], running: false, viewerPaneId: null, panePids: [] }],
+			});
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
@@ -1464,6 +1477,100 @@ describe("TaskInfoPanel", () => {
 			const startingBtn = screen.getByText("Starting…").closest("button")!;
 			expect(startingBtn.getAttribute("aria-busy")).toBe("true");
 			expect(startingBtn.querySelector(".animate-spin")).not.toBeNull();
+		});
+	});
+
+	// A project with several declared servers cannot answer one click with one
+	// action — which server would it start? The list is the control, and the
+	// toolbar still carries exactly one button.
+	describe("dev server list for several declared servers", () => {
+		const multiProject = {
+			...project,
+			devScript: "bun run dev",
+			devServers: { api: { script: "bun run api" } },
+		};
+		const multiStatus = {
+			...defaultDevServerStatus,
+			running: true,
+			servers: [
+				{ ...defaultDevServerStatus.servers[0], name: "dev", isDefault: true, running: false },
+				{
+					...defaultDevServerStatus.servers[0],
+					name: "api",
+					title: "API",
+					isDefault: false,
+					running: true,
+					devPorts: [{ port: 55930, pid: 900, processName: "bun" }],
+				},
+			],
+		};
+
+		it("opens a row per server with its state, port and own actions", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: multiProject });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+
+			expect(await screen.findByTestId("dev-server-list")).toBeInTheDocument();
+			expect(screen.getByTestId("dev-server-row-dev")).toBeInTheDocument();
+			const apiRow = screen.getByTestId("dev-server-row-api");
+			expect(apiRow.textContent).toContain(":55930");
+			expect(apiRow.textContent).toContain("Stop");
+			expect(screen.getByTestId("dev-server-row-dev").textContent).toContain("Start");
+		});
+
+		it("starts only the server whose row was clicked", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
+			mockedApi.request.runDevServer.mockResolvedValue(multiStatus);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: multiProject });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+			await screen.findByTestId("dev-server-list");
+			await user.click(within(screen.getByTestId("dev-server-row-dev")).getByText("Start"));
+
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(
+				expect.objectContaining({ server: "dev" }),
+			);
+		});
+
+		it("Stop all takes down every server in one action", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
+			mockedApi.request.stopDevServer.mockResolvedValue({ ...multiStatus, running: false });
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: multiProject });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+			await user.click(await screen.findByText("Stop all"));
+
+			expect(mockedApi.request.stopDevServer).toHaveBeenCalledWith(expect.objectContaining({ all: true }));
+			expect(mockedApi.request.stopDevServer).not.toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+		});
+
+		// The common case must not pay for the uncommon one: one declared server
+		// still starts on a single click, with no list in between.
+		it("a single-server project still starts on one click", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.runDevServer.mockResolvedValue(defaultDevServerStatus);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(mockedApi.request.runDevServer).toHaveBeenCalled();
 		});
 	});
 

@@ -330,6 +330,7 @@ const kanban = {
 	"task.devStarting": "запуск",
 	"task.devPortBusy": "порт занят",
 	"task.devStop": "Остановить дев-сервер",
+	"task.devStopAll": "Остановить все дев-серверы задачи",
 	"task.devOpenAria": "Открыть дев-сервер на порту {port}",
 	"task.devStopFailed": "Не удалось остановить дев-сервер: {error}",
 	"task.watch": "Следить",

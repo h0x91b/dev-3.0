@@ -106,6 +106,7 @@ vi.mock("../port-pool", () => ({
 	getPortAssignments: vi.fn(() => []),
 	allocatePorts: vi.fn(async () => []),
 	buildPortEnv: vi.fn(() => ({})),
+	buildNamedPortEnv: vi.fn(() => ({})),
 }));
 
 vi.mock("../port-scanner", () => ({
@@ -190,13 +191,14 @@ vi.mock("../dev-server-script", () => ({
 // clear ordering is what the restart tests exercise.
 vi.mock("../dev-server-env-store", () => {
 	const saved = new Map<string, Record<string, string>>();
+	const key = (taskId: string, server: string) => `${taskId}::${server}`;
 	return {
-		saveDevServerEnv: vi.fn((taskId: string, env: Record<string, string>) => {
-			if (Object.keys(env).length === 0) saved.delete(taskId);
-			else saved.set(taskId, env);
+		saveDevServerEnv: vi.fn((taskId: string, server: string, env: Record<string, string>) => {
+			if (Object.keys(env).length === 0) saved.delete(key(taskId, server));
+			else saved.set(key(taskId, server), env);
 		}),
-		readDevServerEnv: vi.fn((taskId: string) => saved.get(taskId) ?? {}),
-		clearDevServerEnv: vi.fn((taskId: string) => { saved.delete(taskId); }),
+		readDevServerEnv: vi.fn((taskId: string, server: string) => saved.get(key(taskId, server)) ?? {}),
+		clearDevServerEnv: vi.fn((taskId: string, server: string) => { saved.delete(key(taskId, server)); }),
 		__saved: saved,
 	};
 });
@@ -237,6 +239,15 @@ function makeTask(): Task {
 	} as unknown as Task;
 }
 
+/**
+ * The caller's own `--env` group. It sits after the project env and this
+ * server's own env, and before the task identity and the ports — naming it
+ * rather than indexing keeps these assertions about the RULE, not the layout.
+ */
+function callerEnvGroup(): Record<string, string> {
+	return lastEnvGroups()[2];
+}
+
 /** The groups `runDevServer` passed, in order, from the last build. */
 function lastEnvGroups(): Record<string, string>[] {
 	const calls = vi.mocked(buildDevServerScript).mock.calls;
@@ -250,7 +261,7 @@ function effectiveEnv(): Record<string, string> {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	vi.mocked(clearDevServerEnv)(TASK_ID);
+	vi.mocked(clearDevServerEnv)(TASK_ID, "dev");
 	vi.mocked(data.getProject).mockResolvedValue(makeProject());
 	vi.mocked(data.getTask).mockResolvedValue(makeTask());
 	vi.mocked(resolveOperationalProjectConfig).mockResolvedValue({
@@ -264,14 +275,19 @@ beforeEach(() => {
 });
 
 describe("dev-server --env precedence", () => {
-	it("puts the caller's env after the project config and before lifecycle and ports", async () => {
+	it("puts the caller's env after the project and per-server config, and before lifecycle and ports", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { SHARED: "from-caller", MINE: "yes" } });
 
 		expect(lastEnvGroups()).toEqual([
 			PROJECT_ENV,
+			// This server's own `env`; empty for a project that only has devScript.
+			{},
 			{ SHARED: "from-caller", MINE: "yes" },
 			LIFECYCLE_ENV,
 			{ DEV3_PORT0: "50001" },
+			// Named ports, then the server's identity — neither overridable.
+			{},
+			{ DEV3_DEV_SERVER: "dev" },
 		]);
 	});
 
@@ -298,21 +314,21 @@ describe("dev-server --env precedence", () => {
 
 		expect(effectiveEnv().DEV3_PORT0).toBe("50001");
 		// Dropped outright rather than merely outranked — it never reaches a group.
-		expect(lastEnvGroups()[1]).toEqual({});
+		expect(callerEnvGroup()).toEqual({});
 	});
 
 	it("passes an empty caller group for an ordinary start", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
 
-		expect(lastEnvGroups()[1]).toEqual({});
+		expect(callerEnvGroup()).toEqual({});
 	});
 });
 
 describe("dev-server --env across a restart", () => {
 	it("remembers the env of the last start", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
-		expect(saveDevServerEnv).toHaveBeenCalledWith(TASK_ID, { DEV3_QA_SCOPE: "seeded" });
-		expect(readDevServerEnv(TASK_ID)).toEqual({ DEV3_QA_SCOPE: "seeded" });
+		expect(saveDevServerEnv).toHaveBeenCalledWith(TASK_ID, "dev", { DEV3_QA_SCOPE: "seeded" });
+		expect(readDevServerEnv(TASK_ID, "dev")).toEqual({ DEV3_QA_SCOPE: "seeded" });
 	});
 
 	// The UI's Restart button and a bare `dev3 dev-server restart` both land here.
@@ -321,7 +337,7 @@ describe("dev-server --env across a restart", () => {
 
 		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1" });
 
-		expect(lastEnvGroups()[1]).toEqual({ DEV3_QA_SCOPE: "seeded" });
+		expect(callerEnvGroup()).toEqual({ DEV3_QA_SCOPE: "seeded" });
 	});
 
 	it("a restart with --env replaces it", async () => {
@@ -329,17 +345,17 @@ describe("dev-server --env across a restart", () => {
 
 		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "virgin" } });
 
-		expect(lastEnvGroups()[1]).toEqual({ DEV3_QA_SCOPE: "virgin" });
+		expect(callerEnvGroup()).toEqual({ DEV3_QA_SCOPE: "virgin" });
 	});
 
 	it("a stop clears it, so the next plain start does not inherit it", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
 
 		await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-		expect(readDevServerEnv(TASK_ID)).toEqual({});
+		expect(readDevServerEnv(TASK_ID, "dev")).toEqual({});
 
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-		expect(lastEnvGroups()[1]).toEqual({});
+		expect(callerEnvGroup()).toEqual({});
 	});
 
 	// A plain `start` defines its configuration whole — inheriting silently is
@@ -349,7 +365,7 @@ describe("dev-server --env across a restart", () => {
 
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
 
-		expect(readDevServerEnv(TASK_ID)).toEqual({});
-		expect(lastEnvGroups()[1]).toEqual({});
+		expect(readDevServerEnv(TASK_ID, "dev")).toEqual({});
+		expect(callerEnvGroup()).toEqual({});
 	});
 });

@@ -11,10 +11,12 @@
  * The capture points themselves are per backend (tmux `pipe-pane`, the native
  * host's PTY callback) and live next to each backend.
  *
- * ONE file, never rotated. `AGENTS.md` forbids renaming anything under
+ * ONE file per server, never rotated. `AGENTS.md` forbids renaming anything under
  * `~/.dev3.0/`, so a `.1`/`.prev` rotation is out; the writer trims the file in
  * place instead, and each dev-server start truncates what the previous run left.
  */
+
+import { DEFAULT_DEV_SERVER_NAME } from "./dev-servers";
 
 /** Hard ceiling for one run's log. Past it the writer keeps {@link DEV_SERVER_LOG_KEEP_BYTES}. */
 export const DEV_SERVER_LOG_MAX_BYTES = 32 * 1024 * 1024;
@@ -50,9 +52,14 @@ export const NATIVE_SESSION_OUTPUT_LOG_ENV = "DEV3_NATIVE_SESSION_OUTPUT_LOG";
  * Sibling of the git worktree, never inside it: a log under `<worktree>/` would
  * show up untracked in `git status` and in the diff the user reviews. Same
  * placement rule as the spilled agent messages next door.
+ *
+ * One file per dev server, because a task runs one per declared name. The
+ * default server keeps the historical filename — another installed version of
+ * dev3 reads that exact path.
  */
-export function devServerLogPath(taskRoot: string): string {
-	return `${taskRoot}/logs/dev-server.log`;
+export function devServerLogPath(taskRoot: string, serverName?: string): string {
+	const suffix = !serverName || serverName === DEFAULT_DEV_SERVER_NAME ? "" : `-${serverName}`;
+	return `${taskRoot}/logs/dev-server${suffix}.log`;
 }
 
 const ESC = "\u001b";

@@ -145,6 +145,7 @@ vi.mock("../port-pool", () => ({
 	getPortAssignments: vi.fn(() => []),
 	allocatePorts: vi.fn(async () => []),
 	buildPortEnv: vi.fn(() => ({})),
+	buildNamedPortEnv: vi.fn(() => ({})),
 }));
 
 vi.mock("../port-scanner", () => ({

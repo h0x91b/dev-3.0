@@ -86,34 +86,34 @@ describe("dev-server env store", () => {
 
 	it("round-trips an env map", async () => {
 		const { saveDevServerEnv, readDevServerEnv } = await store();
-		saveDevServerEnv("task-1", { DEV3_QA_SCOPE: "seeded" });
-		expect(readDevServerEnv("task-1")).toEqual({ DEV3_QA_SCOPE: "seeded" });
+		saveDevServerEnv("task-1", "dev", { DEV3_QA_SCOPE: "seeded" });
+		expect(readDevServerEnv("task-1", "dev")).toEqual({ DEV3_QA_SCOPE: "seeded" });
 	});
 
 	it("reads {} for a task that never started with extra env", async () => {
 		const { readDevServerEnv } = await store();
-		expect(readDevServerEnv("task-unknown")).toEqual({});
+		expect(readDevServerEnv("task-unknown", "dev")).toEqual({});
 	});
 
 	it("saving an empty map removes the file, so a later read is not stale", async () => {
 		const { saveDevServerEnv, readDevServerEnv } = await store();
-		saveDevServerEnv("task-2", { A: "1" });
-		saveDevServerEnv("task-2", {});
-		expect(readDevServerEnv("task-2")).toEqual({});
+		saveDevServerEnv("task-2", "dev", { A: "1" });
+		saveDevServerEnv("task-2", "dev", {});
+		expect(readDevServerEnv("task-2", "dev")).toEqual({});
 	});
 
 	it("clear removes what a stop must not leave behind", async () => {
 		const { saveDevServerEnv, readDevServerEnv, clearDevServerEnv } = await store();
-		saveDevServerEnv("task-3", { A: "1" });
-		clearDevServerEnv("task-3");
-		expect(readDevServerEnv("task-3")).toEqual({});
+		saveDevServerEnv("task-3", "dev", { A: "1" });
+		clearDevServerEnv("task-3", "dev");
+		expect(readDevServerEnv("task-3", "dev")).toEqual({});
 	});
 
 	// A scratch file is not a reason to refuse a restart.
 	it("reads {} from a corrupt file instead of throwing", async () => {
 		const { readDevServerEnv } = await store();
 		writeFileSync(join(root, "dev3-task-4-dev-server-env.json"), "{not json", "utf-8");
-		expect(readDevServerEnv("task-4")).toEqual({});
+		expect(readDevServerEnv("task-4", "dev")).toEqual({});
 	});
 
 	// A file written by an older build (or edited by hand) must not smuggle a
@@ -125,6 +125,19 @@ describe("dev-server env store", () => {
 			JSON.stringify({ DEV3_PORT0: "1", PATH: "/evil", KEEP: "yes" }),
 			"utf-8",
 		);
-		expect(readDevServerEnv("task-5")).toEqual({ KEEP: "yes" });
+		expect(readDevServerEnv("task-5", "dev")).toEqual({ KEEP: "yes" });
+	});
+
+	// One store per server: restarting the API must not inherit what the front
+	// end was started with.
+	it("keeps each dev server's env apart", async () => {
+		const { saveDevServerEnv, readDevServerEnv, clearDevServerEnv } = await store();
+		saveDevServerEnv("task-6", "dev", { FRONT: "1" });
+		saveDevServerEnv("task-6", "api", { BACK: "1" });
+		expect(readDevServerEnv("task-6", "dev")).toEqual({ FRONT: "1" });
+		expect(readDevServerEnv("task-6", "api")).toEqual({ BACK: "1" });
+		clearDevServerEnv("task-6", "api");
+		expect(readDevServerEnv("task-6", "dev")).toEqual({ FRONT: "1" });
+		expect(readDevServerEnv("task-6", "api")).toEqual({});
 	});
 });

@@ -421,32 +421,34 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "dev-server",
-		summary: "Control a task's dev server (runs in a tmux window).",
+		summary: "Control a task's dev servers (each runs in its own tmux window).",
 		subcommands: [
 			{
 				name: "start",
-				usage: "dev3 dev-server start [task-id] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
+				usage: "dev3 dev-server start [task-id] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
 				summary:
-					"Start a task's dev server. --wait blocks until it is listening on an assigned DEV3_PORT* (default timeout 120s)."
-					+ " --env passes extra variables to the devScript (repeatable); it overrides the project's own env but never"
+					"Start a dev server. Name one of the project's declared servers, or --all for every one; with neither it starts"
+					+ " the default server (the project's devScript), or the only declared server when there is no default."
+					+ " --wait blocks until it is listening on a port assigned to it (default timeout 120s)."
+					+ " --env passes extra variables to the script (repeatable); it overrides the project's own env but never"
 					+ " DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*.",
 			},
 			{
 				name: "stop",
-				usage: "dev3 dev-server stop [task-id]",
-				summary: "Stop a task's dev server (verified: waits until its processes are dead and ports released).",
+				usage: "dev3 dev-server stop [task-id] [server] [--all]",
+				summary: "Stop one dev server, or --all of them (verified: waits until its processes are dead and ports released).",
 			},
 			{
 				name: "restart",
-				usage: "dev3 dev-server restart [task-id] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
+				usage: "dev3 dev-server restart [task-id] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
 				summary:
-					"Restart a task's dev server. --wait blocks until the NEW server is listening on an assigned DEV3_PORT*."
+					"Restart one dev server, or --all of them. --wait blocks until the NEW server is listening on a port assigned to it."
 					+ " Without --env it reuses the env of the last start; with --env it replaces it. A stop clears it.",
 			},
 			{
 				name: "status",
 				usage: "dev3 dev-server status [task-id]",
-				summary: "Show a task's dev server status, including dev-owned ports and port conflicts (default subcommand).",
+				summary: "Show every declared dev server of a task with its state, ports and conflicts (default subcommand).",
 			},
 			{
 				name: "logs",

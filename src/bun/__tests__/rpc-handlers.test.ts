@@ -8265,9 +8265,11 @@ describe("handlers.runDevServer", () => {
 		const result = await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
 		expect(result.running).toBe(true);
-		expect(result.devSessionName).toBe("dev3-dev-abcd1234");
-		expect(result.viewerPaneId).toBe("%17");
-		expect(result.panePids).toEqual([81231]);
+		expect(result.servers).toHaveLength(1);
+		expect(result.servers[0].name).toBe("dev");
+		expect(result.servers[0].devSessionName).toBe("dev3-dev-abcd1234");
+		expect(result.servers[0].viewerPaneId).toBe("%17");
+		expect(result.servers[0].panePids).toEqual([81231]);
 		expect(result.assignedPorts).toEqual([50001, 55930, 55937]);
 		expect(result.ports).toEqual([{ port: 5173, pid: 81231, processName: "bun" }]);
 	});
@@ -8445,8 +8447,8 @@ describe("handlers.getDevServerStatus", () => {
 		// fields are empty rather than throwing.
 		expect(status.running).toBe(false);
 		expect(status.taskId).toBe(task.id);
-		expect(status.devSessionName).toBe("dev3-dev-abcd1234");
-		expect(status.panePids).toEqual([]);
+		expect(status.servers[0].devSessionName).toBe("dev3-dev-abcd1234");
+		expect(status.servers[0].panePids).toEqual([]);
 		expect(status.ports).toEqual([]);
 	});
 
@@ -8530,11 +8532,16 @@ describe("handlers.stopDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		mockSpawn
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // kill-session
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // set-option
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }); // has-session after stop
+		// Routed by argv rather than by call order: a task now asks tmux which of
+		// its dev servers are live, so a fixed sequence of canned replies drifts.
+		mockSpawn.mockImplementation((argv: string[]) => ({
+			// A real Response: the session listing reads stdout, unlike the calls
+			// that only look at the exit code.
+			stdout: new Response(""),
+			stderr: new Response(""),
+			// "no such session" after the stop, so the status reads as stopped.
+			exited: Promise.resolve(argv.includes("has-session") ? 1 : 0),
+		}));
 
 		const result = await handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
 

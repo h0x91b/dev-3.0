@@ -17,6 +17,15 @@ describe("session name builders", () => {
 		expect(taskSessionName(TASK_ID)).toBe("dev3-593e966a");
 		expect(projectTerminalSessionName(TASK_ID)).toBe("dev3-pt-593e966a");
 		expect(devServerSessionName(TASK_ID)).toBe("dev3-dev-593e966a");
+		// A named server gets its own session; the default keeps the historical
+		// name so another installed dev3 version still finds and controls it.
+		expect(devServerSessionName(TASK_ID, "dev")).toBe("dev3-dev-593e966a");
+		expect(devServerSessionName(TASK_ID, "back-office")).toBe("dev3-dev-593e966a-back-office");
+		expect(parseDev3SessionName("dev3-dev-593e966a-back-office")).toEqual({
+			kind: "dev-server",
+			shortId: "593e966a",
+			serverName: "back-office",
+		});
 		expect(cleanupSessionName(TASK_ID)).toBe("dev3-cl-593e966a");
 	});
 
@@ -29,7 +38,7 @@ describe("parseDev3SessionName", () => {
 	it("round-trips every builder", () => {
 		expect(parseDev3SessionName(taskSessionName(TASK_ID))).toEqual({ kind: "task", shortId: "593e966a" });
 		expect(parseDev3SessionName(projectTerminalSessionName(TASK_ID))).toEqual({ kind: "project-terminal", shortId: "593e966a" });
-		expect(parseDev3SessionName(devServerSessionName(TASK_ID))).toEqual({ kind: "dev-server", shortId: "593e966a" });
+		expect(parseDev3SessionName(devServerSessionName(TASK_ID))).toEqual({ kind: "dev-server", shortId: "593e966a", serverName: "dev" });
 		expect(parseDev3SessionName(cleanupSessionName(TASK_ID))).toEqual({ kind: "cleanup", shortId: "593e966a" });
 	});
 

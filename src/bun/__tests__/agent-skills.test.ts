@@ -24,6 +24,7 @@ import {
 	CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
 } from "../../shared/cli-exit-codes";
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
+import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
 import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
@@ -157,10 +158,22 @@ describe("dev3 skill content", () => {
 
 	it("adds conservative dev-server control guidance across agent variants", () => {
 		expect(getCodexSkillContent()).toContain("## Dev Server Control");
-		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` is low-risk");
-		expect(getCodexSkillContent()).toContain("do not use them by default");
+		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` and `logs` are low-risk");
+		expect(getCodexSkillContent()).toContain("have visible side effects");
 		expect(CLAUDE_SKILL_BODY).toContain("say what you are about to do first");
 		expect(getGenericSkillContent()).toContain("stop it again afterwards unless asked to keep it running");
+	});
+
+	// A project can declare several dev servers, so "start the dev server" is no
+	// longer one unambiguous action — the agent has to know it may need a name.
+	it("teaches the named dev-server commands in every agent variant", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("several dev servers by name");
+			expect(skill).toContain("dev3 dev-server start api");
+			expect(skill).toContain("`--all`");
+			expect(skill).toContain(String(CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED));
+			expect(skill).toContain("DEV3_PORT_<NAME>");
+		}
 	});
 
 	it("documents mutually exclusive notify duration and desktop forms", () => {

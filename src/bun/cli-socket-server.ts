@@ -280,6 +280,12 @@ function readEnvParam(params: Record<string, unknown>): Record<string, string> |
 	return Object.fromEntries(Object.entries(raw as Record<string, unknown>).map(([k, v]) => [k, String(v)]));
 }
 
+/** Which dev server a `devServer.*` call names, and whether it means all of them. */
+function readServerParams(params: Record<string, unknown>): { server?: string; all?: boolean } {
+	const server = typeof params.server === "string" && params.server ? params.server : undefined;
+	return { ...(server ? { server } : {}), ...(params.all === true ? { all: true } : {}) };
+}
+
 /**
  * `opts.variantIndex` is `dev3 message --variant <i>` and only that: no other
  * command accepts the flag, so every other caller resolves exactly as before.
@@ -2232,17 +2238,27 @@ const handlers: Record<string, Handler> = {
 
 	"devServer.start": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return runDevServer({ taskId: task.id, projectId: project.id, env: readEnvParam(params) });
+		return runDevServer({
+			taskId: task.id,
+			projectId: project.id,
+			env: readEnvParam(params),
+			...readServerParams(params),
+		});
 	},
 
 	"devServer.stop": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return stopDevServer({ taskId: task.id, projectId: project.id });
+		return stopDevServer({ taskId: task.id, projectId: project.id, ...readServerParams(params) });
 	},
 
 	"devServer.restart": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return restartDevServer({ taskId: task.id, projectId: project.id, env: readEnvParam(params) });
+		return restartDevServer({
+			taskId: task.id,
+			projectId: project.id,
+			env: readEnvParam(params),
+			...readServerParams(params),
+		});
 	},
 
 	"devServer.status": async (params) => {

@@ -195,6 +195,8 @@ const COMMAND_BEARING_KEYS: ReadonlySet<keyof Dev3RepoConfig> = new Set([
 	"setupScript",
 	"setupScriptLaunchMode",
 	"devScript",
+	// Every entry carries a `script`, so the whole map is a command.
+	"devServers",
 	"cleanupScript",
 	"env",
 	"builtinColumnAgents",

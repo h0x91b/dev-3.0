@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createSocket } from "node:dgram";
 import { createServer } from "node:net";
+import { devServerPortEnvKey } from "../shared/dev-servers";
 import { createLogger } from "./logger";
 import { withFileLock, FileLockTimeoutError } from "./file-lock";
 import { DEV3_HOME } from "./paths";
@@ -95,8 +96,12 @@ function getAllAssignedPorts(): Set<number> {
 
 /**
  * Allocate `count` free ports for a task. Returns the assigned ports.
- * If the task already has ports allocated, returns existing ones
- * (re-allocates only if the count changed).
+ *
+ * An existing assignment is EXTENDED rather than replaced when the count grows:
+ * a task's port count grows every time a dev server declares a new named port,
+ * and reallocating would move `DEV3_PORT0` out from under a server that is
+ * already running on it. A shrunken count keeps the first `count` ports for the
+ * same reason and releases the tail.
  */
 export async function allocatePorts(taskId: string, count: number): Promise<number[]> {
 	if (count <= 0) return [];
@@ -124,13 +129,20 @@ export async function allocatePorts(taskId: string, count: number): Promise<numb
 			return existing;
 		}
 
-		// Release old allocation if count changed
-		if (existing) {
-			delete data[taskId];
+		if (existing && existing.length > count) {
+			const kept = existing.slice(0, count);
+			data[taskId] = kept;
+			save();
+			log.info("Port allocation shrunk", { taskId: taskId.slice(0, 8), ports: kept, released: existing.slice(count) });
+			return kept;
 		}
 
+		// Whatever the task already holds stays where it is; only the missing tail
+		// is picked. Its ports must not be re-picked for the same task, so they are
+		// in the assigned set already (they are in `data`).
+		const keep = existing ?? [];
 		const assignedPorts = getAllAssignedPorts();
-		const allocated: number[] = [];
+		const allocated: number[] = [...keep];
 
 		// Walk the range with a random starting offset so unrelated allocations
 		// tend to start in different regions of the range.
@@ -205,7 +217,14 @@ export function getAllAssignments(): PortAssignmentData {
 	return { ...ensureLoaded() };
 }
 
-/** Build env vars dict for allocated ports. */
+/**
+ * Build env vars dict for allocated ports.
+ *
+ * `ports` is the POSITIONAL block only (what `portCount` asked for), so
+ * `DEV3_PORT0..N` and `DEV3_PORT_COUNT` mean exactly what they always meant even
+ * on a task whose dev servers added named ports on top. Named ports travel
+ * separately, through {@link buildNamedPortEnv}.
+ */
 export function buildPortEnv(ports: number[]): Record<string, string> {
 	if (ports.length === 0) return {};
 
@@ -215,6 +234,19 @@ export function buildPortEnv(ports: number[]): Record<string, string> {
 	};
 	for (let i = 0; i < ports.length; i++) {
 		env[`DEV3_PORT${i}`] = String(ports[i]);
+	}
+	return env;
+}
+
+/**
+ * `DEV3_PORT_<NAME>` for every named port of the task. EVERY dev server of the
+ * task receives the whole set, which is what lets the back office call the API
+ * without anyone wiring ports by hand.
+ */
+export function buildNamedPortEnv(named: Record<string, number>): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const [name, port] of Object.entries(named)) {
+		env[devServerPortEnvKey(name)] = String(port);
 	}
 	return env;
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject, type ReactNode } from "react";
 import { toast } from "../toast";
 import { confirm } from "../confirm";
-import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
+import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, DevServerConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
+import { DEV_SERVER_NAME_PATTERN } from "../../shared/dev-servers";
 import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
 import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
@@ -441,6 +442,188 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 				)}
 			</div>
 		</div>
+	);
+}
+
+
+// ---- Dev servers editor (devScript + the named `devServers` map) ----
+
+/**
+ * A server's name, committed when the field is left rather than on every
+ * keystroke. The name IS the key of the `devServers` map, so renaming per
+ * keystroke would rewrite the map (and remount this input) between characters.
+ */
+function DevServerNameInput({ name, disabled, onCommit }: {
+	name: string;
+	disabled: boolean;
+	onCommit: (next: string) => void;
+}) {
+	const t = useT();
+	const [draft, setDraft] = useState(name);
+	useEffect(() => { setDraft(name); }, [name]);
+	const invalid = draft !== "" && !DEV_SERVER_NAME_PATTERN.test(draft);
+	return (
+		<input
+			value={draft}
+			disabled={disabled}
+			onChange={(e) => setDraft(e.target.value)}
+			onBlur={() => { if (draft && draft !== name && !invalid) onCommit(draft); else setDraft(name); }}
+			onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+			aria-label={t("projectSettings.devServerName")}
+			className={`w-40 px-2.5 py-1.5 bg-base border rounded-lg text-fg text-sm font-mono outline-none focus:border-accent/40 disabled:text-fg-3 ${invalid ? "border-danger" : "border-edge"}`}
+		/>
+	);
+}
+
+/**
+ * A server's named ports, as free text. Committed on blur like the name: the
+ * list round-trips through `join(", ")`, so parsing per keystroke eats the
+ * separator the user is in the middle of typing.
+ */
+function DevServerPortsInput({ ports, onCommit }: { ports: string[]; onCommit: (next: string[]) => void }) {
+	const t = useT();
+	const text = ports.join(", ");
+	const [draft, setDraft] = useState(text);
+	useEffect(() => { setDraft(text); }, [text]);
+	return (
+		<input
+			value={draft}
+			onChange={(e) => setDraft(e.target.value)}
+			onBlur={() => onCommit(draft.split(/[\s,]+/).filter(Boolean))}
+			onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+			placeholder={t("projectSettings.devServerPortsPlaceholder")}
+			aria-label={t("projectSettings.devServerPorts")}
+			className="flex-1 min-w-0 px-2.5 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40"
+		/>
+	);
+}
+
+/**
+ * One row per dev server. The first row is the project's `devScript` under its
+ * fixed name `dev`; every other row is an entry of `devServers`. Two storage
+ * shapes, one list — the user never has to know which field a server lives in,
+ * and nothing is migrated between them.
+ */
+function DevServersEditor({ devScript, devServers, placeholder, onChange }: {
+	devScript: string | undefined;
+	devServers: Record<string, DevServerConfig> | undefined;
+	placeholder: string;
+	onChange: (patch: { devScript?: string; devServers?: Record<string, DevServerConfig> }) => void;
+}) {
+	const t = useT();
+	const [expanded, setExpanded] = useState<string | null>(null);
+	const named = devServers ?? {};
+	const entries = Object.entries(named);
+
+	function patchServer(name: string, patch: Partial<DevServerConfig>) {
+		const current: DevServerConfig = named[name] ?? { script: "" };
+		onChange({ devServers: { ...named, [name]: { ...current, ...patch } } });
+	}
+
+	function renameServer(from: string, to: string) {
+		const next: Record<string, DevServerConfig> = {};
+		for (const [key, value] of entries) next[key === from ? to : key] = value;
+		onChange({ devServers: next });
+	}
+
+	function removeServer(name: string) {
+		const next = { ...named };
+		delete next[name];
+		onChange({ devServers: next });
+	}
+
+	function addServer() {
+		let name = "server";
+		for (let i = 2; named[name]; i++) name = `server${i}`;
+		onChange({ devServers: { ...named, [name]: { script: "" } } });
+		setExpanded(name);
+	}
+
+	function row(name: string, server: DevServerConfig, isDefault: boolean) {
+		return (
+			<div key={isDefault ? "__dev" : name} data-testid={`dev-server-row-${name}`} className="rounded-xl border border-edge bg-raised p-3 space-y-2">
+				<div className="flex items-center gap-2">
+					<DevServerNameInput
+						name={name}
+						disabled={isDefault}
+						onCommit={(next) => renameServer(name, next)}
+					/>
+					{isDefault && !devServers?.[name]
+						// `devScript` has no place to keep a port list, so the default
+						// server declares none until it moves into `devServers`.
+						? <span className="flex-1 min-w-0 text-fg-muted text-xs">{t("projectSettings.devServerPortsPlaceholder")}</span>
+						: <DevServerPortsInput ports={server.ports ?? []} onCommit={(ports) => patchServer(name, { ports })} />}
+					{/* `devScript` is a bare string with nowhere to keep a label, a cwd or
+					    an env, so the default row has no advanced half to open. */}
+					{!isDefault && (
+						<button
+							type="button"
+							onClick={() => setExpanded(expanded === name ? null : name)}
+							className="px-2 py-1.5 rounded-lg text-sm text-fg-3 hover:text-fg hover:bg-elevated-hover"
+						>
+							{t("projectSettings.devServerAdvanced")}
+						</button>
+					)}
+					{!isDefault && (
+						<button
+							type="button"
+							onClick={() => removeServer(name)}
+							aria-label={t("projectSettings.devServerRemove")}
+							className="px-2 py-1.5 rounded-lg text-sm text-danger hover:bg-danger/10"
+						>
+							&#10005;
+						</button>
+					)}
+				</div>
+				<textarea
+					value={isDefault ? devScript ?? "" : server.script}
+					onChange={(e) => isDefault ? onChange({ devScript: e.target.value }) : patchServer(name, { script: e.target.value })}
+					rows={isDefault ? 4 : 2}
+					placeholder={isDefault ? placeholder : "bun run api"}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					aria-label={t("projectSettings.devServerScript", { name })}
+					className="w-full px-3 py-2 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+				/>
+				{expanded === name && !isDefault && (
+					<div className="space-y-2 border-t border-edge pt-2">
+						<input
+							value={server.title ?? ""}
+							onChange={(e) => patchServer(name, { title: e.target.value })}
+							placeholder={t("projectSettings.devServerTitle")}
+							aria-label={t("projectSettings.devServerTitle")}
+							className="w-full px-2.5 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40"
+						/>
+						<input
+							value={server.cwd ?? ""}
+							onChange={(e) => patchServer(name, { cwd: e.target.value })}
+							placeholder={t("projectSettings.devServerCwd")}
+							aria-label={t("projectSettings.devServerCwd")}
+							className="w-full px-2.5 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40"
+						/>
+						<textarea
+							value={serializeEnvText(server.env ?? {})}
+							onChange={(e) => patchServer(name, { env: parseEnvText(e.target.value).env })}
+							rows={2}
+							placeholder="API_TOKEN=..."
+							aria-label={t("projectSettings.devServerEnv")}
+							className="w-full px-3 py-2 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 resize-y"
+						/>
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<Field title={t("projectSettings.devServers")} description={t("projectSettings.devServersDesc")}>
+			<div className="space-y-2" data-testid="dev-servers-editor">
+				{row("dev", named.dev ?? { script: devScript ?? "" }, true)}
+				{entries.filter(([name]) => name !== "dev").map(([name, server]) => row(name, server, false))}
+			</div>
+			<AddRowButton onClick={addServer}>{t("projectSettings.devServerAdd")}</AddRowButton>
+		</Field>
 	);
 }
 
@@ -906,20 +1089,16 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 				</fieldset>
 			</div>
 
-			{/* Dev Script */}
-			<Field title={t("projectSettings.devScript")} description={t("projectSettings.devScriptDesc")}>
-				<textarea
-					value={config.devScript ?? ""}
-					onChange={(e) => update("devScript", e.target.value)}
-					rows={4}
-					placeholder={inheritedHint("devScript") || "bun run dev"}
-					autoCapitalize="off"
-					autoCorrect="off"
-					spellCheck={false}
-					aria-label={t("projectSettings.devScript")}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-				/>
-			</Field>
+			{/* Dev servers: `devScript` as the row named `dev`, plus `devServers` */}
+			<DevServersEditor
+				devScript={config.devScript}
+				devServers={config.devServers}
+				placeholder={inheritedHint("devScript") || "bun run dev"}
+				onChange={(patch) => {
+					if (patch.devScript !== undefined) update("devScript", patch.devScript);
+					if (patch.devServers !== undefined) update("devServers", patch.devServers);
+				}}
+			/>
 
 			{/* Cleanup Script */}
 			<Field title={t("projectSettings.cleanupScript")} description={t("projectSettings.cleanupScriptDesc")}>
@@ -1281,6 +1460,7 @@ function ProjectSettings({
 		setupScript: p.setupScript,
 		setupScriptLaunchMode: p.setupScriptLaunchMode,
 		devScript: p.devScript,
+		devServers: p.devServers,
 		cleanupScript: p.cleanupScript,
 		clonePaths: p.clonePaths,
 		defaultBaseBranch: p.defaultBaseBranch,
@@ -1453,6 +1633,8 @@ function ProjectSettings({
 		const spA = (a.sparseCheckoutPaths ?? []).join("\0");
 		const spB = (b.sparseCheckoutPaths ?? []).join("\0");
 		if (spA !== spB) return false;
+		// Compare devServers: a row edit must count as an unsaved change.
+		if (JSON.stringify(a.devServers ?? {}) !== JSON.stringify(b.devServers ?? {})) return false;
 		// Compare builtinColumnAgents
 		const bcaA = JSON.stringify(a.builtinColumnAgents ?? {});
 		const bcaB = JSON.stringify(b.builtinColumnAgents ?? {});

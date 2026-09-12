@@ -405,6 +405,19 @@ const settings = {
 	"projectSettings.devScript": "Dev Script",
 	"projectSettings.devScriptDesc":
 		"Runs when starting the dev server for this project",
+	"projectSettings.devServers": "Dev Servers",
+	"projectSettings.devServersDesc":
+		"Each server starts, stops and restarts on its own. The first row is this project's dev script under its fixed name \"dev\"; add a row for an API, a worker or a back office. Every server of a task receives every named port as DEV3_PORT_<NAME>.",
+	"projectSettings.devServerName": "Server name",
+	"projectSettings.devServerScript": "Script of the dev server {name}",
+	"projectSettings.devServerPorts": "Named ports",
+	"projectSettings.devServerPortsPlaceholder": "named ports, e.g. api, admin",
+	"projectSettings.devServerAdvanced": "Advanced",
+	"projectSettings.devServerRemove": "Remove this dev server",
+	"projectSettings.devServerAdd": "+ Add dev server",
+	"projectSettings.devServerTitle": "Display label",
+	"projectSettings.devServerCwd": "Working directory, relative to the worktree",
+	"projectSettings.devServerEnv": "Environment for this server only",
 	"projectSettings.cleanupScript": "Cleanup Script",
 	"projectSettings.cleanupScriptDesc":
 		"Runs before the worktree is removed — when a task is marked Completed or Cancelled, an active task is deleted, or its preparation is cancelled",

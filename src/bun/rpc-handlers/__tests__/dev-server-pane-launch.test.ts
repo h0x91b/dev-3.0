@@ -60,6 +60,8 @@ vi.mock("../../tmux", async (importOriginal) => {
 			...actual.tmux,
 			binaryPath: () => "/opt/homebrew/bin/tmux",
 			hasSession: vi.fn(async () => false),
+			// Live dev servers of a task are enumerated from its sessions.
+			listSessions: vi.fn(async () => []),
 			newSessionDetached: mocks.newSessionDetached,
 			splitWindow: vi.fn(async () => ({ paneId: "%3" })),
 			selectPane: vi.fn(async () => {}),

@@ -1104,4 +1104,105 @@ describe("environment variables editor", () => {
 			expect(screen.queryByLabelText(/Worktree config layer/i)).not.toBeInTheDocument();
 		});
 	});
+
+// One list, two storage shapes: the project's `devScript` is the row named
+// `dev`, everything else is an entry of `devServers`. Nothing migrates between
+// them, so the editor has to write each row back where it came from.
+describe("dev servers editor", () => {
+	it("shows the project's devScript as the fixed first row", async () => {
+		await renderProjectSettings();
+		await goToProjectTab();
+
+		const devRow = screen.getByTestId("dev-server-row-dev");
+		expect(within(devRow).getByLabelText("Server name")).toHaveValue("dev");
+		expect(within(devRow).getByLabelText("Server name")).toBeDisabled();
+		expect(within(devRow).getByLabelText("Script of the dev server dev")).toHaveValue("bun dev");
+	});
+
+	it("edits the first row back into devScript, not into devServers", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings();
+		await goToProjectTab();
+
+		const script = within(screen.getByTestId("dev-server-row-dev")).getByLabelText("Script of the dev server dev");
+		await user.clear(script);
+		await user.type(script, "bun run dev");
+		await user.click(screen.getByText("Save"));
+
+		await vi.waitFor(() => {
+			expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ devScript: "bun run dev" }));
+		});
+	});
+
+	it("adds a named server with its ports and saves it under devServers", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings();
+		await goToProjectTab();
+
+		await user.click(screen.getByRole("button", { name: "+ Add dev server" }));
+		const row = screen.getByTestId("dev-server-row-server");
+		const name = within(row).getByLabelText("Server name");
+		await user.clear(name);
+		// The rename lands when the field is left, not per keystroke: the name is
+		// the key of the map, so renaming mid-word would rewrite it five times.
+		await user.type(name, "api");
+		await user.tab();
+		const added = screen.getByTestId("dev-server-row-api");
+		await user.type(within(added).getByLabelText("Script of the dev server api"), "bun run api");
+		await user.type(within(added).getByLabelText("Named ports"), "api, admin");
+		await user.click(screen.getByText("Save"));
+
+		await vi.waitFor(() => {
+			expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+				devServers: { api: { script: "bun run api", ports: ["api", "admin"] } },
+			}));
+		});
+	});
+
+	it("round-trips a declared server back into its row", async () => {
+		await renderProjectSettings(mockProject, {
+			devServers: { api: { script: "bun run api", ports: ["api"], cwd: "packages/api", title: "API" } },
+		});
+		await goToProjectTab();
+
+		const row = screen.getByTestId("dev-server-row-api");
+		expect(within(row).getByLabelText("Script of the dev server api")).toHaveValue("bun run api");
+		expect(within(row).getByLabelText("Named ports")).toHaveValue("api");
+		// cwd and title are folded away until the user asks for them.
+		expect(screen.queryByLabelText("Working directory, relative to the worktree")).toBeNull();
+	});
+
+	it("reveals cwd, title and per-server env under Advanced", async () => {
+		const user = userEvent.setup();
+		await renderProjectSettings(mockProject, {
+			devServers: { api: { script: "bun run api", cwd: "packages/api", title: "API", env: { TOKEN: "x" } } },
+		});
+		await goToProjectTab();
+
+		await user.click(within(screen.getByTestId("dev-server-row-api")).getByRole("button", { name: "Advanced" }));
+
+		expect(screen.getByLabelText("Working directory, relative to the worktree")).toHaveValue("packages/api");
+		expect(screen.getByLabelText("Display label")).toHaveValue("API");
+		expect(screen.getByLabelText("Environment for this server only")).toHaveValue("TOKEN=x");
+	});
+
+	it("removes a named server", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings(mockProject, { devServers: { api: { script: "bun run api" } } });
+		await goToProjectTab();
+
+		await user.click(within(screen.getByTestId("dev-server-row-api")).getByRole("button", { name: "Remove this dev server" }));
+		await user.click(screen.getByText("Save"));
+
+		await vi.waitFor(() => {
+			expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ devServers: {} }));
+		});
+	});
+});
 });
