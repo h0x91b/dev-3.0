@@ -1861,3 +1861,14 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 		animation: none;
 	}
 }
+
+/* ⌘F find inside the file preview. Painted through the CSS Custom Highlight API,
+   so the Markdown renderer's DOM is never touched (see utils/find-in-dom.ts). */
+::highlight(dev3-find) {
+	background-color: rgb(var(--diff-search-highlight-from) / 0.45);
+	color: inherit;
+}
+::highlight(dev3-find-active) {
+	background-color: rgb(var(--diff-search-highlight-to) / 0.85);
+	color: rgb(var(--surface-base));
+}

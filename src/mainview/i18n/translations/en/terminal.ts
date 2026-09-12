@@ -272,6 +272,7 @@ const terminal = {
 	"terminal.filePreviewCopyContent": "Copy content",
 	"terminal.filePreviewContentCopied": "Content copied",
 	"terminal.filePreviewRendered": "Rendered",
+	"terminal.filePreviewSearch": "Find in file",
 	"terminal.filePreviewRaw": "Raw",
 	"terminal.rendererCrashed": "The terminal renderer crashed and could not restart itself. Click to reload the window — your session keeps running.",
 	// TerminalPerfOverlay (View → Debug). Metric names inside the HUD name code —

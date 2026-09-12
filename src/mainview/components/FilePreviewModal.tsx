@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { api, isElectrobun } from "../rpc";
 import { toast } from "../toast";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useFindInElement } from "../hooks/useFindInElement";
+import FindBar, { type FindBarHandle } from "./FindBar";
 import { formatBytes } from "../utils/formatBytes";
 import { writeClipboardText } from "../utils/clipboard-write";
 import type { FilePreviewResult } from "../../shared/types";
@@ -39,11 +41,23 @@ const GHOST_BUTTON =
 export default function FilePreviewModal({ path, line, taskId, onClose }: FilePreviewModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
-	useEscapeKey(onClose);
 	const [preview, setPreview] = useState<FilePreviewResult | null>(null);
 	const [showRaw, setShowRaw] = useState(false);
 	const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
 	const highlightRef = useRef<HTMLDivElement | null>(null);
+	const bodyRef = useRef<HTMLDivElement | null>(null);
+	const findBarRef = useRef<FindBarHandle | null>(null);
+
+	const focusFindInput = useCallback(() => findBarRef.current?.focusInput(), []);
+	// Re-search whenever the body is replaced: the async load landing, and the
+	// raw/rendered toggle, both swap the text the ranges point into.
+	const find = useFindInElement(bodyRef, {
+		contentKey: `${preview?.kind ?? "loading"}:${showRaw}`,
+		onOpen: focusFindInput,
+	});
+
+	// Escape is staged: it closes the find bar first, and only then the modal.
+	useEscapeKey(() => (find.isOpen ? find.close() : onClose()));
 
 	useEffect(() => {
 		let stale = false;
@@ -110,7 +124,7 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 		switch (preview.kind) {
 			case "text":
 				return (
-					<div className="min-h-0 flex-1 overflow-auto p-4">
+					<div ref={bodyRef} className="min-h-0 flex-1 overflow-auto p-4">
 						{isRenderable && !showRaw ? (
 							<MarkdownDocument
 								body={toRenderableMarkdown(preview.content, path)}
@@ -238,7 +252,21 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 						</svg>
 					</button>
 				</div>
-				{renderBody()}
+				<div className="relative flex min-h-0 flex-1 flex-col">
+					{find.isOpen && textContent !== null && (
+						<FindBar
+							ref={findBarRef}
+							placeholder={t("terminal.filePreviewSearch")}
+							query={find.query}
+							onQueryChange={find.setQuery}
+							matches={find.matches}
+							activeIndex={find.activeIndex}
+							onStep={find.step}
+							onClose={find.close}
+						/>
+					)}
+					{renderBody()}
+				</div>
 				{/* Right-aligned row: the variable action (Copy content) sits leftmost so
 				    its appearance never shifts the stable buttons under the cursor. */}
 				<div className="flex items-center flex-wrap justify-end gap-2 px-4 py-3 border-t border-edge">

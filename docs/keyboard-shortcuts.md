@@ -25,6 +25,7 @@ this page and the website all read from it.
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
 | Find in the focused terminal | ⌘F | Ctrl+Shift+F |
 | Find in an HTML artifact | ⌘F | Ctrl+F |
+| Find in an open file preview | ⌘F | Ctrl+F |
 | Split pane vertically / horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
 | Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
 | Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |

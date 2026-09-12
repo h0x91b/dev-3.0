@@ -284,6 +284,7 @@ const terminal = {
 	"terminal.filePreviewCopyContent": "Скопировать содержимое",
 	"terminal.filePreviewContentCopied": "Содержимое скопировано",
 	"terminal.filePreviewRendered": "Рендер",
+	"terminal.filePreviewSearch": "Поиск по файлу",
 	"terminal.filePreviewRaw": "Исходник",
 	"terminal.rendererCrashed": "Отрисовщик терминала упал и не смог подняться сам. Нажмите, чтобы перезагрузить окно — сессия продолжает работать.",
 	"terminal.perf.title": "Производительность терминала",

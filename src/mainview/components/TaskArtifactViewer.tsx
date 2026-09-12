@@ -10,7 +10,7 @@ import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
-import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
+import FindBar, { type FindBarHandle } from "./FindBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
@@ -116,7 +116,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const frameRef = useRef<ArtifactFrameHandle>(null);
 	const viewerRef = useRef<HTMLElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
-	const searchBarRef = useRef<ArtifactSearchBarHandle | null>(null);
+	const searchBarRef = useRef<FindBarHandle | null>(null);
 	const searchToggleRef = useRef<HTMLButtonElement>(null);
 	// Guards against out-of-order replies from the document while typing fast.
 	const searchTokenRef = useRef(0);
@@ -577,8 +577,9 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 				)}
 				<div className="relative min-h-0 flex-1 bg-base">
 					{searchOpen && srcDoc && !error && (
-						<ArtifactSearchBar
+						<FindBar
 							ref={searchBarRef}
+							placeholder={t("artifactViewer.searchPlaceholder")}
 							query={query}
 							onQueryChange={setQuery}
 							matches={matches}

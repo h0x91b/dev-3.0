@@ -2,12 +2,14 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
 
-export interface ArtifactSearchBarHandle {
+export interface FindBarHandle {
 	/** Re-focus the query input and select its text (repeat ⌘F while open). */
 	focusInput: () => void;
 }
 
-interface ArtifactSearchBarProps {
+interface FindBarProps {
+	/** What is being searched, e.g. "Find in file" — this bar has several homes. */
+	placeholder: string;
 	query: string;
 	onQueryChange: (query: string) => void;
 	/** null = nothing searched yet (empty query) — the counter stays hidden. */
@@ -21,13 +23,14 @@ interface ArtifactSearchBarProps {
 const ICON = "'JetBrainsMono Nerd Font Mono'";
 
 /**
- * Floating ⌘F find bar over an artifact. Fully controlled: TaskArtifactViewer owns
- * the query and the match counter because the search itself runs inside the
- * opaque-origin iframe (postMessage round-trip), not here. Enter / Shift+Enter step
- * forward / back — document convention, unlike the terminal's history-first bar.
+ * Floating ⌘F find bar. Fully controlled — the owner holds the query and the
+ * match counter, because where the search actually runs differs per surface (a
+ * postMessage round-trip into the artifact iframe, DOM ranges in the file
+ * preview). Enter / Shift+Enter step forward / back — document convention,
+ * unlike the terminal's history-first bar.
  */
-const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarProps>(
-	function ArtifactSearchBar({ query, onQueryChange, matches, activeIndex, onStep, onClose }, ref) {
+const FindBar = forwardRef<FindBarHandle, FindBarProps>(
+	function FindBar({ placeholder, query, onQueryChange, matches, activeIndex, onStep, onClose }, ref) {
 		const t = useT();
 		const inputRef = useRef<HTMLInputElement>(null);
 
@@ -53,15 +56,15 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 				event.stopPropagation();
 				onClose();
 			} else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-				// The viewer's window-level handler treats arrows as artifact history
-				// navigation; inside the query they must only move the caret.
+				// A host's window-level handler may treat arrows as navigation; inside
+				// the query they must only move the caret.
 				event.stopPropagation();
 			}
 		}
 
 		return (
 			<div
-				data-testid="artifact-search-bar"
+				data-testid="find-bar"
 				className="absolute top-2 right-2 z-30 flex items-center gap-1 rounded-lg border border-edge bg-elevated/95 px-2 py-1 shadow-lg shadow-black/30 backdrop-blur-sm"
 			>
 			{/* Nerd Font draws this glyph high in its em box, so box-centering alone
@@ -73,8 +76,8 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 					value={query}
 					onChange={(event) => onQueryChange(event.target.value)}
 					onKeyDown={handleKeyDown}
-					placeholder={t("artifactViewer.searchPlaceholder")}
-					aria-label={t("artifactViewer.searchPlaceholder")}
+					placeholder={placeholder}
+					aria-label={placeholder}
 					spellCheck={false}
 					autoCorrect="off"
 					autoCapitalize="off"
@@ -82,41 +85,41 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 				/>
 				{matches !== null && (
 					<span
-						data-testid="artifact-search-count"
+						data-testid="find-bar-count"
 						className={`shrink-0 text-xs tabular-nums ${noMatches ? "text-danger" : "text-fg-muted"}`}
 						aria-live="polite"
 					>
 						{`${matches === 0 ? 0 : activeIndex + 1}/${matches}`}
 					</span>
 				)}
-				<Tooltip content={t("artifactViewer.searchPrev")} placement="bottom">
+				<Tooltip content={t("find.prev")} placement="bottom">
 					<button
 						type="button"
 						onClick={() => onStep(-1)}
 						disabled={!matches}
-						aria-label={t("artifactViewer.searchPrev")}
+						aria-label={t("find.prev")}
 						className="rounded px-1 text-sm text-fg-3 transition-colors hover:text-fg disabled:opacity-40"
 					>
 						{"↑"}
 					</button>
 				</Tooltip>
-				<Tooltip content={t("artifactViewer.searchNext")} placement="bottom">
+				<Tooltip content={t("find.next")} placement="bottom">
 					<button
 						type="button"
 						onClick={() => onStep(1)}
 						disabled={!matches}
-						aria-label={t("artifactViewer.searchNext")}
+						aria-label={t("find.next")}
 						className="rounded px-1 text-sm text-fg-3 transition-colors hover:text-fg disabled:opacity-40"
 					>
 						{"↓"}
 					</button>
 				</Tooltip>
-				<Tooltip content={t("artifactViewer.searchClose")} placement="bottom">
+				<Tooltip content={t("find.close")} placement="bottom">
 					<button
 						type="button"
-						data-testid="artifact-search-close"
+						data-testid="find-bar-close"
 						onClick={onClose}
-						aria-label={t("artifactViewer.searchClose")}
+						aria-label={t("find.close")}
 						className="rounded px-1 text-sm text-fg-3 transition-colors hover:text-fg"
 					>
 						{"✕"}
@@ -127,4 +130,4 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 	},
 );
 
-export default ArtifactSearchBar;
+export default FindBar;

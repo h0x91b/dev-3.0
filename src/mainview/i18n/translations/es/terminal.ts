@@ -272,6 +272,7 @@ const terminal = {
 	"terminal.filePreviewCopyContent": "Copiar contenido",
 	"terminal.filePreviewContentCopied": "Contenido copiado",
 	"terminal.filePreviewRendered": "Renderizado",
+	"terminal.filePreviewSearch": "Buscar en el archivo",
 	"terminal.filePreviewRaw": "Sin formato",
 	"terminal.rendererCrashed": "El renderizador del terminal falló y no pudo reiniciarse solo. Haz clic para recargar la ventana — tu sesión sigue activa.",
 	"terminal.perf.title": "Rendimiento del terminal",
