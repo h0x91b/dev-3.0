@@ -61,7 +61,7 @@ import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
 import TrafficNotificationCloud from "./TrafficNotificationCloud";
 import { cellSeqFontSize, cellSeqInk } from "./cell-seq";
-import { headingTop, headingWidth } from "./group-heading";
+import { headingRoom, headingTop, headingWidth } from "./group-heading";
 import { IDENTITY_SCALE, MAX_SCALE, SCENE_PAD_Y, detailTier, frameExchange, overviewScale } from "./traffic-camera";
 
 interface Props {
@@ -244,6 +244,17 @@ export default function TrafficNodes({
 	placedRef.current = scene.placed;
 	/** Where the person stands right now, or null when nobody is speaking. */
 	const speakerRef = useRef<SpeakerPlacement | null>(null);
+	/** Scene room each project name has before the next one starts. */
+	const headingRooms = useMemo(
+		() =>
+			new Map(
+				scene.groups.map((group) => [
+					group.projectId,
+					headingRoom(group, scene.groups),
+				]),
+			),
+		[scene.groups],
+	);
 	const projectById = useMemo(
 		() => new Map((projects ?? []).map((project) => [project.id, project])),
 		[projects],
@@ -846,7 +857,7 @@ export default function TrafficNodes({
 			>
 				{scene.groups.map(group => (
 					<div key={group.projectId} className="traffic-project-group" style={{ left: group.x, top: group.y, width: group.width, height: group.height }}>
-						<div className="traffic-project-heading" style={{ top: headingTop(view.scale), transform: `scale(${1 / view.scale})`, width: headingWidth(group.width, view.scale) }}>
+						<div className="traffic-project-heading" style={{ top: headingTop(view.scale), transform: `scale(${1 / view.scale})`, width: headingWidth(group.width, view.scale, headingRooms.get(group.projectId)) }}>
 							{projectById.get(group.projectId)?.name ?? t("traffic.orbit.project")}
 						</div>
 					</div>
