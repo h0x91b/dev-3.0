@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { FilePreviewResult } from "../../../../shared/types";
 import { resolveDiskImagePath } from "../markdown-images";
 import { MarkdownDocument } from "../markdown";
+import { I18nProvider } from "../../../i18n";
 import { MarkdownRichDiff, buildMarkdownDiffBlocks } from "../markdown-diff";
 
 const readFilePreview = vi.fn<(params: { path: string }) => Promise<FilePreviewResult>>();
@@ -110,7 +111,11 @@ describe("MarkdownRichDiff images", () => {
 	it("resolves images inside diff blocks", async () => {
 		const blocks = buildMarkdownDiffBlocks("# Title\n\nintro", "# Title\n\n![new](shots/new.png)");
 		expect(blocks).not.toBeNull();
-		render(<MarkdownRichDiff blocks={blocks!} imageBaseDir="/wt/docs" imageRootDir="/wt" />);
+		render(
+			<I18nProvider>
+				<MarkdownRichDiff blocks={blocks!} imageBaseDir="/wt/docs" imageRootDir="/wt" />
+			</I18nProvider>,
+		);
 		await waitFor(() => expect(screen.getByAltText("new")).toHaveAttribute("src", PNG_DATA_URL));
 		expect(readFilePreview).toHaveBeenCalledWith({ path: "/wt/docs/shots/new.png" });
 	});

@@ -198,6 +198,8 @@ const infoPanel = {
 	"infoPanel.diffMdPreviewRevealAt": "Show {location} in the preview",
 	"infoPanel.diffMdPreviewCommentCount_one": "{count} comment on this file",
 	"infoPanel.diffMdPreviewCommentCount_other": "{count} comments on this file",
+	"infoPanel.diffMdUnchangedLines_one": "Show {count} unchanged line",
+	"infoPanel.diffMdUnchangedLines_other": "Show {count} unchanged lines",
 	"infoPanel.diffMdPreviewGithubThreads_one": "{count} GitHub review thread \u2192 Source diff",
 	"infoPanel.diffMdPreviewGithubThreads_other": "{count} GitHub review threads \u2192 Source diff",
 	"infoPanel.diffExpandAll": "Expand all",

@@ -595,6 +595,40 @@
 	opacity: 0.85;
 }
 
+/* A run of untouched blocks folded away, so a one-line edit in a long document
+   is not buried under the rest of the file. Clicking unfolds it in place. */
+.dev3-md-diff-fold {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	width: 100%;
+	margin: 0.5rem 0;
+	padding: 0.3125rem 0.625rem;
+	border-radius: 0.25rem;
+	background: rgb(var(--text-primary) / 0.04);
+	box-shadow: inset 3px 0 0 rgb(var(--text-primary) / 0.18);
+	color: rgb(var(--text-tertiary));
+	font-size: 0.75rem;
+	text-align: left;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+.dev3-md-diff-fold:hover {
+	background: rgb(var(--accent) / 0.1);
+	color: rgb(var(--accent));
+}
+.dev3-md-diff-fold-icon {
+	font-size: 0.875rem;
+	line-height: 1;
+}
+.dev3-md-diff-fold-heading {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	opacity: 0.75;
+	font-style: italic;
+}
+
 /* ---- Markdown preview review layer ----
    A commented block is marked in place, so a comment added from the preview is
    visible without switching to the source diff. */

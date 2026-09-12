@@ -198,6 +198,8 @@ const infoPanel = {
 	"infoPanel.diffMdPreviewRevealAt": "Mostrar {location} en la previsualización",
 	"infoPanel.diffMdPreviewCommentCount_one": "{count} comentario en este archivo",
 	"infoPanel.diffMdPreviewCommentCount_other": "{count} comentarios en este archivo",
+	"infoPanel.diffMdUnchangedLines_one": "Mostrar {count} línea sin cambios",
+	"infoPanel.diffMdUnchangedLines_other": "Mostrar {count} líneas sin cambios",
 	"infoPanel.diffMdPreviewGithubThreads_one": "{count} hilo de revisión de GitHub → Diff de origen",
 	"infoPanel.diffMdPreviewGithubThreads_other": "{count} hilos de revisión de GitHub → Diff de origen",
 	"infoPanel.diffExpandAll": "Expandir todo",

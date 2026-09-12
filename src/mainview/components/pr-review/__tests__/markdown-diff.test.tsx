@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { buildMarkdownDiffBlocks, MarkdownRichDiff } from "../markdown-diff";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { I18nProvider } from "../../../i18n";
+import { buildMarkdownDiffBlocks, MarkdownRichDiff, type MarkdownDiffBlock } from "../markdown-diff";
 import { installImmediateIntersectionObserver } from "../../../test-utils/immediate-intersection";
 
 const mermaid = vi.hoisted(() => ({
@@ -100,10 +101,25 @@ describe("buildMarkdownDiffBlocks", () => {
 	});
 });
 
+function renderDiff(props: Parameters<typeof MarkdownRichDiff>[0]) {
+	return render(
+		<I18nProvider>
+			<MarkdownRichDiff {...props} />
+		</I18nProvider>,
+	);
+}
+
+/** A document whose only edit sits far from both ends. */
+function longDocument(edited: boolean): string {
+	const body = Array.from({ length: 20 }, (_, index) =>
+		index === 10 && edited ? "paragraph ten, edited" : `paragraph ${index}`);
+	return `# Guide\n\n${body.join("\n\n")}\n`;
+}
+
 describe("MarkdownRichDiff", () => {
 	it("tags every block with its change kind", () => {
 		const blocks = buildMarkdownDiffBlocks("old\n", "new\n") ?? [];
-		render(<MarkdownRichDiff blocks={blocks} />);
+		renderDiff({ blocks });
 
 		const host = screen.getByTestId("markdown-rich-diff");
 		expect(host.querySelector("[data-diff-kind='removed']")?.textContent).toContain("old");
@@ -115,7 +131,7 @@ describe("MarkdownRichDiff", () => {
 			"<script>alert(1)</script>gone\n",
 			"<img src=\"x\" onerror=\"alert(2)\">stays\n",
 		) ?? [];
-		render(<MarkdownRichDiff blocks={blocks} />);
+		renderDiff({ blocks });
 
 		const host = screen.getByTestId("markdown-rich-diff");
 		expect(host.querySelector("script")).toBeNull();
@@ -127,10 +143,96 @@ describe("MarkdownRichDiff", () => {
 			"```mermaid\nflowchart LR\nA --> B\n```\n",
 			"```mermaid\nflowchart LR\nA --> C\n```\n",
 		) ?? [];
-		render(<MarkdownRichDiff blocks={blocks} />);
+		renderDiff({ blocks });
 
 		await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(2));
 		expect(screen.getAllByRole("img", { name: "Mermaid chart" })).toHaveLength(2);
 		expect(screen.getAllByTestId("rendered-mermaid")).toHaveLength(2);
+	});
+
+	it("folds the untouched bulk of a long document away from the change", () => {
+		const blocks = buildMarkdownDiffBlocks(longDocument(false), longDocument(true))!;
+		renderDiff({ blocks });
+
+		const host = screen.getByTestId("markdown-rich-diff");
+		expect(host.textContent).toContain("paragraph ten, edited");
+		// Three unchanged chunks are kept on each side; the rest of the file folds.
+		expect(host.textContent).toContain("paragraph 9");
+		expect(host.textContent).toContain("paragraph 11");
+		expect(host.textContent).not.toContain("paragraph 0");
+		expect(host.textContent).not.toContain("paragraph 19");
+		expect(screen.getAllByTestId("markdown-diff-unfold")).toHaveLength(2);
+	});
+
+	it("names the section a fold sits in", () => {
+		const blocks = buildMarkdownDiffBlocks(longDocument(false), longDocument(true))!;
+		renderDiff({ blocks });
+
+		// Everything after the change sits under "# Guide", the file's only heading.
+		expect(screen.getAllByTestId("markdown-diff-unfold")[1].textContent).toContain("Guide");
+	});
+
+	it("unfolds a run in place when its row is clicked", () => {
+		const blocks = buildMarkdownDiffBlocks(longDocument(false), longDocument(true))!;
+		renderDiff({ blocks });
+
+		fireEvent.click(screen.getAllByTestId("markdown-diff-unfold")[0]);
+
+		const host = screen.getByTestId("markdown-rich-diff");
+		expect(host.textContent).toContain("paragraph 0");
+		expect(screen.getAllByTestId("markdown-diff-unfold")).toHaveLength(1);
+	});
+
+	it("keeps a commented unchanged block visible so revealing it still works", () => {
+		const blocks = buildMarkdownDiffBlocks(longDocument(false), longDocument(true))!;
+		const target = blocks.find(
+			(block: MarkdownDiffBlock) => block.kind === "context" && block.source.includes("paragraph 0"),
+		)!;
+		renderDiff({
+			blocks,
+			commentedLines: { oldFile: new Set<number>(), newFile: new Set([target.startLine]) },
+		});
+
+		expect(screen.getByTestId("markdown-rich-diff").textContent).toContain("paragraph 0");
+	});
+
+	it("keeps a deleted-only paragraph visible with its context", () => {
+		const before = Array.from({ length: 20 }, (_, index) => `paragraph ${index}`);
+		const after = before.filter((_, index) => index !== 10);
+		const blocks = buildMarkdownDiffBlocks(`${before.join("\n\n")}\n`, `${after.join("\n\n")}\n`)!;
+		renderDiff({ blocks });
+
+		const host = screen.getByTestId("markdown-rich-diff");
+		// The deletion is the only change, so nothing but the removed block marks it.
+		expect(host.querySelector("[data-diff-kind='removed']")?.textContent).toContain("paragraph 10");
+		expect(host.querySelector("[data-diff-kind='added']")).toBeNull();
+		expect(host.textContent).toContain("paragraph 9");
+		expect(host.textContent).not.toContain("paragraph 0");
+	});
+
+	it("keeps two distant changes separate instead of merging their context", () => {
+		const before = Array.from({ length: 40 }, (_, index) => `paragraph ${index}`);
+		const after = before.map((text, index) =>
+			index === 5 || index === 30 ? `${text}, edited` : text);
+		const blocks = buildMarkdownDiffBlocks(`${before.join("\n\n")}\n`, `${after.join("\n\n")}\n`)!;
+		renderDiff({ blocks });
+
+		const host = screen.getByTestId("markdown-rich-diff");
+		expect(host.textContent).toContain("paragraph 5, edited");
+		expect(host.textContent).toContain("paragraph 30, edited");
+		// The gap between the two changes and the trailing run each fold on their
+		// own. The two paragraphs before the first change do not: a run that short
+		// costs more as a fold row than as text.
+		expect(screen.getAllByTestId("markdown-diff-unfold")).toHaveLength(2);
+		expect(host.textContent).toContain("paragraph 0");
+		expect(host.textContent).not.toContain("paragraph 20");
+		expect(host.textContent).not.toContain("paragraph 39");
+	});
+
+	it("leaves a short document alone", () => {
+		const blocks = buildMarkdownDiffBlocks("# Title\n\nold text\n", "# Title\n\nnew text\n")!;
+		renderDiff({ blocks });
+
+		expect(screen.queryByTestId("markdown-diff-unfold")).toBeNull();
 	});
 });
