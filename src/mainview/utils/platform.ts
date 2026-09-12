@@ -34,3 +34,15 @@ export function isRemote(): boolean {
 	if (typeof window === "undefined") return false;
 	return typeof (window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId === "undefined";
 }
+
+/**
+ * Whether touch is the device's *primary* pointer — a phone or tablet, not a
+ * touchscreen laptop driven by a mouse, which `maxTouchPoints` alone also
+ * reports. Gates the mobile terminal input stack; see the
+ * `touch-primary-gates-mobile-terminal-input` decision record.
+ */
+export function isTouchPrimary(): boolean {
+	if (typeof navigator === "undefined" || navigator.maxTouchPoints === 0) return false;
+	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
+	return window.matchMedia("(pointer: coarse)").matches;
+}

@@ -54,8 +54,28 @@ vi.mock("../ExtraKeyBar", () => ({
 
 // Mock navigator.maxTouchPoints for ExtraKeyBar visibility tests
 const originalMaxTouchPoints = Object.getOwnPropertyDescriptor(Navigator.prototype, "maxTouchPoints");
+const originalMatchMedia = window.matchMedia;
+
+/** A phone: touch points AND a coarse primary pointer. */
 function setTouchDevice(isTouch: boolean) {
 	Object.defineProperty(navigator, "maxTouchPoints", { value: isTouch ? 5 : 0, configurable: true });
+	setCoarsePointer(isTouch);
+}
+
+// Set independently of the touch points to model a touchscreen laptop, whose
+// primary pointer is the mouse. The global test-setup stub answers every query
+// false, which would read as "fine" and hide the bar on a real phone too.
+function setCoarsePointer(coarse: boolean) {
+	window.matchMedia = ((query: string) => ({
+		matches: query.includes("pointer: coarse") ? coarse : query.includes("prefers-reduced-motion"),
+		media: query,
+		onchange: null,
+		addEventListener: () => {},
+		removeEventListener: () => {},
+		addListener: () => {},
+		removeListener: () => {},
+		dispatchEvent: () => false,
+	})) as typeof window.matchMedia;
 }
 
 import { api } from "../../rpc";
@@ -140,6 +160,7 @@ describe("TaskTerminal", () => {
 		} else {
 			Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
 		}
+		window.matchMedia = originalMatchMedia;
 	});
 
 	describe("Closed task", () => {
@@ -707,6 +728,26 @@ describe("TaskTerminal", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("extra-key-bar")).toBeInTheDocument();
 			});
+		});
+
+		it("stays hidden on a touchscreen laptop, whose primary pointer is the mouse", async () => {
+			setTouchDevice(true);
+			setCoarsePointer(false);
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await new Promise((r) => setTimeout(r, 10));
+			});
+
+			expect(screen.queryByTestId("extra-key-bar")).not.toBeInTheDocument();
 		});
 	});
 	describe("scroll-to-latest button (touch)", () => {
