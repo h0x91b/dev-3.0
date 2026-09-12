@@ -59,6 +59,7 @@ import type { useTrafficPlayback } from "./useTrafficPlayback";
 import TrafficIcon from "./TrafficIcon";
 import TrafficMinimap from "./TrafficMinimap";
 import TrafficMessageBubble from "./TrafficMessageBubble";
+import TrafficStatusLine from "./TrafficStatusLine";
 import TrafficNotificationCloud from "./TrafficNotificationCloud";
 import { cellSeqFontSize, cellSeqInk } from "./cell-seq";
 import { headingRoom, headingTop, headingWidth } from "./group-heading";
@@ -984,6 +985,7 @@ export default function TrafficNodes({
 								project={projectById.get(placed.node.projectId)}
 								latest={latest.get(placed.node.key)}
 								celebrating={celebration?.nodeKey === placed.node.key}
+								reduced={reduced}
 								onSelect={(key) => {
 									manual();
 									onSelect(key);
@@ -1270,6 +1272,7 @@ function Card({
 	project,
 	latest,
 	celebrating,
+	reduced,
 	onSelect,
 	onFocus,
 }: {
@@ -1289,6 +1292,7 @@ function Card({
 	};
 	latest?: TrafficRecord;
 	celebrating: boolean;
+	reduced: boolean;
 	onSelect: (key: string) => void;
 	onFocus: (key: string) => void;
 }) {
@@ -1365,14 +1369,7 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				{finished ? (
-					<span className={`traffic-node-stamp is-${finished}`}>
-						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
-						{state}
-					</span>
-				) : (
-					<span className="traffic-node-state">{state}</span>
-				)}
+				<TrafficStatusLine label={state} finished={finished} reduced={reduced} />
 				<span className="traffic-node-overview streamer-private">
 					{(node.task && getTaskOverview(node.task)) ||
 						t("traffic.orbit.noOverview")}
@@ -1403,14 +1400,7 @@ function Card({
 				<strong className="streamer-private">
 					{node.title || t("traffic.orbit.historical")}
 				</strong>
-				{finished ? (
-					<span className={`traffic-node-stamp is-${finished}`}>
-						<TrafficIcon name={finished === "completed" ? "check" : "cross"} />
-						{state}
-					</span>
-				) : (
-					<span className="traffic-node-state">{state}</span>
-				)}
+				<TrafficStatusLine label={state} finished={finished} reduced={reduced} />
 			</span>
 		</button>
 	);

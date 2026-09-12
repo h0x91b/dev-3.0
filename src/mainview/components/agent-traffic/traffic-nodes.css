@@ -177,6 +177,22 @@
 	fill: rgb(var(--danger));
 	filter: drop-shadow(0 0 12px rgb(var(--danger) / 0.8));
 }
+/* Status is the one thing on a traffic card that changes while you are looking
+   at it, so it fades in rather than being swapped under the cursor. Registering
+   the two custom properties is what makes a colour interpolate at all — every
+   derived surface (wash, top rule, rail, dot, stamp, cell fill) then follows for
+   free from one transition. That transition lives with the card's own appear
+   transition further down — declared here it would simply lose to it. */
+@property --node-status {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
+@property --node-ink {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
 .traffic-node-card {
 	position: absolute;
 	padding: 0;
@@ -403,6 +419,9 @@
 /* Kept as the card's full status word — the rail carries no second, shorter one.
    Set in the uppercase tracked type the app uses for a lifecycle label. */
 .traffic-node-state {
+	/* Blockified anyway as a flex item; explicit so the same span still
+	   ellipsises inside the status line's plain block wrapper. */
+	display: block;
 	color: var(--node-ink);
 	font-size: 10px;
 	font-weight: 600;
@@ -411,6 +430,59 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+/* The status word and the verdict stamp share one line box, so a plain word
+   becoming a stamp cross-fades exactly like one word becoming another. The
+   outgoing copy is taken out of flow: nothing on the card moves during a swap,
+   and the grid around it never reflows. */
+.traffic-node-status-line {
+	display: block;
+	position: relative;
+	min-width: 0;
+}
+.traffic-node-status-ghost {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	animation: traffic-status-out 220ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+.traffic-node-status-live {
+	display: block;
+	animation: traffic-status-in 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes traffic-status-in {
+	from {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translateY(2px);
+	}
+	to {
+		opacity: 1;
+		filter: blur(0);
+		transform: none;
+	}
+}
+@keyframes traffic-status-out {
+	from {
+		opacity: 1;
+		filter: blur(0);
+	}
+	to {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translateY(-2px);
+	}
+}
+/* Motion off: the new status is simply there. Nothing fades, nothing lingers,
+   and the word on screen is always the current one. */
+@media (prefers-reduced-motion: reduce) {
+	.traffic-node-status-live,
+	.traffic-node-status-ghost {
+		animation: none;
+	}
+	.traffic-node-status-ghost {
+		display: none;
+	}
 }
 .traffic-node-overview {
 	font-size: 12px;
@@ -482,6 +554,17 @@
 }
 .traffic-node-cell {
 	display: none;
+	/* The cell tier paints the seq straight onto the status colour, and that ink
+	   is chosen in JS — so it fades on its own clock, matching the card under it. */
+	transition: color 350ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* Directly after the rule it turns off: same specificity, so source order is the
+   only thing that can win. The card's own transitions are already switched off by
+   the shared reduced-motion block further down. */
+@media (prefers-reduced-motion: reduce) {
+	.traffic-node-cell {
+		transition: none;
+	}
 }
 /* The seq is the only thing left on the card here, so it owns the whole box.
    Its size comes from the inline style — it scales with the card, not with the
@@ -573,7 +656,9 @@
 .traffic-node-card:not(.is-unborn) {
 	transition:
 		opacity 260ms cubic-bezier(0.2, 0, 0, 1),
-		transform 260ms cubic-bezier(0.2, 0, 0, 1);
+		transform 260ms cubic-bezier(0.2, 0, 0, 1),
+		--node-status 350ms cubic-bezier(0.2, 0, 0, 1),
+		--node-ink 350ms cubic-bezier(0.2, 0, 0, 1);
 }
 .traffic-nodes-bands {
 	position: absolute;
