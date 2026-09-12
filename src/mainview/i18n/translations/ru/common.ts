@@ -272,6 +272,25 @@ const common = {
 	"traffic.orbit.zoomOut": "Отдалить",
 	"traffic.orbit.zoomIn": "Приблизить",
 
+	// Terminal snapshot in the traffic inspector
+	"traffic.terminal.title": "Снимок терминала",
+	"traffic.terminal.show": "Показать",
+	"traffic.terminal.hide": "Скрыть",
+	"traffic.terminal.refresh": "Обновить",
+	"traffic.terminal.loading": "Читаем терминал…",
+	"traffic.terminal.isText": "Текст, считанный с терминала, а не его изображение.",
+	"traffic.terminal.observed": "Прочитано {age}",
+	"traffic.terminal.paneOf": "Панель {index} из {total}",
+	"traffic.terminal.pane": "Панель {index}",
+	"traffic.terminal.noSession": "Сессии терминала нет — {detail}",
+	"traffic.terminal.captureUnsupported":
+		"Бэкенд терминала этой задачи не публикует экран, читать нечего. Открой задачу, чтобы увидеть его.",
+	"traffic.terminal.readFailed":
+		"Не удалось прочитать терминал. Это ничего не говорит о том, работает ли задача.",
+	"traffic.terminal.paneNotFound": "Этой панели больше нет в сессии.",
+	"traffic.terminal.nothing": "Панель жива и ничего не вывела.",
+	"traffic.terminal.failed": "Запрос снимка не удался: {error}",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "Агент работает",

@@ -258,6 +258,25 @@ const common = {
 	"traffic.orbit.zoomOut": "Zoom out",
 	"traffic.orbit.zoomIn": "Zoom in",
 
+	// Terminal snapshot in the traffic inspector
+	"traffic.terminal.title": "Terminal snapshot",
+	"traffic.terminal.show": "Show",
+	"traffic.terminal.hide": "Hide",
+	"traffic.terminal.refresh": "Refresh",
+	"traffic.terminal.loading": "Reading the terminal…",
+	"traffic.terminal.isText": "Text read off the terminal, not a picture of it.",
+	"traffic.terminal.observed": "Read {age}",
+	"traffic.terminal.paneOf": "Pane {index} of {total}",
+	"traffic.terminal.pane": "Pane {index}",
+	"traffic.terminal.noSession": "No terminal session — {detail}",
+	"traffic.terminal.captureUnsupported":
+		"This task's terminal backend publishes no screen to read, so there is nothing to show here. Open the task to see it.",
+	"traffic.terminal.readFailed":
+		"Could not read the terminal. This says nothing about whether the task is working.",
+	"traffic.terminal.paneNotFound": "That pane is no longer part of this session.",
+	"traffic.terminal.nothing": "The pane is live and has printed nothing to read.",
+	"traffic.terminal.failed": "The snapshot request failed: {error}",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "Agent is Working",

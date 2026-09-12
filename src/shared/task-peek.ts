@@ -39,6 +39,24 @@ export interface PeekUnavailable {
 	detail: string;
 }
 
+/**
+ * A backend that publishes no screen at all. It is still a `read-failed` — we
+ * genuinely did not read the terminal, and that must never read as "quiet" —
+ * but it is the one miss a caller can explain in plain words instead of showing
+ * the backend's own token, so the two sides share one spelling of it here.
+ */
+export const CAPTURE_NOT_ENABLED = "not-enabled";
+
+/** The one place a capture miss is turned into `detail` prose. */
+export function captureMissDetail(availability: string, reason: string): string {
+	return `${availability}: ${reason}`;
+}
+
+/** True when the backend answered "I publish no screen", not "the read broke". */
+export function isCaptureUnsupported(miss: PeekUnavailable): boolean {
+	return miss.kind === "read-failed" && miss.detail.startsWith(`${CAPTURE_NOT_ENABLED}: `);
+}
+
 export interface PeekPane {
 	/** 1-based, the number `--pane N` accepts and the summary prints. */
 	index: number;

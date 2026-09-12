@@ -275,11 +275,11 @@ ux_architecture:
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     agent_traffic_screen:
       purpose: "Live map of recorded message attempts, with lists and an inspector."
-      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task", "send_short_message"]
+      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task", "send_short_message", "task_terminal_snapshot"]
       forbidden: ["task_lifecycle_action", "importance_filter", "inferred_reply_obligation", "own_chrome_above_the_header", "terminal_composer", "slash_commands_or_completion", "launch_or_resume_an_agent"]
-      narrow_form: "same_screen"   # filters fold into a BottomSheet inside it
-      entry_point: "Pill, kebab row, Shift+Cmd/Ctrl+M, View menu and palette all navigate to the route; one screen, no second log."
-      entry: "The id on the route is the initial SCOPE, never a breadcrumb claim, and the analytics path carries no ids; Escape or a repeat of the shortcut steps back, and the flag going off navigates away. Each entry is fresh: trailing hour (named on the picker), cursor at its start, replay started ONCE once the data settles. Empty windows stay parked and a later arrival must not start one; re-render, refresh and live append never restart it; a manual pause stands; reduced motion parks the cursor. Entry alone — Live and the day calendar unchanged."
+      narrow_form: "same_screen"  # filters fold into a BottomSheet inside it
+      entry_point: "Pill, kebab row, Shift+Cmd/Ctrl+M, View menu and palette navigate to the route; one screen, no second log."
+      entry: "The route id is the initial SCOPE, never a breadcrumb claim; the analytics path carries no ids; Escape or a repeat of the shortcut steps back, and the flag going off navigates away. Each entry is fresh: trailing hour (named on the picker), cursor at its start, replay started ONCE, when the data settles. Empty windows stay parked; a later arrival must not start one; re-render, refresh and live append never restart it; a manual pause stands; reduced motion parks it. Entry alone — Live and the day calendar unchanged."
       note: "Space toggles replay unless a field/control owns it. Composer: selected task only, user-origin, never launches one. Everything else: bible 5.9."
       evidence: ["src/mainview/components/agent-traffic/", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:

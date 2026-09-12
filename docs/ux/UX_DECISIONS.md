@@ -1,15 +1,18 @@
 # UX Decisions
 
-Compact index of UX architecture decisions — the *why* behind rules that live in
-`PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
-git history, PRs, and the records in `decisions/`. Newest first.
+Index of UX architecture decisions — the *why* behind rules in
+`PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines each; detail lives in git
+history, PRs and `decisions/`. Newest first.
 
-**Once a decision has a record under `decisions/`, this entry folds to a pointer:** the
-rule in one clause plus where it lives, and the record for the why. Two files were
-carrying the same reasoning — 48 of this file's 50 dates also had a record — so the
-record wins and this file stays an index. Write the entry in full only while no record
-exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
-else, so do not compact them by deleting it.
+**Once a decision has a record under `decisions/`, its entry folds to a pointer:** the rule
+in one clause, where it lives, and the record for the why. Two files carried the same
+reasoning (48 of 50 dates), so the record wins and this file stays an index. Write an entry
+in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
+else, so never compact them by deleting it.
+
+## 2026-09-12 — Traffic terminal is an observation
+
+Bible 5.9 + yaml; `decisions/2026/09/12/traffic-terminal-snapshot-is-text.md`.
 
 ## 2026-09-12 — The traffic inspector may send one short message
 

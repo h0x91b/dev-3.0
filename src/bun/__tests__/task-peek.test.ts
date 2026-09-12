@@ -88,7 +88,7 @@ vi.mock("../native-terminal-registry/registry", () => ({
 
 import { _resetBackendForTests } from "../native-task-panes";
 import { taskPeek } from "../task-peek";
-import { PEEK_MAX_LINES } from "../../shared/task-peek";
+import { isCaptureUnsupported, PEEK_MAX_LINES } from "../../shared/task-peek";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -475,5 +475,37 @@ describe("native read discipline", () => {
 		const snap = await taskPeek({ task: task() });
 
 		expect(snap.tail?.text).toBe("older\nnewer");
+	});
+
+	// A backend that publishes no screen is still a read failure — never "quiet" —
+	// but it is the one miss a UI can explain in plain words instead of printing a
+	// token, so the detail has to stay recognisable end to end.
+	it("marks a backend with no screen to publish as unsupported, not as a broken read", async () => {
+		arrange("native", TWO_PANES);
+		mocks.captureView.mockResolvedValue({
+			availability: "not-enabled",
+			liveness: "live",
+			reason: "the host's live parser is off",
+		});
+
+		const snap = await taskPeek({ task: task() });
+
+		expect(snap.unavailable?.kind).toBe("read-failed");
+		expect(isCaptureUnsupported(snap.unavailable!)).toBe(true);
+		expect(snap.unavailable?.detail).toContain("the host's live parser is off");
+	});
+
+	it("does not mark an ordinary failed read as unsupported", async () => {
+		arrange("native", TWO_PANES);
+		mocks.captureView.mockResolvedValue({
+			availability: "unreadable",
+			liveness: "live",
+			reason: "the record could not be parsed",
+		});
+
+		const snap = await taskPeek({ task: task() });
+
+		expect(snap.unavailable?.kind).toBe("read-failed");
+		expect(isCaptureUnsupported(snap.unavailable!)).toBe(false);
 	});
 });

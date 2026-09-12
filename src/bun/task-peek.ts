@@ -20,6 +20,7 @@
 
 import type { Task, TaskStatus } from "../shared/types";
 import {
+	captureMissDetail,
 	clampPeekLines,
 	selectPeekPane,
 	tailLines,
@@ -185,12 +186,12 @@ async function tmuxPeek(task: Task, params: TaskPeekParams, observedAt: string):
  * that is gone; everything else is us failing to read a pane that exists, which
  * must never read as "the task is quiet".
  */
-function missToUnavailable(capture: Extract<TerminalPaneCapture, { availability: string }>): PeekUnavailable {
+export function missToUnavailable(capture: Extract<TerminalPaneCapture, { availability: string }>): PeekUnavailable {
 	const reason = "reason" in capture ? capture.reason : "no detail";
 	if (capture.availability === "view-absent") {
 		return { kind: "pane-not-found", detail: reason };
 	}
-	return { kind: "read-failed", detail: `${capture.availability}: ${reason}` };
+	return { kind: "read-failed", detail: captureMissDetail(capture.availability, reason) };
 }
 
 async function nativePeek(task: Task, params: TaskPeekParams, observedAt: string): Promise<TaskPeekSnapshot> {

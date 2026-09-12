@@ -259,6 +259,25 @@ const common = {
 	"traffic.orbit.zoomOut": "Alejar",
 	"traffic.orbit.zoomIn": "Acercar",
 
+	// Terminal snapshot in the traffic inspector
+	"traffic.terminal.title": "Captura del terminal",
+	"traffic.terminal.show": "Mostrar",
+	"traffic.terminal.hide": "Ocultar",
+	"traffic.terminal.refresh": "Actualizar",
+	"traffic.terminal.loading": "Leyendo el terminal…",
+	"traffic.terminal.isText": "Texto leído del terminal, no una imagen de él.",
+	"traffic.terminal.observed": "Leído {age}",
+	"traffic.terminal.paneOf": "Panel {index} de {total}",
+	"traffic.terminal.pane": "Panel {index}",
+	"traffic.terminal.noSession": "No hay sesión de terminal — {detail}",
+	"traffic.terminal.captureUnsupported":
+		"El backend del terminal de esta tarea no publica ninguna pantalla que leer. Abre la tarea para verlo.",
+	"traffic.terminal.readFailed":
+		"No se pudo leer el terminal. Esto no dice nada sobre si la tarea está trabajando.",
+	"traffic.terminal.paneNotFound": "Ese panel ya no forma parte de esta sesión.",
+	"traffic.terminal.nothing": "El panel está vivo y no ha impreso nada.",
+	"traffic.terminal.failed": "La solicitud de la captura falló: {error}",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "Agente trabajando",

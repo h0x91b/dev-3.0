@@ -15,6 +15,7 @@ import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage, AgentMessageOrigin } from "./agent-message-log";
 import type { NotificationLogPage } from "./notification-log";
 import type { LowBatteryStatus } from "./low-battery";
+import type { TaskPeekSnapshot } from "./task-peek";
 export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
 
 // ---- Changelog ----
@@ -5459,6 +5460,15 @@ export type AppRPCSchema = {
 			taskPaneState: {
 				params: { taskId: string };
 				response: TaskPaneState;
+			};
+			/**
+			 * Read-only terminal snapshot for ONE task, the same observation `dev3 peek`
+			 * makes. `projectId` scopes the lookup so a cross-project surface can never
+			 * resolve a seq-alike from the wrong board.
+			 */
+			peekTaskTerminal: {
+				params: { taskId: string; projectId: string; pane?: string; lines?: number };
+				response: TaskPeekSnapshot;
 			};
 			taskPaneAction: {
 				params: { taskId: string; action: TaskPaneAction };

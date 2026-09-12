@@ -5,6 +5,7 @@
  * `taskPaneAction` — execute a split/focus/zoom/close/layout/resize action.
  * `tmuxNewWindow`  — tmux-only: open a new window in the task session.
  * `getPanePtyUrl`  — native-only: return the WS URL for one native pane's viewer.
+ * `peekTaskTerminal` — read-only text snapshot of one task's terminal (`dev3 peek`).
  *
  * All tmux internals are delegated to the exported helpers from tmux-pty.ts.
  * All native internals go through native-task-panes.ts.
@@ -67,6 +68,8 @@ import {
 	type TaskPaneState,
 } from "../../shared/task-panes";
 import { paneSessionKey } from "../../shared/pane-session-key";
+import { taskPeek } from "../task-peek";
+import type { TaskPeekSnapshot } from "../../shared/task-peek";
 import { createLogger } from "../logger";
 
 const log = createLogger("task-panes");
@@ -616,6 +619,26 @@ async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promis
 	return { url };
 }
 
+/**
+ * Read-only terminal snapshot for one task — the renderer's door to the same
+ * observation `dev3 peek` makes, so both surfaces answer from one implementation
+ * and a native-backend miss reads the same in the UI as in the CLI.
+ *
+ * The lookup is scoped to `projectId` on purpose: the caller is a cross-project
+ * surface, and resolving a task id board-by-board would let a stale selection
+ * land on another project's task. No id, no snapshot.
+ */
+async function peekTaskTerminal(params: {
+	taskId: string;
+	projectId: string;
+	pane?: string;
+	lines?: number;
+}): Promise<TaskPeekSnapshot> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	return await taskPeek({ task, pane: params.pane, lines: params.lines });
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const taskPanesHandlers = {
@@ -623,4 +646,5 @@ export const taskPanesHandlers = {
 	taskPaneAction,
 	tmuxNewWindow,
 	getPanePtyUrl,
+	peekTaskTerminal,
 };

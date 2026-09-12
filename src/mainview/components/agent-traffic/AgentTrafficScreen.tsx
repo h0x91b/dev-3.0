@@ -24,6 +24,7 @@ import {
 import { domainHolds, rulerDomain } from "./traffic-range";
 import TrafficIcon from "./TrafficIcon";
 import TrafficComposer, { type TrafficComposerState } from "./TrafficComposer";
+import TrafficTerminalPeek from "./TrafficTerminalPeek";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
 import { useTrafficExperiment } from "./useTrafficExperiment";
@@ -1361,6 +1362,13 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 											>
 												{t("traffic.orbit.openTask")}
 											</button>
+											{/* Keyed on the node so a new selection remounts it: no
+											    snapshot may outlive the task it was read from. */}
+											<TrafficTerminalPeek
+												key={selectedNode.key}
+												taskId={selectedNode.id}
+												projectId={selectedNode.projectId}
+											/>
 										</>
 									) : (
 										<p>{t("traffic.taskGone")}</p>
