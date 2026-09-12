@@ -87,12 +87,20 @@ function renderScreen() {
  * test that depends on the cursor moves it first. Otherwise these tests quietly
  * become tests of the entry default, and they break the day it changes.
  */
+/**
+ * The transport's own slider, named rather than taken by role alone: the time
+ * ruler beside it carries sliders too, and a bare role query would pick whichever
+ * came first in the DOM.
+ */
+function transport() {
+	return screen.getByRole("slider", { name: "Message timeline" });
+}
 function seekTo(index: number) {
-	const slider = screen.getByRole("slider") as HTMLInputElement;
+	const slider = transport() as HTMLInputElement;
 	fireEvent.change(slider, { target: { value: String(index) } });
 }
 function seekToEnd() {
-	const slider = screen.getByRole("slider") as HTMLInputElement;
+	const slider = transport() as HTMLInputElement;
 	fireEvent.change(slider, { target: { value: slider.max } });
 }
 
@@ -118,7 +126,7 @@ describe("notifications on the replay timeline", () => {
 		expect(row.textContent).toContain("the backfill died halfway through");
 		// The transport walks it: the cursor's readout names this notification.
 		await waitFor(() =>
-			expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toContain(
+			expect(transport().getAttribute("aria-valuetext")).toContain(
 				"the backfill died halfway through",
 			),
 		);

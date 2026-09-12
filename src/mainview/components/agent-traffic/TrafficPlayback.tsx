@@ -8,6 +8,12 @@ import { senderLabel } from "./traffic-model";
 type Props = {
 	playback: ReturnType<typeof useTrafficPlayback>;
 	windowControl: ReactNode;
+	/**
+	 * The time ruler under the track, when the screen has a history span to draw.
+	 * Absent it falls back to the two plain clocks — the transport keeps working
+	 * with nothing loaded, which is exactly when a ruler has nothing to say.
+	 */
+	range?: ReactNode;
 	historical?: boolean;
 	loading?: boolean;
 	/**
@@ -22,6 +28,7 @@ type Props = {
 export default function TrafficPlayback({
 	playback: p,
 	windowControl,
+	range,
 	historical = false,
 	loading = false,
 	emptyKey,
@@ -139,10 +146,12 @@ export default function TrafficPlayback({
 								: t(emptyKey)
 						}
 					/>
-					<div className="traffic-replay-times">
-						<span>{p.events[0] && clock(p.events[0].at)}</span>
-						<span>{event && clock(event.at)}</span>
-					</div>
+					{range ?? (
+						<div className="traffic-replay-times">
+							<span>{p.events[0] && clock(p.events[0].at)}</span>
+							<span>{event && clock(event.at)}</span>
+						</div>
+					)}
 				</div>
 				<div className="traffic-replay-window">{windowControl}</div>
 				<button
