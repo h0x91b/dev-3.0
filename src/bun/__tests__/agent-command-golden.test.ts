@@ -36,8 +36,12 @@ function redact(cmd: string): string {
 	// whole, so its apostrophes are rewritten ('→'\''). Redact the escaped inner.
 	const genericEscapedInner = shellEscape(DEV3_SYSTEM_PROMPT_GENERIC).slice(1, -1);
 	return cmd
-		// Claude's body travels in a file whose path is machine specific.
-		.replace(/\S*[/\\]agent-prompts[/\\]claude\.md/g, "<CLAUDE_BODY_FILE>")
+		// Claude's body travels in a file whose path is machine specific. A Windows
+		// path holds backslashes, so `quoteIfUnsafe` wraps it and the sentinel has to
+		// swallow BOTH quotes — matching only the path left the closing one behind and
+		// every claude case failed on the Windows runner alone (Seq 1917). The
+		// backreference keeps the pair symmetric: a genuinely lost quote still fails.
+		.replace(/(['"]?)[^\s'"]*[/\\]agent-prompts[/\\]claude\.md\1/g, "<CLAUDE_BODY_FILE>")
 		.split(claudeBody).join("<CLAUDE_BODY>")
 		.split(codexBody).join("<CODEX_DEV_INSTR>")
 		.split(genericEscapedInner).join("<GENERIC_BODY>");
@@ -242,6 +246,18 @@ describe("resolveAgentCommand — golden matrix (structural, byte-identical)", (
 	it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
 		const out = await resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
 		expect(redact(out)).toBe(EXPECTED[c.name]);
+	});
+
+	// The matrix above only ever sees THIS runner's path, so a Windows-shaped one —
+	// quoted, because of its backslashes — is never redacted on a POSIX box and the
+	// break showed up only in the post-merge Windows job. Feed the shape in directly.
+	it("redacts a quoted Windows body-file path, quotes and all", () => {
+		const winCmd =
+			"claude --append-system-prompt-file 'C:\\Users\\runneradmin\\.dev3.0\\data\\agent-prompts\\claude.md' -- 'Fix the login bug'";
+		expect(redact(winCmd)).toBe("claude --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'");
+
+		const posixCmd = "claude --append-system-prompt-file /home/r/.dev3.0/data/agent-prompts/claude.md";
+		expect(redact(posixCmd)).toBe("claude --append-system-prompt-file <CLAUDE_BODY_FILE>");
 	});
 });
 
