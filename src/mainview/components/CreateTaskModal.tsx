@@ -435,12 +435,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 			// if a follow-up (renameTask/setTaskLabels) fails, deferring the
 			// dispatch would leave an invisible orphan and tempt a duplicate on
 			// retry. Title/labels are non-fatal follow-ups on the created task.
-			// A task created in another project must not be added to the board the
-			// user is currently viewing; its persisted taskUpdated events will load
-			// it when that project is opened.
-			if (created.projectId === initialProject.id) {
-				dispatch({ type: "addTask", task: created });
-			}
+			// A task created into another project is dropped by the reducer, which
+			// owns "does this board hold it" — it loads when that project is opened.
+			dispatch({ type: "addTask", task: created });
 			let task = created;
 			let followUpError: unknown = null;
 			try {

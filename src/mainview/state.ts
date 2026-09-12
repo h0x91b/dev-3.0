@@ -237,6 +237,27 @@ function boardSpaceId(route: Route): string | null {
 }
 
 /**
+ * May a task from `projectId` enter the task store as it stands right now?
+ *
+ * The store holds exactly one board's tasks, so every branch that APPENDS one
+ * has to ask — a task created into another project from the picker, the
+ * variants a launch spawns for it, a response arriving after the user switched
+ * boards. Without this the card lands on the board the user is looking at until
+ * the next fetch replaces it.
+ *
+ * A space board holds several projects and filters its own cards by membership
+ * (ProjectView), so there the board decides and the store only has to keep them.
+ */
+function acceptsTaskFrom(state: AppState, projectId: string): boolean {
+	if (boardSpaceId(state.route) !== null) return true;
+	const viewingProjectId =
+		state.route.screen === "project" || state.route.screen === "task" || state.route.screen === "project-settings"
+			? state.route.projectId
+			: null;
+	return viewingProjectId !== null && projectId === viewingProjectId;
+}
+
+/**
  * Identity of the set of tasks a route's board holds. Changing it empties the
  * cached task list, so zooming out to a space refetches instead of rendering the
  * one project's cards as if they were the whole space.
@@ -460,27 +481,17 @@ export function reducer(state: AppState, action: AppAction): AppState {
 					),
 				};
 			}
-			// New task (e.g. created via CLI) — add if we're viewing the same project.
-			// On a space board every member project is on screen, so the board itself
-			// decides which cards belong; the store only has to keep them.
-			const viewingProjectId =
-				state.route.screen === "project" || state.route.screen === "task" || state.route.screen === "project-settings"
-					? state.route.projectId
-					: null;
-			if (boardSpaceId(state.route) !== null) {
-				return { ...state, currentProjectTasks: [...state.currentProjectTasks, action.task] };
-			}
-			if (viewingProjectId && action.task.projectId === viewingProjectId) {
-				return {
-					...state,
-					currentProjectTasks: [...state.currentProjectTasks, action.task],
-				};
-			}
-			return state;
+			// New task (e.g. created via CLI) — add only if this board holds it.
+			if (!acceptsTaskFrom(state, action.task.projectId)) return state;
+			return {
+				...state,
+				currentProjectTasks: [...state.currentProjectTasks, action.task],
+			};
 		}
 		case "addTask":
 			if (state.currentProjectTasks.some((t) => t.id === action.task.id))
 				return state;
+			if (!acceptsTaskFrom(state, action.task.projectId)) return state;
 			return {
 				...state,
 				currentProjectTasks: [...state.currentProjectTasks, action.task],
@@ -502,27 +513,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			// Collect variant IDs to filter out any duplicates already added
 			// by a concurrent pushMessage("taskUpdated") race
 			const variantIds = new Set(action.variants.map((v) => v.id));
-			return {
-				...state,
-				currentProjectTasks: [
-					...state.currentProjectTasks.filter(
-						(t) => t.id !== action.sourceTaskId && !variantIds.has(t.id),
-					),
-					...action.variants,
-				],
-			};
+			// Launching a task that belongs to another project must not put its
+			// variants on the board in view (create-in-B-then-Launch-from-A).
+			const variants = action.variants.filter((v) => acceptsTaskFrom(state, v.projectId));
+			const kept = state.currentProjectTasks.filter(
+				(t) => t.id !== action.sourceTaskId && !variantIds.has(t.id),
+			);
+			if (variants.length === 0 && kept.length === state.currentProjectTasks.length) return state;
+			return { ...state, currentProjectTasks: [...kept, ...variants] };
 		}
 		case "addAttempts": {
 			const attemptIds = new Set(action.newAttempts.map((v) => v.id));
-			return {
-				...state,
-				currentProjectTasks: [
-					...state.currentProjectTasks
-						.filter((t) => !attemptIds.has(t.id))
-						.map((t) => t.id === action.sourceTaskId ? action.updatedSource : t),
-					...action.newAttempts,
-				],
-			};
+			const attempts = action.newAttempts.filter((v) => acceptsTaskFrom(state, v.projectId));
+			const onBoard = state.currentProjectTasks.some((t) => t.id === action.sourceTaskId || attemptIds.has(t.id));
+			if (attempts.length === 0 && !onBoard) return state;
+			const kept = state.currentProjectTasks
+				.filter((t) => !attemptIds.has(t.id))
+				.map((t) => t.id === action.sourceTaskId ? action.updatedSource : t);
+			return { ...state, currentProjectTasks: [...kept, ...attempts] };
 		}
 		case "addProject": {
 			const normalizedPath = normalizeProjectPath(action.project.path);
