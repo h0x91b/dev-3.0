@@ -53,8 +53,12 @@ interval, are covered by mutation-checked tests.
 - A single very large session still costs its own read; that is now the worst case instead of the sum
   of every session.
 - Only Claude Code and Codex transcripts parse. Another harness shows the honest empty state.
-- A clamped message cannot be expanded in place — it states how many characters are missing and the
-  task itself is the full text. Expanding would mean a second RPC per turn.
+- **A shortened message has no "see the rest" destination, and the copy no longer claims one.** The
+  first wording said "open the task for the whole text"; that is false wherever it matters most. A
+  completed task's worktree and terminal are gone (`TaskTerminal` answers `worktree-gone`), and an
+  older handoff session was never in the pane a running task does have — the pane holds the current
+  session's scrollback, bounded by tmux history. So the line states the exact number of characters it
+  shortened and stops there. This tab is a preview of the record, not a window onto the file.
 
 ## Alternatives considered
 

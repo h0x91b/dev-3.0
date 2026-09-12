@@ -90,6 +90,21 @@ describe("TrafficConversation", () => {
 		expect(screen.getByText(/3 tool calls · Bash, Edit/)).toBeInTheDocument();
 	});
 
+	it("says how much it shortened, and promises nothing about where the rest is", async () => {
+		view.value = {
+			sessions: [session()],
+			sessionKey: "claude:s1",
+			totalTurns: 1,
+			firstIndex: 0,
+			turns: [{ index: 0, startedAt: null, userText: "long…", clippedChars: 9784, actions: 0, tools: [] }],
+		};
+		show();
+		expect(await screen.findByText(/Shortened here: 9784 more characters/)).toBeInTheDocument();
+		// A completed task has no terminal and an older session was never in the one
+		// a running task has, so the panel must not send anyone to "the task".
+		expect(screen.queryByText(/open the task/i)).not.toBeInTheDocument();
+	});
+
 	it("labels an archived copy and does not call it live", async () => {
 		view.value = {
 			sessions: [session({ origin: "archived" })],

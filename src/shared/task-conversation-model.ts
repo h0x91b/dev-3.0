@@ -20,7 +20,12 @@ import type { ConversationEvent, ConversationSource } from "./conversation-model
 /** Turns fetched per request. One page is a screenful plus room to scroll. */
 export const TASK_CONVERSATION_PAGE = 25;
 
-/** Characters kept per message. Past this the reader opens the task itself. */
+/**
+ * Characters kept per message. There is no "see the rest" destination — a
+ * finished task has no terminal left and an older session was never in the one a
+ * running task has — so the view states how much it shortened and claims nothing
+ * more. See the record for why this is a preview, not a window onto the file.
+ */
 export const TASK_CONVERSATION_TEXT_LIMIT = 1200;
 
 /** Distinct tool names named on a turn before the rest become a count. */
