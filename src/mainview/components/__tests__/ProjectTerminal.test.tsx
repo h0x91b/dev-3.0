@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectTerminal from "../ProjectTerminal";
@@ -13,9 +14,41 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+// onReady hands the host a TerminalHandle; without it termHandle stays null and
+// the touch input stack can never mount, whatever the gate says.
 vi.mock("../../TerminalView", () => ({
-	default: () => <div data-testid="terminal-view" />,
+	default: ({ onReady }: { onReady?: (handle: unknown) => void }) => {
+		// In an effect, not during render — the host setState would land outside act().
+		useEffect(() => {
+			onReady?.({ focus: vi.fn(), blur: vi.fn(), paste: vi.fn(), scrollToBottom: vi.fn(), write: vi.fn() });
+		}, [onReady]);
+		return <div data-testid="terminal-view" />;
+	},
 }));
+
+vi.mock("../ExtraKeyBar", () => ({
+	default: () => <div data-testid="extra-key-bar" />,
+}));
+
+const originalMaxTouchPoints = Object.getOwnPropertyDescriptor(Navigator.prototype, "maxTouchPoints");
+const originalMatchMedia = window.matchMedia;
+
+function setTouchPoints(maxTouchPoints: number) {
+	Object.defineProperty(navigator, "maxTouchPoints", { value: maxTouchPoints, configurable: true });
+}
+
+function setCoarsePointer(coarse: boolean) {
+	window.matchMedia = ((query: string) => ({
+		matches: query.includes("pointer: coarse") ? coarse : query.includes("prefers-reduced-motion"),
+		media: query,
+		onchange: null,
+		addEventListener: () => {},
+		removeEventListener: () => {},
+		addListener: () => {},
+		removeListener: () => {},
+		dispatchEvent: () => false,
+	})) as typeof window.matchMedia;
+}
 
 function renderTerminal(onBack = vi.fn()) {
 	return {
@@ -53,5 +86,32 @@ describe("ProjectTerminal — back-to-board toolbar", () => {
 		const { onBack } = renderTerminal();
 		await user.click(screen.getByText("Back to Board"));
 		expect(onBack).toHaveBeenCalledTimes(1);
+	});
+});
+
+// Mirrors the TaskTerminal gate: both call sites share isTouchPrimary().
+describe("ProjectTerminal — touch input gate", () => {
+	afterEach(() => {
+		if (originalMaxTouchPoints) {
+			Object.defineProperty(Navigator.prototype, "maxTouchPoints", originalMaxTouchPoints);
+		} else {
+			setTouchPoints(0);
+		}
+		window.matchMedia = originalMatchMedia;
+	});
+
+	it("mounts the key bar on a phone", async () => {
+		setTouchPoints(5);
+		setCoarsePointer(true);
+		renderTerminal();
+		expect(await screen.findByTestId("extra-key-bar")).toBeInTheDocument();
+	});
+
+	it("stays hidden on a touchscreen laptop, whose primary pointer is the mouse", async () => {
+		setTouchPoints(10);
+		setCoarsePointer(false);
+		renderTerminal();
+		await screen.findByTestId("terminal-view");
+		expect(screen.queryByTestId("extra-key-bar")).not.toBeInTheDocument();
 	});
 });
