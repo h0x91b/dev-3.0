@@ -146,6 +146,18 @@ const common = {
 	"traffic.taskGone": "Этой задачи больше нет — сообщение осталось, задача нет",
 	"traffic.retentionEmpty": "История хранится {days} дней",
 
+	"traffic.compose.label": "Сообщение для {seq}",
+	"traffic.compose.placeholder": "Короткое сообщение для {seq}…",
+	"traffic.compose.send": "Отправить",
+	"traffic.compose.sending": "Отправка…",
+	"traffic.compose.sent": "Набрано в панели агента.",
+	"traffic.compose.sentAsFile": "Слишком длинно для набора — агент получил файл {path}",
+	"traffic.compose.failed": "Не отправлено: {error}",
+	"traffic.compose.hint": "Ctrl+Enter — отправить · Enter — новая строка",
+	"traffic.compose.hintMac": "⌘↵ — отправить · ↵ — новая строка",
+	"traffic.compose.noSession": "Сессия не запущена. Ничего не запускается автоматически — отправка не пройдёт.",
+	"traffic.compose.terminalStatus": "Задача завершена. Писать некому.",
+
 	"traffic.experiment.label": "Представление",
 	"traffic.experiment.one": "Эксперимент 1",
 	"traffic.experiment.two": "Эксперимент 2",

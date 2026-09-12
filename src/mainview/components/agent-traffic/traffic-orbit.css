@@ -495,6 +495,99 @@
 .traffic-view button.traffic-primary:hover {
 	background: rgb(var(--accent-fill-hover));
 }
+/* The inspector's message composer. Its own row under the task's identity block,
+   never inside it: that block scrolls, and a composer below its fold is a control
+   nobody finds. A rule rather than a card — one more thing you can do to the
+   selected task, not a second panel. */
+.traffic-compose,
+.traffic-compose-closed {
+	flex-shrink: 0;
+	padding: 12px 16px;
+	font-size: 13px;
+	line-height: 1.6;
+	border-bottom: 1px solid rgb(var(--border-default) / 0.5);
+}
+.traffic-compose-closed {
+	margin: 0;
+	font-size: 13px;
+	color: rgb(var(--text-tertiary));
+}
+.traffic-compose-input {
+	display: block;
+	width: 100%;
+	resize: vertical;
+	min-height: 56px;
+	max-height: 160px;
+	padding: 8px 10px;
+	border: 1px solid rgb(var(--border-default) / 0.6);
+	border-radius: 8px;
+	background: rgb(var(--surface-base) / 0.5);
+	color: rgb(var(--text-primary));
+	font: inherit;
+	line-height: 1.5;
+}
+.traffic-compose-input::placeholder {
+	color: rgb(var(--text-tertiary));
+}
+.traffic-compose-input:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 1px;
+	border-color: transparent;
+}
+.traffic-compose-input:disabled {
+	opacity: 0.6;
+}
+.traffic-compose-foot {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}
+.traffic-compose-status {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+.traffic-view .traffic-compose-status.is-hint {
+	color: rgb(var(--text-tertiary));
+}
+.traffic-view .traffic-compose-status.is-warn {
+	color: rgb(var(--warning));
+}
+.traffic-view .traffic-compose-status.is-error {
+	color: rgb(var(--danger));
+}
+.traffic-view .traffic-compose-status.is-sent {
+	color: rgb(var(--success));
+}
+.traffic-compose-count {
+	font-size: 12px;
+	color: rgb(var(--text-tertiary));
+	font-variant-numeric: tabular-nums;
+	padding-bottom: 8px;
+}
+.traffic-view button.traffic-compose-send {
+	flex-shrink: 0;
+	padding: 8px 12px;
+	border-radius: 8px;
+	background: rgb(var(--surface-elevated));
+	color: rgb(var(--text-primary));
+	font-weight: 500;
+	transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+.traffic-view button.traffic-compose-send:hover:not(:disabled) {
+	background: rgb(var(--surface-elevated-hover));
+}
+.traffic-view button.traffic-compose-send:active:not(:disabled) {
+	transform: scale(0.96);
+}
+.traffic-view button.traffic-compose-send:disabled {
+	color: rgb(var(--text-tertiary));
+	cursor: default;
+}
 .traffic-empty {
 	padding: 20px;
 	color: rgb(var(--text-secondary));

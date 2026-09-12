@@ -1,0 +1,3 @@
+Short: Message a task from Agent traffic
+
+The Agent traffic inspector can now send a short plain-text message to the selected task without opening it: type, press ⌘/Ctrl+Enter, and it goes in as your own message — the same delivery the diff viewer's "Send to agent" uses, so it shows up on the map from the You endpoint. Drafts are kept per task while you click around, a finished task says why it cannot be messaged instead of offering a box, a stopped session warns you before you type, and a send that finds no live agent keeps your text and names the reason. Nothing is launched or resumed for you.

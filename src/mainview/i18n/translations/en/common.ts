@@ -140,6 +140,18 @@ const common = {
 	"traffic.taskGone": "This task no longer exists — the message stays, the task does not",
 	"traffic.retentionEmpty": "History is kept for {days} days",
 
+	"traffic.compose.label": "Message to {seq}",
+	"traffic.compose.placeholder": "Short message to {seq}…",
+	"traffic.compose.send": "Send",
+	"traffic.compose.sending": "Sending…",
+	"traffic.compose.sent": "Typed into the agent's pane.",
+	"traffic.compose.sentAsFile": "Too large to type — the agent got the file {path}",
+	"traffic.compose.failed": "Not sent: {error}",
+	"traffic.compose.hint": "Ctrl+Enter sends · Enter starts a new line",
+	"traffic.compose.hintMac": "⌘↵ sends · ↵ starts a new line",
+	"traffic.compose.noSession": "No session running. Nothing is started for you — a send fails until it is.",
+	"traffic.compose.terminalStatus": "This task is finished. It has no agent to message.",
+
 	"traffic.experiment.label": "Presentation",
 	"traffic.experiment.one": "Experiment 1",
 	"traffic.experiment.two": "Experiment 2",

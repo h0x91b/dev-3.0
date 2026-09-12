@@ -61,6 +61,7 @@ vi.mock("../rpc", () => ({
 			getProjects: vi.fn(() =>
 				Promise.resolve(projectFixtures.value),
 			),
+			sendAgentMessageNow: vi.fn(() => Promise.resolve({ spilledPath: null })),
 			getTasks: vi.fn(({ projectId }: { projectId: string }) =>
 				Promise.resolve(
 					projectId !== "proj-1" ? additionalTasks.value.filter(task => task.projectId === projectId) : knownTaskIds.value.map((id, index) => ({
@@ -1952,5 +1953,132 @@ describe("AgentTrafficScreen project scope", () => {
 		renderLog(vi.fn(), "proj-2");
 		await waitFor(() => expect(scopeName()).toBe("Project Two"));
 		expect(taskStat()).toBe("1");
+	});
+});
+
+describe("Agent traffic inspector composer", () => {
+	/** Open the Tasks tab and select one node by its seq label. */
+	async function selectTask(seq: string) {
+		const inspector = document.querySelector(".traffic-inspector");
+		if (inspector?.hasAttribute("hidden")) {
+			await userEvent.click(screen.getByRole("button", { name: "Messages" }));
+		}
+		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
+		const rows = await screen.findAllByRole("button", { name: new RegExp(`^${seq}\\b`) });
+		await userEvent.click(rows[0]);
+	}
+	const composer = () => screen.getByTestId("traffic-composer");
+	const box = () => within(composer()).getByRole("textbox");
+	const sendButton = () => screen.getByTestId("traffic-composer-send");
+	const statusLine = () => screen.getByTestId("traffic-composer-status").textContent;
+
+	it("sends the typed text to the selected task as a user message", async () => {
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		await userEvent.type(box(), "rebase on main please");
+		await userEvent.click(sendButton());
+		await waitFor(() =>
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
+				taskId: "task-b",
+				projectId: "proj-1",
+				text: "rebase on main please",
+			}),
+		);
+		// The box empties and says what actually happened — typed into a pane, which
+		// is not a claim that the agent read it.
+		await waitFor(() => expect((box() as HTMLTextAreaElement).value).toBe(""));
+		expect(statusLine()).toContain("Typed into the agent's pane");
+	});
+
+	it("addresses the selected task's own project while the scope spans several", async () => {
+		projectFixtures.value = [
+			{ id: "proj-1", name: "Project One" },
+			{ id: "proj-2", name: "Project Two" },
+		];
+		additionalTasks.value = [{
+			id: "task-far", projectId: "proj-2", seq: 91, title: "Far worker",
+			status: "in-progress", taskType: null, overview: "Nothing recorded",
+		}];
+		projectPages.value = {
+			"proj-1": { rows: [row()], oldestDay: "2026-08-01", retentionDays: 30, hasMore: false },
+			"proj-2": {
+				rows: [row({ toTaskId: "task-far", toSeq: 91, toTitle: "Far worker", toProjectId: "proj-2" })],
+				oldestDay: "2026-08-01", retentionDays: 30, hasMore: false,
+			},
+		};
+		renderLog(vi.fn(), null);
+		await selectTask("#91");
+		await userEvent.type(box(), "ping");
+		await userEvent.click(sendButton());
+		await waitFor(() =>
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
+				taskId: "task-far",
+				projectId: "proj-2",
+				text: "ping",
+			}),
+		);
+	});
+
+	it("sends on the modifier and keeps plain Enter a newline", async () => {
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		await userEvent.type(box(), "first{Enter}second");
+		expect(api.request.sendAgentMessageNow).not.toHaveBeenCalled();
+		expect((box() as HTMLTextAreaElement).value).toBe("first\nsecond");
+		fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+		await waitFor(() =>
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "first\nsecond" }),
+			),
+		);
+	});
+
+	it("keeps the text and names the failure when nothing was delivered", async () => {
+		vi.mocked(api.request.sendAgentMessageNow).mockRejectedValueOnce(
+			new Error("Could not deliver the message — the task has no live agent session."),
+		);
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		await userEvent.type(box(), "are you there");
+		await userEvent.click(sendButton());
+		await waitFor(() => expect(statusLine()).toContain("Not sent"));
+		expect(statusLine()).toContain("no live agent session");
+		expect((box() as HTMLTextAreaElement).value).toBe("are you there");
+	});
+
+	it("offers no composer for a finished task and says why", async () => {
+		taskExtras.value = { "task-b": { status: "completed" } };
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		expect(screen.queryByTestId("traffic-composer")).toBeNull();
+		expect(screen.getByText(/no agent to message/)).toBeTruthy();
+	});
+
+	it("warns before you type when no session is running, and never starts one", async () => {
+		taskExtras.value = { "task-b": { runtimeState: { runtime: "idle", updatedAt: Date.now() } } };
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		expect(statusLine()).toContain("No session running");
+		expect(statusLine()).toContain("Nothing is started for you");
+	});
+
+	it("keeps one draft per task across selection changes", async () => {
+		taskExtras.value = {
+			"task-b": { runtimeState: { runtime: "running", updatedAt: Date.now() } },
+			"task-c": { runtimeState: { runtime: "running", updatedAt: Date.now() } },
+		};
+		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
+		renderLog();
+		await selectTask("#22");
+		await userEvent.type(box(), "for the worker");
+		await selectTask("#33");
+		expect((box() as HTMLTextAreaElement).value).toBe("");
+		await selectTask("#22");
+		expect((box() as HTMLTextAreaElement).value).toBe("for the worker");
 	});
 });

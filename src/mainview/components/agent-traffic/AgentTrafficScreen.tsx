@@ -23,6 +23,7 @@ import {
 } from "./traffic-period";
 import { domainHolds, rulerDomain } from "./traffic-range";
 import TrafficIcon from "./TrafficIcon";
+import TrafficComposer, { type TrafficComposerState } from "./TrafficComposer";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
 import { useTrafficExperiment } from "./useTrafficExperiment";
@@ -370,6 +371,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const [selected, setSelected] = useState<string | null>(null);
 	const [recordKey, setRecordKey] = useState<string | null>(null);
 	const [pair, setPair] = useState<string | null>(null);
+	// Composer drafts and send verdicts live here, one per node key, so switching
+	// selection neither loses what was typed nor hides how the last send ended.
+	// They are screen-local: leaving Agent traffic drops them.
+	const [drafts, setDrafts] = useState<Record<string, string>>({});
+	const [composerStates, setComposerStates] = useState<Record<string, TrafficComposerState>>({});
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState("all");
 	// `delivery` (above) governs messages only and `kinds` governs every event, so
@@ -1360,6 +1366,33 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 										<p>{t("traffic.taskGone")}</p>
 									)}
 								</div>
+							)}
+							{/* Its own row rather than the last thing inside the identity block:
+							    that block scrolls at 45% of the aside, and a composer parked
+							    below its fold is a control nobody finds. Keyed by the node, so a
+							    draft belongs to the task it was written for and switching
+							    selection never carries text across to somebody else's agent. */}
+							{selectedNode?.task && (
+								<TrafficComposer
+									key={selectedNode.key}
+									task={selectedNode.task}
+									projectId={selectedNode.projectId}
+									seqLabel={nodeSeq(selectedNode)}
+									draft={drafts[selectedNode.key] ?? ""}
+									onDraftChange={(next) =>
+										setDrafts((current) => ({
+											...current,
+											[selectedNode.key]: next,
+										}))
+									}
+									state={composerStates[selectedNode.key] ?? { phase: "idle" }}
+									onStateChange={(next) =>
+										setComposerStates((current) => ({
+											...current,
+											[selectedNode.key]: next,
+										}))
+									}
+								/>
 							)}
 							<div className="traffic-inspector-heading">
 								<div className="traffic-tabs">

@@ -140,6 +140,18 @@ const common = {
 	"traffic.taskGone": "Esta tarea ya no existe — el mensaje queda, la tarea no",
 	"traffic.retentionEmpty": "El historial se guarda {days} días",
 
+	"traffic.compose.label": "Mensaje para {seq}",
+	"traffic.compose.placeholder": "Mensaje breve para {seq}…",
+	"traffic.compose.send": "Enviar",
+	"traffic.compose.sending": "Enviando…",
+	"traffic.compose.sent": "Escrito en el panel del agente.",
+	"traffic.compose.sentAsFile": "Demasiado largo para escribirlo — el agente recibió el archivo {path}",
+	"traffic.compose.failed": "No enviado: {error}",
+	"traffic.compose.hint": "Ctrl+Intro envía · Intro crea una línea nueva",
+	"traffic.compose.hintMac": "⌘↵ envía · ↵ crea una línea nueva",
+	"traffic.compose.noSession": "No hay sesión en marcha. Nada se inicia por ti — el envío fallará hasta entonces.",
+	"traffic.compose.terminalStatus": "Esta tarea ya terminó. No hay agente al que escribir.",
+
 	"traffic.experiment.label": "Presentación",
 	"traffic.experiment.one": "Experimento 1",
 	"traffic.experiment.two": "Experimento 2",

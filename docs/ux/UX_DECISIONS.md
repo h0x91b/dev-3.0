@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-09-12 — The traffic inspector may send one short message
+
+Reverses "no composer" — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/12/agent-traffic-inspector-sends-one-short-message.md`.
+
 ## 2026-09-12 — A notification into agent traffic opens all projects
 
 An agent-message toast opens the traffic screen unscoped ("All active projects"); deliberate entries still seed the board in view — bible §5.7. Why: `decisions/2026/09/12/notification-entry-to-traffic-opens-all-projects.md`.
@@ -117,8 +121,8 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Status:** Implemented. Evidence: `docs/ux/ux-architecture.yaml` `stored-secret-revealed-before-edit`, `src/mainview/components/global-settings/ModelCatalogSection.tsx` (`ProviderKeyField`), `src/bun/rpc-handlers/model-catalog.ts` (`modelCatalogRevealKey`).
 
 ## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
-- **Rule:** The toast for `dev3 message` between two agents renders `#fromSeq title → #toSeq title` as its source line, uses the non-severity `agent` variant (violet `--agent`), and clicks through to the RECEIVER; every other toast keeps one origin and a severity variant.
-- **Why:** `decisions/2026/08/14/agent-message-toast-two-identities.md`.
+
+Two-task source line, non-severity `agent` violet, click-through to the receiver — bible §5.7. Why: `decisions/2026/08/14/agent-message-toast-two-identities.md`.
 
 ## 2026-08-14 — An agent-written log gets a capped preview, not a whole screen
 

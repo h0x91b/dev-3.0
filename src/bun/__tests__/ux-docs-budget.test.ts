@@ -75,6 +75,44 @@ const BUDGET_KB: Record<string, number> = {
 	// 340px measurement and the rejected ResizeObserver approach live nowhere else, and the log's
 	// own header forbids compacting those. Deleting a why permanently to buy 200 bytes is worse than
 	// this ratchet. The 38-entry fold is its own task and would pay for several features.
+	//
+	// NOT ratcheted for the agent-traffic inspector's one-message composer, and that is worth a
+	// note because every entry above it was. The change reverses a prohibition written in all
+	// three files — the bible's "no composer", the yaml's `send_message` under `forbidden`, the
+	// surface table's "sending a message" — so it had to be documented in all three, and `main`
+	// offered 11 bytes of headroom on the bible and 3 on the yaml. All three files came out at
+	// or below where they started. Reasoning:
+	// decisions/2026/09/12/agent-traffic-inspector-sends-one-short-message.md.
+	//
+	// What paid for it, in order of how much it bought: §5.9's bullets were rewrapped to one
+	// line each (the "Coordination transport" bullet already was, so this made the section
+	// consistent rather than inventing a style) and its prose tightened word by word with every
+	// claim kept — "sit below the graph" → "Below the graph:", the route named once instead of
+	// twice, "even when read" → "read or not". The fs-observer sentence folded, because
+	// decisions/2026/09/05/ carries it in full and at greater length. In the yaml the `note`
+	// stopped indexing §5.9's contents by name and `evidence` names the agent-traffic DIRECTORY
+	// instead of two files inside it. In the log the record-backed 2026-08-14
+	// agent-message-toast entry folded to a pointer — this file's own doctrine, and its record
+	// carries every element of it.
+	//
+	// The rule itself also shrank, from 530 bytes to 173, and sits INSIDE the "Inspect before
+	// navigating" bullet rather than being a tenth one.
+	//
+	// One rule came BACK after a review pass and is the reason §5.9 has no slack left: the
+	// fs-observer sentence had been folded into decisions/2026/09/05/ on the grounds that the
+	// record carries it, and "no renderer poll" plus "close at exit" are rules rather than
+	// colour, so it is stated in the bible again (100 bytes). It is funded by two further rounds
+	// of wording cuts across §5.9 and the §4 row — every claim kept, checked phrase by phrase,
+	// down to dropping a derivable `shared/` path prefix from the Evidence line. The §4 row's
+	// wording is Seq 1907's, taken verbatim from its cross-task staging artifact so the three
+	// traffic branches do not each invent one.
+	//
+	// Nothing was traded away to pay for it. Three clauses are the ones to protect if this
+	// section is squeezed again: the §4 surface table's sanction for the composer, the "sole
+	// write" clause that stops the next agent adding a second write to this screen, and the
+	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
+	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
+	// own compaction pass before it writes a word here.
 	"ux-architecture.yaml": 117,
 	"UX_DECISIONS.md": 81,
 };
