@@ -852,10 +852,12 @@ describe("resolveAgentCommand", () => {
 		expect(cmd).toContain("Do work on my-project");
 	});
 
-	it("injects --append-system-prompt for claude base command", () => {
+	it("hands claude its protocol body as a file for the claude base command", () => {
 		const cmd = resolveAgentCommand(agent, undefined, ctx);
-		expect(cmd).toContain("--append-system-prompt");
-		expect(cmd).toContain("dev-3.0");
+		expect(cmd).toContain("--append-system-prompt-file");
+		expect(cmd).toContain("agent-prompts/claude.md");
+		// The body itself stays out of argv, where pkill -f would match it (#1734).
+		expect(cmd).not.toContain("dev-3.0");
 	});
 
 	it("does not inject --append-system-prompt for non-claude agents", () => {
