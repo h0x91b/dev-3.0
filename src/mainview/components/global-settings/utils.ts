@@ -194,7 +194,7 @@ export function buildCommandPreview(
 	}
 
 	if (cmdName === "claude") {
-		parts.push("--append-system-prompt", "'…dev3 prompt…'");
+		parts.push("--append-system-prompt-file", "'…dev3 prompt file…'");
 	}
 
 	if (config.additionalArgs) {

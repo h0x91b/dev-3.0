@@ -1,5 +1,11 @@
 # Agent command lines quote in the launch dialect
 
+> Partially superseded on 2026-09-12 by
+> `decisions/2026/09/12/claude-protocol-always-travels-as-a-file.md`: the file channel is no
+> longer a Windows-only answer to the command-line ceiling — every platform uses it, because
+> the inline body in `argv` is what `pkill -f` matches (h0x91b/dev-3.0#1734). Everything below
+> about quoting dialects still holds.
+
 ## Context
 
 Starting or resuming any Claude session on Windows died before the binary was

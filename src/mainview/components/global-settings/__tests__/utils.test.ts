@@ -135,7 +135,7 @@ describe("global-settings utils", () => {
 
 		expect(buildCommandPreview("claude", claudeConfig)).toEqual({
 			command:
-				"claude --model sonnet --permission-mode plan --allow-dangerously-skip-permissions --effort high --max-budget-usd 5 --append-system-prompt '…dev3 prompt…' --verbose '{{TASK_DESCRIPTION}}\\n\\nextra instructions'",
+				"claude --model sonnet --permission-mode plan --allow-dangerously-skip-permissions --effort high --max-budget-usd 5 --append-system-prompt-file '…dev3 prompt file…' --verbose '{{TASK_DESCRIPTION}}\\n\\nextra instructions'",
 			envLine: "FOO=bar",
 		});
 		expect(buildCommandPreview("agent", cursorConfig)).toEqual({

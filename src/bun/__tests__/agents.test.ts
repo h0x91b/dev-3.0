@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
+import { CLAUDE_SKILL_BODY } from "../../shared/agent-skill-content";
+import { AGENT_PROMPTS_DIR } from "../agent-system-prompt-file";
 import { setCurrentUiTheme } from "../theme-state";
 
 const makeAgent = (overrides?: Partial<CodingAgent>): CodingAgent => ({
@@ -110,6 +112,16 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("--continue");
 		expect(cmd).not.toContain("Extra instructions");
+	});
+
+	it("Claude: the protocol body travels as a file on POSIX too, not in argv (#1734)", () => {
+		const cmd = resolveAgentCommand(makeAgent({ baseCommand: "claude" }), makeConfig(), makeCtx());
+
+		expect(cmd).toContain("--append-system-prompt-file");
+		expect(cmd).not.toContain("--append-system-prompt '");
+		// The prose used to sit in argv, where `pkill -f` matched every agent on it.
+		expect(cmd).not.toContain(CLAUDE_SKILL_BODY.slice(0, 40));
+		expect(readFileSync(join(AGENT_PROMPTS_DIR, "claude.md"), "utf-8")).toBe(CLAUDE_SKILL_BODY);
 	});
 
 	it("Claude: still includes --append-system-prompt when resume=true", () => {
