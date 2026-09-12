@@ -230,10 +230,10 @@ export function setOnOsc52Copy(fn: (payload: { taskId: string; text: string; len
 }
 
 
-/** Compute the tmux session name for a given session key and type. */
 /** Session-key prefix the renderer uses for a project (quick shell) terminal. */
 export const PROJECT_SESSION_KEY_PREFIX = "project-";
 
+/** Compute the tmux session name for a given session key and type. */
 function computeTmuxSessionName(key: string, type: PtySessionType): string {
 	if (type === "project") {
 		const projectId = key.startsWith(PROJECT_SESSION_KEY_PREFIX)
