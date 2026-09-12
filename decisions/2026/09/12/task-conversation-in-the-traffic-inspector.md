@@ -11,35 +11,50 @@ importer.
 
 ## Investigation
 
-Transcripts are not a message log. The largest on this machine is 138 MB and one turn can
-carry a whole file, so "show the conversation" has no bounded meaning. Measured on this
-machine while building it: discovery of a worktree's transcripts ~370 ms warm, parsing a
-72 MB Codex transcript ~130 ms, a whole request 262–348 ms warm — but **20.6 s on the first
-cold read** of a 78 MB pair of files. Nothing is cached: holding several parsed transcripts in
-the main process would cost hundreds of megabytes for a panel opened occasionally, and a warm
-re-parse is cheap.
+Transcripts are not a message log. The largest on this machine is 138 MB and one turn can carry a
+whole file, so "show the conversation" has no bounded meaning.
 
-A finished task has no worktree and no native transcript — Claude prunes its own on a ~30-day
-window — but it does have dev3's dump, written once when it went terminal. That dump is a
-*projection*: tool payloads are cut by policy, so a reader must be told which store answered.
+The first build parsed **every** transcript of the worktree just to list the sessions, and its first
+read of a large task took **20.6 s**. Phase timings on the same machine, warm, say where the time can
+and cannot be: discovering a worktree's transcripts costs 271–484 ms (dominated by the Codex locator,
+which reads the first 4 KB of all 975 rollout files on this machine to map cwd → file); reading a
+72 MB transcript costs 15 ms; parsing it costs 130 ms. Warm, the whole request is ~200–620 ms — so the
+20.6 s was **not** reproducible warm and is not explained by parse cost.
+
+What remains unproven is the exact split of that 20.6 s: purging the page cache needs root, so a
+genuine cold repeat could not be staged. The honest statement is that it was a cold first read of
+79 MB plus ~1 000 small files on a box at load average 15, and that the fix below removes the part
+that was certainly wasted — the other sessions.
 
 ## Decision
 
 A third inspector tab, `Conversation` (`TrafficConversation.tsx`), over one new read-only RPC
-`readTaskConversation` (`src/bun/task-conversation.ts`). It returns the newest session first,
-one page of 25 turns paged backwards, each message clamped to 1200 characters, and tool calls
-counted with their native names rather than replayed. `src/shared/task-conversation-model.ts`
-holds the pure part and deliberately types a turn as the *intersection* of a live parse and a
-dump, so one builder serves both stores. A live transcript wins over its own archived copy of
-the same session. Empty means "nothing readable was found", said in those words — never an
-empty list that reads as silence.
+`readTaskConversation` (`src/bun/task-conversation.ts`). It returns the newest session first, one page
+of 25 turns paged backwards, each message clamped to 1200 characters **with the number of cut
+characters shown**, and tool calls counted with their native names rather than replayed.
+
+**Listing is separate from loading.** The picker is built from file names and `stat` alone — both
+stores put the session id in the name (`<uuid>.jsonl`, `<source>-<uuid>.json`) — so listing six
+sessions opens zero files, and exactly one file, the selected session, is ever read and parsed.
+`src/shared/task-conversation-model.ts` holds the pure part and types a turn as the *intersection* of
+a live parse and a dump, so one builder serves both stores. A live transcript wins over its own
+archived copy of the same session. Empty means "nothing readable was found", said in those words.
+
+Renderer side, two rules keep the host cost down: a request is debounced 250 ms, so arrowing through
+nodes fires one read (measured: 4 node clicks → 1 host read), and a response for a task or session the
+user has already left is dropped rather than rendered under the new heading. Both, and the debounce
+interval, are covered by mutation-checked tests.
 
 ## Risks
 
-- The first read of a very large transcript can take tens of seconds (measured 20.6 s cold);
-  the tab shows its loading state and the RPC timeout is two minutes, so it resolves, slowly.
-- Only Claude Code and Codex transcripts parse. Another harness shows the honest empty state,
-  not an error — and not a claim that the agent said nothing.
+- The listing still pays the Codex locator's index build (271–484 ms warm, and the likeliest suspect
+  for most of a cold read). Fixing that means changing discovery for search as well, which is a
+  larger change than this panel justifies.
+- A single very large session still costs its own read; that is now the worst case instead of the sum
+  of every session.
+- Only Claude Code and Codex transcripts parse. Another harness shows the honest empty state.
+- A clamped message cannot be expanded in place — it states how many characters are missing and the
+  task itself is the full text. Expanding would mean a second RPC per turn.
 
 ## Alternatives considered
 
@@ -49,5 +64,8 @@ empty list that reads as silence.
 - **Mixing conversation turns into the Messages list**: destroys the distinction the traffic
   screen exists to make — peer traffic is attempts between agents, a transcript is one agent's
   own record.
-- **Caching parsed conversations per task**: buys a warm re-parse of a few hundred milliseconds
-  at a cost of hundreds of megabytes of resident memory. Rejected.
+- **Caching parsed conversations per task**: buys a warm re-parse of a few hundred milliseconds at a
+  cost of hundreds of megabytes of resident memory in the main process. Rejected — laziness made the
+  re-parse cheap enough that a cache has nothing left to buy.
+- **Expanding a clamped message in place**: a second RPC per turn, or shipping the whole turn to the
+  renderer anyway. Rejected in favour of saying exactly how much was cut.

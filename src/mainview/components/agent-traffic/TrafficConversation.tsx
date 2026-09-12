@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CONVERSATION_SOURCE_LABELS } from "../../../shared/conversation-import-model";
 import type { TaskConversationView } from "../../../shared/task-conversation-model";
 import { api } from "../../rpc";
@@ -10,9 +10,16 @@ import { useT } from "../../i18n";
  * The other two tabs show traffic *between* agents; this one shows what one agent
  * and its human actually said, which is a different record and is never mixed in
  * with the messages list. It stays a reader: bounded by design (newest page of
- * turns, each message clamped, tool calls counted rather than replayed), with no
- * way to send anything from here — the traffic screen owns no composer.
+ * turns, each message clamped with the cut counted, tool calls counted rather
+ * than replayed), with no way to send anything from here.
+ *
+ * Every read is a file read on the host, so two rules hold the cost down: a
+ * request is debounced, and a response that arrives for a task or session the
+ * user has already left is dropped rather than rendered under the new heading.
  */
+
+/** Arrowing through nodes must not queue one host-side parse per node. */
+const REQUEST_DEBOUNCE_MS = 250;
 
 interface TrafficConversationProps {
 	projectId: string | null;
@@ -28,6 +35,9 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 	const [sessionKey, setSessionKey] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [failed, setFailed] = useState(false);
+	/** What the user is looking at right now — the test every response must pass. */
+	const showing = useRef<string>("");
+	showing.current = `${projectId}/${taskId}`;
 
 	// Selecting another task drops whatever was on screen: a stale transcript under
 	// a new heading is the one mistake this panel must never make.
@@ -39,39 +49,47 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 	useEffect(() => {
 		if (!projectId || !taskId) return;
 		let live = true;
-		setLoading(true);
+		const asked = `${projectId}/${taskId}`;
 		setFailed(false);
-		api.request
-			.readTaskConversation({ projectId, taskId, sessionKey })
-			.then((result) => {
-				if (!live) return;
-				setView(result);
-				setLoading(false);
-			})
-			.catch(() => {
-				if (!live) return;
-				setFailed(true);
-				setLoading(false);
-			});
+		const timer = setTimeout(() => {
+			setLoading(true);
+			api.request
+				.readTaskConversation({ projectId, taskId, sessionKey })
+				.then((result) => {
+					if (!live || showing.current !== asked) return;
+					setView(result);
+					setLoading(false);
+				})
+				.catch(() => {
+					if (!live || showing.current !== asked) return;
+					setFailed(true);
+					setLoading(false);
+				});
+		}, REQUEST_DEBOUNCE_MS);
 		return () => {
 			live = false;
+			clearTimeout(timer);
 		};
 	}, [projectId, taskId, sessionKey]);
 
 	const loadEarlier = () => {
-		if (!projectId || !taskId || !view) return;
+		if (!projectId || !taskId || !view || loading) return;
+		const asked = `${projectId}/${taskId}`;
+		const askedSession = view.sessionKey;
 		setLoading(true);
 		api.request
-			.readTaskConversation({ projectId, taskId, sessionKey: view.sessionKey, before: view.firstIndex })
+			.readTaskConversation({ projectId, taskId, sessionKey: askedSession, before: view.firstIndex })
 			.then((older) => {
+				if (showing.current !== asked) return;
 				setView((current) =>
-					current
+					current && current.sessionKey === askedSession
 						? { ...older, turns: [...older.turns, ...current.turns] }
-						: older,
+						: current,
 				);
 				setLoading(false);
 			})
 			.catch(() => {
+				if (showing.current !== asked) return;
 				setFailed(true);
 				setLoading(false);
 			});
@@ -84,7 +102,6 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 	if (view.sessions.length === 0) return <p className="traffic-empty">{t("traffic.conversation.none")}</p>;
 
 	const session = view.sessions.find((candidate) => candidate.key === view.sessionKey) ?? view.sessions[0];
-	const shown = view.turns.length;
 
 	return (
 		<div className="traffic-conversation">
@@ -98,7 +115,7 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 						{view.sessions.map((candidate, position) => (
 							<option key={candidate.key} value={candidate.key}>
 								{`${CONVERSATION_SOURCE_LABELS[candidate.source]} · ${
-									candidate.endedAt ? format(candidate.endedAt) : `#${position + 1}`
+									candidate.lastActivityAt ? format(candidate.lastActivityAt) : `#${position + 1}`
 								}`}
 							</option>
 						))}
@@ -117,8 +134,11 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 					{t(session.origin === "archived" ? "traffic.conversation.archived" : "traffic.conversation.live")}
 				</span>
 				<small>
-					{t("traffic.conversation.shown", { shown: String(shown), total: String(view.totalTurns) })}
-					{session.fidelity === "partial" ? ` · ${t("traffic.conversation.partial")}` : ""}
+					{t("traffic.conversation.shown", {
+						shown: String(view.turns.length),
+						total: String(view.totalTurns),
+					})}
+					{view.fidelity === "partial" ? ` · ${t("traffic.conversation.partial")}` : ""}
 				</small>
 			</div>
 			{view.firstIndex > 0 && (
@@ -147,7 +167,11 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 							<p>{turn.assistantText}</p>
 						</div>
 					)}
-					{turn.clamped && <small className="traffic-turn-clamped">{t("traffic.conversation.clamped")}</small>}
+					{turn.clippedChars > 0 && (
+						<small className="traffic-turn-clamped">
+							{t.plural("traffic.conversation.clipped", turn.clippedChars)}
+						</small>
+					)}
 				</article>
 			))}
 		</div>

@@ -24,22 +24,33 @@ function session(overrides: Partial<TaskConversationView["sessions"][number]> = 
 		key: "claude:s1",
 		source: "claude" as const,
 		sessionId: "s1",
-		model: null,
-		startedAt: null,
-		endedAt: null,
-		turns: 2,
+		lastActivityAt: null,
+		bytes: 1024,
 		origin: "live" as const,
-		fidelity: "full" as const,
 		...overrides,
 	};
 }
 
-function show() {
-	render(
+function panel(taskId: string | null) {
+	return (
 		<I18nProvider>
-			<TrafficConversation projectId="p1" taskId="t1" format={(iso) => iso} />
-		</I18nProvider>,
+			<TrafficConversation projectId="p1" taskId={taskId} format={(iso) => iso} />
+		</I18nProvider>
 	);
+}
+
+function show() {
+	render(panel("t1"));
+}
+
+function oneTurn(text: string): TaskConversationView {
+	return {
+		sessions: [session()],
+		sessionKey: "claude:s1",
+		totalTurns: 1,
+		firstIndex: 0,
+		turns: [{ index: 0, startedAt: null, userText: text, clippedChars: 0, actions: 0, tools: [] }],
+	};
 }
 
 beforeEach(() => {
@@ -70,7 +81,7 @@ describe("TrafficConversation", () => {
 			totalTurns: 2,
 			firstIndex: 0,
 			turns: [
-				{ index: 0, startedAt: null, userText: "fix the parser", assistantText: "fixed", clamped: false, actions: 3, tools: ["Bash", "Edit"] },
+				{ index: 0, startedAt: null, userText: "fix the parser", assistantText: "fixed", clippedChars: 0, actions: 3, tools: ["Bash", "Edit"] },
 			],
 		};
 		show();
@@ -85,7 +96,7 @@ describe("TrafficConversation", () => {
 			sessionKey: "claude:s1",
 			totalTurns: 1,
 			firstIndex: 0,
-			turns: [{ index: 0, startedAt: null, assistantText: "done", clamped: false, actions: 0, tools: [] }],
+			turns: [{ index: 0, startedAt: null, assistantText: "done", clippedChars: 0, actions: 0, tools: [] }],
 		};
 		show();
 		expect(await screen.findByText("Archived")).toBeInTheDocument();
@@ -94,22 +105,22 @@ describe("TrafficConversation", () => {
 
 	it("offers earlier turns only when earlier turns exist, and keeps what is on screen", async () => {
 		view.value = {
-			sessions: [session({ turns: 40 })],
+			sessions: [session()],
 			sessionKey: "claude:s1",
 			totalTurns: 40,
 			firstIndex: 20,
-			turns: [{ index: 20, startedAt: null, userText: "later", clamped: false, actions: 0, tools: [] }],
+			turns: [{ index: 20, startedAt: null, userText: "later", clippedChars: 0, actions: 0, tools: [] }],
 		};
 		show();
 		const earlier = await screen.findByRole("button", { name: "Load earlier turns" });
 		expect(screen.getByText("1 of 40 turns")).toBeInTheDocument();
 
 		view.value = {
-			sessions: [session({ turns: 40 })],
+			sessions: [session()],
 			sessionKey: "claude:s1",
 			totalTurns: 40,
 			firstIndex: 0,
-			turns: [{ index: 0, startedAt: null, userText: "earliest", clamped: false, actions: 0, tools: [] }],
+			turns: [{ index: 0, startedAt: null, userText: "earliest", clippedChars: 0, actions: 0, tools: [] }],
 		};
 		await userEvent.click(earlier);
 
@@ -118,5 +129,64 @@ describe("TrafficConversation", () => {
 		expect(readTaskConversation).toHaveBeenLastCalledWith(
 			expect.objectContaining({ before: 20, sessionKey: "claude:s1" }),
 		);
+	});
+
+	it("fires one request when the user arrows through several nodes", async () => {
+		const { rerender } = render(panel("t1"));
+		rerender(panel("t2"));
+		// Longer than a keypress, shorter than the debounce: a window that only
+		// stays quiet because the request is actually delayed, not merely cancelled.
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		expect(readTaskConversation).not.toHaveBeenCalled();
+		rerender(panel("t3"));
+
+		await waitFor(() => expect(readTaskConversation).toHaveBeenCalledTimes(1));
+		expect(readTaskConversation).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t3" }));
+	});
+
+	it("drops a late page of earlier turns when the user has moved to another task", async () => {
+		view.value = {
+			sessions: [session()],
+			sessionKey: "claude:s1",
+			totalTurns: 40,
+			firstIndex: 20,
+			turns: [{ index: 20, startedAt: null, userText: "page of t1", clippedChars: 0, actions: 0, tools: [] }],
+		};
+		const { rerender } = render(panel("t1"));
+		const earlier = await screen.findByRole("button", { name: "Load earlier turns" });
+
+		let land: (view: TaskConversationView) => void = () => {};
+		readTaskConversation.mockImplementationOnce(
+			() => new Promise<TaskConversationView>((resolve) => { land = resolve; }),
+		);
+		await userEvent.click(earlier);
+
+		view.value = oneTurn("task two");
+		rerender(panel("t2"));
+		// The new task's own answer lands FIRST, so the late one has something to
+		// corrupt: without the guard it merges into the task now on screen.
+		await waitFor(() => expect(screen.getByText("task two")).toBeInTheDocument());
+		land(oneTurn("earlier turns of t1"));
+
+		await waitFor(() => expect(screen.getByText("task two")).toBeInTheDocument());
+		expect(screen.queryByText("earlier turns of t1")).not.toBeInTheDocument();
+	});
+
+	it("drops a response for a task the user has already left", async () => {
+		let land: (view: TaskConversationView) => void = () => {};
+		readTaskConversation.mockImplementationOnce(
+			() => new Promise<TaskConversationView>((resolve) => { land = resolve; }),
+		);
+
+		const { rerender } = render(panel("t1"));
+		await waitFor(() => expect(readTaskConversation).toHaveBeenCalledTimes(1));
+
+		view.value = oneTurn("second task");
+		rerender(panel("t2"));
+		await waitFor(() => expect(screen.getByText("second task")).toBeInTheDocument());
+		land(oneTurn("first task"));
+
+		await waitFor(() => expect(screen.getByText("second task")).toBeInTheDocument());
+		expect(screen.queryByText("first task")).not.toBeInTheDocument();
 	});
 });

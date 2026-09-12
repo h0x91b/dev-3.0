@@ -29,19 +29,23 @@ export const TASK_CONVERSATION_TOOL_NAMES = 4;
 /** Where the conversation was read from. An archive is a projection, not the file. */
 export type TaskConversationOrigin = "live" | "archived";
 
+/**
+ * One session as the PICKER knows it: from the file's name and its stat, never
+ * from parsing it. Listing six sessions must not cost six parses, so everything
+ * that needs the file open — turn count, model, fidelity — lives on the view of
+ * the session actually selected.
+ */
 export interface TaskConversationSessionInfo {
 	/** Stable id for picking this session. Sessions of the same task can share a
 	 *  source and a null session id, so the source path is the tiebreaker. */
 	key: string;
 	source: ConversationSource;
 	sessionId: string | null;
-	model: string | null;
-	startedAt: string | null;
-	endedAt: string | null;
-	turns: number;
+	/** File mtime: when the agent last wrote to this session. Not its end. */
+	lastActivityAt: string | null;
+	/** Size on disk, so the reader can see which session is the big one. */
+	bytes: number;
 	origin: TaskConversationOrigin;
-	/** `partial` means the parser could not map every record of the file. */
-	fidelity: "full" | "partial";
 }
 
 export interface TaskConversationTurnView {
@@ -51,8 +55,9 @@ export interface TaskConversationTurnView {
 	userText?: string;
 	/** The agent's closing prose reply, when it produced one. */
 	assistantText?: string;
-	/** Whether either text above was cut to the character budget. */
-	clamped: boolean;
+	/** Characters cut from the two texts above by the budget. 0 when nothing was
+	 *  cut — the reader is told how much is missing, never left to guess. */
+	clippedChars: number;
 	/** Tool calls inside the turn. */
 	actions: number;
 	/** Native tool names, first few. Identifiers — never translated. */
@@ -68,6 +73,10 @@ export interface TaskConversationView {
 	totalTurns: number;
 	/** Index of the oldest turn returned. Above 0 there are earlier turns. */
 	firstIndex: number;
+	/** From the selected session's own file, so only it pays for the parse. */
+	model?: string | null;
+	/** `partial` means the parser could not map every record of the file. */
+	fidelity?: "full" | "partial";
 }
 
 /** The part of a turn both a live parse and an archived dump carry. */
@@ -77,9 +86,9 @@ export interface TurnLike {
 	events: ConversationEvent[];
 }
 
-export function clampText(text: string, limit = TASK_CONVERSATION_TEXT_LIMIT): { text: string; clamped: boolean } {
-	if (text.length <= limit) return { text, clamped: false };
-	return { text: `${text.slice(0, limit)}…`, clamped: true };
+export function clampText(text: string, limit = TASK_CONVERSATION_TEXT_LIMIT): { text: string; clipped: number } {
+	if (text.length <= limit) return { text, clipped: 0 };
+	return { text: `${text.slice(0, limit)}…`, clipped: text.length - limit };
 }
 
 function toolNamesOf(events: ConversationEvent[]): { actions: number; tools: string[] } {
@@ -105,7 +114,7 @@ export function toTurnView(turn: TurnLike): TaskConversationTurnView {
 		startedAt: turn.startedAt,
 		...(clampedUser ? { userText: clampedUser.text } : {}),
 		...(clampedAssistant ? { assistantText: clampedAssistant.text } : {}),
-		clamped: Boolean(clampedUser?.clamped || clampedAssistant?.clamped),
+		clippedChars: (clampedUser?.clipped ?? 0) + (clampedAssistant?.clipped ?? 0),
 		actions,
 		tools,
 	};
