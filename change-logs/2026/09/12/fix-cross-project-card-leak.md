@@ -1,0 +1,1 @@
+Creating a task into another project from the New Task dialog and launching it immediately no longer drops its card onto the board you were looking at. The task store now refuses any task whose project the board on screen does not hold, so a late create/launch response after switching boards cannot leak either.

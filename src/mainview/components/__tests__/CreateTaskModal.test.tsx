@@ -219,7 +219,10 @@ describe("CreateTaskModal", () => {
 			});
 			expect(onCreateAndRun).toHaveBeenCalledWith(otherTask, otherProject);
 		});
-		expect(dispatch).not.toHaveBeenCalledWith({ type: "addTask", task: otherTask });
+		// The modal always reports the created task; the reducer decides whether the
+		// board on screen holds it (see "addTask: drops a task created into another
+		// project" in state.test.ts).
+		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: otherTask });
 	});
 
 	it("shows dual hint text when onCreateAndRun is provided", () => {
