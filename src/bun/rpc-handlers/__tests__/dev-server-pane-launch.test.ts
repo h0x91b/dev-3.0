@@ -190,7 +190,10 @@ describe(`dev-server pane launch on ${process.platform}`, () => {
 		expect(String(spec.outputLogPath)).toMatch(/[/\\]abcdef12[/\\]logs[/\\]dev-server\.log$/);
 	});
 
-	it("chains the tmux capture onto new-session itself, not as a later command", async () => {
+	// POSIX-only by construction: the tmux backend does not exist on Windows, where
+	// `runDevServer` refuses a tmux task before it reaches the capture. Running it
+	// there asserted nothing and failed the packaged Windows job outright (Seq 1917).
+	it.skipIf(isWindows)("chains the tmux capture onto new-session itself, not as a later command", async () => {
 		mocks.getTask.mockResolvedValue(TMUX_TASK);
 		await runDevServer({ taskId: TMUX_TASK.id, projectId: PROJECT.id });
 		const calls = mocks.newSessionDetached.mock.calls as unknown as Array<[{ pipeTo?: string; command?: string }]>;
