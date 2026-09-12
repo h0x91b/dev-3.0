@@ -5,7 +5,14 @@ import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { useOverlayLayer } from "../../utils/useOverlayLayer";
 import BottomSheet from "../BottomSheet";
 import TrafficIcon from "./TrafficIcon";
-import { dayDate, isCalendarDay, localDay, shiftDay } from "./traffic-period";
+import {
+	dayDate,
+	isCalendarDay,
+	localDay,
+	parseRangePeriod,
+	shiftDay,
+} from "./traffic-period";
+import { formatRangeLabel } from "./traffic-range";
 
 type Props = {
 	value: string;
@@ -23,7 +30,12 @@ export default function TrafficPeriodPicker(props: Props) {
 		setOpen(false);
 		trigger.current?.focus();
 	};
-	const label = isCalendarDay(props.value)
+	// A dragged range names itself — the trigger is the one place that says which
+	// interval is on screen when it is not one of the presets.
+	const dragged = parseRangePeriod(props.value);
+	const label = dragged
+		? formatRangeLabel(dragged, locale)
+		: isCalendarDay(props.value)
 		? dayDate(props.value).toLocaleDateString(locale, {
 				day: "numeric",
 				month: "short",

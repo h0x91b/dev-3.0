@@ -13,7 +13,15 @@ import TrafficOrbit from "./TrafficOrbit";
 import TrafficNodes from "./TrafficNodes";
 import TrafficPlayback from "./TrafficPlayback";
 import TrafficPeriodPicker from "./TrafficPeriodPicker";
-import { isCalendarDay, trafficPeriodBounds } from "./traffic-period";
+import TrafficRangeRuler from "./TrafficRangeRuler";
+import {
+	MIN_RANGE_MS,
+	isCalendarDay,
+	isCustomRange,
+	rangePeriod,
+	trafficPeriodBounds,
+} from "./traffic-period";
+import { domainHolds, rulerDomain } from "./traffic-range";
 import TrafficIcon from "./TrafficIcon";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
@@ -333,6 +341,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const now = Date.now();
 	const { start, end } = trafficPeriodBounds(windowSize, now);
 	const calendarDay = isCalendarDay(windowSize);
+	// A dragged range never asks for another page: the ruler only draws history
+	// that is already loaded, so its band cannot point past it. A calendar day is
+	// the opposite — it names a day nobody has read yet — and keeps its cutoff.
 	const data = useTrafficData(calendarDay ? start : undefined);
 	// The archive is read for the projects the user can actually see, and not read
 	// at all until that list exists: `null` keeps the hook idle rather than asking
@@ -658,6 +669,61 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 			? Date.parse(records[records.length - 1].row.at)
 			: now - 3600000,
 	);
+	/**
+	 * The oldest instant actually loaded — the left edge of the ruler.
+	 *
+	 * Messages and notifications only. A task's `movements[]` can reach back months
+	 * before any message was recorded, and stretching the drawn span to one ancient
+	 * board move would squeeze today's traffic into a few pixels of ruler.
+	 */
+	const loadedOldest = useMemo(() => {
+		let oldest = Infinity;
+		for (const row of data.rows) {
+			const at = Date.parse(row.at);
+			if (Number.isFinite(at)) oldest = Math.min(oldest, at);
+		}
+		for (const event of notifications.events)
+			oldest = Math.min(oldest, event.at);
+		return Number.isFinite(oldest) ? oldest : null;
+	}, [data.rows, notifications.events]);
+	const customRange = isCustomRange(windowSize);
+	/**
+	 * The window as an interval the ruler can draw.
+	 *
+	 * `all` starts at 0 and every rolling window ends at Infinity — neither is an
+	 * instant, so both are resolved here to what they actually mean on screen: the
+	 * oldest thing loaded, and now.
+	 */
+	const bandRange = useMemo(() => {
+		const windowEnd = Number.isFinite(end) ? end : now;
+		const windowStart =
+			Number.isFinite(start) && start > 0
+				? start
+				: (loadedOldest ?? windowEnd - 3600000);
+		return {
+			start: Math.min(windowStart, windowEnd - MIN_RANGE_MS),
+			end: windowEnd,
+		};
+	}, [start, end, now, loadedOldest]);
+	/**
+	 * The ruler's scale, held still while the reader works inside it.
+	 *
+	 * A rolling window is anchored to now and always redrawn — its band sits flush
+	 * against the right edge either way, so recomputing costs nothing visually. A
+	 * fixed window (a dragged range, a calendar day) keeps whatever scale was on
+	 * screen as long as that scale still holds it: otherwise every release of the
+	 * band would rescale the axis under the reader's hand.
+	 */
+	const heldDomain = useRef<{ start: number; end: number } | null>(null);
+	const historyDomain = useMemo(() => {
+		const held = heldDomain.current;
+		const next =
+			(calendarDay || customRange) && held && domainHolds(held, bandRange)
+				? held
+				: rulerDomain(bandRange, loadedOldest, now);
+		heldDomain.current = next;
+		return next;
+	}, [bandRange, loadedOldest, now, calendarDay, customRange]);
 	const format = (at: string | number) =>
 		new Date(at).toLocaleString(locale, {
 			month: "short",
@@ -749,7 +815,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 	const liveLabel =
 		data.loading || data.historyLoading || notifications.status === "loading"
 			? t("traffic.loading")
-			: (experiment === "2" ? playback.index < 0 && !calendarDay : until === null)
+			: (
+						experiment === "2"
+							? playback.index < 0 && !calendarDay && !customRange
+							: until === null
+				  )
 				? t("traffic.orbit.live")
 				: t("traffic.orbit.history");
 	/** The notification the replay cursor is standing on, if it is on one at all. */
@@ -874,7 +944,11 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 					value={experiment}
 					onChange={(value) => {
 						choose(value);
-						if (value === "1" && calendarDay) setWindowSize(LIVE_WINDOW);
+						// Experiment 1's window control is a three-option Select: it can
+						// express neither a calendar day nor a dragged range, so a window
+						// it cannot name is replaced rather than left stranded on screen.
+						if (value === "1" && (calendarDay || customRange))
+							setWindowSize(LIVE_WINDOW);
 					}}
 				/>
 				{experiment === "2" && narrowControls ? (
@@ -1022,7 +1096,20 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 								setRecordKey(key);
 								setShowInspector(true);
 							}}
-							historical={calendarDay}
+							historical={calendarDay || customRange}
+							range={
+								<TrafficRangeRuler
+									domain={historyDomain}
+									range={bandRange}
+									rolling={!calendarDay && !customRange}
+									cursorAt={playback.cursor.at}
+									onChange={(next) => {
+										setWindowSize(rangePeriod(next.start, next.end));
+										clearSelection();
+										setFollowRequest((request) => request + 1);
+									}}
+								/>
+							}
 							onLive={() => {
 								setWindowSize(LIVE_WINDOW);
 								setFollowRequest((value) => value + 1);

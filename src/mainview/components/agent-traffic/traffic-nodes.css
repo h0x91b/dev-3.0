@@ -952,6 +952,144 @@
 	font: 9px var(--dev3-mono-stack);
 	padding-top: 3px;
 }
+/* The time ruler under the replay track: loaded history as a strip, the window
+   on screen as a band you can grab. `touch-action: none` is what makes the band
+   draggable on a phone at all — without it the browser claims the gesture as a
+   page scroll before the first pointermove lands. */
+.traffic-range {
+	padding-top: 2px;
+}
+.traffic-range-track {
+	position: relative;
+	/* 24px, so a handle is a full 24x24 target without hanging above the
+	   playback slider or down into the readout. Four pixels of transport height
+	   is what a reliably grabbable edge costs. */
+	height: 24px;
+	border-radius: 4px;
+	background: rgb(var(--surface-base) / 0.6);
+	box-shadow: inset 0 0 0 1px rgb(var(--border-default) / 0.5);
+	touch-action: none;
+	cursor: crosshair;
+}
+/* The labels are clipped, the track is not: a handle on a band sitting flush
+   against either edge hangs half outside, and clipping the track would halve the
+   one hit target that is already the smallest thing here. */
+.traffic-range-ticks {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	border-radius: 4px;
+}
+.traffic-range-ticks span {
+	position: absolute;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	color: rgb(var(--text-tertiary));
+	font: 9px var(--dev3-mono-stack);
+	white-space: nowrap;
+	pointer-events: none;
+}
+.traffic-range-cursor {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: rgb(var(--accent));
+	pointer-events: none;
+}
+.traffic-range-band {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	min-width: 2px;
+	background: rgb(var(--accent) / 0.18);
+	box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.45);
+	border-radius: 3px;
+}
+.traffic-range.is-rolling .traffic-range-band {
+	background: rgb(var(--agent) / 0.16);
+	box-shadow: inset 0 0 0 1px rgb(var(--agent) / 0.4);
+}
+/* Inset by exactly the half-handle that reaches into the band, so the three
+   targets tile the band instead of stacking on each other. */
+.traffic-range-grip {
+	position: absolute;
+	inset: 0 calc(min(24px, 50%) / 2);
+	cursor: grab;
+}
+.traffic-range.is-dragging .traffic-range-grip {
+	cursor: grabbing;
+}
+/* 3px of paint inside a 24x24 target, straddling the band edge — a two-pixel
+   edge is not something a finger, or a trackpad, can reliably catch.
+ *
+ * The width is `min(24px, 50%)` of the BAND, which is what keeps the two targets
+ * off each other: each reaches half its width into the band, so together they
+ * claim at most the whole band and never overlap, however narrow the band gets.
+ * A flat 24px would have the two boxes crossing as soon as an interval drew
+ * shorter than 24 pixels — exactly when a reliable grab matters most. */
+.traffic-range-handle {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: min(24px, 50%);
+	cursor: ew-resize;
+}
+.traffic-range-handle.is-start {
+	left: 0;
+	transform: translateX(-50%);
+}
+.traffic-range-handle.is-end {
+	right: 0;
+	transform: translateX(50%);
+}
+.traffic-range-handle::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	bottom: 2px;
+	left: 50%;
+	width: 3px;
+	margin-left: -1.5px;
+	border-radius: 2px;
+	background: rgb(var(--accent));
+}
+.traffic-range.is-rolling .traffic-range-handle::after {
+	background: rgb(var(--agent));
+}
+.traffic-range-grip:focus-visible,
+.traffic-range-handle:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 1px;
+}
+/* One label, sitting under the band it describes rather than in a corner of the
+   ruler, and pulled inside the track at either extreme so it never clips. */
+/* A finger is not a cursor: where the primary pointer is coarse the row grows and
+   the same rule widens the targets with it. Gated on the pointer, not on the
+   viewport — a narrow desktop window is still driven by a mouse. */
+@media (pointer: coarse) {
+	.traffic-range-track {
+		height: 32px;
+	}
+	.traffic-range-handle {
+		width: min(32px, 50%);
+	}
+	.traffic-range-grip {
+		inset: 0 calc(min(32px, 50%) / 2);
+	}
+}
+.traffic-range-readout {
+	pointer-events: none;
+	position: relative;
+	height: 12px;
+	padding-top: 3px;
+}
+.traffic-range-readout span {
+	position: absolute;
+	white-space: nowrap;
+	color: rgb(var(--text-tertiary));
+	font: 9px var(--dev3-mono-stack);
+}
 .traffic-replay-window {
 	min-width: 150px;
 }
