@@ -1920,6 +1920,14 @@ async function dismissSetupFailure(params: { taskId: string }): Promise<void> {
 	await clearSetupFailure(project, task);
 }
 
+async function dismissCloneFailures(params: { taskId: string }): Promise<void> {
+	log.info("→ dismissCloneFailures", { taskId: params.taskId.slice(0, 8) });
+	const { task, project } = await findTaskAcrossProjects(params.taskId);
+	if (!task || !project) throw new Error(`Cannot dismiss: task ${params.taskId} not found`);
+	const updated = await data.updateTask(project, task.id, { cloneFailures: null });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+}
+
 async function rerunSetupScript(params: { taskId: string }): Promise<void> {
 	log.info("→ rerunSetupScript", { taskId: params.taskId.slice(0, 8) });
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
@@ -3497,4 +3505,5 @@ export const tmuxPtyHandlers = {
 	restartTask,
 	rerunSetupScript,
 	dismissSetupFailure,
+	dismissCloneFailures,
 };

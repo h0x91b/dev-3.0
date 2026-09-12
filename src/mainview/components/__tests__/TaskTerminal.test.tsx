@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			restartTask: vi.fn(),
 			rerunSetupScript: vi.fn(),
 			dismissSetupFailure: vi.fn(),
+			dismissCloneFailures: vi.fn(),
 			moveTask: vi.fn(),
 			cancelTaskPreparation: vi.fn(),
 			checkWorktreeExists: vi.fn(),
@@ -850,6 +851,73 @@ describe("TaskTerminal", () => {
 			expect(mockedApi.request.dismissSetupFailure).toHaveBeenCalledWith({ taskId: "t1" });
 			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
 			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+	});
+
+	// Cloning finishes before the agent starts, so by the time anyone looks the
+	// agent has already run without the file. Nothing else in the pane says so.
+	describe("clone-failure notice", () => {
+		beforeEach(() => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
+			mockedApi.request.dismissCloneFailures.mockResolvedValue(undefined);
+		});
+
+		it("stays hidden when every clone path arrived", async () => {
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			expect(screen.queryByTestId("terminal-clone-failed-strip")).not.toBeInTheDocument();
+		});
+
+		it("names the failed path and why it failed", async () => {
+			await act(async () => {
+				renderTerminal({
+					tasks: [makeTask({
+						cloneFailures: [{ path: ".env", error: "Permission denied (cp -R exited 1)" }],
+					})],
+				});
+			});
+
+			const strip = await screen.findByTestId("terminal-clone-failed-strip");
+			expect(strip).toHaveTextContent(".env");
+			expect(strip).toHaveTextContent("Permission denied");
+			// Read-only news: the pane underneath keeps running.
+			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+
+		it("stacks under the setup strip when both fired", async () => {
+			await act(async () => {
+				renderTerminal({
+					tasks: [makeTask({
+						setupFailedExitCode: 1,
+						setupFailedAgentRunning: true,
+						cloneFailures: [{ path: ".env", error: "cp -R exited 1" }],
+					})],
+				});
+			});
+
+			await screen.findByTestId("terminal-setup-failed-strip");
+			expect(screen.getByTestId("terminal-clone-failed-strip")).toBeInTheDocument();
+		});
+
+		it("clears the list in the task when dismissed", async () => {
+			const user = userEvent.setup();
+
+			await act(async () => {
+				renderTerminal({
+					tasks: [makeTask({ cloneFailures: [{ path: ".env", error: "cp -R exited 1" }] })],
+				});
+			});
+
+			await screen.findByTestId("terminal-clone-failed-strip");
+			await act(async () => {
+				await user.click(screen.getByRole("button", { name: /dismiss/i }));
+			});
+
+			expect(screen.queryByTestId("terminal-clone-failed-strip")).not.toBeInTheDocument();
+			expect(mockedApi.request.dismissCloneFailures).toHaveBeenCalledWith({ taskId: "t1" });
 		});
 	});
 });

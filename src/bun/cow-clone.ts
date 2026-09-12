@@ -21,6 +21,12 @@ export interface CloneResult {
 	path: string;
 	method: CloneMethod;
 	durationMs: number;
+	/**
+	 * The source does not exist in the project root. Deliberate and not an error:
+	 * a clone list is shared across machines and auto-detection is a snapshot, so
+	 * a path that is simply absent is skipped. `error` is the opposite case — the
+	 * source WAS there and the copy failed.
+	 */
 	skipped?: boolean;
 	error?: string;
 }
@@ -130,10 +136,33 @@ async function pathExists(fullPath: string): Promise<boolean> {
 	}
 }
 
-/** Run a command and return exit code. */
-async function run(cmd: string[]): Promise<number> {
-	const proc = spawn(cmd);
-	return await proc.exited;
+interface RunOutcome {
+	code: number;
+	stderr: string;
+}
+
+/** Drain a piped stderr before awaiting exit — a full pipe would deadlock the child. */
+async function readStderr(proc: { stderr?: unknown }): Promise<string> {
+	const stream = proc.stderr;
+	if (!stream || typeof stream === "number") return "";
+	try {
+		return (await new Response(stream as ReadableStream).text()).trim();
+	} catch {
+		return "";
+	}
+}
+
+/** Run a command and return its exit code plus whatever it wrote to stderr. */
+async function run(cmd: string[]): Promise<RunOutcome> {
+	const proc = spawn(cmd, { stderr: "pipe" });
+	const stderr = await readStderr(proc);
+	return { code: await proc.exited, stderr };
+}
+
+/** One line for a log field and for the task banner — never an empty string. */
+function describeFailure(cmd: string, outcome: RunOutcome): string {
+	const detail = outcome.stderr.split("\n").filter(Boolean).slice(-1)[0];
+	return detail ? `${detail} (${cmd} exited ${outcome.code})` : `${cmd} exited ${outcome.code}`;
 }
 
 /**
@@ -186,7 +215,11 @@ async function cloneSingle(
 	await removePath(dst);
 
 	if (isWindows()) {
-		await cp(src, dst, { recursive: true, force: true });
+		try {
+			await cp(src, dst, { recursive: true, force: true });
+		} catch (err) {
+			return failed(relativePath, start, String(err), { src, dst });
+		}
 		const ms = Math.round(performance.now() - start);
 		log.info("Copied via node:fs cp", { path: relativePath, ms });
 		return { path: relativePath, method: "copy", durationMs: ms };
@@ -201,27 +234,56 @@ async function cloneSingle(
 		}
 
 		// 2. Try cp -cR (per-file APFS clone)
-		if ((await run(["cp", "-cR", src, dst])) === 0) {
+		const apfs = await run(["cp", "-cR", src, dst]);
+		if (apfs.code === 0) {
 			const ms = Math.round(performance.now() - start);
 			log.info("Cloned via cp -cR", { path: relativePath, ms });
 			return { path: relativePath, method: "apfs-clone", durationMs: ms };
 		}
+		log.debug("cp -cR failed, falling back", { path: relativePath, reason: describeFailure("cp -cR", apfs) });
 		await removePath(dst);
 	} else {
-		// Linux: try reflink
-		if ((await run(["cp", "-R", "--reflink=always", src, dst])) === 0) {
+		// Linux: try reflink. A filesystem without reflink support fails every
+		// time, so this stays at debug — only the last fallback is an error.
+		const reflink = await run(["cp", "-R", "--reflink=always", src, dst]);
+		if (reflink.code === 0) {
 			const ms = Math.round(performance.now() - start);
 			log.info("Cloned via reflink", { path: relativePath, ms });
 			return { path: relativePath, method: "reflink", durationMs: ms };
 		}
+		log.debug("reflink failed, falling back", { path: relativePath, reason: describeFailure("cp -R --reflink=always", reflink) });
 		await removePath(dst);
 	}
 
-	// Fallback: regular copy
-	await run(["cp", "-R", src, dst]);
+	// Last fallback. Nothing catches a failure after this, so its exit code is the
+	// only thing standing between a missing path and a worktree that claims to have it.
+	const copy = await run(["cp", "-R", src, dst]);
+	if (copy.code !== 0) {
+		return failed(relativePath, start, describeFailure("cp -R", copy), { src, dst });
+	}
 	const ms = Math.round(performance.now() - start);
 	log.info("Copied via cp -R", { path: relativePath, ms });
 	return { path: relativePath, method: "copy", durationMs: ms };
+}
+
+/** A copy that did not happen: logged loudly, and carried back to the caller. */
+function failed(
+	relativePath: string,
+	start: number,
+	error: string,
+	where: { src: string; dst: string },
+): CloneResult {
+	log.error("Clone path copy failed — it is missing from the worktree", {
+		path: relativePath,
+		...where,
+		error,
+	});
+	return {
+		path: relativePath,
+		method: "copy",
+		durationMs: Math.round(performance.now() - start),
+		error,
+	};
 }
 
 /**
@@ -372,10 +434,21 @@ export async function clonePaths(
 	);
 
 	const totalMs = results.reduce((sum, r) => Math.max(sum, r.durationMs), 0);
+	const failures = results.filter((r) => r.error);
 	log.info("CoW clone complete", {
 		totalMs,
-		results: results.map((r) => `${r.path}: ${r.method} (${r.durationMs}ms${r.skipped ? ", skipped" : ""})`),
+		failed: failures.length,
+		results: results.map((r) => {
+			if (r.error) return `${r.path}: FAILED (${r.error})`;
+			return `${r.path}: ${r.method} (${r.durationMs}ms${r.skipped ? ", skipped" : ""})`;
+		}),
 	});
+	if (failures.length > 0) {
+		log.error("CoW clone finished with missing paths", {
+			destRoot,
+			failed: failures.map((r) => `${r.path}: ${r.error}`),
+		});
+	}
 
 	return results;
 }

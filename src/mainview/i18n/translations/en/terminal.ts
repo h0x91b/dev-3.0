@@ -40,6 +40,9 @@ const terminal = {
 	"terminal.setupFailedDismiss": "Dismiss",
 	"terminal.setupFailedAgentRunningDesc": "The agent is running — dependencies may be missing.",
 	"terminal.setupFailedHint": "Dependencies may be missing. Re-running setup leaves the agent alone; starting it fresh does not.",
+	"terminal.cloneFailedTitle_one": "{count} clone path did not reach this worktree",
+	"terminal.cloneFailedTitle_other": "{count} clone paths did not reach this worktree",
+	"terminal.cloneFailedDismiss": "Dismiss",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Terminal panes",

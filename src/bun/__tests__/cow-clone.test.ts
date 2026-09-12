@@ -28,8 +28,11 @@ vi.mock("../logger", () => ({
 
 import { clonePaths, detectClonePaths, WELL_KNOWN_CLONE_PATHS } from "../cow-clone";
 
-function makeProc(exitCode: number) {
-	return { exited: Promise.resolve(exitCode) };
+function makeProc(exitCode: number, stderr = "") {
+	return {
+		exited: Promise.resolve(exitCode),
+		stderr: stderr ? new Response(stderr).body : undefined,
+	};
 }
 
 describe("cow-clone", () => {
@@ -184,6 +187,78 @@ describe("cow-clone", () => {
 		expect((mkdirCall![0] as string[]).join(" ")).toContain("/dst/frontend");
 	});
 
+	// The cascade's last step has nothing behind it: whatever it reports is the
+	// truth about whether the path is in the worktree (issue #1728).
+	describe("final cp -R fallback", () => {
+		const origPlatform = process.platform;
+		beforeEach(() => {
+			Object.defineProperty(process, "platform", { value: "linux", writable: true });
+		});
+		afterEach(() => {
+			Object.defineProperty(process, "platform", { value: origPlatform, writable: true });
+		});
+
+		function cascade(finalCopyExit: number, stderr = "") {
+			mockSpawn.mockImplementation((cmd: string[]) => {
+				if (cmd[0] !== "cp") return makeProc(0);
+				if (cmd.includes("--reflink=always")) return makeProc(1, "cp: --reflink unsupported");
+				return makeProc(finalCopyExit, stderr);
+			});
+		}
+
+		it("reports success with no error when the plain copy succeeds", async () => {
+			cascade(0);
+			const results = await clonePaths("/src", "/dst", ["node_modules"]);
+			expect(results[0]).toMatchObject({ path: "node_modules", method: "copy" });
+			expect(results[0].error).toBeUndefined();
+			expect(results[0].skipped).toBeUndefined();
+		});
+
+		it("reports a failure with the exit code and stderr when the plain copy fails", async () => {
+			cascade(1, "cp: /src/.env: Permission denied");
+			const results = await clonePaths("/src", "/dst", [".env"]);
+			expect(results).toHaveLength(1);
+			expect(results[0].error).toContain("Permission denied");
+			expect(results[0].error).toContain("exited 1");
+			expect(results[0].skipped).toBeUndefined();
+		});
+
+		it("still reports the exit code when the command wrote nothing to stderr", async () => {
+			cascade(2);
+			const results = await clonePaths("/src", "/dst", [".env"]);
+			expect(results[0].error).toBe("cp -R exited 2");
+		});
+
+		it("never marks a failed path as copied, even alongside a successful one", async () => {
+			mockSpawn.mockImplementation((cmd: string[]) => {
+				if (cmd[0] !== "cp") return makeProc(0);
+				if (cmd.includes("--reflink=always")) return makeProc(1);
+				return cmd.includes("/src/.env")
+					? makeProc(1, "cp: /src/.env: Permission denied")
+					: makeProc(0);
+			});
+
+			const results = await clonePaths("/src", "/dst", ["node_modules", ".env"]);
+			const ok = results.find((r) => r.path === "node_modules")!;
+			const bad = results.find((r) => r.path === ".env")!;
+			expect(ok.error).toBeUndefined();
+			expect(bad.error).toBeDefined();
+			// A summary that counted this as a copy is exactly the reported bug.
+			expect(results.filter((r) => !r.error && !r.skipped)).toHaveLength(1);
+		});
+
+		it("keeps a missing source a skip, not a failure", async () => {
+			mockSpawn.mockImplementation((cmd: string[]) => (
+				cmd[0] === "test" ? makeProc(1) : makeProc(0)
+			));
+			const results = await clonePaths("/src", "/dst", ["node_modules"]);
+			expect(results[0].skipped).toBe(true);
+			expect(results[0].error).toBeUndefined();
+			// Nothing was copied, so no cp ran at all.
+			expect(mockSpawn.mock.calls.some((c: unknown[]) => (c[0] as string[])[0] === "cp")).toBe(false);
+		});
+	});
+
 	describe("on Windows", () => {
 		const origPlatform = process.platform;
 		beforeEach(() => {
@@ -191,6 +266,8 @@ describe("cow-clone", () => {
 		});
 		afterEach(() => {
 			Object.defineProperty(process, "platform", { value: origPlatform, writable: true });
+			// clearAllMocks keeps implementations, so a rigged cp would outlive this block.
+			mockCp.mockImplementation((async () => undefined) as never);
 		});
 
 		it("copies through node:fs without spawning a POSIX binary", async () => {
@@ -209,6 +286,15 @@ describe("cow-clone", () => {
 		it("creates the destination parent for a nested path", async () => {
 			await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["frontend/node_modules"]);
 			expect(mockMkdir).toHaveBeenCalledWith("C:/wt/worktree/frontend", { recursive: true });
+		});
+
+		it("turns a copy error into a failed result instead of rejecting the whole clone", async () => {
+			mockCp.mockImplementation((async (src: string) => {
+				if (src.endsWith("node_modules")) throw new Error("EPERM: operation not permitted");
+			}) as never);
+			const results = await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["node_modules", ".env"]);
+			expect(results.find((r) => r.path === "node_modules")!.error).toContain("EPERM");
+			expect(results.find((r) => r.path === ".env")!.error).toBeUndefined();
 		});
 	});
 });

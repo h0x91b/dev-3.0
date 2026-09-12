@@ -40,6 +40,9 @@ const terminal = {
 	"terminal.setupFailedDismiss": "Cerrar",
 	"terminal.setupFailedAgentRunningDesc": "El agente está en marcha — puede que falten dependencias.",
 	"terminal.setupFailedHint": "Puede que falten dependencias. Volver a ejecutar el setup no toca al agente; iniciarlo de cero sí.",
+	"terminal.cloneFailedTitle_one": "{count} ruta de clonado no llegó a este worktree",
+	"terminal.cloneFailedTitle_other": "{count} rutas de clonado no llegaron a este worktree",
+	"terminal.cloneFailedDismiss": "Cerrar",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Paneles del terminal",

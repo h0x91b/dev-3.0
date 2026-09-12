@@ -284,7 +284,7 @@ vi.mock("../artifact-template", () => ({
 }));
 
 vi.mock("../cow-clone", () => ({
-	clonePaths: vi.fn(),
+	clonePaths: vi.fn(async () => []),
 }));
 
 vi.mock("../logger", () => ({

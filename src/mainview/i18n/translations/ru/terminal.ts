@@ -40,6 +40,11 @@ const terminal = {
 	"terminal.setupFailedDismiss": "Закрыть",
 	"terminal.setupFailedAgentRunningDesc": "Агент работает — зависимостей может не быть.",
 	"terminal.setupFailedHint": "Зависимостей может не быть. Перезапуск setup агента не трогает, запуск с нуля — трогает.",
+	"terminal.cloneFailedTitle_one": "{count} clone path не доехал до воркtree",
+	"terminal.cloneFailedTitle_few": "{count} clone path не доехали до воркtree",
+	"terminal.cloneFailedTitle_many": "{count} clone path не доехали до воркtree",
+	"terminal.cloneFailedTitle_other": "{count} clone path не доехали до воркtree",
+	"terminal.cloneFailedDismiss": "Закрыть",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Панели терминала",
