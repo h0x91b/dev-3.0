@@ -1024,11 +1024,20 @@ const handlers: Record<string, Handler> = {
 		// field alone would produce a task the data calls a coordinator while its
 		// agent was never told it is one — a badge nobody behind it honours.
 		let taskTypeChange: { next: TaskType | null; agentPrompt: string } | undefined;
+		// `--print-role`: the caller IS the agent behind this task and reads the role
+		// brief in the command output, so the brief is returned rather than typed into
+		// its own pane. Set for any resulting type, changed or not, so re-running the
+		// promotion is idempotent instead of silent.
+		const printRole = params.printRole === true;
+		let rolePrompt: string | undefined;
 		if (params.taskType !== undefined) {
 			const raw = params.taskType;
 			const next = raw === null || raw === "standard" ? null : normalizeTaskType(String(raw));
 			if (raw !== null && raw !== "standard" && !next) {
 				throw new Error(`Invalid task type "${raw}". Use ${TASK_TYPES.join(", ")} or standard.`);
+			}
+			if (printRole) {
+				rolePrompt = next ? presetPromptForTaskType(next, project, await loadSettings()) : "";
 			}
 			if ((task.taskType ?? null) !== next) {
 				const settings = await loadSettings();
@@ -1099,9 +1108,14 @@ const handlers: Record<string, Handler> = {
 		// Tell the agent that has to honour the new role. A task with no worktree has
 		// no session to tell — it reads the rewritten description at launch instead,
 		// which is why the description is rewritten above rather than only here.
-		let roleDelivery: AgentPromptDeliveryStatus | "no-session" | undefined;
+		let roleDelivery: AgentPromptDeliveryStatus | "no-session" | "printed" | undefined;
 		if (taskTypeChange) {
-			if (!updated.worktreePath) {
+			if (printRole) {
+				// Delivering here would type the brief into the pane of the very agent
+				// that is already reading it in this command's output: a second copy, a
+				// second turn, and a role change that looks like it fired twice.
+				roleDelivery = "printed";
+			} else if (!updated.worktreePath) {
 				roleDelivery = "no-session";
 			} else {
 				try {
@@ -1111,7 +1125,12 @@ const handlers: Record<string, Handler> = {
 				}
 			}
 		}
-		return { task: updated, titlePreserved, ...(roleDelivery ? { roleDelivery } : {}) };
+		return {
+			task: updated,
+			titlePreserved,
+			...(roleDelivery ? { roleDelivery } : {}),
+			...(rolePrompt === undefined ? {} : { rolePrompt }),
+		};
 	},
 
 	"overview.set": async (params) => {

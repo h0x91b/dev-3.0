@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
+import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
 
 const BUILTIN = "Review the code changes on this branch.";
 
@@ -33,6 +34,30 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("NO CODE");
 		expect(COORDINATOR_PROMPT).toMatch(/Allowed[\s\S]*SHA/);
 		expect(COORDINATOR_PROMPT).toMatch(/Not allowed[\s\S]*engineering judgement/);
+	});
+
+	// The user's standing default: a coordinator that creates a task and then asks
+	// whether to start it has asked the same question twice — the approval dialog
+	// IS the question. One copy of this text serves both a coordinator's startup
+	// preamble and a mid-conversation /dev3-coordinator promotion.
+	it("defaults to creating AND launching, without a second permission question", () => {
+		expect(COORDINATOR_PROMPT).toContain("CREATING A TASK MEANS STARTING IT");
+		expect(COORDINATOR_PROMPT).toContain("create it and request its launch in the same step");
+		expect(COORDINATOR_PROMPT).toContain("the dialog IS that question");
+		expect(COORDINATOR_PROMPT).toContain("never a launch that skips it");
+		expect(COORDINATOR_PROMPT).toContain("To Do only when the user says park");
+		expect(COORDINATOR_PROMPT).toContain("never start unrelated backlog or re-create a running task");
+		// A launch is not a licence for anything downstream of it.
+		expect(COORDINATOR_PROMPT).toContain("a launch approval is not one of them");
+	});
+
+	// The other half: a decline is a choice, and silence is not a decline.
+	it("treats an explicit decline as a parked task and a timeout as neither", () => {
+		expect(COORDINATOR_PROMPT).toContain(`Exit ${CLI_EXIT_CODE_LAUNCH_DECLINED} is them parking it`);
+		expect(COORDINATOR_PROMPT).toContain("no retry, no asking why or what to change");
+		expect(COORDINATOR_PROMPT).toContain("one line that it stays in To Do");
+		expect(COORDINATOR_PROMPT).toContain("a timeout is NOT a decline");
+		expect(COORDINATOR_PROMPT).toContain("asked later, same flow");
 	});
 
 	// Seq 1801 read the role as pure traffic control and policed process instead of
@@ -191,11 +216,18 @@ describe("COORDINATOR_PROMPT", () => {
 	// length is launch capacity spent (`agent-command-line-budget.ts`) — and it is
 	// already over the 5 000-character reserve, which nothing enforces on input.
 	//
+	// This preamble is prepended to a coordinator task's DESCRIPTION, which travels
+	// on the command line for every agent that does not get a prompt file, so its
+	// length is launch capacity spent (`agent-command-line-budget.ts`) — and it is
+	// already over the 5 000-character reserve, which nothing enforces on input.
+	//
 	// 6 210 is not a round number: it is what this prompt measured BEFORE the events
 	// block was added. Adding the block cost 1 700 characters and the rest of the
 	// prompt was condensed to pay for all of them, so no coordinator task that
 	// launched before stops launching. The cap keeps that property: a new section
 	// is paid for out of existing prose, never out of the user's task description.
+	// The create-and-launch default (2026-09-12) was paid for the same way — folded
+	// into the rules it belongs to, with illustrations and justifications cut.
 	it("costs no more launch capacity than it did before the events block", () => {
 		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(6210);
 	});
