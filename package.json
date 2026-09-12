@@ -23,6 +23,7 @@
 		"test:proto-e2e": "bun src/bun/prototypes/detached-pty/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-cross-session-echo": "bun src/bun/native-terminal-registry/__tests__/cross-session-echo-probe.ts",
 		"test:native-registry-e2e": "bun src/bun/native-terminal-registry/__tests__/lifecycle.bun-e2e.ts",
+		"test:native-output-log-e2e": "bun src/bun/native-terminal-registry/__tests__/output-log.bun-e2e.ts",
 		"test:native-teardown-e2e": "bun src/bun/native-terminal-registry/__tests__/graceful-teardown.bun-e2e.ts",
 		"test:native-crash-e2e": "bun src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",
 		"test:native-multi-client-e2e": "bun src/bun/native-terminal-registry/__tests__/multi-client.bun-e2e.ts",

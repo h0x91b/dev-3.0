@@ -25,6 +25,8 @@ import { handlePr } from "./commands/pr";
 import { handlePane } from "./commands/pane";
 import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
+import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
+import { handleDevServerLogSink } from "./commands/dev-server-log-sink";
 import { handleShowImage } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
 import { handleArtifactTemplate } from "./commands/artifact-template";
@@ -251,6 +253,11 @@ async function main(): Promise<void> {
 		// Pure git + gh against the checked-out branch: the app has nothing to say
 		// about it, and opening a pull request must work while dev3 is closed.
 		return await handlePr(subcommand, args, context);
+	}
+	if (command === DEV_SERVER_LOG_SINK_VERB) {
+		// Internal: the sink `tmux pipe-pane` writes the dev-server pane into. Needs
+		// no socket — the capture outlives the app, exactly like a pane run.
+		return await handleDevServerLogSink(rawArgs.slice(1));
 	}
 	if (command === PANE_RUN_VERB) {
 		// Internal: the process a `dev3 pane run` pane actually runs. It mirrors the

@@ -22,6 +22,7 @@
  */
 
 import { NATIVE_CAPTURE_MODE_ENV, type NativeCaptureMode } from "./capture-mode";
+import { NATIVE_SESSION_OUTPUT_LOG_ENV } from "../../shared/dev-server-log";
 import { spawn as spawnChild } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
@@ -66,6 +67,12 @@ export interface HostSpawnOptions {
 	captureMode?: NativeCaptureMode;
 	/** Opt-in unbounded ground-truth stream tap — proof runs only. */
 	stateTap?: boolean;
+	/**
+	 * Mirror this session's PTY output into a plain-text file as well as the
+	 * bounded journal. Set for a dev-server pane, whose output an agent greps long
+	 * after the pane has scrolled past it; absent for every ordinary shell.
+	 */
+	outputLogPath?: string;
 }
 
 export interface StartOptions extends HostSpawnOptions {
@@ -176,6 +183,9 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 			// host nobody asked to. Absent call-site intent means `none`.
 			[NATIVE_CAPTURE_MODE_ENV]: opts.captureMode ?? "none",
 			DEV3_NATIVE_SESSION_STATE_TAP: opts.stateTap ? "1" : "",
+			// Same "always stated, never merely added" rule as the two above: a host
+			// must never inherit a log path from whoever spawned it.
+			[NATIVE_SESSION_OUTPUT_LOG_ENV]: opts.outputLogPath ?? "",
 		},
 	});
 	let exited = false;
@@ -258,6 +268,7 @@ export async function start(
 					rows: opts.rows,
 					captureMode: opts.captureMode,
 					stateTap: opts.stateTap,
+					outputLogPath: opts.outputLogPath,
 				},
 				logFd,
 			);

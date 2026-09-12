@@ -45,6 +45,8 @@ import {
 	type CaptureProducer,
 } from "./capture-record";
 import { NATIVE_CAPTURE_MODE_ENV, captureModePlan, parseCaptureMode } from "./capture-mode";
+import { NATIVE_SESSION_OUTPUT_LOG_ENV } from "../../shared/dev-server-log";
+import { DevServerLogWriter } from "../dev-server-log";
 import {
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
@@ -277,6 +279,12 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	// Ghostty is loaded HERE on the boot path, never inside the terminal callback.
 	const tap = process.env.DEV3_NATIVE_SESSION_STATE_TAP === "1" ? new StreamTapWriter(streamTapFile(sessionId)) : null;
 	tap?.start();
+	// A dev-server pane mirrors its output as plain text as well, so an agent can
+	// grep what the pane printed instead of attaching to it. Every other pane runs
+	// without one: the path is set per session, never inherited.
+	const outputLog = process.env[NATIVE_SESSION_OUTPUT_LOG_ENV]?.trim()
+		? new DevServerLogWriter(process.env[NATIVE_SESSION_OUTPUT_LOG_ENV]!.trim())
+		: null;
 	let terminalRef: { write(data: string | Uint8Array): void } | null = null;
 	let pipeline: LiveParserPipeline | null = null;
 	let recordPublication: Promise<void> = Promise.resolve();
@@ -356,6 +364,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					rows: config.rows,
 					data(_terminal: unknown, bytes: Uint8Array) {
 						journal.record(bytes, new Date().toISOString());
+						outputLog?.write(bytes);
 						// Bounded enqueueing ONLY — parsing happens on a later event-loop task.
 						tap?.recordOutput(bytes);
 						pipeline?.onOutput(bytes);
@@ -658,6 +667,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		await recordPublication;
 		tap?.stop();
 		journal.stop();
+		// Flushes the line the shell printed without a newline — typically the very
+		// error that killed the dev server.
+		outputLog?.close();
 		if (windowsJob) {
 			try {
 				proc.terminal?.write("\x03");

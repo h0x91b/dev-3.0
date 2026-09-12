@@ -3,6 +3,9 @@ import { handleDevServer } from "../commands/dev-server";
 import type { CliContext } from "../context";
 import type { DevServerStatus, CliResponse } from "../../shared/types";
 import { parseArgs } from "../args";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("../socket-client", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../socket-client")>()),
@@ -52,6 +55,7 @@ const STATUS: DevServerStatus = {
 	publishedPorts: [],
 	portConflicts: [],
 	extraEnvKeys: [],
+	logPath: null,
 	resourceUsage: { cpu: 3.1, rss: 104857600 },
 };
 
@@ -677,5 +681,44 @@ describe("dev-server --env", () => {
 		const statusCall = mockSend.mock.calls.find(([, method]) => method === "devServer.status");
 		expect(statusCall).toBeDefined();
 		expect(statusCall?.[2]).toEqual({ taskId: CTX.taskId, projectId: CTX.projectId });
+	});
+});
+
+describe("dev-server logs", () => {
+	const LOG_ROOT = mkdtempSync(join(tmpdir(), "dev3-cli-devlog-"));
+	const LOG_PATH = join(LOG_ROOT, "dev-server.log");
+
+	it("prints the tail of the captured output", async () => {
+		writeFileSync(LOG_PATH, "one\ntwo\nthree\n", "utf8");
+		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: LOG_PATH }));
+
+		await handleDevServer("logs", parseArgs(["--lines", "2"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain(LOG_PATH);
+		expect(stdoutOutput).toContain("two\nthree");
+		expect(stdoutOutput).not.toContain("one\n");
+	});
+
+	it("says nothing is captured yet instead of failing, when the file is not there", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: join(LOG_ROOT, "absent.log") }));
+
+		await handleDevServer("logs", parseArgs([]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("No dev-server output captured yet");
+		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	it("refuses a --lines beyond the cap rather than pasting a whole log", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: LOG_PATH }));
+
+		await expect(handleDevServer("logs", parseArgs(["--lines", "99999"]), SOCKET, CTX))
+			.rejects.toThrow(/EXIT_/);
+	});
+
+	it("reports a task with no worktree as having no log at all", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, logPath: null }));
+
+		await expect(handleDevServer("logs", parseArgs([]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
+		expect(stderrOutput).toContain("no worktree");
 	});
 });

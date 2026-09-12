@@ -117,6 +117,12 @@ export interface TerminalViewSpec {
 	/** Structured launch for the new view; takes precedence over `command`. */
 	readonly launch?: TerminalLaunchSpec;
 	/**
+	 * Mirror this view's output into a plain-text file as well as its pane, so it
+	 * can be read after the fact. Honoured by the native backend (the session host
+	 * writes it); the tmux backend does its own capture with `pipe-pane`.
+	 */
+	readonly outputLogPath?: string;
+	/**
 	 * How to split the parent pane. `"horizontal"` means the new pane appears
 	 * beside the existing one (left/right split); `"vertical"` means above/below.
 	 * Defaults to `"horizontal"` when omitted.
