@@ -12,9 +12,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const broadcastToAllWindows = vi.fn();
+const sendToFocusedWindow = vi.fn();
 const pushToBrowserClients = vi.fn();
 
-vi.mock("../window-manager", () => ({ broadcastToAllWindows }));
+vi.mock("../window-manager", () => ({ broadcastToAllWindows, sendToFocusedWindow }));
 vi.mock("../remote-access-server", () => ({ pushToBrowserClients }));
 
 const { pushEverywhere } = await import("../push-targets");
@@ -22,6 +23,7 @@ const { pushEverywhere } = await import("../push-targets");
 describe("pushEverywhere", () => {
 	beforeEach(() => {
 		broadcastToAllWindows.mockClear();
+		sendToFocusedWindow.mockClear();
 		pushToBrowserClients.mockClear();
 	});
 
@@ -48,5 +50,24 @@ describe("pushEverywhere", () => {
 
 		expect(broadcastToAllWindows).toHaveBeenCalledTimes(1);
 		expect(pushToBrowserClients).toHaveBeenCalledTimes(1);
+	});
+
+	// A sound is not state: every window renders its own state, but they all share
+	// one pair of speakers, so a broadcast chime plays once per open window.
+	it("sends a completion chime to the focused window only", () => {
+		const payload = { status: "completed", taskId: "task-3" };
+		pushEverywhere("taskSound", payload);
+
+		expect(sendToFocusedWindow).toHaveBeenCalledWith("taskSound", payload);
+		expect(broadcastToAllWindows).not.toHaveBeenCalled();
+	});
+
+	// Remote-only setups exist: a phone on the LAN with no desktop window in view
+	// is the whole point of the push, so browsers keep the full fan-out.
+	it("still delivers the chime to remote browsers", () => {
+		const payload = { status: "cancelled", taskId: "task-4" };
+		pushEverywhere("taskSound", payload);
+
+		expect(pushToBrowserClients).toHaveBeenCalledWith("taskSound", payload);
 	});
 });

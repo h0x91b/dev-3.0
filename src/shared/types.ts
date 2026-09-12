@@ -4927,9 +4927,9 @@ export type AppRPCSchema = {
 			moveTask: {
 				// `clientPlayedSound`: the UI already played the completion/cancel sound
 				// optimistically in the initiating renderer, so the backend must NOT
-				// also push `taskSound` (that push fans out to every connected renderer
-				// — a desktop window AND a remote browser on the same machine — and
-				// would play a second time). Unset for CLI / branch-merge / agent
+				// also push `taskSound` (that push still reaches a window and every
+				// attached remote browser, so the chime would play a second time on
+				// the same machine). Unset for CLI / branch-merge / agent
 				// approval, where no renderer played locally and the push is the sound.
 				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
 				response: Task;
