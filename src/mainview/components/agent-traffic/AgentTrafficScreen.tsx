@@ -25,6 +25,7 @@ import { domainHolds, rulerDomain } from "./traffic-range";
 import TrafficIcon from "./TrafficIcon";
 import TrafficComposer, { type TrafficComposerState } from "./TrafficComposer";
 import TrafficTerminalPeek from "./TrafficTerminalPeek";
+import TrafficConversation from "./TrafficConversation";
 import { useTrafficPlayback } from "./useTrafficPlayback";
 import { useTrafficData } from "./useTrafficData";
 import { useTrafficExperiment } from "./useTrafficExperiment";
@@ -1416,6 +1417,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 									>
 										{t("traffic.orbit.tasks")}
 									</button>
+									<button
+										aria-pressed={tab === "conversation"}
+										onClick={() => setTab("conversation")}
+									>
+										{t("traffic.conversation.tab")}
+									</button>
 								</div>
 								{pair && (
 									<button onClick={clearSelection}>
@@ -1424,7 +1431,14 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 								)}
 							</div>
 							<div className="traffic-list">
-								{tab === "messages" ? (
+								{tab === "conversation" ? (
+									<TrafficConversation
+										projectId={selectedNode?.projectId ?? null}
+										taskId={selectedNode?.task ? selectedNode.id : null}
+										taskGone={Boolean(selectedNode && !selectedNode.task)}
+										format={format}
+									/>
+								) : tab === "messages" ? (
 									listItems.length ? (
 										listItems.map((item) =>
 											item.kind === "message"

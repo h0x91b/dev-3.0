@@ -592,6 +592,98 @@
 	padding: 20px;
 	color: rgb(var(--text-secondary));
 }
+/* The task's own conversation. A reader, so density is lower than the message
+   list and the two speakers must never be confusable with each other. */
+.traffic-conversation {
+	font-size: 12px;
+	line-height: 1.6;
+}
+.traffic-conversation-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 16px;
+	border-bottom: 1px solid rgb(var(--border-default) / 0.3);
+}
+.traffic-conversation-head b {
+	color: rgb(var(--agent));
+}
+.traffic-conversation-head small {
+	color: rgb(var(--text-tertiary));
+}
+.traffic-conversation-head select {
+	max-width: 170px;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 6px;
+	background: rgb(var(--surface-base) / 0.6);
+	color: rgb(var(--text-primary));
+}
+.traffic-conversation-origin {
+	font-size: 10px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	color: rgb(var(--text-secondary));
+	background: rgb(var(--surface-base) / 0.7);
+}
+.traffic-conversation-origin.origin-archived {
+	color: rgb(var(--warning-strong));
+}
+.traffic-conversation-earlier {
+	width: 100%;
+	padding: 8px 16px;
+	font-size: 11px;
+	color: rgb(var(--accent));
+	border-bottom: 1px solid rgb(var(--border-default) / 0.3);
+}
+.traffic-turn {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 16px;
+	border-bottom: 1px solid rgb(var(--border-default) / 0.3);
+}
+.traffic-turn time {
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+}
+.traffic-turn b {
+	display: block;
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 2px;
+}
+.traffic-turn p {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.traffic-turn-user {
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: rgb(var(--surface-base) / 0.5);
+}
+.traffic-turn-user b {
+	color: rgb(var(--text-tertiary));
+}
+.traffic-turn-agent b {
+	color: rgb(var(--agent));
+}
+.traffic-turn-agent p {
+	color: rgb(var(--text-secondary));
+}
+.traffic-turn-actions {
+	margin: 0;
+	font-size: 11px;
+	color: rgb(var(--text-tertiary));
+	overflow-wrap: anywhere;
+}
+.traffic-turn-clamped {
+	font-size: 10px;
+	color: rgb(var(--text-tertiary));
+}
 .traffic-statusbar {
 	display: flex;
 	align-items: center;

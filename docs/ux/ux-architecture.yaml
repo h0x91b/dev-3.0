@@ -275,7 +275,7 @@ ux_architecture:
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     agent_traffic_screen:
       purpose: "Live map of recorded message attempts, with lists and an inspector."
-      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task", "send_short_message", "task_terminal_snapshot"]
+      allowed: ["orbit_visualization", "node_graph_visualization", "presentation_picker", "task_message_inspector", "task_conversation_reader", "search", "loaded_history_window", "message_replay", "camera_follow_focus", "minimap_navigation", "delivery_status_filter", "open_existing_task", "send_short_message", "task_terminal_snapshot"]
       forbidden: ["task_lifecycle_action", "importance_filter", "inferred_reply_obligation", "own_chrome_above_the_header", "terminal_composer", "slash_commands_or_completion", "launch_or_resume_an_agent"]
       narrow_form: "same_screen"  # filters fold into a BottomSheet inside it
       entry_point: "Pill, kebab row, Shift+Cmd/Ctrl+M, View menu and palette navigate to the route; one screen, no second log."

@@ -18,6 +18,10 @@ Bible 5.9 + yaml; `decisions/2026/09/12/traffic-terminal-snapshot-is-text.md`.
 
 Reverses "no composer" — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/12/agent-traffic-inspector-sends-one-short-message.md`.
 
+## 2026-09-12 — The selected task's conversation is a third inspector tab
+
+Bounded reader beside Messages and Tasks, labelled `Live` or `Archived` — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/12/task-conversation-in-the-traffic-inspector.md`.
+
 ## 2026-09-12 — A notification into agent traffic opens all projects
 
 An agent-message toast opens the traffic screen unscoped ("All active projects"); deliberate entries still seed the board in view — bible §5.7. Why: `decisions/2026/09/12/notification-entry-to-traffic-opens-all-projects.md`.
@@ -110,8 +114,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 
 ## 2026-08-19 — A data-bearing menu row opens on hover, its flyout beside the menu — rule now lives in bible §12.6.
 ## 2026-08-17 — A Space filters the dashboard; it never becomes a place
-- **Rule:** Spaces group projects on the dashboard — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, every space action behind one `…`; no space route, no colour, no stored `Home` (computed from zero-membership projects). The merged-board half was superseded 2026-08-28 — bible §10 grouping row owns it now.
-- **Why:** `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
+- **Rule:** a filtering rail over the overview — no space route, no colour, no stored `Home`; the merged-board half superseded 2026-08-28, bible §10 owns it. **Why:** `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
 
 ## 2026-08-21 — The dashboard's spaces surface is calm, container-gated, and stream-safe
 - **Rule:** One `…` per space on both surfaces (rail row + group header) holding `Edit projects…` (two-way membership), move, rename, delete, hide-on-camera; no add-only `+` — bible §10.
@@ -160,8 +163,7 @@ Two-task source line, non-severity `agent` violet, click-through to the receiver
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`addAndSendInlineComment`, `InlineCommentComposer`), bible §5.3.
 
 ## 2026-08-08 — The memory breakdown may kill leftover worktree processes, and nothing else
-- **Rule:** one conditional section at the bottom of the dev3 group in the memory popover/BottomSheet lists processes still running inside task worktrees; three ghost-danger controls — `Kill all` behind `confirm({ danger: true })`, a hover-revealed per-row kill with no dialog, and a rescan icon — bible §12.6 + yaml; yaml `global_header.ambient_resource_readout.reclaim_action`.
-- **Why:** `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
+- **Rule:** one conditional section in the memory popover lists processes still holding task worktrees, with ghost-danger kill controls — bible §12.6, yaml `global_header.ambient_resource_readout.reclaim_action`. **Why:** `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
 
 ## 2026-08-08 — An archived task reaches its images and artifacts as enumerated rows
 - Rule lives in bible §3 and yaml `task_image_viewer.reached_from`; why in `decisions/2026/08/08/archived-task-shared-outputs.md` (its standalone-overlay half superseded 2026-09-05).

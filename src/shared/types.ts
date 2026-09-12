@@ -2,6 +2,7 @@ import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
 import type { ImportConversationsResult, ImportableConversationView } from "./conversation-import-model";
 import type { HandoffPreview, SpawnAgentResult } from "./conversation-handoff-model";
+import type { TaskConversationView } from "./task-conversation-model";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
@@ -4849,6 +4850,23 @@ export type AppRPCSchema = {
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };
 				response: ConversationMatch[];
+			};
+			/**
+			 * One task's own agent conversation, newest session first and one page of
+			 * turns at a time. Reads the live transcript while the worktree exists and
+			 * dev3's archived dump afterwards; an empty `sessions` list means nothing
+			 * readable was found, never that the task was silent.
+			 */
+			readTaskConversation: {
+				params: {
+					projectId: string;
+					taskId: string;
+					sessionKey?: string | null;
+					/** Page backwards: the turns immediately before this turn index. */
+					before?: number | null;
+					limit?: number;
+				};
+				response: TaskConversationView;
 			};
 			/**
 			 * Claude Code and Codex conversations that ran in this project's directory

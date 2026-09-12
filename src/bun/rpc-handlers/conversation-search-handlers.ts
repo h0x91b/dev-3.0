@@ -5,6 +5,8 @@ import * as data from "../data";
 import { projectSlug } from "../git";
 import { searchConversations, type EngineTask } from "../conversation-search";
 import { readAllTaskBlobs } from "../task-blobs";
+import { readTaskConversation } from "../task-conversation";
+import type { TaskConversationView } from "../../shared/task-conversation-model";
 import { log } from "./shared";
 
 async function searchConversationsHandler(params: {
@@ -56,6 +58,29 @@ async function searchConversationsHandler(params: {
 	return results;
 }
 
+/**
+ * One task's own agent conversation, a page at a time. Read-only, and it answers
+ * for a completed task too — from dev3's archived dump, which the view labels.
+ */
+async function readTaskConversationHandler(params: {
+	projectId: string;
+	taskId: string;
+	sessionKey?: string | null;
+	before?: number | null;
+	limit?: number;
+}): Promise<TaskConversationView> {
+	const project = await data.getProject(params.projectId);
+	const tasks = await data.loadTasks(project);
+	const task = tasks.find((candidate) => candidate.id === params.taskId);
+	if (!task) return { sessions: [], sessionKey: null, turns: [], totalTurns: 0, firstIndex: 0 };
+	return readTaskConversation(project, task, {
+		sessionKey: params.sessionKey,
+		before: params.before,
+		limit: params.limit,
+	});
+}
+
 export const conversationSearchHandlers = {
 	searchConversations: searchConversationsHandler,
+	readTaskConversation: readTaskConversationHandler,
 };
