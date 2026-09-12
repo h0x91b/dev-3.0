@@ -79,8 +79,8 @@ describe("supportsResume", () => {
 
 describe("resolveAgentCommand — resume", () => {
 	// ---- Claude ----
-	it("Claude: adds --continue and skips prompt when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: adds --continue and skips prompt when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx({ taskDescription: "Some task description" }),
@@ -91,8 +91,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task description");
 	});
 
-	it("Claude: includes prompt normally when resume is not set", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: includes prompt normally when resume is not set", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx({ taskDescription: "Some task description" }),
@@ -102,8 +102,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("Some task description");
 	});
 
-	it("Claude: skips appendPrompt when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: skips appendPrompt when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ appendPrompt: "Extra instructions: {{TASK_TITLE}}" }),
 			makeCtx({ taskDescription: "" }),
@@ -114,8 +114,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Extra instructions");
 	});
 
-	it("Claude: the protocol body travels as a file on POSIX too, not in argv (#1734)", () => {
-		const cmd = resolveAgentCommand(makeAgent({ baseCommand: "claude" }), makeConfig(), makeCtx());
+	it("Claude: the protocol body travels as a file on POSIX too, not in argv (#1734)", async () => {
+		const cmd = await resolveAgentCommand(makeAgent({ baseCommand: "claude" }), makeConfig(), makeCtx());
 
 		expect(cmd).toContain("--append-system-prompt-file");
 		expect(cmd).not.toContain("--append-system-prompt '");
@@ -124,8 +124,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(readFileSync(join(AGENT_PROMPTS_DIR, "claude.md"), "utf-8")).toBe(CLAUDE_SKILL_BODY);
 	});
 
-	it("Claude: still includes --append-system-prompt when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: still includes --append-system-prompt when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -136,8 +136,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- Codex ----
-	it("Codex: uses 'codex resume --last' subcommand when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: uses 'codex resume --last' subcommand when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -148,8 +148,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task");
 	});
 
-	it("Codex: ignores unsupported generic config flags during resume", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: ignores unsupported generic config flags during resume", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({
 				model: "gpt-5",
@@ -168,8 +168,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--max-budget-usd");
 	});
 
-	it("Codex: normal command when resume is not set", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: normal command when resume is not set", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -180,8 +180,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("Some task");
 	});
 
-	it("Claude: quotes model names containing shell metacharacters", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: quotes model names containing shell metacharacters", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ model: "claude-opus-4-8[1m]" }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -191,8 +191,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--model claude-opus-4-8[1m]");
 	});
 
-	it("omits --model when a third-party provider is selected for the launch", () => {
-		const cmd = resolveAgentCommand(
+	it("omits --model when a third-party provider is selected for the launch", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ model: "claude-opus-4-8[1m]" }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -202,8 +202,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--model");
 	});
 
-	it("Codex on Bedrock: keeps --model and appends the model_provider routing args", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex on Bedrock: keeps --model and appends the model_provider routing args", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: "global.openai.gpt-5.6-sol" }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -215,8 +215,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
 	});
 
-	it("keeps --model when no provider is selected (native default)", () => {
-		const cmd = resolveAgentCommand(
+	it("keeps --model when no provider is selected (native default)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ model: "claude-opus-4-8[1m]" }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -224,8 +224,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
 	});
 
-	it("Codex: injects the dev3 protocol via -c developer_instructions, not the prompt", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: injects the dev3 protocol via -c developer_instructions, not the prompt", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -244,8 +244,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("-- 'Some task'");
 	});
 
-	it("Codex: resume also carries -c developer_instructions", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: resume also carries -c developer_instructions", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -256,8 +256,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("-c 'developer_instructions=");
 	});
 
-	it("Codex: skipSystemPrompt suppresses -c developer_instructions", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: skipSystemPrompt suppresses -c developer_instructions", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -268,10 +268,10 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Task Lifecycle Protocol");
 	});
 
-	it("Codex: uses dracula theme when dev3 UI theme is dark", () => {
+	it("Codex: uses dracula theme when dev3 UI theme is dark", async () => {
 		setCurrentUiTheme("dark");
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -282,10 +282,10 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
-	it("Codex: uses github theme when dev3 UI theme is light", () => {
+	it("Codex: uses github theme when dev3 UI theme is light", async () => {
 		setCurrentUiTheme("light");
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -296,8 +296,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain(`-c 'tui.theme="github"'`);
 	});
 
-	it("Codex: preserves unrelated config overrides when injecting the theme", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: preserves unrelated config overrides when injecting the theme", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({
 				model: undefined,
@@ -312,8 +312,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
-	it("Codex: appends the dev3 theme after a conflicting user override", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: appends the dev3 theme after a conflicting user override", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({
 				model: undefined,
@@ -325,10 +325,10 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd.indexOf('tui.theme="nord"')).toBeLessThan(cmd.indexOf('tui.theme="dracula"'));
 	});
 
-	it("Codex: leaves custom profile names untouched", () => {
+	it("Codex: leaves custom profile names untouched", async () => {
 		setCurrentUiTheme("light");
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -338,11 +338,11 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("-p dev3-light");
 	});
 
-	it("Codex: rewrites -p to --profile-v2 on profile-v2 Codex (dark)", () => {
+	it("Codex: rewrites -p to --profile-v2 on profile-v2 Codex (dark)", async () => {
 		setCurrentUiTheme("dark");
 		__setCodexProfileV2Override(true);
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -353,11 +353,11 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("-p dev3 ");
 	});
 
-	it("Codex: rewrites --profile to --profile-v2 on profile-v2 Codex (light)", () => {
+	it("Codex: rewrites --profile to --profile-v2 on profile-v2 Codex (light)", async () => {
 		setCurrentUiTheme("light");
 		__setCodexProfileV2Override(true);
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["--profile", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -367,11 +367,11 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--profile dev3-light");
 	});
 
-	it("Codex: leaves custom profile names untouched on profile-v2 Codex", () => {
+	it("Codex: leaves custom profile names untouched on profile-v2 Codex", async () => {
 		setCurrentUiTheme("dark");
 		__setCodexProfileV2Override(true);
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -381,13 +381,13 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--profile-v2");
 	});
 
-	it("Codex: never emits --profile-v2 on newer codex that removed it (issue #611)", () => {
+	it("Codex: never emits --profile-v2 on newer codex that removed it (issue #611)", async () => {
 		setCurrentUiTheme("dark");
 		// false => launch flag is the post-rename `--profile`, so the user's `-p`
 		// must be kept as-is and `--profile-v2` must never appear (it aborts codex).
 		__setCodexProfileV2Override(false);
 
-		const cmd = resolveAgentCommand(
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -398,8 +398,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- Gemini ----
-	it("Gemini: adds --resume latest when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Gemini: adds --resume latest when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "gemini" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -410,8 +410,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task");
 	});
 
-	it("Gemini: normal command when resume is not set", () => {
-		const cmd = resolveAgentCommand(
+	it("Gemini: normal command when resume is not set", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "gemini" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -422,8 +422,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- Cursor Agent ----
-	it("Cursor Agent: adds --continue when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Cursor Agent: adds --continue when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "agent" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -434,8 +434,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task");
 	});
 
-	it("Cursor Agent: normal command when resume is not set", () => {
-		const cmd = resolveAgentCommand(
+	it("Cursor Agent: normal command when resume is not set", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "agent" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -448,8 +448,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- skipSystemPrompt ----
-	it("Claude: skips --append-system-prompt when skipSystemPrompt=true", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: skips --append-system-prompt when skipSystemPrompt=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -460,8 +460,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Task Lifecycle Protocol");
 	});
 
-	it("Claude: includes --append-system-prompt by default", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: includes --append-system-prompt by default", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -470,8 +470,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--append-system-prompt");
 	});
 
-	it("Claude: includes --append-system-prompt when skipSystemPrompt=false", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: includes --append-system-prompt when skipSystemPrompt=false", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -482,8 +482,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- OpenCode ----
-	it("OpenCode: adds --continue when resume=true", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: adds --continue when resume=true", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: "anthropic/claude-opus-4-6" }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -494,8 +494,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task");
 	});
 
-	it("OpenCode: uses --prompt flag for prompt (not positional)", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: uses --prompt flag for prompt (not positional)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: "anthropic/claude-opus-4-6" }),
 			makeCtx({ taskDescription: "Fix the login bug" }),
@@ -506,8 +506,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
 	});
 
-	it("OpenCode: injects generic system prompt (not Claude hooks variant)", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: injects generic system prompt (not Claude hooks variant)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -520,8 +520,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Hooks automatically manage task status");
 	});
 
-	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({
 				model: "anthropic/claude-opus-4-6",
@@ -537,8 +537,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--max-budget-usd");
 	});
 
-	it("OpenCode: does not emit --append-system-prompt", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: does not emit --append-system-prompt", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig(),
 			makeCtx(),
@@ -547,8 +547,8 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--append-system-prompt");
 	});
 
-	it("OpenCode: passes additionalArgs (e.g. --agent sisyphus)", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: passes additionalArgs (e.g. --agent sisyphus)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: "anthropic/claude-opus-4-6", additionalArgs: ["--agent", "sisyphus"] }),
 			makeCtx({ taskDescription: "Build feature" }),
@@ -560,8 +560,8 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- Unsupported agents ----
-	it("does not add resume flags for unsupported agents", () => {
-		const cmd = resolveAgentCommand(
+	it("does not add resume flags for unsupported agents", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "aider" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
@@ -583,8 +583,8 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 	// auto-ran as turn 1. With an empty prompt it must NOT be injected, so the
 	// agent opens an empty interactive window (matching Claude).
 
-	it("Codex: empty description → no positional prompt; protocol still arrives via -c", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: empty description → no positional prompt; protocol still arrives via -c", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "" }),
@@ -599,8 +599,8 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
-	it("Cursor Agent: empty description → no positional prompt, no system prompt injected", () => {
-		const cmd = resolveAgentCommand(
+	it("Cursor Agent: empty description → no positional prompt, no system prompt injected", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "agent" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "" }),
@@ -610,8 +610,8 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 		expect(cmd).not.toMatch(/ -- /);
 	});
 
-	it("OpenCode: empty description → no --prompt, no system prompt injected", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: empty description → no --prompt, no system prompt injected", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "" }),
@@ -621,8 +621,8 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 		expect(cmd).not.toContain("--prompt");
 	});
 
-	it("Codex: non-empty description still injects description + system prompt", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: non-empty description still injects description + system prompt", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Fix the login bug" }),
@@ -642,8 +642,8 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 
 	it.each(["claude", "codex", "gemini", "agent"])(
 		"%s: emits `-- <prompt>` so a '---'-prefixed description is not parsed as a flag",
-		(baseCmd) => {
-		const cmd = resolveAgentCommand(
+		async (baseCmd) => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: baseCmd }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "---hello frontmatter" }),
@@ -662,8 +662,8 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 		},
 	);
 
-	it("OpenCode: uses --prompt <value>, so no -- separator is added (value form is unambiguous)", () => {
-		const cmd = resolveAgentCommand(
+	it("OpenCode: uses --prompt <value>, so no -- separator is added (value form is unambiguous)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "---hello frontmatter" }),
@@ -674,8 +674,8 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 		expect(cmd).not.toMatch(/ -- '/);
 	});
 
-	it("Claude: -- guard is still present for plain descriptions (no regression for normal prompts)", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: -- guard is still present for plain descriptions (no regression for normal prompts)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Fix the login bug" }),
@@ -684,8 +684,8 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 		expect(cmd).toContain("-- 'Fix the login bug'");
 	});
 
-	it("does not add -- when resuming (no positional prompt is emitted on resume)", () => {
-		const cmd = resolveAgentCommand(
+	it("does not add -- when resuming (no positional prompt is emitted on resume)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "---hello frontmatter" }),
@@ -698,8 +698,8 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 });
 
 describe("resolveAgentCommand — sessionId", () => {
-	it("Claude: injects --session-id for fresh launch", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: injects --session-id for fresh launch", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -710,8 +710,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--resume");
 	});
 
-	it("Gemini: injects --session-id for fresh launch (PR #26060)", () => {
-		const cmd = resolveAgentCommand(
+	it("Gemini: injects --session-id for fresh launch (PR #26060)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "gemini" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -722,8 +722,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--resume");
 	});
 
-	it("Claude: uses --resume <id> when both resume and sessionId", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: uses --resume <id> when both resume and sessionId", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -735,8 +735,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--continue");
 	});
 
-	it("Claude: falls back to --continue when resume without sessionId", () => {
-		const cmd = resolveAgentCommand(
+	it("Claude: falls back to --continue when resume without sessionId", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
 			makeConfig(),
 			makeCtx(),
@@ -747,8 +747,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--session-id");
 	});
 
-	it("Gemini: uses --resume <id> when both resume and sessionId", () => {
-		const cmd = resolveAgentCommand(
+	it("Gemini: uses --resume <id> when both resume and sessionId", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "gemini" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -759,8 +759,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("latest");
 	});
 
-	it("Codex: uses session id in resume subcommand", () => {
-		const cmd = resolveAgentCommand(
+	it("Codex: uses session id in resume subcommand", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -771,8 +771,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--last");
 	});
 
-	it("Cursor Agent: injects --resume <id> for fresh launch (creates new thread)", () => {
-		const cmd = resolveAgentCommand(
+	it("Cursor Agent: injects --resume <id> for fresh launch (creates new thread)", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "agent" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -783,8 +783,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--session-id");
 	});
 
-	it("Cursor Agent: uses --resume <id> when both resume and sessionId", () => {
-		const cmd = resolveAgentCommand(
+	it("Cursor Agent: uses --resume <id> when both resume and sessionId", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "agent" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -795,8 +795,8 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--continue");
 	});
 
-	it("does not inject session id for unsupported agents", () => {
-		const cmd = resolveAgentCommand(
+	it("does not inject session id for unsupported agents", async () => {
+		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx(),
@@ -957,23 +957,23 @@ describe("applyBinaryPathOverride", () => {
 // A custom executable for Claude Code must run through the very same code as
 // `claude` itself — the whole point of declaring the family.
 describe("a declared family reaches the launch command", () => {
-	it("resumes instead of re-sending the task description", () => {
+	it("resumes instead of re-sending the task description", async () => {
 		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
+		const cmd = await resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
 		expect(cmd).toContain("my-claude --resume sess-1");
 		expect(cmd).not.toContain("Fix the login bug");
 	});
 
-	it("mints a session id on a fresh launch, so there is something to resume", () => {
+	it("mints a session id on a fresh launch, so there is something to resume", async () => {
 		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		expect(resolveAgentCommand(agent, makeConfig(), makeCtx(), { sessionId: "fresh-1" }))
+		expect((await resolveAgentCommand(agent, makeConfig(), makeCtx(), { sessionId: "fresh-1" })))
 			.toContain("--session-id fresh-1");
 		expect(buildResumeCommand("my-claude", "sess-1", "claude")).toBe("my-claude --resume sess-1");
 	});
 
-	it("injects the dev3 protocol and the bypass switch, like plain claude does", () => {
+	it("injects the dev3 protocol and the bypass switch, like plain claude does", async () => {
 		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx());
+		const cmd = await resolveAgentCommand(agent, makeConfig(), makeCtx());
 		expect(cmd).toContain("--append-system-prompt");
 		expect(cmd).toContain("--allow-dangerously-skip-permissions");
 	});
@@ -985,9 +985,9 @@ describe("a declared family reaches the launch command", () => {
 		expect(result?.model).toBe("pinned-opus");
 	});
 
-	it("leaves an undeclared custom binary on the generic path", () => {
+	it("leaves an undeclared custom binary on the generic path", async () => {
 		const agent = makeAgent({ baseCommand: "my-claude" });
-		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
+		const cmd = await resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
 		expect(cmd).not.toContain("--resume");
 		expect(cmd).toContain("Fix the login bug");
 	});
@@ -1379,9 +1379,9 @@ describe("applyModelOverride — API profile model beats the preset --model flag
 		expect(config.model).toBe("claude-opus-4-8[1m]");
 	});
 
-	it("produces a command with the overridden --model", () => {
+	it("produces a command with the overridden --model", async () => {
 		const config = applyModelOverride(makeConfig({ model: "sonnet" }), "claude", { ANTHROPIC_MODEL: "my-model" });
-		const cmd = resolveAgentCommand(makeAgent(), config, makeCtx());
+		const cmd = await resolveAgentCommand(makeAgent(), config, makeCtx());
 		expect(cmd).toContain("--model my-model");
 		expect(cmd).not.toContain("--model sonnet");
 	});

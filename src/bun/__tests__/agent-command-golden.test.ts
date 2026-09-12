@@ -239,8 +239,8 @@ describe("resolveAgentCommand — golden matrix (structural, byte-identical)", (
 		expect([...caseNames].sort()).toEqual([...expectedNames].sort());
 	});
 
-	it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-		const out = resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
+	it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+		const out = await resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
 		expect(redact(out)).toBe(EXPECTED[c.name]);
 	});
 });

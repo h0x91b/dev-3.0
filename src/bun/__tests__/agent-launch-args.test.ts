@@ -124,22 +124,22 @@ describe("commandToken", () => {
 });
 
 describe("the launch call site", () => {
-	it("resolveAgentCommand emits no POSIX escape on Windows", () => {
+	it("resolveAgentCommand emits no POSIX escape on Windows", async () => {
 		// Not a synthetic string: this is the prompt every Claude launch carries,
 		// and the apostrophes in it are what killed the .ps1 parse. On Windows it
 		// now travels as a file (the ceiling below), so what must be gone from the
 		// command line is the POSIX escape — in the prompt and everywhere else.
 		expect(DEV3_SYSTEM_PROMPT).toContain("'");
 		asPlatform("win32");
-		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX);
 		expect(cmd).toContain("--append-system-prompt-file");
 		expect(cmd).not.toContain("'\\''");
 		expect(cmd).toContain(powerShellNativeArg("Fix the login bug"));
 	});
 
-	it("resolveAgentCommand uses the file on POSIX too, and still quotes the rest the POSIX way", () => {
+	it("resolveAgentCommand uses the file on POSIX too, and still quotes the rest the POSIX way", async () => {
 		asPlatform("darwin");
-		const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX);
 		// The protocol body no longer sits in argv (#1734): its own single quotes
 		// used to show up here as the '\'' escape sequence.
 		expect(cmd).toContain("--append-system-prompt-file");
@@ -147,17 +147,17 @@ describe("the launch call site", () => {
 		expect(cmd).toContain("'Fix the login bug'");
 	});
 
-	it("the POSIX escape is still emitted — now for the user's own apostrophes", () => {
+	it("the POSIX escape is still emitted — now for the user's own apostrophes", async () => {
 		// The protocol used to supply them; with it gone from argv the guard has to
 		// be proved on the task text, or it would quietly stop guarding anything.
 		asPlatform("darwin");
-		const cmd = resolveAgentCommand(agent("claude"), undefined, { ...CTX, taskDescription: "the task's title" });
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, { ...CTX, taskDescription: "the task's title" });
 		expect(cmd).toContain("'\\''");
 	});
 
-	it("resolveAgentCommand spells a resolved binary path as a command", () => {
+	it("resolveAgentCommand spells a resolved binary path as a command", async () => {
 		asPlatform("win32");
-		const cmd = resolveAgentCommand(agent("C:\\Users\\John Smith\\bin\\claude.exe"), undefined, CTX);
+		const cmd = await resolveAgentCommand(agent("C:\\Users\\John Smith\\bin\\claude.exe"), undefined, CTX);
 		expect(cmd.startsWith("& 'C:\\Users\\John Smith\\bin\\claude.exe' ")).toBe(true);
 	});
 
@@ -183,10 +183,10 @@ describe("the command-line ceiling", () => {
 		expect(CLAUDE_SKILL_BODY.length).toBeGreaterThan(WINDOWS_COMMAND_LINE_LIMIT / 2);
 	});
 
-	it("every platform gets the file — the ceiling on Windows, argv exposure everywhere", () => {
+	it("every platform gets the file — the ceiling on Windows, argv exposure everywhere", async () => {
 		for (const platform of ["win32", "darwin", "linux"] as const) {
 			asPlatform(platform);
-			const cmd = resolveAgentCommand(agent("claude"), undefined, CTX);
+			const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX);
 			expect(cmd, platform).toContain("--append-system-prompt-file");
 			expect(cmd.length, platform).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
 		}

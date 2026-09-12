@@ -8,7 +8,7 @@ export async function handleInstallSkills(): Promise<void> {
 	// Re-installing must not turn on a feature the user never asked for, nor
 	// resurrect one they switched off in Settings.
 	const lowBattery = loadSettingsSync().lowBatteryEnabled;
-	installAgentSkills({ lowBattery });
+	await installAgentSkills({ lowBattery });
 
 	process.stdout.write("Installed agent skills:\n");
 	for (const rel of MANAGED_SKILL_FILES) {

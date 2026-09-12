@@ -105,11 +105,11 @@ vi.mock("../agent-system-prompt-file", async () => {
 
 describe("the whole Windows command line fits", () => {
 	for (const command of AGENT_COMMANDS) {
-		it(`${command} launches inside the ceiling with a full-size task`, () => {
+		it(`${command} launches inside the ceiling with a full-size task`, async () => {
 			asPlatform("win32");
 			__setCodexProfileV2Override(false);
 			try {
-				const cmd = resolveAgentCommand(agent(command), undefined, fullSizeContext());
+				const cmd = await resolveAgentCommand(agent(command), undefined, fullSizeContext());
 				expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
 			} finally {
 				__setCodexProfileV2Override(null);
@@ -132,16 +132,16 @@ describe("the whole Windows command line fits", () => {
 	// The create-and-launch default (2026-09-12) was folded into the rules it
 	// belongs to and paid for out of illustrations and justifications, so these two
 	// numbers did not move.
-	it("a coordinator task keeps the launch room it had before the events block", () => {
+	it("a coordinator task keeps the launch room it had before the events block", async () => {
 		asPlatform("win32");
 		const coordinator = (brief: number) => ({
 			...fullSizeContext(),
 			taskDescription: `${COORDINATOR_PROMPT}\n\n${"x".repeat(brief)}`,
 		});
-		const fits = (command: string, brief: number) =>
-			resolveAgentCommand(agent(command), undefined, coordinator(brief)).length < WINDOWS_COMMAND_LINE_LIMIT;
-		expect(fits("gemini", 26536)).toBe(true);
-		expect(fits("some-custom-agent", 26525)).toBe(true);
+		const fits = async (command: string, brief: number) =>
+			(await resolveAgentCommand(agent(command), undefined, coordinator(brief))).length < WINDOWS_COMMAND_LINE_LIMIT;
+		expect(await fits("gemini", 26536)).toBe(true);
+		expect(await fits("some-custom-agent", 26525)).toBe(true);
 	});
 
 	it("the reserve is real: a task text this long is what the budget is for", () => {

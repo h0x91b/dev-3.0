@@ -179,7 +179,7 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
-	installAgentSkills({ configureCodex: false, lowBattery: loadSettingsSync().lowBatteryEnabled });
+	await installAgentSkills({ configureCodex: false, lowBattery: loadSettingsSync().lowBatteryEnabled });
 
 	// Append ~/.dev3.0/bin to the user's shell rc files (idempotent).
 	// This makes `dev3` available in all terminals, not just worktree tmux
@@ -250,7 +250,7 @@ if (shellEnv.path) {
 
 // Codex profile migration depends on `codex --version`. Run it only after the
 // user's shell PATH is available; the app bundle starts with a minimal PATH.
-ensureCodexConfigFile(homedir());
+await ensureCodexConfigFile(homedir());
 
 // Windows has no other entry point: nothing but the unpublished Setup extractor
 // ever writes a .lnk, so without this a zip user cannot start dev3 after a reboot.

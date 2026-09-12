@@ -297,7 +297,7 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 
 	it("wraps the launch in the notice when the installed Codex predates the model", async () => {
 		resolveAsCodex("gpt-6-astra");
-		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.144.4");
+		vi.mocked(agents.getCodexVersionCached).mockResolvedValue("codex-cli 0.144.4");
 
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 
@@ -314,7 +314,7 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 
 	it("says nothing on a Codex new enough to run the model", async () => {
 		resolveAsCodex("gpt-6-astra");
-		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.153.4");
+		vi.mocked(agents.getCodexVersionCached).mockResolvedValue("codex-cli 0.153.4");
 
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 
@@ -323,7 +323,7 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 
 	it("says nothing when the version could not be read", async () => {
 		resolveAsCodex("gpt-6-astra");
-		vi.mocked(agents.getCodexVersionCached).mockReturnValue(null);
+		vi.mocked(agents.getCodexVersionCached).mockResolvedValue(null);
 
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 
@@ -334,7 +334,7 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 		// `clearAllMocks` keeps implementations, so restore the Claude default the
 		// module factory installs before asserting the negative.
 		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
-		vi.mocked(agents.getCodexVersionCached).mockReturnValue("codex-cli 0.144.4");
+		vi.mocked(agents.getCodexVersionCached).mockResolvedValue("codex-cli 0.144.4");
 
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 

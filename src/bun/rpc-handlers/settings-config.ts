@@ -274,7 +274,7 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 			// line inside dev3's managed block in ~/.agents/AGENTS.md. An explicit
 			// false here is a real uninstall, which is why the flag is passed, not
 			// left undefined.
-			installAgentSkills({ lowBattery: next.lowBatteryEnabled === true });
+			await installAgentSkills({ lowBattery: next.lowBatteryEnabled === true });
 		} catch (err) {
 			log.warn("Failed to apply the low-battery toggle (non-fatal)", { error: String(err) });
 		}

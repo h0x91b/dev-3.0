@@ -731,95 +731,95 @@ describe("resolveAgentCommand", () => {
 	};
 	const ctx = makeCtx();
 
-	it("builds basic command with no config", () => {
-		const cmd = resolveAgentCommand(agent, undefined, ctx);
+	it("builds basic command with no config", async () => {
+		const cmd = await resolveAgentCommand(agent, undefined, ctx);
 		expect(cmd).toContain("claude");
 		expect(cmd).toContain("'Fix the login bug'");
 	});
 
-	it("adds --model flag from config", () => {
+	it("adds --model flag from config", async () => {
 		const config: AgentConfiguration = { id: "c1", name: "Test", model: "opus" };
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("--model opus");
 	});
 
-	it("adds --permission-mode flag", () => {
+	it("adds --permission-mode flag", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			permissionMode: "plan",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("--permission-mode plan");
 	});
 
-	it("does not add --permission-mode when set to 'default'", () => {
+	it("does not add --permission-mode when set to 'default'", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			permissionMode: "default",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).not.toContain("--permission-mode");
 	});
 
-	it("adds --effort flag", () => {
+	it("adds --effort flag", async () => {
 		const config: AgentConfiguration = { id: "c1", name: "Test", effort: "high" };
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("--effort high");
 	});
 
-	it("adds --max-budget-usd flag", () => {
+	it("adds --max-budget-usd flag", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			maxBudgetUsd: 5.5,
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("--max-budget-usd 5.5");
 	});
 
-	it("does not add --max-budget-usd when 0", () => {
+	it("does not add --max-budget-usd when 0", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			maxBudgetUsd: 0,
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).not.toContain("--max-budget-usd");
 	});
 
-	it("appends additionalArgs", () => {
+	it("appends additionalArgs", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			additionalArgs: ["--verbose", "--debug"],
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("--verbose --debug");
 	});
 
-	it("appends interpolated appendPrompt to task description", () => {
+	it("appends interpolated appendPrompt to task description", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			appendPrompt: "Project: {{PROJECT_NAME}}",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toContain("Fix the login bug\n\nProject: my-project");
 	});
 
-	it("uses baseCommandOverride when set", () => {
+	it("uses baseCommandOverride when set", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			baseCommandOverride: "my-claude-wrapper",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).toMatch(/^my-claude-wrapper /);
 	});
 
-	it("builds full command with all config fields", () => {
+	it("builds full command with all config fields", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Full",
@@ -831,7 +831,7 @@ describe("resolveAgentCommand", () => {
 			appendPrompt: "Extra: {{TASK_TITLE}}",
 			baseCommandOverride: "my-claude",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 
 		expect(cmd).toMatch(/^my-claude /);
 		expect(cmd).toContain("--model opus");
@@ -842,19 +842,19 @@ describe("resolveAgentCommand", () => {
 		expect(cmd).toContain("Extra: Fix bug");
 	});
 
-	it("handles empty task description with appendPrompt", () => {
+	it("handles empty task description with appendPrompt", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			appendPrompt: "Do work on {{PROJECT_NAME}}",
 		};
 		const emptyCtx = makeCtx({ taskDescription: "" });
-		const cmd = resolveAgentCommand(agent, config, emptyCtx);
+		const cmd = await resolveAgentCommand(agent, config, emptyCtx);
 		expect(cmd).toContain("Do work on my-project");
 	});
 
-	it("hands claude its protocol body as a file for the claude base command", () => {
-		const cmd = resolveAgentCommand(agent, undefined, ctx);
+	it("hands claude its protocol body as a file for the claude base command", async () => {
+		const cmd = await resolveAgentCommand(agent, undefined, ctx);
 		expect(cmd).toContain("--append-system-prompt-file");
 		expect(cmd).toContain("agent-prompts/claude.md");
 		// The body itself stays out of argv, where pkill -f would match it (#1734).
@@ -864,24 +864,24 @@ describe("resolveAgentCommand", () => {
 		expect(readFileSync(promptFile, "utf-8")).toContain("dev-3.0");
 	});
 
-	it("does not inject --append-system-prompt for non-claude agents", () => {
+	it("does not inject --append-system-prompt for non-claude agents", async () => {
 		const nonClaude: CodingAgent = {
 			id: "a2",
 			name: "Codex",
 			baseCommand: "codex",
 			configurations: [],
 		};
-		const cmd = resolveAgentCommand(nonClaude, undefined, ctx);
+		const cmd = await resolveAgentCommand(nonClaude, undefined, ctx);
 		expect(cmd).not.toContain("--append-system-prompt");
 	});
 
-	it("does not inject --append-system-prompt when baseCommandOverride is non-claude", () => {
+	it("does not inject --append-system-prompt when baseCommandOverride is non-claude", async () => {
 		const config: AgentConfiguration = {
 			id: "c1",
 			name: "Test",
 			baseCommandOverride: "my-wrapper",
 		};
-		const cmd = resolveAgentCommand(agent, config, ctx);
+		const cmd = await resolveAgentCommand(agent, config, ctx);
 		expect(cmd).not.toContain("--append-system-prompt");
 	});
 
@@ -896,90 +896,90 @@ describe("resolveAgentCommand", () => {
 			configurations: [],
 		};
 
-		it("escapes single quotes in task description", () => {
+		it("escapes single quotes in task description", async () => {
 			const c = makeCtx({ taskDescription: "Fix it's broken flow" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Fix it'\\''s broken flow'");
 		});
 
-		it("preserves double quotes in task description (safe inside single quotes)", () => {
+		it("preserves double quotes in task description (safe inside single quotes)", async () => {
 			const c = makeCtx({ taskDescription: 'Fix the "login" page' });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Fix the \"login\" page'");
 		});
 
-		it("preserves dollar signs in task description", () => {
+		it("preserves dollar signs in task description", async () => {
 			const c = makeCtx({ taskDescription: "Check $HOME and $PATH vars" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Check $HOME and $PATH vars'");
 		});
 
-		it("preserves backticks in task description", () => {
+		it("preserves backticks in task description", async () => {
 			const c = makeCtx({ taskDescription: "Run `whoami` and check" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Run `whoami` and check'");
 		});
 
-		it("preserves command substitution syntax in task description", () => {
+		it("preserves command substitution syntax in task description", async () => {
 			const c = makeCtx({ taskDescription: "Value is $(cat /etc/passwd)" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Value is $(cat /etc/passwd)'");
 		});
 
-		it("preserves semicolons and pipes in task description", () => {
+		it("preserves semicolons and pipes in task description", async () => {
 			const c = makeCtx({ taskDescription: "step1; step2 | step3" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'step1; step2 | step3'");
 		});
 
-		it("preserves backslashes in task description", () => {
+		it("preserves backslashes in task description", async () => {
 			const c = makeCtx({ taskDescription: "path\\to\\file" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'path\\to\\file'");
 		});
 
-		it("preserves newlines in task description", () => {
+		it("preserves newlines in task description", async () => {
 			const c = makeCtx({ taskDescription: "line1\nline2\nline3" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'line1\nline2\nline3'");
 		});
 
-		it("handles injection attempt via single-quote breakout", () => {
+		it("handles injection attempt via single-quote breakout", async () => {
 			const c = makeCtx({ taskDescription: "'; rm -rf / #" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- ''\\''; rm -rf / #'");
 		});
 
-		it("handles complex real-world task with mixed special chars", () => {
+		it("handles complex real-world task with mixed special chars", async () => {
 			const desc = "Fix the \"login\" bug (it's broken); check $PATH & `env` | grep HOME";
 			const c = makeCtx({ taskDescription: desc });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe(
 				"bash-agent -- 'Fix the \"login\" bug (it'\\''s broken); check $PATH & `env` | grep HOME'",
 			);
 		});
 
-		it("handles unicode and emoji in task description", () => {
+		it("handles unicode and emoji in task description", async () => {
 			const c = makeCtx({ taskDescription: "Исправь баг 🐛 в компоненте" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Исправь баг 🐛 в компоненте'");
 		});
 
-		it("escapes task description with only single quotes", () => {
+		it("escapes task description with only single quotes", async () => {
 			const c = makeCtx({ taskDescription: "'''" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- ''\\'''\\'''\\'''");
 		});
 
-		it("preserves redirect operators in task description", () => {
+		it("preserves redirect operators in task description", async () => {
 			const c = makeCtx({ taskDescription: "output > /dev/null 2>&1" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'output > /dev/null 2>&1'");
 		});
 
-		it("preserves glob patterns in task description", () => {
+		it("preserves glob patterns in task description", async () => {
 			const c = makeCtx({ taskDescription: "Fix *.ts files in src/**/" });
-			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
+			const cmd = await resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe("bash-agent -- 'Fix *.ts files in src/**/'");
 		});
 	});
@@ -994,7 +994,7 @@ describe("resolveAgentCommand", () => {
 			configurations: [],
 		};
 
-		it("escapes task title with single quotes when interpolated via template", () => {
+		it("escapes task title with single quotes when interpolated via template", async () => {
 			const config: AgentConfiguration = {
 				id: "c1",
 				name: "Test",
@@ -1004,12 +1004,12 @@ describe("resolveAgentCommand", () => {
 				taskTitle: "Fix it's problem",
 				taskDescription: "",
 			});
-			const cmd = resolveAgentCommand(simpleAgent, config, c);
+			const cmd = await resolveAgentCommand(simpleAgent, config, c);
 			// The interpolated prompt "Title: Fix it's problem" gets shellEscape'd
 			expect(cmd).toBe("bash-agent -- 'Title: Fix it'\\''s problem'");
 		});
 
-		it("escapes task title with dollar signs when interpolated via template", () => {
+		it("escapes task title with dollar signs when interpolated via template", async () => {
 			const config: AgentConfiguration = {
 				id: "c1",
 				name: "Test",
@@ -1019,11 +1019,11 @@ describe("resolveAgentCommand", () => {
 				taskTitle: "Check $HOME path",
 				taskDescription: "",
 			});
-			const cmd = resolveAgentCommand(simpleAgent, config, c);
+			const cmd = await resolveAgentCommand(simpleAgent, config, c);
 			expect(cmd).toBe("bash-agent -- 'Work on: Check $HOME path'");
 		});
 
-		it("escapes combined description + appendPrompt with special chars", () => {
+		it("escapes combined description + appendPrompt with special chars", async () => {
 			const config: AgentConfiguration = {
 				id: "c1",
 				name: "Test",
@@ -1033,7 +1033,7 @@ describe("resolveAgentCommand", () => {
 				taskTitle: "Fix 'auth' bug",
 				taskDescription: "The $user can't login",
 			});
-			const cmd = resolveAgentCommand(simpleAgent, config, c);
+			const cmd = await resolveAgentCommand(simpleAgent, config, c);
 			// Description + \n\n + interpolated appendPrompt, all shellEscape'd
 			expect(cmd).toBe(
 				"bash-agent -- 'The $user can'\\''t login\n\nTitle: Fix '\\''auth'\\'' bug'",
