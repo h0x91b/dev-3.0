@@ -49,11 +49,21 @@ slide is gated by `scene-shift.ts`: only when the same cards fill the same box d
 `.traffic-nodes-cards` carry `data-shift="on"`. A filter toggle or an arrival re-lays
 the scene out, and eighty cards gliding at once reads as a glitch.
 
-`left`/`top` are transitioned rather than a transform, because the layout hands the card
-its position as inline `left`/`top` and a transform would have to compose with the
-`scale(0.96)` the unborn state already uses. Measured on the running app: 16 status steps
-moved 10 cards, frame delta median 8ms, p95 9ms, max 36ms. If a scene ever moves dozens of
-cards at once, that is the moment to move positioning onto `translate`.
+The trip itself is a curve, and it runs entirely on the compositor. The layout still drops
+the card straight into its new `left`/`top`; `card-travel.ts` measures where it came from and
+hands the card four custom properties, and one shared three-keyframe animation moves only
+`transform` — start offset, a mid-point bowed out perpendicular to the trip, then none (FLIP).
+Direction picks the side: left goes over the top, right under the bottom, up round the left,
+down round the right, so two cards trading places pass on opposite sides instead of through
+each other. The bow is half the distance, capped at 260px.
+
+Two traps behind the shape of that hook. The stage re-renders on every animation frame, so a
+trip derived per render is dropped one frame in and the animation dies with it — it is held in
+state for its full 560ms instead. And the offset must be applied before paint (`useLayoutEffect`),
+or the card is seen in its new slot and then jumps back to start its trip. The two alternating
+animation names exist because a second trip while the first is still running only restarts when
+the name changes. Measured on the running app: 28 trips over 18 status steps, frame delta median
+8ms, p95 9ms, max 48ms, and a sampled trip traced the arc exactly (1056px across, 260px up).
 
 ## Risks
 

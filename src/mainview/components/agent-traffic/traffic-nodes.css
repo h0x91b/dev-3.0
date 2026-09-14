@@ -661,22 +661,33 @@
 		--node-ink 700ms cubic-bezier(0.2, 0, 0, 1);
 }
 /* A status change is a board move: the slot comes from the card's Kanban column,
-   so it travels to the new one instead of teleporting, and the cards behind it
-   close the gap. Only while the scene is the same scene — see scene-shift.ts. */
-.traffic-nodes-cards[data-shift="on"] .traffic-node-card:not(.is-unborn) {
-	transition:
-		opacity 260ms cubic-bezier(0.2, 0, 0, 1),
-		transform 260ms cubic-bezier(0.2, 0, 0, 1),
-		--node-status 700ms cubic-bezier(0.2, 0, 0, 1),
-		--node-ink 700ms cubic-bezier(0.2, 0, 0, 1),
-		left 560ms cubic-bezier(0.2, 0, 0, 1),
-		top 560ms cubic-bezier(0.2, 0, 0, 1);
+   so the card travels to the new one instead of teleporting, and the ones behind
+   it close the gap. The layout still drops it straight into its new left/top —
+   only `transform` carries it there (FLIP), so the whole trip stays on the
+   compositor and costs no layout. Geometry and the two alternating slots come
+   from card-travel.ts; the arc is the three keyframes below. */
+.traffic-node-card[data-travel="a"] {
+	animation: traffic-node-travel-a 560ms cubic-bezier(0.33, 0, 0.2, 1);
 }
-/* Matching specificity, straight after: the rule above outranks the shared
-   reduced-motion switch further down the file, so it needs its own. */
+.traffic-node-card[data-travel="b"] {
+	animation: traffic-node-travel-b 560ms cubic-bezier(0.33, 0, 0.2, 1);
+}
+/* Two identical arcs under different names: a second trip while the first is
+   still running has to restart the animation, and only a new name does that. */
+@keyframes traffic-node-travel-a {
+	from { transform: translate(var(--travel-x), var(--travel-y)); }
+	50% { transform: translate(var(--travel-mx), var(--travel-my)); }
+	to { transform: none; }
+}
+@keyframes traffic-node-travel-b {
+	from { transform: translate(var(--travel-x), var(--travel-y)); }
+	50% { transform: translate(var(--travel-mx), var(--travel-my)); }
+	to { transform: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-	.traffic-nodes-cards[data-shift="on"] .traffic-node-card:not(.is-unborn) {
-		transition: none;
+	.traffic-node-card[data-travel="a"],
+	.traffic-node-card[data-travel="b"] {
+		animation: none;
 	}
 }
 .traffic-nodes-bands {

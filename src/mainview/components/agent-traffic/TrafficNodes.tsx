@@ -19,6 +19,7 @@ import { useReducedMotion } from "../../utils/useReducedMotion";
 import PipelineRing from "../PipelineRing";
 import { kanbanOrder } from "./kanban-order";
 import { useSceneShift } from "./scene-shift";
+import { useCardTravel } from "./card-travel";
 import {
 	layoutTraffic,
 	pointAt,
@@ -988,6 +989,7 @@ export default function TrafficNodes({
 								latest={latest.get(placed.node.key)}
 								celebrating={celebration?.nodeKey === placed.node.key}
 								reduced={reduced}
+								sliding={sliding}
 								onSelect={(key) => {
 									manual();
 									onSelect(key);
@@ -1275,6 +1277,7 @@ function Card({
 	latest,
 	celebrating,
 	reduced,
+	sliding,
 	onSelect,
 	onFocus,
 }: {
@@ -1295,6 +1298,8 @@ function Card({
 	latest?: TrafficRecord;
 	celebrating: boolean;
 	reduced: boolean;
+	/** The scene is the same scene, so a card that changed slot may travel to it. */
+	sliding: boolean;
 	onSelect: (key: string) => void;
 	onFocus: (key: string) => void;
 }) {
@@ -1331,6 +1336,7 @@ function Card({
 	// No `#` at the cell tier: the glyph costs a fifth of the width and the
 	// number is already unmistakable.
 	const cellLabel = nodeSeq(node).replace(/^#/, "");
+	const travel = useCardTravel(placed.x, placed.y, sliding && !reduced && !unborn);
 	return (
 		<button
 			type="button"
@@ -1338,6 +1344,7 @@ function Card({
 			data-history={limited ?? undefined}
 			data-unborn={unborn ? "true" : undefined}
 			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""} ${celebrating ? "is-celebrating" : ""}`}
+			data-travel={travel?.slot}
 			style={{
 				left: placed.x,
 				top: placed.y,
@@ -1346,6 +1353,7 @@ function Card({
 				["--node-status" as string]: statusColor ?? "rgb(var(--text-tertiary))",
 				["--node-ink" as string]: inkColor ?? "rgb(var(--text-tertiary))",
 				["--node-inverse" as string]: 1 / scale,
+				...travel?.style,
 			}}
 			aria-hidden={unborn || undefined}
 			tabIndex={unborn ? -1 : undefined}
