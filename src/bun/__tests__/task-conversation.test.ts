@@ -149,13 +149,23 @@ describe("readTaskConversation", () => {
 		expect(earlier.turns[earlier.turns.length - 1].index).toBe(19);
 	});
 
-	it("counts what it cut instead of silently trimming", () => {
+	it("sends a long message whole, so the panel can open it without another read", () => {
 		const task = taskWith("long-turn");
-		const long = "x".repeat(1500);
+		const long = "x".repeat(12_000);
 		writeDump(task, "claude-s4.json", { source: "claude", sessionId: "s4", turns: [turn(0, long, "ok")] });
 
 		const view = readTaskConversation(project, task);
-		expect(view.turns[0].clippedChars).toBe(300);
+		expect(view.turns[0].userText).toHaveLength(12_000);
+		expect(view.turns[0].clippedChars).toBe(0);
+	});
+
+	it("still refuses to carry a pathological message, and counts what it left", () => {
+		const task = taskWith("pathological-turn");
+		const huge = "x".repeat(60_000);
+		writeDump(task, "claude-s5.json", { source: "claude", sessionId: "s5", turns: [turn(0, huge, "ok")] });
+
+		const view = readTaskConversation(project, task);
+		expect(view.turns[0].clippedChars).toBe(10_000);
 		expect(view.turns[0].userText?.endsWith("…")).toBe(true);
 	});
 

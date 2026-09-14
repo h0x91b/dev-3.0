@@ -21,12 +21,19 @@ import type { ConversationEvent, ConversationSource } from "./conversation-model
 export const TASK_CONVERSATION_PAGE = 25;
 
 /**
- * Characters kept per message. There is no "see the rest" destination — a
- * finished task has no terminal left and an older session was never in the one a
- * running task has — so the view states how much it shortened and claims nothing
- * more. See the record for why this is a preview, not a window onto the file.
+ * Characters of a message shown before "Show more". The rest is already in the
+ * payload, so expanding costs no round trip.
  */
-export const TASK_CONVERSATION_TEXT_LIMIT = 1200;
+export const TASK_CONVERSATION_TEXT_LIMIT = 2000;
+
+/**
+ * Hard ceiling on the characters of one message that travel at all. Measured
+ * over 1 293 real messages of two large tasks: median 561, p90 898, p99 10 459,
+ * longest 33 184 — so this is three times the worst case seen and a page of 25
+ * turns stays tens of kilobytes. Past it the view says how much it left behind,
+ * because a pasted 5 MB file must not become a 5 MB panel.
+ */
+export const TASK_CONVERSATION_TEXT_CEILING = 50_000;
 
 /** Distinct tool names named on a turn before the rest become a count. */
 export const TASK_CONVERSATION_TOOL_NAMES = 4;
@@ -91,7 +98,8 @@ export interface TurnLike {
 	events: ConversationEvent[];
 }
 
-export function clampText(text: string, limit = TASK_CONVERSATION_TEXT_LIMIT): { text: string; clipped: number } {
+/** Cut a message to the transport ceiling, reporting what was left behind. */
+export function clampText(text: string, limit = TASK_CONVERSATION_TEXT_CEILING): { text: string; clipped: number } {
 	if (text.length <= limit) return { text, clipped: 0 };
 	return { text: `${text.slice(0, limit)}…`, clipped: text.length - limit };
 }

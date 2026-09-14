@@ -5,5 +5,5 @@ you actually said, beside the messages agents sent each other. It shows the newe
 first (with a picker when a task ran several), a page of turns at a time with "Load earlier
 turns", and says whether it read the live transcript or dev3's archived copy of a finished
 task. Claude Code and Codex transcripts are the ones dev3 can parse; anything else says so
-instead of looking silent. Listing the sessions opens no files and only the one you are reading is
+instead of looking silent. A long message shows its first 2000 characters with Show more opening the rest in place. Listing the sessions opens no files and only the one you are reading is
 parsed, so the tab stays fast on a task carrying tens of megabytes of transcript.

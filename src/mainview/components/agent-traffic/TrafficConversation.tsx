@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { CONVERSATION_SOURCE_LABELS } from "../../../shared/conversation-import-model";
-import type { TaskConversationView } from "../../../shared/task-conversation-model";
+import {
+	TASK_CONVERSATION_TEXT_LIMIT,
+	type TaskConversationView,
+} from "../../../shared/task-conversation-model";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 
@@ -10,7 +13,7 @@ import { useT } from "../../i18n";
  * The other two tabs show traffic *between* agents; this one shows what one agent
  * and its human actually said, which is a different record and is never mixed in
  * with the messages list. It stays a reader: bounded by design (newest page of
- * turns, each message clamped with the cut counted, tool calls counted rather
+ * turns, long messages folded behind "Show more", tool calls counted rather
  * than replayed), with no way to send anything from here.
  *
  * Every read is a file read on the host, so two rules hold the cost down: a
@@ -20,6 +23,29 @@ import { useT } from "../../i18n";
 
 /** Arrowing through nodes must not queue one host-side parse per node. */
 const REQUEST_DEBOUNCE_MS = 250;
+
+/**
+ * One message. Long ones open in place — the whole text is already here, so the
+ * button costs nothing but a re-render, and the fold keeps a wall of prose from
+ * burying the turns under it.
+ */
+function Message({ who, text, tone }: { who: string; text: string; tone: "user" | "agent" }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const long = text.length > TASK_CONVERSATION_TEXT_LIMIT;
+	const shown = !long || open ? text : `${text.slice(0, TASK_CONVERSATION_TEXT_LIMIT)}…`;
+	return (
+		<div className={`traffic-turn-${tone} streamer-private`}>
+			<b>{who}</b>
+			<p>{shown}</p>
+			{long && (
+				<button className="traffic-turn-more" onClick={() => setOpen((value) => !value)}>
+					{t(open ? "traffic.conversation.showLess" : "traffic.conversation.showMore")}
+				</button>
+			)}
+		</div>
+	);
+}
 
 interface TrafficConversationProps {
 	projectId: string | null;
@@ -150,10 +176,7 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 				<article key={turn.index} className="traffic-turn">
 					{turn.startedAt && <time>{format(turn.startedAt)}</time>}
 					{turn.userText && (
-						<div className="traffic-turn-user streamer-private">
-							<b>{t("traffic.node.you")}</b>
-							<p>{turn.userText}</p>
-						</div>
+						<Message who={t("traffic.node.you")} text={turn.userText} tone="user" />
 					)}
 					{turn.actions > 0 && (
 						<p className="traffic-turn-actions">
@@ -162,10 +185,11 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 						</p>
 					)}
 					{turn.assistantText && (
-						<div className="traffic-turn-agent streamer-private">
-							<b>{CONVERSATION_SOURCE_LABELS[session.source]}</b>
-							<p>{turn.assistantText}</p>
-						</div>
+						<Message
+							who={CONVERSATION_SOURCE_LABELS[session.source]}
+							text={turn.assistantText}
+							tone="agent"
+						/>
 					)}
 					{turn.clippedChars > 0 && (
 						<small className="traffic-turn-clamped">

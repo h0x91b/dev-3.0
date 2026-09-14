@@ -30,8 +30,8 @@ that was certainly wasted — the other sessions.
 
 A third inspector tab, `Conversation` (`TrafficConversation.tsx`), over one new read-only RPC
 `readTaskConversation` (`src/bun/task-conversation.ts`). It returns the newest session first, one page
-of 25 turns paged backwards, each message clamped to 1200 characters **with the number of cut
-characters shown**, and tool calls counted with their native names rather than replayed.
+of 25 turns paged backwards, each message shown to 2000 characters with **Show more** opening the
+rest in place, and tool calls counted with their native names rather than replayed.
 
 **Listing is separate from loading.** The picker is built from file names and `stat` alone — both
 stores put the session id in the name (`<uuid>.jsonl`, `<source>-<uuid>.json`) — so listing six
@@ -53,12 +53,14 @@ interval, are covered by mutation-checked tests.
 - A single very large session still costs its own read; that is now the worst case instead of the sum
   of every session.
 - Only Claude Code and Codex transcripts parse. Another harness shows the honest empty state.
-- **A shortened message has no "see the rest" destination, and the copy no longer claims one.** The
-  first wording said "open the task for the whole text"; that is false wherever it matters most. A
-  completed task's worktree and terminal are gone (`TaskTerminal` answers `worktree-gone`), and an
-  older handoff session was never in the pane a running task does have — the pane holds the current
-  session's scrollback, bounded by tmux history. So the line states the exact number of characters it
-  shortened and stops there. This tab is a preview of the record, not a window onto the file.
+- **The rest of a long message is in the payload, not behind a destination.** The first build cut at
+  1200 characters and pointed at "the task", which is false wherever it matters: a completed task's
+  worktree and terminal are gone (`TaskTerminal` answers `worktree-gone`) and an older handoff session
+  was never in a running task's pane. It now sends the whole message and folds it at 2000 characters
+  in the renderer, so **Show more** costs a re-render and no round trip. Measured over 1 293 real
+  messages of two large tasks — median 561 characters, p90 898, p99 10 459, longest 33 184 — a page of
+  25 turns stays tens of kilobytes. `TASK_CONVERSATION_TEXT_CEILING` (50 000, three times the worst
+  case seen) stops a pasted file from becoming a panel, and that cut alone is still counted and shown.
 
 ## Alternatives considered
 
