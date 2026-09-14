@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import type { AgentFamily, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
@@ -6,6 +7,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { codexAccountIdForHome } from "../agent-accounts";
+import { resolveCodexResumeHome } from "../codex-resume-home";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { agentKey } from "../../shared/agent-adapters/families";
 import { evaluateCodexModelSupport } from "../../shared/agent-model-cli-requirements";
@@ -757,8 +759,9 @@ async function persistInitialAgentPaneId(
 	for (let attempt = 0; attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS; attempt++) {
 		const paneIds = await pty.listPaneIds(task.id, socket);
 		if (paneIds.length === 1 && paneIds[0]) {
+			const current = await data.getTask(project, task.id);
 			await data.updateTask(project, task.id, {
-				sessionState: { panes: [{ ...paneEntry, paneId: paneIds[0] }] },
+				sessionState: { panes: [{ ...paneEntry, paneId: paneIds[0] }, ...(current?.sessionState?.panes.slice(1) ?? [])] },
 			});
 			void markAgentPane(socket, paneIds[0]);
 			log.info("Persisted initial agent pane ID", {
@@ -938,10 +941,12 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
-	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; accountId?: string | null },
+	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; accountId?: string | null; codexHome?: string },
 ): Promise<void> {
 	const sessionId = opts?.sessionId;
-	const accountId = opts?.accountId !== undefined ? opts.accountId : task.accountId;
+	const accountId = opts?.codexHome
+		? codexAccountIdForHome(opts.codexHome) ?? null
+		: opts?.accountId !== undefined ? opts.accountId : task.accountId;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
 	const artifactTemplateEnv = ensureArtifactTemplateEnv(project, task, worktreePath);
 	log.info("launchTaskPty START", {
@@ -1031,6 +1036,8 @@ export async function launchTaskPty(
 			resolvedLaunchModel = resolved.launchModel;
 		}
 
+		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
+
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
 		if (!skipSessionPersist) {
@@ -1054,7 +1061,7 @@ export async function launchTaskPty(
 				sessionOriginCwd: carriedOriginCwd,
 			};
 			mainPaneEntry = paneEntry;
-			const sessionState = { panes: [paneEntry] };
+			const sessionState = { panes: [paneEntry, ...(resume ? task.sessionState?.panes.slice(1).map((pane) => ({ ...pane, paneId: null })) ?? [] : [])] };
 			try {
 				await data.updateTask(project, task.id, { sessionState });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
@@ -2142,6 +2149,27 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	if (!panes?.length) {
 		throw new Error(`Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
+	const resolvedProject = project.kind === "virtual"
+		? project
+		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	const codexHomes = new Map<number, string>();
+	const codexPanes = panes.map((pane, index) => ({ pane, index }))
+		.filter(({ pane }) => agentKey(pane.agentCmd, pane.agentFamily ?? undefined) === "codex");
+	if (codexPanes.some(({ pane }) => !pane.sessionId)) {
+		throw new Error("Cannot resume Codex: a pane has no saved conversation ID. Select its existing conversation in Codex before trying again.");
+	}
+	if (codexPanes.length) {
+		const allAgents = await agents.getAllAgents();
+		const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
+		for (const { pane, index } of codexPanes) {
+			const agent = allAgents.find((entry) => entry.id === pane.agentId);
+			const config = agent ? agents.findConfig(agent, pane.configId) : undefined;
+			const homes = [config?.envVars?.CODEX_HOME, projectEnv.CODEX_HOME, process.env.CODEX_HOME]
+				.filter((value): value is string => !!value)
+				.map((value) => resolve(task.worktreePath!, value));
+			codexHomes.set(index, await resolveCodexResumeHome(pane.sessionId!, homes));
+		}
+	}
 	await wakeIfHibernated(project, task);
 
 	// Destroy any dead session in memory
@@ -2152,9 +2180,6 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	// Launch main pane (panes[0]) with resume
 	const main = panes[0];
 	const mainResume = resolveResumeTarget(task, main, "main");
-	const resolvedProject = project.kind === "virtual"
-		? project
-		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
 	await launchTaskPty(
 		resolvedProject,
 		task,
@@ -2163,7 +2188,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: main.accountId },
+		{ sessionId: mainResume ?? undefined, accountId: main.accountId, codexHome: codexHomes.get(0) },
 	);
 
 	// Resume extra panes (panes[1..]) via split-window.
@@ -2187,12 +2212,14 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 				projectPath: project.path,
 				worktreePath: task.worktreePath,
 			};
-			const paneIdUpdates: Array<{ index: number; paneId: string }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
 					const paneResume = resolveResumeTarget(task, pane, `pane ${i}`);
-					const cmdOpts: agents.CommandOptions = { resume: true, accountId: pane.accountId };
+					const codexHome = codexHomes.get(i);
+					const accountId = codexHome ? codexAccountIdForHome(codexHome) ?? null : pane.accountId;
+					const cmdOpts: agents.CommandOptions = { resume: true, accountId };
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
@@ -2210,7 +2237,8 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined, resumeAgentFamily) ?? pane.agentCmd;
 					}
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId, task.foreignCode, resumeAgentFamily);
+					if (codexHome) extraEnv.CODEX_HOME = codexHome;
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 						family: resumeAgentFamily,
@@ -2219,7 +2247,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId });
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId });
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
 					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
@@ -2230,8 +2258,8 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId } of paneIdUpdates) {
-						if (updatedPanes[index]) updatedPanes[index] = { ...updatedPanes[index], paneId };
+					for (const { index, paneId, accountId } of paneIdUpdates) {
+						if (updatedPanes[index]) updatedPanes[index] = { ...updatedPanes[index], paneId, accountId };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {

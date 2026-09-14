@@ -487,6 +487,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			trackEvent("session_recovered", { action: "resume" });
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
+			toast.error(err instanceof Error ? err.message : String(err));
 			await classifyAndSetError();
 		} finally {
 			setRestarting(false);

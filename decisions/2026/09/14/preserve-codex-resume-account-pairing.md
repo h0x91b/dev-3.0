@@ -1,5 +1,7 @@
 # Preserve Codex resume account pairing
 
+Superseded on 2026-09-14 by `decisions/2026/09/14/locate-codex-resume-home-by-session-id.md`: exact-ID lookup now also repairs legacy missing account pairings.
+
 ## Context
 
 A post-reboot resume passed an intact Codex session ID to a different managed CODEX_HOME. Backups contained the ID but no task or pane account, so the current default selected a different session store; a later extra pane recovered through its explicit original account.

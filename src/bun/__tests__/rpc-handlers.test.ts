@@ -4,6 +4,7 @@ import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shar
 import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import * as agentAccounts from "../agent-accounts";
+import { resolveCodexResumeHome } from "../codex-resume-home";
 import {
 	activatePane,
 	closePane,
@@ -151,6 +152,7 @@ vi.mock("../pty-server", () => ({
 	getSessionBackend: vi.fn(() => "tmux"),
 	isNativeSessionSettling: vi.fn(() => false),
 	tmuxSessionExists: vi.fn(() => true),
+	splitAndRunCommand: vi.fn(async () => "%6"),
 	listPaneIds: vi.fn(() => Promise.resolve(["%5"])),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
@@ -211,6 +213,8 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
+vi.mock("../codex-resume-home", () => ({ resolveCodexResumeHome: vi.fn() }));
+
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureCodexTrust: vi.fn(),
@@ -222,6 +226,7 @@ vi.mock("../agents", () => ({
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	resolveCommandForProject: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	getAllAgents: vi.fn(() => []),
+	findConfig: vi.fn(() => undefined),
 	saveAllAgents: vi.fn(),
 }));
 
@@ -10473,6 +10478,101 @@ describe("resumeTask session-id healing", () => {
 		await handlers.resumeTask({ taskId: "task-1" });
 
 		expect(resumeOptions()).toMatchObject({ resume: true, sessionId: DEAD });
+	});
+});
+
+describe("resumeTask exact Codex session home", () => {
+	let restoreResolve: () => void;
+	beforeEach(() => {
+		vi.clearAllMocks();
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "codex", extraEnv: {}, agentFamily: "codex" } as any);
+		restoreResolve = () => resolve.mockImplementation(original!);
+	});
+	afterEach(() => restoreResolve());
+	const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+	const home = "/tmp/account-b";
+	function arrange() {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "codex", agentFamily: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		return { project, task };
+	}
+	afterEach(() => vi.mocked(resolveCodexResumeHome).mockReset());
+
+	it("recovers an old unpaired ID under its discovered home and saves the pairing", async () => {
+		const { project, task } = arrange();
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : undefined);
+		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		try {
+			await handlers.resumeTask({ taskId: task.id });
+			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("keeps both exact session/account pairs when extra panes are resumed again", async () => {
+		const { task, project } = arrange();
+		const secondId = "019f50b3-6415-7dc3-8ad5-b60f0818f705";
+		await data.updateTask(project, task.id, { sessionState: { panes: [task.sessionState!.panes[0], { ...task.sessionState!.panes[0], sessionId: secondId, paneId: "%5" }] } });
+		vi.mocked(resolveCodexResumeHome).mockImplementation(async (id) => id === sessionId ? home : "/tmp/account-c");
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : "account-c");
+		try {
+			for (let attempt = 0; attempt < 2; attempt++) {
+				vi.mocked(data.updateTask).mockClear();
+				await handlers.resumeTask({ taskId: task.id });
+				const initial = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState)?.[2].sessionState;
+				expect(initial?.panes[1].paneId).toBeNull();
+				const saved = (await data.getTask(project, task.id)).sessionState!.panes;
+				expect(saved).toHaveLength(2);
+				expect(saved[0]).toMatchObject({ sessionId, accountId: "account-b" });
+				expect(saved[1]).toMatchObject({ sessionId: secondId, accountId: "account-c", paneId: "%6" });
+				expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ sessionId: secondId, accountId: "account-c" }));
+			}
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("searches relative custom homes from the task working directory", async () => {
+		const { task } = arrange();
+		const getAgents = vi.mocked(agents.getAllAgents);
+		const findConfig = vi.mocked(agents.findConfig);
+		const oldAgents = getAgents.getMockImplementation();
+		const oldConfig = findConfig.getMockImplementation();
+		getAgents.mockResolvedValue([{ id: "builtin-codex" }] as any);
+		findConfig.mockReturnValue({ id: "codex-default", name: "Codex", envVars: { CODEX_HOME: "custom-codex" } });
+		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		try {
+			await handlers.resumeTask({ taskId: task.id });
+			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.arrayContaining([`${task.worktreePath}/custom-codex`]));
+		} finally {
+			getAgents.mockImplementation(oldAgents!);
+			findConfig.mockImplementation(oldConfig!);
+		}
+	});
+
+	it("does not substitute latest when a Codex pane has no saved ID", async () => {
+		const { task, project } = arrange();
+		await data.updateTask(project, task.id, { sessionState: { panes: [{ ...task.sessionState!.panes[0], sessionId: null }] } });
+		vi.mocked(data.updateTask).mockClear();
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no saved conversation ID");
+		expect(resolveCodexResumeHome).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it.each(["No saved Codex session", "Multiple Codex homes contain session"])("fails before teardown or metadata changes: %s", async (message) => {
+		const { task } = arrange();
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(resolveCodexResumeHome).mockRejectedValue(new Error(message));
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow(message);
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 });
 

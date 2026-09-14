@@ -1,3 +1,3 @@
-Short: Keep Codex resume accounts paired
+Short: Recover Codex across accounts
 
-New main-pane Codex launches remember the managed account actually selected, so later resumes retain it when the default changes. Main-pane resumes honor the saved pane account, including an explicit system login. Existing sessions without account metadata are not automatically reassigned.
+Codex Resume now finds the exact saved conversation across local account stores and launches it with its original home, including older tasks without a saved account. Missing, ambiguous, archived, or unreadable conversations report an error before the task is awakened or its terminal replaced. Resuming multiple panes preserves their session and account pairings for the next recovery.

@@ -80,6 +80,7 @@ function setCoarsePointer(coarse: boolean) {
 
 import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
+import { toast } from "../../toast";
 
 const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
@@ -400,6 +401,20 @@ describe("TaskTerminal", () => {
 			});
 
 			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
+		it("shows the exact resume failure instead of hiding it behind session-ended", async () => {
+			const user = userEvent.setup();
+			const message = "Codex conversation was not found in the available account stores.";
+			const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ recoverable: true, sessionState: { panes: [{ agentCmd: "codex", sessionId: "sid-1", agentId: "builtin-codex", configId: "cfg-1" }] } });
+			mockedApi.request.resumeTask.mockRejectedValue(new Error(message));
+			try {
+				await act(async () => { renderTerminal(); });
+				await user.click(await screen.findByText("Resume Session"));
+				await waitFor(() => expect(errorToast).toHaveBeenCalledWith(message));
+				expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
+			} finally { errorToast.mockRestore(); }
 		});
 
 		it("shows the wake screen instead of auto-restoring a hibernated task", async () => {
