@@ -10,6 +10,7 @@ import {
 	toStoredDiffViewMode,
 	toStoredTaskOpenMode,
 } from "../utils";
+import { getAgentAdapter } from "../../../../shared/agent-adapters";
 
 describe("global-settings utils", () => {
 	it("resolves system theme using OS preference", () => {
@@ -235,6 +236,36 @@ describe("global-settings utils", () => {
 			model: "claude-opus-4-8[1m]",
 		};
 		expect(buildCommandPreview("claude", config, "anthropic").envLine).toBeNull();
+	});
+
+	// The preview is a hand-written mirror of the launcher (the renderer must not
+	// import the adapters — that would pull every skill body into the app bundle),
+	// so nothing but a test keeps the two in step. Copilot shipped with the mirror
+	// missing `-i` and showing Claude's `--permission-mode`; this is that guard.
+	describe("Copilot preview mirrors the copilot adapter", () => {
+		const ctx = {
+			taskTitle: "T",
+			taskDescription: "{{TASK_DESCRIPTION}}",
+			projectName: "p",
+			projectPath: "/p",
+			worktreePath: "/w",
+		};
+		const cases: Partial<AgentConfiguration>[] = [
+			{ model: "auto" },
+			{ model: "auto", permissionMode: "bypassPermissions" },
+			{ model: "auto", permissionMode: "plan", effort: "high" },
+			{ permissionMode: "acceptEdits" },
+			{ permissionMode: "dontAsk" },
+			{ model: "claude-opus-5", maxBudgetUsd: 12 },
+		];
+
+		it.each(cases)("%o", (partial) => {
+			const config: AgentConfiguration = { id: "c", name: "C", ...partial };
+			const fromAdapter = getAgentAdapter("copilot")
+				.launchArgs("copilot", config, ctx)
+				.join(" ");
+			expect(buildCommandPreview("copilot", config).command).toBe(fromAdapter);
+		});
 	});
 
 	describe("model roles in the preview", () => {
