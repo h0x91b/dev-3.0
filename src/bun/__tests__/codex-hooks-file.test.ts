@@ -6,7 +6,7 @@ import {
 	ensureCodexConfig,
 	supportsCodexHookTrustBypass,
 } from "../codex-config";
-import { CODEX_STATUS_HOOK_EVENTS } from "../../shared/agent-hooks";
+import { AGENT_STATUS_HOOK_EVENTS } from "../../shared/agent-hooks";
 
 /**
  * Both dialects are PINNED. `buildCodexHooks` spells the CLI in the HOST's
@@ -30,7 +30,7 @@ const parse = (toml: string) => load(toml) as ParsedHooks;
 describe("the Codex hooks block dev3 writes into config.toml", () => {
 	it("parses as TOML and declares every status event", () => {
 		const parsed = parse(buildDev3CodexHooksBlock({ dialect: POSIX_DIALECT }));
-		expect(Object.keys(parsed.hooks ?? {}).sort()).toEqual([...CODEX_STATUS_HOOK_EVENTS].sort());
+		expect(Object.keys(parsed.hooks ?? {}).sort()).toEqual([...AGENT_STATUS_HOOK_EVENTS].sort());
 		expect(parsed.hooks?.SessionStart?.[0]?.matcher).toBe("startup|resume");
 	});
 

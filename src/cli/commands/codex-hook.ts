@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 import {
-	CODEX_STATUS_HOOK_EVENTS,
+	AGENT_STATUS_HOOK_EVENTS,
 	CODEX_STOP_HOOK_SUCCESS_JSON,
-	type CodexStatusHookEvent,
+	type AgentStatusHookEvent,
 } from "../../shared/agent-hooks";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 
 interface CodexHookPayload {
-	event: CodexStatusHookEvent;
+	event: AgentStatusHookEvent;
 	toolName?: string;
 	toolUseId?: string;
 	questionIds?: string[];
@@ -45,7 +45,7 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			turn_id?: unknown;
 		};
 		if (typeof parsed.hook_event_name !== "string") return null;
-		if (!CODEX_STATUS_HOOK_EVENTS.includes(parsed.hook_event_name as CodexStatusHookEvent)) {
+		if (!AGENT_STATUS_HOOK_EVENTS.includes(parsed.hook_event_name as AgentStatusHookEvent)) {
 			return null;
 		}
 		const questionIds = parsed.hook_event_name === "PostToolUse"
@@ -59,7 +59,7 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 		const answeredTitle = parsed.hook_event_name === "UserPromptSubmit" && typeof parsed.prompt === "string"
 			? /^> ([^\n]*)\n\n/.exec(parsed.prompt)?.[1] : undefined;
 		return {
-			event: parsed.hook_event_name as CodexStatusHookEvent,
+			event: parsed.hook_event_name as AgentStatusHookEvent,
 			...(questionIds.length ? { questionIds } : {}),
 			...(answeredTitle !== undefined ? { answeredQuestionId: questionFingerprint(answeredTitle) } : {}),
 			...(typeof parsed.tool_name === "string" ? { toolName: parsed.tool_name } : {}),

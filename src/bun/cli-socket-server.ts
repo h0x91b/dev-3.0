@@ -6,7 +6,7 @@ import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
-import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
+import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -1653,8 +1653,8 @@ const handlers: Record<string, Handler> = {
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const event = params.event as CodexStatusHookEvent;
-		if (!CODEX_STATUS_HOOK_EVENTS.includes(event)) {
+		const event = params.event as AgentStatusHookEvent;
+		if (!AGENT_STATUS_HOOK_EVENTS.includes(event)) {
 			throw new Error(`Unsupported Codex hook event: ${String(params.event)}`);
 		}
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
@@ -1673,7 +1673,7 @@ const handlers: Record<string, Handler> = {
 		);
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
-		let target = getCodexHookTargetStatus(event, currentStatus, project.autoReviewEnabled === true, rememberedResumeStatus);
+		let target = getAgentHookTargetStatus(event, currentStatus, project.autoReviewEnabled === true, rememberedResumeStatus);
 		if (questionState.pending) target = "user-questions";
 		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;

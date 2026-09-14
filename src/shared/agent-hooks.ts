@@ -59,7 +59,12 @@ export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
  * into it would put recording and status sync in one blast radius.
  */
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
-export const CODEX_STATUS_HOOK_EVENTS = [
+/**
+ * The lifecycle events dev3 turns into board status moves. Codex emits these
+ * names verbatim; Copilot's adapter maps its own camelCase names onto them, so
+ * one status machine serves both instead of a second copy per harness.
+ */
+export const AGENT_STATUS_HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
 	"PreToolUse",
@@ -69,10 +74,10 @@ export const CODEX_STATUS_HOOK_EVENTS = [
 	"Interrupt",
 	"SessionEnd",
 ] as const;
-export type CodexStatusHookEvent = typeof CODEX_STATUS_HOOK_EVENTS[number];
+export type AgentStatusHookEvent = typeof AGENT_STATUS_HOOK_EVENTS[number];
 
-export function getCodexHookTargetStatus(
-	event: CodexStatusHookEvent,
+export function getAgentHookTargetStatus(
+	event: AgentStatusHookEvent,
 	currentStatus: TaskStatus,
 	autoReviewEnabled: boolean,
 	resumeStatus?: "in-progress" | "review-by-ai",

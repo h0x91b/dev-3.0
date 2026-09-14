@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { load } from "js-toml";
-import { buildCodexHooks, CODEX_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../shared/agent-hooks";
+import { buildCodexHooks, AGENT_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../shared/agent-hooks";
 import { type CliVersion, isCliVersionAtLeast, parseCliVersion } from "../shared/agent-model-cli-requirements";
 import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
@@ -1012,7 +1012,7 @@ const HOOKS_GROUP_HEADER = /^\[\[hooks\.([A-Za-z_][A-Za-z0-9_]*)\]\]$/;
 
 /** An event dev3 declares itself. A group on any other event is never ours. */
 function isDev3StatusEvent(event: string): boolean {
-	return (CODEX_STATUS_HOOK_EVENTS as readonly string[]).includes(event);
+	return (AGENT_STATUS_HOOK_EVENTS as readonly string[]).includes(event);
 }
 
 /**
