@@ -13,9 +13,14 @@ import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
  * Missing directories are normal — a machine has whichever accounts it has.
  */
 
+/** Account transcripts live in the machine's store, including for redirected app instances. */
+export function agentAccountStoreRoot(home: string, kind: "claude" | "codex"): string {
+	return `${home}/.dev3.0/agent-accounts/${kind}`;
+}
+
 /** Enumerate `~/.dev3.0/agent-accounts/<kind>/*`, newest-agnostic, existing only. */
-function accountDirs(home: string, kind: string): string[] {
-	const parent = `${home}/.dev3.0/agent-accounts/${kind}`;
+function accountDirs(home: string, kind: "claude" | "codex"): string[] {
+	const parent = agentAccountStoreRoot(home, kind);
 	let entries: string[];
 	try {
 		entries = readdirSync(parent);

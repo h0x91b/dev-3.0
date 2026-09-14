@@ -1,6 +1,7 @@
 import { lstat, open, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
+import { agentAccountStoreRoot } from "./agent-store-roots";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEADER_LIMIT = 256 * 1024;
@@ -53,7 +54,7 @@ async function verifyHeader(file: string, sessionId: string): Promise<void> {
 /** Locate the exact saved conversation without choosing a different session. */
 export async function resolveCodexResumeHome(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string> {
 	if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Codex conversation ID: expected a UUID. Check the saved session ID before resuming.");
-	const accountsRoot = await optionalRoot(join(home, ".dev3.0", "agent-accounts", "codex"));
+	const accountsRoot = await optionalRoot(agentAccountStoreRoot(home, "codex"));
 	const managed = accountsRoot
 		? (await entries(accountsRoot)).filter((entry) => entry.isDirectory() || entry.isSymbolicLink()).map((entry) => join(accountsRoot, entry.name)).sort()
 		: [];
