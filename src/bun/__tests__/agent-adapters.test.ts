@@ -12,12 +12,13 @@ import {
 	geminiAdapter,
 	cursorAdapter,
 	opencodeAdapter,
+	ompAdapter,
 	genericAdapter,
 	shellEscape,
 	type AdapterLaunchOptions,
 	type TemplateContext,
 } from "../../shared/agent-adapters";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../../shared/agent-skill-content";
 import type { AgentConfiguration } from "../../shared/types";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ function redact(cmd: string): string {
 	return cmd
 		.split(shellEscape(CLAUDE_SKILL_BODY)).join("<CLAUDE_BODY>")
 		.split(shellEscape(`developer_instructions=${JSON.stringify(CODEX_SKILL_BODY)}`)).join("<CODEX_DEV_INSTR>")
+		.split(shellEscape(OMP_SKILL_BODY)).join("<OMP_BODY>")
 		.split(genericEscapedInner).join("<GENERIC_BODY>");
 }
 
@@ -58,6 +60,7 @@ describe("registry", () => {
 		expect(getAgentAdapter("/usr/local/bin/gemini")).toBe(geminiAdapter);
 		expect(getAgentAdapter("agent")).toBe(cursorAdapter);
 		expect(getAgentAdapter("opencode")).toBe(opencodeAdapter);
+		expect(getAgentAdapter("omp")).toBe(ompAdapter);
 	});
 
 	it("falls back to the generic adapter for unknown / custom commands", () => {
@@ -79,7 +82,7 @@ describe("registry", () => {
 // drag every skill body (~32 KB) along — so families.ts restates those facts as
 // plain data. These are the tests that keep the copy honest.
 describe("agent families (the renderer's copy of the registry)", () => {
-	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter];
+	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, ompAdapter];
 
 	it("lists exactly the commands that have a first-class adapter", () => {
 		expect([...KNOWN_AGENT_COMMANDS].sort()).toEqual(ADAPTERS.map((a) => a.command).sort());
@@ -164,6 +167,7 @@ describe("capability flags", () => {
 		[geminiAdapter, "gemini", true, true],
 		[cursorAdapter, "agent", true, true],
 		[opencodeAdapter, "opencode", true, false],
+		[ompAdapter, "omp", true, false],
 		[genericAdapter, "", false, false],
 	] as const)("%s", (adapter, command, resume, preassign) => {
 		expect(adapter.command).toBe(command);
@@ -179,6 +183,7 @@ describe("trustKinds", () => {
 		[geminiAdapter, ["claude", "gemini"]],
 		[cursorAdapter, ["claude"]],
 		[opencodeAdapter, ["claude"]],
+		[ompAdapter, ["claude"]],
 		[genericAdapter, ["claude"]],
 	] as const)("%s", (adapter, kinds) => {
 		expect(adapter.trustKinds).toEqual(kinds);
@@ -193,6 +198,9 @@ describe("hooksSpec", () => {
 	});
 	it("Codex is a bare codex spec", () => {
 		expect(codexAdapter.hooksSpec()).toEqual({ kind: "codex" });
+	});
+	it("omp is a bare omp spec (the executor turns it into --hook <extension>)", () => {
+		expect(ompAdapter.hooksSpec()).toEqual({ kind: "omp" });
 	});
 	it("Gemini / Cursor / OpenCode / Generic install no hooks", () => {
 		expect(geminiAdapter.hooksSpec()).toBeNull();
@@ -214,6 +222,8 @@ describe("buildResumeCommand", () => {
 		[cursorAdapter, "agent", "sid", "agent --resume sid"],
 		[opencodeAdapter, "opencode", undefined, "opencode --continue"],
 		[opencodeAdapter, "opencode", "sid", "opencode --session sid"],
+		[ompAdapter, "omp", undefined, "omp -c"],
+		[ompAdapter, "omp", "sid", "omp --resume sid"],
 		[genericAdapter, "aider", "sid", null],
 	] as const)("%s (sid=%s)", (adapter, base, sid, expected) => {
 		expect(adapter.buildResumeCommand(base, sid ?? undefined)).toBe(expected);
@@ -224,6 +234,7 @@ describe("skillBody", () => {
 	it("each adapter carries the right body", () => {
 		expect(claudeAdapter.skillBody).toBe(CLAUDE_SKILL_BODY);
 		expect(codexAdapter.skillBody).toBe(CODEX_SKILL_BODY);
+		expect(ompAdapter.skillBody).toBe(OMP_SKILL_BODY);
 		// Gemini/Cursor/OpenCode/Generic use the generic body.
 		expect(geminiAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
@@ -386,6 +397,30 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 	it("Generic does not resume or pre-assign a session id", () => {
 		expect(launch("aider", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
 			.toBe("aider --model sonnet -- 'Fix the login bug'");
+	});
+});
+
+describe("launchArgs — omp", () => {
+	it("omp maps permission mode to its approval tiers", () => {
+		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
+			.toBe("omp --approval-mode write --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
+		expect(launch("omp", cfg({ permissionMode: "bypassPermissions" })))
+			.toBe("omp --approval-mode yolo --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
+	});
+	it("omp has no launch flag for plan mode, so it emits none", () => {
+		expect(launch("omp", cfg({ permissionMode: "plan" })))
+			.toBe("omp --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
+	});
+	it("omp takes the protocol as a file when the backend wrote one", () => {
+		// Same flag, either form. Keeping the body out of argv is what stops
+		// `pkill -f` matching every agent (h0x91b/dev-3.0#1734).
+		const cmd = launch("omp", cfg(), { systemPromptFile: "/home/u/.dev3.0/data/agent-prompts/omp.md" });
+		expect(cmd).toBe("omp --append-system-prompt /home/u/.dev3.0/data/agent-prompts/omp.md -- 'Fix the login bug'");
+		expect(cmd).not.toContain("<OMP_BODY>");
+	});
+	it("resumes without re-sending the prompt or the protocol", () => {
+		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c");
+		expect(launch("omp", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" })).toBe("omp --resume sid --model sonnet");
 	});
 });
 

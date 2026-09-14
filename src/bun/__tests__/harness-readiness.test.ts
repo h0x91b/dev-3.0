@@ -79,6 +79,13 @@ describe("harnessSignIn", () => {
 		expect(harnessSignIn("opencode", probeEnv())).toBe("not-signed-in");
 	});
 
+	it("says unknown for omp — its credentials are in SQLite, not a JSON file", () => {
+		// Guessing a path here would report a working, signed-in omp as logged out
+		// and block the sandbox on our own ignorance.
+		expect(harnessSignIn("omp", probeEnv())).toBe("unknown");
+		expect(harnessSignIn("omp", probeEnv({ env: { ANTHROPIC_API_KEY: "sk-x" } }))).toBe("unknown");
+	});
+
 	it("reports unknown when the probe itself throws", () => {
 		const p = probeEnv({ readJson: () => { throw new Error("EACCES"); } });
 		expect(harnessSignIn("codex", p)).toBe("unknown");

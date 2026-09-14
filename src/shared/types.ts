@@ -693,16 +693,17 @@ export interface CodingAgent {
  * resume, transcripts, trust, lifecycle hooks, skill prefix — so a differently
  * named binary runs through exactly the same code as the CLI it wraps.
  */
-export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "none";
+export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "omp" | "none";
 
 /**
  * Prefix used to invoke an installed skill from an agent prompt. Codex reserves
- * `/` for built-in commands, while the other supported agent CLIs use `/` for
- * skills. Unknown commands keep the broadly compatible slash default.
+ * `/` for built-in commands; omp registers one slash command per skill under a
+ * `skill:` namespace. Unknown commands keep the compatible slash default.
  */
-export function skillInvocationPrefix(baseCommand: string, family?: AgentFamily): "$" | "/" {
+export function skillInvocationPrefix(baseCommand: string, family?: AgentFamily): "$" | "/" | "/skill:" {
 	const key = family ? family : (baseCommand.split("/").pop() ?? "");
-	return key === "codex" ? "$" : "/";
+	if (key === "codex") return "$";
+	return key === "omp" ? "/skill:" : "/";
 }
 
 /** Fixed port of the optional local `pxpipe-proxy` (token-saving image proxy).
@@ -750,6 +751,32 @@ function createCodexReasoningPresets(
 		additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", `model_reasoning_effort="${effort}"`],
 	}));
 	return [...bypass, ...standard];
+}
+
+type OmpThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
+
+const OMP_THINKING_LABELS: Record<OmpThinkingLevel, string> = {
+	off: "Off",
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	xhigh: "X-High",
+	max: "Max",
+};
+
+/** omp's unattended mode at each thinking level — Claude's shape, where Auto and
+ *  Bypass carry the effort range and the stricter modes appear once. The level
+ *  rides `additionalArgs` because `EffortLevel` has no `off` or `max`, the route
+ *  the Codex presets take for `max` and `ultra`. */
+function createOmpBypassPresets(levels: readonly OmpThinkingLevel[]): AgentConfiguration[] {
+	return levels.map((level): AgentConfiguration => ({
+		id: `omp-yolo-${level}`,
+		name: `Bypass (${OMP_THINKING_LABELS[level]})`,
+		modeLabel: `Bypass · ${OMP_THINKING_LABELS[level]}`,
+		permissionMode: "bypassPermissions",
+		additionalArgs: ["--thinking", level],
+		version: 1,
+	}));
 }
 
 export const DEFAULT_AGENTS: CodingAgent[] = [
@@ -1011,6 +1038,26 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "opencode-big-pickle", name: "Big Pickle (Free)", model: "opencode/big-pickle", version: 1 },
 		],
 		defaultConfigId: "opencode-default",
+	},
+	{
+		id: "builtin-omp",
+		name: "Oh My Pi",
+		baseCommand: "omp",
+		isDefault: true,
+		installCommand: "curl -fsSL https://omp.sh/install | sh",
+		installUrl: "https://github.com/can1357/oh-my-pi",
+		// omp reaches 60+ providers and picks its own startup model, so pinning one
+		// here would launch against credentials the user may not hold; the presets
+		// leave the model to omp. Its own approval default is `yolo`, so the
+		// "Ask first" preset has to say so explicitly — dev3's `default` mode means
+		// "pass no flag", which here would auto-approve everything.
+		configurations: [
+			{ id: "omp-default", name: "Default", version: 1 },
+			{ id: "omp-ask", name: "Ask first", additionalArgs: ["--approval-mode", "always-ask"], version: 1 },
+			{ id: "omp-write", name: "Accept Edits", permissionMode: "acceptEdits", version: 1 },
+			...createOmpBypassPresets(["off", "low", "medium", "high", "xhigh", "max"]),
+		],
+		defaultConfigId: "omp-default",
 	},
 ];
 
@@ -3010,8 +3057,9 @@ export interface PaneSessionEntry {
 	/** Resumable agent session ID for this pane. For agents that pre-assign at
 	 *  launch (Claude/Cursor `--session-id`/`--resume`, Gemini `--session-id`) this
 	 *  is set immediately; for Codex — which has no launch-time flag — it is filled
-	 *  in post-hoc from the lifecycle hook once the session exists (see
-	 *  cli-socket-server `captureCodexPaneSession`). Null until known / for agents
+	 *  in post-hoc from the lifecycle hook once the session exists, and omp the
+	 *  same way from its status extension (see cli-socket-server
+	 *  `capturePaneSession`). Null until known / for agents
 	 *  that support neither (OpenCode), which fall back to resume-last. */
 	sessionId: string | null;
 	/** Agent ID used at launch time. */

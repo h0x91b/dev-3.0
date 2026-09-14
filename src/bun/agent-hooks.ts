@@ -5,13 +5,15 @@
  * so that task status transitions happen automatically via the agent's built-in
  * event system, rather than relying solely on SKILL.md instructions.
  *
- * Currently supports Claude Code and Codex. Extensible for Gemini, Cursor, etc.
+ * Currently supports Claude Code, Codex and omp. Extensible for Gemini, Cursor, etc.
  */
 
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { quoteIfUnsafe } from "../shared/agent-adapters/shell";
+import { writeOmpStatusExtension } from "../shared/omp-status-extension";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
 export {
@@ -75,6 +77,16 @@ export async function setupAgentHooks(
 			permissionMode: spec.permissionMode,
 		});
 		return null;
+	}
+
+	if (spec.kind === "omp") {
+		// One generated module under the dev3 home, loaded by absolute path. omp
+		// applies no trust gate to an explicitly passed `--hook`, so unlike Codex
+		// there is no bypass to probe for; a failed write throws to the caller,
+		// which launches without the flag and logs it.
+		const path = writeOmpStatusExtension();
+		log.info("omp status extension active", { worktreePath, path });
+		return `--hook ${quoteIfUnsafe(path)}`;
 	}
 
 	// spec.kind === "codex"

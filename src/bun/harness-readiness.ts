@@ -112,6 +112,10 @@ const SIGN_IN_PROBES: Record<string, (p: ProbeEnv) => boolean> = {
 	// Cursor Agent's binary is `agent`.
 	agent: cursorSignedIn,
 	opencode: opencodeSignedIn,
+	// No `omp` probe on purpose: omp keeps credentials in SQLite
+	// (`~/.omp/agent/agent.db`, table `auth_credentials`), not a JSON file this
+	// seam can read. Guessing would report a signed-in install as logged out and
+	// block the sandbox; `unknown` is the honest answer this module is built for.
 };
 
 export function harnessSignIn(baseCommand: string, p: ProbeEnv): HarnessSignIn {

@@ -33,6 +33,7 @@ import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
+import { handleOmpHook } from "./commands/omp-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
@@ -112,7 +113,7 @@ Commands:
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
   dev3 doctor --processes [--json]       Which task owns each native terminal host/shell (seq, pane, role, pid, liveness)
-  dev3 install-hooks                     Install Claude worktree hooks and stable Codex user hooks
+  dev3 install-hooks                     Install Claude worktree hooks, stable Codex user hooks and the omp status extension
   dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects
   dev3 remote [start|status|url|stop]    Run headless — serve the UI to a browser
@@ -222,6 +223,15 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter. It intentionally remains successful when
 		// the app is offline so a status-sync failure can never block Codex.
 		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "omp") {
+		// Internal lifecycle adapter for the generated omp status extension. Same
+		// contract as the Codex one: silent, and successful whatever happens.
+		return await handleOmpHook(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

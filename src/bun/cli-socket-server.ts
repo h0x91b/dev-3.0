@@ -6,7 +6,7 @@ import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
-import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
+import { STATUS_HOOK_EVENTS, getStatusHookTargetStatus, type StatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -30,6 +30,7 @@ import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { recordTerminalPromptSubmission } from "./agent-terminal-prompt-log";
+import type { PromptSubmitHarness } from "../shared/agent-terminal-prompt";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
 import type { PaneInputProgram } from "../shared/pane-input";
@@ -624,34 +625,34 @@ async function conversationImport() {
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
 
 // An approval temporarily moves a task to user-questions. Remember which
-// active lane that Codex session came from so PostToolUse can restore a review
-// agent to review-by-ai instead of misclassifying it as the primary agent.
-const CODEX_APPROVAL_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
-const codexApprovalResumeStatuses = new Map<
+// active lane that Codex/omp session came from so PostToolUse can restore a
+// review agent to review-by-ai instead of misclassifying it as the primary agent.
+const APPROVAL_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
+const approvalResumeStatuses = new Map<
 	string,
 	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
 >();
 
-function getCodexApprovalResumeStatus(
+function getApprovalResumeStatus(
 	key: string | null,
 ): "in-progress" | "review-by-ai" | undefined {
 	if (!key) return undefined;
-	const entry = codexApprovalResumeStatuses.get(key);
+	const entry = approvalResumeStatuses.get(key);
 	if (!entry) return undefined;
 	if (entry.expiresAt <= Date.now()) {
-		codexApprovalResumeStatuses.delete(key);
+		approvalResumeStatuses.delete(key);
 		return undefined;
 	}
 	return entry.status;
 }
 
 /**
- * Cheap pre-check for {@link captureCodexPaneSession}: is this exact pane already
+ * Cheap pre-check for {@link capturePaneSession}: is this exact pane already
  * carrying this exact session id? Reads through the cache (no lock, no strict
  * re-parse) and answers false on any doubt — a stale or unreadable read only costs
  * one trip through the real locked path, which is idempotent anyway.
  */
-async function codexPaneSessionAlreadyRecorded(
+async function paneSessionAlreadyRecorded(
 	project: Project,
 	taskId: string,
 	paneId: string,
@@ -667,12 +668,12 @@ async function codexPaneSessionAlreadyRecorded(
 }
 
 /**
- * Persist a Codex session id onto the sessionState pane it belongs to, so
- * resumeTask can `codex resume <id>` the exact session per pane — targeted
- * recovery for multi-session worktrees (e.g. reviving several bug hunters).
- * Codex has no launch-time --session-id, so the id is only knowable post-hoc:
- * its lifecycle hook reports the resumable session_id together with $TMUX_PANE
- * (see src/cli/commands/codex-hook.ts).
+ * Persist a hook-reported session id onto the sessionState pane it belongs to,
+ * so resumeTask can `codex resume <id>` / `omp --resume <id>` the exact session
+ * per pane — targeted recovery for multi-session worktrees (e.g. reviving
+ * several bug hunters). Neither Codex nor omp takes a session id at launch, so
+ * the id is only knowable post-hoc: the lifecycle hook reports the resumable id
+ * together with $TMUX_PANE (see src/cli/commands/status-hook-request.ts).
  *
  * Matching: extra panes store their tmux paneId at spawn, so match by paneId.
  * The main pane (panes[0]) is persisted without a paneId (assigned lazily by
@@ -681,19 +682,19 @@ async function codexPaneSessionAlreadyRecorded(
  * session id. Ambiguous cases (no match, ≠1 null-paneId entries) are skipped; a
  * later hook fires once ids settle. A no-op once the id is already recorded.
  *
- * The steady state is exactly that no-op — codex fires this hook continuously for
+ * The steady state is exactly that no-op — Codex fires this hook continuously for
  * the whole life of a session — so it is answered from the cached read BEFORE
  * taking the file lock. Going through the lock for it made every hook re-parse the
  * board strictly (14 MB on the largest measured board); see the 2026-08-16 freeze record.
  */
-async function captureCodexPaneSession(
+async function capturePaneSession(
 	project: Project,
 	taskId: string,
 	paneId: string,
 	sessionId: string,
 ): Promise<void> {
 	try {
-		if (await codexPaneSessionAlreadyRecorded(project, taskId, paneId, sessionId)) return;
+		if (await paneSessionAlreadyRecorded(project, taskId, paneId, sessionId)) return;
 		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
 			const panes = current.sessionState?.panes;
 			if (!panes?.length) return { updates: {}, result: { changed: false } };
@@ -715,10 +716,10 @@ async function captureCodexPaneSession(
 		});
 		if (result.changed) {
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			log.info("Captured Codex pane session id", { taskId: taskId.slice(0, 8), paneId });
+			log.info("Captured agent pane session id", { taskId: taskId.slice(0, 8), paneId });
 		}
 	} catch (err) {
-		log.warn("Failed to capture Codex pane session id (non-fatal)", { error: String(err) });
+		log.warn("Failed to capture agent pane session id (non-fatal)", { error: String(err) });
 	}
 }
 
@@ -1651,15 +1652,18 @@ const handlers: Record<string, Handler> = {
 
 	"task.agentHook": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const event = params.event as CodexStatusHookEvent;
-		if (!CODEX_STATUS_HOOK_EVENTS.includes(event)) {
-			throw new Error(`Unsupported Codex hook event: ${String(params.event)}`);
+		const event = params.event as StatusHookEvent;
+		if (!STATUS_HOOK_EVENTS.includes(event)) {
+			throw new Error(`Unsupported status hook event: ${String(params.event)}`);
 		}
+		// The CLI that reports is the managed copy under ~/.dev3.0/bin, which a
+		// worktree build does not replace; one from before omp names no harness.
+		const harness: PromptSubmitHarness = params.harness === "omp" ? "omp" : "codex";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
-		const rememberedResumeStatus = getCodexApprovalResumeStatus(resumeKey);
+		const rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
 
-		const target = getCodexHookTargetStatus(
+		const target = getStatusHookTargetStatus(
 			event,
 			task.status,
 			project.autoReviewEnabled === true,
@@ -1686,30 +1690,30 @@ const handlers: Record<string, Handler> = {
 			moveAccepted = updated.status === target && updated.customColumnId == null;
 		}
 		if (resumeKey && resumeStatus && moveAccepted) {
-			codexApprovalResumeStatuses.set(resumeKey, {
+			approvalResumeStatuses.set(resumeKey, {
 				status: resumeStatus,
-				expiresAt: Date.now() + CODEX_APPROVAL_RESUME_TTL_MS,
+				expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS,
 			});
 		} else if (resumeKey && clearResumeStatus && moveAccepted) {
-			codexApprovalResumeStatuses.delete(resumeKey);
+			approvalResumeStatuses.delete(resumeKey);
 		}
 
-		// Record the Codex session id for this pane (targeted per-pane recovery).
+		// Record the session id for this pane (targeted per-pane recovery).
 		const paneId = typeof params.paneId === "string" ? params.paneId : null;
 		if (sessionId && paneId) {
-			await captureCodexPaneSession(project, task.id, paneId, sessionId);
+			await capturePaneSession(project, task.id, paneId, sessionId);
 		}
 
-		// Codex carries the submitted text on the same payload, so recording rides
-		// on the status hook rather than costing the pane a second dev3 process.
+		// The submitted text rides on the same payload, so recording costs the
+		// pane no second dev3 process.
 		if (event === "UserPromptSubmit" && typeof params.prompt === "string") {
 			recordTerminalPromptSubmission({
 				project,
 				task: updated,
-				harness: "codex",
+				harness,
 				prompt: params.prompt,
 				sessionId,
-				submissionId: typeof params.turnId === "string" ? params.turnId : null,
+				submissionId: typeof params.submissionId === "string" ? params.submissionId : null,
 			});
 		}
 

@@ -838,9 +838,10 @@ async function applyAgentHooksToCommand(
 	try {
 		const hookFlag = await setupAgentHooks(worktreePath, baseCommand, options);
 		if (!hookFlag) return command;
-		// A bare flag by design: the hook definitions themselves live in the user's
+		// Codex gets a bare flag by design: its hook definitions live in the user's
 		// config.toml, because the payload that used to travel here as
-		// `-c hooks={...}` never survived the Windows command line.
+		// `-c hooks={...}` never survived the Windows command line. omp gets
+		// `--hook <path>` — one short path to the generated extension.
 		const firstSeparator = command.search(/\s/);
 		if (firstSeparator < 0) return `${command} ${hookFlag}`;
 		return `${command.slice(0, firstSeparator)} ${hookFlag}${command.slice(firstSeparator)}`;

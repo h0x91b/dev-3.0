@@ -7,6 +7,7 @@ import type {
 	ProviderConfig,
 } from "../../../shared/types";
 import { agentKey } from "../../../shared/agent-adapters/families";
+import { OMP_APPROVAL_MODE } from "../../../shared/agent-adapters/omp-flags";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
 import { ENV_UNSET } from "../../../shared/agent-accounts";
 import { type ModelCatalog, resolveModelRoleLaunch, roleUnsetEnv } from "../../../shared/model-catalog";
@@ -132,6 +133,7 @@ export function buildCommandPreview(
 	const isCursor = cmdName === "agent";
 	const isCodex = cmdName === "codex";
 	const isClaude = cmdName === "claude";
+	const isOmp = cmdName === "omp";
 
 	// Mirror the launcher: only a backend registered for THIS agent applies
 	// (same guard as agentProvider in agents.ts).
@@ -164,7 +166,10 @@ export function buildCommandPreview(
 	}
 
 	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
-		if (isCursor) {
+		if (isOmp) {
+			const mode = OMP_APPROVAL_MODE[config.permissionMode];
+			if (mode) parts.push("--approval-mode", mode);
+		} else if (isCursor) {
 			if (config.permissionMode === "plan") {
 				parts.push("--mode", "plan");
 			} else if (config.permissionMode === "bypassPermissions") {
@@ -186,15 +191,17 @@ export function buildCommandPreview(
 	}
 
 	if (config.effort && !isCursor && !isCodex) {
-		parts.push("--effort", config.effort);
+		parts.push(isOmp ? "--thinking" : "--effort", config.effort);
 	}
 
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex) {
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex && !isOmp) {
 		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
 	if (cmdName === "claude") {
 		parts.push("--append-system-prompt-file", "'…dev3 prompt file…'");
+	} else if (isOmp) {
+		parts.push("--append-system-prompt", "'…dev3 prompt file…'");
 	}
 
 	if (config.additionalArgs) {

@@ -123,11 +123,12 @@ export function terminalPromptPreview(text: string): string {
 }
 
 /**
- * The harnesses whose prompt-submit hook dev3 reads. Both hand over a stable
+ * The harnesses whose prompt-submit hook dev3 reads. Each hands over a stable
  * per-submission id, which is what makes exactly-once provable rather than
- * guessed: Claude Code's `prompt_id`, Codex's `turn_id`.
+ * guessed: Claude Code's `prompt_id`, Codex's `turn_id`, and for omp a random
+ * id minted by the dev3 status extension, which reports each input once.
  */
-export type PromptSubmitHarness = "claude" | "codex";
+export type PromptSubmitHarness = "claude" | "codex" | "omp";
 
 /**
  * Identity of ONE submission, stable across a redelivered hook.
