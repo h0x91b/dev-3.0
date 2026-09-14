@@ -32,7 +32,7 @@ const log = createLogger("low-battery");
 
 export { LOW_BATTERY_REVISION };
 
-/** Agent config dirs that get the skill — the same six dev3's own skills use. */
+/** Agent config dirs that get the skill — the same seven dev3's own skills use. */
 export const LOW_BATTERY_SKILL_DIRS = [
 	".claude/skills/low-battery",
 	".cursor/skills/low-battery",
@@ -40,6 +40,7 @@ export const LOW_BATTERY_SKILL_DIRS = [
 	".codex/skills/low-battery",
 	".opencode/skills/low-battery",
 	".config/opencode/skills/low-battery",
+	".omp/agent/skills/low-battery",
 ];
 
 function safeReadSettings(path: string): Record<string, unknown> {

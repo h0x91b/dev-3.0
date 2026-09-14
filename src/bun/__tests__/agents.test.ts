@@ -54,6 +54,8 @@ describe("skillInvocationPrefix", () => {
 		["agent", "/"],
 		["gemini", "/"],
 		["opencode", "/"],
+		["/home/me/.bun/bin/omp", "/skill:"],
+		["omp", "/skill:"],
 		["", "/"],
 	])("%s → %s", (command, expected) => {
 		expect(skillInvocationPrefix(command)).toBe(expected);

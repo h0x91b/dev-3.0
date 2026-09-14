@@ -117,6 +117,9 @@ const GENERIC_SKILL_DIRS = [
 	".agents/skills/dev3",
 	".opencode/skills/dev3",
 	".config/opencode/skills/dev3",
+	// omp reads ~/.omp/agent/skills and, at lower precedence, ~/.claude/skills —
+	// its own dir wins, so it gets the generic body rather than Claude's short one.
+	".omp/agent/skills/dev3",
 ];
 
 const DEV3_OPENAI_YAML = `interface:
@@ -1174,6 +1177,7 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".codex/skills/dev3-project-config",
 	".opencode/skills/dev3-project-config",
 	".config/opencode/skills/dev3-project-config",
+	".omp/agent/skills/dev3-project-config",
 ];
 
 /** Claude Code tmux skill directory. */
@@ -1186,6 +1190,7 @@ const GENERIC_TMUX_DIRS = [
 	".codex/skills/dev3-tmux",
 	".opencode/skills/dev3-tmux",
 	".config/opencode/skills/dev3-tmux",
+	".omp/agent/skills/dev3-tmux",
 ];
 
 const BUG_HUNTER_SKILL_DIRS = [
@@ -1195,6 +1200,7 @@ const BUG_HUNTER_SKILL_DIRS = [
 	".codex/skills/dev3-bug-hunter",
 	".opencode/skills/dev3-bug-hunter",
 	".config/opencode/skills/dev3-bug-hunter",
+	".omp/agent/skills/dev3-bug-hunter",
 ];
 
 const ASK_DEV3_SKILL_DIRS = [
@@ -1204,6 +1210,7 @@ const ASK_DEV3_SKILL_DIRS = [
 	".codex/skills/ask-dev3",
 	".opencode/skills/ask-dev3",
 	".config/opencode/skills/ask-dev3",
+	".omp/agent/skills/ask-dev3",
 ];
 
 const COORDINATOR_SKILL_DIRS = [
@@ -1213,6 +1220,7 @@ const COORDINATOR_SKILL_DIRS = [
 	".codex/skills/dev3-coordinator",
 	".opencode/skills/dev3-coordinator",
 	".config/opencode/skills/dev3-coordinator",
+	".omp/agent/skills/dev3-coordinator",
 ];
 
 const SHARE_ARTIFACT_SKILL_DIRS = [
@@ -1222,6 +1230,7 @@ const SHARE_ARTIFACT_SKILL_DIRS = [
 	".codex/skills/dev3-share-artifact",
 	".opencode/skills/dev3-share-artifact",
 	".config/opencode/skills/dev3-share-artifact",
+	".omp/agent/skills/dev3-share-artifact",
 ];
 
 /**

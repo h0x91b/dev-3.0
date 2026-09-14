@@ -1,4 +1,6 @@
 import type { AgentConfiguration, ExternalApp } from "../../../../shared/types";
+import { DEFAULT_AGENTS } from "../../../../shared/types";
+import { OMP_APPROVAL_MODE } from "../../../../shared/agent-adapters/omp-flags";
 import {
 	AUTO_DIFF_VIEW_WIDTH_THRESHOLD,
 	buildCommandPreview,
@@ -143,6 +145,27 @@ describe("global-settings utils", () => {
 				"agent --force '{{TASK_DESCRIPTION}}\\n\\n…dev3 prompt…'",
 			envLine: null,
 		});
+	});
+
+	it("previews omp with the flags omp actually receives", () => {
+		expect(buildCommandPreview("omp", { id: "o", name: "YOLO (X-High)", permissionMode: "bypassPermissions", effort: "xhigh", maxBudgetUsd: 5 }).command)
+			.toBe("omp --approval-mode yolo --thinking xhigh --append-system-prompt '…dev3 prompt file…' '{{TASK_DESCRIPTION}}'");
+		// omp has no launch flag for plan mode, so the preview must not invent one.
+		expect(buildCommandPreview("omp", { id: "o", name: "Plan", permissionMode: "plan" }).command)
+			.toBe("omp --append-system-prompt '…dev3 prompt file…' '{{TASK_DESCRIPTION}}'");
+	});
+
+	it("never previews a shipped omp preset with the generic flags omp does not take", () => {
+		// The preview is a hand-kept mirror of the launcher. For omp a stale copy
+		// is worse than cosmetic: it shows --permission-mode, which the launcher
+		// replaced because a wrong approval value falls silently into yolo.
+		const omp = DEFAULT_AGENTS.find((a) => a.id === "builtin-omp")!;
+		for (const config of omp.configurations) {
+			const { command } = buildCommandPreview("omp", config);
+			expect(command).not.toMatch(/--permission-mode|--effort|--max-budget-usd/);
+			const mode = config.permissionMode ? OMP_APPROVAL_MODE[config.permissionMode] : undefined;
+			if (mode) expect(command).toContain(`--approval-mode ${mode}`);
+		}
 	});
 
 	it("omits --model for Claude when provider is bedrock", () => {

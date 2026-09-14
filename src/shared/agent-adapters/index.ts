@@ -24,4 +24,5 @@ export { codexAdapter } from "./codex";
 export { geminiAdapter } from "./gemini";
 export { cursorAdapter } from "./cursor";
 export { opencodeAdapter } from "./opencode";
+export { ompAdapter } from "./omp";
 export { genericAdapter } from "./generic";

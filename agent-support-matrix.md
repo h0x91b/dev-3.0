@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-07-13
+Last updated: 2026-09-12
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
@@ -28,27 +28,28 @@ Last updated: 2026-07-13
 | Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-tmux/`, `~/.codex/skills/dev3-bug-hunter/`, `~/.codex/skills/ask-dev3/`, `~/.codex/skills/dev3-share-artifact/`, `~/.codex/skills/dev3-coordinator/` |
 | Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-share-artifact/`, `~/.agents/skills/dev3-coordinator/` |
 | OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-tmux/`, `~/.config/opencode/skills/dev3-tmux/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/`, `~/.opencode/skills/ask-dev3/`, `~/.config/opencode/skills/ask-dev3/`, `~/.opencode/skills/dev3-share-artifact/`, `~/.config/opencode/skills/dev3-share-artifact/`, `~/.opencode/skills/dev3-coordinator/`, `~/.config/opencode/skills/dev3-coordinator/` |
+| Oh My Pi | `omp` | `~/.omp/agent/skills/dev3/`, `~/.omp/agent/skills/dev3-project-config/`, `~/.omp/agent/skills/dev3-tmux/`, `~/.omp/agent/skills/dev3-bug-hunter/`, `~/.omp/agent/skills/ask-dev3/`, `~/.omp/agent/skills/dev3-share-artifact/`, `~/.omp/agent/skills/dev3-coordinator/` |
 
 ## Feature Matrix
 
-| Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode |
-|---------|:-----------:|:------------:|:-----:|:----------:|:--------:|
-| **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) |
-| **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` |
-| **Session resume** | `--resume <id>` / `--continue` | `--resume <id>` / `--continue` | `resume <id>` / `resume --last` | `--resume <id>` / `--resume latest` | `--continue` |
-| **Targeted recovery** (resume the *exact* session, incl. multi-session worktrees) | Yes — pre-assign `--session-id` | Yes — pre-assign `--resume <uuid>` | Yes — session id captured per-pane from the lifecycle hook (`session_id` + `$TMUX_PANE`); no launch flag exists (see decision 125) | Yes — pre-assign `--session-id` (gemini-cli #26060; **not** version-guarded) | No — resume-last only (`--session` is resume-only) |
-| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — |
-| **Effort level** | `--effort` | — | `--effort` | — | — |
-| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
-| **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` |
-| **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
-| **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — |
-| **Agent selection** | — | — | — | — | `--agent` |
-| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
-| **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
-| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
-| **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
-| **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes |
+| Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode | Oh My Pi |
+|---------|:-----------:|:------------:|:-----:|:----------:|:--------:|:--------:|
+| **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic, `/skill:` prefix) |
+| **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` | `--append-system-prompt <file>` |
+| **Session resume** | `--resume <id>` / `--continue` | `--resume <id>` / `--continue` | `resume <id>` / `resume --last` | `--resume <id>` / `--resume latest` | `--continue` | `--resume <id>` / `-c` |
+| **Targeted recovery** (resume the *exact* session, incl. multi-session worktrees) | Yes — pre-assign `--session-id` | Yes — pre-assign `--resume <uuid>` | Yes — session id captured per-pane from the lifecycle hook (`session_id` + `$TMUX_PANE`); no launch flag exists (see decision 125) | Yes — pre-assign `--session-id` (gemini-cli #26060; **not** version-guarded) | No — resume-last only (`--session` is resume-only) | No — `--resume` selects an existing session |
+| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — | `--approval-mode write\|yolo`; no launch flag for plan mode |
+| **Effort level** | `--effort` | — | `--effort` | — | — | `--thinking` |
+| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — | — |
+| **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` | `--model` |
+| **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — | — |
+| **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — | — (omp's 9 roles unbound) |
+| **Agent selection** | — | — | — | — | `--agent` | — |
+| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | — |
+| **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | — (extension, planned) |
+| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Manual (SKILL.md) |
+| **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — (`omp usage` unread) |
+| **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
 
 ## Status Hooks
 
@@ -133,6 +134,14 @@ A user-invocable skill that turns the task the agent is **already running in** i
 **Mid-conversation discovery limit:** a harness lists its skills when the session starts. A session that was already running when dev-3.0 first wrote this file will not offer `/dev3-coordinator` until it restarts; the underlying command works regardless.
 
 For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
+
+omp does not read that shared `~/.agents/skills/` alias; it reads `~/.omp/agent/skills/` plus the
+other tools' directories (`~/.claude`, `~/.codex`, `~/.gemini`) at lower precedence, so it gets an
+explicit native copy of the generic body rather than inheriting Claude's short variant.
+
+omp is not wired for automatic status yet. It loads TypeScript extension modules through `--hook`,
+exposing turn and tool events, which is the channel a future hooks implementation would use; see
+[`omp-first-class-agent`](decisions/2026/09/12/omp-first-class-agent.md).
 
 ## LLM provider (per-agent backend)
 
