@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Claude, Codex, Cursor, Gemini, OpenCode } from "@lobehub/icons/es/icons";
+import { Claude, Codex, Cursor, Gemini, GithubCopilot, OpenCode } from "@lobehub/icons/es/icons";
 import type { CodingAgent } from "../../shared/types";
 
 type AgentLauncherIconComponent = ComponentType<any>;
@@ -21,6 +21,9 @@ export function resolveAgentLauncherIcon(agent: CodingAgent): AgentLauncherIconC
 	}
 	if (agent.id === "builtin-opencode" || agent.baseCommand === "opencode" || agentName.includes("opencode")) {
 		return OpenCode.Avatar;
+	}
+	if (agent.id === "builtin-copilot" || agent.baseCommand === "copilot" || agentName.includes("copilot")) {
+		return GithubCopilot.Avatar;
 	}
 
 	return null;

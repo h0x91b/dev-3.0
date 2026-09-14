@@ -66,6 +66,7 @@ const settings = {
 	"settings.family.gemini": "Gemini CLI",
 	"settings.family.agent": "Cursor Agent",
 	"settings.family.opencode": "OpenCode",
+	"settings.family.copilot": "GitHub Copilot CLI",
 	"settings.familyNone": "Неизвестный CLI",
 	"settings.familyMissingTitle": "Этот агент обрабатывается как неизвестный CLI",
 	"settings.familyMissingBody": "dev3 не узнаёт «{command}», поэтому нет ни хуков (задача сама между колонками не поедет), ни возобновления сессий — Resume Session запустит всё с начала по описанию задачи — ни протокола dev3. Если эта команда И ЕСТЬ один из поддерживаемых CLI под другим именем — скрипт-обёртка, алиас, переименованный бинарник — выберите его выше, и обработка будет идентичной.",

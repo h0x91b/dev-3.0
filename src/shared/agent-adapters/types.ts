@@ -25,7 +25,8 @@ export type TrustKind = "claude" | "codex" | "gemini";
  *  build*Hooks data in src/shared/agent-hooks.ts. */
 export type HooksSpec =
 	| { kind: "claude"; stopTarget?: TaskStatus; permissionMode?: PermissionMode }
-	| { kind: "codex" };
+	| { kind: "codex" }
+	| { kind: "copilot" };
 
 /** Codex-only launch runtime resolved by the backend (theme state + a
  *  `codex --help` probe are impure) and threaded into the pure CodexAdapter. */

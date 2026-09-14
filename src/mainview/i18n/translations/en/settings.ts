@@ -66,6 +66,7 @@ const settings = {
 	"settings.family.gemini": "Gemini CLI",
 	"settings.family.agent": "Cursor Agent",
 	"settings.family.opencode": "OpenCode",
+	"settings.family.copilot": "GitHub Copilot CLI",
 	"settings.familyNone": "Unknown CLI",
 	"settings.familyMissingTitle": "This agent is handled as an unknown CLI",
 	"settings.familyMissingBody": "dev3 does not recognize “{command}”, so it gets no lifecycle hooks (the task will not move between columns on its own), no session resume — Resume Session restarts from the task description — and no dev3 protocol. If this command IS one of the supported CLIs under another name — a wrapper script, a shell alias, a renamed binary — pick it above and it is handled identically.",

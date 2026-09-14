@@ -123,11 +123,12 @@ export function terminalPromptPreview(text: string): string {
 }
 
 /**
- * The harnesses whose prompt-submit hook dev3 reads. Both hand over a stable
- * per-submission id, which is what makes exactly-once provable rather than
- * guessed: Claude Code's `prompt_id`, Codex's `turn_id`.
+ * The harnesses whose prompt-submit hook dev3 reads. Each hands over something
+ * stable per submission, which is what makes exactly-once provable rather than
+ * guessed: Claude Code's `prompt_id`, Codex's `turn_id`, and — Copilot having no
+ * id of its own — the millisecond `timestamp` on Copilot's own event.
  */
-export type PromptSubmitHarness = "claude" | "codex";
+export type PromptSubmitHarness = "claude" | "codex" | "copilot";
 
 /**
  * Identity of ONE submission, stable across a redelivered hook.

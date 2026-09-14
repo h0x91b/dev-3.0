@@ -33,6 +33,7 @@ import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
+import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
@@ -222,6 +223,17 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter. It intentionally remains successful when
 		// the app is offline so a status-sync failure can never block Codex.
 		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "copilot") {
+		// Internal lifecycle adapter. Also answers sessionStart with the dev3
+		// protocol, and stays successful when the app is offline — a non-zero exit
+		// here is fail-closed on preToolUse and would block Copilot's tool call.
+		return await handleCopilotHook(
+			rawArgs[2] ?? "",
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

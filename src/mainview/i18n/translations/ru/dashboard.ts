@@ -11,7 +11,7 @@ const dashboard = {
 	"dashboard.firstRun.sandboxHint": "dev-3.0 создаст свой маленький одноразовый репозиторий — ваши проекты не затрагиваются.",
 	"dashboard.firstRun.sandboxFailed": "Не удалось создать репозиторий-песочницу. ({error})",
 	"dashboard.firstRun.connectAgentAction": "Сначала подключите агента",
-	"dashboard.firstRun.noAgentInstalled": "На этой машине не найден ни один агент. Установите любой — Claude Code, Codex, Gemini, Cursor Agent или OpenCode — и dev-3.0 его подхватит.",
+	"dashboard.firstRun.noAgentInstalled": "На этой машине не найден ни один агент. Установите любой — Claude Code, Codex, Gemini, Cursor Agent, OpenCode или GitHub Copilot — и dev-3.0 его подхватит.",
 	"dashboard.firstRun.noAgentSignedIn": "Агент установлен, но вход не выполнен. Запустите его один раз в терминале и залогиньтесь: задача в песочнице умрёт на запросе логина.",
 	"dashboard.openInFinder": "Открыть в Finder",
 	"dashboard.remove": "Удалить",

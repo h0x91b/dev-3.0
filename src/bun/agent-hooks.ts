@@ -11,16 +11,19 @@
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
-import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { writeClaudeHooks, writeCodexHooks, writeCopilotHooks } from "../shared/agent-hooks";
+import { resolveCopilotHome } from "./copilot-config";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
 export {
 	buildClaudeHooks,
 	buildCodexHooks,
+	buildCopilotHooks,
 	mergeClaudeHooks,
 	mergeCodexHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
+	writeCopilotHooks,
 } from "../shared/agent-hooks";
 
 const log = createLogger("agent-hooks");
@@ -74,6 +77,21 @@ export async function setupAgentHooks(
 			worktreePath,
 			permissionMode: spec.permissionMode,
 		});
+		return null;
+	}
+
+	if (spec.kind === "copilot") {
+		// Copilot's hooks are user-level, not worktree-level (see writeCopilotHooks);
+		// the DEV3_TASK_ID guard in each command is what keeps them inert elsewhere.
+		const copilotHome = resolveCopilotHome();
+		try {
+			writeCopilotHooks(copilotHome);
+			log.info("Copilot status hooks installed", { copilotHome });
+		} catch (err) {
+			// Same silent-failure class as a missing hooksSpec: without these the
+			// task never leaves its column and nothing else would say why.
+			log.warn("Could not write Copilot hooks", { copilotHome, error: String(err) });
+		}
 		return null;
 	}
 

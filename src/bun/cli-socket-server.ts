@@ -30,6 +30,7 @@ import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { recordTerminalPromptSubmission } from "./agent-terminal-prompt-log";
+import type { PromptSubmitHarness } from "../shared/agent-terminal-prompt";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
 import type { PaneInputProgram } from "../shared/pane-input";
@@ -1719,7 +1720,7 @@ const handlers: Record<string, Handler> = {
 			recordTerminalPromptSubmission({
 				project,
 				task: updated,
-				harness: "codex",
+				harness: params.harness === "copilot" ? "copilot" : "codex",
 				prompt: params.prompt,
 				sessionId,
 				submissionId: typeof params.turnId === "string" ? params.turnId : null,
@@ -1757,7 +1758,9 @@ const handlers: Record<string, Handler> = {
 	 */
 	"task.promptSubmitted": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const harness = params.harness === "codex" ? "codex" : "claude";
+		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
+			? params.harness
+			: "claude";
 		const outcome = recordTerminalPromptSubmission({
 			project,
 			task,

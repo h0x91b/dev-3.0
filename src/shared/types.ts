@@ -693,7 +693,7 @@ export interface CodingAgent {
  * resume, transcripts, trust, lifecycle hooks, skill prefix — so a differently
  * named binary runs through exactly the same code as the CLI it wraps.
  */
-export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "none";
+export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "copilot" | "none";
 
 /**
  * Prefix used to invoke an installed skill from an agent prompt. Codex reserves
@@ -1011,6 +1011,39 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "opencode-big-pickle", name: "Big Pickle (Free)", model: "opencode/big-pickle", version: 1 },
 		],
 		defaultConfigId: "opencode-default",
+	},
+	{
+		id: "builtin-copilot",
+		name: "GitHub Copilot",
+		baseCommand: "copilot",
+		isDefault: true,
+		installCommand: "brew install --cask copilot-cli",
+		installUrl: "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli",
+		// The model names come from the installed CLI's own shell-completion
+		// catalog, but WHICH of them an account may use is decided by its Copilot
+		// plan and org policy — a blocked one fails the launch with
+		// `Model "…" is not available`, and `auto` is the one that always works.
+		// So `auto` leads, and every named model is an opt-in below it.
+		configurations: [
+			// --- Auto (Copilot picks the model) ---
+			{ id: "copilot-default", name: "Default (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Default", version: 1 },
+			{ id: "copilot-bypass", name: "Bypass (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "copilot-accept-edits", name: "Accept Edits (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Accept Edits", permissionMode: "acceptEdits", version: 1 },
+			{ id: "copilot-plan", name: "Plan (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Plan", permissionMode: "plan", version: 1 },
+			{ id: "copilot-bypass-high", name: "Bypass (Auto, High)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass · High", permissionMode: "bypassPermissions", effort: "high", version: 1 },
+			{ id: "copilot-bypass-xhigh", name: "Bypass (Auto, X-High)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass · X-High", permissionMode: "bypassPermissions", effort: "xhigh", version: 1 },
+			// --- Named models (subject to your Copilot plan) ---
+			{ id: "copilot-opus5", name: "Claude Opus 5", model: "claude-opus-5", groupLabel: "Claude Opus 5", modeLabel: "Default", version: 1 },
+			{ id: "copilot-opus5-bypass", name: "Claude Opus 5 (Bypass)", model: "claude-opus-5", groupLabel: "Claude Opus 5", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "copilot-sonnet5", name: "Claude Sonnet 5", model: "claude-sonnet-5", groupLabel: "Claude Sonnet 5", modeLabel: "Default", version: 1 },
+			{ id: "copilot-sonnet5-bypass", name: "Claude Sonnet 5 (Bypass)", model: "claude-sonnet-5", groupLabel: "Claude Sonnet 5", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "copilot-gpt56-sol", name: "GPT-5.6 Sol", model: "gpt-5.6-sol", groupLabel: "GPT-5.6 Sol", modeLabel: "Default", version: 1 },
+			{ id: "copilot-gpt56-sol-bypass", name: "GPT-5.6 Sol (Bypass)", model: "gpt-5.6-sol", groupLabel: "GPT-5.6 Sol", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "copilot-gpt56-luna", name: "GPT-5.6 Luna", model: "gpt-5.6-luna", groupLabel: "GPT-5.6 Luna", modeLabel: "Default", version: 1 },
+			{ id: "copilot-gpt53-codex", name: "GPT-5.3-Codex", model: "gpt-5.3-codex", groupLabel: "GPT-5.3-Codex", modeLabel: "Default", version: 1 },
+			{ id: "copilot-gemini37", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash", groupLabel: "Gemini 3.7 Flash", modeLabel: "Default", version: 1 },
+		],
+		defaultConfigId: "copilot-default",
 	},
 ];
 

@@ -11,6 +11,7 @@
  */
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
+import { copilotAdapter } from "./copilot";
 import { cursorAdapter } from "./cursor";
 import { agentKey } from "./families";
 import { geminiAdapter } from "./gemini";
@@ -25,6 +26,7 @@ const REGISTRY: Record<string, AgentAdapter> = {
 	[claudeAdapter.command]: claudeAdapter,
 	[codexAdapter.command]: codexAdapter,
 	[geminiAdapter.command]: geminiAdapter,
+	[copilotAdapter.command]: copilotAdapter,
 	[cursorAdapter.command]: cursorAdapter,
 	[opencodeAdapter.command]: opencodeAdapter,
 };

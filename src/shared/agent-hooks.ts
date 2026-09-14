@@ -51,6 +51,84 @@ export function codexHookCommand(dialect: HookCliDialect = DEFAULT_DIALECT): str
 }
 
 export const CODEX_DEV3_HOOK_COMMAND = codexHookCommand();
+
+/**
+ * The GitHub Copilot CLI lifecycle events dev3 subscribes to, each paired with
+ * the generic status event it stands for.
+ *
+ * `permissionRequest` is deliberately absent. Verified on copilot 1.0.83: it
+ * fires on every permission evaluation, including the ones `--allow-all-tools`
+ * approves without ever showing the user anything — so treating it as
+ * "waiting for a human" would park a working task in Has Questions on its first
+ * tool call. Copilot exposes no event that means the agent is blocked on the
+ * user, and dev3 does not invent one.
+ */
+export const COPILOT_STATUS_HOOK_EVENTS = {
+	sessionStart: "SessionStart",
+	userPromptSubmitted: "UserPromptSubmit",
+	preToolUse: "PreToolUse",
+	postToolUse: "PostToolUse",
+	agentStop: "Stop",
+} as const satisfies Record<string, AgentStatusHookEvent>;
+
+export type CopilotStatusHookEvent = keyof typeof COPILOT_STATUS_HOOK_EVENTS;
+
+/**
+ * Where the Copilot CLI reads this machine's user-level hooks from. Verified
+ * against copilot 1.0.83: a `<home>/hooks/*.json` file fires, while the
+ * documented repository-level `.github/hooks/` was never even consulted in a
+ * fresh checkout — so dev3 installs here and nowhere else.
+ */
+export const COPILOT_HOOKS_DIR = "hooks";
+export const COPILOT_DEV3_HOOKS_FILE = "dev3.json";
+
+/**
+ * The command dev3 declares for one Copilot status hook.
+ *
+ * Copilot has no worktree-scoped hook source either, so like Codex these live in
+ * the user's own config dir and fire in unrelated repos too. The same
+ * `DEV3_TASK_ID` guard keeps that free: outside a dev3 pane nothing is spawned.
+ * The guard exits 0 and prints nothing, which Copilot reads as "no opinion" —
+ * any other exit code on `preToolUse` is fail-closed and would block the tool.
+ *
+ * Copilot picks the `bash` or `powershell` entry by platform itself, so unlike
+ * Codex there is no shell ambiguity to work around; this file is machine-local,
+ * so only the local dialect is ever emitted.
+ */
+export function copilotHookCommand(
+	event: CopilotStatusHookEvent,
+	dialect: HookCliDialect = DEFAULT_DIALECT,
+): { bash: string } | { powershell: string } {
+	const run = `${dialect.cli} hook copilot ${event}`;
+	if (dialect.posixShell) {
+		return { bash: `[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || exec ${run}` };
+	}
+	return { powershell: `if ($env:${CODEX_HOOK_SESSION_ENV}) { & ${run} }; exit 0` };
+}
+
+/** The Copilot hooks file dev3 owns, whole — it is ours alone, never merged. */
+export function buildCopilotHooks(dialect: HookCliDialect = DEFAULT_DIALECT): Record<string, unknown> {
+	const hooks: Record<string, unknown[]> = {};
+	for (const event of Object.keys(COPILOT_STATUS_HOOK_EVENTS) as CopilotStatusHookEvent[]) {
+		hooks[event] = [{ type: "command", ...copilotHookCommand(event, dialect), timeoutSec: 5 }];
+	}
+	return { version: 1, hooks };
+}
+
+/**
+ * Write dev3's Copilot hooks into the user's Copilot config dir.
+ *
+ * Its own file rather than a merge into `settings.json`: Copilot combines every
+ * `hooks/*.json` it finds, so dev3 can own one file outright and never rewrite
+ * a hook somebody else (an MDM policy, a plugin) put there.
+ */
+export function writeCopilotHooks(copilotHome: string): boolean {
+	const dir = join(copilotHome, COPILOT_HOOKS_DIR);
+	mkdirSync(dir, { recursive: true });
+	const path = join(dir, COPILOT_DEV3_HOOKS_FILE);
+	const previous = readSettingsFile(path);
+	return writeIfChanged(path, buildCopilotHooks(), previous);
+}
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
 /**
  * Reads the submitted prompt off stdin so agent traffic can show the human who

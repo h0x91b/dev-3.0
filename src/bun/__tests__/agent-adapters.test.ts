@@ -12,6 +12,7 @@ import {
 	geminiAdapter,
 	cursorAdapter,
 	opencodeAdapter,
+	copilotAdapter,
 	genericAdapter,
 	shellEscape,
 	type AdapterLaunchOptions,
@@ -58,6 +59,7 @@ describe("registry", () => {
 		expect(getAgentAdapter("/usr/local/bin/gemini")).toBe(geminiAdapter);
 		expect(getAgentAdapter("agent")).toBe(cursorAdapter);
 		expect(getAgentAdapter("opencode")).toBe(opencodeAdapter);
+		expect(getAgentAdapter("/Users/me/.local/bin/copilot")).toBe(copilotAdapter);
 	});
 
 	it("falls back to the generic adapter for unknown / custom commands", () => {
@@ -79,7 +81,7 @@ describe("registry", () => {
 // drag every skill body (~32 KB) along — so families.ts restates those facts as
 // plain data. These are the tests that keep the copy honest.
 describe("agent families (the renderer's copy of the registry)", () => {
-	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter];
+	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter];
 
 	it("lists exactly the commands that have a first-class adapter", () => {
 		expect([...KNOWN_AGENT_COMMANDS].sort()).toEqual(ADAPTERS.map((a) => a.command).sort());
@@ -164,6 +166,7 @@ describe("capability flags", () => {
 		[geminiAdapter, "gemini", true, true],
 		[cursorAdapter, "agent", true, true],
 		[opencodeAdapter, "opencode", true, false],
+		[copilotAdapter, "copilot", true, true],
 		[genericAdapter, "", false, false],
 	] as const)("%s", (adapter, command, resume, preassign) => {
 		expect(adapter.command).toBe(command);
@@ -179,6 +182,7 @@ describe("trustKinds", () => {
 		[geminiAdapter, ["claude", "gemini"]],
 		[cursorAdapter, ["claude"]],
 		[opencodeAdapter, ["claude"]],
+		[copilotAdapter, ["claude"]],
 		[genericAdapter, ["claude"]],
 	] as const)("%s", (adapter, kinds) => {
 		expect(adapter.trustKinds).toEqual(kinds);
@@ -193,6 +197,9 @@ describe("hooksSpec", () => {
 	});
 	it("Codex is a bare codex spec", () => {
 		expect(codexAdapter.hooksSpec()).toEqual({ kind: "codex" });
+	});
+	it("Copilot is a bare copilot spec", () => {
+		expect(copilotAdapter.hooksSpec()).toEqual({ kind: "copilot" });
 	});
 	it("Gemini / Cursor / OpenCode / Generic install no hooks", () => {
 		expect(geminiAdapter.hooksSpec()).toBeNull();
@@ -214,6 +221,8 @@ describe("buildResumeCommand", () => {
 		[cursorAdapter, "agent", "sid", "agent --resume sid"],
 		[opencodeAdapter, "opencode", undefined, "opencode --continue"],
 		[opencodeAdapter, "opencode", "sid", "opencode --session sid"],
+		[copilotAdapter, "copilot", undefined, "copilot --continue"],
+		[copilotAdapter, "copilot", "sid", "copilot --resume=sid"],
 		[genericAdapter, "aider", "sid", null],
 	] as const)("%s (sid=%s)", (adapter, base, sid, expected) => {
 		expect(adapter.buildResumeCommand(base, sid ?? undefined)).toBe(expected);
@@ -228,6 +237,7 @@ describe("skillBody", () => {
 		expect(geminiAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(opencodeAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
+		expect(copilotAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(genericAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 	});
 });
@@ -386,6 +396,33 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 	it("Generic does not resume or pre-assign a session id", () => {
 		expect(launch("aider", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
 			.toBe("aider --model sonnet -- 'Fix the login bug'");
+	});
+});
+
+describe("launchArgs — Copilot", () => {
+	it("fresh: model, mode, effort, and the prompt via -i (stays interactive)", () => {
+		expect(launch("copilot", cfg({ model: "auto", permissionMode: "bypassPermissions", effort: "high" })))
+			.toBe("copilot --model auto --allow-all --effort high -i 'Fix the login bug'");
+	});
+	it("pre-assigns a session id on a fresh launch and resumes with --resume=", () => {
+		expect(launch("copilot", cfg({ model: "auto" }), { sessionId: "sid" }))
+			.toBe("copilot --session-id sid --model auto -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ model: "auto" }), { resume: true, sessionId: "sid" }))
+			.toBe("copilot --resume=sid --model auto");
+	});
+	it("carries no skill body on the command line — the sessionStart hook delivers it", () => {
+		expect(launch("copilot", cfg())).toBe("copilot -i 'Fix the login bug'");
+	});
+	it("maps every dev3 permission mode to Copilot's own flags", () => {
+		expect(launch("copilot", cfg({ permissionMode: "plan" }))).toBe("copilot --mode plan -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ permissionMode: "acceptEdits" }))).toBe("copilot --allow-tool write -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ permissionMode: "auto" }))).toBe("copilot --allow-all-tools -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ permissionMode: "dontAsk" })))
+			.toBe("copilot --allow-all-tools --no-ask-user -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ permissionMode: "default" }))).toBe("copilot -i 'Fix the login bug'");
+	});
+	it("drops maxBudgetUsd — Copilot budgets in AI credits, not dollars", () => {
+		expect(launch("copilot", cfg({ maxBudgetUsd: 12 }))).toBe("copilot -i 'Fix the login bug'");
 	});
 });
 
