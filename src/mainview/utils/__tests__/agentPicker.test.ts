@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../../shared/types";
+import { DEFAULT_AGENTS } from "../../../shared/types";
 import {
 	buildPickerGroups,
 	getModelGroupLabel,
@@ -141,6 +142,39 @@ describe("buildPickerGroups", () => {
 		expect(groups.map((g) => g.label)).toEqual(["Fable 5", "Opus 4.8"]);
 		expect(groups[0].configs.map((c) => c.id)).toEqual(["auto-fable", "default-fable", "plan-fable"]);
 		expect(groups[1].configs.map((c) => c.id)).toEqual(["auto-opus-xhigh", "bypass-opus-xhigh", "bypass-opus-medium"]);
+	});
+
+	it("cascades the shipped omp presets under one agent-default group", () => {
+		// The first BUILT-IN agent that pins no model: its whole picker column
+		// depends on the model-less path, and a preset carrying its own hardcoded
+		// group label would show untranslated English there.
+		for (const id of ["builtin-omp"]) {
+			const agent = DEFAULT_AGENTS.find((a) => a.id === id)!;
+			const groups = buildPickerGroups(agent);
+			expect(groups).toHaveLength(1);
+			expect(groups[0].label).toBe("Agent's own default");
+			expect(groups[0].configs.map((c) => c.id)).toEqual(agent.configurations.map((c) => c.id));
+			for (const config of agent.configurations) {
+				expect(config.groupLabel).toBeUndefined();
+				expect(getModeLeafLabel(config).trim()).not.toBe("");
+			}
+		}
+	});
+
+	it("gives omp Claude's preset shape: Bypass at every thinking level, stricter modes once", () => {
+		const omp = DEFAULT_AGENTS.find((a) => a.id === "builtin-omp")!;
+		const thinkingOf = (c: AgentConfiguration) => {
+			const at = c.additionalArgs?.indexOf("--thinking") ?? -1;
+			return at === -1 ? null : c.additionalArgs![at + 1];
+		};
+		const bypass = omp.configurations.filter((c) => c.permissionMode === "bypassPermissions");
+		expect(bypass.map(thinkingOf)).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
+		// The stricter modes carry no thinking variants, exactly like Claude's Default / Accept Edits.
+		for (const c of omp.configurations.filter((c) => c.permissionMode !== "bypassPermissions")) {
+			expect(thinkingOf(c)).toBeNull();
+		}
+		const leaves = omp.configurations.map((c) => getModeLeafLabel(c));
+		expect(new Set(leaves).size).toBe(leaves.length);
 	});
 
 	it("returns [] for a missing agent", () => {
