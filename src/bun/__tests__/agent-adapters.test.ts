@@ -18,7 +18,7 @@ import {
 	type AdapterLaunchOptions,
 	type TemplateContext,
 } from "../../shared/agent-adapters";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../../shared/agent-skill-content";
 import type { AgentConfiguration } from "../../shared/types";
 
 // ---------------------------------------------------------------------------
@@ -34,6 +34,7 @@ function redact(cmd: string): string {
 	return cmd
 		.split(shellEscape(CLAUDE_SKILL_BODY)).join("<CLAUDE_BODY>")
 		.split(shellEscape(`developer_instructions=${JSON.stringify(CODEX_SKILL_BODY)}`)).join("<CODEX_DEV_INSTR>")
+		.split(shellEscape(OMP_SKILL_BODY)).join("<OMP_BODY>")
 		.split(genericEscapedInner).join("<GENERIC_BODY>");
 }
 
@@ -198,11 +199,13 @@ describe("hooksSpec", () => {
 	it("Codex is a bare codex spec", () => {
 		expect(codexAdapter.hooksSpec()).toEqual({ kind: "codex" });
 	});
-	it("Gemini / Cursor / OpenCode / omp / Generic install no hooks", () => {
+	it("omp is a bare omp spec (the executor turns it into --hook <extension>)", () => {
+		expect(ompAdapter.hooksSpec()).toEqual({ kind: "omp" });
+	});
+	it("Gemini / Cursor / OpenCode / Generic install no hooks", () => {
 		expect(geminiAdapter.hooksSpec()).toBeNull();
 		expect(cursorAdapter.hooksSpec()).toBeNull();
 		expect(opencodeAdapter.hooksSpec()).toBeNull();
-		expect(ompAdapter.hooksSpec()).toBeNull();
 		expect(genericAdapter.hooksSpec()).toBeNull();
 	});
 });
@@ -231,11 +234,11 @@ describe("skillBody", () => {
 	it("each adapter carries the right body", () => {
 		expect(claudeAdapter.skillBody).toBe(CLAUDE_SKILL_BODY);
 		expect(codexAdapter.skillBody).toBe(CODEX_SKILL_BODY);
-		// Gemini/Cursor/OpenCode/omp/Generic use the generic body.
+		expect(ompAdapter.skillBody).toBe(OMP_SKILL_BODY);
+		// Gemini/Cursor/OpenCode/Generic use the generic body.
 		expect(geminiAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(opencodeAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-		expect(ompAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 		expect(genericAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
 	});
 });
@@ -400,20 +403,20 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 describe("launchArgs — omp", () => {
 	it("omp maps permission mode to its approval tiers", () => {
 		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
-			.toBe("omp --approval-mode write --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+			.toBe("omp --approval-mode write --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 		expect(launch("omp", cfg({ permissionMode: "bypassPermissions" })))
-			.toBe("omp --approval-mode yolo --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+			.toBe("omp --approval-mode yolo --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 	});
 	it("omp has no launch flag for plan mode, so it emits none", () => {
 		expect(launch("omp", cfg({ permissionMode: "plan" })))
-			.toBe("omp --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+			.toBe("omp --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 	});
 	it("omp takes the protocol as a file when the backend wrote one", () => {
 		// Same flag, either form. Keeping the body out of argv is what stops
 		// `pkill -f` matching every agent (h0x91b/dev-3.0#1734).
 		const cmd = launch("omp", cfg(), { systemPromptFile: "/home/u/.dev3.0/data/agent-prompts/omp.md" });
 		expect(cmd).toBe("omp --append-system-prompt /home/u/.dev3.0/data/agent-prompts/omp.md -- 'Fix the login bug'");
-		expect(cmd).not.toContain("<GENERIC_BODY>");
+		expect(cmd).not.toContain("<OMP_BODY>");
 	});
 	it("resumes without re-sending the prompt or the protocol", () => {
 		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c");

@@ -59,7 +59,13 @@ export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
  * into it would put recording and status sync in one blast radius.
  */
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
-export const CODEX_STATUS_HOOK_EVENTS = [
+/**
+ * The one lifecycle vocabulary every hook-driven harness reports in. Codex
+ * emits these names natively; the omp status extension translates its own
+ * events into them (`src/shared/omp-status-extension.ts`), so one socket
+ * handler and one target-status table serve both.
+ */
+export const STATUS_HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
 	"PreToolUse",
@@ -67,10 +73,10 @@ export const CODEX_STATUS_HOOK_EVENTS = [
 	"PostToolUse",
 	"Stop",
 ] as const;
-export type CodexStatusHookEvent = typeof CODEX_STATUS_HOOK_EVENTS[number];
+export type StatusHookEvent = typeof STATUS_HOOK_EVENTS[number];
 
-export function getCodexHookTargetStatus(
-	event: CodexStatusHookEvent,
+export function getStatusHookTargetStatus(
+	event: StatusHookEvent,
 	currentStatus: TaskStatus,
 	autoReviewEnabled: boolean,
 	resumeStatus?: "in-progress" | "review-by-ai",

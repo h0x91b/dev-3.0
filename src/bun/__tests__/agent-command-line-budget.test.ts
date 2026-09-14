@@ -4,7 +4,7 @@ import {
 	AGENT_SKILL_BODY_LIMIT,
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { __setCodexProfileV2Override, resolveAgentCommand, type TemplateContext } from "../agents";
 import type { CodingAgent } from "../../shared/types";
@@ -36,6 +36,7 @@ afterEach(() => {
 const BODIES: Array<[name: string, body: string]> = [
 	["claude", CLAUDE_SKILL_BODY],
 	["codex", CODEX_SKILL_BODY],
+	["omp", OMP_SKILL_BODY],
 	["generic", GENERIC_SKILL_BODY],
 ];
 

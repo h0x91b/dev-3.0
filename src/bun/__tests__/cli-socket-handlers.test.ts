@@ -643,7 +643,7 @@ describe("task.agentHook", () => {
 			event: "FutureEvent",
 		}));
 
-		expect(response.error).toContain("Unsupported Codex hook event");
+		expect(response.error).toContain("Unsupported status hook event");
 	});
 
 	function mockStatefulHookUpdate(project: Project, initial: Task): { get: () => Task } {

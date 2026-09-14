@@ -59,6 +59,7 @@ describe("handleCodexHook", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
 			taskId: "task-1",
 			projectId: "project-1",
+			harness: "codex",
 			event: "PermissionRequest",
 			sessionId: "session-1",
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
@@ -79,6 +80,7 @@ describe("handleCodexHook", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
 			taskId: "task-1",
 			projectId: "project-1",
+			harness: "codex",
 			event: "SessionStart",
 			sessionId: "session-9",
 			paneId: "%42",
@@ -104,10 +106,11 @@ describe("handleCodexHook", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
 			taskId: "task-1",
 			projectId: "project-1",
+			harness: "codex",
 			event: "UserPromptSubmit",
 			sessionId: "session-3",
 			prompt: "rebase and push",
-			turnId: "turn-8",
+			submissionId: "turn-8",
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		// The rollout transcript is never read: that would be conversation capture,
 		// not one submission.

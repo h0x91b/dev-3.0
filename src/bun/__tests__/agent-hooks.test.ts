@@ -17,7 +17,7 @@ import {
 	dev3BashPermissions,
 	ensureDefaultMode,
 	ensureDevPermission,
-	getCodexHookTargetStatus,
+	getStatusHookTargetStatus,
 	TOLERATE_APP_OFFLINE_FLAG,
 } from "../../shared/agent-hooks";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -377,7 +377,7 @@ describe("buildCodexHooks", () => {
 	});
 });
 
-describe("getCodexHookTargetStatus", () => {
+describe("getStatusHookTargetStatus", () => {
 	it.each([
 		["SessionStart", "review-by-user", true, "in-progress"],
 		["UserPromptSubmit", "in-progress", false, "in-progress"],
@@ -388,34 +388,34 @@ describe("getCodexHookTargetStatus", () => {
 		["Stop", "in-progress", true, "review-by-ai"],
 		["Stop", "review-by-ai", true, "review-by-user"],
 	] as const)("maps %s from %s (auto-review=%s)", (event, current, autoReview, expected) => {
-		expect(getCodexHookTargetStatus(event, current, autoReview)).toBe(expected);
+		expect(getStatusHookTargetStatus(event, current, autoReview)).toBe(expected);
 	});
 
 	it("preserves AI review while its agent is working", () => {
-		expect(getCodexHookTargetStatus("PreToolUse", "review-by-ai", true)).toBeNull();
+		expect(getStatusHookTargetStatus("PreToolUse", "review-by-ai", true)).toBeNull();
 	});
 
 	// A scratch task launches parked in user-questions with no prompt. Codex
 	// fires SessionStart at startup, which must not claim the task is working —
 	// only a real prompt may.
 	it("leaves a task parked in user-questions when the session starts", () => {
-		expect(getCodexHookTargetStatus("SessionStart", "user-questions", false)).toBeNull();
+		expect(getStatusHookTargetStatus("SessionStart", "user-questions", false)).toBeNull();
 	});
 
 	it("resumes the remembered status when the session starts after an approval", () => {
-		expect(getCodexHookTargetStatus("SessionStart", "user-questions", false, "in-progress"))
+		expect(getStatusHookTargetStatus("SessionStart", "user-questions", false, "in-progress"))
 			.toBe("in-progress");
 	});
 
 	it.each(["todo", "user-questions", "review-by-user"] as const)(
 		"does not overwrite %s when a turn stops",
 		(status) => {
-			expect(getCodexHookTargetStatus("Stop", status, true)).toBeNull();
+			expect(getStatusHookTargetStatus("Stop", status, true)).toBeNull();
 		},
 	);
 
 	it.each(["completed", "cancelled"] as const)("never reopens terminal status %s", (status) => {
-		expect(getCodexHookTargetStatus("UserPromptSubmit", status, true)).toBeNull();
+		expect(getStatusHookTargetStatus("UserPromptSubmit", status, true)).toBeNull();
 	});
 });
 

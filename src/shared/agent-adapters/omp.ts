@@ -1,5 +1,5 @@
 /** Oh My Pi adapter (`omp`, can1357/oh-my-pi — a fork of pi). */
-import { GENERIC_SKILL_BODY } from "../agent-skill-content";
+import { OMP_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs } from "./common";
 import { OMP_APPROVAL_MODE } from "./omp-flags";
 import { shellEscape, quoteIfUnsafe } from "./shell";
@@ -11,7 +11,7 @@ export const ompAdapter: AgentAdapter = {
 	supportsResume: true,
 	// `--resume [id]` resolves an existing session id prefix or path.
 	supportsPreAssignedSessionId: false,
-	skillBody: GENERIC_SKILL_BODY,
+	skillBody: OMP_SKILL_BODY,
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {
@@ -39,7 +39,7 @@ export const ompAdapter: AgentAdapter = {
 			if (options?.systemPromptFile) {
 				args.push("--append-system-prompt", quoteIfUnsafe(options.systemPromptFile));
 			} else {
-				args.push("--append-system-prompt", shellEscape(GENERIC_SKILL_BODY));
+				args.push("--append-system-prompt", shellEscape(OMP_SKILL_BODY));
 			}
 		}
 
@@ -57,7 +57,9 @@ export const ompAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --resume ${sessionId}` : `${baseCmd} -c`;
 	},
 
+	// Status rides on a generated extension module (`src/shared/omp-status-extension.ts`),
+	// loaded with `--hook`; the executor returns that flag for the launch to splice in.
 	hooksSpec() {
-		return null;
+		return { kind: "omp" };
 	},
 };

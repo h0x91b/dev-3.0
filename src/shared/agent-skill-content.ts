@@ -308,17 +308,21 @@ Hooks automatically manage task status transitions (\`in-progress\`, \`user-ques
 Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
 ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
-// Codex lifecycle is hook-owned. Keep manual moves limited to decisions that
-// cannot be inferred from native events (semantic questions/custom columns).
-const SKILL_STATUS_CODEX_HOOKS = `
+// A hook-owned lifecycle (Codex, omp). Keep manual moves limited to decisions
+// that cannot be inferred from native events (semantic questions/custom columns).
+function skillStatusNativeHooks(agent: string): string {
+	return `
 ## Task status management
 
-dev3 injects trusted native hooks into every Codex pane. They own normal lifecycle transitions: session/prompt/tool activity → \`in-progress\`, tool approval waits → \`user-questions\`, tool completion → active again, agent stop → \`review-by-ai\` or \`review-by-user\`.
+dev3 injects trusted native hooks into every ${agent} pane. They own normal lifecycle transitions: session/prompt/tool activity → \`in-progress\`, tool approval waits → \`user-questions\`, tool completion → active again, agent stop → \`review-by-ai\` or \`review-by-user\`.
 
-**Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A status that looks stale is not a licence to manage it manually: report it with \`dev3 notify "Codex status hooks did not update the task" --level error\` and leave the evidence intact.
+**Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A status that looks stale is not a licence to manage it manually: report it with \`dev3 notify "${agent} status hooks did not update the task" --level error\` and leave the evidence intact.
 
 The one exception is a semantic question that no native event can detect: needing user input or clarification (not a tool approval) → move to \`user-questions\` before your final response. Explicit custom-column moves and the user-approved \`completed\` flow below stay allowed.
 ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
+}
+const SKILL_STATUS_CODEX_HOOKS = skillStatusNativeHooks("Codex");
+const SKILL_STATUS_OMP_HOOKS = skillStatusNativeHooks("omp");
 
 const SKILL_CODEX_SHELL = `
 ## Codex shell note
@@ -365,4 +369,5 @@ Approved → actual vs expected behavior, minimal reproduction, dev3 version and
 // `agents.ts`.
 export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
 export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+export const OMP_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
 export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
