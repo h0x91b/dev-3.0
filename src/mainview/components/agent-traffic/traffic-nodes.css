@@ -583,6 +583,11 @@
 .traffic-node-card.is-parked {
 	filter: grayscale(1);
 	opacity: 0.65;
+	/* The cell tier hides the body, so the "Hibernated" line is gone and only the
+	   grey is left — which is exactly the reading a colour-blind user cannot make.
+	   A dashed edge is the shape cue that survives every tier. */
+	outline: 1px dashed rgb(var(--text-secondary) / 0.8);
+	outline-offset: -1px;
 }
 .traffic-node-card.is-parked.is-selected,
 .traffic-node-card.is-parked:hover {

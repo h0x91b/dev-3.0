@@ -1343,6 +1343,7 @@ function Card({
 			data-testid="traffic-node-card"
 			data-history={limited ?? undefined}
 			data-unborn={unborn ? "true" : undefined}
+			data-parked={placed.parked ? "true" : undefined}
 			className={`traffic-node-card ${node.task?.taskType === "coordinator" ? "is-coordinator" : ""} ${selected ? "is-selected" : ""} ${dim ? "is-dim" : ""} ${active ? "is-lit" : ""} ${placed.parked ? "is-parked" : ""} ${finished ? `is-${finished}` : ""} ${unborn ? "is-unborn" : ""} ${celebrating ? "is-celebrating" : ""}`}
 			data-travel={travel?.slot}
 			style={{

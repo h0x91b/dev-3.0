@@ -1456,7 +1456,9 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 									taskList.map((node) => (
 										<button
 											key={node.key}
-											className={`traffic-task-row ${node.key === selected ? "is-selected" : ""}`}
+											data-testid="traffic-task-row"
+											data-parked={node.task?.hibernated ? "true" : undefined}
+											className={`traffic-task-row ${node.key === selected ? "is-selected" : ""} ${node.task?.hibernated ? "is-parked" : ""}`}
 											onClick={() => select(node.key)}
 										>
 											<b>{nodeSeq(node)}</b>
@@ -1464,17 +1466,25 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 												{node.title || t("traffic.orbit.historical")}
 											</span>
 											<small>
-												{node.task?.taskType === "coordinator"
-													? t("traffic.orbit.coordinator")
-													: node.task
-														? getStatusLabel(
-																node.task.status,
-																t,
-																data.projects.find(
-																	(project) => project.id === node.projectId,
-																),
-															)
-														: t("traffic.orbit.historical")}
+												{/* Hibernation leads, because it outranks the column the
+												    task is parked in — but the column still shows, or the
+												    row would hide where the work actually stands. */}
+												{[
+													node.task?.hibernated ? t("task.hibernatedBadge") : null,
+													node.task?.taskType === "coordinator"
+														? t("traffic.orbit.coordinator")
+														: node.task
+															? getStatusLabel(
+																	node.task.status,
+																	t,
+																	data.projects.find(
+																		(project) => project.id === node.projectId,
+																	),
+																)
+															: t("traffic.orbit.historical"),
+												]
+													.filter(Boolean)
+													.join(" · ")}
 											</small>
 										</button>
 									))

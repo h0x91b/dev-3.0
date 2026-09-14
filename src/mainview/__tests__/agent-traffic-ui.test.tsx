@@ -1313,6 +1313,54 @@ it("Focus reveals a hibernated task selected from the task list without waking i
 	).toBe("false");
 });
 
+// The task list used to print the live column and nothing else, so a parked task
+// read as "Agent is Working" — the one state it provably is not in.
+it("names hibernation in the task list without dropping the column the task sits in", async () => {
+	taskExtras.value = { "task-c": { hibernated: true } };
+	setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
+	renderLog();
+	await messageRows(2);
+	await userEvent.click(
+		within(screen.getByRole("complementary")).getByRole("button", {
+			name: "Tasks",
+		}),
+	);
+	const rows = screen.getAllByTestId("traffic-task-row");
+	const parked = rows.find((el) => el.textContent?.includes("#33"));
+	const awake = rows.find((el) => el.textContent?.includes("#22"));
+	expect(parked).toHaveAttribute("data-parked", "true");
+	expect(parked?.className).toContain("is-parked");
+	expect(parked?.querySelector("small")?.textContent).toBe(
+		"Hibernated · Agent is Working",
+	);
+	// A live sibling in the same column is untouched, so the marker means
+	// hibernation and not "this row is grey".
+	expect(awake).not.toHaveAttribute("data-parked");
+	expect(awake?.className).not.toContain("is-parked");
+	expect(awake?.querySelector("small")?.textContent).toBe("Agent is Working");
+	// Inactive is a state to read, never a control taken away.
+	await userEvent.click(parked as HTMLElement);
+	expect(parked?.className).toContain("is-selected");
+});
+
+// Grey alone excludes anyone who cannot make that reading, and the cell tier
+// hides the "Hibernated" line entirely — the card itself has to say so.
+it("marks a hibernated node card for styling that does not depend on colour", async () => {
+	taskExtras.value = { "task-c": { hibernated: true } };
+	setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
+	renderLog();
+	await messageRows(2);
+	await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
+	const cards = screen.getAllByTestId("traffic-node-card");
+	const parked = cards.filter((el) => el.dataset.parked === "true");
+	expect(parked).toHaveLength(1);
+	expect(parked[0].className).toContain("is-parked");
+	expect(parked[0].textContent).toContain("Hibernated");
+	expect(
+		cards.filter((el) => el.dataset.parked === undefined).length,
+	).toBeGreaterThan(0);
+});
+
 it("selects a full local calendar day, then Live restores 24h and Follow", async () => {
 	const today = new Date();
 	today.setHours(0, 0, 0, 0);

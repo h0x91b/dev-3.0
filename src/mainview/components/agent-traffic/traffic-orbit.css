@@ -222,6 +222,25 @@
 .traffic-node-label.is-coordinator {
 	border: 1px dashed rgb(var(--success) / 0.7);
 }
+/* Parked reads inactive on three axes at once — a seq that drops its live hue,
+   a dashed neutral outline and the word itself — so neither colour nor greyness
+   is load-bearing alone. `--text-secondary`, NOT `--text-tertiary`: measured on
+   this surface tertiary is 3.13:1 and secondary 5.07:1, and the state line is
+   10px. No blanket `opacity` either, for the same reason. */
+.traffic-node-label.is-parked {
+	border: 1px dashed rgb(var(--text-secondary) / 0.8);
+	background: rgb(var(--surface-base) / 0.86);
+}
+.traffic-node-label.is-parked b,
+.traffic-node-label.is-parked small.is-parked-state {
+	color: rgb(var(--text-secondary));
+}
+/* Selecting or hovering a parked node restores the live presentation: inactive
+   is a state to read, never a control to take away. */
+.traffic-node-label.is-parked.is-selected b,
+.traffic-node-label.is-parked:hover b {
+	color: rgb(var(--agent));
+}
 .traffic-node-label.is-selected {
 	box-shadow: 0 0 0 1px rgb(var(--accent));
 	background: rgb(var(--surface-elevated));
@@ -436,6 +455,14 @@
 	color: rgb(var(--danger));
 }
 .traffic-task-row b {
+	color: rgb(var(--agent));
+}
+/* Same reading as the parked node label: a seq that drops its live hue plus the
+   word, and the selected row snaps back to the live presentation. */
+.traffic-task-row.is-parked b {
+	color: rgb(var(--text-secondary));
+}
+.traffic-task-row.is-parked.is-selected b {
 	color: rgb(var(--agent));
 }
 .traffic-task-row small {

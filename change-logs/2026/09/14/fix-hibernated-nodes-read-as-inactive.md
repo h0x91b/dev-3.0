@@ -1,0 +1,3 @@
+Short: Hibernated tasks look parked in traffic
+
+Agent traffic no longer presents a hibernated task as a running one. In Experiment 1 its planet drops the status colour for a neutral grey and its label carries the word "Hibernated"; the task list says "Hibernated · Your Review" instead of printing only the column, which used to read as "Agent is Working" for a task with no agent at all. Experiment 2's parked cards gain a dashed edge so they still read as parked at the zoom where the card text disappears. A hibernated node stays fully selectable and openable, and selecting one restores its normal presentation.
