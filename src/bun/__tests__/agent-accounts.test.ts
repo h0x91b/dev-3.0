@@ -7,6 +7,7 @@ import {
 	claudeAccountDir,
 	isPrivateClaudeEntry,
 	codexAccountDir,
+	codexAccountIdForHome,
 	completeClaudeLogin,
 	completeCodexLogin,
 	getActiveClaudeConfigDir,
@@ -512,6 +513,22 @@ describe("codex accounts", () => {
 		await setActiveCodexAccount(null, paths);
 		state = await listAgentAccounts(paths);
 		expect(state.codex.activeId).toBeNull();
+	});
+
+	it("identifies the launched Codex home without consulting the current default or credentials", async () => {
+		seedCodexLogin("acc-one");
+		const first = await importCurrentCodexAccount(paths);
+		const launched = await getActiveCodexSessionEnv(undefined, paths);
+		seedCodexLogin("acc-two");
+		const second = await importCurrentCodexAccount(paths);
+		unlinkSync(join(codexAccountDir(first.id, paths), "auth.json"));
+
+		expect(codexAccountIdForHome(launched.CODEX_HOME, paths)).toBe(first.id);
+		expect(codexAccountIdForHome(codexAccountDir(second.id, paths), paths)).toBe(second.id);
+		expect(codexAccountIdForHome(undefined, paths)).toBeUndefined();
+		expect(codexAccountIdForHome(paths.codexHome, paths)).toBeUndefined();
+		expect(codexAccountIdForHome(join(root, "custom-home"), paths)).toBeUndefined();
+		expect(codexAccountIdForHome(join(codexAccountDir(first.id, paths), "sessions"), paths)).toBeUndefined();
 	});
 
 	it("getActiveCodexSessionEnv injects the selected account's CODEX_HOME; per-launch override wins", async () => {

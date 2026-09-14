@@ -34,7 +34,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type {
 	AgentAccount,
 	AgentAccountAuth,
@@ -462,6 +462,13 @@ export function listCodexAccountDirs(paths: AccountPaths = defaultAccountPaths()
 	} catch {
 		return [];
 	}
+}
+
+/** Snapshot only a registered managed home; custom homes retain their explicit config. */
+export function codexAccountIdForHome(home: string | undefined, paths: AccountPaths = defaultAccountPaths()): string | undefined {
+	if (!home) return undefined;
+	const matched = listCodexAccountDirs(paths).find((dir) => resolve(dir) === resolve(home));
+	return matched ? basename(matched) : undefined;
 }
 
 /** Absolute dirs of every managed Claude account. The rate-limit monitor uses

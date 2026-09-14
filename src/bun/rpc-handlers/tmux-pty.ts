@@ -5,6 +5,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
+import { codexAccountIdForHome } from "../agent-accounts";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { agentKey } from "../../shared/agent-adapters/families";
 import { evaluateCodexModelSupport } from "../../shared/agent-model-cli-requirements";
@@ -937,9 +938,10 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
-	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string },
+	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; accountId?: string | null },
 ): Promise<void> {
 	const sessionId = opts?.sessionId;
+	const accountId = opts?.accountId !== undefined ? opts.accountId : task.accountId;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
 	const artifactTemplateEnv = ensureArtifactTemplateEnv(project, task, worktreePath);
 	log.info("launchTaskPty START", {
@@ -986,11 +988,9 @@ export async function launchTaskPty(
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
-		// The task's persisted managed account (per-launch selector) drives which
-		// CLAUDE_CONFIG_DIR / CODEX_HOME the main pane's agent env resolves to —
-		// on fresh launches, retries, reopens AND resumes, so a recovered session
-		// keeps running under the same account. undefined → registry default.
-		const cmdOptions: agents.CommandOptions = { accountId: task.accountId };
+		// Recovery carries the pane's account alongside its session id. Older pane
+		// snapshots fall back to the task selection; undefined uses the default.
+		const cmdOptions: agents.CommandOptions = { accountId };
 		let freshSessionId: string | null = null;
 
 		if (resume) {
@@ -1048,7 +1048,8 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: task.accountId,
+				accountId: (!resume && agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? accountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
 			};
@@ -1131,7 +1132,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId, task.foreignCode, resolvedAgentFamily);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
@@ -2162,7 +2163,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		main.configId,
 		false,
 		true,
-		mainResume ? { sessionId: mainResume } : undefined,
+		{ sessionId: mainResume ?? undefined, accountId: main.accountId },
 	);
 
 	// Resume extra panes (panes[1..]) via split-window.

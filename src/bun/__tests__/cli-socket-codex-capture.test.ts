@@ -111,7 +111,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		const { buildResumeCommand } = await import("../agents");
 
 		seed([makeTask({
-			sessionState: { panes: [codexPane("%1", null), codexPane("%2", null)] },
+			sessionState: { panes: [codexPane("%1", null), { ...codexPane("%2", null), accountId: "account-b" }] },
 		})]);
 
 		const resp = await handleRequest(agentHook({
@@ -126,6 +126,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		const panes = readPanes();
 		expect(panes[0]?.sessionId).toBeNull();
 		expect(panes[1]?.sessionId).toBe("019f50b3-6415-7dc3-8ad5-b60f0818f704");
+		expect(panes[1]?.accountId).toBe("account-b");
 
 		// The persisted id drives a targeted resume, exactly as resumeTask does.
 		expect(buildResumeCommand("codex", panes[1]!.sessionId ?? undefined))

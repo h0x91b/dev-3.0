@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
 import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
+import * as agentAccounts from "../agent-accounts";
 import {
 	activatePane,
 	closePane,
@@ -10472,6 +10473,93 @@ describe("resumeTask session-id healing", () => {
 		await handlers.resumeTask({ taskId: "task-1" });
 
 		expect(resumeOptions()).toMatchObject({ resume: true, sessionId: DEAD });
+	});
+});
+
+describe("resumeTask main pane account pairing", () => {
+	let restoreResolve: () => void;
+	beforeEach(() => {
+		vi.clearAllMocks();
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "codex", extraEnv: {}, agentFamily: "codex" } as any);
+		restoreResolve = () => resolve.mockImplementation(original!);
+	});
+	afterEach(() => restoreResolve());
+
+	it("snapshots the effective managed Codex home before the default changes", async () => {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-codex", configId: "codex-default" });
+		const home = "/tmp/test-managed-codex/account-b";
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : undefined);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockImplementation(async (_agentId, _configId, _ctx, options) => ({
+			command: "codex",
+			extraEnv: { CODEX_HOME: options?.accountId === "account-b" ? home : "/tmp/test-managed-codex/account-a" },
+			agentFamily: "codex",
+		}) as any);
+		resolve.mockResolvedValueOnce({ command: "codex", extraEnv: { CODEX_HOME: home }, agentFamily: "codex" } as any);
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		try {
+			await launchTaskPty(project, task, task.worktreePath!, task.agentId, task.configId);
+			const saved = await data.getTask(project, task.id);
+			expect(saved.sessionState?.panes[0].accountId).toBe("account-b");
+			const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+			await data.updateTask(project, task.id, { sessionState: { panes: [{ ...saved.sessionState!.panes[0], sessionId }] } });
+			await handlers.resumeTask({ taskId: task.id });
+			expect(resolve).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ accountId: "account-b", sessionId, resume: true }));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+		} finally {
+			accountSpy.mockRestore();
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it.each([
+		{ taskAccountId: "account-a", paneAccountId: "account-b", expectedAccountId: "account-b" },
+		{ taskAccountId: "account-a", paneAccountId: null, expectedAccountId: null },
+		{ taskAccountId: "account-a", paneAccountId: undefined, expectedAccountId: "account-a" },
+		{ taskAccountId: undefined, paneAccountId: undefined, expectedAccountId: undefined },
+	])("preserves the saved conversation account across repeated recovery: $paneAccountId / $taskAccountId", async ({ taskAccountId, paneAccountId, expectedAccountId }) => {
+		const project = makeProject();
+		const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+		const task = makeTask({
+			accountId: taskAccountId,
+			sessionState: { panes: [{
+				paneId: "%9",
+				agentCmd: "codex",
+				agentFamily: "codex",
+				agentId: "builtin-codex",
+				configId: "codex-default",
+				sessionId,
+				accountId: paneAccountId,
+			}] },
+		});
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockReturnValue("current-default");
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValue({ command: "codex", extraEnv: { CODEX_HOME: "/tmp/current-default" }, agentFamily: "codex" } as any);
+
+		try {
+			for (let attempt = 0; attempt < 2; attempt++) {
+				await handlers.resumeTask({ taskId: task.id });
+				expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith(
+					"builtin-codex", "codex-default", expect.anything(),
+					expect.objectContaining({ resume: true, sessionId, accountId: expectedAccountId }),
+				);
+				const saved = await data.getTask(project, task.id);
+				expect(saved.sessionState?.panes[0]).toMatchObject({ sessionId, accountId: expectedAccountId });
+				expect(saved.accountId).toBe(taskAccountId);
+			}
+		} finally {
+			accountSpy.mockRestore();
+		}
 	});
 });
 
