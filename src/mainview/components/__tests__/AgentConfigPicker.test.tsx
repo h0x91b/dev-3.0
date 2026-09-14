@@ -108,6 +108,29 @@ describe("AgentConfigPicker", () => {
 		expect(text(mode())).toBe("Default");
 	});
 
+	it("changing Harness drops an account picked from the previous harness", async () => {
+		const user = userEvent.setup();
+		const onAccountChange = vi.fn();
+		render(
+			<I18nProvider>
+				<AgentConfigPicker
+					idPrefix="test"
+					agents={agents}
+					agentId="builtin-claude"
+					configId="opus-bypass-xhigh"
+					onChange={() => {}}
+					accountId="claude-account-1"
+					onAccountChange={onAccountChange}
+				/>
+			</I18nProvider>,
+		);
+
+		await pick(user, harnessBtn(), "Codex");
+
+		// A Claude account cannot pay for a Codex launch: back to Codex's default.
+		expect(onAccountChange).toHaveBeenCalledWith(undefined);
+	});
+
 	it("changing Model preserves the Mode kind (permissionMode + effort) across the group switch", async () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();

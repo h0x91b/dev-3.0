@@ -22,6 +22,7 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { I18nProvider } from "../../i18n";
 import AgentAccountIndicator, { agentAccountKindForCommand } from "../AgentAccountIndicator";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 
 const mockedApi = vi.mocked(api, true);
 const mockedConfirm = vi.mocked(confirm);
@@ -76,11 +77,20 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 
 function renderIndicator(
 	agent: CodingAgent | null = claudeAgent,
-	opts?: { value?: string | null; onSelect?: (accountId: string | null) => void },
+	opts?: {
+		value?: string | null;
+		onSelect?: (accountId: string | null) => void;
+		onAddAccount?: () => void;
+	},
 ) {
 	return render(
 		<I18nProvider>
-			<AgentAccountIndicator agent={agent} value={opts?.value} onSelect={opts?.onSelect} />
+			<AgentAccountIndicator
+				agent={agent}
+				value={opts?.value}
+				onSelect={opts?.onSelect}
+				onAddAccount={opts?.onAddAccount}
+			/>
 		</I18nProvider>,
 	);
 }
@@ -127,19 +137,103 @@ describe("AgentAccountIndicator", () => {
 		expect(trigger.textContent).toContain("work@example.com");
 	});
 
-	it("renders nothing when the provider has no managed accounts", async () => {
+	// The single-account user is the whole point of this control: the usage
+	// numbers live behind it, and they are how you choose a harness to launch.
+	it("shows the lone system login, with its usage, when nothing is managed", async () => {
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
-			makeState({ claude: { accounts: [], activeId: null, systemIdentity: null } }),
+			makeState({
+				claude: {
+					accounts: [],
+					activeId: null,
+					systemIdentity: {
+						email: "solo@example.com",
+						organization: null,
+						plan: null,
+						planLabel: "Max 5x",
+						accountId: "uuid-0",
+					},
+				},
+			}),
 		);
-		const { container } = renderIndicator();
-		await waitFor(() => expect(mockedApi.request.listAgentAccounts).toHaveBeenCalled());
-		expect(container.textContent).toBe("");
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({
+					accountId: null,
+					windows: [{ id: "seven_day", usedPercent: 53, resetsAt: null, windowMinutes: 10080 }],
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator();
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("solo@example.com");
+		await user.click(trigger);
+		expect(await screen.findByText("53% used")).toBeTruthy();
 	});
 
 	it("renders nothing for a provider without an account registry", () => {
 		const { container } = renderIndicator({ ...claudeAgent, baseCommand: "gemini" });
 		expect(mockedApi.request.listAgentAccounts).not.toHaveBeenCalled();
 		expect(container.textContent).toBe("");
+	});
+
+	it("offers the add-account link only where leaving the surface is allowed", async () => {
+		const onAddAccount = vi.fn();
+		const user = userEvent.setup();
+		const { unmount } = renderIndicator(claudeAgent, { value: null, onSelect: vi.fn(), onAddAccount });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await user.click(screen.getByTestId("agent-account-add"));
+		expect(onAddAccount).toHaveBeenCalledTimes(1);
+		// Taking the link closes the popover — the surface behind it is going away.
+		expect(screen.queryByTestId("agent-account-add")).toBeNull();
+		unmount();
+
+		// A launch surface that cannot be left (the blocked-CLI approval dialog)
+		// passes no handler and gets no link.
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(screen.queryByTestId("agent-account-add")).toBeNull();
+	});
+
+	it("hands focus back to the pill when the popover closes", async () => {
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await user.click(trigger);
+		await user.keyboard("{Escape}");
+
+		// Without this the keyboard user lands on <body>, outside the dialog's ring.
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it("global mode: the add link deep-links to Settings → Accounts", async () => {
+		const opened = vi.fn();
+		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
+		const user = userEvent.setup();
+		renderIndicator();
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await user.click(screen.getByTestId("agent-account-add"));
+		window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
+
+		expect(opened).toHaveBeenCalledTimes(1);
+		expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe("accounts");
+	});
+
+	it("drops a per-launch account carried over from another harness", async () => {
+		const user = userEvent.setup();
+		// "cl-1" belongs to Claude; the row was switched to Codex afterwards.
+		renderIndicator(codexAgent, { value: "cl-1", onSelect: vi.fn() });
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		// Falls back to Codex's own default (its unmanaged login), never to a blank
+		// selection or a Claude label on a Codex launch.
+		expect(trigger.textContent).toContain("Unmanaged login");
+		await user.click(trigger);
+		expect(screen.getByRole("menuitemradio", { checked: true }).textContent).toContain("Unmanaged login");
 	});
 
 	it("falls back to the system login email when no managed account is active", async () => {

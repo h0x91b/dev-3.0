@@ -14,6 +14,7 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
+import { leaveLaunchForAccountSettings } from "./AgentAccountIndicator";
 import AgentConfigPicker, {
 	PICKER_HEADER_CONTAINER_CLASS,
 	pickerLabelsHeaderClass,
@@ -401,6 +402,7 @@ function LaunchVariantsModal({
 									onChange={(next) => updateVariant(index, next)}
 									accountId={variant.accountId}
 									onAccountChange={(accountId) => updateVariant(index, { accountId })}
+								onAddAccount={() => leaveLaunchForAccountSettings(onClose, t("launch.accountAddLeaving"))}
 									showLabels={false}
 									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 									showFavorites

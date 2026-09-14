@@ -11,6 +11,7 @@ import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { trackAgentLaunched, trackEvent } from "../analytics";
+import { leaveLaunchForAccountSettings } from "./AgentAccountIndicator";
 import AgentConfigPicker from "./AgentConfigPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
@@ -198,6 +199,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 							}}
 							accountId={accountId}
 							onAccountChange={setAccountId}
+							onAddAccount={() => leaveLaunchForAccountSettings(onClose, t("launch.accountAddLeaving"))}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites
 							favorites={globalSettings.favorites ?? []}

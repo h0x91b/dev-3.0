@@ -19,6 +19,7 @@ import {
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { CapturedAgeSuffix, UsageBar, severityText } from "./rate-limit-ui";
 
@@ -30,6 +31,22 @@ export const AGENT_ACCOUNTS_CHANGED_EVENT = "dev3:agentAccountsChanged";
 
 export function notifyAgentAccountsChanged(): void {
 	window.dispatchEvent(new CustomEvent(AGENT_ACCOUNTS_CHANGED_EVENT));
+}
+
+/** Deep-links to Settings → Accounts, the canonical (and only) place where an
+ *  account is added. Adding one is a terminal login flow, so it cannot be
+ *  inlined into this popover — the popover only points at it. */
+export function openAgentAccountSettings(): void {
+	window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "accounts" }));
+}
+
+/** What a launch surface does when the user takes the add-account link: the
+ *  dialog has to close (Settings is a screen, not an overlay), and nothing was
+ *  launched — so say both out loud instead of leaving a silent dead end. */
+export function leaveLaunchForAccountSettings(close: () => void, notice: string): void {
+	close();
+	openAgentAccountSettings();
+	toast.info(notice, { source: "settings" });
 }
 
 /** Which account registry an agent's base command draws from. Handles path
@@ -196,6 +213,7 @@ function SwitcherPopover({
 	title,
 	subtitle,
 	onClose,
+	onAddAccount,
 	triggerRef,
 }: {
 	anchor: DOMRect;
@@ -205,6 +223,7 @@ function SwitcherPopover({
 	title: string;
 	subtitle: string;
 	onClose: () => void;
+	onAddAccount: (() => void) | null;
 	triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
 	const t = useT();
@@ -367,6 +386,28 @@ function SwitcherPopover({
 					);
 				})}
 			</div>
+			{/* Pinned under the scrolling list: with one account the list is short, but
+			    with several the action must not scroll out of reach. Settings owns the
+			    login flow — this is a link to it, never a second place to configure. */}
+			{onAddAccount ? (
+				<div className="border-t border-edge mt-1 pt-1 px-1.5">
+					<button
+						type="button"
+						role="menuitem"
+						data-testid="agent-account-add"
+						onClick={() => {
+							onClose();
+							onAddAccount();
+						}}
+						className="w-full flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg text-accent text-xs font-medium text-left hover:bg-accent/10 focus:bg-accent/10 transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+					>
+						<span aria-hidden className="text-sm leading-none">
+							+
+						</span>
+						<span className="truncate">{t("launch.accountAddAnother")}</span>
+					</button>
+				</div>
+			) : null}
 			<div className="border-t border-edge mt-1 pt-1.5 px-3 pb-1">
 				<p className="text-fg-3 text-xs leading-snug">{hint}</p>
 			</div>
@@ -384,14 +425,18 @@ function SwitcherPopover({
  * - **Global default switcher** (`onSelect` omitted): picking moves the default
  *   account (billing acknowledgement kept). Used by Settings surfaces.
  *
- * Progressive disclosure: renders nothing unless the selected provider is a
- * claude/codex command AND the user has registered managed accounts — a
- * single-login user never sees it.
+ * Shown for every claude/codex harness, including the single-login user with no
+ * managed accounts at all: the popover is where the account's own limit windows
+ * are readable, and hiding it behind "you have two accounts" hid the numbers
+ * from the people who most need them to pick a harness (decision:
+ * decisions/2026/09/14/always-show-the-launch-account-line.md). Anything that is
+ * not claude/codex has no account registry and still renders nothing.
  */
 export default function AgentAccountIndicator({
 	agent,
 	value,
 	onSelect,
+	onAddAccount,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -400,6 +445,10 @@ export default function AgentAccountIndicator({
 	/** When provided the pill is a LOCAL per-launch selector (no global mutation,
 	 *  no confirm). When omitted it stays the global default switcher. */
 	onSelect?: (accountId: string | null) => void;
+	/** Renders the "add another account" link in the popover footer. A launch
+	 *  surface passes what it must do first (close itself); omit it where leaving
+	 *  is wrong — the blocked-CLI approval dialog. */
+	onAddAccount?: () => void;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -411,18 +460,26 @@ export default function AgentAccountIndicator({
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
 
+	// Closing the popover hands focus back to the pill that opened it — the panel
+	// unmounts, and without this a keyboard user lands on <body>, outside the
+	// dialog's own tab ring.
+	const closePopover = useCallback(() => {
+		setAnchor(null);
+		buttonRef.current?.focus();
+	}, []);
+
 	const handleSelectLocal = useCallback(
 		(accountId: string | null) => {
-			setAnchor(null);
+			closePopover();
 			onSelect?.(accountId);
 		},
-		[onSelect],
+		[closePopover, onSelect],
 	);
 
 	const handleSelectGlobal = useCallback(
 		async (accountKind: AgentAccountKind, accountId: string | null) => {
 			setBusy(true);
-			setAnchor(null);
+			closePopover();
 			try {
 				// Setting the DEFAULT account only changes the preselect for future
 				// launches (no ~/.codex swap, no running-session cost move), so no
@@ -435,16 +492,18 @@ export default function AgentAccountIndicator({
 				setBusy(false);
 			}
 		},
-		[],
+		[closePopover],
 	);
 
 	if (!kind || !state) return null;
 	const kindState = state[kind];
-	if (kindState.accounts.length === 0) return null;
 
 	// The effective selected id: the local per-launch value (undefined → the
 	// registry default) or, for the global switcher, the registry default itself.
-	const effectiveSelectedId = isLocal && value !== undefined ? value : kindState.activeId;
+	// A per-launch id belonging to the OTHER kind (the harness was switched after
+	// picking) falls back to this kind's default — never shows as "nothing selected".
+	const carriedOver = isLocal && typeof value === "string" && !kindState.accounts.some((a) => a.id === value);
+	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver ? value : kindState.activeId;
 
 	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
 	const fallbackIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
@@ -485,11 +544,14 @@ export default function AgentAccountIndicator({
 				? () => handleSelectLocal(null)
 				: () => handleSelectGlobal("claude", null),
 		});
-	} else if (kindState.activeId === null && state.codex.currentIdentity) {
+		// Global mode, codex, nothing managed selected: the row is informational, and
+		// it renders even with no readable ~/.codex identity — an empty popover would
+		// be the one state that tells the user nothing at all.
+	} else if (kindState.activeId === null) {
 		rows.push({
 			key: "unmanaged",
 			label: t("settings.accountsUnmanaged"),
-			sub: state.codex.currentIdentity.email,
+			sub: state.codex.currentIdentity?.email ?? null,
 			planLabel: identityBadge(state.codex.currentIdentity),
 			workspaceLabel: workspaceLabel(state.codex.currentIdentity),
 			isApi: false,
@@ -555,7 +617,10 @@ export default function AgentAccountIndicator({
 					hint={isLocal ? t("launch.accountForLaunchHint") : t("settings.accountsNewSessionsHint")}
 					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
 					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
-					onClose={() => setAnchor(null)}
+					// In the settings surfaces (global mode) the link costs nothing — the
+					// user is already in Settings, so it just scrolls them to Accounts.
+					onAddAccount={onAddAccount ?? (isLocal ? null : openAgentAccountSettings)}
+					onClose={closePopover}
 					triggerRef={buttonRef}
 				/>
 			) : null}

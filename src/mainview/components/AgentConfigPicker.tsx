@@ -4,7 +4,7 @@ import { isFavorite } from "../../shared/favorites";
 import { useT } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { toast } from "../toast";
-import AgentAccountIndicator from "./AgentAccountIndicator";
+import AgentAccountIndicator, { agentAccountKindForCommand } from "./AgentAccountIndicator";
 import FavoritesMenu, { StarGlyph } from "./FavoritesMenu";
 import Select, { useAgentRenderOption } from "./Select";
 import {
@@ -127,7 +127,10 @@ interface AgentConfigPickerProps {
 	/** When provided, the account pill becomes a LOCAL per-launch selector writing
 	 *  here (spawn dialogs). When omitted the pill stays the global default
 	 *  switcher (Settings surfaces). */
-	onAccountChange?: (accountId: string | null) => void;
+	onAccountChange?: (accountId: string | null | undefined) => void;
+	/** What the "add another account" link in the account popover must do before
+	 *  Settings opens — a launch dialog closes itself. Omitted → no link. */
+	onAddAccount?: () => void;
 }
 
 /**
@@ -154,6 +157,7 @@ function AgentConfigPicker({
 	onToggleFavorite,
 	accountId,
 	onAccountChange,
+	onAddAccount,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
@@ -243,6 +247,11 @@ function AgentConfigPicker({
 		// Model group + Mode via decomposition on render).
 		const agent = agents.find((a) => a.id === nextAgentId);
 		const nextConfigId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null;
+		// An account belongs to one registry, so a Claude account cannot travel to a
+		// Codex launch: crossing registries drops back to the new harness's default.
+		const prevKind = selectedAgent ? agentAccountKindForCommand(selectedAgent.baseCommand) : null;
+		const nextKind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
+		if (onAccountChange && accountId !== undefined && prevKind !== nextKind) onAccountChange(undefined);
 		onChange({ agentId: nextAgentId, configId: nextConfigId });
 	}
 
@@ -431,11 +440,17 @@ function AgentConfigPicker({
 				</div>
 
 				{/* The account belongs to the whole selection, not to Provider: its own
-				    full-width line keeps the field columns the same height. Progressive
-				    disclosure — the indicator renders only when the harness has managed
-				    accounts, and `empty:hidden` then drops this line entirely. */}
+				    full-width line keeps the field columns the same height. The indicator
+				    renders for every claude/codex harness (its usage limits are how the
+				    user picks one) and nothing at all for a harness with no account
+				    registry — `empty:hidden` then drops this line entirely. */}
 				<div className="col-span-full min-w-0 empty:hidden">
-					<AgentAccountIndicator agent={selectedAgent} value={accountId} onSelect={onAccountChange} />
+					<AgentAccountIndicator
+						agent={selectedAgent}
+						value={accountId}
+						onSelect={onAccountChange}
+						onAddAccount={onAddAccount}
+					/>
 				</div>
 
 				{/* Its own full-width line under the fields: it is about the selection as
