@@ -575,9 +575,12 @@ export async function resolveAgentCommand(
  * A failed write throws rather than falling back to the inline body: that
  * fallback is the argv exposure being closed.
  */
+const SYSTEM_PROMPT_FILE_COMMANDS = new Set(["claude", "omp"]);
+
 function systemPromptFileFor(adapter: { command: string; skillBody?: string }): string | undefined {
-	if (adapter.command !== "claude" || !adapter.skillBody) return undefined;
-	return ensureAgentSystemPromptFile("claude", adapter.skillBody);
+	if (!SYSTEM_PROMPT_FILE_COMMANDS.has(adapter.command) || !adapter.skillBody) return undefined;
+	// Named per agent so two bodies never share a file. Claude keeps its own name.
+	return ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
 }
 
 /** Every raw arg a launch adds beyond the preset's own: the selected backend's

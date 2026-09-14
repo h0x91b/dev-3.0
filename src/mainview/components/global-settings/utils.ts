@@ -7,6 +7,7 @@ import type {
 	ProviderConfig,
 } from "../../../shared/types";
 import { agentKey } from "../../../shared/agent-adapters/families";
+import { OMP_APPROVAL_MODE } from "../../../shared/agent-adapters/omp-flags";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
 import { ENV_UNSET } from "../../../shared/agent-accounts";
 import { type ModelCatalog, resolveModelRoleLaunch, roleUnsetEnv } from "../../../shared/model-catalog";
@@ -142,6 +143,7 @@ export function buildCommandPreview(
 	const isCodex = cmdName === "codex";
 	const isClaude = cmdName === "claude";
 	const isCopilot = cmdName === "copilot";
+	const isOmp = cmdName === "omp";
 
 	// Mirror the launcher: only a backend registered for THIS agent applies
 	// (same guard as agentProvider in agents.ts).
@@ -174,7 +176,10 @@ export function buildCommandPreview(
 	}
 
 	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
-		if (isCursor) {
+		if (isOmp) {
+			const mode = OMP_APPROVAL_MODE[config.permissionMode];
+			if (mode) parts.push("--approval-mode", mode);
+		} else if (isCursor) {
 			if (config.permissionMode === "plan") {
 				parts.push("--mode", "plan");
 			} else if (config.permissionMode === "bypassPermissions") {
@@ -200,16 +205,19 @@ export function buildCommandPreview(
 	// Copilot refuses `--model auto --effort <level>` outright; the launcher drops
 	// the flag there, so the preview must too.
 	if (config.effort && !isCursor && !isCodex && !(isCopilot && config.model === "auto")) {
-		parts.push("--effort", config.effort);
+		parts.push(isOmp ? "--thinking" : "--effort", config.effort);
 	}
 
-	// Copilot budgets in AI credits, not dollars — the launcher drops this too.
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex && !isCopilot) {
+	// Copilot budgets in AI credits, not dollars, and omp has no budget flag —
+	// the launcher drops this for both.
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex && !isCopilot && !isOmp) {
 		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
 	if (cmdName === "claude") {
 		parts.push("--append-system-prompt-file", "'…dev3 prompt file…'");
+	} else if (isOmp) {
+		parts.push("--append-system-prompt", "'…dev3 prompt file…'");
 	}
 
 	if (config.additionalArgs) {

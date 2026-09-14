@@ -25,4 +25,5 @@ export { geminiAdapter } from "./gemini";
 export { copilotAdapter } from "./copilot";
 export { cursorAdapter } from "./cursor";
 export { opencodeAdapter } from "./opencode";
+export { ompAdapter } from "./omp";
 export { genericAdapter } from "./generic";

@@ -10,7 +10,7 @@
 import type { AgentFamily } from "../types";
 
 /** Every agent command with a first-class adapter (i.e. not the generic fallback). */
-export const KNOWN_AGENT_COMMANDS: readonly AgentFamily[] = ["claude", "codex", "gemini", "agent", "opencode", "copilot"];
+export const KNOWN_AGENT_COMMANDS: readonly AgentFamily[] = ["claude", "codex", "gemini", "agent", "opencode", "copilot", "omp"];
 
 /** The families a user can declare, in the order the settings editor offers them. */
 export const SELECTABLE_AGENT_FAMILIES: readonly AgentFamily[] = [...KNOWN_AGENT_COMMANDS, "none"];

@@ -45,7 +45,7 @@ const BODIES: Array<[name: string, body: string]> = [
  * A new adapter belongs on this list — an agent nobody measures is an agent that
  * breaks on Windows silently.
  */
-const AGENT_COMMANDS = ["claude", "codex", "gemini", "agent", "opencode", "copilot", "some-custom-agent"];
+const AGENT_COMMANDS = ["claude", "codex", "gemini", "agent", "opencode", "copilot", "omp", "some-custom-agent"];
 
 const agent = (baseCommand: string): CodingAgent => ({
 	id: "a",

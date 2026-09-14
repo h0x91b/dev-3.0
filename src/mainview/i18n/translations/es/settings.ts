@@ -67,6 +67,7 @@ const settings = {
 	"settings.family.agent": "Cursor Agent",
 	"settings.family.opencode": "OpenCode",
 	"settings.family.copilot": "GitHub Copilot CLI",
+	"settings.family.omp": "Oh My Pi",
 	"settings.familyNone": "CLI desconocido",
 	"settings.familyMissingTitle": "Este agente se trata como un CLI desconocido",
 	"settings.familyMissingBody": "dev3 no reconoce «{command}», así que no recibe hooks (la tarea no cambiará de columna por sí sola), ni reanudación de sesiones — Resume Session vuelve a empezar desde la descripción de la tarea — ni el protocolo de dev3. Si este comando ES uno de los CLI compatibles con otro nombre — un script envoltorio, un alias, un binario renombrado — eligelo arriba y se tratará de forma idéntica.",
