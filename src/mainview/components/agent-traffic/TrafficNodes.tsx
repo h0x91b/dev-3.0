@@ -18,6 +18,7 @@ import {
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import PipelineRing from "../PipelineRing";
 import { kanbanOrder } from "./kanban-order";
+import { useSceneShift } from "./scene-shift";
 import {
 	layoutTraffic,
 	pointAt,
@@ -218,6 +219,7 @@ export default function TrafficNodes({
 			}),
 		[nodes, layoutRecords, showQuiet, showParked, replayParked, board],
 	);
+	const sliding = useSceneShift(scene);
 	const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
 	const viewRef = useRef(view);
 	viewRef.current = view;
@@ -946,7 +948,7 @@ export default function TrafficNodes({
 						});
 					})}
 				</svg>
-				<div className="traffic-nodes-cards">
+				<div className="traffic-nodes-cards" data-shift={sliding ? "on" : undefined}>
 					{speaker && <UserSpeaker at={speaker.at} text={speaker.text} failed={speaker.failed} />}
 					{scene.placed.map((placed) => {
 						const projection =

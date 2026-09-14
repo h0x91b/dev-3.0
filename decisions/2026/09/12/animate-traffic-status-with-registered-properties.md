@@ -41,6 +41,20 @@ stale word rather than stacking another animation. The plain word and the verdic
 stamp share that one line box, so a status becoming `Completed` cross-fades the same
 way one word becoming another does.
 
+The first pass ran the colour at 350ms and the word at 220ms, and the user could not
+see either one on a live board. Both were slowed — 700ms and 420ms — and the card now
+also **travels** to its new slot: the slot comes from `kanbanOrder`, so a status change
+is a board move, and the move is a far stronger cue than any fade of a 6% wash. The
+slide is gated by `scene-shift.ts`: only when the same cards fill the same box does
+`.traffic-nodes-cards` carry `data-shift="on"`. A filter toggle or an arrival re-lays
+the scene out, and eighty cards gliding at once reads as a glitch.
+
+`left`/`top` are transitioned rather than a transform, because the layout hands the card
+its position as inline `left`/`top` and a transform would have to compose with the
+`scale(0.96)` the unborn state already uses. Measured on the running app: 16 status steps
+moved 10 cards, frame delta median 8ms, p95 9ms, max 36ms. If a scene ever moves dozens of
+cards at once, that is the moment to move positioning onto `translate`.
+
 ## Risks
 
 `@property` needs Safari 16.4+ / Chromium 85+; older WebKit falls back to an instant

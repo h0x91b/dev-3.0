@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import TrafficIcon from "./TrafficIcon";
 
-/** How long the outgoing word stays on screen. Short on purpose: the status is
- *  read, not watched, and a long fade turns a board move into an event. */
-export const STATUS_SWAP_MS = 220;
+/** How long the outgoing word stays on screen. Long enough to be caught out of
+ *  the corner of the eye: at 220ms the swap was over before it registered. */
+export const STATUS_SWAP_MS = 420;
 
 export interface StatusLineProps {
 	/** The status word exactly as the card prints it. */
