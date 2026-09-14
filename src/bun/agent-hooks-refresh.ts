@@ -12,9 +12,10 @@
  * is skipped entirely when the file already carries our hooks, so the steady
  * state costs one read.
  *
- * Claude only. Codex loads dev3 hooks from its config.toml snapshot at launch;
- * rewriting the files does not refresh a running session. Restart Codex itself,
- * not only the dev3 app that preserves its terminal.
+ * Claude only. Codex loads dev3 hooks from its config.toml snapshot at launch
+ * and omp loads its status extension once at launch; rewriting either file
+ * does not refresh a running session. Restart the agent itself, not only the
+ * dev3 app that preserves its terminal.
  */
 
 import type { AgentFamily, Task } from "../shared/types";

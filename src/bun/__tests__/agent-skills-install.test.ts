@@ -78,6 +78,11 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".agents/skills/ask-dev3/agents/openai.yaml"))).toBe(true);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3"))).toBe(false);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-project-config"))).toBe(false);
+		// omp's own dir carries the hook-aware body, not the manual-status generic one.
+		const ompSkill = readFileSync(join(tempHome, ".omp/agent/skills/dev3/SKILL.md"), "utf-8");
+		expect(ompSkill).toContain("dev3 injects trusted native hooks into every omp pane");
+		expect(ompSkill).toContain("the dev3 status extension loaded into this session already owns that transition");
+		expect(ompSkill).not.toContain("Start of every turn");
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-tmux"))).toBe(false);
 		expect(ensureCodexConfigFile).toHaveBeenCalledWith(tempHome);
 	});

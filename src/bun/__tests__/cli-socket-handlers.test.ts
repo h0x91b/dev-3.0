@@ -554,7 +554,7 @@ describe("task.agentHook", () => {
 			questionIds: ["fingerprint"], prompt: "private answer", toolInput: "private question",
 		}));
 		expect(hookInfo).toHaveBeenCalledWith("Codex lifecycle hook", {
-			taskId: task.id, sessionId: "log-test", event: "PostToolUse",
+			taskId: task.id, harness: "codex", sessionId: "log-test", event: "PostToolUse",
 			toolName: "request_user_input_async", toolUseId: "q", pendingQuestions: true,
 			previousStatus: "in-progress", targetStatus: "user-questions",
 			actualStatus: "user-questions", moveAccepted: true,
@@ -743,7 +743,7 @@ describe("task.agentHook", () => {
 			event: "FutureEvent",
 		}));
 
-		expect(response.error).toContain("Unsupported Codex hook event");
+		expect(response.error).toContain("Unsupported status hook event");
 	});
 
 	function mockStatefulHookUpdate(project: Project, initial: Task): { get: () => Task } {

@@ -323,8 +323,9 @@ export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
 /**
  * The lifecycle events dev3 turns into board status moves. Codex emits these
- * names verbatim; Copilot's adapter maps its own camelCase names onto them, so
- * one status machine serves both instead of a second copy per harness.
+ * names verbatim; Copilot's adapter maps its own camelCase names onto them and
+ * the omp status extension translates its events the same way
+ * (`src/shared/omp-status-extension.ts`), so one status machine serves all three.
  */
 export const AGENT_STATUS_HOOK_EVENTS = [
 	"SessionStart",

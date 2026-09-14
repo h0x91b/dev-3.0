@@ -6,7 +6,7 @@ import type { CliRequest, Project, Task } from "../../shared/types";
 
 // End-to-end for Codex per-pane session capture (decision 125): a real
 // `task.agentHook` request (as sent by `dev3 hook codex`) flows through the real
-// socket dispatch → captureCodexPaneSession → real data.updateTaskWith → on-disk
+// socket dispatch → capturePaneSession → real data.updateTaskWith → on-disk
 // tasks.json. We then feed the persisted id to the real resume-command builder to
 // confirm it produces a targeted `codex resume <id>`. Only electrobun-coupled deps
 // are mocked; `data` and `agents` are real.
@@ -177,6 +177,31 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 
 		expect(statSync(tasksFile).ino).toBe(inodeAfterCapture);
 		expect(readPanes()[0]?.sessionId).toBe("steady-state-sess");
+	});
+
+	it("captures an omp session the same way, and resume targets it with --resume", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { buildResumeCommand } = await import("../agents");
+
+		seed([makeTask({
+			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "omp" }] },
+		})]);
+
+		const resp = await handleRequest(agentHook({
+			projectId: "proj-1",
+			taskId: "task-1",
+			harness: "omp",
+			event: "SessionStart",
+			sessionId: "01a0a1da-8ddd-77c7-b725-058fe11b33ba",
+			paneId: "%3",
+		}));
+		expect(resp.ok).toBe(true);
+
+		const [pane] = readPanes();
+		expect(pane?.sessionId).toBe("01a0a1da-8ddd-77c7-b725-058fe11b33ba");
+		expect(buildResumeCommand("omp", pane!.sessionId ?? undefined))
+			.toBe("omp --resume 01a0a1da-8ddd-77c7-b725-058fe11b33ba");
 	});
 
 	it("is a no-op without a paneId (falls back to resume-last at recovery)", async () => {

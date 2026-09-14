@@ -1,5 +1,9 @@
 # omp as a first-class agent
 
+> Superseded in part on 2026-09-20 by `decisions/2026/09/14/omp-status-extension.md`: status is no
+> longer manual — a generated extension loaded with `--hook` reports it. The "no worktree trust"
+> point stands, with a correction: omp applies no trust gate to an explicitly passed `--hook` path.
+
 ## Context
 
 h0x91b/dev-3.0#1544 asks for native support for [oh-my-pi](https://github.com/can1357/oh-my-pi)
