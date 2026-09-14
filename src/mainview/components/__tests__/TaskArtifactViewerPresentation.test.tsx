@@ -4,6 +4,7 @@ import type { SharedArtifact } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskArtifactViewer from "../TaskArtifactViewer";
 import { setArtifactDock } from "../../utils/artifact-dock";
+import { artifactActivity, resetArtifactActivity } from "../../artifact-activity";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn(), openArtifactInBrowser: vi.fn(), sendArtifactMessageToAgent: vi.fn() } },
@@ -53,6 +54,23 @@ function mountDock(): HTMLDivElement {
 }
 
 describe("TaskArtifactViewer presentation", () => {
+	// The heartbeat reads this to tell a freeze around artifacts from an unrelated
+	// one; presence only, in both presentations, and gone again on unmount.
+	it("tells the window an artifact is on screen, in either presentation", async () => {
+		resetArtifactActivity();
+		expect(artifactActivity.open).toBe(0);
+
+		const docked = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await screen.findByTestId("artifact-viewer");
+		expect(artifactActivity.open).toBe(1);
+		expect(artifactActivity.lastActivityAt).toBeGreaterThan(0);
+
+		docked.unmount();
+		expect(artifactActivity.open).toBe(0);
+		// The window is still "one that was doing artifacts" for a while afterwards.
+		expect(artifactActivity.lastActivityAt).toBeGreaterThan(0);
+	});
+
 	it("renders as a popup when no dock is published", async () => {
 		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
 		const viewer = await screen.findByTestId("artifact-viewer");

@@ -5742,8 +5742,31 @@ export type AppRPCSchema = {
 					hiddenSinceLastBeat: boolean;
 					terminals: number;
 					frameErrorPanes: number;
+					/** A desktop window; a remote tab's silence is also what a dead link looks like. */
+					desktop?: boolean;
+					/** An artifact viewer is mounted. Coarse presence — never the document or its task. */
+					artifactOpen?: boolean;
+					/** Age of the last artifact open/close in this page load; null = none. */
+					artifactIdleMs?: number | null;
 				};
 				response: void;
+			};
+			/**
+			 * The window is going away on purpose (closed, reloaded, navigated). Without
+			 * it the backend reads an ordinary close as the freeze it watches for.
+			 */
+			rendererHeartbeatStop: {
+				params: { clientId: string };
+				response: void;
+			};
+			/**
+			 * One-shot: was the artifact popup turned on for the user because the
+			 * previous session stopped responding with an artifact open? Reading it
+			 * clears it, so the notice is shown once and never again.
+			 */
+			consumeArtifactFreezeNotice: {
+				params: Record<string, never>;
+				response: { freezeAt: number } | null;
 			};
 			listBranches: {
 				params: { projectId: string };

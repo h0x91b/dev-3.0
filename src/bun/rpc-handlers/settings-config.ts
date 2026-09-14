@@ -265,6 +265,13 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	const stored = await loadSettings();
 	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
 	await saveSettings(next);
+	// Turning the artifact popup off after a freeze recovery turned it on is the
+	// user overruling us; the recovery stands down for good rather than switching
+	// it back on at the next freeze. See artifact-freeze-recovery.ts.
+	if (stored.openArtifactsInPopup !== next.openArtifactsInPopup) {
+		const { noteArtifactPopupPreference } = await import("../artifact-freeze-recovery");
+		noteArtifactPopupPreference(next.openArtifactsInPopup);
+	}
 	// Apply the low-battery toggle straight away — a switch that only takes effect
 	// after an app restart does not mean what its label says. Flipping it off is a
 	// real uninstall of what dev3 wrote, so it must not wait either.

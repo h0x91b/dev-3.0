@@ -258,6 +258,7 @@ const settings = {
 	"settings.taskOpenModeFullscreen": "Полный экран (только терминал)",
 	"settings.artifactPopup": "Открывать артефакты во всплывающем окне",
 	"settings.artifactPopupDesc": "Выключено: HTML-артефакт открывается в панели справа от терминала задачи. Включено: открывается всплывающим окном по центру поверх задачи. Попробуйте всплывающее окно, если с панелью приложение подвисает, — это альтернативный режим показа, а не исправление подвисания.",
+	"settings.artifactPopupAutoEnabled": "Артефакты теперь открываются во всплывающем окне. Прошлая сессия перестала отвечать, когда был открыт артефакт, поэтому dev3 сменил режим — откройте настройки артефактов, чтобы вернуть прежний.",
 	"settings.defaultDiffViewMode": "Diff layout по умолчанию",
 	"settings.defaultDiffViewModeDesc": "Какой layout будет выбран при открытии Show Diff. Auto: на ноутбучных экранах (<1800 CSS px по ширине) — Unified, на больших мониторах — Side by side.",
 	"settings.defaultDiffViewModeSplit": "Side by side",

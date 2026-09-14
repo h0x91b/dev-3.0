@@ -250,6 +250,7 @@ const settings = {
 	"settings.taskOpenModeFullscreen": "Pantalla completa (solo terminal)",
 	"settings.artifactPopup": "Abrir artefactos en una ventana emergente",
 	"settings.artifactPopupDesc": "Desactivado: un artefacto HTML se abre en un panel acoplado a la derecha del terminal de la tarea. Activado: se abre como una ventana emergente centrada sobre la tarea. Prueba la ventana emergente si el panel congela la app: es una presentación alternativa, no una solución a ese congelamiento.",
+	"settings.artifactPopupAutoEnabled": "Los artefactos ahora se abren en una ventana emergente. La sesión anterior dejó de responder con un artefacto abierto, así que dev3 cambió de modo: abre los ajustes de artefactos para volver atrás.",
 	"settings.defaultDiffViewMode": "Layout de diff por defecto",
 	"settings.defaultDiffViewModeDesc": "Qué layout inline se selecciona al abrir Show Diff. Auto: en pantallas de portátil (<1800 CSS px de ancho) elige Unified, en monitores más grandes elige Lado a lado.",
 	"settings.defaultDiffViewModeSplit": "Lado a lado",

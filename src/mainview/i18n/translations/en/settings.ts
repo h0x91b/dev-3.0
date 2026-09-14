@@ -250,6 +250,7 @@ const settings = {
 	"settings.taskOpenModeFullscreen": "Full screen (terminal only)",
 	"settings.artifactPopup": "Open artifacts in a popup",
 	"settings.artifactPopupDesc": "Off: an HTML artifact opens in a panel docked to the right of the task terminal. On: it opens as a centred popup over the task. Try the popup if the panel makes the app freeze — it is an alternative presentation, not a fix for that freeze.",
+	"settings.artifactPopupAutoEnabled": "Artifacts now open in a popup. The last session stopped responding while an artifact was open, so dev3 switched modes — open artifact settings to switch back.",
 	"settings.defaultDiffViewMode": "Default diff layout",
 	"settings.defaultDiffViewModeDesc": "Which inline diff layout is selected when you open Show Diff. Auto picks Unified on laptop-sized screens (<1800 CSS px wide) and Side by side on larger ones.",
 	"settings.defaultDiffViewModeSplit": "Side by side",

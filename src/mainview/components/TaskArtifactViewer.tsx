@@ -15,6 +15,7 @@ import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { getArtifactDock, subscribeArtifactDock } from "../utils/artifact-dock";
+import { artifactViewerClosed, artifactViewerOpened } from "../artifact-activity";
 import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
 interface TaskArtifactViewerProps {
@@ -132,6 +133,14 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		() => (group ? artifactAtVersion(group, selectedVersion) : undefined),
 		[group, selectedVersion],
 	);
+
+	// Tell the heartbeat this window is showing an artifact, so a freeze that
+	// happens here is distinguishable from an unrelated one. Presence only — the
+	// document, its task and its title stay in this component.
+	useEffect(() => {
+		artifactViewerOpened();
+		return artifactViewerClosed;
+	}, []);
 
 	// Keyed on the array identity, not its length: a republish hands over a fresh
 	// list of the same size whose last row is the artifact that was just published,

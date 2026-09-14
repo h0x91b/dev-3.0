@@ -9,6 +9,7 @@ import Electrobun, {
 import { startDisplayWatch } from "./display-watch";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
 import { startRendererWatchdog } from "./renderer-watchdog";
+import { applyArtifactFreezeRecovery, markArtifactFreezeRecovered, recordArtifactFreezeEvidence } from "./artifact-freeze-recovery";
 import {
 	startAutoCheck,
 	checkForUpdateWithChannel,
@@ -500,6 +501,16 @@ setOpenNewWindow(() => {
 // Reopen every window the last session ended with, each on its own saved
 // screen/geometry. A first run (or fresh-start dev mode) has no session and
 // gets the usual single window.
+// Before any window loads, or the first artifact of this session reopens in the
+// presentation the previous session froze with. Consumes at most one piece of
+// evidence and writes at most one setting; a healthy launch does neither.
+try {
+	const outcome = await applyArtifactFreezeRecovery();
+	if (outcome.enabled) log.warn("Artifacts switched to the popup after a frozen session", { freezeAt: outcome.freezeAt });
+} catch (err) {
+	log.warn("Artifact freeze recovery failed (non-fatal)", { error: String(err) });
+}
+
 const restoreSession = loadWindowSession();
 if (restoreSession.length > 1) log.info("Restoring window session", { windows: restoreSession.length });
 // A dev launch (`bun run dev` / the task dev server) must not pull the user out
@@ -575,6 +586,13 @@ startRendererWatchdog({
 		const { projectId, taskId } = getActiveContext();
 		return { activeProject: projectId?.slice(0, 8) ?? null, activeTask: taskId?.slice(0, 8) ?? null };
 	},
+	// A window that goes quiet with an artifact in it leaves a record on disk, so
+	// the next launch can put artifacts in the popup instead. See
+	// artifact-freeze-recovery.ts — association, not a proven cause.
+	// Written synchronously: the app may be force-quit seconds from now, and a
+	// write that has not landed by then is the same as no evidence at all.
+	onFreezeEvidence: recordArtifactFreezeEvidence,
+	onFreezeRecovered: markArtifactFreezeRecovered,
 });
 
 // Reconcile persisted lifecycle hints before background activity starts.

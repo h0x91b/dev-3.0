@@ -101,6 +101,7 @@ import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
+import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -3560,6 +3561,7 @@ function App() {
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<PushEnrollmentInvite t={t} />
+			<ArtifactFreezeNotice t={t} />
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
 		</div>
 	);
