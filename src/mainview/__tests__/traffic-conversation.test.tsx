@@ -91,7 +91,7 @@ describe("TrafficConversation", () => {
 	});
 
 	it("folds a long message and opens it in place", async () => {
-		const long = `${"a".repeat(2000)}TAIL`;
+		const long = `${"paragraph text ".repeat(150)}\n\nTAIL PARAGRAPH`;
 		view.value = {
 			sessions: [session()],
 			sessionKey: "claude:s1",
@@ -101,14 +101,48 @@ describe("TrafficConversation", () => {
 		};
 		show();
 		const more = await screen.findByRole("button", { name: "Show more" });
-		// Folded: the visible text stops at the budget, and the tail is not rendered.
-		expect(screen.getByText(/^a+…$/)).toBeInTheDocument();
+		expect(screen.queryByText(/TAIL PARAGRAPH/)).not.toBeInTheDocument();
 
 		await userEvent.click(more);
-		expect(screen.getByText(long)).toBeInTheDocument();
+		expect(screen.getByText(/TAIL PARAGRAPH/)).toBeInTheDocument();
 
 		await userEvent.click(screen.getByRole("button", { name: "Show less" }));
-		expect(screen.queryByText(long)).not.toBeInTheDocument();
+		expect(screen.queryByText(/TAIL PARAGRAPH/)).not.toBeInTheDocument();
+	});
+
+	it("renders the message as Markdown, not as raw syntax", async () => {
+		const body = [
+			"**bold claim** and `inline code`",
+			"",
+			"- first item",
+			"- second item",
+			"",
+			"```ts",
+			"const x = 1;",
+			"```",
+			"",
+			"[the docs](https://example.com/docs)",
+		].join("\n");
+		view.value = {
+			sessions: [session()],
+			sessionKey: "claude:s1",
+			totalTurns: 1,
+			firstIndex: 0,
+			turns: [{ index: 0, startedAt: null, assistantText: body, clippedChars: 0, actions: 0, tools: [] }],
+		};
+		show();
+		const bold = await screen.findByText("bold claim");
+		expect(bold.tagName).toBe("STRONG");
+		expect(screen.getByText("inline code").tagName).toBe("CODE");
+		expect(screen.getAllByRole("listitem")).toHaveLength(2);
+		expect(screen.getByRole("link", { name: "the docs" })).toHaveAttribute(
+			"href",
+			"https://example.com/docs",
+		);
+		// The fenced block keeps its own element rather than becoming prose.
+		expect(document.querySelector(".traffic-turn-body pre")).not.toBeNull();
+		// Raw markdown must not survive as text anywhere in the message.
+		expect(screen.queryByText(/\*\*bold claim\*\*/)).not.toBeInTheDocument();
 	});
 
 	it("leaves a short message alone", async () => {

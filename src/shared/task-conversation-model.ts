@@ -27,6 +27,33 @@ export const TASK_CONVERSATION_PAGE = 25;
 export const TASK_CONVERSATION_TEXT_LIMIT = 2000;
 
 /**
+ * Cut a Markdown message for the folded preview.
+ *
+ * Slicing Markdown at a character index is what breaks it: half a fenced block
+ * renders as prose, half a table as pipes, half an emphasis run as asterisks. So
+ * the cut lands on a block boundary (a blank line) and falls back to a line
+ * boundary, and an odd number of fences left open is closed. The preview is then
+ * valid Markdown on its own, which also means the hidden half cannot leak out
+ * through a dangling construct.
+ */
+export function clipMarkdown(
+	text: string,
+	limit = TASK_CONVERSATION_TEXT_LIMIT,
+): { text: string; clipped: boolean } {
+	if (text.length <= limit) return { text, clipped: false };
+	const window = text.slice(0, limit);
+	const block = window.lastIndexOf("\n\n");
+	const line = window.lastIndexOf("\n");
+	// A single block longer than the budget has no boundary to respect; cutting it
+	// mid-line is still better than showing nothing, and the fence guard below
+	// keeps the result parseable.
+	let cut = window.slice(0, block > 0 ? block : line > 0 ? line : limit).trimEnd();
+	const fences = (cut.match(/^\s*```/gm) ?? []).length;
+	if (fences % 2 === 1) cut += "\n```";
+	return { text: `${cut}\n\n…`, clipped: true };
+}
+
+/**
  * Hard ceiling on the characters of one message that travel at all. Measured
  * over 1 293 real messages of two large tasks: median 561, p90 898, p99 10 459,
  * longest 33 184 — so this is three times the worst case seen and a page of 25

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CONVERSATION_SOURCE_LABELS } from "../../../shared/conversation-import-model";
 import {
 	TASK_CONVERSATION_TEXT_LIMIT,
+	clipMarkdown,
 	type TaskConversationView,
 } from "../../../shared/task-conversation-model";
+import { CommentMarkdown } from "../pr-review/markdown";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 
@@ -25,19 +27,26 @@ import { useT } from "../../i18n";
 const REQUEST_DEBOUNCE_MS = 250;
 
 /**
- * One message. Long ones open in place — the whole text is already here, so the
- * button costs nothing but a re-render, and the fold keeps a wall of prose from
- * burying the turns under it.
+ * One message, rendered as the Markdown the agent actually wrote — the same safe
+ * renderer the PR review surface uses, so raw HTML stays off and links go through
+ * the shared hardener.
+ *
+ * Long ones open in place: the whole text is already here, so the button costs a
+ * re-render and no round trip. The folded half is cut on a Markdown boundary
+ * (`clipMarkdown`), never at a character index, so a half-open fence or table can
+ * neither render as garbage nor spill the hidden half as prose.
  */
 function Message({ who, text, tone }: { who: string; text: string; tone: "user" | "agent" }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const long = text.length > TASK_CONVERSATION_TEXT_LIMIT;
-	const shown = !long || open ? text : `${text.slice(0, TASK_CONVERSATION_TEXT_LIMIT)}…`;
+	const preview = useMemo(() => clipMarkdown(text), [text]);
 	return (
 		<div className={`traffic-turn-${tone} streamer-private`}>
 			<b>{who}</b>
-			<p>{shown}</p>
+			<div className="traffic-turn-body">
+				<CommentMarkdown body={open || !long ? text : preview.text} />
+			</div>
 			{long && (
 				<button className="traffic-turn-more" onClick={() => setOpen((value) => !value)}>
 					{t(open ? "traffic.conversation.showLess" : "traffic.conversation.showMore")}

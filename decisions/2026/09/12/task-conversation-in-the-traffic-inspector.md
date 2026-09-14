@@ -30,8 +30,16 @@ that was certainly wasted — the other sessions.
 
 A third inspector tab, `Conversation` (`TrafficConversation.tsx`), over one new read-only RPC
 `readTaskConversation` (`src/bun/task-conversation.ts`). It returns the newest session first, one page
-of 25 turns paged backwards, each message shown to 2000 characters with **Show more** opening the
-rest in place, and tool calls counted with their native names rather than replayed.
+of 25 turns paged backwards, each message **rendered as Markdown** through `CommentMarkdown` — the
+same safe renderer the PR-review surface uses, so raw HTML stays off and links go through the shared
+hardener — shown to 2000 characters with **Show more** opening the rest in place, and tool calls
+counted with their native names rather than replayed.
+
+**The fold cuts Markdown, not characters.** `clipMarkdown` lands the cut on a blank line, falls back
+to a line boundary, and closes an odd fence, so the folded half is valid Markdown on its own: half a
+fenced block cannot render as prose, and the hidden half cannot leak out through a dangling
+construct. Narrow-column styling (`.traffic-turn-body`) tightens the renderer's page-sized spacing and
+gives code blocks and tables their own horizontal scroll, so nothing widens the 340px inspector.
 
 **Listing is separate from loading.** The picker is built from file names and `stat` alone — both
 stores put the session id in the name (`<uuid>.jsonl`, `<source>-<uuid>.json`) — so listing six
@@ -67,6 +75,9 @@ interval, are covered by mutation-checked tests.
 - **A full-screen conversation surface** (like `TaskDiffViewer`): a whole destination and a
   history step for what is a glance inside a panel. Rejected as out of proportion; the cap plus
   "open the task" is the escape hatch.
+- **Clamping the rendered Markdown by height (CSS) instead of cutting the source**: keeps the whole
+  message in the DOM behind a fade, which is simpler but makes "2000 characters" a lie and leaves the
+  hidden half findable by Ctrl+F while looking hidden. Rejected.
 - **Mixing conversation turns into the Messages list**: destroys the distinction the traffic
   screen exists to make — peer traffic is attempts between agents, a transcript is one agent's
   own record.

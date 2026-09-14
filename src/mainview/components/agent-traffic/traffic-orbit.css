@@ -657,8 +657,75 @@
 }
 .traffic-turn p {
 	margin: 0;
-	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+/* Markdown inside a 340px column: the renderer's own spacing is tuned for a
+   page, so tighten it and let code and tables scroll rather than push the
+   inspector wider. */
+.traffic-turn-body {
+	min-width: 0;
+	font-size: 12px;
+	line-height: 1.6;
+}
+.traffic-turn-body p,
+.traffic-turn-body ul,
+.traffic-turn-body ol,
+.traffic-turn-body pre,
+.traffic-turn-body blockquote,
+.traffic-turn-body table {
+	margin: 6px 0;
+}
+.traffic-turn-body > :first-child {
+	margin-top: 0;
+}
+.traffic-turn-body > :last-child {
+	margin-bottom: 0;
+}
+.traffic-turn-body ul,
+.traffic-turn-body ol {
+	padding-left: 18px;
+}
+.traffic-turn-body li {
+	margin: 2px 0;
+}
+.traffic-turn-body h1,
+.traffic-turn-body h2,
+.traffic-turn-body h3,
+.traffic-turn-body h4 {
+	margin: 8px 0 4px;
+	font-size: 13px;
+	font-weight: 600;
+}
+.traffic-turn-body pre {
+	overflow-x: auto;
+	padding: 8px;
+	border-radius: 6px;
+	background: rgb(var(--surface-base) / 0.7);
+}
+.traffic-turn-body :not(pre) > code {
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: rgb(var(--surface-base) / 0.7);
+	overflow-wrap: anywhere;
+}
+.traffic-turn-body a {
+	color: rgb(var(--accent));
+	overflow-wrap: anywhere;
+}
+.traffic-turn-body table {
+	display: block;
+	overflow-x: auto;
+	border-collapse: collapse;
+}
+.traffic-turn-body th,
+.traffic-turn-body td {
+	padding: 3px 6px;
+	border: 1px solid rgb(var(--border-default) / 0.5);
+	white-space: nowrap;
+}
+.traffic-turn-body img {
+	max-width: 100%;
+	height: auto;
 }
 .traffic-turn-user {
 	padding: 8px 10px;
