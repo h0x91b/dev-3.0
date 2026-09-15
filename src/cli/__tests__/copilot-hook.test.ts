@@ -84,6 +84,34 @@ describe("handleCopilotHook", () => {
 		}), expect.anything());
 	});
 
+	// `ask_user` is Copilot's AskUserQuestion: it blocks until the human answers,
+	// so its preToolUse is the only moment the task is genuinely waiting on them.
+	it("parks the task in Has Questions when the tool about to run is ask_user", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCopilotHook("preToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest" });
+	});
+
+	it("reads the tool name from the snake_case payload shape too", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCopilotHook("preToolUse", payload({ tool_name: "ask_user" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest" });
+	});
+
+	it("leaves every other tool on the working path", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCopilotHook("preToolUse", payload({ toolName: "bash" }), SOCKET, CONTEXT);
+		await handleCopilotHook("postToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PreToolUse" });
+		expect(mockSend.mock.calls[1]?.[2]).toMatchObject({ event: "PostToolUse" });
+	});
+
 	it("ignores permissionRequest — Copilot fires it even when nothing asks the user", async () => {
 		await handleCopilotHook("permissionRequest", payload({ toolName: "bash" }), SOCKET, CONTEXT);
 

@@ -1,7 +1,4 @@
-import {
-	COPILOT_STATUS_HOOK_EVENTS,
-	type CopilotStatusHookEvent,
-} from "../../shared/agent-hooks";
+import { copilotStatusEvent } from "../../shared/agent-hooks";
 import { GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
@@ -9,6 +6,8 @@ import { sendRequest } from "../socket-client";
 interface CopilotHookPayload {
 	/** The submitted text, on `userPromptSubmitted` only. */
 	prompt?: string;
+	/** The tool about to run or just finished, on the two tool events. */
+	toolName?: string;
 	sessionId?: string;
 	/** Copilot gives no per-submission id, so the event's own millisecond stamp
 	 *  stands in: it is stable across a redelivery and differs per submission. */
@@ -21,11 +20,17 @@ function parsePayload(rawInput: string): CopilotHookPayload {
 			sessionId?: unknown;
 			prompt?: unknown;
 			timestamp?: unknown;
+			toolName?: unknown;
+			tool_name?: unknown;
 		};
+		// Copilot emits camelCase to `settings.json` hooks; the snake_case twin is
+		// read too so a payload from the documented alternate shape still routes.
+		const tool = typeof parsed.toolName === "string" ? parsed.toolName : parsed.tool_name;
 		return {
 			...(typeof parsed.sessionId === "string" ? { sessionId: parsed.sessionId } : {}),
 			...(typeof parsed.prompt === "string" && parsed.prompt.trim() ? { prompt: parsed.prompt } : {}),
 			...(typeof parsed.timestamp === "number" ? { turnId: String(parsed.timestamp) } : {}),
+			...(typeof tool === "string" ? { toolName: tool } : {}),
 		};
 	} catch {
 		return {};
@@ -50,8 +55,8 @@ export async function handleCopilotHook(
 	socketPath: string | null,
 	context: CliContext | null,
 ): Promise<void> {
-	const mapped = COPILOT_STATUS_HOOK_EVENTS[event as CopilotStatusHookEvent];
 	const payload = parsePayload(rawInput);
+	const mapped = copilotStatusEvent(event, payload.toolName);
 
 	if (mapped && socketPath && context?.taskId) {
 		const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE

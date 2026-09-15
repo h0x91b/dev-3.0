@@ -60,8 +60,8 @@ export const CODEX_DEV3_HOOK_COMMAND = codexHookCommand();
  * fires on every permission evaluation, including the ones `--allow-all-tools`
  * approves without ever showing the user anything — so treating it as
  * "waiting for a human" would park a working task in Has Questions on its first
- * tool call. Copilot exposes no event that means the agent is blocked on the
- * user, and dev3 does not invent one.
+ * tool call. Asking the human is a *tool* in Copilot, not an event, so that
+ * signal is read off `preToolUse` instead — see `copilotStatusEvent`.
  */
 export const COPILOT_STATUS_HOOK_EVENTS = {
 	sessionStart: "SessionStart",
@@ -74,12 +74,45 @@ export const COPILOT_STATUS_HOOK_EVENTS = {
 export type CopilotStatusHookEvent = keyof typeof COPILOT_STATUS_HOOK_EVENTS;
 
 /**
+ * The tool Copilot calls to put a question to the human and wait for the answer
+ * — its `AskUserQuestion`. `--no-ask-user` turns it off by this exact name.
+ */
+export const COPILOT_ASK_USER_TOOL = "ask_user";
+
+/**
+ * The generic status event one Copilot hook delivery stands for.
+ *
+ * `preToolUse` normally means "working", but the tool about to run may be the
+ * one that blocks on the human: `ask_user` does not return until they answer, so
+ * that delivery is the task's only "waiting for you" signal. The matching
+ * `postToolUse` carries the answer and moves it back to working on its own.
+ */
+export function copilotStatusEvent(
+	event: string,
+	toolName?: string,
+): AgentStatusHookEvent | undefined {
+	if (event === "preToolUse" && toolName === COPILOT_ASK_USER_TOOL) return "PermissionRequest";
+	return COPILOT_STATUS_HOOK_EVENTS[event as CopilotStatusHookEvent];
+}
+
+/**
  * Where the Copilot CLI reads this machine's user-level hooks from. Verified
  * against copilot 1.0.83: a `<home>/hooks/*.json` file fires, while the
  * documented repository-level `.github/hooks/` was never even consulted in a
  * fresh checkout — so dev3 installs here and nowhere else.
  */
 export const COPILOT_SETTINGS_FILE = "settings.json";
+
+/**
+ * Copilot's own state file, which is where folder trust actually lives.
+ *
+ * Verified on copilot 1.0.83 with one variable changed at a time: the same
+ * worktree listed in `settings.json` still opens on "Confirm folder trust",
+ * and listed in `config.json` opens straight into the session. It also holds
+ * the signed-in account, so dev3 only ever merges into it — see
+ * `updateCopilotConfig`.
+ */
+export const COPILOT_CONFIG_FILE = "config.json";
 
 /**
  * The command dev3 declares for one Copilot status hook.
@@ -162,21 +195,118 @@ export function ensureCopilotTrustedFolder(
 	existing: Record<string, unknown>,
 	resolvedPath: string,
 ): Record<string, unknown> {
-	const settings = asRecord(existing);
-	const current = Array.isArray(settings.trustedFolders) ? settings.trustedFolders : [];
-	if (current.includes(resolvedPath)) return settings;
-	return { ...settings, trustedFolders: [...current, resolvedPath] };
+	const config = asRecord(existing);
+	const current = Array.isArray(config.trustedFolders) ? config.trustedFolders : [];
+	if (current.includes(resolvedPath)) return config;
+	return { ...config, trustedFolders: [...current, resolvedPath] };
 }
 
-/** Read → merge → write the Copilot settings file, skipping an identical write. */
+/**
+ * Where Copilot remembers "Yes, and don't ask again for `<command>` in this
+ * repo". Keyed by the repository's main working tree — dev3 worktrees of the
+ * same project share one entry, which is what Copilot itself writes when the
+ * user approves from inside a worktree.
+ */
+export const COPILOT_PERMISSIONS_FILE = "permissions-config.json";
+
+/**
+ * Pre-approve the dev3 CLI for one repository, so a task agent is not stopped by
+ * "Do you want to run this command?" on the status move its own protocol told it
+ * to make. Same intent as `DEV3_BASH_PERMISSION` for Claude. Idempotent, and it
+ * only ever adds: an approval the user granted themselves is never dropped.
+ */
+export function ensureCopilotCommandApproval(
+	existing: Record<string, unknown>,
+	repoPath: string,
+	command: string = DEV3_CLI,
+): Record<string, unknown> {
+	const config = asRecord(existing);
+	const locations = asRecord(config.locations);
+	const location = asRecord(locations[repoPath]);
+	const approvals = Array.isArray(location.tool_approvals) ? location.tool_approvals : [];
+
+	const commands = approvals.find(
+		(entry) => asRecord(entry).kind === "commands",
+	) as Record<string, unknown> | undefined;
+	const identifiers = Array.isArray(commands?.commandIdentifiers) ? commands.commandIdentifiers : [];
+	if (identifiers.includes(command)) return config;
+
+	const updated = { kind: "commands", commandIdentifiers: [...identifiers, command] };
+	return {
+		...config,
+		locations: {
+			...locations,
+			[repoPath]: {
+				...location,
+				tool_approvals: [...approvals.filter((e) => asRecord(e).kind !== "commands"), updated],
+			},
+		},
+	};
+}
+
+/** `config.json` opens with `//` lines Copilot rewrites back every run; they are
+ *  carried through verbatim so dev3's edit does not strip them. */
+function splitConfigHeader(raw: string): { header: string; body: string } {
+	const header = /^(?:[ \t]*\/\/[^\n]*\n)*/.exec(raw)?.[0] ?? "";
+	return { header, body: raw.slice(header.length) };
+}
+
+/**
+ * Read → merge → write Copilot's `config.json`, skipping an identical write.
+ *
+ * This file is Copilot's own, and it carries the signed-in account. An existing
+ * file dev3 cannot parse is therefore left completely alone: a missing trust
+ * entry costs one dialog, a clobbered `loggedInUsers` costs the login.
+ */
+export function updateCopilotConfig(
+	copilotHome: string,
+	update: (config: Record<string, unknown>) => Record<string, unknown>,
+): boolean {
+	const path = join(copilotHome, COPILOT_CONFIG_FILE);
+	let header = "";
+	let previous: Record<string, unknown> = {};
+	if (existsSync(path)) {
+		try {
+			const split = splitConfigHeader(readFileSync(path, "utf-8").replace(/^﻿/, ""));
+			header = split.header;
+			previous = asRecord(JSON.parse(split.body));
+		} catch {
+			return false;
+		}
+	}
+	const updated = update(previous);
+	if (JSON.stringify(updated) === JSON.stringify(previous)) return false;
+	mkdirSync(copilotHome, { recursive: true });
+	writeFileSync(path, header + JSON.stringify(updated, null, 2) + "\n", "utf-8");
+	return true;
+}
+
+/** Read → merge → write one of Copilot's plain-JSON files, skipping an identical
+ *  write. `config.json` is not one of them — it has a comment header and the
+ *  login, so it goes through `updateCopilotConfig`. */
+function updateCopilotJsonFile(
+	copilotHome: string,
+	file: string,
+	update: (contents: Record<string, unknown>) => Record<string, unknown>,
+): boolean {
+	mkdirSync(copilotHome, { recursive: true });
+	const path = join(copilotHome, file);
+	const previous = readSettingsFile(path);
+	return writeIfChanged(path, update(previous), previous);
+}
+
 export function updateCopilotSettings(
 	copilotHome: string,
 	update: (settings: Record<string, unknown>) => Record<string, unknown>,
 ): boolean {
-	mkdirSync(copilotHome, { recursive: true });
-	const path = join(copilotHome, COPILOT_SETTINGS_FILE);
-	const previous = readSettingsFile(path);
-	return writeIfChanged(path, update(previous), previous);
+	return updateCopilotJsonFile(copilotHome, COPILOT_SETTINGS_FILE, update);
+}
+
+export function updateCopilotPermissions(
+	copilotHome: string,
+	update: (permissions: Record<string, unknown>) => Record<string, unknown>,
+): boolean {
+	return updateCopilotJsonFile(copilotHome, COPILOT_PERMISSIONS_FILE, update);
 }
 
 /** Install dev3's Copilot status hooks for this machine. */

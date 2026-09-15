@@ -28,6 +28,12 @@ permission evaluation, including ones `--allow-all-tools` approves silently —
 verified with and without that flag. Mapping it to `user-questions` would park a
 working task in Has Questions on its first tool call.
 
+**Waiting for the human is a tool, not an event.** Copilot asks through
+`ask_user` — the tool `--no-ask-user` disables — and it does not return until the
+answer is in. So `preToolUse` is read for `toolName === "ask_user"` and mapped to
+`PermissionRequest`, and the matching `postToolUse` releases the task by itself.
+That is the whole `user-questions` signal; no new event and no new hook.
+
 **There is no system-prompt flag, and the obvious substitute does not work.**
 `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` only *lists* an `AGENTS.md` in the system
 prompt for the model to open later; its text never arrives. Measured: with an
@@ -70,10 +76,13 @@ failed with `EACCES` and the hooks were never installed — the board silently
 stopped following Copilot tasks, with only a warning in the app log. `settings.json`
 sits in the Copilot home itself, which Copilot maintains as the user.
 
-Worktree trust rides in the same file: `ensureCopilotTrust` appends the resolved
-path to `trustedFolders`, joining the `TrustKind` list the launcher already walks.
-Without it Copilot opens on **Confirm folder trust** and waits in a pane nobody is
-watching.
+Worktree trust does **not** ride in that file. `ensureCopilotTrust` appends the
+resolved path to `trustedFolders` in `~/.copilot/config.json`, joining the
+`TrustKind` list the launcher already walks. Without it Copilot opens on
+**Confirm folder trust** and waits in a pane nobody is watching. `config.json` is
+Copilot's own state file and holds `loggedInUsers`, so dev3 merges into it: the
+`//` header is carried through, every unknown key is copied, and a file that does
+not parse is left alone rather than risking the login.
 Each command is guarded on `DEV3_TASK_ID`, exactly like the Codex hooks and for
 the same reason: the source is global, so an unrelated Copilot session must spawn
 nothing. `dev3 hook copilot` maps Copilot's five useful events onto the existing
@@ -87,13 +96,16 @@ one that works on every plan.
 
 ## Risks
 
-- **The trust suppression is unverified headlessly.** `trustedFolders` is the
-  documented key and Copilot accepts it, but the dialog is interactive-only and
-  could not be reproduced outside a real pane — the first launch after this change
-  is what confirms it.
-- **Only `user-questions` is missing.** A Copilot task never parks itself when
-  the agent wants the human; the skill's manual instruction is the only route.
-  Documented rather than faked with `permissionRequest`.
+- **The trust file was found the expensive way.** `trustedFolders` first went into
+  `settings.json`, which Copilot ignores outright. The dialog never appears under
+  `-i`, so it took a real tty — a detached tmux pane with a captured screen — to
+  see it at all, and then an A/B with one variable changed: `settings.json` →
+  dialog, `config.json` → no dialog. Anything similar about Copilot's files
+  deserves the same pane, not the documentation.
+- **`user-questions` rides on a tool name.** `ask_user` is not a documented
+  stability contract the way a hook event is; if Copilot renames it, the task
+  simply stays in `in-progress` instead of parking — the same behaviour this
+  shipped with before the tool was found, and nothing else regresses.
 - **Windows and Linux are untested.** The PowerShell guard form is written and
   unit-tested, never executed — no Windows machine was available.
 - **The hook file is global.** A user who never launches Copilot from dev3 still

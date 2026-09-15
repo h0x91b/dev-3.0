@@ -5,11 +5,18 @@ import { join } from "node:path";
 import {
 	AGENT_STATUS_HOOK_EVENTS,
 	buildCopilotHooks,
+	COPILOT_CONFIG_FILE,
+	COPILOT_PERMISSIONS_FILE,
 	COPILOT_SETTINGS_FILE,
 	COPILOT_STATUS_HOOK_EVENTS,
 	copilotHookCommand,
+	copilotStatusEvent,
+	DEV3_CLI,
+	ensureCopilotCommandApproval,
 	ensureCopilotTrustedFolder,
 	mergeCopilotHooks,
+	updateCopilotConfig,
+	updateCopilotPermissions,
 	writeCopilotHooks,
 } from "../../shared/agent-hooks";
 import { resolveCopilotHome } from "../copilot-config";
@@ -29,6 +36,16 @@ describe("Copilot hook event mapping", () => {
 	// Subscribing would park a working task in Has Questions on its first tool call.
 	it("does not subscribe to permissionRequest", () => {
 		expect(Object.keys(COPILOT_STATUS_HOOK_EVENTS)).not.toContain("permissionRequest");
+	});
+
+	// The real "waiting for you" signal is the ask_user tool, which blocks until
+	// the human answers — Copilot has no event that means it.
+	it("reads waiting-on-the-human off the ask_user tool instead", () => {
+		expect(copilotStatusEvent("preToolUse", "ask_user")).toBe("PermissionRequest");
+		expect(copilotStatusEvent("preToolUse", "bash")).toBe("PreToolUse");
+		expect(copilotStatusEvent("preToolUse")).toBe("PreToolUse");
+		expect(copilotStatusEvent("postToolUse", "ask_user")).toBe("PostToolUse");
+		expect(copilotStatusEvent("permissionRequest", "ask_user")).toBeUndefined();
 	});
 });
 
@@ -120,6 +137,76 @@ describe("writeCopilotHooks", () => {
 		const written = JSON.parse(readFileSync(path, "utf-8"));
 		expect(written.theme).toBe("dark");
 		expect(written.trustedFolders).toEqual(["/mine"]);
+	});
+});
+
+describe("updateCopilotConfig", () => {
+	// Trust is read from config.json and nowhere else: the same folder listed in
+	// settings.json still opens on "Confirm folder trust" (copilot 1.0.83).
+	const HEADER = "// User settings belong in settings.json.\n// This file is managed automatically.\n";
+
+	it("adds the folder while keeping the comment header and the login", () => {
+		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		const path = join(home, COPILOT_CONFIG_FILE);
+		writeFileSync(path, HEADER + JSON.stringify({ loggedInUsers: [{ login: "me" }] }), "utf-8");
+
+		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(true);
+		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(false);
+
+		const raw = readFileSync(path, "utf-8");
+		expect(raw.startsWith(HEADER)).toBe(true);
+		const written = JSON.parse(raw.slice(HEADER.length));
+		expect(written.trustedFolders).toEqual(["/w/t"]);
+		expect(written.loggedInUsers).toEqual([{ login: "me" }]);
+	});
+
+	// A config dev3 cannot parse is Copilot's credential state: losing the trust
+	// entry costs one dialog, overwriting the file costs the user their session.
+	it("leaves an unparsable config exactly as it found it", () => {
+		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		const path = join(home, COPILOT_CONFIG_FILE);
+		writeFileSync(path, "{ not json at all", "utf-8");
+
+		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(false);
+		expect(readFileSync(path, "utf-8")).toBe("{ not json at all");
+	});
+
+	it("creates the config when Copilot has never run on this machine", () => {
+		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(true);
+		const written = JSON.parse(readFileSync(join(home, COPILOT_CONFIG_FILE), "utf-8"));
+		expect(written.trustedFolders).toEqual(["/w/t"]);
+	});
+});
+
+describe("ensureCopilotCommandApproval", () => {
+	const REPO = "/Users/me/src/dev-3.0";
+
+	it("pre-approves the dev3 CLI for the repo and is idempotent", () => {
+		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		const add = () => updateCopilotPermissions(home, (p) => ensureCopilotCommandApproval(p, REPO));
+
+		expect(add()).toBe(true);
+		expect(add()).toBe(false);
+
+		const written = JSON.parse(readFileSync(join(home, COPILOT_PERMISSIONS_FILE), "utf-8"));
+		expect(written.locations[REPO].tool_approvals).toEqual([
+			{ kind: "commands", commandIdentifiers: [DEV3_CLI] },
+		]);
+	});
+
+	it("keeps the commands the user approved themselves, and other repos", () => {
+		const existing = {
+			locations: {
+				"/other/repo": { tool_approvals: [{ kind: "commands", commandIdentifiers: ["make"] }] },
+				[REPO]: { tool_approvals: [{ kind: "commands", commandIdentifiers: ["git"] }] },
+			},
+		};
+
+		const updated = ensureCopilotCommandApproval(existing, REPO) as typeof existing;
+
+		expect(updated.locations[REPO].tool_approvals[0].commandIdentifiers).toEqual(["git", DEV3_CLI]);
+		expect(updated.locations["/other/repo"].tool_approvals[0].commandIdentifiers).toEqual(["make"]);
 	});
 });
 

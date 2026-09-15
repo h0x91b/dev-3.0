@@ -45,9 +45,9 @@ Last updated: 2026-09-14
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — | — |
 | **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — | — |
 | **Agent selection** | — | — | — | — | `--agent` | — |
-| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | Yes (`ensureCopilotTrust` → `trustedFolders`) |
+| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | Yes (`ensureCopilotTrust` → `config.json` `trustedFolders`) |
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) |
-| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, except `user-questions` — Copilot emits no "blocked on the human" event |
+| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
 
@@ -107,16 +107,20 @@ command is guarded on `DEV3_TASK_ID` and a session the user started themselves
 spawns no dev3 process. Copilot picks the `bash` or the `powershell` entry by
 platform itself, so only this machine's dialect is ever written.
 
-The same file carries `trustedFolders`, where `ensureCopilotTrust` registers each
-worktree's resolved path so the agent does not open on **Confirm folder trust** in
-a pane nobody is watching.
+Folder trust lives in the *other* file. `ensureCopilotTrust` registers each
+worktree's resolved path in `trustedFolders` in `~/.copilot/config.json`, so the
+agent does not open on **Confirm folder trust** in a pane nobody is watching.
+Measured on 1.0.83 with one variable changed at a time: the same folder listed in
+`settings.json` still shows the dialog, and listed in `config.json` does not.
+That file also carries the signed-in account, so dev3 merges into it and leaves
+one it cannot parse untouched.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
 | `sessionStart` | → `in-progress` | Marks startup/resume turns as active — **and answers with the dev3 protocol as `additionalContext`**, which is Copilot's only out-of-band instruction channel |
 | `userPromptSubmitted` | → `in-progress` | User sent a message. The payload carries the `prompt`; Copilot has no per-submission id, so its millisecond `timestamp` stands in as the de-duplication key |
-| `preToolUse` | → `in-progress` | Agent is about to call a tool |
-| `postToolUse` | → `in-progress` | A tool finished |
+| `preToolUse` | → `in-progress`, or → `user-questions` when `toolName` is `ask_user` | Agent is about to call a tool. Copilot has no "blocked on the human" *event* — asking is a **tool** (`ask_user`, the one `--no-ask-user` disables) and it does not return until the human answers, so its `preToolUse` is that signal |
+| `postToolUse` | → `in-progress` | A tool finished — including `ask_user`, which is what releases the task from Has Questions once the answer is in |
 | `agentStop` | → `review-by-ai` / `review-by-user` | Agent finished its turn |
 
 `permissionRequest` is deliberately **not** subscribed to. Verified on 1.0.83: it
@@ -231,4 +235,6 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/2026/07
 | `~/.claude/settings.json` | Claude Code | Auto-adds a `Bash(<dev3 cli> *)` permission — `Bash(~/.dev3.0/bin/dev3 *)` on POSIX, `Bash(<abs path>\dev3.exe *)` on Windows |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names. Also holds dev3's status-hook declarations between marker comments; the block is rewritten in place on every launch, dev3 hook entries left outside it (a lost marker) are collected so copies cannot pile up, and hooks the user wrote themselves are never touched. Paths are written as escaped TOML basic strings with native separators, and a config an earlier dev3 made unparsable on Windows is repaired in place on next launch (original copied to `config.toml.dev3-backup`) |
 | `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |
-| `~/.copilot/settings.json` | GitHub Copilot CLI | dev3 merges its lifecycle hooks and the worktree's `trustedFolders` entry into the user's own settings file, replacing only what dev3 wrote before. It never reads or writes Copilot's credential state, never changes the logged-in account, and honours `COPILOT_HOME` rather than setting it. Nothing is written under `~/.copilot/hooks/`, which can be root-owned on a managed machine |
+| `~/.copilot/settings.json` | GitHub Copilot CLI | dev3 merges its lifecycle hooks into the user's own settings file, replacing only what dev3 wrote before. Nothing is written under `~/.copilot/hooks/`, which can be root-owned on a managed machine |
+| `~/.copilot/permissions-config.json` | GitHub Copilot CLI | dev3 pre-approves its own CLI for the project, so an agent is not stopped by "Do you want to run this command?" on the status move its protocol just told it to make. Keyed by the repository's main working tree — which is what Copilot itself writes when the user approves from inside a worktree, so one entry covers every task of that project. Approvals the user granted themselves, and every other repository, are left untouched |
+| `~/.copilot/config.json` | GitHub Copilot CLI | dev3 appends the worktree's resolved path to `trustedFolders`, the only place Copilot reads folder trust from. Every other key — including `loggedInUsers` — is copied through untouched, the `//` header is preserved, and a file dev3 cannot parse is left exactly as found rather than risking the login. dev3 honours `COPILOT_HOME` rather than setting it |
