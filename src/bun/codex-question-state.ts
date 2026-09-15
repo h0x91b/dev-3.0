@@ -1,4 +1,4 @@
-import type { CodexStatusHookEvent } from "../shared/agent-hooks";
+import type { AgentStatusHookEvent } from "../shared/agent-hooks";
 import type { TaskStatus } from "../shared/types";
 
 interface SessionQuestions {
@@ -28,7 +28,7 @@ export class CodexQuestionState {
 		}
 	}
 
-	apply(taskId: string, sessionId: string, event: CodexStatusHookEvent, status: TaskStatus, toolName?: string, toolUseId?: string, questionIds?: string[], answeredQuestionId?: string) {
+	apply(taskId: string, sessionId: string, event: AgentStatusHookEvent, status: TaskStatus, toolName?: string, toolUseId?: string, questionIds?: string[], answeredQuestionId?: string) {
 		if (status === "completed" || status === "cancelled") {
 			this.tasks.delete(taskId);
 			return { pending: false };
