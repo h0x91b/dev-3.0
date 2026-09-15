@@ -19,6 +19,11 @@
 <meta name="twitter:title" content="dev-3.0 — Mission Control for the One Person Studio">
 <meta name="twitter:description" content="AI writes the code. You command the fleet. dev-3.0 is the Kanban-first cockpit for running dozens of AI coding agents at full speed.">
 <meta name="twitter:image" content="https://dev3.h0x91b.com/og-image.jpg">
+<meta property="og:video" content="https://dev3.h0x91b.com/video/promo-90s.mp4">
+<meta property="og:video:secure_url" content="https://dev3.h0x91b.com/video/promo-90s.mp4">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1920">
+<meta property="og:video:height" content="1080">
 <meta name="theme-color" content="#060915">
 <link rel="canonical" href="https://dev3.h0x91b.com/">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -37,6 +42,19 @@
   "downloadUrl": "https://github.com/h0x91b/dev-3.0/releases/latest",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
   "author": { "@type": "Person", "name": "Arseny Pavlenko", "url": "https://github.com/h0x91b" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoObject",
+  "name": "dev-3.0 — Precision Flow",
+  "description": "A 90-second tour of dev-3.0: one task per git worktree, your choice of agents launched together, questions surfaced when an agent needs you, review and ship — all from one board.",
+  "thumbnailUrl": "https://dev3.h0x91b.com/video/promo-poster.jpg",
+  "contentUrl": "https://dev3.h0x91b.com/video/promo-90s.mp4",
+  "uploadDate": "2026-09-13",
+  "duration": "PT1M30S",
+  "publisher": { "@type": "Person", "name": "Arseny Pavlenko", "url": "https://github.com/h0x91b" }
 }
 </script>
 <!-- Google Analytics (gtag.js) -->
@@ -351,7 +369,26 @@ nav.scrolled {
 .hero-actions.with-tutorial { margin-bottom: 20px; }
 
 /* Third, quieter call to action: read the tour instead of installing first. */
-.hero-tutorial { margin-bottom: 44px; }
+.hero-tutorial {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 44px;
+}
+.btn-watch {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-1);
+  border: 1px solid var(--border-hover);
+  padding: 11px 22px;
+  font-size: 14px;
+}
+.btn-watch:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.24);
+  transform: translateY(-2px);
+}
+.btn-watch .btn-watch-sub { color: var(--text-3); font-weight: 500; }
 .btn-tutorial {
   background: rgba(68, 150, 255, 0.08);
   color: var(--text-1);
@@ -577,6 +614,144 @@ nav.scrolled {
   filter: blur(60px);
   z-index: -1;
   pointer-events: none;
+}
+
+/* ======= PROMO VIDEO ======= */
+.promo-video {
+  padding: 96px 0 104px;
+  position: relative;
+  border-top: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(68, 150, 255, 0.07), transparent 70%),
+    rgba(6, 9, 21, 0.4);
+}
+.promo-video-head {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 44px;
+}
+.promo-video-head .section-eyebrow { margin-bottom: 16px; }
+.promo-video-head .section-desc { margin: 0 auto; }
+
+.video-shell {
+  position: relative;
+  max-width: 1000px;
+  width: 100%;
+  margin: 0 auto;
+}
+.video-frame {
+  position: relative;
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #05070f;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 25px 80px -20px rgba(0, 0, 0, 0.7),
+    0 0 70px -12px var(--accent-glow);
+}
+.video-frame video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #05070f;
+}
+
+/* Play overlay — makes it unmistakably a video before the first click */
+.video-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  background: radial-gradient(ellipse 26% 34% at 50% 50%, rgba(4, 7, 18, 0.42), rgba(4, 7, 18, 0) 75%);
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+  z-index: 3;
+}
+.video-cover[hidden] {
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.video-cover-btn {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(68, 150, 255, 0.92);
+  box-shadow:
+    0 0 0 10px rgba(68, 150, 255, 0.14),
+    0 18px 45px -12px rgba(68, 150, 255, 0.7);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.25s ease;
+}
+.video-cover-btn svg {
+  width: 30px;
+  height: 30px;
+  margin-left: 4px; /* optical centering of the triangle */
+}
+.video-cover:hover .video-cover-btn,
+.video-cover:focus-visible .video-cover-btn {
+  transform: scale(1.07);
+  box-shadow:
+    0 0 0 14px rgba(68, 150, 255, 0.18),
+    0 22px 55px -12px rgba(68, 150, 255, 0.85);
+}
+.video-cover:active .video-cover-btn { transform: scale(0.96); }
+.video-cover:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+/* Duration badge — corner, so it never lands on the poster's own headline */
+.video-cover-time {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(4, 7, 18, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.video-caption {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-3);
+}
+.video-glow {
+  position: absolute;
+  width: 80%;
+  height: 60%;
+  top: 20%;
+  left: 10%;
+  background: radial-gradient(ellipse, rgba(68, 150, 255, 0.14), transparent 70%);
+  filter: blur(60px);
+  z-index: -1;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .video-cover, .video-cover-btn { transition: none; }
+  .video-cover:hover .video-cover-btn { transform: none; }
+}
+@media (max-width: 768px) {
+  .promo-video { padding: 72px 0 80px; }
+  .video-cover-btn { width: 64px; height: 64px; }
+  .video-cover-btn svg { width: 24px; height: 24px; }
 }
 
 /* ======= SOCIAL PROOF / TECH BAR ======= */
@@ -1522,6 +1697,11 @@ footer {
       How it works — your first task
       <span class="btn-tutorial-sub">no install needed</span>
     </a>
+    <a href="#watch" class="btn btn-watch">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      Watch the tour
+      <span class="btn-watch-sub">90 sec</span>
+    </a>
   </div>
 
   <!-- GitHub Stars Badge -->
@@ -1566,6 +1746,47 @@ footer {
       <button class="carousel-btn" id="carouselNext" aria-label="Next">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
+    </div>
+  </div>
+</section>
+
+<!-- PROMO VIDEO -->
+<section class="promo-video" id="watch">
+  <div class="container">
+    <div class="promo-video-head">
+      <div class="section-eyebrow reveal" style="justify-content:center">Watch</div>
+      <h2 class="section-title reveal reveal-delay-1" style="font-size:clamp(30px,3.6vw,44px)">
+        Ninety seconds, end to end
+      </h2>
+      <p class="section-desc reveal reveal-delay-2">
+        One task becomes a branch, a worktree and a terminal. Pick your agents, launch them together,
+        answer only when they need you, then review and ship &mdash; without leaving the board.
+      </p>
+    </div>
+
+    <div class="video-shell reveal reveal-delay-3">
+      <div class="video-glow"></div>
+      <figure class="video-frame">
+        <!-- `controls` ships in the markup so the player still works without JS;
+             the script strips it until the first play so it stays off the poster. -->
+        <video id="promoVideo" controls playsinline preload="none"
+               poster="video/promo-poster.jpg"
+               aria-label="dev-3.0 product tour — 90 seconds">
+          <source src="video/promo-90s.mp4" type="video/mp4">
+          Your browser can't play this video.
+          <a href="video/promo-90s.mp4">Download it instead</a>.
+        </video>
+        <button class="video-cover" id="promoVideoCover" type="button" aria-label="Play the 90-second dev-3.0 tour">
+          <span class="video-cover-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+          <span class="video-cover-time">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            1:30
+          </span>
+        </button>
+      </figure>
+      <p class="video-caption">Sound on &mdash; but it reads fine muted too.</p>
     </div>
   </div>
 </section>
@@ -2679,6 +2900,24 @@ const observer = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
 
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Promo video — the cover is only there until the first play
+(function () {
+  const video = document.getElementById('promoVideo');
+  const cover = document.getElementById('promoVideoCover');
+  if (!video || !cover) return;
+
+  video.controls = false;
+  cover.addEventListener('click', () => video.play());
+  video.addEventListener('ended', () => { cover.hidden = false; });
+
+  // Native controls only after the first play, so they don't sit on the poster
+  video.addEventListener('play', () => {
+    cover.hidden = true;
+    video.controls = true;
+    if (typeof gtag === 'function') gtag('event', 'promo_video_play');
+  }, { once: true });
+})();
 
 // Nav scroll effect
 const nav = document.getElementById('nav');

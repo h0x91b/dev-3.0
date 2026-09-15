@@ -1,0 +1,3 @@
+Short: 90-second tour on the landing page
+
+Embedded the new 90-second product tour on the landing page as an inline player in its own "Watch" section right under the hero, with a poster frame, a large play affordance and a duration badge so it reads as a video before anything loads. Nothing autoplays and nothing downloads until the visitor hits play (preload="none"); native controls appear on the first play so they never sit on the poster. The hero gained a "Watch the tour · 90 sec" button anchored to the section, and the page now carries og:video tags plus a VideoObject schema. The source was re-encoded to 13.4 MB (from 19.2 MB) with the moov atom up front for instant start.
