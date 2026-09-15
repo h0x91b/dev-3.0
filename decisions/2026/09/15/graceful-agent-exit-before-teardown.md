@@ -12,11 +12,21 @@ hook silently lost every dev3-completed task (observed 2026-09-15).
 
 ## Investigation
 
-Claude Code's documented `SessionEnd` reasons are `clear`, `resume`, `logout`,
-`prompt_input_exit` and `other`; the observed behaviour is that a SIGHUP from
-`kill-session` does not reach the hook, while a typed `/exit` does. The hook budget is
-1.5 s total by default, raised to the largest declared per-hook `timeout` up to 60 s,
-so a 30 s wait on our side covers any hook a user can declare short of the maximum.
+Verified against a real Claude Code (2.1.273) in a real tmux pane, idle and mid-tool-call
+(`/tmp` script, not in the repo — needs a local `claude` and model access):
+
+- A bare `kill-session` **does** start `SessionEnd` on this build (reason `other`), idle
+  or busy. The premise "SIGHUP skips the hook" is false for current Claude Code.
+- What loses the hook is what dev3 runs **right after** the kill. `destroySession` is
+  fire-and-forget, so `killDevServer`, the cleanup script, diff capture and
+  `reapWorktreeProcesses` follow within a second; the reaper SIGTERM → SIGKILLs every
+  process whose cwd is inside the worktree — the hook is one of them (its cwd is the
+  worktree), and `removeWorktree` then deletes anything it read from there. A hook that
+  needs 2 s wrote nothing under kill + reap; the same hook completed under the graceful
+  exit, because the exit step waits for Claude's tree to empty and Claude waits for its
+  hooks (1.5 s total by default, raised to the largest declared per-hook `timeout`, max 60 s).
+- Typing `/exit` ends the session with reason `prompt_input_exit`, busy or idle, once a
+  Ctrl-C has interrupted the running turn.
 
 Two facts shaped the mechanism. First, the agent is usually **mid-turn** when teardown
 starts: the CLI-socket handler for `task.requestCompletion` awaits `moveTask` before
@@ -57,9 +67,11 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
 
 ## Alternatives considered
 
-- **Signal-only (SIGTERM before SIGHUP).** Rejected: the evidence is that signals do
-  not run the hook, and the dev3 status hooks already declare `SessionEnd` with a 3 s
-  timeout that never fired on kill.
+- **Keep the kill, just wait before reaping.** Rejected: the kill is fire-and-forget
+  with nothing to wait on, a fixed sleep is a guess, and it leaves every other harness
+  (and any Claude build that does not run hooks on SIGHUP) on the signal path. Asking
+  the CLI to quit gives one observable — the agent's tree emptying — that already
+  includes its hooks.
 - **Answering the CLI before teardown so the agent is idle when asked.** Rejected for
   now: it changes the `task move` contract (the CLI would print success before the task
   is gone), and Ctrl-C first makes the request robust to both the busy and the idle case.

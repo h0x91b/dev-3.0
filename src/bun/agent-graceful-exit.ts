@@ -1,13 +1,14 @@
 /**
  * Ask a task's agent CLI to quit on its own terms before the terminal is torn down.
  *
- * `tmux kill-session` and the native host's SIGHUP ladder end the agent process
- * without giving it a turn, so anything the CLI runs on its own way out — Claude
- * Code's `SessionEnd` hooks are the case that surfaced this — never happens for a
- * task that completes the normal dev3 way. This module types each adapter's quit
- * command into every live agent pane, then waits a bounded time for the agent's
- * process tree to empty. Whatever is still alive at the deadline is left to the
- * kill that follows; this step never blocks teardown for good.
+ * `tmux kill-session` and the native host's SIGHUP ladder are fire-and-forget, so the
+ * worktree process reaper and the worktree removal that follow race whatever the CLI
+ * runs on its way out — Claude Code's `SessionEnd` hooks are the case that surfaced
+ * this: a hook that needs a couple of seconds is SIGKILLed as a stray worktree process
+ * before it writes. This module types each adapter's quit command into every live
+ * agent pane, then waits a bounded time for the agent's process tree to empty — which
+ * includes its exit hooks. Whatever is still alive at the deadline is left to the kill
+ * that follows; this step never blocks teardown for good.
  * See `decisions/2026/09/15/graceful-agent-exit-before-teardown.md`.
  */
 
