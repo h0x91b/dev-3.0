@@ -79,8 +79,7 @@ export type CopilotStatusHookEvent = keyof typeof COPILOT_STATUS_HOOK_EVENTS;
  * documented repository-level `.github/hooks/` was never even consulted in a
  * fresh checkout — so dev3 installs here and nowhere else.
  */
-export const COPILOT_HOOKS_DIR = "hooks";
-export const COPILOT_DEV3_HOOKS_FILE = "dev3.json";
+export const COPILOT_SETTINGS_FILE = "settings.json";
 
 /**
  * The command dev3 declares for one Copilot status hook.
@@ -106,28 +105,83 @@ export function copilotHookCommand(
 	return { powershell: `if ($env:${CODEX_HOOK_SESSION_ENV}) { & ${run} }; exit 0` };
 }
 
-/** The Copilot hooks file dev3 owns, whole — it is ours alone, never merged. */
-export function buildCopilotHooks(dialect: HookCliDialect = DEFAULT_DIALECT): Record<string, unknown> {
+/** dev3's Copilot hook entries, keyed by event. */
+export function buildCopilotHooks(
+	dialect: HookCliDialect = DEFAULT_DIALECT,
+): Record<string, unknown[]> {
 	const hooks: Record<string, unknown[]> = {};
 	for (const event of Object.keys(COPILOT_STATUS_HOOK_EVENTS) as CopilotStatusHookEvent[]) {
 		hooks[event] = [{ type: "command", ...copilotHookCommand(event, dialect), timeoutSec: 5 }];
 	}
-	return { version: 1, hooks };
+	return hooks;
+}
+
+/** Whether a Copilot hook entry is one dev3 wrote (it names the dev3 CLI in
+ *  whichever shell key this platform uses). */
+function isDev3CopilotEntry(entry: unknown): boolean {
+	const record = asRecord(entry);
+	return mentionsDev3Cli(record.bash as string | undefined)
+		|| mentionsDev3Cli(record.powershell as string | undefined);
 }
 
 /**
- * Write dev3's Copilot hooks into the user's Copilot config dir.
+ * Merge dev3's hooks into a Copilot `settings.json` object, replacing whatever
+ * dev3 wrote before and leaving every other entry — a colleague's, a plugin's —
+ * exactly where it was. Idempotent.
  *
- * Its own file rather than a merge into `settings.json`: Copilot combines every
- * `hooks/*.json` it finds, so dev3 can own one file outright and never rewrite
- * a hook somebody else (an MDM policy, a plugin) put there.
+ * Inline in `settings.json` rather than a `hooks/dev3.json` of our own, even
+ * though a private file would be tidier: `~/.copilot/hooks/` can belong to root.
+ * A managed machine's MDM creates it to drop a policy hook in, and every later
+ * write by the user's own processes fails with EACCES — which is exactly how
+ * this shipped first, with the board silently never following a Copilot task.
+ * `settings.json` sits in the Copilot home itself, which Copilot maintains as
+ * the user, so it is writable wherever Copilot runs at all.
  */
-export function writeCopilotHooks(copilotHome: string): boolean {
-	const dir = join(copilotHome, COPILOT_HOOKS_DIR);
-	mkdirSync(dir, { recursive: true });
-	const path = join(dir, COPILOT_DEV3_HOOKS_FILE);
+export function mergeCopilotHooks(
+	existing: Record<string, unknown>,
+	dialect: HookCliDialect = DEFAULT_DIALECT,
+): Record<string, unknown> {
+	const settings = asRecord(existing);
+	const merged: Record<string, unknown> = { ...asRecord(settings.hooks) };
+
+	for (const [event, entries] of Object.entries(buildCopilotHooks(dialect))) {
+		const current = merged[event];
+		const kept = Array.isArray(current) ? current.filter((e) => !isDev3CopilotEntry(e)) : [];
+		merged[event] = [...kept, ...entries];
+	}
+
+	return { ...settings, hooks: merged };
+}
+
+/**
+ * Add a worktree to Copilot's `trustedFolders`, so the agent does not open on
+ * "Confirm folder trust" in a pane nobody is watching. Idempotent; never removes
+ * a folder the user trusted themselves.
+ */
+export function ensureCopilotTrustedFolder(
+	existing: Record<string, unknown>,
+	resolvedPath: string,
+): Record<string, unknown> {
+	const settings = asRecord(existing);
+	const current = Array.isArray(settings.trustedFolders) ? settings.trustedFolders : [];
+	if (current.includes(resolvedPath)) return settings;
+	return { ...settings, trustedFolders: [...current, resolvedPath] };
+}
+
+/** Read → merge → write the Copilot settings file, skipping an identical write. */
+export function updateCopilotSettings(
+	copilotHome: string,
+	update: (settings: Record<string, unknown>) => Record<string, unknown>,
+): boolean {
+	mkdirSync(copilotHome, { recursive: true });
+	const path = join(copilotHome, COPILOT_SETTINGS_FILE);
 	const previous = readSettingsFile(path);
-	return writeIfChanged(path, buildCopilotHooks(), previous);
+	return writeIfChanged(path, update(previous), previous);
+}
+
+/** Install dev3's Copilot status hooks for this machine. */
+export function writeCopilotHooks(copilotHome: string): boolean {
+	return updateCopilotSettings(copilotHome, (settings) => mergeCopilotHooks(settings));
 }
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
 /**

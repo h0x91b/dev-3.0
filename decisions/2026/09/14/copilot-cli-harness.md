@@ -61,8 +61,19 @@ stays interactive, pre-assigns `--session-id <uuid>` and resumes with
 `--effort` (except on `auto`, which refuses it), and deliberately drops `maxBudgetUsd` — Copilot budgets in AI credits,
 not dollars, and a guessed conversion would be a lie.
 
-Status hooks live in `~/.copilot/hooks/dev3.json` (`writeCopilotHooks`), one file
-dev3 owns outright so a neighbouring policy or plugin hook is never rewritten.
+Status hooks are merged into the `hooks` field of `~/.copilot/settings.json`
+(`writeCopilotHooks`), replacing dev3's own previous entries and nobody else's.
+This started as a private `~/.copilot/hooks/dev3.json` and had to move: that
+directory can be **root-owned**. On a machine managed by an MDM that drops a
+policy hook there, `~/.copilot/hooks` is `root:staff drwxr-xr-x`, so dev3's write
+failed with `EACCES` and the hooks were never installed — the board silently
+stopped following Copilot tasks, with only a warning in the app log. `settings.json`
+sits in the Copilot home itself, which Copilot maintains as the user.
+
+Worktree trust rides in the same file: `ensureCopilotTrust` appends the resolved
+path to `trustedFolders`, joining the `TrustKind` list the launcher already walks.
+Without it Copilot opens on **Confirm folder trust** and waits in a pane nobody is
+watching.
 Each command is guarded on `DEV3_TASK_ID`, exactly like the Codex hooks and for
 the same reason: the source is global, so an unrelated Copilot session must spawn
 nothing. `dev3 hook copilot` maps Copilot's five useful events onto the existing
@@ -76,6 +87,10 @@ one that works on every plan.
 
 ## Risks
 
+- **The trust suppression is unverified headlessly.** `trustedFolders` is the
+  documented key and Copilot accepts it, but the dialog is interactive-only and
+  could not be reproduced outside a real pane — the first launch after this change
+  is what confirms it.
 - **Only `user-questions` is missing.** A Copilot task never parks itself when
   the agent wants the human; the skill's manual instruction is the only route.
   Documented rather than faked with `permissionRequest`.

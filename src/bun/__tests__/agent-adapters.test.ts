@@ -182,7 +182,7 @@ describe("trustKinds", () => {
 		[geminiAdapter, ["claude", "gemini"]],
 		[cursorAdapter, ["claude"]],
 		[opencodeAdapter, ["claude"]],
-		[copilotAdapter, ["claude"]],
+		[copilotAdapter, ["claude", "copilot"]],
 		[genericAdapter, ["claude"]],
 	] as const)("%s", (adapter, kinds) => {
 		expect(adapter.trustKinds).toEqual(kinds);

@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	AGENT_STATUS_HOOK_EVENTS,
 	buildCopilotHooks,
-	COPILOT_DEV3_HOOKS_FILE,
-	COPILOT_HOOKS_DIR,
+	COPILOT_SETTINGS_FILE,
 	COPILOT_STATUS_HOOK_EVENTS,
 	copilotHookCommand,
+	ensureCopilotTrustedFolder,
+	mergeCopilotHooks,
 	writeCopilotHooks,
 } from "../../shared/agent-hooks";
 import { resolveCopilotHome } from "../copilot-config";
@@ -56,35 +57,69 @@ describe("copilotHookCommand", () => {
 
 describe("buildCopilotHooks", () => {
 	it("declares one command entry per subscribed event", () => {
-		const built = buildCopilotHooks(POSIX) as { version: number; hooks: Record<string, unknown[]> };
-		expect(built.version).toBe(1);
-		expect(Object.keys(built.hooks).sort()).toEqual(Object.keys(COPILOT_STATUS_HOOK_EVENTS).sort());
-		for (const entries of Object.values(built.hooks)) {
+		const built = buildCopilotHooks(POSIX);
+		expect(Object.keys(built).sort()).toEqual(Object.keys(COPILOT_STATUS_HOOK_EVENTS).sort());
+		for (const entries of Object.values(built)) {
 			expect(entries).toHaveLength(1);
 			expect(entries[0]).toMatchObject({ type: "command", timeoutSec: 5 });
 		}
 	});
 });
 
-describe("writeCopilotHooks", () => {
-	it("writes dev3's own file and leaves a neighbouring hook file untouched", () => {
-		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
-		const dir = join(home, COPILOT_HOOKS_DIR);
-		mkdirSync(dir, { recursive: true });
-		const foreign = join(dir, "policy-enforcer.json");
-		writeFileSync(foreign, '{"version":1,"hooks":{}}', "utf-8");
+describe("mergeCopilotHooks", () => {
+	it("keeps a foreign hook on the same event and replaces only dev3's", () => {
+		const foreign = { type: "command", bash: "/opt/corp/enforcer --editor github_copilot" };
+		const first = mergeCopilotHooks({ hooks: { preToolUse: [foreign] } }, POSIX);
+		const second = mergeCopilotHooks(first, POSIX);
 
-		expect(writeCopilotHooks(home)).toBe(true);
-
-		const written = JSON.parse(readFileSync(join(dir, COPILOT_DEV3_HOOKS_FILE), "utf-8"));
-		expect(Object.keys(written.hooks)).toContain("sessionStart");
-		expect(readFileSync(foreign, "utf-8")).toBe('{"version":1,"hooks":{}}');
+		const entries = (second.hooks as Record<string, unknown[]>).preToolUse;
+		expect(entries[0]).toEqual(foreign);
+		// Re-merging must not stack a second dev3 copy beside the first.
+		expect(entries).toHaveLength(2);
 	});
 
-	it("is idempotent — an unchanged file is not rewritten", () => {
+	it("leaves unrelated settings alone", () => {
+		const merged = mergeCopilotHooks({ theme: "dark", banner: "never" }, POSIX);
+		expect(merged).toMatchObject({ theme: "dark", banner: "never" });
+	});
+});
+
+describe("ensureCopilotTrustedFolder", () => {
+	it("appends once and never drops a folder the user trusted", () => {
+		const first = ensureCopilotTrustedFolder({ trustedFolders: ["/home/mine"] }, "/w/t");
+		expect(first.trustedFolders).toEqual(["/home/mine", "/w/t"]);
+		expect(ensureCopilotTrustedFolder(first, "/w/t")).toEqual(first);
+	});
+
+	it("survives a settings file with no trustedFolders key", () => {
+		expect(ensureCopilotTrustedFolder({}, "/w/t").trustedFolders).toEqual(["/w/t"]);
+	});
+});
+
+describe("writeCopilotHooks", () => {
+	// `~/.copilot/hooks/` can be root-owned on a managed machine (an MDM drops its
+	// policy hook there), so dev3 writes nothing inside it — settings.json is the
+	// file Copilot itself maintains as the user.
+	it("writes settings.json in the Copilot home and touches no hooks/ dir", () => {
 		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
 		expect(writeCopilotHooks(home)).toBe(true);
+
+		const written = JSON.parse(readFileSync(join(home, COPILOT_SETTINGS_FILE), "utf-8"));
+		expect(Object.keys(written.hooks)).toContain("sessionStart");
+		expect(existsSync(join(home, "hooks"))).toBe(false);
+	});
+
+	it("preserves the user's own settings and is idempotent", () => {
+		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		const path = join(home, COPILOT_SETTINGS_FILE);
+		writeFileSync(path, JSON.stringify({ theme: "dark", trustedFolders: ["/mine"] }), "utf-8");
+
+		expect(writeCopilotHooks(home)).toBe(true);
 		expect(writeCopilotHooks(home)).toBe(false);
+
+		const written = JSON.parse(readFileSync(path, "utf-8"));
+		expect(written.theme).toBe("dark");
+		expect(written.trustedFolders).toEqual(["/mine"]);
 	});
 });
 

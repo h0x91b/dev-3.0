@@ -13,6 +13,8 @@ import { DEV3_HOME } from "./paths";
 // Writer and pruner share one path constant: whatever registers an entry must
 // agree with whatever removes it.
 import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
+import { ensureCopilotTrustedFolder, updateCopilotSettings } from "../shared/agent-hooks";
+import { resolveCopilotHome } from "./copilot-config";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
@@ -995,6 +997,28 @@ export function buildTaskEnv(
 	}
 
 	return env;
+}
+
+// ---- Copilot Trust ----
+
+/**
+ * Ensure a worktree is listed in Copilot's `trustedFolders`, so `copilot` skips
+ * the "Confirm folder trust" dialog. Without it the agent opens on a question
+ * in a pane nobody is watching, and the task never starts.
+ *
+ * Resolves symlinks first — the dialog names the real path. Non-fatal: the worst
+ * case is the dialog the user saw before.
+ */
+export async function ensureCopilotTrust(dirPath: string): Promise<void> {
+	try {
+		const resolved = await realpath(dirPath);
+		const home = resolveCopilotHome();
+		const written = updateCopilotSettings(home, (settings) =>
+			ensureCopilotTrustedFolder(settings, resolved));
+		if (written) log.info("Registered worktree in Copilot trustedFolders", { path: resolved });
+	} catch (err) {
+		log.warn("Failed to register Copilot worktree trust", { error: String(err) });
+	}
 }
 
 // ---- Gemini Trust ----

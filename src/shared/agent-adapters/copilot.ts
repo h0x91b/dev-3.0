@@ -33,7 +33,7 @@ export const copilotAdapter: AgentAdapter = {
 	// (a well-formed-looking string with wrong version bits is rejected).
 	supportsPreAssignedSessionId: true,
 	skillBody: GENERIC_SKILL_BODY,
-	trustKinds: ["claude"],
+	trustKinds: ["claude", "copilot"],
 
 	launchArgs(baseCmd, config, ctx, options) {
 		const args: string[] = [];
