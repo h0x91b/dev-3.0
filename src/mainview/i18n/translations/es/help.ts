@@ -242,7 +242,7 @@ const help = {
 	"help.header.agentTraffic.title": "Tráfico de agentes: sigue sus conversaciones",
 	"help.header.agentTraffic.body": "Selecciona el icono morado de mensajes o pulsa ⇧⌘M para abrir el tráfico en vivo. Empieza con las últimas 24 horas; el contador muestra los mensajes sin leer.",
 	"help.traffic.log.title": "Explora el tráfico de agentes en vivo",
-	"help.traffic.log.body": "Elige la presentación a la izquierda: el Experimento 2 dibuja tarjetas de tareas unidas a quienes escribieron, el Experimento 1 te deja volar por una órbita 3D. Selecciona una tarea o un mensaje para consultar su estado de entrega. La línea temporal filtra mensajes; las columnas de tareas siguen mostrando el estado actual.",
+	"help.traffic.log.body": "Elige la presentación a la izquierda: el Experimento 2 dibuja tarjetas de tareas unidas a quienes escribieron, el Experimento 1 te deja volar por una órbita 3D. Selecciona una tarea o un mensaje para consultar su estado de entrega; haz doble clic en una tarea para abrirla. La línea temporal filtra mensajes; las columnas de tareas siguen mostrando el estado actual.",
 	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
 	"help.header.connectionQuality.title": "Qué tan lenta es esta conexión",
 	"help.header.connectionQuality.body":

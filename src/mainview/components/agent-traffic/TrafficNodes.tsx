@@ -79,6 +79,8 @@ interface Props {
 	layoutRecords: TrafficRecord[];
 	selected: string | null;
 	onSelect: (key: string) => void;
+	/** Double-click on a card. Centring it lives on the inspector's Focus button. */
+	onOpen: (key: string) => void;
 	paused: boolean;
 	ready: boolean;
 	playback?: ReturnType<typeof useTrafficPlayback>;
@@ -139,6 +141,7 @@ export default function TrafficNodes({
 	layoutRecords,
 	selected,
 	onSelect,
+	onOpen,
 	paused,
 	ready,
 	scope,
@@ -994,7 +997,7 @@ export default function TrafficNodes({
 									manual();
 									onSelect(key);
 								}}
-								onFocus={focus}
+								onOpen={onOpen}
 							/>
 						);
 					})}
@@ -1279,7 +1282,7 @@ function Card({
 	reduced,
 	sliding,
 	onSelect,
-	onFocus,
+	onOpen,
 }: {
 	placed: PlacedNode;
 	selected: boolean;
@@ -1301,7 +1304,7 @@ function Card({
 	/** The scene is the same scene, so a card that changed slot may travel to it. */
 	sliding: boolean;
 	onSelect: (key: string) => void;
-	onFocus: (key: string) => void;
+	onOpen: (key: string) => void;
 }) {
 	const t = useT();
 	const { node } = placed;
@@ -1361,7 +1364,7 @@ function Card({
 			aria-label={`${nodeSeq(node)} ${node.title || t("traffic.orbit.historical")} · ${state}`}
 			aria-pressed={selected}
 			onClick={() => !unborn && onSelect(node.key)}
-			onDoubleClick={() => !unborn && onFocus(node.key)}
+			onDoubleClick={() => !unborn && onOpen(node.key)}
 		>
 			{/* Hidden from assistive tech: the card's own aria-label already says the
 			    status, and the ring would only repeat the stage as a second voice. */}

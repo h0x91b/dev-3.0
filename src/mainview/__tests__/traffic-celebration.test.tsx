@@ -128,6 +128,7 @@ function draw(
 				layoutRecords={records}
 				selected={null}
 				onSelect={vi.fn()}
+				onOpen={vi.fn()}
 				paused={false}
 				ready
 				scope="project"
