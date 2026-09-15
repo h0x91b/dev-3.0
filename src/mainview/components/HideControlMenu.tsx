@@ -35,7 +35,7 @@ export default function HideControlMenu({
 					type="button"
 					role="menuitem"
 					onClick={onHide}
-					className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					className="w-full text-left px-3 py-1.5 text-xs text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
 				>
 					{t("hideableControls.hide")}
 				</button>
