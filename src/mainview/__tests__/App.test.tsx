@@ -207,6 +207,7 @@ import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 import { setStreamerMode } from "../streamer-mode";
 import { setAgentTrafficEnabledForTests, syncAgentTrafficFromGlobalSettings } from "../agent-traffic-flag";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "../agent-traffic-events";
+import { RPC_STATUS_EVENT } from "../diagnostics";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 
@@ -3656,6 +3657,51 @@ describe("App keyboard shortcuts", () => {
 			});
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 			expect(api.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		// The push is one-shot and fire-and-forget: a transport that was down when
+		// the agent asked drops it silently, and the client that comes back has no
+		// reason to know it missed anything. It re-asks on every reconnect — the
+		// other half of h0x91b/dev-3.0#1669.
+		it("draws a cancellation that arrived while the transport was down, on reconnect", async () => {
+			vi.mocked(api.request.listPendingCancellationRequests).mockResolvedValue([]);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			expect(api.request.respondToAgentCancellationRequest).not.toHaveBeenCalled();
+
+			vi.mocked(api.request.listPendingCancellationRequests).mockResolvedValue([
+				{ requestId: "req-c-dropped", taskId: "t1", projectId: "p1", taskTitle: "Missed junk", subject: undefined },
+			] as never);
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+			});
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
+					requestId: "req-c-dropped",
+					approved: false,
+				});
+			});
+		});
+
+		it("does not ask twice when a reconnect replays the dialog already on screen", async () => {
+			vi.mocked(api.request.listPendingCancellationRequests).mockResolvedValue([
+				{ requestId: "req-c-open", taskId: "t1", projectId: "p1", taskTitle: "Junk task", subject: undefined },
+			] as never);
+			// The user is still reading it — the promise never settles.
+			vi.mocked(confirm).mockReturnValue(new Promise<boolean>(() => {}));
+
+			await renderApp();
+			await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+			});
+			await act(async () => { await Promise.resolve(); });
+
+			expect(confirm).toHaveBeenCalledTimes(1);
+			expect(api.request.respondToAgentCancellationRequest).not.toHaveBeenCalled();
 		});
 
 		it("draws a dialog for a cancellation pushed before this window existed", async () => {

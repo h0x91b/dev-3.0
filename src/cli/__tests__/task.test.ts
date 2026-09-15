@@ -1121,6 +1121,40 @@ describe("task move --status cancelled", () => {
 		expect(stderrOutput).toContain("Timed out waiting for the user's decision");
 	});
 
+	// The dialog is about the TARGET task, so for `--task`/`--project` the old
+	// "this session will be destroyed" was simply false, and it read as if the
+	// prompt were scoped to the requester (h0x91b/dev-3.0#1669).
+	it("does not claim this session dies when the timeout was for another task", async () => {
+		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
+
+		await expect(
+			handleTask("move", args([], { task: "seq:7", project: "proj-002", status: "cancelled" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("This session is not the target");
+		expect(stderrOutput).not.toContain("this session will be destroyed");
+	});
+
+	it("still warns that this session dies when the timeout was for its own task", async () => {
+		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("this session will be destroyed");
+	});
+
+	it("says whose worktree died when another task was cancelled", async () => {
+		mockSend.mockResolvedValue(okResp({
+			approved: true,
+			task: { ...FAKE_TASK, id: "bbbbbbbb-1111-2222-3333-444444444444", status: "cancelled" },
+		}));
+
+		await handleTask("move", args([], { task: "seq:7", project: "proj-002", status: "cancelled" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("this session is unaffected");
+		expect(stdoutOutput).not.toContain("This worktree and terminal session are being destroyed");
+	});
+
 	it("exits on server error", async () => {
 		mockSend.mockResolvedValue(errResp("Task is already cancelled"));
 

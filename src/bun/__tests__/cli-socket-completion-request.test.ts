@@ -212,9 +212,9 @@ describe("task.requestCompletion", () => {
 	});
 
 	// The orphan: a renderer that reloads before answering takes the only copy of
-	// the dialog with it. The request stays alive, and the agent's retry joins it
-	// rather than pushing again — so without the pending list the user can never
-	// be asked again and the task can never be completed this app session.
+	// the dialog with it. The request stays alive, so both routes back to a user
+	// must work — the retry's own push, and the pending list a fresh renderer asks
+	// for on connect (it gets no push of its own).
 	it("keeps a request answerable after the renderer that owned its dialog reloaded", async () => {
 		setupTask(makeTask());
 		const rendererA = vi.fn();
@@ -223,14 +223,14 @@ describe("task.requestCompletion", () => {
 		const first = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
 		await vi.waitFor(() => expect(rendererA).toHaveBeenCalledTimes(1));
 
-		// The tab reloads. The new renderer gets no push — it has to ask.
+		// The tab reloads. The agent's retry reaches the NEW renderer directly.
 		const rendererB = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(rendererB);
 		const retry = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await new Promise((r) => setTimeout(r, 10));
-		expect(rendererB).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(rendererB).toHaveBeenCalledTimes(1));
+		expect(rendererB.mock.calls[0][0]).toBe("agentCompletionRequested");
 
-		// ...and asking finds the request, with everything needed to draw it.
+		// ...and asking finds the same single request, with everything needed to draw it.
 		const pending = listPendingAgentRequests("complete");
 		expect(pending).toHaveLength(1);
 		expect(pending[0].dialog.taskTitle).toBe("Test task");
@@ -243,7 +243,10 @@ describe("task.requestCompletion", () => {
 		expect(respB.data).toEqual({ approved: false });
 	});
 
-	it("joins an existing pending request instead of pushing a second dialog", async () => {
+	// A retry joins ONE request but must still re-push it: a client that missed
+	// the first push (starting up, transport dropped) is otherwise unreachable
+	// from the CLI — see h0x91b/dev-3.0#1669 and the cancellation test.
+	it("re-pushes the same request on a joined retry, without creating a second one", async () => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -251,16 +254,15 @@ describe("task.requestCompletion", () => {
 		const first = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
 		const second = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		// Let the second handler reach createCompletionRequest (and join) before resolving.
-		await new Promise((r) => setTimeout(r, 10));
-		expect(pushFn).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
 
 		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		const retryPayload = pushFn.mock.calls[1][1] as { requestId: string };
+		expect(retryPayload.requestId).toBe(payload.requestId);
 		resolveAgentRequest(payload.requestId, { approved: false });
 
 		const [respA, respB] = await Promise.all([first, second]);
 		expect(respA.data).toEqual({ approved: false });
 		expect(respB.data).toEqual({ approved: false });
-		expect(pushFn).toHaveBeenCalledTimes(1);
 	});
 });

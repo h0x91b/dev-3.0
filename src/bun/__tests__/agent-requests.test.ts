@@ -47,8 +47,6 @@ describe("createAgentRequest", () => {
 		const a = createAgentRequest("complete", "task-1", "proj-1");
 		const b = createAgentRequest("complete", "task-2", "proj-1");
 
-		expect(a.isNew).toBe(true);
-		expect(b.isNew).toBe(true);
 		expect(a.requestId).not.toBe(b.requestId);
 	});
 
@@ -56,7 +54,6 @@ describe("createAgentRequest", () => {
 		const first = createAgentRequest("complete", "task-1", "proj-1");
 		const second = createAgentRequest("complete", "task-1", "proj-1");
 
-		expect(second.isNew).toBe(false);
 		expect(second.requestId).toBe(first.requestId);
 		expect(second.decision).toBe(first.decision);
 	});
@@ -65,7 +62,6 @@ describe("createAgentRequest", () => {
 		const complete = createAgentRequest("complete", "task-1", "proj-1");
 		const launch = createAgentRequest("launch", "task-1", "proj-1");
 
-		expect(launch.isNew).toBe(true);
 		expect(launch.requestId).not.toBe(complete.requestId);
 	});
 
@@ -74,7 +70,6 @@ describe("createAgentRequest", () => {
 		resolveAgentRequest(first.requestId, { approved: false });
 
 		const second = createAgentRequest("complete", "task-1", "proj-1");
-		expect(second.isNew).toBe(true);
 		expect(second.requestId).not.toBe(first.requestId);
 	});
 });
@@ -208,7 +203,6 @@ describe("auto-approval", () => {
 		vi.advanceTimersByTime(4 * 60_000);
 		const retry = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 5 * 60_000 });
 
-		expect(retry.isNew).toBe(false);
 		expect(retry.autoApproveAt).toBe(first.autoApproveAt);
 	});
 
@@ -249,7 +243,7 @@ describe("listPendingAgentRequests", () => {
 			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
 		});
 
-		expect(retry.isNew).toBe(false);
+		expect(retry.requestId).toBe(first.requestId);
 		expect(listPendingAgentRequests("complete")).toHaveLength(1);
 		expect(listPendingAgentRequests("complete")[0].requestId).toBe(first.requestId);
 	});
@@ -393,7 +387,6 @@ describe("a user taking the dialog over", () => {
 
 		holdAgentRequestAutoApprove(requestId);
 		const retry = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 60_000 });
-		expect(retry.isNew).toBe(false);
 		expect(retry.autoApproveAt).toBeNull();
 		vi.advanceTimersByTime(10 * 60_000);
 		await Promise.resolve();

@@ -507,7 +507,11 @@ describe("task.move — agent-initiated launch approval", () => {
 		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
 	});
 
-	it("joins an existing pending launch request instead of pushing a second dialog", async () => {
+	// One request, but re-pushed per attempt: the dialog has to be reachable again
+	// for a client that missed the original push (h0x91b/dev-3.0#1669). The
+	// countdown is NOT re-armed — that is `markAgentRequestShown`'s first-display
+	// rule, and a retry must not be able to postpone a launch.
+	it("re-pushes the same launch request on a joined retry, keeping one deadline", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -521,10 +525,12 @@ describe("task.move — agent-initiated launch approval", () => {
 		const first = handleRequest(moveRequest(params));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
 		const second = handleRequest(moveRequest(params));
-		await new Promise((r) => setTimeout(r, 10));
-		expect(pushFn).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
 
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		const payload = pushFn.mock.calls[0][1] as { requestId: string; autoApproveAt: number | null };
+		const retryPayload = pushFn.mock.calls[1][1] as { requestId: string; autoApproveAt: number | null };
+		expect(retryPayload.requestId).toBe(payload.requestId);
+		expect(retryPayload.autoApproveAt).toBe(payload.autoApproveAt);
 		resolveAgentRequest(payload.requestId, { approved: false });
 
 		const [respA, respB] = await Promise.all([first, second]);

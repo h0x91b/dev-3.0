@@ -58,6 +58,10 @@ still drops it; the existing `listPending*` replay on connect covers that.
 
 - **Re-push on a joined retry** (`agent-requests.ts`): would let a retry redraw a
   lost dialog, but leaves the promise leak in place for every other `confirm()`
-  caller, and that file is owned by another task.
+  caller, and that file is owned by another task. **Done since**, on top of this
+  queue rather than instead of it — the reporter reopened #1669 on a build that
+  had this fix and the retries were still silent:
+  `decisions/2026/09/15/re-push-agent-approval-on-every-attempt.md`. Step 4 of
+  the sequence above no longer holds: a retry pushes.
 - **Stack dialogs** rather than queue: overlapping modals make the user answer
   the wrong one, which is why the launch dialog queues.

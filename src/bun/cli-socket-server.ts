@@ -515,30 +515,31 @@ async function requestAgentLaunchApproval(opts: {
 	// deliberately does not do this — it destroys a worktree.
 	const defaultPriority = await resolveLaunchPriority(task, requester);
 	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
-	const { requestId, decision, isNew, autoApproveAt } = createAgentRequest(
+	const { requestId, decision, autoApproveAt } = createAgentRequest(
 		"launch",
 		task.id,
 		project.id,
 		{ autoApproveAfterMs },
 	);
-	if (isNew) {
-		push("agentLaunchRequested", {
-			requestId,
-			taskId: task.id,
-			projectId: project.id,
-			taskTitle: getTaskTitle(task),
-			targetStatus,
-			scratch: task.scratch === true,
-			requesterSeq: requester.seq,
-			requesterTitle: requester.title,
-			// Same read-only context card as the completion dialog, so the user
-			// recognizes which task an agent wants to set running.
-			subject: buildTaskDialogSubject(task, project),
-			defaultPriority,
-			canAddVariants: canSpawnAsVariants(task),
-			autoApproveAt,
-		});
-	}
+	// Pushed on EVERY attempt, joined retries included — see the note on
+	// `task.requestCancellation`. Clients dedup by `requestId`, so a dialog that
+	// is already on screen is untouched and nothing here re-arms the countdown.
+	push("agentLaunchRequested", {
+		requestId,
+		taskId: task.id,
+		projectId: project.id,
+		taskTitle: getTaskTitle(task),
+		targetStatus,
+		scratch: task.scratch === true,
+		requesterSeq: requester.seq,
+		requesterTitle: requester.title,
+		// Same read-only context card as the completion dialog, so the user
+		// recognizes which task an agent wants to set running.
+		subject: buildTaskDialogSubject(task, project),
+		defaultPriority,
+		canAddVariants: canSpawnAsVariants(task),
+		autoApproveAt,
+	});
 
 	const answer = await decision;
 	if (!answer.approved) return { approved: false };
@@ -1910,10 +1911,9 @@ const handlers: Record<string, Handler> = {
 			// so the user recognizes which task the prompt destroys.
 			subject: buildTaskDialogSubject(task, project),
 		};
-		const { requestId, decision, isNew } = createAgentRequest("complete", task.id, project.id, { dialog });
-		if (isNew) {
-			push("agentCompletionRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
-		}
+		const { requestId, decision } = createAgentRequest("complete", task.id, project.id, { dialog });
+		// Pushed on EVERY attempt — see the note on `task.requestCancellation`.
+		push("agentCompletionRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
 
 		const { approved } = await decision;
 		if (!approved) {
@@ -1943,10 +1943,15 @@ const handlers: Record<string, Handler> = {
 			taskTitle: getTaskTitle(task),
 			subject: buildTaskDialogSubject(task, project),
 		};
-		const { requestId, decision, isNew } = createAgentRequest("cancel", task.id, project.id, { dialog });
-		if (isNew) {
-			push("agentCancellationRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
-		}
+		const { requestId, decision } = createAgentRequest("cancel", task.id, project.id, { dialog });
+		// Pushed on EVERY attempt, joined retries included. A retry used to push
+		// nothing, so once a client lost the original dialog — it was never
+		// connected, its transport dropped, the window reloaded mid-flight — the
+		// request became unreachable from the CLI side: every further attempt
+		// blocked the full ten minutes with nothing on screen, and only a NEW
+		// client connecting replayed it (h0x91b/dev-3.0#1669). Clients dedup by
+		// `requestId`, so a dialog already on screen is untouched.
+		push("agentCancellationRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
 
 		const { approved } = await decision;
 		if (!approved) {

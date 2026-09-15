@@ -97,7 +97,7 @@ import StatusDock from "./components/StatusDock";
 import TerminalImmersiveChrome from "./components/TerminalImmersiveChrome";
 import { useRpcStatus } from "./hooks/useDiagnostics";
 import { reconnectRpc } from "./rpc";
-import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
+import { DIAGNOSTICS_OPEN_EVENT, RPC_STATUS_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
@@ -2139,26 +2139,36 @@ function App() {
 		}
 		window.addEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
 
-		// The push above is a one-shot event. A window that reloads before answering
-		// would otherwise never be offered the dialog again — the blocked agent's
-		// retry joins the same request instead of triggering a new push — so the
-		// request would sit unanswerable for the rest of the app session. Ask what
-		// is still pending as soon as this client is listening.
-		api.request.listPendingCompletionRequests({}).then(async (pending) => {
-			if (pending.length === 0) return;
-			// `confirm()` is fail-closed, and this runs during startup: calling it
-			// before ConfirmHost has mounted would resolve `false` with no dialog on
-			// screen and answer "declined" for a user who was never asked. Rather
-			// than auto-decline, leave the request pending — the next window to
-			// connect replays it again.
-			if (!await whenConfirmHostMounted()) {
-				console.error("[App] pending completion dialogs skipped — ConfirmHost never mounted");
-				return;
-			}
-			for (const request of pending) void showCompletionDialog(request);
-		}).catch((err) => console.error("listPendingCompletionRequests failed:", err));
+		// The push above is a one-shot event, so a client that was not listening for
+		// it — starting up, or a transport that dropped and came back without a
+		// page reload — would never see that dialog. Ask what is still pending on
+		// connect and on every reconnect. `showing` dedups, so a dialog already on
+		// screen is untouched.
+		function replayPending() {
+			api.request.listPendingCompletionRequests({}).then(async (pending) => {
+				if (pending.length === 0) return;
+				// `confirm()` is fail-closed, and this runs during startup: calling it
+				// before ConfirmHost has mounted would resolve `false` with no dialog on
+				// screen and answer "declined" for a user who was never asked. Rather
+				// than auto-decline, leave the request pending — the next window to
+				// connect replays it again.
+				if (!await whenConfirmHostMounted()) {
+					console.error("[App] pending completion dialogs skipped — ConfirmHost never mounted");
+					return;
+				}
+				for (const request of pending) void showCompletionDialog(request);
+			}).catch((err) => console.error("listPendingCompletionRequests failed:", err));
+		}
+		replayPending();
+		const onRpcStatus = (e: Event) => {
+			if ((e as CustomEvent).detail?.state === "connected") replayPending();
+		};
+		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
 
-		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+		return () => {
+			window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		};
 	}, [dispatch, navigate, t]);
 
 	// Agent-initiated CANCELLATION requests. Same blocked-CLI contract as the
@@ -2227,18 +2237,29 @@ function App() {
 		}
 		window.addEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
 
-		// Replayed for the same reason as the completion dialogs: the push is
-		// one-shot and an agent's retry joins the pending request.
-		api.request.listPendingCancellationRequests({}).then(async (pending) => {
-			if (pending.length === 0) return;
-			if (!await whenConfirmHostMounted()) {
-				console.error("[App] pending cancellation dialogs skipped — ConfirmHost never mounted");
-				return;
-			}
-			for (const request of pending) void showCancellationDialog(request);
-		}).catch((err) => console.error("listPendingCancellationRequests failed:", err));
+		// Replayed on connect AND on every reconnect, for the same reason as the
+		// completion dialogs: the push is one-shot, so a transport that dropped
+		// while the request was created leaves nothing on screen.
+		function replayPending() {
+			api.request.listPendingCancellationRequests({}).then(async (pending) => {
+				if (pending.length === 0) return;
+				if (!await whenConfirmHostMounted()) {
+					console.error("[App] pending cancellation dialogs skipped — ConfirmHost never mounted");
+					return;
+				}
+				for (const request of pending) void showCancellationDialog(request);
+			}).catch((err) => console.error("listPendingCancellationRequests failed:", err));
+		}
+		replayPending();
+		const onRpcStatus = (e: Event) => {
+			if ((e as CustomEvent).detail?.state === "connected") replayPending();
+		};
+		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
 
-		return () => window.removeEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
+		return () => {
+			window.removeEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
+			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		};
 	}, [dispatch, navigate, t]);
 
 	// An agent wants to set another task running. Queued, never stacked: two

@@ -61,6 +61,11 @@ function dedupKey(kind: AgentRequestKind, taskId: string): string {
  * A second request of the same kind for the same task joins the existing
  * decision promise instead of spawning a duplicate dialog — agents may retry
  * after their own tool timeout while the user still has the original dialog open.
+ *
+ * Callers push the dialog for a joined request too: the entry survives a retry,
+ * but nothing guarantees a client still has it on screen, and only the push (or
+ * a brand-new client calling {@link listPendingAgentRequests}) puts it back
+ * there. Clients dedup on `requestId`, so re-pushing never stacks dialogs.
  */
 export function createAgentRequest(
 	kind: AgentRequestKind,
@@ -72,7 +77,7 @@ export function createAgentRequest(
 		/** Lets a renderer that connects later be handed this dialog. */
 		dialog?: AgentRequestDialog;
 	} = {},
-): { requestId: string; decision: Promise<AgentRequestDecision>; isNew: boolean; autoApproveAt: number | null } {
+): { requestId: string; decision: Promise<AgentRequestDecision>; autoApproveAt: number | null } {
 	const key = dedupKey(kind, taskId);
 	const existingId = requestIdByKey.get(key);
 	if (existingId) {
@@ -81,7 +86,7 @@ export function createAgentRequest(
 			log.info("Joining existing agent request", { kind, taskId: taskId.slice(0, 8), requestId: existingId });
 			// A retry joins the original deadline instead of extending it — otherwise
 			// an agent that re-asks every few minutes would postpone the launch forever.
-			return { requestId: existingId, decision: existing.decision, isNew: false, autoApproveAt: existing.autoApproveAt };
+			return { requestId: existingId, decision: existing.decision, autoApproveAt: existing.autoApproveAt };
 		}
 	}
 
@@ -114,7 +119,7 @@ export function createAgentRequest(
 	}
 
 	log.info("Created agent request", { kind, taskId: taskId.slice(0, 8), requestId, autoApproveAt });
-	return { requestId, decision, isNew: true, autoApproveAt };
+	return { requestId, decision, autoApproveAt };
 }
 
 /**

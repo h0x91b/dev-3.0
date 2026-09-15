@@ -226,7 +226,12 @@ describe("task.requestCancellation", () => {
 		expect((await blocked).data).toEqual({ approved: false });
 	});
 
-	it("joins an existing pending request instead of pushing a second dialog", async () => {
+	// The reopened half of h0x91b/dev-3.0#1669. A retry used to push nothing, so a
+	// client that never got the first push (starting up, transport dropped, window
+	// reloaded mid-flight) could not be reached from the CLI at all: every further
+	// attempt blocked ten minutes with no dialog anywhere. It must re-push — while
+	// still being ONE request, so nobody is asked twice about one task.
+	it("re-pushes the same request on a joined retry, without creating a second one", async () => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -234,15 +239,22 @@ describe("task.requestCancellation", () => {
 		const first = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
 		const second = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await new Promise((r) => setTimeout(r, 10));
-		expect(pushFn).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
 
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveAgentRequest(payload.requestId, { approved: false });
+		const [eventA, payloadA] = pushFn.mock.calls[0] as [string, { requestId: string }];
+		const [eventB, payloadB] = pushFn.mock.calls[1] as [string, { requestId: string }];
+		expect(eventA).toBe("agentCancellationRequested");
+		expect(eventB).toBe("agentCancellationRequested");
+		// Same id — a client already showing this dialog drops the duplicate, and
+		// one answer settles both blocked CLIs.
+		expect(payloadB.requestId).toBe(payloadA.requestId);
+		expect(listPendingAgentRequests("cancel")).toHaveLength(1);
+
+		resolveAgentRequest(payloadA.requestId, { approved: false });
 
 		const [respA, respB] = await Promise.all([first, second]);
 		expect(respA.data).toEqual({ approved: false });
 		expect(respB.data).toEqual({ approved: false });
-		expect(pushFn).toHaveBeenCalledTimes(1);
+		expect(moveTask).not.toHaveBeenCalled();
 	});
 });
