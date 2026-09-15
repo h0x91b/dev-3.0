@@ -1,4 +1,5 @@
 import { getAgentTrafficEnabled } from "./agent-traffic-flag";
+import { isControlHidden } from "./hidden-controls";
 import type { TranslationKey } from "./i18n";
 
 /**
@@ -126,8 +127,12 @@ export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 	return ALL_COMMANDS.filter((c) => {
 		if (ctx.remote && REMOTE_HIDDEN_COMMANDS.has(c.id)) return false;
 		// Beta, off by default: a palette entry that opens nothing is worse than no
-		// entry, so the command disappears with the feature.
-		if (c.id === "view-agent-traffic-log" && !getAgentTrafficEnabled()) return false;
+		// entry, so the command disappears with the feature. Individually hideable
+		// too (§5.10) — either reason drops the row.
+		if (c.id === "view-agent-traffic-log" && (!getAgentTrafficEnabled() || isControlHidden("agent-traffic"))) return false;
+		// The Stats nav entry hides everywhere, palette included, when its id is
+		// in the hidden-controls set (typically via the Simplify View preset).
+		if (c.id === "view-stats" && isControlHidden("stats-nav")) return false;
 		if (
 			ctx.isVirtual &&
 			(c.category === "git" ||

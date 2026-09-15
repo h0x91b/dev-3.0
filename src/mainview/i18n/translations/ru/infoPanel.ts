@@ -339,6 +339,16 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "Есть новые непросмотренные элементы",
 	"infoPanel.openSharedImage": "Открыть картинку {name}",
 	"infoPanel.openSharedArtifact": "Открыть артефакт {name}",
+
+	"infoPanel.restoreHidden": "Показать скрытые элементы",
+	"infoPanel.restoreOne": "Вернуть {name}",
+	"infoPanel.showAllHidden": "Показать все",
+	"infoPanel.barContext": "Контекст",
+	"infoPanel.barSessionAgent": "Сессия и агент",
+	"infoPanel.barRuntime": "Среда выполнения",
+	"infoPanel.paneControlsLabel": "Раскладка панелей",
+	"infoPanel.scriptsRunnerLabel": "Скрипты",
+	"infoPanel.includeTestsLabel": "Включать тесты в диф",
 };
 
 export default infoPanel;

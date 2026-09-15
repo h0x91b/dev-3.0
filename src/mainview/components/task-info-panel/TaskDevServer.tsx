@@ -28,6 +28,8 @@ import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
 import RemoteBetaWarning from "./RemoteBetaWarning";
 import Tooltip from "../Tooltip";
+import { useIsControlHidden } from "../../hooks/useIsControlHidden";
+import HideableControl from "../HideableControl";
 
 interface TaskDevServerProps {
 	task: Task;
@@ -231,6 +233,10 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	const declaredServers = resolveDevServers(resolvedProject).servers;
 	const hasDevScript = declaredServers.length > 0;
 	const multiServer = declaredServers.length > 1;
+	// The "setup-dev-server" control (§5.10) covers only the prompt shown for a
+	// project with no dev script configured yet; a project that already has one
+	// keeps the real running control — hiding never touches that toggle.
+	const setupDevServerHidden = useIsControlHidden("setup-dev-server");
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const devServerHintRef = useRef<HTMLDivElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
@@ -578,7 +584,11 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		);
 	}
 
-	return (
+	// All hooks above have already run — safe to bail on JSX only. Only the
+	// no-devScript prompt is hideable; the real running control never is.
+	if (setupDevServerHidden && !hasDevScript) return null;
+
+	const content = (
 		<>
 			<Tooltip content={devServerTitle} detail={devServerDetail}>
 				<button
@@ -661,4 +671,6 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			)}
 		</>
 	);
+
+	return hasDevScript ? content : <HideableControl id="setup-dev-server">{content}</HideableControl>;
 }

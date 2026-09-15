@@ -37,6 +37,10 @@ import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useIsControlHidden, useHiddenControls } from "../hooks/useIsControlHidden";
+import { restoreControl } from "../hidden-controls";
+import HideableControl from "./HideableControl";
+import { HEADER_HIDEABLE_IDS, type HideableControlId } from "../hideable-controls";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import {
 	BackIcon,
@@ -46,6 +50,7 @@ import {
 	QuickShellIcon,
 	ProjectTerminalIcon,
 	RemoteQRIcon,
+	AgentTrafficIcon,
 	StatsIcon,
 	GitHubIcon,
 	ReportBugIcon,
@@ -133,6 +138,15 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const { file: spacesFile } = useSpaces();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// Header hideability is capped at exactly three ids (§5.10 §2.4): agent
+	// traffic, project terminal, remote-access QR. The ambient readouts and
+	// tmux session manager are not hideable from here. Stats nav (a
+	// non-toolbar surface) hides only via the Simplify View preset.
+	const statsNavHidden = useIsControlHidden("stats-nav");
+	const projectTerminalHidden = useIsControlHidden("project-terminal-button");
+	const remoteAccessQrHidden = useIsControlHidden("remote-access-qr");
+	const hiddenControls = useHiddenControls();
+	const hiddenHeaderIds = HEADER_HIDEABLE_IDS.filter((id) => hiddenControls.has(id));
 	// This page is the far end of a remote session, not the desktop window. Read
 	// once: it cannot change without a reload.
 	const viewedOverRemote = isRemote();
@@ -1176,7 +1190,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 									<span className="text-sm">{t("quickShell.open")}</span>
 								</button>
 								<div className="my-1 border-t border-edge" />
-								{route.screen !== "stats" && (
+								{!statsNavHidden && route.screen !== "stats" && (
 									<button
 										role="menuitem"
 										onClick={() => {
@@ -1224,6 +1238,35 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 										<span className="text-sm">{t("header.changelogLabel")}</span>
 									</button>
 								)}
+								{hiddenHeaderIds.length > 0 && (
+									<>
+										<div className="my-1 border-t border-edge" />
+										{hiddenHeaderIds.map((id) => {
+											const rows: Partial<Record<HideableControlId, { Icon: typeof AgentTrafficIcon; label: string }>> = {
+												"agent-traffic": { Icon: AgentTrafficIcon, label: t("traffic.label") },
+												"project-terminal-button": { Icon: ProjectTerminalIcon, label: t("projectTerminal.open") },
+												"remote-access-qr": { Icon: RemoteQRIcon, label: t("header.remoteAccessLabel") },
+											};
+											const row = rows[id];
+											if (!row) return null;
+											return (
+												<button
+													key={id}
+													role="menuitem"
+													onClick={() => restoreControl(id)}
+													className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+												>
+													<row.Icon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
+													<span className="text-sm flex-1">{row.label}</span>
+													<svg className="w-3.5 h-3.5 text-fg-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+														<path d="M3 12a9 9 0 1 0 3-6.7" />
+														<path d="M3 4v5h5" />
+													</svg>
+												</button>
+											);
+										})}
+									</>
+								)}
 							</div>
 						)}
 					</div>
@@ -1234,10 +1277,12 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    other, and absent entirely for a project where they never have. The
 				    badge on it is the unread count, which is a different question. Never on
 				    a phone header (bible §5.9, §12.6). */}
-				<AgentTrafficIndicator
-					projectId={currentProjectId}
-					onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
-				/>
+				<HideableControl id="agent-traffic">
+					<AgentTrafficIndicator
+						projectId={currentProjectId}
+						onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
+					/>
+				</HideableControl>
 
 				{/* Prevent-sleep lives in the kebab sheet only, at every width: it is on for
 				    everyone and practically never switched off, so a permanent header slot
@@ -1261,27 +1306,29 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    virtual ("Operations") boards: their synthetic path is created
 				    lazily per-task, so opening one throws "Project path does not
 				    exist" (same reason Git Pull below is hidden). */}
-				{"projectId" in route && !isVirtualProject && !isNarrow && (
-					<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
-						<button
-							onClick={() => {
-								if (route.screen === "project-terminal") {
-									navigate({ screen: "project", projectId: route.projectId });
-								} else {
-									navigate({ screen: "project-terminal", projectId: route.projectId });
-								}
-							}}
-							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
-								route.screen === "project-terminal"
-									? "text-accent bg-accent/15 hover:bg-accent/25"
-									: "text-fg-3 hover:text-fg hover:bg-elevated"
-							}`}
-							aria-label={t("projectTerminal.tooltipWithShortcut")}
-						>
-							<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-							{!compact && <span className="text-micro font-medium">{t("projectTerminal.open")}</span>}
-						</button>
-				</Tooltip>
+				{"projectId" in route && !isVirtualProject && !isNarrow && !projectTerminalHidden && (
+					<HideableControl id="project-terminal-button">
+						<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
+							<button
+								onClick={() => {
+									if (route.screen === "project-terminal") {
+										navigate({ screen: "project", projectId: route.projectId });
+									} else {
+										navigate({ screen: "project-terminal", projectId: route.projectId });
+									}
+								}}
+								className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
+									route.screen === "project-terminal"
+										? "text-accent bg-accent/15 hover:bg-accent/25"
+										: "text-fg-3 hover:text-fg hover:bg-elevated"
+								}`}
+								aria-label={t("projectTerminal.tooltipWithShortcut")}
+							>
+								<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
+								{!compact && <span className="text-micro font-medium">{t("projectTerminal.open")}</span>}
+							</button>
+						</Tooltip>
+					</HideableControl>
 				)}
 
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
@@ -1295,16 +1342,18 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    far end of a remote session the QR offers a code for the connection you
 				    are already using, so that slot carries the connection-quality readout
 				    instead — a swap, never a second control. */}
-				{!isNarrow && !viewedOverRemote && (
-					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
-						<button
-							onClick={() => { void openRemoteAccess(); }}
-							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
-							aria-label={t("header.remoteAccessTooltip")}
-						>
-							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
-						</button>
-				</Tooltip>
+				{!isNarrow && !viewedOverRemote && !remoteAccessQrHidden && (
+					<HideableControl id="remote-access-qr">
+						<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
+							<button
+								onClick={() => { void openRemoteAccess(); }}
+								className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
+								aria-label={t("header.remoteAccessTooltip")}
+							>
+								<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
+							</button>
+						</Tooltip>
+					</HideableControl>
 				)}
 				{/* …and it takes that slot only while the connection misbehaves. A healthy
 				    remote session shows nothing here; the number stays in the kebab. */}

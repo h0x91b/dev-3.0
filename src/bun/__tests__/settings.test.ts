@@ -249,6 +249,7 @@ describe("saveSettings", () => {
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
+			hiddenControls: ["bug-hunters", "stats-nav"],
 			experimentalAgentTraffic: true,
 			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
