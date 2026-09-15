@@ -798,6 +798,12 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		setRecordKey(null);
 		setPair(null);
 	}
+	/** Double-click anywhere a task is drawn jumps to it, same as the Kanban card. */
+	function openNode(key: string) {
+		const node = nodeMap.get(key);
+		if (!node?.task) return;
+		onOpenTask(node.id, node.projectId, { archived: isArchivedTask(node.task) });
+	}
 	function rowButton(item: TrafficRecord) {
 		const row = item.row;
 		return (
@@ -1085,6 +1091,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							records={visible}
 							selected={selected}
 							onSelect={select}
+							onOpen={openNode}
 							paused={paused || until !== null}
 							ready={!data.loading}
 						/>
@@ -1097,6 +1104,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 							layoutRecords={timeRows}
 							selected={selected}
 							onSelect={select}
+							onOpen={openNode}
 							paused={false}
 							playback={playback}
 							focusRequest={focusRequest}
@@ -1460,6 +1468,7 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 											data-parked={node.task?.hibernated ? "true" : undefined}
 											className={`traffic-task-row ${node.key === selected ? "is-selected" : ""} ${node.task?.hibernated ? "is-parked" : ""}`}
 											onClick={() => select(node.key)}
+											onDoubleClick={() => openNode(node.key)}
 										>
 											<b>{nodeSeq(node)}</b>
 											<span className="streamer-private">

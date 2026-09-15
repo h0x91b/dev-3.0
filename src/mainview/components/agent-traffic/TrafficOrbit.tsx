@@ -30,6 +30,8 @@ interface Props {
 	records: TrafficRecord[];
 	selected: string | null;
 	onSelect: (key: string) => void;
+	/** Double-click on a node or its label, same jump the Kanban card makes. */
+	onOpen: (key: string) => void;
 	paused: boolean;
 	ready: boolean;
 }
@@ -371,6 +373,7 @@ export default function TrafficOrbit(props: Props) {
 						label.append(state);
 					}
 					label.onclick = () => latest.current.onSelect(node.key);
+					label.ondblclick = () => latest.current.onOpen(node.key);
 					label.onpointerenter = () => {
 						hovered = node.key;
 						dirty = true;
@@ -489,7 +492,7 @@ export default function TrafficOrbit(props: Props) {
 			startX: number;
 			startY: number;
 		} | null = null;
-		const hitAt = (event: PointerEvent) => {
+		const hitAt = (event: { clientX: number; clientY: number }) => {
 			const bounds = el.getBoundingClientRect();
 			return nodes
 				.map((node) => ({ node, p: gl.project(node.point) }))
@@ -569,6 +572,14 @@ export default function TrafficOrbit(props: Props) {
 					if (hit) latest.current.onSelect(hit.node.key);
 				}
 				drag = null;
+			},
+			{ signal: sig.signal },
+		);
+		el.addEventListener(
+			"dblclick",
+			(event) => {
+				const hit = hitAt(event);
+				if (hit) latest.current.onOpen(hit.node.key);
 			},
 			{ signal: sig.signal },
 		);

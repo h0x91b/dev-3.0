@@ -475,6 +475,29 @@ describe("AgentTrafficScreen live orbit", () => {
 		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", { archived: false });
 	});
 
+	it("opens a task on double-click, from its stage card and its row alike", async () => {
+		setPage([row()]);
+		const onOpenTask = vi.fn();
+		renderLog(onOpenTask);
+		await messageRows(1);
+		const card = screen
+			.getAllByTestId("traffic-node-card")
+			.find((node) => node.getAttribute("aria-label")?.includes("Worker"))!;
+		await userEvent.dblClick(card);
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", {
+			archived: false,
+		});
+		onOpenTask.mockClear();
+		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
+		const inspector = within(screen.getByRole("complementary"));
+		await userEvent.dblClick(
+			await inspector.findByRole("button", { name: /#22 Worker/ }),
+		);
+		expect(onOpenTask).toHaveBeenCalledWith("task-b", "proj-1", {
+			archived: false,
+		});
+	});
+
 	// A completed task has no terminal, so the Active Tasks pane it used to open
 	// was always empty. The flag is what sends it to its board's detail modal.
 	it("marks a completed task's navigation as archived", async () => {
