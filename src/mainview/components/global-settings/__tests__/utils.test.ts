@@ -254,6 +254,8 @@ describe("global-settings utils", () => {
 			{ model: "auto" },
 			{ model: "auto", permissionMode: "bypassPermissions" },
 			{ model: "auto", permissionMode: "plan", effort: "high" },
+			{ model: "auto", effort: "xhigh" },
+			{ model: "gpt-5.6-sol", permissionMode: "bypassPermissions", effort: "xhigh" },
 			{ permissionMode: "acceptEdits" },
 			{ permissionMode: "dontAsk" },
 			{ model: "claude-opus-5", maxBudgetUsd: 12 },

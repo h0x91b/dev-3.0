@@ -401,8 +401,15 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 
 describe("launchArgs — Copilot", () => {
 	it("fresh: model, mode, effort, and the prompt via -i (stays interactive)", () => {
-		expect(launch("copilot", cfg({ model: "auto", permissionMode: "bypassPermissions", effort: "high" })))
-			.toBe("copilot --model auto --allow-all --effort high -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ model: "gpt-5.6-sol", permissionMode: "bypassPermissions", effort: "high" })))
+			.toBe("copilot --model gpt-5.6-sol --allow-all --effort high -i 'Fix the login bug'");
+	});
+	// `copilot --model auto --effort xhigh` exits with
+	// `Model "auto" does not support reasoning effort configuration` and never
+	// starts, so a pane built that way would die on open.
+	it("drops --effort on the auto model, which refuses to launch with it", () => {
+		expect(launch("copilot", cfg({ model: "auto", effort: "xhigh" })))
+			.toBe("copilot --model auto -i 'Fix the login bug'");
 	});
 	it("pre-assigns a session id on a fresh launch and resumes with --resume=", () => {
 		expect(launch("copilot", cfg({ model: "auto" }), { sessionId: "sid" }))

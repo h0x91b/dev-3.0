@@ -52,7 +52,11 @@ export const copilotAdapter: AgentAdapter = {
 		if (config?.permissionMode && config.permissionMode !== "default") {
 			args.push(...(COPILOT_MODE_ARGS[config.permissionMode] ?? []));
 		}
-		if (config?.effort) args.push("--effort", config.effort);
+		// `auto` picks the model per turn, so it has no reasoning setting to carry:
+		// `--model auto --effort xhigh` is refused outright with
+		// `Model "auto" does not support reasoning effort configuration`, and the
+		// launch never starts. Dropping the flag beats a pane that dies on open.
+		if (config?.effort && config.model !== "auto") args.push("--effort", config.effort);
 		// Copilot budgets in AI credits, not dollars, so dev3's maxBudgetUsd has no
 		// honest mapping here and is deliberately dropped rather than guessed.
 

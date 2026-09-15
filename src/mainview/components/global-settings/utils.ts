@@ -197,7 +197,9 @@ export function buildCommandPreview(
 		if (!hasBypassFlag) parts.push("--allow-dangerously-skip-permissions");
 	}
 
-	if (config.effort && !isCursor && !isCodex) {
+	// Copilot refuses `--model auto --effort <level>` outright; the launcher drops
+	// the flag there, so the preview must too.
+	if (config.effort && !isCursor && !isCodex && !(isCopilot && config.model === "auto")) {
 		parts.push("--effort", config.effort);
 	}
 

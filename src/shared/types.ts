@@ -1030,8 +1030,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "copilot-bypass", name: "Bypass (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
 			{ id: "copilot-accept-edits", name: "Accept Edits (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Accept Edits", permissionMode: "acceptEdits", version: 1 },
 			{ id: "copilot-plan", name: "Plan (Auto)", model: "auto", groupLabel: "Auto", modeLabel: "Plan", permissionMode: "plan", version: 1 },
-			{ id: "copilot-bypass-high", name: "Bypass (Auto, High)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass · High", permissionMode: "bypassPermissions", effort: "high", version: 1 },
-			{ id: "copilot-bypass-xhigh", name: "Bypass (Auto, X-High)", model: "auto", groupLabel: "Auto", modeLabel: "Bypass · X-High", permissionMode: "bypassPermissions", effort: "xhigh", version: 1 },
 			// --- Named models (subject to your Copilot plan) ---
 			{ id: "copilot-opus5", name: "Claude Opus 5", model: "claude-opus-5", groupLabel: "Claude Opus 5", modeLabel: "Default", version: 1 },
 			{ id: "copilot-opus5-bypass", name: "Claude Opus 5 (Bypass)", model: "claude-opus-5", groupLabel: "Claude Opus 5", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
@@ -1039,6 +1037,9 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "copilot-sonnet5-bypass", name: "Claude Sonnet 5 (Bypass)", model: "claude-sonnet-5", groupLabel: "Claude Sonnet 5", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
 			{ id: "copilot-gpt56-sol", name: "GPT-5.6 Sol", model: "gpt-5.6-sol", groupLabel: "GPT-5.6 Sol", modeLabel: "Default", version: 1 },
 			{ id: "copilot-gpt56-sol-bypass", name: "GPT-5.6 Sol (Bypass)", model: "gpt-5.6-sol", groupLabel: "GPT-5.6 Sol", modeLabel: "Bypass", permissionMode: "bypassPermissions", version: 1 },
+			// Effort rides a NAMED reasoning model only: `auto` rejects the flag and
+			// refuses to launch at all.
+			{ id: "copilot-gpt56-sol-bypass-xhigh", name: "GPT-5.6 Sol (Bypass, X-High)", model: "gpt-5.6-sol", groupLabel: "GPT-5.6 Sol", modeLabel: "Bypass · X-High", permissionMode: "bypassPermissions", effort: "xhigh", version: 1 },
 			{ id: "copilot-gpt56-luna", name: "GPT-5.6 Luna", model: "gpt-5.6-luna", groupLabel: "GPT-5.6 Luna", modeLabel: "Default", version: 1 },
 			{ id: "copilot-gpt53-codex", name: "GPT-5.3-Codex", model: "gpt-5.3-codex", groupLabel: "GPT-5.3-Codex", modeLabel: "Default", version: 1 },
 			{ id: "copilot-gemini37", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash", groupLabel: "Gemini 3.7 Flash", modeLabel: "Default", version: 1 },

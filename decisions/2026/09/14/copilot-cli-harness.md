@@ -39,6 +39,14 @@ generated hooks file and the real handler, the 27 930-character dev3 protocol
 lands in context — same prompt measured at 14.8k tokens without the
 `DEV3_TASK_ID` guard and 21.3k with it.
 
+**`--effort` is not universal.** `copilot --model auto --effort xhigh` exits with
+`Model "auto" does not support reasoning effort configuration` and never starts —
+`auto` resolves the model per turn, so it carries no reasoning setting. Copilot
+also has no top-level `effortLevel` config key: the only persisted one is
+`subagents.agents.<name>.effortLevel`. Effort is therefore a per-launch flag on a
+named reasoning model, and the adapter drops it on `auto` rather than shipping a
+pane that dies on open.
+
 **Model names are catalog-wide but entitlement is per-account.** The binary's own
 shell-completion script carries 27 model ids; on this account every named one is
 refused with `Model "…" is not available` while `auto` works. Validation happens
@@ -50,7 +58,7 @@ One adapter, `src/shared/agent-adapters/copilot.ts`, registered like every other
 (`registry.ts`, `families.ts`, `AgentFamily`). It launches with `-i` so the pane
 stays interactive, pre-assigns `--session-id <uuid>` and resumes with
 `--resume=<id>`, maps dev3's permission modes onto Copilot's own flags, passes
-`--effort`, and deliberately drops `maxBudgetUsd` — Copilot budgets in AI credits,
+`--effort` (except on `auto`, which refuses it), and deliberately drops `maxBudgetUsd` — Copilot budgets in AI credits,
 not dollars, and a guessed conversion would be a lie.
 
 Status hooks live in `~/.copilot/hooks/dev3.json` (`writeCopilotHooks`), one file
