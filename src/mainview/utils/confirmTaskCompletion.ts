@@ -22,19 +22,22 @@ export function unsavedWorkWarnings(status: BranchStatus | UnsavedWork, t: TFunc
 		);
 	}
 
-	// Unpushed commits (never pushed or local-only)
+	// Unpushed commits (never pushed or local-only). Another ref reaching HEAD
+	// means deleting this branch destroys nothing, so the work is still only
+	// local — worth saying — but it is not about to be lost.
+	const kept = status.preservedOutsideBranch;
 	if (status.unpushed === -1) {
 		if (status.ahead > 0) {
-			warnings.push(t.plural("task.warnNeverPushed", status.ahead));
+			warnings.push(t.plural(kept ? "task.warnUnpushedButKept" : "task.warnNeverPushed", status.ahead));
 		} else if (status.baseUnreachable) {
 			// `ahead` is 0 because it could not be measured, not because the branch
 			// is empty. Dropping the loss warning here would let a branch that is on
 			// no remote be deleted in silence, which is the one outcome the dialog
 			// exists to prevent — so it fires without a count.
-			warnings.push(t("task.warnNeverPushedUnknownCount"));
+			warnings.push(t(kept ? "task.warnUnpushedButKeptUnknownCount" : "task.warnNeverPushedUnknownCount"));
 		}
 	} else if (status.unpushed > 0) {
-		warnings.push(t.plural("task.warnUnpushed", status.unpushed));
+		warnings.push(t.plural(kept ? "task.warnUnpushedButKept" : "task.warnUnpushed", status.unpushed));
 	}
 
 	return warnings;

@@ -162,11 +162,62 @@ describe("confirmTaskCompletion", () => {
 		expect(mockedConfirm.mock.calls[0]![0].message!).toContain("task.warnNeverPushed");
 	});
 
+	/**
+	 * Issue #1684: commits already reachable from another ref survive the branch
+	 * deletion, so the dialog must stop claiming they will be lost — while still
+	 * saying they are unpushed, because a local-only copy is not durable.
+	 */
+	describe("commits kept by another ref (issue #1684)", () => {
+		async function messageFor(overrides: Record<string, unknown>): Promise<string> {
+			mockedBranchStatus.mockResolvedValue({
+				insertions: 0,
+				deletions: 0,
+				mergedByContent: true,
+				...overrides,
+			} as Awaited<ReturnType<typeof api.request.getBranchStatus>>);
+			await confirmTaskCompletion(baseTask, project, "completed", t);
+			return mockedConfirm.mock.calls[0]![0].message!;
+		}
+
+		it("never pushed but kept elsewhere: no loss claim", async () => {
+			const message = await messageFor({ unpushed: -1, ahead: 3, preservedOutsideBranch: true });
+
+			expect(message).toContain("task.warnUnpushedButKept");
+			expect(message).not.toContain("task.warnNeverPushed");
+		});
+
+		it("partially unpushed but kept elsewhere: no loss claim", async () => {
+			const message = await messageFor({ unpushed: 2, ahead: 2, preservedOutsideBranch: true });
+
+			expect(message).toContain("task.warnUnpushedButKept");
+			expect(message).not.toContain("task.warnUnpushed_");
+		});
+
+		it("uncountable commits but kept elsewhere: no loss claim", async () => {
+			const message = await messageFor({
+				unpushed: -1, ahead: 0, baseUnreachable: true, preservedOutsideBranch: true,
+			});
+
+			expect(message).toContain("task.warnUnpushedButKeptUnknownCount");
+			expect(message).not.toContain("task.warnNeverPushedUnknownCount");
+		});
+
+		it("preservation unproven: the loss warning stays loud", async () => {
+			// A failed or timed-out sweep reports false, and false must never be
+			// read as proof that deleting the branch is safe.
+			const message = await messageFor({ unpushed: -1, ahead: 3, preservedOutsideBranch: false });
+
+			expect(message).toContain("task.warnNeverPushed");
+			expect(message).not.toContain("task.warnUnpushedButKept");
+		});
+	});
+
 	describe("alwaysConfirm (one-click quick-complete)", () => {
 		const cleanStatus = {
 			insertions: 0,
 			deletions: 0,
 			unpushed: 0,
+			preservedOutsideBranch: false,
 			ahead: 0,
 			baseUnreachable: false,
 			mergedByContent: false,
