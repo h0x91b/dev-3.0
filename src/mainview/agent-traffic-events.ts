@@ -19,12 +19,29 @@ export const OPEN_AGENT_TRAFFIC_LOG_EVENT = "open-agent-traffic-log";
  */
 export type AgentTrafficOpenScope = "current-project" | "all-projects";
 
-export interface OpenAgentTrafficLogDetail {
-	scope: AgentTrafficOpenScope;
+/**
+ * One endpoint the screen opens with selected, exactly as a click on its card
+ * would leave it: highlighted on the stage, with the inspector beside it.
+ *
+ * Only an arrival that is about a single task carries it (a notification click).
+ * A deliberate entry has no subject and passes nothing, so the screen opens on
+ * the whole scene.
+ */
+export interface AgentTrafficFocus {
+	taskId: string;
+	projectId: string;
 }
 
-export function openAgentTrafficLog(scope: AgentTrafficOpenScope = "current-project"): void {
+export interface OpenAgentTrafficLogDetail {
+	scope: AgentTrafficOpenScope;
+	focus?: AgentTrafficFocus;
+}
+
+export function openAgentTrafficLog(
+	scope: AgentTrafficOpenScope = "current-project",
+	focus?: AgentTrafficFocus,
+): void {
 	window.dispatchEvent(
-		new CustomEvent<OpenAgentTrafficLogDetail>(OPEN_AGENT_TRAFFIC_LOG_EVENT, { detail: { scope } }),
+		new CustomEvent<OpenAgentTrafficLogDetail>(OPEN_AGENT_TRAFFIC_LOG_EVENT, { detail: { scope, focus } }),
 	);
 }

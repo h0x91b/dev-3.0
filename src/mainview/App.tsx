@@ -1740,8 +1740,10 @@ function App() {
 					if (routeRef.current.screen === "agent-traffic") return;
 					// All projects, never the board in view: the message the toast is
 					// about may belong to any board, and seeding the current one hides
-					// exactly the traffic the click was asking to see.
-					openAgentTrafficLog("all-projects");
+					// exactly the traffic the click was asking to see. The RECEIVER
+					// rides along as the screen's subject — the click is about one
+					// task, and it lands the same way clicking that card would.
+					openAgentTrafficLog("all-projects", { taskId, projectId });
 				},
 			});
 		}
@@ -1767,10 +1769,16 @@ function App() {
 	useEffect(() => {
 		function onOpen(event: Event) {
 			if (!getAgentTrafficEnabled()) return;
-			const scope = (event as CustomEvent<OpenAgentTrafficLogDetail>).detail?.scope ?? "current-project";
+			const detail = (event as CustomEvent<OpenAgentTrafficLogDetail>).detail;
+			const scope = detail?.scope ?? "current-project";
 			const scopeProjectId =
 				scope === "all-projects" ? undefined : projectIdForRoute(state.route) ?? undefined;
-			navigate({ screen: "agent-traffic", scopeProjectId });
+			navigate({
+				screen: "agent-traffic",
+				scopeProjectId,
+				focusTaskId: detail?.focus?.taskId,
+				focusProjectId: detail?.focus?.projectId,
+			});
 		}
 		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
@@ -3719,6 +3727,11 @@ function App() {
 				return agentTrafficOn ? (
 					<AgentTrafficScreen
 						projectId={route.scopeProjectId ?? null}
+						focus={
+							route.focusTaskId && route.focusProjectId
+								? { taskId: route.focusTaskId, projectId: route.focusProjectId }
+								: null
+						}
 						onOpenTask={openTaskFromNotification}
 					/>
 				) : null;
