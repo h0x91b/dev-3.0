@@ -268,10 +268,14 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 	});
 });
 
-function renderLog(onOpenTask = vi.fn(), projectId: string | null = "proj-1") {
+function renderLog(
+	onOpenTask = vi.fn(),
+	projectId: string | null = "proj-1",
+	focus: { taskId: string; projectId: string } | null = null,
+) {
 	return render(
 		<I18nProvider>
-			<AgentTrafficScreen projectId={projectId} onOpenTask={onOpenTask} />
+			<AgentTrafficScreen projectId={projectId} focus={focus} onOpenTask={onOpenTask} />
 		</I18nProvider>,
 	);
 }
@@ -2024,6 +2028,50 @@ describe("AgentTrafficScreen project scope", () => {
 		renderLog(vi.fn(), "proj-2");
 		await waitFor(() => expect(scopeName()).toBe("Project Two"));
 		expect(taskStat()).toBe("1");
+	});
+});
+
+// A toast click is about ONE task, and the screen has to land the way clicking
+// that task's card lands: card highlighted, inspector open on its identity.
+// Opening the bare scene left the user hunting for the card the toast named.
+describe("AgentTrafficScreen arrival subject", () => {
+	const detail = () => document.querySelector(".traffic-task-detail");
+
+	it("opens with the named task selected and its inspector showing", async () => {
+		setPage([row()]);
+		renderLog(vi.fn(), null, { taskId: "task-b", projectId: "proj-1" });
+
+		await waitFor(() => expect(detail()?.textContent).toContain("#22"));
+		expect(detail()?.textContent).toContain("Worker");
+		expect(document.querySelector(".traffic-inspector")?.hasAttribute("hidden")).toBe(false);
+		await waitFor(() =>
+			expect(
+				screen.getAllByTestId("traffic-node-card").find((card) => card.className.includes("is-selected"))
+					?.textContent,
+			).toContain("22"),
+		);
+	});
+
+	// The route keeps carrying the same subject while the screen stays open, so a
+	// re-run would snap the selection back every time the user clicked elsewhere.
+	it("lets the user select somebody else afterwards", async () => {
+		setPage([row()]);
+		renderLog(vi.fn(), null, { taskId: "task-b", projectId: "proj-1" });
+		await waitFor(() => expect(detail()?.textContent).toContain("#22"));
+
+		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
+		const sender = await screen.findAllByRole("button", { name: /^#11\b/ });
+		await userEvent.click(sender[0]);
+
+		await waitFor(() => expect(detail()?.textContent).toContain("#11"));
+		expect(detail()?.textContent).not.toContain("#22");
+	});
+
+	it("opens on the whole scene when no task is named", async () => {
+		setPage([row()]);
+		renderLog(vi.fn(), null);
+		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
+		expect(detail()).toBeNull();
 	});
 });
 

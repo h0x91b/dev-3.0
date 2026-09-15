@@ -47,6 +47,7 @@ import {
 	type TrafficTimelineEventKind,
 } from "./traffic-timeline";
 import { useNotificationTraffic } from "./useNotificationTraffic";
+import type { AgentTrafficFocus } from "../../agent-traffic-events";
 import type { TrafficNotificationEvent } from "../../notification-event";
 import {
 	ACTIVE_PROJECTS,
@@ -61,6 +62,12 @@ import "./traffic-nodes.css";
 interface Props {
 	/** The project the user came from; seeds the scope filter, nothing else. */
 	projectId: string | null;
+	/**
+	 * One endpoint to open selected, as if its card had been clicked: highlighted
+	 * on the stage, inspector beside it, camera walked over to it. `null` for a
+	 * deliberate entry, which has no subject.
+	 */
+	focus?: AgentTrafficFocus | null;
 	onOpenTask: (taskId: string, projectId: string, opts?: { archived?: boolean }) => void;
 }
 /**
@@ -346,7 +353,7 @@ const ENTRY_WINDOW = "hour";
 /** What `Live` returns to — unchanged, and deliberately not {@link ENTRY_WINDOW}. */
 const LIVE_WINDOW = "day";
 
-function TrafficView({ projectId, onOpenTask }: Props) {
+function TrafficView({ projectId, focus, onOpenTask }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
 	const [windowSize, setWindowSize] = useState(ENTRY_WINDOW);
@@ -804,6 +811,25 @@ function TrafficView({ projectId, onOpenTask }: Props) {
 		if (!node?.task) return;
 		onOpenTask(node.id, node.projectId, { archived: isArchivedTask(node.task) });
 	}
+	/**
+	 * An arrival that names one task selects it, once.
+	 *
+	 * Once, because the route keeps carrying the same endpoint for as long as the
+	 * screen stays open: re-running would snap the selection back every time the
+	 * user clicked another card. The focus bump walks the camera over to it — the
+	 * node may not be laid out yet, and the stage parks the request until it is.
+	 */
+	const focusKey = focus ? endpointKey(focus.projectId, focus.taskId) : null;
+	const focusedOn = useRef<string | null>(null);
+	useEffect(() => {
+		if (!focusKey || focusedOn.current === focusKey) return;
+		focusedOn.current = focusKey;
+		select(focusKey);
+		setFocusRequest((request) => request + 1);
+		// `select` is re-created every render and only calls setters; the key is what
+		// decides whether this runs.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [focusKey]);
 	function rowButton(item: TrafficRecord) {
 		const row = item.row;
 		return (

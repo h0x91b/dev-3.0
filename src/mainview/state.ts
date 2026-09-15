@@ -59,8 +59,13 @@ export type Route =
 	 * and several call sites read a bare `"projectId" in route` as "the user is
 	 * inside this project", which here would put a project in the breadcrumb and
 	 * in the task switcher's scope.
+	 *
+	 * `focusTaskId`/`focusProjectId` name one endpoint the screen must open with
+	 * selected — an arrival from a notification click, which is about one task, not
+	 * about the screen. Both halves travel together: an endpoint is a task inside a
+	 * project, and the same task id can exist on two boards.
 	 */
-	| { screen: "agent-traffic"; scopeProjectId?: string }
+	| { screen: "agent-traffic"; scopeProjectId?: string; focusTaskId?: string; focusProjectId?: string }
 	| { screen: "gauge-demo" }
 	| { screen: "viewport-lab" }
 	| { screen: "native-pane-layout-lab" };

@@ -182,8 +182,19 @@ vi.mock("../components/ProjectTerminal", () => ({
 // its routing matters — including the scope it is handed, since the real screen
 // seeds its project filter from this prop and `null` means "all active projects".
 vi.mock("../components/agent-traffic/AgentTrafficScreen", () => ({
-	default: ({ projectId }: { projectId: string | null }) => (
-		<div data-testid="agent-traffic-screen" data-scope-project-id={projectId ?? ""} />
+	default: ({
+		projectId,
+		focus,
+	}: {
+		projectId: string | null;
+		focus?: { taskId: string; projectId: string } | null;
+	}) => (
+		<div
+			data-testid="agent-traffic-screen"
+			data-scope-project-id={projectId ?? ""}
+			data-focus-task-id={focus?.taskId ?? ""}
+			data-focus-project-id={focus?.projectId ?? ""}
+		/>
 	),
 }));
 vi.mock("../components/TaskImageViewer", () => ({
@@ -1650,6 +1661,32 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.click(await toastButton());
 
 			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
+		});
+
+		// Opening the screen was only half of it: the click is about ONE task, so the
+		// receiver arrives as the screen's subject and opens selected. Without it the
+		// user landed on the whole scene and had to hunt for the card the toast named.
+		it("hands the receiving task to the screen as its subject", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2", taskId: "t-receiver" });
+
+			await userEvent.click(await toastButton());
+
+			const view = await screen.findByTestId("agent-traffic-screen");
+			expect(view).toHaveAttribute("data-focus-task-id", "t-receiver");
+			expect(view).toHaveAttribute("data-focus-project-id", "p2");
+		});
+
+		// A deliberate entry has no subject: the shortcut must not arrive carrying
+		// whichever task a toast happened to name earlier.
+		it("carries no subject when the screen is opened by the shortcut", async () => {
+			await renderWithBoard();
+			enableTrafficBeta();
+
+			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
+
+			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-focus-task-id", "");
 		});
 
 		// The toast outlives the toggle, so the destination cannot be captured when
