@@ -7,7 +7,7 @@
 
 import { createServer } from "node:net";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
 	ENCRYPTION_KEY_ENV,
 	SESSION_KEY_ENV,
@@ -26,7 +26,8 @@ import type { ModelSidecarStatus, ModelCatalogPreflight } from "../shared/types"
 import { createLogger } from "./logger";
 import { loadModelCatalog, loadOrCreateEncryptionKey, loadProviderKeys } from "./model-catalog-store";
 import { DEV3_HOME } from "./paths";
-import { getDescendantPids } from "./port-scanner";
+import { findPortHolders, getDescendantPids } from "./port-scanner";
+import { terminatePidsVerified } from "./process-reaper";
 import { spawn } from "./spawn";
 
 const log = createLogger("model-sidecar");
@@ -71,6 +72,9 @@ interface RunningSidecar {
 
 let running: RunningSidecar | null = null;
 let starting: Promise<RunningSidecar> | null = null;
+let startingPid: number | undefined;
+let stoppingPid: number | undefined;
+let shuttingDown = false;
 let lastError: string | undefined;
 
 /** Where the bundled binary may sit, mirroring the bundled-tmux layout: inside
@@ -135,6 +139,12 @@ export async function isPortFree(port: number): Promise<boolean> {
 export interface SidecarEndpoint {
 	port: number;
 	sessionKey: string;
+	pid?: number;
+	ownerPid?: number;
+}
+
+function validPid(pid: unknown): pid is number {
+	return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 1;
 }
 
 /** The remembered endpoint, or null when there is none / it is unreadable. */
@@ -145,10 +155,94 @@ export function loadSidecarEndpoint(path = ENDPOINT_PATH): SidecarEndpoint | nul
 		const sessionKey = parsed.sessionKey;
 		if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return null;
 		if (typeof sessionKey !== "string" || !sessionKey.startsWith("sk-bf-")) return null;
-		return { port, sessionKey };
+		return {
+			port, sessionKey,
+			...(validPid(parsed.pid) ? { pid: parsed.pid } : {}),
+			...(validPid(parsed.ownerPid) ? { ownerPid: parsed.ownerPid } : {}),
+		};
 	} catch {
 		return null;
 	}
+}
+
+// A permission error is not evidence that an owner died. Only ESRCH permits reclaim.
+function pidMayBeAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code !== "ESRCH";
+	}
+}
+
+async function inspectText(cmd: string[]): Promise<string> {
+	const proc = spawn(cmd, { stdout: "pipe", stderr: "ignore" });
+	const [text, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+	if (code !== 0) throw new Error("Process inspection failed");
+	return text;
+}
+
+async function isLeakedSidecar(pid: number, remembered: SidecarEndpoint | null): Promise<boolean> {
+	if (!validPid(pid) || !pidMayBeAlive(pid)) return false;
+	if (remembered?.pid === pid && remembered.ownerPid && pidMayBeAlive(remembered.ownerPid)) return false;
+	try {
+		if (process.platform === "win32") throw new Error("Proxy identity inspection is unavailable on Windows");
+		// The shared process tree is cached and reads args. Reaping requires a fresh
+		// comm snapshot: argv inspection is restricted in the packaged app.
+		const table = await inspectText(["ps", "-eo", "pid=,ppid=,comm="]);
+		const row = table.split("\n")
+			.map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/))
+			.find((match) => match && Number(match[1]) === pid);
+		if (!row) throw new Error("Proxy process identity could not be read");
+		if (basename(row[3]) !== "bifrost-http") return false;
+		const parentPid = Number(row[2]);
+		// Protect every live non-init parent, including unfamiliar dev builds and
+		// subreapers. An unreadable parent is not proof of an orphan.
+		if (parentPid !== 1 && (!validPid(parentPid) || pidMayBeAlive(parentPid))) return false;
+		const files = await inspectText(["lsof", "-a", "-p", String(pid), "-Fn"]);
+		const names = new Set(files.split("\n").filter((line) => line.startsWith("n")).map((line) => line.slice(1)));
+		const runtime = realpathSync(RUNTIME_DIR);
+		return names.has(join(runtime, "config.db")) && names.has(join(runtime, "logs.db"));
+	} catch (err) {
+		log.warn("Could not confirm model proxy ownership; leaving the process alone", { pid, error: String(err) });
+		return false;
+	}
+}
+
+/** Reclaim only the first usable address. Other orphans may still serve agents. */
+async function reclaimLeakedSidecar(remembered: SidecarEndpoint | null): Promise<number | undefined> {
+	const ports = [...new Set([DEFAULT_SIDECAR_PORT, ...(remembered ? [remembered.port] : [])])];
+	for (const port of ports) {
+		if (shuttingDown || await isPortFree(port)) return undefined;
+		try {
+			const recorded = remembered?.port === port ? remembered : null;
+			let pid = recorded?.ownerPid ? recorded.pid : undefined;
+			if (!pid || !await isLeakedSidecar(pid, recorded)) {
+				if (process.platform === "win32") {
+					log.warn("Could not confirm model proxy ownership on Windows; leaving the occupied port alone", { port });
+					continue;
+				}
+				const holders = await findPortHolders([port]);
+				const legacyPid = holders[0]?.pid;
+				if (!legacyPid || legacyPid === pid || !await isLeakedSidecar(legacyPid, null)) continue;
+				pid = legacyPid;
+			}
+			// Recheck owner liveness after asynchronous inspection, before signalling.
+			if (shuttingDown || (recorded?.pid === pid && recorded.ownerPid && pidMayBeAlive(recorded.ownerPid))) return undefined;
+			const survivors = await terminatePidsVerified([pid]);
+			if (survivors.length > 0) {
+				log.warn("Leaked model proxy did not exit", { pid, port });
+				return undefined;
+			}
+			await waitForPortRelease(port);
+			log.info("Reclaimed leaked model proxy endpoint", { pid, port });
+			return port;
+		} catch (err) {
+			log.warn("Could not reclaim model proxy endpoint", { port, error: String(err) });
+			return undefined;
+		}
+	}
+	return undefined;
 }
 
 function saveSidecarEndpoint(endpoint: SidecarEndpoint): void {
@@ -248,11 +342,14 @@ async function launchOnce(binary: string, env: Record<string, string>, sessionKe
 		[binary, "-host", "127.0.0.1", "-port", String(port), "-app-dir", RUNTIME_DIR, "-log-level", "warn", "-log-style", "json"],
 		{ env, stdout: "pipe", stderr: "pipe", stdin: "ignore" },
 	);
+	startingPid = proc.pid;
 
 	let exited = false;
 	let self: RunningSidecar | undefined;
 	void proc.exited.then((code) => {
 		exited = true;
+		if (startingPid === proc.pid) startingPid = undefined;
+		if (stoppingPid === proc.pid) stoppingPid = undefined;
 		// A proxy that dies on its own must stop being the one we hand out: without
 		// this every later launch is routed at a dead port and the panel keeps
 		// saying "running", with the Start button hidden behind a Stop.
@@ -307,6 +404,7 @@ async function pumpStream(stream: unknown, push: (chunk: string) => void): Promi
 /** Start the sidecar if it is not up and return its runtime. Concurrent callers
  *  share one start, so two launches cannot race two processes onto two ports. */
 export async function ensureModelSidecar(): Promise<{ baseUrl: string; sessionKey: string }> {
+	if (shuttingDown) throw new Error("The model proxy is shutting down.");
 	if (running) return { baseUrl: running.baseUrl, sessionKey: running.sessionKey };
 	if (!starting) starting = startSidecar().finally(() => (starting = null));
 	const instance = await starting;
@@ -341,6 +439,7 @@ async function startSidecar(): Promise<RunningSidecar> {
 	// Reuse the last endpoint: an agent's base URL and token are baked into its
 	// launch env, so a fresh port or key would strand every running session.
 	const remembered = loadSidecarEndpoint();
+	const reclaimedPort = await reclaimLeakedSidecar(remembered);
 	const sessionKey = remembered?.sessionKey ?? `sk-bf-${randomSecret(24)}`;
 	const env = buildSidecarEnv(catalog, loadProviderKeys(), {
 		sessionKey,
@@ -350,8 +449,11 @@ async function startSidecar(): Promise<RunningSidecar> {
 	let failure: unknown;
 	for (let attempt = 1; attempt <= START_ATTEMPTS; attempt += 1) {
 		try {
-			const port = await choosePort(attempt, remembered);
+			if (shuttingDown) throw new Error("The model proxy is shutting down.");
+			const port = attempt === 1 && reclaimedPort !== undefined ? reclaimedPort : await choosePort(attempt, remembered);
+			if (shuttingDown) throw new Error("The model proxy is shutting down.");
 			const instance = await launchOnce(binary, env, sessionKey, port);
+			if (shuttingDown) throw new Error("The model proxy is shutting down.");
 			// It can die between answering /health and getting here (a bad provider
 			// config it only notices on the first request, a stolen port, an OOM).
 			// Its own exit handler cannot clean that up — it never saw this instance
@@ -359,17 +461,32 @@ async function startSidecar(): Promise<RunningSidecar> {
 			// forever with every launch routed at a dead port.
 			if (instance.hasExited()) throw new Error(`The model proxy exited right after starting.\n${instance.output()}`.trim());
 			running = instance;
-			saveSidecarEndpoint({ port: instance.port, sessionKey });
+			if (startingPid === instance.pid) startingPid = undefined;
+			saveSidecarEndpoint({ port: instance.port, sessionKey, pid: instance.pid, ownerPid: process.pid });
 			lastError = undefined;
 			log.info("Model proxy started", { pid: instance.pid, port: instance.port, attempt });
 			return instance;
 		} catch (err) {
 			failure = err;
+			if (shuttingDown) break;
 			log.warn("Model proxy start attempt failed", { attempt, error: String(err) });
 		}
 	}
 	lastError = String(failure instanceof Error ? failure.message : failure);
 	throw new Error(lastError);
+}
+
+/** Quit cannot await imports, health checks or descendant scans. */
+export function killModelSidecarNow(): void {
+	shuttingDown = true;
+	for (const pid of new Set([running?.pid, startingPid, stoppingPid])) {
+		if (!validPid(pid)) continue;
+		try {
+			process.kill(pid, "SIGTERM");
+		} catch {
+			/* already gone or not permitted; shutdown must not throw */
+		}
+	}
 }
 
 /** Bring the proxy up at app start, so the catalog is a place you configure
@@ -409,6 +526,7 @@ export async function stopModelSidecar(): Promise<void> {
 	// the start path calls stop, so waiting here cannot deadlock.
 	if (starting) await starting.catch(() => undefined);
 	const instance = running;
+	stoppingPid = instance?.pid ?? stoppingPid;
 	running = null;
 	// Stopping on purpose dismisses whatever went wrong before — otherwise a proxy
 	// that died on its own keeps showing its exit message after the user turned it

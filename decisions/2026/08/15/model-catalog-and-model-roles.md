@@ -136,6 +136,8 @@ is written literally — it is a URL, not a credential.
 
 ## Follow-up: the endpoint is remembered, not fresh per start
 
+Superseded on 2026-09-13 by `decisions/2026/09/13/model-proxy-dies-with-the-app.md`: a squatter may be our own orphan, so verify ownership and reclaim only the address the replacement will take before falling back.
+
 The first implementation picked a fresh ephemeral port and a fresh session key on every start,
 described as a per-run secret. That is wrong for a sidecar other processes talk to: an agent's
 `ANTHROPIC_BASE_URL` and token are baked into its launch environment, so restarting the app —

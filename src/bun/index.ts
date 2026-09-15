@@ -44,6 +44,7 @@ import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
+import { killModelSidecarNow } from "./model-sidecar";
 import { installAgentSkills } from "./agent-skills";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { ensureCodexConfigFile } from "./codex-config";
@@ -823,7 +824,7 @@ function runGlobalQuitCleanup(): void {
 	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
 	// The model-catalog proxy dies with the app — an orphan would keep holding a
 	// loopback port and the user's provider keys in memory.
-	import("./model-sidecar").then(({ stopModelSidecar }) => stopModelSidecar()).catch(() => { /* shutdown — best-effort */ });
+	try { killModelSidecarNow(); } catch (err) { log.warn("killModelSidecarNow failed", { error: String(err) }); }
 }
 
 // Terminal/OS signals (Ctrl+C in `bun run dev`, kill, shutdown) bypass the
