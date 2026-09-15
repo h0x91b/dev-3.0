@@ -38,9 +38,12 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"gemini-3-flash-preview": "Gemini 3 Flash",
 	"gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
 	// Cursor Agent
-	"opus-4.6-thinking": "Opus 4.6",
-	"gpt-5.3-codex-high": "GPT-5.3 Codex",
-	"gemini-3.1-pro": "Gemini 3.1 Pro",
+	"claude-opus-5-thinking-high": "Opus 5",
+	"claude-sonnet-5-thinking-high": "Sonnet 5",
+	"gpt-5.6-sol-xhigh": "GPT-5.6 Sol",
+	"cursor-grok-4.6-high-fast": "Grok 4.6",
+	"gemini-3.7-flash-high": "Gemini 3.7 Flash",
+	"gemini-3.8-flash-high": "Gemini 3.8 Flash",
 	"composer-2.5": "Composer 2.5",
 	// OpenCode (namespaced)
 	"anthropic/claude-opus-4-6": "Opus 4.6",

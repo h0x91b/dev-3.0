@@ -108,6 +108,41 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"codex-5.6-luna-low",
 ]);
 
+/** A model slug dev3 once shipped on a built-in Cursor preset, which the Cursor
+ *  CLI has since retired — a launch on one dies with `Cannot use this model`.
+ *
+ *  A version bump is the blunt instrument for this and it throws away whatever
+ *  the user chose themselves, so Cursor presets carry no version. Instead a
+ *  stored value is replaced only when it still equals, byte for byte, the value
+ *  dev3 put there. `name` is matched separately from `model`: a preset the user
+ *  renamed keeps its name even while its dead model is refreshed. */
+interface RetiredPresetDefault {
+	agentId: string;
+	configId: string;
+	model: string;
+	name: string;
+}
+
+const RETIRED_CURSOR_PRESET_DEFAULTS: RetiredPresetDefault[] = [
+	{ agentId: "builtin-cursor", configId: "cursor-default", model: "opus-4.6-thinking", name: "Default (Opus 4.6)" },
+	{ agentId: "builtin-cursor", configId: "cursor-plan", model: "opus-4.6-thinking", name: "Plan (Opus 4.6)" },
+	{ agentId: "builtin-cursor", configId: "cursor-plan-then-bypass", model: "opus-4.6-thinking", name: "Plan then Bypass (Opus 4.6)" },
+	{ agentId: "builtin-cursor", configId: "cursor-yolo", model: "opus-4.6-thinking", name: "YOLO (Opus 4.6)" },
+	{ agentId: "builtin-cursor", configId: "cursor-gpt", model: "gpt-5.3-codex-high", name: "GPT-5.3 Codex High" },
+	{ agentId: "builtin-cursor", configId: "cursor-yolo-gpt", model: "gpt-5.3-codex-high", name: "YOLO GPT-5.3 Codex" },
+	{ agentId: "builtin-cursor", configId: "cursor-gemini", model: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+];
+
+const retiredByKey = new Map(
+	RETIRED_CURSOR_PRESET_DEFAULTS.map((r) => [`${r.agentId}::${r.configId}`, r]),
+);
+
+/** The retired default for this exact agent + preset pair, or undefined. A
+ *  user-created configuration never matches: its id is absent from the map. */
+function retiredDefaultFor(agentId: string, configId: string): RetiredPresetDefault | undefined {
+	return retiredByKey.get(`${agentId}::${configId}`);
+}
+
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
  *  Stored order is preserved (user can drag-reorder agents and configs).
  *  Newly added defaults (agents or configs) are appended at the end so they
@@ -166,6 +201,14 @@ function mergeAgentWithDefault(
 			delete userOverrides.modeLabel;
 			delete userOverrides.name;
 			delete userOverrides.version;
+		} else {
+			// Drop a retired shipped value so the refreshed default shows through.
+			// Anything the user typed themselves fails the equality check and stays.
+			const retired = retiredDefaultFor(def.id, storedCfg.id);
+			if (retired) {
+				if (storedCfg.model === retired.model) delete userOverrides.model;
+				if (storedCfg.name === retired.name) delete userOverrides.name;
+			}
 		}
 
 		return { ...defCfg, ...userOverrides };

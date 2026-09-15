@@ -972,14 +972,28 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		isDefault: true,
 		installCommand: "npm install -g cursor-agent",
 		installUrl: "https://github.com/nicepkg/cursor-agent",
+		// Cursor bakes effort/thinking/fast into the model id itself, so every id
+		// below is a whole catalog slug. Only ids observed in a real
+		// `cursor-agent models` run are listed — never a slug built by combining
+		// a family with an effort suffix.
+		// These presets deliberately carry no `version`: a version bump discards a
+		// user's own model and name, and stale Cursor ids are refreshed instead by
+		// RETIRED_CURSOR_PRESET_DEFAULTS (src/bun/agents.ts), which only replaces a
+		// value dev3 itself shipped.
 		configurations: [
-			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
-			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },
-			{ id: "cursor-plan-then-bypass", name: "Plan then Bypass (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan", additionalArgs: ["--force"] },
-			{ id: "cursor-yolo", name: "YOLO (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "bypassPermissions" },
-			{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
-			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.3 Codex", model: "gpt-5.3-codex-high", permissionMode: "bypassPermissions" },
-			{ id: "cursor-gemini", name: "Gemini 3.1 Pro", model: "gemini-3.1-pro" },
+			{ id: "cursor-default", name: "Default (Opus 5)", model: "claude-opus-5-thinking-high" },
+			{ id: "cursor-plan", name: "Plan (Opus 5)", model: "claude-opus-5-thinking-high", permissionMode: "plan" },
+			{ id: "cursor-plan-then-bypass", name: "Plan then Bypass (Opus 5)", model: "claude-opus-5-thinking-high", permissionMode: "plan", additionalArgs: ["--force"] },
+			{ id: "cursor-yolo", name: "YOLO (Opus 5)", model: "claude-opus-5-thinking-high", permissionMode: "bypassPermissions" },
+			{ id: "cursor-sonnet-5", name: "Sonnet 5", model: "claude-sonnet-5-thinking-high" },
+			{ id: "cursor-gpt", name: "GPT-5.6 Sol X-High", model: "gpt-5.6-sol-xhigh" },
+			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.6 Sol", model: "gpt-5.6-sol-xhigh", permissionMode: "bypassPermissions" },
+			{ id: "cursor-grok-4-6", name: "Grok 4.6 Fast", model: "cursor-grok-4.6-high-fast" },
+			{ id: "cursor-gemini", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash-high" },
+			// Cursor docs list Gemini 3.8 Flash, but no `cursor-agent models` dump
+			// we can attribute spells its slug out — this one follows the verified
+			// 3.7 shape. Requested explicitly; treat as unverified.
+			{ id: "cursor-gemini-3-8", name: "Gemini 3.8 Flash", model: "gemini-3.8-flash-high" },
 			{ id: "cursor-composer-2-5", name: "Composer 2.5", model: "composer-2.5" },
 		],
 		defaultConfigId: "cursor-default",

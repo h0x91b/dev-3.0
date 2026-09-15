@@ -1120,6 +1120,75 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(mergedCodex.configurations.some((config) => interimIds.includes(config.id))).toBe(false);
 	});
 
+	describe("retired Cursor preset models", () => {
+		const cursorDef = () => DEFAULT_AGENTS.find((a) => a.id === "builtin-cursor")!;
+
+		/** A stored board as it looked before the refresh, with the shipped values
+		 *  of the day, plus whatever extra configurations a test needs. */
+		function storedCursor(configs: AgentConfiguration[]): CodingAgent[] {
+			return [{ ...cursorDef(), configurations: configs }];
+		}
+		function mergedCursor(stored: CodingAgent[]) {
+			return mergeWithDefaults(stored).find((a) => a.id === "builtin-cursor")!;
+		}
+
+		it("refreshes a stale shipped model onto the current default", () => {
+			const merged = mergedCursor(storedCursor([
+				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
+				{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
+				{ id: "cursor-gemini", name: "Gemini 3.1 Pro", model: "gemini-3.1-pro" },
+			]));
+
+			expect(merged.configurations.find((c) => c.id === "cursor-default")?.model).toBe("claude-opus-5-thinking-high");
+			expect(merged.configurations.find((c) => c.id === "cursor-gpt")?.model).toBe("gpt-5.6-sol-xhigh");
+			expect(merged.configurations.find((c) => c.id === "cursor-gemini")?.model).toBe("gemini-3.7-flash-high");
+		});
+
+		it("keeps a model the user changed by hand on a built-in preset", () => {
+			const merged = mergedCursor(storedCursor([
+				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "cursor-grok-4.6-xhigh" },
+			]));
+
+			expect(merged.configurations.find((c) => c.id === "cursor-default")?.model).toBe("cursor-grok-4.6-xhigh");
+		});
+
+		it("keeps a name the user changed by hand while still refreshing the dead model", () => {
+			const merged = mergedCursor(storedCursor([
+				{ id: "cursor-default", name: "My Cursor", model: "opus-4.6-thinking" },
+			]));
+			const cfg = merged.configurations.find((c) => c.id === "cursor-default")!;
+
+			expect(cfg.name).toBe("My Cursor");
+			expect(cfg.model).toBe("claude-opus-5-thinking-high");
+		});
+
+		it("leaves a user-created configuration alone even when it holds a retired slug", () => {
+			const merged = mergedCursor(storedCursor([
+				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
+				{ id: "my-own-preset", name: "Mine", model: "opus-4.6-thinking" },
+			]));
+			const mine = merged.configurations.find((c) => c.id === "my-own-preset")!;
+
+			expect(mine.model).toBe("opus-4.6-thinking");
+			expect(mine.name).toBe("Mine");
+		});
+
+		it("is idempotent — a second load changes nothing", () => {
+			const once = mergedCursor(storedCursor([
+				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
+				{ id: "cursor-yolo", name: "Renamed", model: "composer-2.5" },
+				{ id: "my-own-preset", name: "Mine", model: "opus-4.6-thinking" },
+			]));
+			const twice = mergedCursor([once]);
+
+			expect(twice.configurations).toEqual(once.configurations);
+		});
+
+		it("no Cursor preset carries a version, so no bump can overwrite a user's edits", () => {
+			expect(cursorDef().configurations.every((c) => c.version === undefined)).toBe(true);
+		});
+	});
+
 	it("upgrades the previous Codex default to Astra Medium and puts Astra first", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const stored: CodingAgent[] = [{
