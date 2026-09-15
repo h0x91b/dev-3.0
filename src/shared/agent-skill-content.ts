@@ -122,11 +122,11 @@ const SKILL_COMPLETION_REQUEST = `
 
 \`dev3 task move --status completed\` does NOT complete anything directly — it opens an approval dialog and **blocks for up to 10 minutes**:
 
-- **Approved** → the task completes; this worktree and terminal session are destroyed immediately.
+- **Approved** → the agent is asked to quit first (\`/exit\`; SessionEnd hooks run, 30 s bound), then this worktree and terminal session are destroyed.
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
-- **Timeout** → the dialog may still be open; a later approval completes and destroys it.
+- **Timeout** → the dialog may still be open; a later approval completes it.
 
-**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is safely preserved in the destination the task requires — usually a PR merged into \`main\`, but possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` asks the same way.
+**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` asks the same way.
 
 ${skillPrLinkInstruction()}
 `;
@@ -140,9 +140,9 @@ A plan spanning multiple PRs, or including post-deploy verification or productio
 const SKILL_NOTES = `
 ## Notes (per-task scratchpad) — your gift to future agents
 
-\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task destroys the worktree, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter — the project's long-term memory.
+\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task destroys the worktree, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter.
 
-Write one when you **dug up something non-obvious** (root cause, how subsystems really talk, why a thing is built that way), **learned an undocumented invariant or dependency gotcha**, **burned time on a wrong assumption** (spell out the correct path), or **made a real decision** (what you rejected and why). Lean toward writing when in doubt, but never log trivia derivable from the diff or git history. The bar: *"would this save a future agent real time?"* One insight per note, self-contained, readable months later.
+Write one when you **dug up something non-obvious** (root cause, how subsystems really talk, why a thing is built that way), **learned an undocumented invariant or dependency gotcha**, **burned time on a wrong assumption** (spell out the correct path), or **made a real decision** (what you rejected and why). Lean toward writing when in doubt; never log trivia derivable from the diff or git history. The bar: *"would this save a future agent real time?"* One insight per note, self-contained, readable months later.
 
 \`dev3 note list\` truncates to one line, \`dev3 note show <id>\` (8-char prefix) prints the full body, and \`dev3 task show --notes --history\` explains a *neighbouring* task without its worktree.
 

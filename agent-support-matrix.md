@@ -50,6 +50,7 @@ Last updated: 2026-09-20
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) | Yes (one generated extension loaded with `--hook`) |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Automatic via the status extension, `user-questions` included (`tool_approval_requested`) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) |
+| **Graceful exit before teardown** (`exitProgram`) | Ctrl-C, `/exit`, Enter — SessionEnd hooks run | Ctrl-C, `/exit`, Enter | Ctrl-C, `/quit`, Enter | Ctrl-C, `/quit`, Enter | Ctrl-C, `/exit`, Enter | Ctrl-C, `/exit`, Enter | Ctrl-C, `/exit`, Enter |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
 
 ## Status Hooks
