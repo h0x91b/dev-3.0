@@ -506,6 +506,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "simplify-mode",
+		category: "system",
+		titleKey: "settings.simplifyMode",
+		descriptionKey: "settings.simplifyModeDesc",
+		anchor: "simplify-mode",
+		globalField: "hiddenControls",
+		storage: "global",
+	},
+	{
 		id: "experimental-terminal-bidi",
 		category: "system",
 		titleKey: "settings.terminalBidi",
@@ -589,6 +598,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentBinaryPaths",
 	"agentCustomBinaryPaths",
 	"experimentalTerminalBidi",
+	"hiddenControls",
 	"experimentalAgentTraffic",
 	"agentTrafficExperiment",
 	"playSoundOnTaskComplete",

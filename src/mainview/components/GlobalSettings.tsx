@@ -56,6 +56,8 @@ import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
 import type { SettingsPresetTarget, SettingsSectionId } from "../state";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
+import { applySimplifyViewPreset, unapplySimplifyViewPreset } from "../hidden-controls";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import {
 	filterSettingsEntries,
@@ -140,12 +142,25 @@ function GlobalSettings({
 	// machine has no zsh before anyone has looked.
 	const [shellAvailability, setShellAvailability] = useState<ShellAvailability | null>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// The "keyboard-shortcut-editor" control (§5.10) hides the Keyboard category
+	// — the ⌘/ reference overlay is a different surface and stays reachable.
+	const keyboardEditorHidden = useIsControlHidden("keyboard-shortcut-editor");
+	const visibleSettingsCategories = keyboardEditorHidden
+		? SETTINGS_CATEGORIES.filter((category) => category.id !== "keyboard")
+		: SETTINGS_CATEGORIES;
 	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
 		normalizeSettingsCategoryId(section),
 	);
 	const [mobileCategory, setMobileCategory] = useState<SettingsCategoryId | null>(
 		() => (section ? normalizeSettingsCategoryId(section) : null),
 	);
+	useEffect(() => {
+		if (keyboardEditorHidden && activeCategory === "keyboard") {
+			// Fall back into the currently visible list, not the unfiltered one —
+			// correct today only because "appearance" happens never to be hidden.
+			setActiveCategory(visibleSettingsCategories[0].id);
+		}
+	}, [keyboardEditorHidden, activeCategory, visibleSettingsCategories]);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [pendingAnchor, setPendingAnchor] = useState<string | null>(anchor ?? null);
 	// A deep-link that names a preset, held until the agents list has loaded and
@@ -160,9 +175,17 @@ function GlobalSettings({
 	const pendingAgentsSaveRef = useRef<CodingAgent[] | null>(null);
 	const agentsSaveInFlightRef = useRef(false);
 
+	const visibleCategoryIds = useMemo(
+		() => new Set(visibleSettingsCategories.map((category) => category.id)),
+		[visibleSettingsCategories],
+	);
+	// Search is an entry point like the palette and the native menu (§5.10
+	// finding #2): a hidden category's rows must not surface here either, or
+	// picking one lands the user on a category the reset effect bounces away
+	// from with no explanation.
 	const filteredSettingsEntries = useMemo(
-		() => filterSettingsEntries(searchQuery, t),
-		[searchQuery, t],
+		() => filterSettingsEntries(searchQuery, t).filter((entry) => visibleCategoryIds.has(entry.category)),
+		[searchQuery, t, visibleCategoryIds],
 	);
 	const groupedSearchResults = useMemo(
 		() => groupSettingsEntriesByCategory(filteredSettingsEntries),
@@ -652,6 +675,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleSimplifyModeToggle = useCallback((enabled: boolean) => {
+		// The preset writes/removes ids in the hidden-controls set directly
+		// (hidden-controls.ts owns persistence for every hide/restore action,
+		// not just this one) — there is no separate `simplifyMode` field to
+		// patch through the Settings screen's own local state.
+		if (enabled) applySimplifyViewPreset();
+		else unapplySimplifyViewPreset();
+		trackEvent("settings_changed", { setting: "simplify_mode", value: String(enabled) });
+	}, []);
+
 	const handlePxpipeProxyToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -971,6 +1004,7 @@ function GlobalSettings({
 							globalSettings={globalSettings}
 							onTerminalBidiToggle={handleTerminalBidiToggle}
 							onAgentTrafficToggle={handleAgentTrafficToggle}
+							onSimplifyModeToggle={handleSimplifyModeToggle}
 						/>
 						<DeveloperToolsSection
 							t={t}
@@ -1010,11 +1044,12 @@ function GlobalSettings({
 	}, []);
 
 	const selectedCategory =
-		SETTINGS_CATEGORIES.find((category) => category.id === activeCategory) ??
-		SETTINGS_CATEGORIES[0];
+		visibleSettingsCategories.find((category) => category.id === activeCategory) ??
+		visibleSettingsCategories[0];
 	const settingsNavigation = (
 		<SettingsNavigation
 			t={t}
+			categories={visibleSettingsCategories}
 			activeCategory={activeCategory}
 			query={searchQuery}
 			narrow={narrow}
@@ -1061,7 +1096,11 @@ function GlobalSettings({
 								{t(selectedCategory.descriptionKey)}
 							</p>
 						</div>
-						<div className="space-y-8">{renderCategoryPage(activeCategory)}</div>
+						{/* Body reads the same resolved id as the heading above it (§5.10
+					    finding #3) — `activeCategory` alone could name a category the
+					    fallback effect hasn't caught up to yet, painting one frame of
+					    the wrong page under the right heading, or vice versa. */}
+					<div className="space-y-8">{renderCategoryPage(selectedCategory.id)}</div>
 					</>
 				)}
 			</div>
@@ -1088,6 +1127,7 @@ function GlobalSettings({
 
 function SettingsNavigation({
 	t,
+	categories,
 	activeCategory,
 	query,
 	narrow,
@@ -1097,6 +1137,7 @@ function SettingsNavigation({
 	onSearchResult,
 }: {
 	t: TFunction;
+	categories: readonly (typeof SETTINGS_CATEGORIES)[number][];
 	activeCategory: SettingsCategoryId;
 	query: string;
 	narrow: boolean;
@@ -1152,7 +1193,7 @@ function SettingsNavigation({
 					/>
 				) : (
 					<ul className="space-y-1">
-						{SETTINGS_CATEGORIES.map((category) => (
+						{categories.map((category) => (
 							<li key={category.id}>
 								<button
 									type="button"

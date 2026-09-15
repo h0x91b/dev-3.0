@@ -1,4 +1,5 @@
 import { getAgentTrafficEnabled } from "./agent-traffic-flag";
+import { isControlHidden } from "./hidden-controls";
 import type { TranslationKey } from "./i18n/translations/en";
 import type { TipState } from "../shared/types";
 import type { SettingsRouteSectionId } from "./settings-registry";
@@ -1011,7 +1012,7 @@ function availableTips(state: TipState, now: number): Tip[] {
 	return ALL_TIPS.filter((t) => {
 		// Never advertise a feature the user has switched off — the tip would tell
 		// them to press a shortcut that does nothing.
-		if (t.id === "agent-traffic-log" && !getAgentTrafficEnabled()) return false;
+		if (t.id === "agent-traffic-log" && (!getAgentTrafficEnabled() || isControlHidden("agent-traffic"))) return false;
 		const lastSeen = state.seen[t.id];
 		if (!lastSeen) return true;
 		return now - lastSeen > COOLDOWN_MS;

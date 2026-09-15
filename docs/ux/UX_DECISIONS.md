@@ -10,9 +10,19 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-09-15 — Simplify View becomes a preset over per-control hiding
+
+Real review feedback: a single `simplifyMode` boolean over a hardcoded list doesn't scale or self-document new features. Rework: `GlobalSettings.hiddenControls` is one set of ids any control writes into (right-click Hide, or a touch Hide row); Simplify View unions a closed preset into it. A Settings checklist page was considered and rejected — right-click-in-place plus one restore control per container reads location, a checklist page does not. Bible §5.10 / yaml `simplify_mode`, now `Observed`.
+
 ## 2026-09-12 — Traffic terminal is an observation
 
 Bible 5.9 + yaml; `decisions/2026/09/12/traffic-terminal-snapshot-is-text.md`.
+
+2026-09-14 — Add-agent/Setup-Dev-Server hide-list corrections. Superseded 2026-09-15 by the per-control rework — bible §5.10.
+
+2026-09-14 — Simplify mode's hide-list widened to inspector power tools. Superseded 2026-09-15 — bible §5.10.
+
+2026-09-14 — Simplify mode subsumes Advanced Experience (single-boolean design). Superseded 2026-09-15 by the per-control preset rework — bible §5.10.
 
 ## 2026-09-12 — The traffic inspector may send one short message
 

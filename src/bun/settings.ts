@@ -57,6 +57,13 @@ function sanitizeShortcutOverrides(raw: unknown): GlobalSettings["keyboardShortc
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** Dedupe, drop non-strings and blanks; empty result collapses to undefined like every other unset field. */
+function sanitizeHiddenControls(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const ids = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
+	return ids.length > 0 ? ids : undefined;
+}
+
 /**
  * `provider: "custom"` survives even with a blank command: the user's choice
  * to leave Cloudflare must fail closed (no tunnel starts, the UI says the
@@ -207,6 +214,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 				: undefined,
 		// Default-off beta toggle — only an explicit true is a stored opt-in.
 		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
+		// Per-control hiding (§5.10): an opaque set of ids, deduped, absent when
+		// empty. Unknown ids are harmless (absent id = visible), so no allowlist
+		// against the registry — a future rename just orphans the old string.
+		hiddenControls: sanitizeHiddenControls(d.hiddenControls),
 		// Default-on beta toggle — both booleans are stored, because an explicit
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:

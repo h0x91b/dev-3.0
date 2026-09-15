@@ -343,11 +343,19 @@ export interface MenuContext {
 	/** A terminal is visible on screen (task / project-terminal). */
 	hasTerminal: boolean;
 	/**
-	 * The agent-traffic beta is on. Unlike the three above this HIDES its items
-	 * rather than greying them: an off feature must leave no trace, and a
-	 * permanently disabled row is a trace.
+	 * The agent-traffic beta is on AND the "agent-traffic" control is not in the
+	 * hidden-controls set. Unlike the three above this HIDES its items rather
+	 * than greying them: an off/hidden feature must leave no trace, and a
+	 * permanently disabled row is a trace. The caller (App.tsx) combines both
+	 * conditions — this field carries the single already-resolved answer.
 	 */
 	agentTrafficEnabled?: boolean;
+	/**
+	 * The "stats-nav" control is in the hidden-controls set (PRODUCT_UX_BIBLE.md
+	 * §5.10 — typically via the Simplify View preset). Same HIDE-not-grey
+	 * treatment: it removes the Stats nav row from this menu.
+	 */
+	statsNavHidden?: boolean;
 }
 
 export const EMPTY_MENU_CONTEXT: MenuContext = {
@@ -355,6 +363,7 @@ export const EMPTY_MENU_CONTEXT: MenuContext = {
 	hasProject: false,
 	hasTerminal: false,
 	agentTrafficEnabled: false,
+	statsNavHidden: false,
 };
 
 const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
@@ -505,6 +514,12 @@ const SEP: ApplicationMenuItemConfig = { type: "separator" };
 function agentTrafficItems(): ApplicationMenuItemConfig[] {
 	if (!currentContext.agentTrafficEnabled) return [];
 	return [item({ label: "Agent Traffic (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog })];
+}
+
+/** The Stats nav row, absent while Simplify mode hides it (§5.10). */
+function statsMenuItems(): ApplicationMenuItemConfig[] {
+	if (currentContext.statsNavHidden) return [];
+	return [item({ label: "Show Productivity Stats", action: MENU_ACTIONS.viewStats })];
 }
 
 function appMenu(): ApplicationMenuItemConfig {
@@ -664,7 +679,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 			SEP,
 			item({ label: "Show Dashboard", action: MENU_ACTIONS.viewDashboard }),
 			item({ label: "Show Kanban", action: MENU_ACTIONS.viewKanban }),
-			item({ label: "Show Productivity Stats", action: MENU_ACTIONS.viewStats }),
+			...statsMenuItems(),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),
 			item({ label: "Show Tips", action: MENU_ACTIONS.viewTips }),
 			...agentTrafficItems(),

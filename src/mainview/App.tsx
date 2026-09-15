@@ -55,6 +55,9 @@ import {
 } from "./agent-traffic-events";
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
 import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
+import { isControlHidden, syncHiddenControlsFromGlobalSettings } from "./hidden-controls";
+import { useIsControlHidden } from "./hooks/useIsControlHidden";
+import { syncGlobalSettingsCache } from "./global-settings-cache";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -139,6 +142,17 @@ type RemoteAccessQRData = {
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
 	return tunnelState === "starting" || tunnelState === "connected";
+}
+
+/**
+ * Combines the agent-traffic beta flag with its own hidden-controls id
+ * (§5.10). A plain function, not a hook — deliberately, so it can be read
+ * inside event handlers and other non-render call sites without either flag
+ * having to know the other exists (see the coupling this replaced in
+ * agent-traffic-flag.ts).
+ */
+function isAgentTrafficVisible(): boolean {
+	return getAgentTrafficEnabled() && !isControlHidden("agent-traffic");
 }
 
 /** Parse a 1–9 project index from a physical digit code (`"Digit3"` → 3), layout-independent. */
@@ -281,13 +295,21 @@ function App() {
 	// the flag also has to reach registries that are not components, so the module
 	// mirror is the single source and this just re-renders when it flips.
 	const agentTrafficOn = useAgentTrafficEnabled();
+	const agentTrafficHidden = useIsControlHidden("agent-traffic");
+	const statsNavHidden = useIsControlHidden("stats-nav");
 	const menuContext = useMemo(() => {
 		const r = state.route;
 		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
 		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
 		const hasTerminal = r.screen === "task" || r.screen === "project-terminal";
-		return { hasTask, hasProject, hasTerminal, agentTrafficEnabled: agentTrafficOn };
-	}, [state.route, agentTrafficOn]);
+		return {
+			hasTask,
+			hasProject,
+			hasTerminal,
+			agentTrafficEnabled: agentTrafficOn && !agentTrafficHidden,
+			statsNavHidden,
+		};
+	}, [state.route, agentTrafficOn, agentTrafficHidden, statsNavHidden]);
 
 	// Push the current MenuContext to the bun side on every route change so the
 	// native menu can grey out task / project / terminal items that don't apply.
@@ -1307,7 +1329,7 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
-			} else if (matchesShortcut(e, "agent-traffic-log") && getAgentTrafficEnabled()) {
+			} else if (matchesShortcut(e, "agent-traffic-log") && isAgentTrafficVisible()) {
 				// Reachable from wherever the user is, including a focused terminal. Read
 				// through the module getter so the beta flag needs no effect re-bind.
 				// Pressed again ON the screen it steps back, so the one key both opens and
@@ -1439,7 +1461,9 @@ function App() {
 			} else if (matchesShortcut(e, "task-hints")) {
 				// Vimium-style hint navigation. Works on any screen that has hint
 				// targets ([data-hint-id]); the overlay self-closes if nothing is
-				// actually visible (e.g. a modal covers the board).
+				// actually visible (e.g. a modal covers the board). Never hideable
+				// (§5.10 §2.5) — it has no visible anchor to right-click and no row
+				// to restore, so gating it here would silently dead-key ⌘/'s advert.
 				if (!document.querySelector("[data-hint-id]")) return;
 				e.preventDefault();
 				e.stopPropagation();
@@ -1625,6 +1649,15 @@ function App() {
 		syncAgentTrafficFromGlobalSettings(globalSettings);
 	}, [globalSettings]);
 
+	// The hidden-controls set (§5.10) — same reasoning, plus it needs the FULL
+	// settings object cached so hide/restore/preset actions fired from anywhere
+	// (a right-click on a task card, say) can patch-and-save without owning
+	// Settings screen state.
+	useEffect(() => {
+		syncGlobalSettingsCache(globalSettings);
+		syncHiddenControlsFromGlobalSettings(globalSettings);
+	}, [globalSettings]);
+
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
 			const { project } = (e as CustomEvent).detail;
@@ -1720,7 +1753,7 @@ function App() {
 			// This window is already showing the traffic screen, where the message
 			// lands in full — a toast previewing it would cover its own destination.
 			// Per window, via this renderer's own route: another window keeps its toast.
-			if (getAgentTrafficEnabled() && routeRef.current.screen === "agent-traffic") return;
+			if (isAgentTrafficVisible() && routeRef.current.screen === "agent-traffic") return;
 			// Either side sensitive on camera drops the whole toast: it names both.
 			if (isProjectSilencedForDisplay(projectId) || isProjectSilencedForDisplay(fromProjectId)) return;
 			const from = [`#${fromSeq}`, fromTitle].filter(Boolean).join(" ");
@@ -1730,7 +1763,7 @@ function App() {
 				taskId,
 				// Read the flag at CLICK time, not here: a toast can outlive a toggle.
 				onClick: () => {
-					if (!getAgentTrafficEnabled()) {
+					if (!isAgentTrafficVisible()) {
 						openTaskFromNotification(taskId, projectId);
 						return;
 					}
@@ -1751,7 +1784,7 @@ function App() {
 
 	useEffect(() => {
 		function onLogChanged(event: Event) {
-			if (!getAgentTrafficEnabled()) return;
+			if (!isAgentTrafficVisible()) return;
 			const { projectId } = (event as CustomEvent<{ projectId: string }>).detail;
 			noteTrafficArrival(projectId);
 		}
@@ -1766,7 +1799,7 @@ function App() {
 	// opener asked for all projects (a notification click — see the toast above).
 	useEffect(() => {
 		function onOpen(event: Event) {
-			if (!getAgentTrafficEnabled()) return;
+			if (!isAgentTrafficVisible()) return;
 			const scope = (event as CustomEvent<OpenAgentTrafficLogDetail>).detail?.scope ?? "current-project";
 			const scopeProjectId =
 				scope === "all-projects" ? undefined : projectIdForRoute(state.route) ?? undefined;
@@ -1776,11 +1809,19 @@ function App() {
 		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
 	}, [navigate, state.route]);
 
-	// Switching the beta off while the screen is open must not leave the user on a
-	// destination nothing can reach any more (the overlay closed itself instead).
+	// Switching the beta off, or hiding the control, while the screen is open
+	// must not leave the user on a destination nothing can reach any more.
 	useEffect(() => {
-		if (state.route.screen === "agent-traffic" && !agentTrafficOn) navigate({ screen: "dashboard" });
-	}, [state.route.screen, agentTrafficOn, navigate]);
+		if (state.route.screen === "agent-traffic" && (!agentTrafficOn || agentTrafficHidden)) {
+			navigate({ screen: "dashboard" });
+		}
+	}, [state.route.screen, agentTrafficOn, agentTrafficHidden, navigate]);
+
+	// Same for Stats (§5.10 finding #5): a hidden nav entry must not strand a
+	// window (or a remote session) already parked on the screen it hides.
+	useEffect(() => {
+		if (state.route.screen === "stats" && statsNavHidden) navigate({ screen: "dashboard" });
+	}, [state.route.screen, statsNavHidden, navigate]);
 
 	// Cmd/Ctrl+Click on a file path in any terminal (preview mode).
 	useEffect(() => {

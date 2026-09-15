@@ -303,6 +303,16 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "New items not viewed yet",
 	"infoPanel.openSharedImage": "Open image {name}",
 	"infoPanel.openSharedArtifact": "Open artifact {name}",
+
+	"infoPanel.restoreHidden": "Show hidden controls",
+	"infoPanel.restoreOne": "Restore {name}",
+	"infoPanel.showAllHidden": "Show all",
+	"infoPanel.barContext": "Context",
+	"infoPanel.barSessionAgent": "Session & agent",
+	"infoPanel.barRuntime": "Runtime & access",
+	"infoPanel.paneControlsLabel": "Pane layout",
+	"infoPanel.scriptsRunnerLabel": "Scripts",
+	"infoPanel.includeTestsLabel": "Include tests in diff",
 } as const;
 
 export default infoPanel;
