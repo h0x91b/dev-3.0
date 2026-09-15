@@ -27,6 +27,17 @@
 </p>
 
 <p align="center">
+  <a href="https://dev3.h0x91b.com/#watch">
+    <img src="docs/screenshots/promo-teaser.gif" width="820" alt="dev-3.0 in motion — one task becomes a branch, a worktree and a terminal">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://dev3.h0x91b.com/#watch"><strong>▶ Play in full quality</strong></a><br>
+  <sub>the whole 90 seconds, 1080p, with sound</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/kanban-board.jpg" width="900" alt="The dev-3.0 Kanban board — tasks moving across To Do, Agent is Working, Has Questions, AI Review, Your Review and PR Review">
 </p>
 
