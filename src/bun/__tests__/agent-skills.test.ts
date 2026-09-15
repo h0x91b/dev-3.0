@@ -147,12 +147,18 @@ describe("dev3 skill content", () => {
 	it("gates completion on preserved work or an explicit user request", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("never move a task to `completed` or request approval while its work exists only in a disposable worktree");
-			expect(skill).toContain("safely preserved in the destination the task requires");
+			expect(skill).toContain("preserved in the destination the task requires");
 			expect(skill).toContain("usually a PR merged into `main`");
 			expect(skill).toContain("an external file, a task note, a shared artifact");
 			expect(skill).toContain("the user explicitly asks to complete it");
 			expect(skill).toContain("A local commit, passing tests, or an open unmerged PR is not enough");
 			expect(skill).toContain("Unclear destination or unpreserved work → keep the task open and ask");
+		}
+	});
+
+	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("the agent is asked to quit first (`/exit`; SessionEnd hooks run, 30 s bound)");
 		}
 	});
 

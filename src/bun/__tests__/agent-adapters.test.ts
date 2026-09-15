@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PANE_INPUT_LIMITS } from "../../shared/pane-input";
 import {
 	getAgentAdapter,
 	autoAgentFamily,
@@ -206,6 +207,35 @@ describe("hooksSpec", () => {
 		expect(cursorAdapter.hooksSpec()).toBeNull();
 		expect(opencodeAdapter.hooksSpec()).toBeNull();
 		expect(genericAdapter.hooksSpec()).toBeNull();
+	});
+});
+
+describe("exitProgram", () => {
+	it.each([
+		[claudeAdapter, "/exit"],
+		[codexAdapter, "/quit"],
+		[geminiAdapter, "/quit"],
+		[cursorAdapter, "/exit"],
+		[opencodeAdapter, "/exit"],
+		[copilotAdapter, "/exit"],
+	] as const)("%s interrupts, types its quit command, then submits", (adapter, command) => {
+		const program = adapter.exitProgram();
+		expect(program).not.toBeNull();
+		expect(program!.map((stage) => stage.steps)).toEqual([
+			[{ kind: "key", key: "ctrl-c" }],
+			[{ kind: "text", text: command }],
+			[{ kind: "key", key: "enter" }],
+		]);
+		// The gaps are what let the CLI redraw before the command and see a discrete Enter.
+		expect(program![0]!.delayBeforeMs).toBeUndefined();
+		expect(program![1]!.delayBeforeMs).toBeGreaterThan(0);
+		expect(program![2]!.delayBeforeMs).toBeGreaterThan(0);
+		// Must stay inside the pane-input seam's in-band delay budget or the send is refused.
+		const totalDelay = program!.reduce((sum, stage) => sum + (stage.delayBeforeMs ?? 0), 0);
+		expect(totalDelay).toBeLessThanOrEqual(PANE_INPUT_LIMITS.maxTotalDelayMs);
+	});
+	it("an unknown CLI has no quit command", () => {
+		expect(genericAdapter.exitProgram()).toBeNull();
 	});
 });
 

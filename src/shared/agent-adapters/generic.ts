@@ -50,4 +50,9 @@ export const genericAdapter: AgentAdapter = {
 	hooksSpec() {
 		return null;
 	},
+
+	// An unknown CLI has no known quit command; teardown goes straight to the kill.
+	exitProgram() {
+		return null;
+	},
 };

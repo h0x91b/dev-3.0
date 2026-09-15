@@ -22,6 +22,7 @@ import {
 	getPreparingStageProgress,
 	getTaskTitle,
 } from "../../shared/types";
+import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
 import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
@@ -882,6 +883,11 @@ export async function executeLifecycleEffect(
 			);
 			return {};
 		}
+		case "gracefulAgentExit":
+			// Buys the agent its own exit hooks before the kill below; bounded, and it
+			// never throws — a timeout is logged and teardown proceeds regardless.
+			await requestGracefulAgentExit(ctx.sourceTask);
+			return {};
 		case "destroyTaskPty":
 			// Routed by the task's own backend identity, not by whatever happens to be
 			// in memory: teardown must stop the tree this task actually owns and touch

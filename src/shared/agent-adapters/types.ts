@@ -10,6 +10,7 @@
  * (which must not import src/bun), so each adapter is unit-testable without a PTY.
  */
 
+import type { PaneInputStage } from "../pane-input";
 import type { AgentConfiguration, PermissionMode, TaskStatus } from "../types";
 import type { TemplateContext } from "./template";
 
@@ -113,4 +114,11 @@ export interface AgentAdapter {
 
 	/** Agent-native lifecycle hooks to install, or null when the agent has none. */
 	hooksSpec(options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode }): HooksSpec | null;
+
+	/**
+	 * The keystrokes that ask this CLI to quit on its own terms — typed into its pane
+	 * before dev3 tears the terminal down, so the agent's own session-end hooks get to
+	 * run. Null when the CLI has no known quit command and only the kill remains.
+	 */
+	exitProgram(): readonly PaneInputStage[] | null;
 }
