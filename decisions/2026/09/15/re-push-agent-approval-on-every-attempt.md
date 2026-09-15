@@ -29,8 +29,14 @@ so a retry joins the live request, and every call site pushed the dialog only
 transport dropped, the window reloaded mid-flight, or the dialog was displaced —
 the request was unreachable from the CLI for the rest of the app session: the
 only remaining route back to a user was `listPending*Requests`, which a client
-asked for exactly once, on mount. So nothing the agent did helped, and only
-touching the app in a way that produced a new client did.
+asked for exactly once, on mount. So nothing the agent did could help; only a
+newly connected client could.
+
+That the reporter hit *this* gap is inference, not a reproduction: the sequence
+above was constructed here to exercise the path, and their host log and client
+state are not available. It fits their account — silent retries, then three
+approvals once they touched the app — and the gap is reachable regardless, which
+is what justifies the fix.
 
 ## Decision
 
