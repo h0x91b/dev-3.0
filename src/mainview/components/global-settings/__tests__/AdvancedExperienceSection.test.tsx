@@ -12,22 +12,28 @@ const t = Object.assign((key: string) => key, {
 
 function renderSection(globalSettings: Partial<GlobalSettings>) {
 	const onAgentTrafficToggle = vi.fn();
+	const onTerminalBidiToggle = vi.fn();
 	render(
 		<I18nProvider>
 			<AdvancedExperienceSection
 				t={t}
 				globalSettings={globalSettings as GlobalSettings}
-				onTerminalBidiToggle={() => {}}
+				onTerminalBidiToggle={onTerminalBidiToggle}
 				onAgentTrafficToggle={onAgentTrafficToggle}
 			/>
 		</I18nProvider>,
 	);
-	return { onAgentTrafficToggle, toggle: screen.getByLabelText("settings.agentTraffic") };
+	return {
+		onAgentTrafficToggle,
+		onTerminalBidiToggle,
+		toggle: screen.getByLabelText("settings.agentTraffic"),
+		bidiToggle: screen.getByLabelText("settings.terminalBidi"),
+	};
 }
 
 /**
- * Agent traffic is the one default-on entry of this section, so the toggle has to
- * read three stored states apart: no choice (on), an explicit off, an explicit on.
+ * Both entries ship on, so each toggle has to read three stored states apart:
+ * no choice (on), an explicit off, an explicit on.
  */
 describe("AdvancedExperienceSection — agent traffic", () => {
 	it("shows on when nothing is stored", () => {
@@ -52,5 +58,35 @@ describe("AdvancedExperienceSection — agent traffic", () => {
 		const { onAgentTrafficToggle, toggle } = renderSection({ experimentalAgentTraffic: false });
 		await userEvent.click(toggle);
 		expect(onAgentTrafficToggle).toHaveBeenCalledWith(true);
+	});
+});
+
+describe("AdvancedExperienceSection — terminal bidi", () => {
+	it("shows on when nothing is stored", () => {
+		expect(renderSection({}).bidiToggle.getAttribute("aria-checked")).toBe("true");
+	});
+
+	it("shows off for a stored opt-out", () => {
+		expect(
+			renderSection({ experimentalTerminalBidi: false }).bidiToggle.getAttribute("aria-checked"),
+		).toBe("false");
+	});
+
+	it("shows on for a stored opt-in", () => {
+		expect(
+			renderSection({ experimentalTerminalBidi: true }).bidiToggle.getAttribute("aria-checked"),
+		).toBe("true");
+	});
+
+	it("asks to turn it off from the default state", async () => {
+		const { onTerminalBidiToggle, bidiToggle } = renderSection({});
+		await userEvent.click(bidiToggle);
+		expect(onTerminalBidiToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("asks to turn it back on from a stored opt-out", async () => {
+		const { onTerminalBidiToggle, bidiToggle } = renderSection({ experimentalTerminalBidi: false });
+		await userEvent.click(bidiToggle);
+		expect(onTerminalBidiToggle).toHaveBeenCalledWith(true);
 	});
 });

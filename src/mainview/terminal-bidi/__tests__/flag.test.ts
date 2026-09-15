@@ -20,28 +20,28 @@ function listen() {
 }
 
 describe("terminal bidi flag", () => {
-	it("is off until settings say otherwise", () => {
-		expect(getTerminalBidiEnabled()).toBe(false);
+	it("is on until settings say otherwise", () => {
+		expect(getTerminalBidiEnabled()).toBe(true);
 		syncTerminalBidiFromGlobalSettings({});
-		expect(getTerminalBidiEnabled()).toBe(false);
+		expect(getTerminalBidiEnabled()).toBe(true);
 	});
 
-	it("treats anything but an explicit true as off", () => {
+	it("treats anything but an explicit false as on", () => {
 		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: undefined });
-		expect(getTerminalBidiEnabled()).toBe(false);
+		expect(getTerminalBidiEnabled()).toBe(true);
 	});
 
 	it("announces a change so open panes can apply it live", () => {
 		const { handler, stop } = listen();
 
-		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: true });
-		expect(getTerminalBidiEnabled()).toBe(true);
-		expect(handler).toHaveBeenCalledTimes(1);
-		expect((handler.mock.calls[0][0] as CustomEvent).detail).toBe(true);
-
 		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: false });
 		expect(getTerminalBidiEnabled()).toBe(false);
-		expect((handler.mock.calls[1][0] as CustomEvent).detail).toBe(false);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect((handler.mock.calls[0][0] as CustomEvent).detail).toBe(false);
+
+		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: true });
+		expect(getTerminalBidiEnabled()).toBe(true);
+		expect((handler.mock.calls[1][0] as CustomEvent).detail).toBe(true);
 
 		stop();
 	});

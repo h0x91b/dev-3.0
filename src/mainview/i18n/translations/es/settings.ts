@@ -617,7 +617,7 @@ const settings = {
 	"project.selectTaskForTerminal": "Selecciona una tarea para ver su terminal",
 	"project.backToKanban": "Volver al Kanban",
 
-	// Advanced Experience — beta behaviour, every entry ships off
+	// Advanced Experience — beta behaviour; each entry states its own default
 	"settings.categoryAdvancedExperience": "Experiencia avanzada",
 	"settings.categoryAdvancedExperienceDesc":
 		"Comportamiento en beta: útil, pero todavía no estable. Cada opción indica su valor por defecto.",

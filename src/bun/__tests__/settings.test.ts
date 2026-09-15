@@ -108,6 +108,17 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).experimentalAgentTraffic).toBe(true);
 	});
 
+	/** Terminal bidi is default-on too: an explicit false is the opt-out and must survive. */
+	it("keeps both explicit terminal-bidi choices and stores no default", async () => {
+		expect((await loadSettings()).experimentalTerminalBidi).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalTerminalBidi: false }), null, 2), "utf-8");
+		expect((await loadSettings()).experimentalTerminalBidi).toBe(false);
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalTerminalBidi: true }), null, 2), "utf-8");
+		expect((await loadSettings()).experimentalTerminalBidi).toBe(true);
+	});
+
 	// Absent = the docked artifact panel, which is what every existing install gets
 	// without ever being asked. An explicit false is the user picking the panel and
 	// must survive a restart as a choice, not collapse back into "unset".

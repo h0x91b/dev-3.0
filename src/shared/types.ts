@@ -1246,7 +1246,9 @@ export interface GlobalSettings {
 	/**
 	 * Beta: reorder right-to-left text (Hebrew, Arabic) for display in terminal
 	 * panes. Display-only — copied text keeps its logical order, while mouse
-	 * selection and link hover on those lines stay logical too. Default off.
+	 * selection and link hover on those lines stay logical too. On by default —
+	 * absent means "never chose", and an explicit `false` is the user's opt-out,
+	 * which must survive a restart.
 	 */
 	experimentalTerminalBidi?: boolean;
 	/**

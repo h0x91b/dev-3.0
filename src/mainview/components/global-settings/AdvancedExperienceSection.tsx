@@ -19,8 +19,8 @@ export default function AdvancedExperienceSection({
 	onTerminalBidiToggle: (enabled: boolean) => void;
 	onAgentTrafficToggle: (enabled: boolean) => void;
 }) {
-	const bidiEnabled = globalSettings.experimentalTerminalBidi === true;
-	// Default-on, unlike its neighbours: absent is "never chose", not "off".
+	// Default-on: absent is "never chose", not "off".
+	const bidiEnabled = globalSettings.experimentalTerminalBidi !== false;
 	const trafficEnabled = globalSettings.experimentalAgentTraffic !== false;
 
 	return (

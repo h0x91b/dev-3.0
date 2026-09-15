@@ -214,6 +214,10 @@ beforeAll(() => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	// The mock terminal instance is shared, and bidi now installs on every mount,
+	// so each test starts from a renderer nobody has wrapped yet.
+	uninstallBidiRender(mockTermInstance.renderer);
+	resetTerminalBidiForTests();
 	fireResize = null;
 	lastWebSocket = null;
 	webSockets = [];
@@ -1940,17 +1944,19 @@ describe("TerminalView – right-to-left reordering (beta flag)", () => {
 	});
 
 	it("leaves the vendor renderer alone when the flag is off", async () => {
+		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: false });
 		await renderAndSetup();
 		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(false);
 	});
 
 	it("installs the visual-order view when the flag is already on at mount", async () => {
-		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: true });
+		// On by default: nothing to switch on before mounting.
 		await renderAndSetup();
 		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(true);
 	});
 
 	it("installs and removes it live, repainting every row each time", async () => {
+		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: false });
 		await renderAndSetup();
 		// Installing replaces the property, so use the vendor's own spy.
 		const vendorRender = mockVendorRender;

@@ -205,8 +205,9 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			typeof d.remotePort === "number" && Number.isInteger(d.remotePort) && d.remotePort >= 1 && d.remotePort <= 65535
 				? d.remotePort
 				: undefined,
-		// Default-off beta toggle — only an explicit true is a stored opt-in.
-		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
+		// Default-on beta toggle — an explicit false is the opt-out and must survive.
+		experimentalTerminalBidi:
+			typeof d.experimentalTerminalBidi === "boolean" ? d.experimentalTerminalBidi : undefined,
 		// Default-on beta toggle — both booleans are stored, because an explicit
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:

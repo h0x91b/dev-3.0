@@ -624,7 +624,8 @@ function GlobalSettings({
 	const handleTerminalBidiToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
-				{ experimentalTerminalBidi: enabled ? true : undefined },
+				// Stored either way: an explicit false is the opt-out from a default-on beta.
+				{ experimentalTerminalBidi: enabled },
 				{
 					tracking: {
 						setting: "experimental_terminal_bidi",

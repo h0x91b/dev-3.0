@@ -636,7 +636,7 @@ const settings = {
 	"project.selectTaskForTerminal": "Выберите задачу, чтобы увидеть её терминал",
 	"project.backToKanban": "Назад к канбану",
 
-	// Advanced Experience — beta behaviour, every entry ships off
+	// Advanced Experience — beta behaviour; each entry states its own default
 	"settings.categoryAdvancedExperience": "Продвинутые возможности",
 	"settings.categoryAdvancedExperienceDesc":
 		"Бета-поведение: полезное, но ещё не стабильное. У каждого пункта своё значение по умолчанию.",

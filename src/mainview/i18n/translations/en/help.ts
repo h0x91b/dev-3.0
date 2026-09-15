@@ -155,7 +155,7 @@ const help = {
 		"An experimental local proxy (pxpipe) that renders bulky context as images to cut input tokens — often ~2× cheaper, a little slower. Off by default; enabling it unlocks the \"Fable 5 (cost trick)\" preset.",
 	"help.settings.advancedExperience.title": "Advanced Experience",
 	"help.settings.advancedExperience.body":
-		"Beta behaviour that earns its keep but is not finished, so it ships off and you opt in per feature. Right-to-left reordering is the first one: terminal panes paint Hebrew and Arabic in reading order instead of reversed. It is a display-only layer on top of a terminal engine that has no right-to-left support of its own yet, so mouse selection and link hover on those lines still follow the underlying order.",
+		"Beta behaviour that earns its keep but is not finished, so each entry says whether it is on by default and you can turn it off per feature. Right-to-left reordering is the first one and ships on: terminal panes paint Hebrew and Arabic in reading order instead of reversed. It is a display-only layer on top of a terminal engine that has no right-to-left support of its own yet, so mouse selection and link hover on those lines still follow the underlying order.",
 
 	// ── Project settings (tabs) ──
 	"help.projectSettings.board.title": "Board configuration",

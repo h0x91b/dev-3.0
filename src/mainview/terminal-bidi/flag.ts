@@ -1,5 +1,5 @@
 // ── Terminal BiDi feature flag ──
-// Whether terminal panes reorder right-to-left text for display. Beta, off by
+// Whether terminal panes reorder right-to-left text for display. Beta, on by
 // default, lives in Settings → System → Advanced Experience.
 //
 // The value is a GlobalSettings field (not localStorage like zoom/scroll speed)
@@ -8,7 +8,8 @@
 
 export const TERMINAL_BIDI_CHANGED_EVENT = "terminal-bidi-changed" as const;
 
-let enabled = false;
+// Default-on: absent means "never chose", only an explicit false is "off".
+let enabled = true;
 
 export function getTerminalBidiEnabled(): boolean {
 	return enabled;
@@ -18,7 +19,7 @@ export function getTerminalBidiEnabled(): boolean {
 export function syncTerminalBidiFromGlobalSettings(settings: {
 	experimentalTerminalBidi?: boolean;
 }): void {
-	const next = settings.experimentalTerminalBidi === true;
+	const next = settings.experimentalTerminalBidi !== false;
 	if (next === enabled) return;
 	enabled = next;
 	window.dispatchEvent(
@@ -28,5 +29,5 @@ export function syncTerminalBidiFromGlobalSettings(settings: {
 
 /** Test-only reset — production code changes the flag through settings. */
 export function resetTerminalBidiForTests(): void {
-	enabled = false;
+	enabled = true;
 }
