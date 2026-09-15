@@ -1,6 +1,6 @@
 /** Gemini CLI adapter. */
 import { GENERIC_SKILL_BODY } from "../agent-skill-content";
-import { modelArgs, providerArgs } from "./common";
+import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter } from "./types";
@@ -58,5 +58,9 @@ export const geminiAdapter: AgentAdapter = {
 
 	hooksSpec() {
 		return null;
+	},
+
+	exitProgram() {
+		return slashExitProgram("/quit");
 	},
 };

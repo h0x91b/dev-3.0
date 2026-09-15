@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TaskStatus } from "../../../shared/types";
-import type { LifecycleState } from "../events";
+import type { LifecycleEvent, LifecycleState } from "../events";
 import { activitiesFor, transition } from "../machine";
 
 function state(
@@ -216,6 +216,7 @@ describe("task lifecycle transition table", () => {
 			"cancelPreparationProcesses",
 			"clearTaskRuntime",
 			"releasePorts",
+			"gracefulAgentExit",
 			"destroyTaskPty",
 			"killDevServer",
 			"runCleanupScript",
@@ -246,6 +247,23 @@ describe("task lifecycle transition table", () => {
 		const types = result.effects.map((candidate) => candidate.type);
 		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
 		expect(types.indexOf("runCleanupScript")).toBeLessThan(types.indexOf("removeWorktree"));
+	});
+
+	it.each([
+		["completion", { type: "moveRequested", target: { status: "completed" }, runId: "run-x" }],
+		["cancellation", { type: "moveRequested", target: { status: "cancelled" }, runId: "run-x" }],
+		["hibernation", { type: "hibernateRequested" }],
+		["deletion", { type: "deleteRequested" }],
+	] as const)("asks the agent to quit right before the terminal is killed on %s", (_label, event) => {
+		const result = transition(state("in-progress"), event as LifecycleEvent);
+		const types = result.effects.map((candidate) => candidate.type);
+		const exit = types.indexOf("gracefulAgentExit");
+
+		expect(exit).toBeGreaterThanOrEqual(0);
+		expect(types[exit + 1]).toBe("destroyTaskPty");
+		// Never an abort: a hook that hangs, or an agent that ignores the request, must
+		// not keep the worktree alive — the kill that follows is the guarantee.
+		expect(result.effects[exit]).toMatchObject({ onError: "continue" });
 	});
 
 	it("reaps worktree processes after the cleanup script and before the worktree is removed", () => {
@@ -487,6 +505,7 @@ describe("task lifecycle transition table", () => {
 			"releasePorts",
 			"persistRuntime",
 			"push",
+			"gracefulAgentExit",
 			"destroyTaskPty",
 			"killDevServer",
 			"runCleanupScript",
@@ -662,6 +681,7 @@ describe("task lifecycle transition table", () => {
 			"clearTaskRuntime",
 			"cancelPreparationProcesses",
 			"releasePorts",
+			"gracefulAgentExit",
 			"destroyTaskPty",
 			"killDevServer",
 			"runCleanupScript",
@@ -1113,6 +1133,7 @@ describe("hibernation", () => {
 		expect(result.next.runtime).toEqual({ phase: "idle" });
 		expect(result.effects.map((e) => e.type)).toEqual([
 			"clearTaskRuntime",
+			"gracefulAgentExit",
 			"destroyTaskPty",
 			"killDevServer",
 			"reapWorktreeProcesses",

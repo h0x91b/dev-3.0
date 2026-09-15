@@ -1,7 +1,7 @@
 /** Claude Code adapter. */
 import { CLAUDE_SKILL_BODY } from "../agent-skill-content";
 import { claudeTranscriptDir } from "../conversation-search-core";
-import { modelArgs, providerArgs } from "./common";
+import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape, quoteIfUnsafe } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter } from "./types";
@@ -95,5 +95,9 @@ export const claudeAdapter: AgentAdapter = {
 
 	hooksSpec(options) {
 		return { kind: "claude", stopTarget: options?.stopTarget, permissionMode: options?.permissionMode };
+	},
+
+	exitProgram() {
+		return slashExitProgram("/exit");
 	},
 };
