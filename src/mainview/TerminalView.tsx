@@ -342,13 +342,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const reviewSend = useReviewSend(taskId, projectId, review);
 	const [selectionComment, setSelectionComment] = useState<{ text: string; x: number; y: number; composing: boolean } | null>(null);
 	const selectionCommentTimerRef = useRef<number | null>(null);
-	const offerSelectionCommentRef = useRef<(text: string, event: MouseEvent) => void>(() => {});
+	// Where the pointer last let go inside this terminal, for a chip that arrives
+	// without a mouse event of its own: a tmux selection copies through OSC 52,
+	// which reaches the renderer as a message, not as the mouseup that made it.
+	const lastPointerUpRef = useRef<{ x: number; y: number } | null>(null);
+	const offerSelectionCommentRef = useRef<(text: string, event: MouseEvent | null) => void>(() => {});
 	offerSelectionCommentRef.current = (text, event) => {
 		const wrapper = wrapperRef.current;
 		if (!wrapper) return;
 		const rect = wrapper.getBoundingClientRect();
-		const x = Math.max(8, Math.min(event.clientX - rect.left, rect.width - 120));
-		const y = Math.max(8, Math.min(event.clientY - rect.top, rect.height - 40));
+		const point = event
+			? { x: event.clientX - rect.left, y: event.clientY - rect.top }
+			: lastPointerUpRef.current ?? { x: rect.width / 2, y: 48 };
+		const x = Math.max(8, Math.min(point.x, rect.width - 120));
+		const y = Math.max(40, Math.min(point.y, rect.height - 8));
 		if (selectionCommentTimerRef.current) window.clearTimeout(selectionCommentTimerRef.current);
 		setSelectionComment({ text, x, y, composing: false });
 		// The chip is an offer, not a mode: it goes away on its own.
@@ -698,6 +705,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					{ method, len: text.length },
 				);
 			});
+			// A tmux mouse selection lands here rather than in the ghostty bridge, so
+			// this is where the terminal offers to turn it into a review comment.
+			if (text.trim()) offerSelectionCommentRef.current(text, null);
 		}
 
 		window.addEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
@@ -2664,7 +2674,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	}
 
 	return (
-		<div ref={wrapperRef} className="relative w-full h-full min-h-0 overflow-hidden">
+		<div
+			ref={wrapperRef}
+			className="relative w-full h-full min-h-0 overflow-hidden"
+			onMouseUpCapture={(event) => {
+				const rect = event.currentTarget.getBoundingClientRect();
+				lastPointerUpRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+			}}
+		>
 			<div
 				ref={containerRef}
 				className="w-full h-full overflow-hidden"

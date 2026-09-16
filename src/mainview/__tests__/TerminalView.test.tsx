@@ -2438,3 +2438,27 @@ describe("TerminalView – comment on a selection", () => {
 		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
 	});
 });
+
+describe("TerminalView – comment chip for a tmux (OSC 52) selection", () => {
+	it("offers the chip when the copied text arrives through the OSC 52 event, placed at the last mouseup", async () => {
+		const { container } = await renderAndSetup();
+		const wrapper = container.firstElementChild as HTMLElement;
+		wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		await act(async () => {
+			fireEvent.mouseUp(wrapper, { clientX: 320, clientY: 240 });
+			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "t1", text: "selected in tmux" } }));
+		});
+		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLElement;
+		expect(chip).not.toBeNull();
+		expect(chip.style.left).toBe("320px");
+		expect(chip.style.top).toBe("240px");
+	});
+
+	it("ignores OSC 52 payloads for another task", async () => {
+		const { container } = await renderAndSetup();
+		await act(async () => {
+			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "other", text: "x" } }));
+		});
+		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
+	});
+});
