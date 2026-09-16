@@ -1840,7 +1840,7 @@ describe("TaskDiffViewer", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: "Copy" }));
-		expect(lastClipboardText(writeText)).toMatch(/<review id="src\/app\.ts:newFile:1:[a-z0-9]+">/);
+		expect(lastClipboardText(writeText)).toMatch(/<review id="[0-9a-f-]{36}">/);
 		expect(lastClipboardText(writeText)).toContain("dev3 review resolve <id>");
 		expect(normalizeReviewXml(lastClipboardText(writeText))).toBe([
 			"<reviews>",

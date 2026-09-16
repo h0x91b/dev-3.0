@@ -2389,7 +2389,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const hi = Math.max(startLine, endLine);
 		const file = visibleFiles.find((item) => item.id === fileId);
 		const nextComment: InlineDiffComment = {
-			id: `${fileId}:${side}:${lo === hi ? lo : `${lo}-${hi}`}:${Date.now().toString(36)}`,
+			// A UUID, not a path-derived id: `dev3 review` resolves 8-character prefixes.
+			id: crypto.randomUUID(),
 			body: trimmedBody,
 			createdAt: new Date().toISOString(),
 			anchor: { kind: "diff-line", fileId, filePath: file ? getReviewFilePath(file) : fileId, side, startLine: lo, endLine: hi },

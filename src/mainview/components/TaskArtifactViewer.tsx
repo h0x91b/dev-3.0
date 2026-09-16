@@ -556,7 +556,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const addPickedComment = (body: string, andSend: boolean) => {
 		if (!pendingPick || !group) return;
 		const comment: ReviewComment = {
-			id: `artifact:${group.id}:${selectedVersion}:${Date.now().toString(36)}`,
+			id: crypto.randomUUID(),
 			body,
 			createdAt: new Date().toISOString(),
 			anchor: {

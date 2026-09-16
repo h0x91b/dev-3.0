@@ -107,11 +107,12 @@ export function ReviewThreadView({
 							</div>
 						) : (
 							<div className="space-y-2">
-								<div className="flex items-start justify-between gap-3">
-									<div className="min-w-0 flex-1 text-sm text-fg whitespace-pre-wrap break-words">
+								{/* Wraps: in a narrow panel the action row drops under the text instead of squeezing it to one letter per line. */}
+								<div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+									<div className="min-w-[10rem] flex-1 text-sm text-fg whitespace-pre-wrap break-words">
 										{comment.body}
 									</div>
-									<div className="flex shrink-0 items-center gap-1">
+									<div className="ml-auto flex shrink-0 items-center gap-1">
 										{resolved ? (
 											<button
 												type="button"
