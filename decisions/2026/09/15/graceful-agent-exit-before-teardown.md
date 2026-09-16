@@ -118,6 +118,13 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   task-wide answer that omitting it gives. Its receipts also carry a launch generation
   token and expire on a receipt, a session end or the pane disappearing — never on a
   clock, because a timeout would un-gate the exact pane whose dialog is still open.
+  Two things the wiring may never treat as proof, both of which hand this gate a
+  `ready` belonging to something else: a task-wide answer substituted for a pane with
+  no receipt of its own (an unrecognized pane is precisely the one that never reported
+  being at a prompt), and a tokenless receipt unlocking a launch that carries a token
+  (the stale hook from the agent just replaced, which is what the token exists to
+  catch). Either one unresolved means the resolver answers `unknown` and this step
+  skips.
 - **Support means two conditions, not one.** A harness is covered only where both the
   quit command has been observed against the real CLI and readiness can be proved for the
   current launch. They fail independently: Gemini's `/quit` is verified but has no

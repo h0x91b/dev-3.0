@@ -266,6 +266,23 @@ describe("requestGracefulAgentExit", () => {
 		expect(outcome).toMatchObject({ kind: "timed-out", panes: 1, stillRunning: ["%3"] });
 	});
 
+	it("always names the pane it is asking about", async () => {
+		// The gate is only as strict as its question: a resolver asked about the task
+		// can answer from a pane that never reported being at a prompt.
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
+		const asked: Array<string | undefined> = [];
+
+		await requestGracefulAgentExit(task(), {
+			...fakeClock(),
+			readiness: async (_task, target) => {
+				asked.push(target?.paneId);
+				return "not-ready";
+			},
+		});
+
+		expect(asked).toEqual(["%3"]);
+	});
+
 	it("demands proof of readiness rather than assuming it", async () => {
 		// The default resolver answers `unknown` until the production readiness receipt
 		// is wired in. Nothing may type on an unproved prompt in the meantime, and this

@@ -109,6 +109,15 @@ export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget)
  * that contract's deliberately strict answer for callers that do not — while any pane
  * of the task is booting it reports booting for all of them.
  *
+ * What the wiring must NOT accept as proof, because both would hand this gate a
+ * `ready` that belongs to something else:
+ *  - a task-wide answer substituted for a pane that has no receipt of its own. An
+ *    unrecognized pane is exactly the pane that never reported being at a prompt.
+ *  - a receipt with no launch generation token blessing a launch that has one. That is
+ *    the stale hook from the agent we just replaced, which is what the token exists
+ *    to catch.
+ * If the resolver cannot rule both out, it answers "unknown" here and this step skips.
+ *
  * Deliberately NOT a convenience that folds `unknown` into "may type", the way an
  * ordinary-message gate has to so a harness with no lifecycle probe is not blocked.
  * Typing a quit command is not an ordinary message: unproved readiness skips it, and
