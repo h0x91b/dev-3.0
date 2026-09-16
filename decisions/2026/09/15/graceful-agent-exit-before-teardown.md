@@ -123,8 +123,16 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   no receipt of its own (an unrecognized pane is precisely the one that never reported
   being at a prompt), and a tokenless receipt unlocking a launch that carries a token
   (the stale hook from the agent just replaced, which is what the token exists to
-  catch). Either one unresolved means the resolver answers `unknown` and this step
-  skips.
+  catch). Both were fail-open in the contract's first implementation and have since
+  been closed — a named pane with no evidence answers `booting`, and a tokenless
+  receipt cannot close an outstanding launch window. Either one unresolved in a future
+  resolver means it answers `unknown` and this step skips.
+  The closure fails CLOSED on a machine whose `~/.dev3.0/bin` CLI predates the launch
+  token: readiness never leaves `booting` there, so the exit hooks are lost until the
+  CLI is refreshed rather than the quit command being typed into an open dialog. That
+  is the right side to fail on, and it is the update-channel trap this repo already
+  knows — an in-app update swaps the app, and a stale CLI is a configuration that
+  exists in the wild.
 - **Support means two conditions, not one.** A harness is covered only where both the
   quit command has been observed against the real CLI and readiness can be proved for the
   current launch. They fail independently: Gemini's `/quit` is verified but has no

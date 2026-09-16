@@ -22,6 +22,7 @@
 
 import { basename } from "node:path";
 import { getAgentAdapter } from "../shared/agent-adapters";
+import { agentReadiness } from "./agent-readiness";
 import type { PaneSessionEntry, Task } from "../shared/types";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { createLogger } from "./logger";
@@ -88,35 +89,36 @@ export type AgentPromptReadiness = "ready" | "not-ready" | "unknown";
 export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget) => Promise<AgentPromptReadiness>;
 
 /**
- * Readiness, as much of it as this branch can prove today: nothing.
+ * Whether this pane's CLI is at a prompt, read from the lifecycle receipts.
  *
  * A running agent is not a ready one. A CLI still in its trust prompt or its
  * first-run wizard has no prompt to run `/exit` in, so the program's Enter would
  * answer whatever that dialog has selected — a decision taken on the user's behalf,
  * and a lasting one when the task is only hibernating and its worktree comes back.
  *
- * The proof is #1785's `agentReadiness(taskId, paneId?)` in
- * `src/bun/agent-readiness.ts`, whose receipts are keyed by the pane the hook reported
- * from and carry a launch generation token, so a slow hook from the agent we just
- * replaced cannot bless the new one. Replacing this function with the mapping onto it
- * is REQUIRED INTEGRATION before this step ships — merging that work alone changes
- * nothing here, because this default is what every caller gets:
+ * `agentReadiness(taskId, paneId)` keys its receipts by the pane the hook reported
+ * from and by a launch generation token, so a slow hook from the agent we just
+ * replaced cannot bless the new one. Only a proved prompt earns keystrokes:
  *
  *   `ready` → "ready" · `booting` → "not-ready" · `gone` → "not-ready" ·
- *   `unknown` → "unknown"
+ *   `unknown` → "unknown", and both of the last two skip.
  *
- * Always pass the pane. This step knows which one it is about, and omitting it is
- * that contract's deliberately strict answer for callers that do not — while any pane
- * of the task is booting it reports booting for all of them.
+ * The pane is always passed. This step knows which one it is about, and omitting it
+ * is that contract's deliberately strict answer for callers that do not — while any
+ * pane of the task is booting it reports booting for all of them.
  *
- * What the wiring must NOT accept as proof, because both would hand this gate a
- * `ready` that belongs to something else:
- *  - a task-wide answer substituted for a pane that has no receipt of its own. An
- *    unrecognized pane is exactly the pane that never reported being at a prompt.
- *  - a receipt with no launch generation token blessing a launch that has one. That is
- *    the stale hook from the agent we just replaced, which is what the token exists
- *    to catch.
- * If the resolver cannot rule both out, it answers "unknown" here and this step skips.
+ * Neither of the two fail-open paths that contract once had may come back, because both
+ * hand this gate a `ready` belonging to something else: a task-wide answer substituted
+ * for a pane with no evidence of its own (an unrecognized pane is exactly the one that
+ * never reported being at a prompt — it now answers `booting`), and a receipt with no
+ * launch generation token closing a launch window that has one (the stale hook from the
+ * agent just replaced — now refused). If a future resolver cannot rule both out, it
+ * answers "unknown" here and this step skips.
+ *
+ * It fails closed, deliberately: a machine whose `~/.dev3.0/bin` CLI predates the token
+ * never leaves `booting`, so the graceful exit is skipped rather than typed into a
+ * dialog. Exit hooks are lost on such a machine until the CLI is refreshed, which is
+ * the right side to fail on.
  *
  * Deliberately NOT a convenience that folds `unknown` into "may type", the way an
  * ordinary-message gate has to so a harness with no lifecycle probe is not blocked.
@@ -128,7 +130,17 @@ export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget)
  * Asked per PANE, never per task: one agent pane can be mid-launch while another is
  * long past its trust prompt, so a task-scoped answer must not be fanned across them.
  */
-export const defaultAgentPromptReadiness: AgentPromptReadinessResolver = async () => "unknown";
+export const defaultAgentPromptReadiness: AgentPromptReadinessResolver = async (task, target) => {
+	switch (agentReadiness(task.id, target.paneId)) {
+		case "ready":
+			return "ready";
+		case "booting":
+		case "gone":
+			return "not-ready";
+		default:
+			return "unknown";
+	}
+};
 
 export interface GracefulAgentExitOptions {
 	timeoutMs?: number;
