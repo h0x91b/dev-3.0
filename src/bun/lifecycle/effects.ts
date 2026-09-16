@@ -81,6 +81,7 @@ export type LifecycleEffect =
 		successPatch: "activation" | "preparation";
 		launch?: PreparationLaunch;
 	} & EffectPolicy)
+	| ({ type: "gracefulAgentExit" } & EffectPolicy)
 	| ({ type: "destroyTaskPty" } & EffectPolicy)
 	| ({ type: "killDevServer" } & EffectPolicy)
 	| ({ type: "runCleanupScript"; toStatus: TaskStatus | "deleted"; allowDerivedPath?: boolean } & EffectPolicy)

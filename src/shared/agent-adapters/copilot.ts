@@ -8,7 +8,7 @@
  *  instead (see `dev3 hook copilot`), which lands it in front of fresh, scratch
  *  and resumed sessions alike and keeps it off the command line entirely. */
 import { GENERIC_SKILL_BODY } from "../agent-skill-content";
-import { modelArgs, providerArgs } from "./common";
+import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter } from "./types";
@@ -78,5 +78,9 @@ export const copilotAdapter: AgentAdapter = {
 
 	hooksSpec() {
 		return { kind: "copilot" };
+	},
+
+	exitProgram() {
+		return slashExitProgram("/exit");
 	},
 };

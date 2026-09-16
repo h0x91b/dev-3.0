@@ -46,6 +46,10 @@ vi.mock("../../preparation-runtime", () => ({
 	withTaskPreparationRunId: vi.fn(),
 }));
 
+vi.mock("../../agent-graceful-exit", () => ({
+	requestGracefulAgentExit: vi.fn(async () => ({ kind: "skipped", reason: "no-agent-pane" })),
+}));
+
 vi.mock("../../pty-server", () => ({
 	destroySession: vi.fn(),
 	destroyNativeTaskSession: vi.fn(async () => undefined),
@@ -88,6 +92,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 	pushCliAttention: vi.fn(),
 }));
 
+import { requestGracefulAgentExit } from "../../agent-graceful-exit";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -177,6 +182,10 @@ const calls: string[] = [];
 
 function recordSideEffects(): void {
 	calls.length = 0;
+	vi.mocked(requestGracefulAgentExit).mockImplementation(async () => {
+		calls.push("askAgentToExit");
+		return { kind: "skipped", reason: "no-agent-pane" };
+	});
 	vi.mocked(pty.destroyNativeTaskSession).mockImplementation(async () => {
 		calls.push("stopNative");
 	});
@@ -285,7 +294,7 @@ describe("native teardown ordering", () => {
 		}, nativeTask());
 
 		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
+		expect(run.order).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
 	});
 
 	it("stops the native tree before cleanup when a preparation is cancelled", async () => {
@@ -297,14 +306,14 @@ describe("native teardown ordering", () => {
 		const run = await runTeardown(preparing, { type: "preparationCancelled", runId: "run-p" }, nativeTask());
 
 		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["stopNative", "cleanupScript", "removeWorktree"]);
+		expect(run.order).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "removeWorktree"]);
 	});
 
 	it("stops the native tree before workspace removal and the record delete", async () => {
 		const run = await runTeardown(activeState("in-progress"), { type: "deleteRequested" }, nativeTask());
 
 		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["stopNative", "cleanupScript", "removeWorktree", "deleteTaskRecord"]);
+		expect(run.order).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "removeWorktree", "deleteTaskRecord"]);
 	});
 
 	it("stops an unattached native tree first when boot resumes an interrupted teardown", async () => {
@@ -318,7 +327,7 @@ describe("native teardown ordering", () => {
 		}, nativeTask({ status: "completed" }));
 
 		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
+		expect(run.order).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
 	});
 
 	it("aborts before cleanup, diff capture and worktree removal when the native stop fails", async () => {
@@ -333,7 +342,7 @@ describe("native teardown ordering", () => {
 			runId: "run-1",
 		}, nativeTask());
 
-		expect(run.order).toEqual(["stopNative"]);
+		expect(run.order).toEqual(["askAgentToExit", "stopNative"]);
 		expect(run.error?.message).toMatch(/still present after teardown/);
 		expect(run.compensation).toMatchObject({ type: "teardownFailed", runId: "run-1" });
 	});
@@ -343,7 +352,7 @@ describe("native teardown ordering", () => {
 
 		const run = await runTeardown(activeState("in-progress"), { type: "deleteRequested" }, nativeTask());
 
-		expect(run.order).toEqual([]);
+		expect(run.order).toEqual(["askAgentToExit"]);
 		expect(run.error?.message).toBe("host did not exit");
 		expect(data.deleteTask).not.toHaveBeenCalled();
 		expect(git.removeWorktree).not.toHaveBeenCalled();
@@ -362,7 +371,16 @@ describe("native teardown ordering", () => {
 
 		expect(failed.error).not.toBeNull();
 		expect(retried.error).toBeNull();
-		expect(retried.order).toEqual(["stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
+		// The failed attempt asked the agent too (its rejected stop recorded nothing), and
+		// the retry asks again: the agent is re-asked on every attempt, never assumed gone.
+		expect(retried.order).toEqual([
+			"askAgentToExit",
+			"askAgentToExit",
+			"stopNative",
+			"cleanupScript",
+			"diffStats",
+			"removeWorktree",
+		]);
 		expect(tmux.spawnAttachedSession).toHaveBeenCalledTimes(1);
 		expect(git.removeWorktree).toHaveBeenCalledTimes(1);
 	});
@@ -380,7 +398,7 @@ describe("native teardown ordering", () => {
 		}, task({ status: "in-progress" }));
 
 		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["destroyTmux", "cleanupScript", "diffStats", "removeWorktree"]);
+		expect(run.order).toEqual(["askAgentToExit", "destroyTmux", "cleanupScript", "diffStats", "removeWorktree"]);
 		expect(pty.destroyNativeTaskSession).not.toHaveBeenCalled();
 	});
 });
