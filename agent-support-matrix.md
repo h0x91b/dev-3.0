@@ -34,7 +34,7 @@ Last updated: 2026-09-16
 ## Feature Matrix
 
 | Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode | GitHub Copilot CLI | Oh My Pi |
-|---------|:-----------:|:------------:|:-----:|:----------:|:--------:|:------------------::--------:|
+|---------|:-----------:|:------------:|:-----:|:----------:|:--------:|:------------------:|:--------:|
 | **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic, via the shared `~/.agents/skills/` alias) | Yes (generic, `/skill:` prefix) |
 | **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` | `sessionStart` hook `additionalContext` (covers scratch + resume; never on the command line) | `--append-system-prompt <file>` |
 | **Session resume** | `--resume <id>` / `--continue` | `--resume <id>` / `--continue` | `resume <id>` / `resume --last` | `--resume <id>` / `--resume latest` | `--continue` | `--resume=<id>` / `--continue` | `--resume <id>` / `-c` |

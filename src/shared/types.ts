@@ -1086,6 +1086,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "copilot-gemini37", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash", groupLabel: "Gemini 3.7 Flash", modeLabel: "Default", version: 1 },
 		],
 		defaultConfigId: "copilot-default",
+	},
+	{
 		id: "builtin-omp",
 		name: "Oh My Pi",
 		baseCommand: "omp",

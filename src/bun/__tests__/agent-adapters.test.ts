@@ -438,6 +438,9 @@ describe("launchArgs — Copilot", () => {
 	});
 	it("drops maxBudgetUsd — Copilot budgets in AI credits, not dollars", () => {
 		expect(launch("copilot", cfg({ maxBudgetUsd: 12 }))).toBe("copilot -i 'Fix the login bug'");
+	});
+});
+
 describe("launchArgs — omp", () => {
 	it("omp maps permission mode to its approval tiers", () => {
 		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
