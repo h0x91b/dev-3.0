@@ -447,21 +447,42 @@ describe("launchArgs — omp", () => {
 			.toBe("omp --approval-mode write --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
 		expect(launch("omp", cfg({ permissionMode: "bypassPermissions" })))
 			.toBe("omp --approval-mode yolo --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+		expect(launch("omp", cfg({ permissionMode: "dontAsk" })))
+			.toBe("omp --approval-mode yolo --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
 	});
-	it("omp has no launch flag for plan mode, so it emits none", () => {
-		expect(launch("omp", cfg({ permissionMode: "plan" })))
-			.toBe("omp --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+	// With no flag omp runs at its configured tier — `yolo` out of the box — so
+	// "no mapping" must never mean "no flag". The modes without a tier of their
+	// own (plan has no launch flag on omp, auto has no classifier) fail closed.
+	it("omp says always-ask for default, plan and auto instead of inheriting yolo", () => {
+		for (const permissionMode of ["default", "plan", "auto"] as const) {
+			expect(launch("omp", cfg({ permissionMode })))
+				.toBe("omp --approval-mode always-ask --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
+		}
+		expect(launch("omp", cfg())).toContain("--approval-mode always-ask");
+	});
+	it("omp keeps a --approval-mode or --thinking the preset already carries, undoubled", () => {
+		expect(launch("omp", cfg({ permissionMode: "acceptEdits", additionalArgs: ["--approval-mode", "yolo"] })))
+			.toBe("omp --append-system-prompt '<GENERIC_BODY>' --approval-mode yolo -- 'Fix the login bug'");
+		expect(launch("omp", cfg({ effort: "high", additionalArgs: ["--thinking", "max"] })))
+			.toBe("omp --approval-mode always-ask --append-system-prompt '<GENERIC_BODY>' --thinking max -- 'Fix the login bug'");
+		expect(launch("omp", cfg({ effort: "high", additionalArgs: ["--thinking=max"] })))
+			.toBe("omp --approval-mode always-ask --append-system-prompt '<GENERIC_BODY>' --thinking=max -- 'Fix the login bug'");
+	});
+	it("omp carries effort as --thinking and drops maxBudgetUsd, which it has no flag for", () => {
+		expect(launch("omp", cfg({ model: "opus", effort: "xhigh", maxBudgetUsd: 5 })))
+			.toBe("omp --model opus --approval-mode always-ask --thinking xhigh --append-system-prompt '<GENERIC_BODY>' -- 'Fix the login bug'");
 	});
 	it("omp takes the protocol as a file when the backend wrote one", () => {
 		// Same flag, either form. Keeping the body out of argv is what stops
 		// `pkill -f` matching every agent (h0x91b/dev-3.0#1734).
 		const cmd = launch("omp", cfg(), { systemPromptFile: "/home/u/.dev3.0/data/agent-prompts/omp.md" });
-		expect(cmd).toBe("omp --append-system-prompt /home/u/.dev3.0/data/agent-prompts/omp.md -- 'Fix the login bug'");
+		expect(cmd).toBe("omp --approval-mode always-ask --append-system-prompt /home/u/.dev3.0/data/agent-prompts/omp.md -- 'Fix the login bug'");
 		expect(cmd).not.toContain("<GENERIC_BODY>");
 	});
-	it("resumes without re-sending the prompt or the protocol", () => {
-		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c");
-		expect(launch("omp", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" })).toBe("omp --resume sid --model sonnet");
+	it("resumes without re-sending the prompt or the protocol, approval tier included", () => {
+		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c --approval-mode always-ask");
+		expect(launch("omp", cfg({ model: "sonnet", permissionMode: "bypassPermissions" }), { resume: true, sessionId: "sid" }))
+			.toBe("omp --resume sid --model sonnet --approval-mode yolo");
 	});
 });
 

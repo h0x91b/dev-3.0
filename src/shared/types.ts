@@ -1096,12 +1096,11 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installUrl: "https://github.com/can1357/oh-my-pi",
 		// omp reaches 60+ providers and picks its own startup model, so pinning one
 		// here would launch against credentials the user may not hold; the presets
-		// leave the model to omp. Its own approval default is `yolo`, so the
-		// "Ask first" preset has to say so explicitly — dev3's `default` mode means
-		// "pass no flag", which here would auto-approve everything.
+		// leave the model to omp. "Default" asks first like every other agent's:
+		// the adapter passes `--approval-mode always-ask` for it, because omp's
+		// own default with no flag is `yolo` (see omp-flags.ts).
 		configurations: [
 			{ id: "omp-default", name: "Default", version: 1 },
-			{ id: "omp-ask", name: "Ask first", additionalArgs: ["--approval-mode", "always-ask"], version: 1 },
 			{ id: "omp-write", name: "Accept Edits", permissionMode: "acceptEdits", version: 1 },
 			...createOmpBypassPresets(["off", "low", "medium", "high", "xhigh", "max"]),
 		],

@@ -175,6 +175,10 @@ describe("buildPickerGroups", () => {
 		}
 		const leaves = omp.configurations.map((c) => getModeLeafLabel(c));
 		expect(new Set(leaves).size).toBe(leaves.length);
+		// "Default" asks first through the adapter's total approval map — no
+		// preset needs its own `--approval-mode always-ask` to be safe.
+		expect(omp.defaultConfigId).toBe("omp-default");
+		for (const c of omp.configurations) expect(c.additionalArgs ?? []).not.toContain("--approval-mode");
 	});
 
 	it("returns [] for a missing agent", () => {

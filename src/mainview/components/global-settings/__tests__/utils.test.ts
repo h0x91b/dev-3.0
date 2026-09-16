@@ -150,10 +150,22 @@ describe("global-settings utils", () => {
 
 	it("previews omp with the flags omp actually receives", () => {
 		expect(buildCommandPreview("omp", { id: "o", name: "YOLO (X-High)", permissionMode: "bypassPermissions", effort: "xhigh", maxBudgetUsd: 5 }).command)
-			.toBe("omp --approval-mode yolo --thinking xhigh --append-system-prompt '…dev3 prompt file…' '{{TASK_DESCRIPTION}}'");
-		// omp has no launch flag for plan mode, so the preview must not invent one.
-		expect(buildCommandPreview("omp", { id: "o", name: "Plan", permissionMode: "plan" }).command)
-			.toBe("omp --append-system-prompt '…dev3 prompt file…' '{{TASK_DESCRIPTION}}'");
+			.toBe("omp --approval-mode yolo --thinking xhigh --append-system-prompt '…dev3 prompt file…' -- '{{TASK_DESCRIPTION}}'");
+		// No flag would mean omp's own tier (`yolo`), so the launcher says
+		// always-ask for default, plan and auto — and the preview must show it.
+		for (const permissionMode of ["default", "plan", "auto"] as const) {
+			expect(buildCommandPreview("omp", { id: "o", name: "Plan", permissionMode }).command)
+				.toBe("omp --approval-mode always-ask --append-system-prompt '…dev3 prompt file…' -- '{{TASK_DESCRIPTION}}'");
+		}
+		expect(buildCommandPreview("omp", { id: "o", name: "Default" }).command)
+			.toBe("omp --approval-mode always-ask --append-system-prompt '…dev3 prompt file…' -- '{{TASK_DESCRIPTION}}'");
+	});
+
+	it("previews omp without doubling a flag the preset's own args already carry", () => {
+		expect(buildCommandPreview("omp", { id: "o", name: "x", effort: "high", additionalArgs: ["--thinking", "max"] }).command)
+			.toBe("omp --approval-mode always-ask --append-system-prompt '…dev3 prompt file…' --thinking max -- '{{TASK_DESCRIPTION}}'");
+		expect(buildCommandPreview("omp", { id: "o", name: "x", additionalArgs: ["--approval-mode=yolo"] }).command)
+			.toBe("omp --append-system-prompt '…dev3 prompt file…' --approval-mode=yolo -- '{{TASK_DESCRIPTION}}'");
 	});
 
 	it("never previews a shipped omp preset with the generic flags omp does not take", () => {
@@ -164,8 +176,8 @@ describe("global-settings utils", () => {
 		for (const config of omp.configurations) {
 			const { command } = buildCommandPreview("omp", config);
 			expect(command).not.toMatch(/--permission-mode|--effort|--max-budget-usd/);
-			const mode = config.permissionMode ? OMP_APPROVAL_MODE[config.permissionMode] : undefined;
-			if (mode) expect(command).toContain(`--approval-mode ${mode}`);
+			expect(command).toContain(`--approval-mode ${OMP_APPROVAL_MODE[config.permissionMode ?? "default"]}`);
+			expect(command.match(/--thinking/g)?.length ?? 0).toBeLessThanOrEqual(1);
 		}
 	});
 

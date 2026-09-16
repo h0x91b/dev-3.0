@@ -7,7 +7,7 @@ import type {
 	ProviderConfig,
 } from "../../../shared/types";
 import { agentKey } from "../../../shared/agent-adapters/families";
-import { OMP_APPROVAL_MODE } from "../../../shared/agent-adapters/omp-flags";
+import { hasOmpFlag, OMP_APPROVAL_MODE } from "../../../shared/agent-adapters/omp-flags";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
 import { ENV_UNSET } from "../../../shared/agent-accounts";
 import { type ModelCatalog, resolveModelRoleLaunch, roleUnsetEnv } from "../../../shared/model-catalog";
@@ -175,11 +175,14 @@ export function buildCommandPreview(
 		parts.push(quoteIfUnsafeForPreview(arg));
 	}
 
-	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
-		if (isOmp) {
-			const mode = OMP_APPROVAL_MODE[config.permissionMode];
-			if (mode) parts.push("--approval-mode", mode);
-		} else if (isCursor) {
+	// omp is explicit for every mode, `default` included — no flag means its own
+	// configured tier, `yolo` out of the box (see omp-flags.ts).
+	if (isOmp) {
+		if (!hasOmpFlag(config.additionalArgs, "--approval-mode")) {
+			parts.push("--approval-mode", OMP_APPROVAL_MODE[config.permissionMode ?? "default"]);
+		}
+	} else if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
+		if (isCursor) {
 			if (config.permissionMode === "plan") {
 				parts.push("--mode", "plan");
 			} else if (config.permissionMode === "bypassPermissions") {
@@ -205,7 +208,8 @@ export function buildCommandPreview(
 	// Copilot refuses `--model auto --effort <level>` outright; the launcher drops
 	// the flag there, so the preview must too.
 	if (config.effort && !isCursor && !isCodex && !(isCopilot && config.model === "auto")) {
-		parts.push(isOmp ? "--thinking" : "--effort", config.effort);
+		if (!isOmp) parts.push("--effort", config.effort);
+		else if (!hasOmpFlag(config.additionalArgs, "--thinking")) parts.push("--thinking", config.effort);
 	}
 
 	// Copilot budgets in AI credits, not dollars, and omp has no budget flag —
@@ -233,8 +237,10 @@ export function buildCommandPreview(
 	if (isCursor) {
 		prompt += "\\n\\n…dev3 prompt…";
 	}
-	// Copilot takes the prompt behind -i, which runs it and STAYS interactive.
+	// Copilot takes the prompt behind -i, which runs it and STAYS interactive;
+	// omp takes it positionally after the `--` separator.
 	if (isCopilot) parts.push("-i");
+	if (isOmp) parts.push("--");
 	parts.push(`'${prompt}'`);
 
 	// Mirror the launcher's env: provider env (Bedrock flag + pinned model)

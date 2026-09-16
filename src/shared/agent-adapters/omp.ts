@@ -1,7 +1,7 @@
 /** Oh My Pi adapter (`omp`, can1357/oh-my-pi — a fork of pi). */
 import { GENERIC_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs } from "./common";
-import { OMP_APPROVAL_MODE } from "./omp-flags";
+import { hasOmpFlag, OMP_APPROVAL_MODE } from "./omp-flags";
 import { shellEscape, quoteIfUnsafe } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter } from "./types";
@@ -26,11 +26,15 @@ export const ompAdapter: AgentAdapter = {
 		args.push(...modelArgs(config, options));
 		args.push(...providerArgs(options));
 
-		if (config?.permissionMode && config.permissionMode !== "default") {
-			const mode = OMP_APPROVAL_MODE[config.permissionMode];
-			if (mode) args.push("--approval-mode", mode);
+		// Always explicit, `default` included: with no flag omp runs at its own
+		// configured tier, `yolo` out of the box. A preset that names the flag in
+		// additionalArgs is the user's word and wins, so it is not doubled.
+		if (!hasOmpFlag(config?.additionalArgs, "--approval-mode")) {
+			args.push("--approval-mode", OMP_APPROVAL_MODE[config?.permissionMode ?? "default"]);
 		}
-		if (config?.effort) args.push("--thinking", config.effort);
+		if (config?.effort && !hasOmpFlag(config?.additionalArgs, "--thinking")) {
+			args.push("--thinking", config.effort);
+		}
 
 		if (!resume && !options?.skipSystemPrompt) {
 			// One flag, either form: omp reads the value as a file when it names one.
