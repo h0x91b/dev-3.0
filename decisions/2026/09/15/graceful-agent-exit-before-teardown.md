@@ -64,11 +64,12 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Teardown does not make that harmless — hibernation keeps the worktree, and a trust
   decision is the user's to make. `AgentPromptReadiness` is asked per PANE (`ready` /
   `not-ready` / `unknown`) and only `ready` earns keystrokes; everything else skips with
-  `not-ready` and an `info` log. The proof is #1785's launch-scoped
-  `agentReadiness(taskId)` (`src/bun/agent-readiness.ts`), mapped `booting`/`gone` →
-  `not-ready`; deliberately not its `agentAcceptsTypedInput`, which folds `unknown` into
-  true so ordinary messages are not blocked. Until that lands the default resolver
-  answers `unknown`, so this step types nothing at all.
+  `not-ready` and an `info` log. The proof would be a launch-scoped readiness receipt;
+  the one that existed (`src/bun/agent-readiness.ts`, #1792) was reverted from main in
+  #1794 after it blocked messages to agents that were plainly running, so
+  `defaultAgentPromptReadiness` answers `unknown` and **this step types nothing at all
+  today**. That is the whole cost of the revert here: teardown behaves exactly as it did
+  before this change, and no keystroke reaches a CLI whose prompt nobody can vouch for.
 - **Absent process evidence is never read as "the agent left."** `collectProcessInfo`
   reports a missing or failed `ps` as an EMPTY table (`runText` swallows every failure
   and returns `""`), which counted as "no descendants" and therefore "already exited" —
@@ -98,13 +99,24 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Codex, Cursor, Copilot and OpenCode ship compiled binaries and their quit commands are
   taken from documentation, not observation. A wrong one costs the 30 s bound per
   teardown for that harness and nothing else.
-- **This step stays inert until the production resolver is WIRED**, which is a change in
+- **This step stays inert until a production resolver is WIRED**, which is a change in
   this file, not a merge order. `defaultAgentPromptReadiness` answers `unknown` and
-  nothing outside this module can change that: merging #1785 on its own leaves the
-  default in place and the step silent. Wiring it is required integration before this
-  ships, and it has to be proved through the real resolver — mixed ready/unready panes,
-  a stale launch generation, and a Claude quit whose `SessionEnd` descendant is still
-  running — not through the test stubs the unit suite injects.
+  nothing outside this module can change that: merging a readiness module on its own
+  leaves the default in place and the step silent. Wiring it is required integration,
+  and it has to be proved through the real resolver — mixed ready/unready panes, a stale
+  launch generation, and a Claude quit whose `SessionEnd` descendant is still running —
+  not through the test stubs the unit suite injects. That wiring, and the integration
+  tests for it, were written once against #1792 and withdrawn with it; the seam, the
+  per-pane question and every gate test are unchanged and still injected, so the next
+  attempt is one function body.
+- **The first readiness module was reverted, and its failure is the design brief.**
+  #1792 registered launches without a pane id (`tmux-pty.ts:1098`, `:1379`), so a named
+  pane matched no session, matched no pending entry, was in no ready set, and fell
+  through to the strict unrecognized-pane answer: `booting` forever, with no event in
+  existence that could change it. Messages were refused outright; this gate would have
+  skipped in silence, which is worse. Whatever replaces it must distinguish "no evidence
+  yet" from "a state nothing can ever leave" — an agent attached to an existing session,
+  or one alive since before this app process started, is `unknown`, never `booting`.
 - **A harness that reports no lifecycle at all answers `unknown` forever** and therefore
   never gets a graceful exit. Today that is Gemini, Cursor and OpenCode. Stated here
   rather than discovered later: the gate is deliberately conservative, and widening it
@@ -112,12 +124,11 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
 - **The seam asks per pane on purpose.** An early version of the readiness contract was
   keyed on the task alone, which cannot tell two agent panes apart — one can be mid-launch
   while the other is long past its trust prompt. The resolver here takes the pane and a
-  test pins that one pane's verdict never authorizes another. The receipt side then moved
-  the same way: `agentReadiness(taskId, paneId?)` keys receipts by the pane the hook
-  reported from, so this step passes its pane rather than relying on the strict
-  task-wide answer that omitting it gives. Its receipts also carry a launch generation
-  token and expire on a receipt, a session end or the pane disappearing — never on a
-  clock, because a timeout would un-gate the exact pane whose dialog is still open.
+  test pins that one pane's verdict never authorizes another. The receipt side moved the
+  same way before it was reverted — receipts keyed by the pane the hook reported from,
+  a launch generation token, and a window that closes on a receipt, a session end or the
+  pane disappearing but never on a clock, because a timeout would un-gate the exact pane
+  whose dialog is still open. Those four properties are worth keeping in the next one.
   Two things the wiring may never treat as proof, both of which hand this gate a
   `ready` belonging to something else: a task-wide answer substituted for a pane with
   no receipt of its own (an unrecognized pane is precisely the one that never reported
