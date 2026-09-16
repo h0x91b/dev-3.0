@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SharedImage, Task } from "../../shared/types";
 import { clipReviewExcerpt, type ReviewComment, type ReviewImageRegionAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
+import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { api } from "../rpc";
@@ -29,36 +30,6 @@ interface TaskImageViewerProps {
 	projectId?: string;
 	/** The live task record when the host has it — its `review` is what the regions are drawn from. */
 	task?: Pick<Task, "id" | "review">;
-}
-
-interface Region { x: number; y: number; w: number; h: number }
-
-/** A click without a drag becomes a small box around the point. */
-const POINT_REGION = 0.06;
-
-function clamp01(value: number): number {
-	return Math.max(0, Math.min(1, value));
-}
-
-function regionLabel(region: Region): string {
-	const pct = (value: number) => `${Math.round(value * 100)}%`;
-	return `x ${pct(region.x)}–${pct(region.x + region.w)}, y ${pct(region.y)}–${pct(region.y + region.h)}`;
-}
-
-/**
- * Where the picture actually paints inside its element: `object-contain`
- * letterboxes, so a normalised region has to be measured against the drawn
- * picture, not the element box.
- */
-function contentRect(element: HTMLImageElement, fit: "fit" | "width"): { left: number; top: number; width: number; height: number } {
-	const box = element.getBoundingClientRect();
-	if (fit === "width" || !element.naturalWidth || !element.naturalHeight) {
-		return { left: box.left, top: box.top, width: box.width, height: box.height };
-	}
-	const scale = Math.min(box.width / element.naturalWidth, box.height / element.naturalHeight);
-	const width = element.naturalWidth * scale;
-	const height = element.naturalHeight * scale;
-	return { left: box.left + (box.width - width) / 2, top: box.top + (box.height - height) / 2, width, height };
 }
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
@@ -112,9 +83,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const canComment = Boolean(projectId && taskId);
 	const [commentMode, setCommentMode] = useState(false);
 	const [pendingRegion, setPendingRegion] = useState<Region | null>(null);
-	const [draftRegion, setDraftRegion] = useState<Region | null>(null);
 	const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
-	const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	// The drawn picture's box relative to the stage, re-measured whenever the
 	// image or the layout changes; the overlay sits exactly on it.
@@ -146,7 +115,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		const img = imgRef.current;
 		const stage = stageRef.current;
 		if (!img || !stage) { setPictureBox(null); return; }
-		const rect = contentRect(img, fit);
+		const rect = pictureContentRect(img, fit === "width");
 		const host = stage.getBoundingClientRect();
 		setPictureBox({ left: rect.left - host.left + stage.scrollLeft, top: rect.top - host.top + stage.scrollTop, width: rect.width, height: rect.height });
 	}, [fit]);
@@ -232,7 +201,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const dismissRef = useRef<() => void>(() => {});
 	dismissRef.current = () => {
 		if (menu) setMenu(null);
-		else if (commentMode) { setCommentMode(false); setPendingRegion(null); setDraftRegion(null); }
+		else if (commentMode) { setCommentMode(false); setPendingRegion(null); }
 		else if (fullscreen) setFullscreen(false);
 		else onClose();
 	};
@@ -271,7 +240,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setNatural(null);
 		setFitOverride(null);
 		setPendingRegion(null);
-		setDraftRegion(null);
 		setActiveCommentId(null);
 		zoom.reset();
 		if (stageRef.current) stageRef.current.scrollTop = 0;
@@ -313,42 +281,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 
 	const iconBtn = "flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated-hover hover:text-fg transition-colors";
 
-	// Normalised pointer position over the drawn picture, clamped to it.
-	const pointOf = (event: React.PointerEvent<HTMLDivElement>) => {
-		const rect = event.currentTarget.getBoundingClientRect();
-		return { x: clamp01((event.clientX - rect.left) / rect.width), y: clamp01((event.clientY - rect.top) / rect.height) };
-	};
-	const regionFrom = (a: { x: number; y: number }, b: { x: number; y: number }): Region => {
-		const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
-		return { x, y, w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
-	};
-	const onOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-		if (!commentMode || event.button !== 0) return;
-		event.preventDefault();
-		event.currentTarget.setPointerCapture(event.pointerId);
-		dragStartRef.current = pointOf(event);
-		setDraftRegion({ ...dragStartRef.current, w: 0, h: 0 });
-	};
-	const onOverlayPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-		if (!dragStartRef.current) return;
-		setDraftRegion(regionFrom(dragStartRef.current, pointOf(event)));
-	};
-	const onOverlayPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-		const start = dragStartRef.current;
-		if (!start) return;
-		dragStartRef.current = null;
-		let region = regionFrom(start, pointOf(event));
-		if (region.w < 0.01 || region.h < 0.01) {
-			region = {
-				x: clamp01(start.x - POINT_REGION / 2),
-				y: clamp01(start.y - POINT_REGION / 2),
-				w: Math.min(POINT_REGION, 1 - clamp01(start.x - POINT_REGION / 2)),
-				h: Math.min(POINT_REGION, 1 - clamp01(start.y - POINT_REGION / 2)),
-			};
-		}
-		setDraftRegion(null);
-		setPendingRegion(region);
-	};
 	const addRegionComment = (body: string, andSend: boolean) => {
 		if (!pendingRegion || !current) return;
 		const anchor: ReviewImageRegionAnchor = {
@@ -365,12 +297,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setActiveCommentId(comment.id);
 		if (andSend) send.sendOne(comment);
 	};
-	const regionStyle = (region: Region) => ({
-		left: `${region.x * 100}%`,
-		top: `${region.y * 100}%`,
-		width: `${region.w * 100}%`,
-		height: `${region.h * 100}%`,
-	});
 	const showOverlay = canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 
 	return (
@@ -422,7 +348,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					{canComment && (
 						<button
 							type="button"
-							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setDraftRegion(null); }}
+							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); }}
 							title={t("imageViewer.commentMode")}
 							aria-label={t("imageViewer.commentMode")}
 							aria-pressed={commentMode}
@@ -516,43 +442,15 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 							<div className="flex h-full w-full items-center justify-center text-fg-3 text-sm">{t("imageViewer.loading")}</div>
 						)}
 						{showOverlay && (
-							<div
-								data-testid="image-review-overlay"
-								data-comment-mode={commentMode ? "true" : undefined}
-								className={`absolute select-none ${commentMode ? "cursor-crosshair" : "pointer-events-none"}`}
-								style={{ left: pictureBox.left, top: pictureBox.top, width: pictureBox.width, height: pictureBox.height }}
-								onPointerDown={onOverlayPointerDown}
-								onPointerMove={onOverlayPointerMove}
-								onPointerUp={onOverlayPointerUp}
-								onPointerCancel={() => { dragStartRef.current = null; setDraftRegion(null); }}
-							>
-								{imageComments.map((comment, i) => {
-									const anchor = comment.anchor as ReviewImageRegionAnchor;
-									const resolved = Boolean(comment.resolvedAt);
-									return (
-										<button
-											key={comment.id}
-											type="button"
-											data-testid="image-review-region"
-											data-resolved={resolved ? "true" : undefined}
-											aria-label={`${t("infoPanel.diffReviewCommentItemOf", { number: String(i + 1), total: String(imageComments.length) })}`}
-											onClick={(event) => { event.stopPropagation(); setActiveCommentId(comment.id); setCommentMode(true); }}
-											onPointerDown={(event) => event.stopPropagation()}
-											className={`pointer-events-auto absolute rounded-sm border-2 ${resolved ? "border-success bg-success/10" : "border-accent bg-accent/15"} ${comment.id === activeCommentId ? "ring-2 ring-accent/40" : ""}`}
-											style={regionStyle(anchor)}
-										>
-											<span className={`absolute -right-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full text-micro font-bold text-white shadow ${resolved ? "bg-success" : "bg-accent"}`}>{i + 1}</span>
-										</button>
-									);
-								})}
-								{(draftRegion ?? pendingRegion) && (
-									<div
-										data-testid="image-review-draft"
-										className="pointer-events-none absolute rounded-sm border-2 border-dashed border-accent bg-accent/10"
-										style={regionStyle((draftRegion ?? pendingRegion)!)}
-									/>
-								)}
-							</div>
+							<ImageRegionOverlay
+								box={pictureBox}
+								picking={commentMode}
+								comments={imageComments}
+								activeCommentId={activeCommentId}
+								onActivate={(id) => { setActiveCommentId(id); setCommentMode(true); }}
+								pendingRegion={pendingRegion}
+								onPick={setPendingRegion}
+							/>
 						)}
 					</div>
 

@@ -9,8 +9,9 @@ import FindBar, { type FindBarHandle } from "./FindBar";
 import { formatBytes } from "../utils/formatBytes";
 import { writeClipboardText } from "../utils/clipboard-write";
 import type { FilePreviewResult, Task } from "../../shared/types";
-import { clipReviewExcerpt, type ReviewComment, type ReviewFileRangeAnchor } from "../../shared/review";
+import { clipReviewExcerpt, type ReviewComment, type ReviewFileRangeAnchor, type ReviewImageRegionAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
+import { ImageRegionOverlay, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { MarkdownDocument } from "./pr-review/markdown";
@@ -83,10 +84,39 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const [selection, setSelection] = useState<SelectionSpot | null>(null);
 	const [pending, setPending] = useState<PendingSelection | null>(null);
 	const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+	// Text previews anchor by line range; an image preview anchors by region,
+	// with the file path standing in for the shared-image id.
 	const fileComments = useMemo(
-		() => review.comments.filter((comment) => comment.anchor.kind === "file-range" && comment.anchor.path === path),
+		() => review.comments.filter((comment) => (
+			(comment.anchor.kind === "file-range" || comment.anchor.kind === "image-region")
+			&& comment.anchor.path === path
+		)),
 		[path, review.comments],
 	);
+	const [pendingRegion, setPendingRegion] = useState<Region | null>(null);
+	const [imageBox, setImageBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+	const imgRef = useRef<HTMLImageElement | null>(null);
+	const measureImage = useCallback(() => {
+		const img = imgRef.current;
+		if (!img) { setImageBox(null); return; }
+		setImageBox({ left: 0, top: 0, width: img.clientWidth, height: img.clientHeight });
+	}, []);
+	useEffect(() => {
+		const img = imgRef.current;
+		if (!img || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(measureImage);
+		observer.observe(img);
+		return () => observer.disconnect();
+	}, [measureImage, preview]);
+	const addRegionComment = (body: string, andSend: boolean) => {
+		if (!pendingRegion) return;
+		const anchor: ReviewImageRegionAnchor = { kind: "image-region", imageId: path, name: fileName, path, caption: null, ...pendingRegion };
+		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
+		review.add(comment);
+		setPendingRegion(null);
+		setActiveCommentId(comment.id);
+		if (andSend) send.sendOne(comment);
+	};
 	const commentedLines = useMemo(() => {
 		const lines = new Set<number>();
 		for (const comment of fileComments) {
@@ -135,7 +165,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const rangeLabel = (anchor: Pick<ReviewFileRangeAnchor, "startLine" | "endLine">) => anchor.startLine === null
 		? ""
 		: anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}–${anchor.endLine}`;
-	const showAside = canComment && (pending !== null || fileComments.length > 0);
+	const showAside = canComment && (pending !== null || pendingRegion !== null || fileComments.length > 0 || preview?.kind === "image");
 	// Re-search whenever the body is replaced: the async load landing, and the
 	// raw/rendered toggle, both swap the text the ranges point into.
 	const find = useFindInElement(bodyRef, {
@@ -146,7 +176,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	// Escape is staged: the find bar, then a pending comment, then the modal.
 	useEscapeKey(() => {
 		if (find.isOpen) find.close();
-		else if (pending) setPending(null);
+		else if (pending || pendingRegion) { setPending(null); setPendingRegion(null); }
 		else onClose();
 	});
 
@@ -249,14 +279,30 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 			case "image":
 				return (
 					<div className="min-h-0 flex-1 overflow-auto p-4 flex flex-col items-center justify-center gap-2">
-						<img
-							src={preview.dataUrl}
-							alt={fileName}
-							onLoad={(e) =>
-								setImageDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
-							}
-							className="max-w-full max-h-full object-contain rounded bg-base ring-1 ring-fg/10"
-						/>
+						<div className="relative max-w-full max-h-full">
+							<img
+								ref={imgRef}
+								src={preview.dataUrl}
+								alt={fileName}
+								onLoad={(e) => {
+									setImageDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
+									measureImage();
+								}}
+								className="max-w-full max-h-full object-contain rounded bg-base ring-1 ring-fg/10"
+							/>
+							{canComment && imageBox && (
+								<ImageRegionOverlay
+									testId="file-image-review"
+									box={imageBox}
+									picking
+									comments={fileComments}
+									activeCommentId={activeCommentId}
+									onActivate={setActiveCommentId}
+									pendingRegion={pendingRegion}
+									onPick={setPendingRegion}
+								/>
+							)}
+						</div>
 						<p className="text-fg-muted text-xs tabular-nums">
 							{imageDims ? `${imageDims.w}×${imageDims.h} · ` : ""}
 							{formatBytes(preview.size)}
@@ -383,11 +429,15 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						send={send}
 						activeCommentId={activeCommentId}
 						onActivate={setActiveCommentId}
-						labelFor={(comment, i) => `${i + 1} · ${fileName}${rangeLabel(comment.anchor as ReviewFileRangeAnchor)}`}
-						pendingLabel={pending ? `${fileName}${rangeLabel(pending)} · ${pending.excerpt.split("\n")[0]}` : null}
-						onSubmitPick={addSelectionComment}
-						onCancelPick={() => setPending(null)}
-						hint={t("terminal.filePreviewReviewHint")}
+						labelFor={(comment, i) => comment.anchor.kind === "image-region"
+							? `${i + 1} · ${regionLabel(comment.anchor)}`
+							: `${i + 1} · ${fileName}${rangeLabel(comment.anchor as ReviewFileRangeAnchor)}`}
+						pendingLabel={pendingRegion
+							? `${fileName} · ${regionLabel(pendingRegion)}`
+							: pending ? `${fileName}${rangeLabel(pending)} · ${pending.excerpt.split("\n")[0]}` : null}
+						onSubmitPick={pendingRegion ? addRegionComment : addSelectionComment}
+						onCancelPick={() => { setPending(null); setPendingRegion(null); }}
+						hint={preview?.kind === "image" ? t("imageViewer.commentModeHint") : t("terminal.filePreviewReviewHint")}
 						empty={t("terminal.filePreviewReviewEmpty")}
 					/>
 				)}

@@ -316,3 +316,34 @@ describe("FilePreviewModal review comments", () => {
 		expect(screen.queryByTestId("file-preview-comment-selection")).not.toBeInTheDocument();
 	});
 });
+
+describe("FilePreviewModal image review", () => {
+	it("lets a click on a previewed image become a region comment anchored by the file path", async () => {
+		const reviewApi = api.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
+		for (const name of ["addReviewComment", "markReviewCommentsSent", "sendAgentMessageNow"]) reviewApi[name] = vi.fn().mockResolvedValue({ spilledPath: null });
+		readFilePreview.mockResolvedValue({ kind: "image", dataUrl: "data:image/png;base64,AAAA", size: 10 } as FilePreviewResult);
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<FilePreviewModal path="/wt/shots/after.png" taskId="t1" projectId="p1" task={{ id: "t1" }} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		const img = await screen.findByAltText("after.png");
+		Object.defineProperty(img, "clientWidth", { value: 400, configurable: true });
+		Object.defineProperty(img, "clientHeight", { value: 200, configurable: true });
+		fireEvent.load(img);
+		const overlay = await screen.findByTestId("file-image-review-overlay");
+		overlay.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		fireEvent.pointerDown(overlay, { button: 0, clientX: 200, clientY: 100, pointerId: 1 });
+		fireEvent.pointerUp(overlay, { clientX: 200, clientY: 100, pointerId: 1 });
+		expect(await screen.findByTestId("file-review-composer")).toHaveTextContent("after.png · x 47%–53%, y 47%–53%");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Cut off here");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+		expect(reviewApi.addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			comment: expect.objectContaining({
+				anchor: expect.objectContaining({ kind: "image-region", imageId: "/wt/shots/after.png", path: "/wt/shots/after.png", name: "after.png" }),
+			}),
+		}));
+		expect(screen.getByTestId("file-image-review-region")).toBeInTheDocument();
+	});
+});
