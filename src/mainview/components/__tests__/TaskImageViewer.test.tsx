@@ -270,3 +270,89 @@ describe("TaskImageViewer", () => {
 		expect(onCloseModal).not.toHaveBeenCalled();
 	});
 });
+
+describe("TaskImageViewer comment mode", () => {
+	const reviewApi = () => mockedApi.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+	beforeEach(() => {
+		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
+		}
+	});
+
+	function renderCommentable(task?: { id: string; review?: unknown[] }) {
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={IMAGES} initialIndex={0} onClose={vi.fn()} taskId="t1" projectId="p1" task={task as never} />
+			</I18nProvider>,
+		);
+	}
+
+	/** happy-dom lays nothing out, so the picture box is stubbed to a 400×300 square at the origin. */
+	function stubLayout() {
+		const img = screen.getByTestId("viewer-main-image") as HTMLImageElement;
+		Object.defineProperty(img, "naturalWidth", { value: 400, configurable: true });
+		Object.defineProperty(img, "naturalHeight", { value: 300, configurable: true });
+		img.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		const stage = img.parentElement as HTMLElement;
+		stage.getBoundingClientRect = img.getBoundingClientRect;
+		fireEvent.load(img);
+	}
+
+	it("hides the toggle without a project", async () => {
+		renderViewer();
+		await screen.findByTestId("viewer-main-image");
+		expect(screen.queryByTestId("image-viewer-comment")).not.toBeInTheDocument();
+	});
+
+	it("drags a region, stores the comment with a normalised image anchor, and draws it", async () => {
+		const user = userEvent.setup();
+		renderCommentable({ id: "t1" });
+		await screen.findByTestId("viewer-main-image");
+		stubLayout();
+		await user.click(screen.getByTestId("image-viewer-comment"));
+		expect(screen.getByTestId("image-review")).toBeInTheDocument();
+
+		const overlay = await screen.findByTestId("image-review-overlay");
+		overlay.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		overlay.setPointerCapture = () => {};
+		fireEvent.pointerDown(overlay, { button: 0, clientX: 100, clientY: 60, pointerId: 1 });
+		fireEvent.pointerMove(overlay, { clientX: 300, clientY: 150, pointerId: 1 });
+		fireEvent.pointerUp(overlay, { clientX: 300, clientY: 150, pointerId: 1 });
+
+		const composer = await screen.findByTestId("image-review-composer");
+		expect(composer).toHaveTextContent("one.png · x 25%–75%, y 20%–50%");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Toolbar overlaps here");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(reviewApi().addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: "t1",
+			projectId: "p1",
+			comment: expect.objectContaining({
+				body: "Toolbar overlaps here",
+				anchor: { kind: "image-region", imageId: "a", name: "one.png", path: "/wt/shared-images/a.png", caption: null, x: 0.25, y: 0.2, w: 0.5, h: 0.3 },
+			}),
+		}));
+		expect(screen.getByTestId("image-review-region")).toHaveStyle({ left: "25%", top: "20%", width: "50%", height: "30%" });
+		expect(screen.getByTestId("image-review-thread")).toHaveTextContent("Toolbar overlaps here");
+	});
+
+	it("draws regions from the task record even with comment mode off, and a click without a drag becomes a small box", async () => {
+		const user = userEvent.setup();
+		renderCommentable({
+			id: "t1",
+			review: [{ id: "r1", body: "old", createdAt: "2026-09-16T00:00:00.000Z", resolvedAt: "2026-09-16T01:00:00.000Z", anchor: { kind: "image-region", imageId: "a", name: "one.png", path: "/wt/shared-images/a.png", caption: null, x: 0.1, y: 0.1, w: 0.2, h: 0.2 } }],
+		});
+		await screen.findByTestId("viewer-main-image");
+		stubLayout();
+		await waitFor(() => expect(screen.getByTestId("image-review-region")).toHaveAttribute("data-resolved", "true"));
+
+		await user.click(screen.getByTestId("image-viewer-comment"));
+		const overlay = screen.getByTestId("image-review-overlay");
+		overlay.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		overlay.setPointerCapture = () => {};
+		fireEvent.pointerDown(overlay, { button: 0, clientX: 200, clientY: 150, pointerId: 1 });
+		fireEvent.pointerUp(overlay, { clientX: 200, clientY: 150, pointerId: 1 });
+		expect(await screen.findByTestId("image-review-composer")).toHaveTextContent("x 47%–53%, y 47%–53%");
+	});
+});

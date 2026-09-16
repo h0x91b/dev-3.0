@@ -450,7 +450,7 @@ function App() {
 	// `newIds` freezes which images were unread at open time: opening marks them
 	// read, so without the snapshot the "these three are new" highlight would
 	// vanish on the same tick. It only ever grows while the viewer stays open.
-	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
+	const [imageViewer, setImageViewer] = useState<{ taskId: string; projectId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
 	// Lightbox for artifacts an agent surfaced via `dev3 show-artifact`. Hosted
 	// here — never inside a task pane — so every surface that can open one (task
@@ -493,6 +493,7 @@ function App() {
 			}
 			return {
 				taskId,
+				projectId,
 				images,
 				index: index ?? (firstUnread >= 0 ? firstUnread : images.length - 1),
 				newIds: unreadIds,
@@ -3586,6 +3587,8 @@ function App() {
 			{imageViewer && (
 				<TaskImageViewer
 					taskId={imageViewer.taskId}
+					projectId={imageViewer.projectId}
+					task={state.currentProjectTasks.find((candidate) => candidate.id === imageViewer.taskId)}
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
 					newIds={imageViewer.newIds}
