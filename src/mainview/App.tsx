@@ -3627,6 +3627,8 @@ function App() {
 					path={filePreview.path}
 					line={filePreview.line}
 					taskId={filePreview.taskId}
+					projectId={state.currentProjectTasks.find((candidate) => candidate.id === filePreview.taskId)?.projectId}
+					task={state.currentProjectTasks.find((candidate) => candidate.id === filePreview.taskId)}
 					onClose={() => setFilePreview(null)}
 				/>
 			)}

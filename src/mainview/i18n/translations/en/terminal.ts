@@ -22,6 +22,7 @@ const terminal = {
 	"terminal.filePreviewReviewEmpty": "No comments on this file yet.",
 	"terminal.commentSelection": "Comment",
 	"terminal.commentSelectionTitle": "Comment on the selected terminal text",
+	"terminal.commentAdded": "Comment saved to the task review — send it from Show Diff, or use Send now next time.",
 	"terminal.searchPlaceholder": "Search terminal…",
 	"terminal.searchOlder": "Older match (Enter)",
 	"terminal.searchNewer": "Newer match (Shift+Enter)",

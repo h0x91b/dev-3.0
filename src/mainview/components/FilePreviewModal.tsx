@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { api, isElectrobun } from "../rpc";
 import { toast } from "../toast";
@@ -8,7 +8,11 @@ import { useFindInElement } from "../hooks/useFindInElement";
 import FindBar, { type FindBarHandle } from "./FindBar";
 import { formatBytes } from "../utils/formatBytes";
 import { writeClipboardText } from "../utils/clipboard-write";
-import type { FilePreviewResult } from "../../shared/types";
+import type { FilePreviewResult, Task } from "../../shared/types";
+import { clipReviewExcerpt, type ReviewComment, type ReviewFileRangeAnchor } from "../../shared/review";
+import { ReviewAside } from "../review/ReviewAside";
+import { useReviewSend } from "../review/useReviewSend";
+import { useTaskReview } from "../review/useTaskReview";
 import { MarkdownDocument } from "./pr-review/markdown";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
 
@@ -18,7 +22,26 @@ interface FilePreviewModalProps {
 	line?: number;
 	/** Task the path was clicked in, so this modal's toasts name their origin. */
 	taskId?: string;
+	/** The owning project; without it a selection cannot become a review comment. */
+	projectId?: string;
+	/** The live task record when the host has it — its `review` marks the commented lines. */
+	task?: Pick<Task, "id" | "review">;
 	onClose: () => void;
+}
+
+interface PendingSelection {
+	excerpt: string;
+	startLine: number | null;
+	endLine: number | null;
+}
+
+/** The floating button's spot: the selection's end, in coordinates of the body container. */
+interface SelectionSpot extends PendingSelection { top: number; left: number }
+
+function lineOf(node: Node | null): number | null {
+	const element = node instanceof Element ? node : node?.parentElement ?? null;
+	const raw = element?.closest<HTMLElement>("[data-preview-line]")?.dataset.previewLine;
+	return raw ? Number(raw) : null;
 }
 
 const DIR_MAX_CHARS = 90;
@@ -38,7 +61,7 @@ const GHOST_BUTTON =
  * "Preview in dev3" mode of the File path click action setting, and the only
  * mode in browser/remote sessions (host-side open would be invisible there).
  */
-export default function FilePreviewModal({ path, line, taskId, onClose }: FilePreviewModalProps) {
+export default function FilePreviewModal({ path, line, taskId, projectId, task, onClose }: FilePreviewModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [preview, setPreview] = useState<FilePreviewResult | null>(null);
@@ -49,6 +72,70 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 	const findBarRef = useRef<FindBarHandle | null>(null);
 
 	const focusFindInput = useCallback(() => findBarRef.current?.focusInput(), []);
+
+	// Select text in the file → comment on it. Same review as the diff viewer and
+	// the artifact viewer; the anchor is the path, the line range when the code
+	// view supplies one, and the selected text.
+	const reviewTask = useMemo<Pick<Task, "id" | "review">>(() => task ?? { id: taskId ?? "" }, [task, taskId]);
+	const review = useTaskReview(reviewTask, projectId ?? "");
+	const send = useReviewSend(taskId ?? "", projectId, review);
+	const canComment = Boolean(projectId && taskId);
+	const [selection, setSelection] = useState<SelectionSpot | null>(null);
+	const [pending, setPending] = useState<PendingSelection | null>(null);
+	const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+	const fileComments = useMemo(
+		() => review.comments.filter((comment) => comment.anchor.kind === "file-range" && comment.anchor.path === path),
+		[path, review.comments],
+	);
+	const commentedLines = useMemo(() => {
+		const lines = new Set<number>();
+		for (const comment of fileComments) {
+			const anchor = comment.anchor as ReviewFileRangeAnchor;
+			if (anchor.startLine === null) continue;
+			for (let n = anchor.startLine; n <= (anchor.endLine ?? anchor.startLine); n++) lines.add(n);
+		}
+		return lines;
+	}, [fileComments]);
+	const readSelection = useCallback(() => {
+		if (!canComment) return;
+		const body = bodyRef.current;
+		const active = window.getSelection();
+		if (!body || !active || active.rangeCount === 0 || active.isCollapsed) { setSelection(null); return; }
+		const range = active.getRangeAt(0);
+		if (!body.contains(range.commonAncestorContainer)) { setSelection(null); return; }
+		const excerpt = clipReviewExcerpt(active.toString());
+		if (!excerpt) { setSelection(null); return; }
+		const a = lineOf(range.startContainer);
+		const b = lineOf(range.endContainer);
+		const rect = range.getBoundingClientRect();
+		const host = body.getBoundingClientRect();
+		setSelection({
+			excerpt,
+			startLine: a === null || b === null ? a ?? b : Math.min(a, b),
+			endLine: a === null || b === null ? a ?? b : Math.max(a, b),
+			top: rect.bottom - host.top + body.scrollTop,
+			left: Math.max(0, rect.left - host.left + body.scrollLeft),
+		});
+	}, [canComment]);
+	const takeSelection = () => {
+		if (!selection) return;
+		setPending({ excerpt: selection.excerpt, startLine: selection.startLine, endLine: selection.endLine });
+		setSelection(null);
+		window.getSelection()?.removeAllRanges();
+	};
+	const addSelectionComment = (body: string, andSend: boolean) => {
+		if (!pending) return;
+		const anchor: ReviewFileRangeAnchor = { kind: "file-range", path, startLine: pending.startLine, endLine: pending.endLine, excerpt: pending.excerpt };
+		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
+		review.add(comment);
+		setPending(null);
+		setActiveCommentId(comment.id);
+		if (andSend) send.sendOne(comment);
+	};
+	const rangeLabel = (anchor: Pick<ReviewFileRangeAnchor, "startLine" | "endLine">) => anchor.startLine === null
+		? ""
+		: anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}–${anchor.endLine}`;
+	const showAside = canComment && (pending !== null || fileComments.length > 0);
 	// Re-search whenever the body is replaced: the async load landing, and the
 	// raw/rendered toggle, both swap the text the ranges point into.
 	const find = useFindInElement(bodyRef, {
@@ -56,8 +143,12 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 		onOpen: focusFindInput,
 	});
 
-	// Escape is staged: it closes the find bar first, and only then the modal.
-	useEscapeKey(() => (find.isOpen ? find.close() : onClose()));
+	// Escape is staged: the find bar, then a pending comment, then the modal.
+	useEscapeKey(() => {
+		if (find.isOpen) find.close();
+		else if (pending) setPending(null);
+		else onClose();
+	});
 
 	useEffect(() => {
 		let stale = false;
@@ -97,11 +188,14 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 			<div className="font-mono text-xs leading-relaxed">
 				{lines.map((text, i) => {
 					const isTarget = line !== undefined && i + 1 === line;
+					const commented = commentedLines.has(i + 1);
 					return (
 						<div
 							key={i}
 							ref={isTarget ? highlightRef : undefined}
-							className={`flex ${isTarget ? "bg-accent/10" : ""}`}
+							data-preview-line={i + 1}
+							data-commented={commented ? "true" : undefined}
+							className={`flex ${isTarget ? "bg-accent/10" : ""} ${commented ? "border-l-2 border-accent bg-accent/5 -ml-0.5" : ""}`}
 						>
 							<span
 								className="shrink-0 pr-3 text-right tabular-nums text-fg-muted select-none"
@@ -124,7 +218,20 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 		switch (preview.kind) {
 			case "text":
 				return (
-					<div ref={bodyRef} className="min-h-0 flex-1 overflow-auto p-4">
+					<div ref={bodyRef} className="relative min-h-0 flex-1 overflow-auto p-4" onMouseUp={readSelection} onKeyUp={readSelection}>
+						{selection && !pending && (
+							<button
+								type="button"
+								data-testid="file-preview-comment-selection"
+								style={{ top: selection.top + 6, left: selection.left }}
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={takeSelection}
+								className="absolute z-10 inline-flex h-8 items-center gap-1.5 rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white shadow-lg transition-colors hover:bg-accent-fill-hover"
+							>
+								<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf075"}</span>
+								<span>{t("terminal.filePreviewCommentSelection")}</span>
+							</button>
+						)}
 						{isRenderable && !showRaw ? (
 							<MarkdownDocument
 								body={toRenderableMarkdown(preview.content, path)}
@@ -209,7 +316,7 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 				aria-modal="true"
 				aria-labelledby="file-preview-title"
 				tabIndex={-1}
-				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[min(56rem,92vw)] max-h-[85vh] flex flex-col outline-none"
+				className={`bg-overlay border border-edge rounded-2xl shadow-2xl ${showAside ? "w-[min(80rem,92vw)]" : "w-[min(56rem,92vw)]"} max-h-[85vh] flex flex-col outline-none`}
 			>
 				<div className="flex items-center gap-3 px-4 py-3 border-b border-edge">
 					<div className="min-w-0 flex-1">
@@ -252,7 +359,8 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 						</svg>
 					</button>
 				</div>
-				<div className="relative flex min-h-0 flex-1 flex-col">
+				<div className="flex min-h-0 flex-1">
+				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
 					{find.isOpen && textContent !== null && (
 						<FindBar
 							ref={findBarRef}
@@ -266,6 +374,23 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 						/>
 					)}
 					{renderBody()}
+				</div>
+				{showAside && (
+					<ReviewAside
+						testId="file-review"
+						comments={fileComments}
+						review={review}
+						send={send}
+						activeCommentId={activeCommentId}
+						onActivate={setActiveCommentId}
+						labelFor={(comment, i) => `${i + 1} · ${fileName}${rangeLabel(comment.anchor as ReviewFileRangeAnchor)}`}
+						pendingLabel={pending ? `${fileName}${rangeLabel(pending)} · ${pending.excerpt.split("\n")[0]}` : null}
+						onSubmitPick={addSelectionComment}
+						onCancelPick={() => setPending(null)}
+						hint={t("terminal.filePreviewReviewHint")}
+						empty={t("terminal.filePreviewReviewEmpty")}
+					/>
+				)}
 				</div>
 				{/* Right-aligned row: the variable action (Copy content) sits leftmost so
 				    its appearance never shifts the stable buttons under the cursor. */}

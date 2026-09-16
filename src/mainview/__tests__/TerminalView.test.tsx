@@ -131,6 +131,9 @@ vi.mock("../rpc", () => ({
 			logRendererDiagnostic: vi.fn().mockResolvedValue(undefined),
 			copyTerminalSelection: vi.fn().mockResolvedValue({ ok: true, tool: "pbcopy" }),
 			resolveTerminalPaths: vi.fn().mockResolvedValue({ resolved: {} }),
+			addReviewComment: vi.fn().mockResolvedValue(undefined),
+			markReviewCommentsSent: vi.fn().mockResolvedValue(undefined),
+			sendAgentMessageNow: vi.fn().mockResolvedValue({ spilledPath: null }),
 		},
 	},
 }));
@@ -2381,5 +2384,57 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 
 		const options = vi.mocked(Terminal).mock.calls[0][0] as { fontSize: number };
 		expect(options.fontSize).toBe(20);
+	});
+});
+
+describe("TerminalView – comment on a selection", () => {
+	it("offers a comment chip after a selection and stores the comment with a terminal-text anchor", async () => {
+		const { api } = await import("../rpc");
+		const addReviewComment = vi.mocked(api.request.addReviewComment as unknown as ReturnType<typeof vi.fn>);
+		addReviewComment.mockClear();
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("error: ENOENT\nat open()");
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+
+		const { container } = await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 200, clientY: 120 }));
+		});
+		await act(async () => { await Promise.resolve(); });
+
+		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLButtonElement;
+		expect(chip).not.toBeNull();
+		await act(async () => { fireEvent.click(chip); });
+		const composer = container.querySelector("[data-testid='terminal-comment-composer']") as HTMLElement;
+		expect(composer).not.toBeNull();
+		expect(composer.textContent).toContain("error: ENOENT");
+
+		const textarea = composer.querySelector("textarea") as HTMLTextAreaElement;
+		await act(async () => { fireEvent.change(textarea, { target: { value: "This path is wrong" } }); });
+		const submit = Array.from(composer.querySelectorAll("button")).find((b) => b.textContent === "Add comment") as HTMLButtonElement;
+		await act(async () => { fireEvent.click(submit); });
+
+		expect(addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: "t1",
+			projectId: "p1",
+			comment: expect.objectContaining({ body: "This path is wrong", anchor: { kind: "terminal-text", excerpt: "error: ENOENT\nat open()" } }),
+		}));
+		expect(container.querySelector("[data-testid='terminal-comment-composer']")).toBeNull();
+	});
+
+	it("does not offer a chip when tmux mouse tracking owns the drag", async () => {
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("x");
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+		await act(async () => { await Promise.resolve(); });
+		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
 	});
 });

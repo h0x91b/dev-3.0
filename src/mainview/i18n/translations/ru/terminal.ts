@@ -22,6 +22,7 @@ const terminal = {
 	"terminal.filePreviewReviewEmpty": "К этому файлу пока нет комментариев.",
 	"terminal.commentSelection": "Комментарий",
 	"terminal.commentSelectionTitle": "Прокомментировать выделенный текст терминала",
+	"terminal.commentAdded": "Комментарий сохранён в ревью задачи — отправьте его из Show Diff или в следующий раз нажмите «Отправить сейчас».",
 	"terminal.searchPlaceholder": "Поиск в терминале…",
 	"terminal.searchOlder": "Более старое совпадение (Enter)",
 	"terminal.searchNewer": "Более новое совпадение (Shift+Enter)",

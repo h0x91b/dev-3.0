@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import FilePreviewModal from "../FilePreviewModal";
 import { I18nProvider } from "../../i18n";
@@ -34,6 +34,8 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
+
+import { api } from "../../rpc";
 
 installImmediateIntersectionObserver();
 
@@ -248,5 +250,69 @@ describe("FilePreviewModal", () => {
 		);
 		expect(screen.queryByText("Copy content")).not.toBeInTheDocument();
 		expect(screen.queryByText("Open folder")).not.toBeInTheDocument();
+	});
+});
+
+describe("FilePreviewModal review comments", () => {
+	const reviewApi = () => (api.request as unknown as Record<string, ReturnType<typeof vi.fn>>);
+
+	beforeEach(() => {
+		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
+		}
+		readFilePreview.mockResolvedValue({ kind: "text", content: "one\ntwo\nthree", truncated: false, size: 13 });
+	});
+
+	function selectLines(from: HTMLElement, to: HTMLElement, text: string) {
+		const range = document.createRange();
+		range.setStart(from.firstChild ?? from, 0);
+		range.setEnd(to.firstChild ?? to, (to.textContent ?? "").length);
+		const selection = window.getSelection()!;
+		selection.removeAllRanges();
+		selection.addRange(range);
+		selection.toString = () => text;
+		range.getBoundingClientRect = () => ({ left: 40, top: 20, bottom: 50, right: 200, width: 160, height: 30, x: 40, y: 20, toJSON: () => ({}) }) as DOMRect;
+	}
+
+	it("offers a comment on a text selection and stores it with the path, line range and excerpt", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<FilePreviewModal path="/wt/src/a.ts" taskId="t1" projectId="p1" task={{ id: "t1" }} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(screen.getByText("two")).toBeInTheDocument());
+		expect(screen.queryByTestId("file-review")).not.toBeInTheDocument();
+
+		selectLines(screen.getByText("two"), screen.getByText("three"), "two\nthree");
+		const body = screen.getByText("two").closest("[data-preview-line]")!.parentElement!.parentElement as HTMLElement;
+		fireEvent.mouseUp(body);
+		const button = await screen.findByTestId("file-preview-comment-selection");
+		await user.click(button);
+
+		const composer = await screen.findByTestId("file-review-composer");
+		expect(composer).toHaveTextContent("a.ts:2–3 · two");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename these");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(reviewApi().addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: "t1",
+			projectId: "p1",
+			comment: expect.objectContaining({
+				body: "Rename these",
+				anchor: { kind: "file-range", path: "/wt/src/a.ts", startLine: 2, endLine: 3, excerpt: "two\nthree" },
+			}),
+		}));
+		expect(screen.getByTestId("file-review-thread")).toHaveTextContent("Rename these");
+		expect(screen.getByText("two").parentElement).toHaveAttribute("data-commented", "true");
+		expect(screen.getByText("one").parentElement).not.toHaveAttribute("data-commented");
+	});
+
+	it("shows no selection button without a project", async () => {
+		render(<I18nProvider><FilePreviewModal path="/wt/src/a.ts" taskId="t1" onClose={vi.fn()} /></I18nProvider>);
+		await waitFor(() => expect(screen.getByText("two")).toBeInTheDocument());
+		selectLines(screen.getByText("two"), screen.getByText("two"), "two");
+		fireEvent.mouseUp(screen.getByText("two"));
+		expect(screen.queryByTestId("file-preview-comment-selection")).not.toBeInTheDocument();
 	});
 });

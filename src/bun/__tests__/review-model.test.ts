@@ -151,3 +151,27 @@ describe("review mutations", () => {
 		expect(next[next.length - 1]?.id).toBe("newest");
 	});
 });
+
+describe("review prompt — image, file and terminal anchors", () => {
+	it("renders each new anchor kind with its own tag and the matching footer lines", () => {
+		const text = buildReviewPrompt([
+			{ id: "i1", anchor: { kind: "image-region", imageId: "a", name: "after.png", path: "/wt/shared-images/a.png", caption: "after my fix", x: 0.58, y: 0.18, w: 0.3, h: 0.22 }, comment: "Toolbar overlaps", origin: "local", author: null },
+			{ id: "f1", anchor: { kind: "file-range", path: "/wt/docs/plan.md", startLine: 6, endLine: 7, excerpt: "Phase 2 enables the flag" }, comment: "Not for EU", origin: "local", author: null },
+			{ id: "t1", anchor: { kind: "terminal-text", excerpt: "error: ENOENT" }, comment: "Wrong path", origin: "local", author: null },
+		]);
+		expect(text).toContain('<image src="/wt/shared-images/a.png" region="x 58%–88%, y 18%–40%" caption="after my fix"/>');
+		expect(text).toContain('<file src="/wt/docs/plan.md" line="6-7">\nPhase 2 enables the flag\n</file>');
+		expect(text).toContain("<terminal>\nerror: ENOENT\n</terminal>");
+		expect(text).toContain("Above my review comments");
+		expect(text).toContain("An <image> entry points at a region");
+		expect(text).toContain("A <terminal> entry quotes text");
+		expect(text).not.toContain("<artifact");
+	});
+
+	it("describes the new anchors for the CLI table", () => {
+		expect(describeReviewAnchor({ kind: "image-region", imageId: "a", name: "after.png", path: "/p", caption: null, x: 0.1, y: 0.2, w: 0.3, h: 0.4 })).toBe("after.png (x 10%–40%, y 20%–60%)");
+		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.ts", startLine: 4, endLine: 4, excerpt: "x" })).toBe("/wt/a.ts:4");
+		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.md", startLine: null, endLine: null, excerpt: "x" })).toBe("/wt/a.md");
+		expect(describeReviewAnchor({ kind: "terminal-text", excerpt: "first line\nsecond" })).toBe("terminal › first line");
+	});
+});

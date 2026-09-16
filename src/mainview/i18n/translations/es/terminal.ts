@@ -22,6 +22,7 @@ const terminal = {
 	"terminal.filePreviewReviewEmpty": "Este archivo aún no tiene comentarios.",
 	"terminal.commentSelection": "Comentar",
 	"terminal.commentSelectionTitle": "Comentar el texto seleccionado del terminal",
+	"terminal.commentAdded": "Comentario guardado en la revisión de la tarea — envíalo desde Show Diff o usa Enviar ahora la próxima vez.",
 	"terminal.searchPlaceholder": "Buscar en el terminal…",
 	"terminal.searchOlder": "Coincidencia más antigua (Enter)",
 	"terminal.searchNewer": "Coincidencia más reciente (Shift+Enter)",
