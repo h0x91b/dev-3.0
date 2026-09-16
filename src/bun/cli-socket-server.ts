@@ -30,6 +30,21 @@ import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { recordTerminalPromptSubmission } from "./agent-terminal-prompt-log";
+import { type SessionReceipt, agentReadiness, noteAgentSessionAlive, noteAgentSessionEnded } from "./agent-readiness";
+
+/**
+ * The pane and launch a lifecycle hook reported from, as the CLI read them out of
+ * the agent's own environment. Both are optional: an older pane, a native
+ * session, or a resumed one may carry neither, and a receipt without them still
+ * counts (see agent-readiness.ts).
+ */
+function sessionReceiptFromParams(params: Record<string, unknown>): SessionReceipt {
+	return {
+		sessionId: typeof params.sessionId === "string" ? params.sessionId : null,
+		paneId: typeof params.paneId === "string" ? params.paneId : null,
+		launchId: typeof params.launchId === "string" ? params.launchId : null,
+	};
+}
 import type { PromptSubmitHarness } from "../shared/agent-terminal-prompt";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
@@ -1660,6 +1675,11 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Unsupported Codex hook event: ${String(params.event)}`);
 		}
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
+		// Any lifecycle delivery is proof this harness is past its startup dialogs;
+		// SessionEnd is the one that takes the proof back (see agent-readiness.ts).
+		const readinessReceipt = sessionReceiptFromParams(params);
+		if (event === "SessionEnd") noteAgentSessionEnded(task.id, readinessReceipt);
+		else noteAgentSessionAlive(task.id, readinessReceipt);
 		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
 		const rememberedResumeStatus = getCodexApprovalResumeStatus(resumeKey);
 
@@ -1750,6 +1770,22 @@ const handlers: Record<string, Handler> = {
 	}),
 
 	/**
+	 * A harness reported that an agent session opened or closed in this task.
+	 *
+	 * Readiness only: it moves no status and answers no question. dev3 needs it to
+	 * know whether typed input would reach the agent's input box or one of its
+	 * startup dialogs — see `agent-readiness.ts` and h0x91b/dev-3.0#1785.
+	 */
+	"task.agentSession": async (params) => {
+		const { task } = await resolveTaskFromParams(params);
+		const receipt = sessionReceiptFromParams(params);
+		const accepted = params.event === "SessionEnd"
+			? noteAgentSessionEnded(task.id, receipt)
+			: noteAgentSessionAlive(task.id, receipt);
+		return { accepted, readiness: agentReadiness(task.id, receipt.paneId) };
+	},
+
+	/**
 	 * A harness reported that a prompt was submitted in a task's pane. Whether
 	 * that was the human is decided in `recordTerminalPromptSubmission`, which
 	 * throws out everything dev3 itself typed before writing anything.
@@ -1762,6 +1798,10 @@ const handlers: Record<string, Handler> = {
 		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
 			? params.harness
 			: "claude";
+		// A submitted prompt is proof the input box is up, whoever typed it. Kept as
+		// a second source of the readiness receipt so a worktree whose SessionStart
+		// entry was edited away still leaves the boot gate (agent-readiness.ts).
+		noteAgentSessionAlive(task.id, sessionReceiptFromParams(params));
 		const outcome = recordTerminalPromptSubmission({
 			project,
 			task,

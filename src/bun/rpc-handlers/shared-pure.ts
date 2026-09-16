@@ -484,13 +484,28 @@ export function isActive(status: TaskStatus): boolean {
  */
 export const AGENT_ENV_DEFAULTS: Record<string, string> = { FORCE_HYPERLINK: "1" };
 
-export function buildAgentEnv(extraEnv: Record<string, string>, taskId: string): Record<string, string> {
+/**
+ * `launchId` is the generation token from `agent-readiness.ts`. The agent's own
+ * lifecycle hook inherits it and echoes it back, which is what lets dev3 tell a
+ * receipt from the agent it just started apart from a slow one belonging to the
+ * agent it replaced (h0x91b/dev-3.0#1785).
+ */
+export function buildAgentEnv(
+	extraEnv: Record<string, string>,
+	taskId: string,
+	launchId?: string | null,
+): Record<string, string> {
 	const dev3Bin = `${DEV3_HOME}/bin`;
 	const currentPath = process.env.PATH || "";
 	// `delimiter`, not ":" — Windows separates PATH entries with ";", and one wrong
 	// separator makes the whole variable unparsable for the agent we just launched.
 	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}${delimiter}${currentPath}`;
-	return { ...extraEnv, DEV3_TASK_ID: taskId, PATH: pathWithDev3 };
+	return {
+		...extraEnv,
+		DEV3_TASK_ID: taskId,
+		...(launchId ? { DEV3_LAUNCH_ID: launchId } : {}),
+		PATH: pathWithDev3,
+	};
 }
 
 /**

@@ -43,7 +43,9 @@ import {
 	cancelScheduledMessage,
 	sendScheduledMessageNow,
 	sendMessageImmediately,
+	BOOT_RETAIN_MS,
 } from "../scheduled-message-scheduler";
+import { noteAgentLaunching, noteAgentSessionAlive, resetAgentReadinessForTests } from "../agent-readiness";
 
 const project = { id: "proj-1", name: "Proj" } as unknown as import("../../shared/types").Project;
 
@@ -473,5 +475,65 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		const text = vi.mocked(sendPromptToNativeAgentPane).mock.calls[0]![1];
 		expect(text).toContain("<from-task>seq:7</from-task>");
 		expect(text).toContain("hello now");
+	});
+});
+
+// A message that arrives while the agent is still inside its own trust or login
+// prompt has not failed — it is early. Dropping it there would be a new way to
+// lose an authorized message during an ordinary startup (h0x91b/dev-3.0#1785).
+describe("a scheduled message waits for an agent that is still starting", () => {
+	beforeEach(() => resetAgentReadinessForTests());
+	afterEach(() => resetAgentReadinessForTests());
+
+	it("keeps the message queued instead of dropping it", async () => {
+		const task = makeTask();
+		mockUpdateTaskWith(task);
+		noteAgentLaunching(task.id, { reportsLifecycle: true, primary: true });
+
+		const { delivery, task: after } = await fireScheduledMessage(project, task as never, makeMessage(), { late: false });
+
+		expect(delivery).toMatchObject({ status: "not-delivered", reason: "agent-booting" });
+		expect(after.scheduledMessages).toHaveLength(1);
+		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.anything());
+	});
+
+	it("delivers it on a later tick once the agent reports in", async () => {
+		const task = makeTask();
+		mockUpdateTaskWith(task);
+		const launch = noteAgentLaunching(task.id, { reportsLifecycle: true, primary: true });
+		await fireScheduledMessage(project, task as never, makeMessage(), { late: false });
+
+		noteAgentSessionAlive(task.id, { sessionId: "sess-a", launchId: launch });
+		const { delivery } = await fireScheduledMessage(project, task as never, makeMessage(), { late: false });
+		expect(delivery.status).not.toBe("not-delivered");
+	});
+
+	// Bounded, and the end of the wait is user-visible: a human who never answers
+	// the dialog still gets told, instead of a message sitting in the queue forever.
+	it("gives up loudly once the message has waited past the ceiling", async () => {
+		const task = makeTask();
+		mockUpdateTaskWith(task);
+		noteAgentLaunching(task.id, { reportsLifecycle: true, primary: true });
+		const stale = makeMessage({ at: new Date(Date.now() - BOOT_RETAIN_MS - 1000).toISOString() });
+
+		const { task: after } = await fireScheduledMessage(project, task as never, stale, { late: false });
+
+		expect(after.scheduledMessages).toHaveLength(0);
+		expect(pushFn).toHaveBeenCalledWith(
+			"cliToast",
+			expect.objectContaining({ message: expect.stringContaining("never finished starting up") }),
+		);
+	});
+
+	// A click has to do something visible, so the chip's "Send now" reports the
+	// refusal rather than quietly re-queueing.
+	it("does not retain on the explicit Send now path", async () => {
+		const task = makeTask();
+		mockUpdateTaskWith(task);
+		noteAgentLaunching(task.id, { reportsLifecycle: true, primary: true });
+
+		const after = await sendScheduledMessageNow(project, task.id, "msg-1");
+		expect(after.scheduledMessages).toHaveLength(0);
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
 	});
 });

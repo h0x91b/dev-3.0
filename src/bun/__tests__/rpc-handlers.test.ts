@@ -213,6 +213,21 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
+// Agent readiness is a live, process-wide fact about running agents. These tests
+// drive launch/spawn handlers with no agent behind them, so every pane would read
+// as "still booting" forever; the gate itself is covered in agent-readiness.test.ts
+// and agent-prompt-delivery.test.ts.
+vi.mock("../agent-readiness", () => ({
+	agentReadiness: vi.fn(() => "unknown"),
+	agentAcceptsTypedInput: vi.fn(() => true),
+	waitForAgentReadiness: vi.fn(async () => "unknown"),
+	noteAgentLaunching: vi.fn(() => null),
+	noteAgentSessionAlive: vi.fn(() => true),
+	noteAgentSessionEnded: vi.fn(() => true),
+	forgetAgentPaneLaunch: vi.fn(),
+	forgetAgentReadiness: vi.fn(),
+	resetAgentReadinessForTests: vi.fn(),
+}));
 vi.mock("../codex-resume-home", () => ({ resolveCodexResumeHome: vi.fn() }));
 
 vi.mock("../agents", () => ({

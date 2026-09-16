@@ -35,6 +35,7 @@ import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudeSession } from "./commands/claude-session";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
@@ -244,6 +245,15 @@ async function main(): Promise<void> {
 		// never blocks or fails the prompt — the status move is a separate entry
 		// on the same event.
 		return await handleClaudePrompt(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "claude-session") {
+		// Internal: Claude Code's SessionStart/SessionEnd, read so dev3 knows when
+		// the agent's input box is up. Moves no status, blocks nothing, exits 0.
+		return await handleClaudeSession(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

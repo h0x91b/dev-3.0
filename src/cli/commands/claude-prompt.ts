@@ -1,5 +1,6 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
+import { hookIdentity } from "../hook-identity";
 
 /**
  * What Claude Code hands a `UserPromptSubmit` hook on stdin. Verified against
@@ -52,6 +53,9 @@ export async function handleClaudePrompt(
 			prompt: payload.prompt,
 			...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 			...(payload.promptId ? { submissionId: payload.promptId } : {}),
+			// A submitted prompt doubles as a readiness receipt, so it carries the
+			// same pane and launch identity the session hook does.
+			...hookIdentity(),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude prompt hook: ${response.error || "recording failed"}\n`);

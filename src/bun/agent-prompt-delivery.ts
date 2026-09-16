@@ -9,6 +9,10 @@
  * agent was plainly alive (seq 1371).
  *
  * Rules, all load-bearing:
+ *  - An agent that is not listening gets nothing. `agent-readiness.ts` answers
+ *    whether this task's agent is past its own startup dialogs and still has a
+ *    session open; `booting` and `gone` are refused here, for every caller at
+ *    once, rather than in whichever one remembered to ask.
  *  - The task's persisted backend identity decides the path, and a task whose
  *    marker cannot be read throws instead of guessing (`taskTerminalBackendIdentity`).
  *  - A native task NEVER falls back to tmux. If its agent pane cannot be resolved
@@ -32,6 +36,7 @@ import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-pro
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
 import { noteDev3TypedPrompt } from "./agent-typed-prompt-claims";
+import { agentReadiness } from "./agent-readiness";
 
 /**
  * Text appended once at the end of the agent's turn, after every message in the
@@ -65,6 +70,28 @@ export async function deliverAgentPrompt(
 	target: ScheduledMessageTarget = { kind: "agent" },
 	opts: { hold?: boolean; epilogue?: AgentPromptEpilogue } = {},
 ): Promise<AgentPromptDelivery> {
+	// Nothing is typed into an agent that is not listening. A pane whose agent is
+	// still inside its own startup dialogs reads the paste as dialog input and the
+	// Enter as the highlighted answer — which on Claude Code's trust dialog is
+	// "No, exit", killing the agent and spilling the rest into the bare shell
+	// (h0x91b/dev-3.0#1785). `not-delivered` is the honest verdict: proven untyped,
+	// so the caller may say so and may safely send again later.
+	//
+	// A pane target is judged on THAT pane, so a ready main agent cannot vouch for
+	// a second pane still in its trust dialog. An agent target resolves its pane
+	// deep inside the backend, so dev3 cannot prove where the text lands — and
+	// while ANY pane of the task is booting, that send is refused.
+	const readiness = agentReadiness(task.id, target.kind === "pane" ? target.paneId : null);
+	if (readiness === "booting" || readiness === "gone") {
+		return {
+			status: "not-delivered",
+			reason: readiness === "booting" ? "agent-booting" : "agent-session-ended",
+			detail: readiness === "booting"
+				? "the agent has not finished starting up — it may still be waiting on its own trust or login prompt"
+				: "the agent session in this task has ended",
+		};
+	}
+
 	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
 	// in place before it is typed, not after. A no-op unless something rewrote the
 	// settings file behind us. Done at hold time too: a held message may land many

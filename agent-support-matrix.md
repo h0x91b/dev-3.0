@@ -61,6 +61,8 @@ Injected into `.claude/settings.local.json`.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
+| `SessionStart` | none | Readiness only, via `dev3 hook claude-session`. Measured on claude 2.1.273: it does **not** fire while the workspace-trust dialog or the first-run theme wizard is up, and fires about 0.7 s after the human accepts — so it is the evidence dev3 uses to decide that typed input would reach the agent's input box rather than a dialog (h0x91b/dev-3.0#1785). It deliberately moves no status: a session merely opening is not the task going back to work |
+| `SessionEnd` | none | Same adapter, same `session_id`, so a start pairs with its end and a task running several agent panes is not declared dead by one of them |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working. A **second** entry on the same event, `dev3 hook claude-prompt`, reads the payload's `prompt` and `prompt_id` and reports the submission for Agent traffic; the status-move entry above is untouched, so recording can never cost a task its board position |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
 | `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |

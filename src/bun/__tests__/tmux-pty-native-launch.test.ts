@@ -129,7 +129,7 @@ vi.mock("../agents", () => ({
 }));
 
 vi.mock("../../shared/agent-adapters/registry", () => ({
-	getAgentAdapter: vi.fn(() => ({ trustKinds: [] })),
+	getAgentAdapter: vi.fn(() => ({ trustKinds: [], hooksSpec: () => null })),
 }));
 
 vi.mock("../agent-prompt", () => ({ markAgentPane: vi.fn() }));

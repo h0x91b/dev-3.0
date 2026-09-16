@@ -178,10 +178,28 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
+		}
+	});
+
+	// The peer-launch handoff used to be typed on "the pane is up" alone and its
+	// Enter answered Claude Code's trust dialog with the highlighted "No, exit"
+	// (h0x91b/dev-3.0#1785). These two entries are the receipt that replaced the
+	// guess — measured on claude 2.1.273: SessionStart does not fire while the
+	// trust dialog or the first-run wizard is up.
+	it("reports session start and end through a readiness-only adapter", () => {
+		const hooks = buildClaudeHooks();
+
+		for (const event of ["SessionStart", "SessionEnd"] as const) {
+			expect(hooks[event]).toHaveLength(1);
+			expect(hooks[event][0].matcher).toBeUndefined();
+			expect(hooks[event][0].hooks[0].command).toContain("hook claude-session");
+			// A session merely opening is not the task going back to work: the board
+			// already has owners for that, and a second one would fight them.
+			expect(hooks[event][0].hooks[0].command).not.toContain("task move");
 		}
 	});
 
@@ -643,6 +661,8 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 		expect(Object.keys(hooks)).toEqual([
+			"SessionStart",
+			"SessionEnd",
 			"UserPromptSubmit",
 			"PreToolUse",
 			"PostToolUse",
@@ -1034,6 +1054,8 @@ describe("mergeClaudeHooks with malformed settings", () => {
 	const hookEvents = (result: unknown) =>
 		Object.keys((result as { hooks: Record<string, unknown> }).hooks);
 	const DEV3_EVENTS = [
+		"SessionStart",
+		"SessionEnd",
 		"UserPromptSubmit",
 		"PreToolUse",
 		"PostToolUse",
@@ -1084,10 +1106,10 @@ describe("mergeClaudeHooks with malformed settings", () => {
 
 	it("leaves an unrelated event alone even when its value is malformed", () => {
 		const merged = mergeClaudeHooks({
-			hooks: { SessionEnd: "whatever" },
+			hooks: { PreCompact: "whatever" },
 		}) as { hooks: Record<string, unknown> };
 
-		expect(merged.hooks.SessionEnd).toBe("whatever");
+		expect(merged.hooks.PreCompact).toBe("whatever");
 	});
 
 	it("drops a malformed group without dropping the rest of the event", () => {

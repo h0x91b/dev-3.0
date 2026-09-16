@@ -25,6 +25,12 @@ import { holdMessageForAgentPane, holdMessageForPane, sendPromptToAgentPane, sen
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import { refreshClaudeHooksForTask } from "../agent-hooks-refresh";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
+import {
+	noteAgentLaunching,
+	noteAgentSessionAlive,
+	noteAgentSessionEnded,
+	resetAgentReadinessForTests,
+} from "../agent-readiness";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
 const TASK_ID = "task-1234";
@@ -203,5 +209,68 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 			hold: true,
 		});
 		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
+	});
+});
+
+// The seam is where the readiness gate belongs: every dev3-typed prompt passes
+// through here, so one check covers the handoff, `dev3 message`, scheduled
+// messages and the button hand-offs at once (h0x91b/dev-3.0#1785).
+describe("deliverAgentPrompt — readiness gate", () => {
+	beforeEach(() => resetAgentReadinessForTests());
+
+	it("types nothing while the agent is still booting", async () => {
+		noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toMatchObject({
+			status: "not-delivered",
+			reason: "agent-booting",
+		});
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
+	});
+
+	// A refused send must leave no trace either: a receipt would let the prompt
+	// hook read the next human prompt as dev3's, and refreshing hooks on a pane we
+	// are not typing into is work for nothing.
+	it("leaves no typed-prompt receipt behind when it refuses", async () => {
+		noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		await deliverAgentPrompt(task(), "check CI");
+		expect(refreshClaudeHooksForTask).not.toHaveBeenCalled();
+	});
+
+	it("refuses a native task the same way", async () => {
+		noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		await expect(
+			deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "check CI"),
+		).resolves.toMatchObject({ status: "not-delivered" });
+		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("refuses a concrete pane target too", async () => {
+		noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" });
+		expect(sendPromptToPane).not.toHaveBeenCalled();
+	});
+
+	// The bare shell an exited agent leaves behind takes keystrokes happily and
+	// answers `zsh: parse error` — the second half of the reported failure.
+	it("types nothing once the agent's session has ended", async () => {
+		const launch = noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		noteAgentSessionAlive(TASK_ID, { sessionId: "sess-a", launchId: launch });
+		noteAgentSessionEnded(TASK_ID, { sessionId: "sess-a", launchId: launch });
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toMatchObject({
+			status: "not-delivered",
+			reason: "agent-session-ended",
+		});
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("delivers once the agent has reported in", async () => {
+		const launch = noteAgentLaunching(TASK_ID, { reportsLifecycle: true, primary: true });
+		noteAgentSessionAlive(TASK_ID, { sessionId: "sess-a", launchId: launch });
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toEqual({ status: "delivered" });
+	});
+
+	it("never blocks a task it knows nothing about", async () => {
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toEqual({ status: "delivered" });
 	});
 });
