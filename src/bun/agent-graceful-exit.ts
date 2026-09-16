@@ -95,13 +95,19 @@ export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget)
  * answer whatever that dialog has selected — a decision taken on the user's behalf,
  * and a lasting one when the task is only hibernating and its worktree comes back.
  *
- * The proof is a launch-scoped readiness receipt, which #1785 is building in
- * `src/bun/agent-readiness.ts` around launch tokens and per-pane receipts. Replacing
- * this function with the mapping onto it is REQUIRED INTEGRATION before this step
- * ships — merging that work alone changes nothing here, because this default is what
- * every caller gets. Whatever its final states are, only a proved "at its prompt"
- * maps to "ready"; anything that means booting, gone, or unprobeable is "not-ready" or
- * "unknown", and both skip.
+ * The proof is #1785's `agentReadiness(taskId, paneId?)` in
+ * `src/bun/agent-readiness.ts`, whose receipts are keyed by the pane the hook reported
+ * from and carry a launch generation token, so a slow hook from the agent we just
+ * replaced cannot bless the new one. Replacing this function with the mapping onto it
+ * is REQUIRED INTEGRATION before this step ships — merging that work alone changes
+ * nothing here, because this default is what every caller gets:
+ *
+ *   `ready` → "ready" · `booting` → "not-ready" · `gone` → "not-ready" ·
+ *   `unknown` → "unknown"
+ *
+ * Always pass the pane. This step knows which one it is about, and omitting it is
+ * that contract's deliberately strict answer for callers that do not — while any pane
+ * of the task is booting it reports booting for all of them.
  *
  * Deliberately NOT a convenience that folds `unknown` into "may type", the way an
  * ordinary-message gate has to so a harness with no lifecycle probe is not blocked.

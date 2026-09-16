@@ -112,9 +112,12 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
 - **The seam asks per pane on purpose.** An early version of the readiness contract was
   keyed on the task alone, which cannot tell two agent panes apart — one can be mid-launch
   while the other is long past its trust prompt. The resolver here takes the pane and a
-  test pins that one pane's verdict never authorizes another, so a task-scoped answer
-  cannot be fanned out through this module. The receipt side is being reshaped around
-  launch tokens and per-pane receipts; this gate adapts to it rather than the reverse.
+  test pins that one pane's verdict never authorizes another. The receipt side then moved
+  the same way: `agentReadiness(taskId, paneId?)` keys receipts by the pane the hook
+  reported from, so this step passes its pane rather than relying on the strict
+  task-wide answer that omitting it gives. Its receipts also carry a launch generation
+  token and expire on a receipt, a session end or the pane disappearing — never on a
+  clock, because a timeout would un-gate the exact pane whose dialog is still open.
 - **Support means two conditions, not one.** A harness is covered only where both the
   quit command has been observed against the real CLI and readiness can be proved for the
   current launch. They fail independently: Gemini's `/quit` is verified but has no
