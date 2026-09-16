@@ -112,7 +112,7 @@ export function ReviewThreadView({
 									<div className="min-w-[10rem] flex-1 text-sm text-fg whitespace-pre-wrap break-words">
 										{comment.body}
 									</div>
-									<div className="ml-auto flex shrink-0 items-center gap-1">
+									<div className="ml-auto flex flex-wrap items-center justify-end gap-1">
 										{resolved ? (
 											<button
 												type="button"
