@@ -73,7 +73,7 @@ describe("artifact comment tools", () => {
 		note.textContent = "x".repeat(ARTIFACT_COMMENT_TEXT_LIMIT + 50);
 		host({ type: "dev3-artifact-comment-mode", on: true });
 		note.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-		const pick = (sent[0] as { pick: { text: string } }).pick;
+		const pick = (sent[0] as unknown as { pick: { text: string } }).pick;
 		expect(pick.text).toHaveLength(ARTIFACT_COMMENT_TEXT_LIMIT);
 		expect(pick.text.endsWith("…")).toBe(true);
 	});

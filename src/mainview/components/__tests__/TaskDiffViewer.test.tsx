@@ -2054,7 +2054,9 @@ describe("TaskDiffViewer", () => {
 		expect(
 			within(screen.getByTestId("inline-comment-thread")).getByText("New lines 1–2"),
 		).toBeInTheDocument();
-		expect(document.querySelector('[data-inline-comment-id*=":newFile:1-2:"]')).not.toBeNull();
+		expect(vi.mocked(api.request.addReviewComment)).toHaveBeenLastCalledWith(expect.objectContaining({
+			comment: expect.objectContaining({ anchor: expect.objectContaining({ side: "newFile", startLine: 1, endLine: 2 }) }),
+		}));
 	});
 
 	it("drag-selects a line range in unified mode where the gutter is one combined column", async () => {
@@ -2241,7 +2243,7 @@ describe("TaskDiffViewer", () => {
 			},
 		});
 
-		const secondComment = document.querySelector('[data-inline-comment-id*=":newFile:2:"]') as HTMLDivElement | null;
+		const secondComment = screen.getAllByText("second").map((node) => node.closest("[data-inline-comment-id]")).find(Boolean) as HTMLDivElement | null;
 		expect(secondComment).not.toBeNull();
 		Object.defineProperty(secondComment as HTMLDivElement, "scrollIntoView", {
 			configurable: true,
