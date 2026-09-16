@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SharedArtifact, Task, TaskStatus } from "../../shared/types";
-import { buildReviewPrompt, reviewCommentsForArtifact, type ReviewComment } from "../../shared/review";
-import { ReviewComposer } from "../review/ReviewComposer";
-import { ReviewThreadView } from "../review/ReviewThreadView";
+import { reviewCommentsForArtifact, type ReviewComment } from "../../shared/review";
+import { ReviewAside } from "../review/ReviewAside";
+import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import type { ArtifactCommentPick, ArtifactCommentPin } from "../utils/artifactCommentScript";
 import { TERMINAL_STATUSES } from "../../shared/types";
@@ -142,9 +142,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const [pendingPick, setPendingPick] = useState<ArtifactCommentPick | null>(null);
 	const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
 	const [unmatchedIds, setUnmatchedIds] = useState<string[]>([]);
-	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-	const [sendingCommentIds, setSendingCommentIds] = useState<Record<string, boolean>>({});
-	const [batchSending, setBatchSending] = useState(false);
+	const send = useReviewSend(taskId, projectId, review);
 	const artifactComments = useMemo(
 		() => (group ? reviewCommentsForArtifact(review.comments, group.id) : []),
 		[group, review.comments],
@@ -514,45 +512,6 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		return () => window.removeEventListener("keydown", onFindShortcut, { capture: true });
 	}, [openSearch, modal]);
 
-	// Comments made here go to the agent through the same path as the diff
-	// viewer's, marked sent and never deleted (decision `never-destroy-a-review-on-send`).
-	const sendComments = (comments: ReviewComment[], onDone: () => void) => {
-		if (!projectId || comments.length === 0) return;
-		const text = buildReviewPrompt(comments.map((comment) => ({
-			id: comment.id,
-			anchor: comment.anchor,
-			comment: comment.body,
-			origin: "local",
-			author: null,
-		})));
-		api.request.sendAgentMessageNow({ taskId, projectId, text })
-			.then((result) => {
-				review.markSent(comments.map((comment) => comment.id));
-				toast.success(result?.spilledPath
-					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
-					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId });
-			})
-			.catch((err) => {
-				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }), { taskId });
-			})
-			.finally(onDone);
-	};
-	const sendOneComment = (commentId: string) => {
-		const comment = artifactComments.find((item) => item.id === commentId);
-		if (!comment || sendingCommentIds[commentId]) return;
-		setSendingCommentIds((ids) => ({ ...ids, [commentId]: true }));
-		sendComments([comment], () => setSendingCommentIds((ids) => {
-			const next = { ...ids };
-			delete next[commentId];
-			return next;
-		}));
-	};
-	const unsentComments = artifactComments.filter((comment) => !comment.sentAt && !comment.resolvedAt);
-	const sendAllComments = () => {
-		if (batchSending || unsentComments.length === 0) return;
-		setBatchSending(true);
-		sendComments(unsentComments, () => setBatchSending(false));
-	};
 	const addPickedComment = (body: string, andSend: boolean) => {
 		if (!pendingPick || !group) return;
 		const comment: ReviewComment = {
@@ -572,15 +531,9 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		review.add(comment);
 		setPendingPick(null);
 		setActiveCommentId(comment.id);
-		if (andSend) {
-			setSendingCommentIds((ids) => ({ ...ids, [comment.id]: true }));
-			sendComments([comment], () => setSendingCommentIds((ids) => {
-				const next = { ...ids };
-				delete next[comment.id];
-				return next;
-			}));
-		}
+		if (andSend) send.sendOne(comment);
 	};
+	const unmatchedSet = useMemo(() => new Set(unmatchedIds), [unmatchedIds]);
 	const pickLabel = (pick: ArtifactCommentPick | null) => pick
 		? `${current?.title ?? ""} · ${pick.heading ? `${pick.heading} › ` : ""}${pick.text || pick.selector}`
 		: "";
@@ -776,83 +729,27 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 					)}
 				</div>
 				{canComment && commentMode && (
-					<aside
-						data-testid="artifact-review-panel"
-						aria-label={t("artifactViewer.reviewTitle")}
-						className="flex w-[22rem] max-w-[45%] flex-shrink-0 flex-col border-l border-edge bg-raised"
-					>
-						<div className="flex items-center gap-2 border-b border-edge px-3 py-2">
-							<span className="text-micro font-semibold uppercase tracking-wider text-fg-muted">{t("artifactViewer.reviewTitle")}</span>
-							{artifactComments.length > 0 && (
-								<span data-testid="artifact-review-count" className="font-mono text-micro text-fg-3">{artifactComments.length}</span>
-							)}
-							{unsentComments.length > 0 && (
-								<button
-									type="button"
-									data-testid="artifact-review-send-all"
-									disabled={batchSending}
-									onClick={sendAllComments}
-									className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-edge bg-base px-2 text-micro font-semibold text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-								>
-									<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: ICON }}>{""}</span>
-									<span>{batchSending ? t("infoPanel.diffReviewExportSendSending") : t.plural("artifactViewer.reviewSendAll", unsentComments.length)}</span>
-								</button>
-							)}
-						</div>
-						<div className="min-h-0 flex-1 overflow-y-auto">
-							{!pendingPick && (
-								<p className="px-3 py-2 text-micro leading-snug text-fg-3">{t("artifactViewer.commentModeHint")}</p>
-							)}
-							{pendingPick && (
-								<div data-testid="artifact-review-composer" className="border-b border-edge">
-									<ReviewComposer
-										anchorLabel={pickLabel(pendingPick)}
-										onCancel={() => setPendingPick(null)}
-										onSubmit={(body) => addPickedComment(body, false)}
-										onSubmitAndSend={(body) => addPickedComment(body, true)}
-									/>
-								</div>
-							)}
-							{artifactComments.length === 0 && !pendingPick && (
-								<p className="px-3 py-2 text-micro text-fg-muted">{t("artifactViewer.reviewEmpty")}</p>
-							)}
-							{artifactComments.map((comment, i) => {
-								const anchor = comment.anchor as Extract<ReviewComment["anchor"], { kind: "artifact-element" }>;
-								const outdated = unmatchedIds.includes(comment.id);
-								const label = `${i + 1} · ${t("artifactViewer.reviewVersion", { version: anchor.version })} · ${anchor.heading ? `${anchor.heading} › ` : ""}${anchor.text || anchor.selector}${outdated ? ` · ${t("artifactViewer.reviewOutdated")}` : ""}`;
-								return (
-									<div
-										key={comment.id}
-										data-testid="artifact-review-thread"
-										data-outdated={outdated ? "true" : undefined}
-										className={comment.id === activeCommentId ? "bg-accent/5" : ""}
-										onClick={() => {
-											setActiveCommentId(comment.id);
-											postToFrame({ type: "dev3-artifact-comment-reveal", id: comment.id });
-										}}
-									>
-										<ReviewThreadView
-											comments={[comment]}
-											label={label}
-											registerCommentRef={() => {}}
-											editingCommentId={editingCommentId}
-											onStartEdit={setEditingCommentId}
-											onCancelEdit={() => setEditingCommentId(null)}
-											onSaveEdit={(id, body) => {
-												const trimmed = body.trim();
-												if (trimmed) review.update(id, trimmed);
-												setEditingCommentId(null);
-											}}
-											onDeleteComment={(id) => { review.remove(id); setEditingCommentId(null); }}
-											onSendComment={sendOneComment}
-											onReopenComment={review.reopen}
-											sendingCommentIds={sendingCommentIds}
-										/>
-									</div>
-								);
-							})}
-						</div>
-					</aside>
+					<ReviewAside
+						testId="artifact-review"
+						comments={artifactComments}
+						review={review}
+						send={send}
+						outdatedIds={unmatchedSet}
+						activeCommentId={activeCommentId}
+						onActivate={(id) => {
+							setActiveCommentId(id);
+							postToFrame({ type: "dev3-artifact-comment-reveal", id });
+						}}
+						labelFor={(comment, i) => {
+							const anchor = comment.anchor as Extract<ReviewComment["anchor"], { kind: "artifact-element" }>;
+							return `${i + 1} · ${t("artifactViewer.reviewVersion", { version: anchor.version })} · ${anchor.heading ? `${anchor.heading} › ` : ""}${anchor.text || anchor.selector}`;
+						}}
+						pendingLabel={pendingPick ? pickLabel(pendingPick) : null}
+						onSubmitPick={addPickedComment}
+						onCancelPick={() => setPendingPick(null)}
+						hint={t("artifactViewer.commentModeHint")}
+						empty={t("artifactViewer.reviewEmpty")}
+					/>
 				)}
 				</div>
 			</section>

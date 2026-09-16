@@ -40,7 +40,57 @@ export interface ReviewArtifactElementAnchor {
 	heading: string | null;
 }
 
-export type ReviewAnchor = ReviewDiffLineAnchor | ReviewArtifactElementAnchor;
+export interface ReviewImageRegionAnchor {
+	kind: "image-region";
+	/** `SharedImage.id`. */
+	imageId: string;
+	name: string;
+	/** Absolute path of the stored copy, so the agent can open it. */
+	path: string;
+	caption: string | null;
+	/** Region in image coordinates normalised to 0..1, so it survives any zoom or viewport. */
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+export interface ReviewFileRangeAnchor {
+	kind: "file-range";
+	/** Absolute path as previewed (Cmd-click in the terminal). */
+	path: string;
+	/** Null when the selection came from a rendered document with no source-line mapping. */
+	startLine: number | null;
+	endLine: number | null;
+	/** The selected text, trimmed and capped. */
+	excerpt: string;
+}
+
+export interface ReviewTerminalTextAnchor {
+	kind: "terminal-text";
+	/** The selected terminal text, trimmed and capped. */
+	excerpt: string;
+}
+
+export type ReviewAnchor =
+	| ReviewDiffLineAnchor
+	| ReviewArtifactElementAnchor
+	| ReviewImageRegionAnchor
+	| ReviewFileRangeAnchor
+	| ReviewTerminalTextAnchor;
+
+/** Selections longer than this are cut in the anchor; the agent has the file or the scrollback for the rest. */
+export const REVIEW_EXCERPT_LIMIT = 600;
+
+export function clipReviewExcerpt(text: string, limit = REVIEW_EXCERPT_LIMIT): string {
+	const clean = text.replace(/\r/g, "").trim();
+	return clean.length > limit ? `${clean.slice(0, limit - 1)}…` : clean;
+}
+
+function formatRegion(anchor: ReviewImageRegionAnchor): string {
+	const pct = (value: number) => `${Math.round(value * 100)}%`;
+	return `x ${pct(anchor.x)}–${pct(anchor.x + anchor.w)}, y ${pct(anchor.y)}–${pct(anchor.y + anchor.h)}`;
+}
 
 export type ReviewReplyAuthor = "user" | "agent";
 
@@ -109,8 +159,16 @@ export function describeReviewAnchor(anchor: ReviewAnchor): string {
 		const range = anchor.startLine === anchor.endLine ? `${anchor.startLine}` : `${anchor.startLine}-${anchor.endLine}`;
 		return `${anchor.filePath}:${range}`;
 	}
-	const where = anchor.heading ? `${anchor.heading} › ` : "";
-	return `${anchor.title} v${anchor.version} › ${where}${anchor.text || anchor.selector}`;
+	if (anchor.kind === "artifact-element") {
+		const where = anchor.heading ? `${anchor.heading} › ` : "";
+		return `${anchor.title} v${anchor.version} › ${where}${anchor.text || anchor.selector}`;
+	}
+	if (anchor.kind === "image-region") return `${anchor.name} (${formatRegion(anchor)})`;
+	if (anchor.kind === "file-range") {
+		const range = anchor.startLine === null ? "" : anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}-${anchor.endLine}`;
+		return `${anchor.path}${range}`;
+	}
+	return `terminal › ${anchor.excerpt.split("\n")[0]}`;
 }
 
 /**
@@ -154,13 +212,30 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 		lines.push("</file>");
 		return lines;
 	}
-	const attrs = [
-		`title="${escapeAttribute(anchor.title)}"`,
-		`version="${anchor.version}"`,
-		`selector="${escapeAttribute(anchor.selector)}"`,
-	];
-	if (anchor.heading) attrs.push(`heading="${escapeAttribute(anchor.heading)}"`);
-	return [`<artifact ${attrs.join(" ")}>`, anchor.text, "</artifact>"];
+	if (anchor.kind === "artifact-element") {
+		const attrs = [
+			`title="${escapeAttribute(anchor.title)}"`,
+			`version="${anchor.version}"`,
+			`selector="${escapeAttribute(anchor.selector)}"`,
+		];
+		if (anchor.heading) attrs.push(`heading="${escapeAttribute(anchor.heading)}"`);
+		return [`<artifact ${attrs.join(" ")}>`, anchor.text, "</artifact>"];
+	}
+	if (anchor.kind === "image-region") {
+		const attrs = [
+			`src="${escapeAttribute(anchor.path)}"`,
+			`region="${formatRegion(anchor)}"`,
+		];
+		if (anchor.caption) attrs.push(`caption="${escapeAttribute(anchor.caption)}"`);
+		return [`<image ${attrs.join(" ")}/>`];
+	}
+	if (anchor.kind === "file-range") {
+		const line = anchor.startLine === null
+			? ""
+			: anchor.endLine === null || anchor.endLine === anchor.startLine ? ` line=${anchor.startLine}` : ` line="${anchor.startLine}-${anchor.endLine}"`;
+		return [`<file src="${escapeAttribute(anchor.path)}"${line}>`, anchor.excerpt, "</file>"];
+	}
+	return ["<terminal>", anchor.excerpt, "</terminal>"];
 }
 
 /**
@@ -171,10 +246,12 @@ export function buildReviewPrompt(entries: ReviewPromptEntry[]): string {
 	const lines = ["<reviews>"];
 	let hasGithub = false;
 	let hasArtifact = false;
+	let hasOther = false;
 	let hasIds = false;
 	for (const entry of entries) {
 		if (entry.origin === "github") hasGithub = true;
 		if (entry.anchor.kind === "artifact-element") hasArtifact = true;
+		if (entry.anchor.kind !== "diff-line") hasOther = true;
 		if (entry.id) hasIds = true;
 		lines.push(reviewOpenTag(entry));
 		lines.push(...anchorLines(entry));
@@ -183,12 +260,18 @@ export function buildReviewPrompt(entries: ReviewPromptEntry[]): string {
 	}
 	lines.push("</reviews>");
 	lines.push("---");
-	const subject = hasArtifact ? "my review comments" : "my comments about code changes";
+	const subject = hasOther ? "my review comments" : "my comments about code changes";
 	lines.push(hasGithub
 		? `Above are code review comments. Reviews marked origin="github" come from GitHub PR reviewers; the rest are my own. Read them carefully and process all of them.`
 		: `Above ${subject}, read them carefully and process all of them.`);
 	if (hasArtifact) {
 		lines.push("An <artifact> entry points at an element of an HTML artifact you published with `dev3 show-artifact`: fix the report and republish it under the same title.");
+	}
+	if (entries.some((entry) => entry.anchor.kind === "image-region")) {
+		lines.push("An <image> entry points at a region (percent of width/height) of an image you shared with `dev3 show-image`; open the file to look at it.");
+	}
+	if (entries.some((entry) => entry.anchor.kind === "terminal-text")) {
+		lines.push("A <terminal> entry quotes text from your own terminal output.");
 	}
 	if (hasIds) {
 		lines.push("When a comment is handled run `dev3 review resolve <id> --reply \"what you did\"`; to answer without closing it run `dev3 review reply <id> \"...\"`. `dev3 review list` shows what is still open.");

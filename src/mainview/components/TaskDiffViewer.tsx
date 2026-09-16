@@ -26,7 +26,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { resolveAutoDiffViewMode, resolveDiffViewMode } from "./global-settings/utils";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { extractReviewSnippet, getReviewFilePath, parseDiffHunkLines, type DiffSideKey } from "./diff-hunks";
-import { buildReviewPrompt, type ReviewAnchor, type ReviewComment, type ReviewDiffLineAnchor, type ReviewPromptEntry } from "../../shared/review";
+import { buildReviewPrompt, describeReviewAnchor, type ReviewAnchor, type ReviewComment, type ReviewDiffLineAnchor, type ReviewPromptEntry } from "../../shared/review";
 import { ReviewComposer } from "../review/ReviewComposer";
 import { ReviewThreadView } from "../review/ReviewThreadView";
 import { useTaskReview } from "../review/useTaskReview";
@@ -611,19 +611,20 @@ function buildGithubReviewExportEntries(
 }
 
 /**
- * Comments made on HTML artifacts belong to the same review: they list after
- * the diff entries and ride along in the batch send, so one click hands the
- * agent everything the user said about this task's output.
+ * Comments made outside the diff — on artifacts, images, previewed files, the
+ * terminal — belong to the same review: they list after the diff entries and
+ * ride along in the batch send, so one click hands the agent everything the
+ * user said about this task's output.
  */
-function buildArtifactReviewExportEntries(comments: ReviewComment[]): InlineReviewExportEntry[] {
+function buildOtherReviewExportEntries(comments: ReviewComment[]): InlineReviewExportEntry[] {
 	const result: InlineReviewExportEntry[] = [];
 	for (const comment of comments) {
-		if (comment.anchor.kind !== "artifact-element") continue;
+		if (comment.anchor.kind === "diff-line") continue;
 		result.push({
 			id: comment.id,
 			anchor: comment.anchor,
 			fileId: "",
-			filePath: comment.anchor.title,
+			filePath: describeReviewAnchor(comment.anchor),
 			side: "newFile",
 			startLine: 0,
 			endLine: 0,
@@ -2018,7 +2019,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		? [
 			...buildInlineReviewExportEntries(visibleFiles, inlineComments),
 			...buildGithubReviewExportEntries(visibleFiles, prComments?.threads ?? [], githubExportSelection),
-			...buildArtifactReviewExportEntries(review.comments),
+			...buildOtherReviewExportEntries(review.comments),
 		].sort(compareReviewExportEntries)
 		: [];
 	// Comments already sent one-by-one stay listed (greyed, marked) but leave the

@@ -659,7 +659,7 @@ describe("TaskArtifactViewer comment mode", () => {
 		const { frame, postMessage } = await openViewer({ id: "task-7" });
 		await userEvent.click(screen.getByTestId("artifact-viewer-comment"));
 		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-comment-mode", on: true }, "*"));
-		expect(screen.getByTestId("artifact-review-panel")).toBeInTheDocument();
+		expect(screen.getByTestId("artifact-review")).toBeInTheDocument();
 
 		fromFrame(frame, { type: "dev3-artifact-comment-pick", pick: { selector: ".kpi:nth-of-type(2)", text: "Agent success 94.2%", heading: "Overview" } });
 		const composer = await screen.findByTestId("artifact-review-composer");
@@ -723,9 +723,9 @@ describe("TaskArtifactViewer comment mode", () => {
 		);
 		const frame = await screen.findByTitle("Artifact v") as HTMLIFrameElement;
 		fromFrame(frame, { type: "dev3-artifact-comment-focus", id: "a1" });
-		await waitFor(() => expect(screen.getByTestId("artifact-review-panel")).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByTestId("artifact-review")).toBeInTheDocument());
 		fireEvent.keyDown(window, { key: "Escape" });
-		await waitFor(() => expect(screen.queryByTestId("artifact-review-panel")).not.toBeInTheDocument());
+		await waitFor(() => expect(screen.queryByTestId("artifact-review")).not.toBeInTheDocument());
 		expect(onClose).not.toHaveBeenCalled();
 		fireEvent.keyDown(window, { key: "Escape" });
 		expect(onClose).toHaveBeenCalled();
