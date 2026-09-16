@@ -267,8 +267,9 @@ describe("requestGracefulAgentExit", () => {
 	});
 
 	it("demands proof of readiness rather than assuming it", async () => {
-		// The default resolver answers `unknown` until #1785's SessionStart receipt is
-		// wired in. Nothing may type on an unproved prompt in the meantime.
+		// The default resolver answers `unknown` until the production readiness receipt
+		// is wired in. Nothing may type on an unproved prompt in the meantime, and this
+		// is the test that fails if someone ever makes the default permissive.
 		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
 
 		const outcome = await requestGracefulAgentExit(task(), fakeClock());

@@ -98,17 +98,28 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Codex, Cursor, Copilot and OpenCode ship compiled binaries and their quit commands are
   taken from documentation, not observation. A wrong one costs the 30 s bound per
   teardown for that harness and nothing else.
-- **This step is inert until #1785 merges**, because readiness cannot be proved before
-  then and unproved readiness skips. Merging in the other order costs nothing but buys
-  nothing either: the teardown kill is exactly what it was.
+- **This step stays inert until the production resolver is WIRED**, which is a change in
+  this file, not a merge order. `defaultAgentPromptReadiness` answers `unknown` and
+  nothing outside this module can change that: merging #1785 on its own leaves the
+  default in place and the step silent. Wiring it is required integration before this
+  ships, and it has to be proved through the real resolver — mixed ready/unready panes,
+  a stale launch generation, and a Claude quit whose `SessionEnd` descendant is still
+  running — not through the test stubs the unit suite injects.
 - **A harness that reports no lifecycle at all answers `unknown` forever** and therefore
   never gets a graceful exit. Today that is Gemini, Cursor and OpenCode. Stated here
   rather than discovered later: the gate is deliberately conservative, and widening it
   means giving those harnesses a receipt, never loosening the rule.
-- **Readiness is keyed on the task, this step acts per pane.** The seam takes the pane
-  and a test pins that one pane's verdict never authorizes another, but a task-scoped
-  receipt still cannot distinguish two agent panes; the second one is the case to watch
-  when the two land together.
+- **The seam asks per pane on purpose.** An early version of the readiness contract was
+  keyed on the task alone, which cannot tell two agent panes apart — one can be mid-launch
+  while the other is long past its trust prompt. The resolver here takes the pane and a
+  test pins that one pane's verdict never authorizes another, so a task-scoped answer
+  cannot be fanned out through this module. The receipt side is being reshaped around
+  launch tokens and per-pane receipts; this gate adapts to it rather than the reverse.
+- **Support means two conditions, not one.** A harness is covered only where both the
+  quit command has been observed against the real CLI and readiness can be proved for the
+  current launch. They fail independently: Gemini's `/quit` is verified but has no
+  readiness receipt, while Codex and Copilot may have receipts but their quit commands
+  have never been validated. `agent-support-matrix.md` states both per agent.
 - A CLI whose quit command changes goes back to the kill path silently; the matrix row
   in `agent-support-matrix.md` is where the command is documented.
 

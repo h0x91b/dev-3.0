@@ -95,23 +95,23 @@ export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget)
  * answer whatever that dialog has selected — a decision taken on the user's behalf,
  * and a lasting one when the task is only hibernating and its worktree comes back.
  *
- * The proof is a launch-scoped `SessionStart` receipt, which #1785 adds as
- * `agentReadiness(taskId)` in `src/bun/agent-readiness.ts` (keyed on the task, but
- * its receipts are discarded at every launch, so a resumed pane inherits nothing).
- * When that lands, this whole function becomes the mapping onto it:
+ * The proof is a launch-scoped readiness receipt, which #1785 is building in
+ * `src/bun/agent-readiness.ts` around launch tokens and per-pane receipts. Replacing
+ * this function with the mapping onto it is REQUIRED INTEGRATION before this step
+ * ships — merging that work alone changes nothing here, because this default is what
+ * every caller gets. Whatever its final states are, only a proved "at its prompt"
+ * maps to "ready"; anything that means booting, gone, or unprobeable is "not-ready" or
+ * "unknown", and both skip.
  *
- *   `ready` → "ready" · `booting` → "not-ready" · `gone` → "not-ready" ·
- *   `unknown` → "unknown"
- *
- * Deliberately NOT its `agentAcceptsTypedInput`, which folds `unknown` into true so a
- * harness with no lifecycle probe is not blocked from ordinary messages. Typing a
- * quit command is not an ordinary message: unproved readiness skips it, and the kill
- * behind this step is unchanged, so the cost is the agent's exit hooks — never
- * correctness. The price is stated rather than hidden: a harness that reports no
+ * Deliberately NOT a convenience that folds `unknown` into "may type", the way an
+ * ordinary-message gate has to so a harness with no lifecycle probe is not blocked.
+ * Typing a quit command is not an ordinary message: unproved readiness skips it, and
+ * the kill behind this step is unchanged, so the cost is the agent's exit hooks —
+ * never correctness. The price, stated rather than hidden: a harness that reports no
  * lifecycle at all answers `unknown` forever and never gets a graceful exit.
  *
- * Known limit: the answer is per TASK, while this step acts per PANE. A task running
- * two agent panes gets one verdict for both.
+ * Asked per PANE, never per task: one agent pane can be mid-launch while another is
+ * long past its trust prompt, so a task-scoped answer must not be fanned across them.
  */
 export const defaultAgentPromptReadiness: AgentPromptReadinessResolver = async () => "unknown";
 
