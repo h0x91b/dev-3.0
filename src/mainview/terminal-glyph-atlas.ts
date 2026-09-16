@@ -112,6 +112,60 @@ export const CHURN_COOLDOWN_CELLS = 300_000;
  */
 export const GLYPH_PADDING_PX = 3;
 
+/**
+ * Marks the hidden host that strip canvases live in. Attribute rather than an
+ * id so a duplicate can never silently take the name over.
+ */
+export const ATLAS_HOST_ATTR = "data-dev3-glyph-atlas";
+
+/**
+ * Strip canvases must be IN the document, or WebKit rasterises them with the
+ * wrong smoothing.
+ *
+ * A detached canvas has no computed style, so it never sees the app's global
+ * `-webkit-font-smoothing: antialiased` and falls back to the platform default.
+ * Measured in a real WKWebView at JetBrains Mono 16: a detached strip carries
+ * ~31% more ink per glyph than the attached terminal canvas beside it, which is
+ * exactly the "terminal text looks bolder than Ghostty" of issue #1786. An
+ * inline `style.webkitFontSmoothing` on a detached canvas changes nothing —
+ * measured byte-identical to no rule at all.
+ *
+ * `display: none` is enough: it still resolves style, so the strips match the
+ * visible canvas byte for byte, while costing no layout box, no paint and no
+ * accessibility node.
+ */
+let atlasHost: HTMLElement | null = null;
+
+function atlasHostElement(): HTMLElement | null {
+	if (typeof document === "undefined" || !document.body) return null;
+	if (atlasHost?.isConnected) return atlasHost;
+	const host = document.createElement("div");
+	host.setAttribute(ATLAS_HOST_ATTR, "");
+	host.setAttribute("aria-hidden", "true");
+	host.style.display = "none";
+	document.body.appendChild(host);
+	atlasHost = host;
+	return host;
+}
+
+/** True for something the DOM will actually accept as a child. */
+function isDomNode(value: unknown): value is Node {
+	return typeof Node !== "undefined" && value instanceof Node;
+}
+
+function attachPage(canvas: HTMLCanvasElement): void {
+	if (isDomNode(canvas)) atlasHostElement()?.appendChild(canvas);
+}
+
+/** Drop a strip, and the host with it once nothing is left parked there. */
+function detachPage(canvas: HTMLCanvasElement): void {
+	if (isDomNode(canvas)) canvas.parentNode?.removeChild(canvas);
+	if (atlasHost && atlasHost.childNodes.length === 0) {
+		atlasHost.parentNode?.removeChild(atlasHost);
+		atlasHost = null;
+	}
+}
+
 /** The 2D-context surface this module needs; narrowed so tests can fake it. */
 interface AtlasContext {
 	font: string;
@@ -324,10 +378,13 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 		const canvas = createCanvas();
 		canvas.width = Math.ceil(w * GLYPHS_PER_PAGE * sig.dpr);
 		canvas.height = Math.ceil(h * sig.dpr);
+		// Before the first fillText, so the glyphs are rasterised with the page's
+		// own font smoothing rather than the platform default — see `atlasHost`.
+		attachPage(canvas);
 		// Alpha is REQUIRED: the strip is transparent between glyphs, and an opaque
 		// atlas would blit black boxes over the cell backgrounds.
 		const ctx = canvas.getContext("2d") as AtlasContext | null;
-		if (!ctx) return null;
+		if (!ctx) { detachPage(canvas); return null; }
 		ctx.scale(sig.dpr, sig.dpr);
 		ctx.textBaseline = "alphabetic";
 		ctx.textAlign = "left";
@@ -374,6 +431,7 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 			for (const page of style.pages) {
 				page.canvas.width = 0;
 				page.canvas.height = 0;
+				detachPage(page.canvas);
 			}
 		}
 		styles.clear();

@@ -23,6 +23,7 @@ import {
 	MAX_STYLES,
 	CHURN_WINDOW_CELLS,
 	CHURN_COOLDOWN_CELLS,
+	ATLAS_HOST_ATTR,
 	type AtlasRenderer,
 } from "../terminal-glyph-atlas";
 import { blank, cell, graphemeCell, recordingCtx, type RecordedOp } from "../terminal-bidi/__tests__/fixtures";
@@ -42,6 +43,9 @@ beforeEach(() => {
 
 afterEach(() => {
 	getContextSpy.mockRestore();
+	// A test that never disposes its atlas leaves strips parked in the hidden host;
+	// clearing it here keeps the attachment assertions below counting only their own.
+	document.querySelector(`[${ATLAS_HOST_ATTR}]`)?.remove();
 });
 
 function newRenderer(): CanvasRenderer {
@@ -295,6 +299,102 @@ describe("dispose", () => {
 		// Zeroing the size is what frees it now; dropping the reference alone does not.
 		expect(created[0].width).toBe(0);
 		expect(created[0].height).toBe(0);
+	});
+});
+
+/**
+ * Issue #1786. A detached canvas has no computed style, so WebKit rasterises its
+ * text with the platform's own smoothing instead of the app's
+ * `-webkit-font-smoothing: antialiased` — measurably heavier glyphs than the
+ * terminal canvas they are blitted onto. The strips have to be IN the document.
+ *
+ * happy-dom cannot rasterise anything, so what is asserted here is the
+ * attachment contract, not the pixels; the pixel evidence is a WKWebView
+ * measurement recorded in the decision record.
+ */
+describe("strip canvases live in the document", () => {
+	const host = () => document.querySelector(`[${ATLAS_HOST_ATTR}]`);
+	const strips = () => document.querySelectorAll(`[${ATLAS_HOST_ATTR}] canvas`);
+
+	it("parks every strip in a hidden host that takes no layout and no a11y node", () => {
+		const renderer = newRenderer();
+		installGlyphAtlas(renderer as unknown as AtlasRenderer);
+
+		paint(renderer, cell("A"));
+
+		const parked = strips();
+		expect(parked.length).toBe(1);
+		expect(parked[0].isConnected).toBe(true);
+		const box = host() as HTMLElement;
+		expect(box.style.display).toBe("none");
+		expect(box.getAttribute("aria-hidden")).toBe("true");
+	});
+
+	it("takes the strips back out of the document on reset", () => {
+		const atlas = createGlyphAtlas();
+		const renderer = newRenderer() as unknown as AtlasRenderer;
+		atlas.draw(renderer, renderer.ctx as never, cell("A"), 0, 0);
+		expect(strips().length).toBe(1);
+
+		atlas.reset();
+
+		expect(strips().length).toBe(0);
+		// The empty host goes too, so nothing of the atlas outlives it.
+		expect(host()).toBe(null);
+	});
+
+	it("takes them out on dispose as well", () => {
+		const renderer = newRenderer();
+		const handle = installGlyphAtlas(renderer as unknown as AtlasRenderer);
+		paint(renderer, cell("A"));
+		expect(strips().length).toBe(1);
+
+		handle.dispose();
+
+		expect(strips().length).toBe(0);
+		expect(host()).toBe(null);
+	});
+
+	it("leaves nothing behind when the 2D context cannot be created", () => {
+		const recorder = recordingCtx();
+		// A stub, not a real CanvasRenderer: the vendor needs a working context of
+		// its own, and this test is about the strip's context failing.
+		const renderer = {
+			renderCellText() {},
+			metrics: { width: 8, height: 17, baseline: 13 },
+			fontSize: 13,
+			fontFamily: "monospace",
+			devicePixelRatio: 1,
+			ctx: recorder.ctx,
+		} as unknown as AtlasRenderer;
+		getContextSpy.mockImplementation(() => null);
+		const atlas = createGlyphAtlas();
+
+		const took = atlas.draw(renderer, recorder.ctx as never, cell("A"), 0, 0);
+
+		expect(took).toBe(false);
+		expect(strips().length).toBe(0);
+		expect(host()).toBe(null);
+	});
+
+	it("does not leak nodes across many terminals, each with many pages", () => {
+		const handles = Array.from({ length: 8 }, () => {
+			const renderer = newRenderer();
+			const handle = installGlyphAtlas(renderer as unknown as AtlasRenderer);
+			// More glyphs than one page holds, in two colours: several pages, two styles.
+			for (let i = 0; i < GLYPHS_PER_PAGE * 2; i++) {
+				const ch = String.fromCodePoint(0x21 + (i % 90));
+				paint(renderer, cell(ch));
+				paint(renderer, cell(ch, { fg_r: 200, fg_g: 30, fg_b: 30 }));
+			}
+			return handle;
+		});
+		expect(strips().length).toBeGreaterThan(8);
+
+		for (const handle of handles) handle.dispose();
+
+		expect(strips().length).toBe(0);
+		expect(host()).toBe(null);
 	});
 });
 
