@@ -58,6 +58,17 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   different question *"has the pane gone quiet?"* — the whole subtree, because the exit
   hook is a separate process that outlives the agent and waiting for it is the point.
   Using "the agent is gone" as the completion signal would have reintroduced the bug.
+- **Readiness is required before a single keystroke, and it is a third signal.**
+  Identity proves the CLI is running, not that it has a prompt: one still in its trust
+  dialog or first-run wizard would take the program's Enter as an answer to that dialog.
+  Teardown does not make that harmless — hibernation keeps the worktree, and a trust
+  decision is the user's to make. `AgentPromptReadiness` is asked per PANE (`ready` /
+  `not-ready` / `unknown`) and only `ready` earns keystrokes; everything else skips with
+  `not-ready` and an `info` log. The proof is #1785's launch-scoped
+  `agentReadiness(taskId)` (`src/bun/agent-readiness.ts`), mapped `booting`/`gone` →
+  `not-ready`; deliberately not its `agentAcceptsTypedInput`, which folds `unknown` into
+  true so ordinary messages are not blocked. Until that lands the default resolver
+  answers `unknown`, so this step types nothing at all.
 - **Absent process evidence is never read as "the agent left."** `collectProcessInfo`
   reports a missing or failed `ps` as an EMPTY table (`runText` swallows every failure
   and returns `""`), which counted as "no descendants" and therefore "already exited" —
@@ -87,13 +98,17 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Codex, Cursor, Copilot and OpenCode ship compiled binaries and their quit commands are
   taken from documentation, not observation. A wrong one costs the 30 s bound per
   teardown for that harness and nothing else.
-- **Identity is not readiness.** A CLI that is alive but still in its trust prompt or
-  first-run wizard has no prompt to run a slash command in, so the Enter of the exit
-  program lands on whatever that dialog has selected. At teardown that is bounded —
-  the worst case is a default accepted in a worktree about to be deleted, and then the
-  30 s bound and the kill — but it is the same blind spot seq 1949/1950 hit from the
-  other side in #1785. The `SessionStart` hook receipt already routed through
-  `cli-socket-server.ts` is the signal to gate on if this ever needs to be exact.
+- **This step is inert until #1785 merges**, because readiness cannot be proved before
+  then and unproved readiness skips. Merging in the other order costs nothing but buys
+  nothing either: the teardown kill is exactly what it was.
+- **A harness that reports no lifecycle at all answers `unknown` forever** and therefore
+  never gets a graceful exit. Today that is Gemini, Cursor and OpenCode. Stated here
+  rather than discovered later: the gate is deliberately conservative, and widening it
+  means giving those harnesses a receipt, never loosening the rule.
+- **Readiness is keyed on the task, this step acts per pane.** The seam takes the pane
+  and a test pins that one pane's verdict never authorizes another, but a task-scoped
+  receipt still cannot distinguish two agent panes; the second one is the case to watch
+  when the two land together.
 - A CLI whose quit command changes goes back to the kill path silently; the matrix row
   in `agent-support-matrix.md` is where the command is documented.
 

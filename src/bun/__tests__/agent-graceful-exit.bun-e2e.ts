@@ -92,7 +92,9 @@ async function hookRunsWhenAskedToExit(): Promise<void> {
 	console.log("case: a quick hook runs before teardown");
 	const { task, log, session } = await startTask(1);
 	const startedAt = Date.now();
-	const outcome = await requestGracefulAgentExit(task);
+	// The fixture is a fake CLI with no lifecycle receipts, so readiness is stubbed:
+	// this case proves the typing mechanics, and the gate has its own unit tests.
+	const outcome = await requestGracefulAgentExit(task, { readiness: async () => "ready" });
 	const elapsed = Date.now() - startedAt;
 	console.log(`  outcome: ${JSON.stringify(outcome)} in ${elapsed} ms`);
 	check(outcome.kind === "exited", "the agent left on request");
@@ -105,7 +107,7 @@ async function hangingHookIsBounded(): Promise<void> {
 	console.log("case: a hung hook does not block teardown past the bound");
 	const { task, log, session } = await startTask(120);
 	const startedAt = Date.now();
-	const outcome = await requestGracefulAgentExit(task, { timeoutMs: 3_000 });
+	const outcome = await requestGracefulAgentExit(task, { timeoutMs: 3_000, readiness: async () => "ready" });
 	const elapsed = Date.now() - startedAt;
 	console.log(`  outcome: ${JSON.stringify(outcome)} in ${elapsed} ms`);
 	check(outcome.kind === "timed-out", "reported as a timeout");
@@ -136,7 +138,7 @@ async function nonAgentChildIsNotAsked(): Promise<void> {
 	} as unknown as Task;
 
 	const startedAt = Date.now();
-	const outcome = await requestGracefulAgentExit(task, { timeoutMs: 3_000 });
+	const outcome = await requestGracefulAgentExit(task, { timeoutMs: 3_000, readiness: async () => "ready" });
 	const elapsed = Date.now() - startedAt;
 	console.log(`  outcome: ${JSON.stringify(outcome)} in ${elapsed} ms`);
 	check(outcome.kind === "skipped", "reported as skipped, not waited on");

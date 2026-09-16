@@ -59,18 +59,68 @@ export type GracefulAgentExitOutcome =
 	 */
 	| {
 			kind: "skipped";
-			/** `no-agent-process`: the agent left, or what runs in the pane is not it. */
-			reason: "no-agent-pane" | "no-exit-command" | "no-agent-process" | "not-delivered" | "no-process-evidence" | "failed";
+			/**
+			 * `no-agent-process`: the agent left, or what runs in the pane is not it.
+			 * `not-ready`: it is running but has no prompt to run a quit command in.
+			 */
+			reason:
+				| "no-agent-pane"
+				| "no-exit-command"
+				| "no-agent-process"
+				| "not-ready"
+				| "not-delivered"
+				| "no-process-evidence"
+				| "failed";
 			detail?: string;
 	  }
 	| { kind: "exited"; elapsedMs: number; panes: number }
 	| { kind: "timed-out"; elapsedMs: number; panes: number; stillRunning: string[] };
+
+/**
+ * Whether this pane's CLI has a prompt that could run a quit command.
+ *
+ * Three states, never a boolean: "I cannot tell" has to be distinguishable from
+ * "it is not ready", because only one of them is ever worth retrying and neither
+ * may be read as permission to type.
+ */
+export type AgentPromptReadiness = "ready" | "not-ready" | "unknown";
+
+export type AgentPromptReadinessResolver = (task: Task, target: AgentExitTarget) => Promise<AgentPromptReadiness>;
+
+/**
+ * Readiness, as much of it as this branch can prove today: nothing.
+ *
+ * A running agent is not a ready one. A CLI still in its trust prompt or its
+ * first-run wizard has no prompt to run `/exit` in, so the program's Enter would
+ * answer whatever that dialog has selected — a decision taken on the user's behalf,
+ * and a lasting one when the task is only hibernating and its worktree comes back.
+ *
+ * The proof is a launch-scoped `SessionStart` receipt, which #1785 adds as
+ * `agentReadiness(taskId)` in `src/bun/agent-readiness.ts` (keyed on the task, but
+ * its receipts are discarded at every launch, so a resumed pane inherits nothing).
+ * When that lands, this whole function becomes the mapping onto it:
+ *
+ *   `ready` → "ready" · `booting` → "not-ready" · `gone` → "not-ready" ·
+ *   `unknown` → "unknown"
+ *
+ * Deliberately NOT its `agentAcceptsTypedInput`, which folds `unknown` into true so a
+ * harness with no lifecycle probe is not blocked from ordinary messages. Typing a
+ * quit command is not an ordinary message: unproved readiness skips it, and the kill
+ * behind this step is unchanged, so the cost is the agent's exit hooks — never
+ * correctness. The price is stated rather than hidden: a harness that reports no
+ * lifecycle at all answers `unknown` forever and never gets a graceful exit.
+ *
+ * Known limit: the answer is per TASK, while this step acts per PANE. A task running
+ * two agent panes gets one verdict for both.
+ */
+export const defaultAgentPromptReadiness: AgentPromptReadinessResolver = async () => "unknown";
 
 export interface GracefulAgentExitOptions {
 	timeoutMs?: number;
 	pollMs?: number;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
+	readiness?: AgentPromptReadinessResolver;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -221,15 +271,24 @@ async function runGracefulAgentExit(task: Task, options: GracefulAgentExitOption
 		return { kind: "skipped", reason: "no-process-evidence" };
 	}
 
+	const readiness = options.readiness ?? defaultAgentPromptReadiness;
 	const asked: AgentExitTarget[] = [];
 	let alreadyGone = 0;
 	let withoutCommand = 0;
+	let notReady = 0;
 	for (const target of targets) {
 		const agentPids = agentPidsUnder(target, evidence);
 		if (agentPids.length === 0) {
 			// Either the agent already left, or whatever runs in this pane is not it.
 			// Both mean the same thing here: nothing to ask.
 			alreadyGone += 1;
+			continue;
+		}
+		// Running is not the same as ready, and only one of the two earns keystrokes.
+		const state = await readiness(task, target);
+		if (state !== "ready") {
+			notReady += 1;
+			log.info("graceful agent exit: agent is not known to be at a prompt, not typing", { taskId, paneId: target.paneId, readiness: state });
 			continue;
 		}
 		const program = getAgentAdapter(target.entry.agentCmd, target.entry.agentFamily ?? undefined).exitProgram();
@@ -258,6 +317,7 @@ async function runGracefulAgentExit(task: Task, options: GracefulAgentExitOption
 		});
 	}
 	if (asked.length === 0) {
+		if (notReady > 0 && notReady + alreadyGone === targets.length) return { kind: "skipped", reason: "not-ready" };
 		if (alreadyGone === targets.length) return { kind: "skipped", reason: "no-agent-process" };
 		if (alreadyGone + withoutCommand === targets.length) return { kind: "skipped", reason: "no-exit-command" };
 		return { kind: "skipped", reason: "not-delivered" };

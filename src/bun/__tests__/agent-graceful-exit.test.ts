@@ -74,6 +74,12 @@ function processInfo(under: readonly number[]): ProcessInfoResult {
 /** What a missing or failed `ps` actually produces: parsed output of "". */
 const UNREADABLE: ProcessInfoResult = { tree: new Map(), resources: new Map(), cmdlines: new Map() };
 
+/**
+ * Readiness is a gate, not a default: nothing is typed unless the CLI is PROVED to be
+ * at its prompt, so every case that expects typing has to say so out loud.
+ */
+const READY = { readiness: async () => "ready" as const };
+
 /** A clock the test drives: `sleep` advances it and never waits for real. */
 function fakeClock() {
 	let t = 1_000;
@@ -169,7 +175,7 @@ describe("requestGracefulAgentExit", () => {
 			.mockResolvedValueOnce(processInfo([])); // second poll: pane empty
 		const clock = fakeClock();
 
-		const outcome = await requestGracefulAgentExit(task(), { ...clock, pollMs: 250 });
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, ...READY, pollMs: 250 });
 
 		expect(sendPaneInput).toHaveBeenCalledTimes(1);
 		const [, paneId, stages, opts] = vi.mocked(sendPaneInput).mock.calls[0]!;
@@ -191,7 +197,7 @@ describe("requestGracefulAgentExit", () => {
 			.mockResolvedValueOnce(processInfo([])); // the hook finished
 		const clock = fakeClock();
 
-		const outcome = await requestGracefulAgentExit(task(), { ...clock, pollMs: 250 });
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, ...READY, pollMs: 250 });
 
 		// The agent's own absence must never end the wait — buying the hook this time
 		// is the whole reason the step exists.
@@ -202,7 +208,7 @@ describe("requestGracefulAgentExit", () => {
 		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
 		const clock = fakeClock();
 
-		const outcome = await requestGracefulAgentExit(task(), { ...clock, timeoutMs: 1_000, pollMs: 250 });
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, ...READY, timeoutMs: 1_000, pollMs: 250 });
 
 		expect(outcome).toEqual({ kind: "timed-out", elapsedMs: 1_000, panes: 1, stillRunning: ["%3"] });
 		// Four polls of 250 ms fill the one-second budget exactly; never a wait past it.
@@ -210,10 +216,71 @@ describe("requestGracefulAgentExit", () => {
 		expect(clock.sleep.mock.calls.every(([ms]) => ms <= 250)).toBe(true);
 	});
 
+	it.each([
+		["still booting into its trust prompt", "not-ready"],
+		["a harness dev3 cannot probe", "unknown"],
+	] as const)("types nothing at an agent that is alive but %s", async (_label, state) => {
+		// An alive CLI that has no prompt yet would take the program's Enter as an
+		// answer to whatever dialog it IS showing — a trust or first-run choice made
+		// on the user's behalf, which outlives a hibernation that keeps the worktree.
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
+		const clock = fakeClock();
+
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, readiness: async () => state });
+
+		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(clock.sleep).not.toHaveBeenCalled();
+		expect(outcome).toEqual({ kind: "skipped", reason: "not-ready" });
+	});
+
+	it("authorizes each pane on its own, never one pane's verdict for both", async () => {
+		// The receipt behind readiness is keyed on the TASK, so nothing here may fan one
+		// answer across panes: a second agent pane can be mid-launch while the first is
+		// long past its trust prompt.
+		const SECOND_ROOT_PID = 4200;
+		vi.mocked(tmux.listPanes).mockResolvedValue([
+			{ paneId: "%3", panePid: AGENT_ROOT_PID },
+			{ paneId: "%4", panePid: SECOND_ROOT_PID },
+		] as never);
+		const two = processInfo([AGENT_PID]);
+		two.tree.set(SECOND_ROOT_PID, [4201]);
+		two.cmdlines.set(4201, "/Users/dev/.local/bin/claude --session-id def");
+		vi.mocked(collectProcessInfo).mockResolvedValue(two);
+		const twoPanes = task({
+			sessionState: {
+				panes: [
+					{ paneId: "%3", agentCmd: "claude", sessionId: null, agentId: null, configId: null, agentFamily: "claude" },
+					{ paneId: "%4", agentCmd: "claude", sessionId: null, agentId: null, configId: null, agentFamily: "claude" },
+				],
+			},
+		} as Partial<Task>);
+
+		const outcome = await requestGracefulAgentExit(twoPanes, {
+			...fakeClock(),
+			timeoutMs: 0,
+			readiness: async (_task, target) => (target.paneId === "%3" ? "ready" : "not-ready"),
+		});
+
+		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sendPaneInput).mock.calls[0]![1]).toBe("%3");
+		expect(outcome).toMatchObject({ kind: "timed-out", panes: 1, stillRunning: ["%3"] });
+	});
+
+	it("demands proof of readiness rather than assuming it", async () => {
+		// The default resolver answers `unknown` until #1785's SessionStart receipt is
+		// wired in. Nothing may type on an unproved prompt in the meantime.
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
+
+		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+
+		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(outcome).toEqual({ kind: "skipped", reason: "not-ready" });
+	});
+
 	it("does not type into a pane whose agent already left", async () => {
 		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([]));
 
-		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+		const outcome = await requestGracefulAgentExit(task(), { ...fakeClock(), ...READY });
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
 		expect(outcome).toEqual({ kind: "skipped", reason: "no-agent-process" });
@@ -224,7 +291,7 @@ describe("requestGracefulAgentExit", () => {
 		// the user starts there is a descendant too. Busy is not the same as alive.
 		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([STRANGER_PID]));
 
-		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+		const outcome = await requestGracefulAgentExit(task(), { ...fakeClock(), ...READY });
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
 		expect(outcome).toEqual({ kind: "skipped", reason: "no-agent-process" });
@@ -238,7 +305,7 @@ describe("requestGracefulAgentExit", () => {
 			sessionState: { panes: [{ paneId: "%3", agentCmd: "my-agent", sessionId: null, agentId: null, configId: null }] },
 		} as Partial<Task>);
 
-		const outcome = await requestGracefulAgentExit(custom, fakeClock());
+		const outcome = await requestGracefulAgentExit(custom, { ...fakeClock(), ...READY });
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
 		expect(outcome).toEqual({ kind: "skipped", reason: "no-exit-command" });
@@ -256,7 +323,7 @@ describe("requestGracefulAgentExit", () => {
 		} as never);
 		const clock = fakeClock();
 
-		const outcome = await requestGracefulAgentExit(task(), clock);
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, ...READY });
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "not-delivered" });
 		expect(clock.sleep).not.toHaveBeenCalled();
@@ -270,7 +337,7 @@ describe("requestGracefulAgentExit", () => {
 		vi.mocked(collectProcessInfo).mockResolvedValue(UNREADABLE);
 		const clock = fakeClock();
 
-		const outcome = await requestGracefulAgentExit(task(), clock);
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, ...READY });
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
 		expect(clock.sleep).not.toHaveBeenCalled();
@@ -280,7 +347,7 @@ describe("requestGracefulAgentExit", () => {
 	it("skips when the process scan throws outright", async () => {
 		vi.mocked(collectProcessInfo).mockRejectedValue(new Error("ps: not found"));
 
-		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+		const outcome = await requestGracefulAgentExit(task(), { ...fakeClock(), ...READY });
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
 		expect(outcome).toEqual({ kind: "skipped", reason: "no-process-evidence" });
@@ -290,7 +357,7 @@ describe("requestGracefulAgentExit", () => {
 		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
 		vi.mocked(sendPaneInput).mockRejectedValue(new Error("tmux: no server"));
 
-		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+		const outcome = await requestGracefulAgentExit(task(), { ...fakeClock(), ...READY });
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "not-delivered" });
 	});
@@ -298,7 +365,7 @@ describe("requestGracefulAgentExit", () => {
 	it("never throws when tmux cannot list the panes", async () => {
 		vi.mocked(tmux.listPanes).mockRejectedValue(new Error("no server running"));
 
-		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+		const outcome = await requestGracefulAgentExit(task(), { ...fakeClock(), ...READY });
 
 		expect(outcome).toMatchObject({ kind: "skipped", reason: "no-agent-pane" });
 		expect(sendPaneInput).not.toHaveBeenCalled();
