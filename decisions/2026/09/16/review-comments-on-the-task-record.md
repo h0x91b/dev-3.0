@@ -32,6 +32,13 @@ for one model across viewers, in one PR.
   crosshairs the frame, reports a clicked element, and draws the pins itself because only the
   frame knows its own scroll and layout. Pins the selector no longer matches are re-found by
   heading + text and otherwise reported back as unmatched — shown as outdated, never dropped.
+- **Every surface an agent's output shows on takes a comment**, through the same aside
+  (`src/mainview/review/ReviewAside.tsx`) and send hook: the image viewer (drag a region on the
+  drawn picture → `image-region`, normalised 0..1 so zoom and fit mode do not matter), the file
+  preview (text selection → `file-range` with the line range when the code view has one), and the
+  terminal (the selection gesture that auto-copies also offers a six-second `Comment` chip →
+  `terminal-text`). The running dev server stays out: dev3 opens it in the external browser, so
+  there is nothing in-app to anchor to.
 - **Ids are UUIDs.** The previous path-derived ids (`src/a.ts:newFile:1:…`) had useless
   8-character prefixes for a CLI that resolves prefixes.
 
