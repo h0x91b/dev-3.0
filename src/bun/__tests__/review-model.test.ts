@@ -12,6 +12,7 @@ import {
 	resolveReviewCommentId,
 	reviewCommentsForArtifact,
 	updateReviewCommentBody,
+	type ReviewArtifactElementAnchor,
 	type ReviewComment,
 } from "../../shared/review";
 
@@ -22,19 +23,20 @@ const diffComment: ReviewComment = {
 	anchor: { kind: "diff-line", fileId: "f1", filePath: "src/stats.ts", side: "newFile", startLine: 42, endLine: 43 },
 };
 
+const artifactAnchor: ReviewArtifactElementAnchor = {
+	kind: "artifact-element",
+	artifactId: "a1",
+	version: 3,
+	title: "Cockpit",
+	selector: ".kpi:nth-child(2)",
+	text: "Agent success 94.2%",
+	heading: "Overview",
+};
 const artifactComment: ReviewComment = {
 	id: "c-art-0002",
 	body: "This number is wrong.",
 	createdAt: "2026-09-15T10:01:00.000Z",
-	anchor: {
-		kind: "artifact-element",
-		artifactId: "a1",
-		version: 3,
-		title: "Cockpit",
-		selector: ".kpi:nth-child(2)",
-		text: "Agent success 94.2%",
-		heading: "Overview",
-	},
+	anchor: artifactAnchor,
 };
 
 describe("review prompt", () => {
@@ -81,7 +83,7 @@ describe("review prompt", () => {
 	it("escapes quotes in attribute values", () => {
 		const text = buildReviewPrompt([{
 			id: "x",
-			anchor: { ...artifactComment.anchor, title: 'Say "hi"', heading: null },
+			anchor: { ...artifactAnchor, title: 'Say "hi"', heading: null },
 			comment: "c",
 			origin: "local",
 			author: null,
@@ -146,6 +148,6 @@ describe("review mutations", () => {
 		expect(next).toHaveLength(MAX_REVIEW_COMMENTS_KEPT);
 		expect(next.find((c) => c.id === "c5")).toBeUndefined();
 		expect(next.find((c) => c.id === "c0")).toBeDefined();
-		expect(next.at(-1)?.id).toBe("newest");
+		expect(next[next.length - 1]?.id).toBe("newest");
 	});
 });

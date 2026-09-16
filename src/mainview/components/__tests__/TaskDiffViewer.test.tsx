@@ -13,6 +13,14 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn(),
 			getTaskPrComments: vi.fn(),
 			sendAgentMessageNow: vi.fn(),
+			addReviewComment: vi.fn().mockResolvedValue(undefined),
+			updateReviewComment: vi.fn().mockResolvedValue(undefined),
+			deleteReviewComment: vi.fn().mockResolvedValue(undefined),
+			markReviewCommentsSent: vi.fn().mockResolvedValue(undefined),
+			resolveReviewComment: vi.fn().mockResolvedValue(undefined),
+			reopenReviewComment: vi.fn().mockResolvedValue(undefined),
+			clearTaskReview: vi.fn().mockResolvedValue(undefined),
+			importReviewComments: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -317,6 +325,20 @@ vi.mock("@git-diff-view/core", () => ({
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+
+/** Strip the per-comment id and the CLI footer so an assertion can spell out the stable body. */
+function normalizeReviewXml(text: string): string {
+	return text
+		.replace(/<review id="[^"]*">/g, "<review>")
+		.split("\n")
+		.filter((line) => !line.startsWith("When a comment is handled run"))
+		.join("\n");
+}
+
+function lastClipboardText(writeText: ReturnType<typeof vi.fn>): string {
+	const calls = writeText.mock.calls;
+	return String(calls[calls.length - 1]?.[0] ?? "");
+}
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -1818,7 +1840,9 @@ describe("TaskDiffViewer", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: "Copy" }));
-		expect(writeText).toHaveBeenLastCalledWith([
+		expect(lastClipboardText(writeText)).toMatch(/<review id="src\/app\.ts:newFile:1:[a-z0-9]+">/);
+		expect(lastClipboardText(writeText)).toContain("dev3 review resolve <id>");
+		expect(normalizeReviewXml(lastClipboardText(writeText))).toBe([
 			"<reviews>",
 			"<review>",
 			"<file src=\"src/app.ts\" line=1>",
@@ -1844,7 +1868,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByText(truncatedPreview)).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Copy" }));
-		expect(writeText).toHaveBeenCalledWith([
+		expect(normalizeReviewXml(lastClipboardText(writeText))).toBe([
 			"<reviews>",
 			"<review>",
 			"<file src=\"src/app.ts\" line=1>",
@@ -2387,14 +2411,22 @@ describe("TaskDiffViewer", () => {
 		expect(showConfirm).not.toHaveBeenCalled();
 	});
 
-	it("persists the review to localStorage and restores it after a remount", async () => {
+	it("renders the review from the task record and edits it through one RPC per change", async () => {
 		const user = userEvent.setup();
-		const reviewKey = "dev3-inline-diff-review-v1:t1";
+		const stored: Task = {
+			...task,
+			review: [{
+				id: "kept",
+				body: "from the record",
+				createdAt: "2026-09-15T10:00:00.000Z",
+				anchor: { kind: "diff-line", fileId: "src/app.ts", filePath: "src/app.ts", side: "newFile", startLine: 1, endLine: 1 },
+			}],
+		};
 
-		const first = render(
+		render(
 			<I18nProvider>
 				<TaskDiffViewer
-					task={task}
+					task={stored}
 					project={project}
 					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
 					onBack={vi.fn()}
@@ -2402,18 +2434,71 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		const diffs = await screen.findAllByTestId("mock-diff");
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "persist me");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
+		await screen.findAllByTestId("mock-diff");
+		expect(screen.getAllByText("from the record").length).toBeGreaterThan(0);
+		expect(screen.getByText("Comment 1/1")).toBeInTheDocument();
 
+		const inlineThread = screen.getByTestId("inline-comment-thread");
+		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
+		const editor = screen.getByDisplayValue("from the record");
+		await user.clear(editor);
+		await user.type(editor, "edited");
+		await user.click(screen.getByRole("button", { name: "Save comment" }));
+		expect(api.request.updateReviewComment).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: "kept", body: "edited" });
+
+		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
+		expect(api.request.deleteReviewComment).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: "kept" });
+		expect(screen.queryByText("Comment 1/1")).not.toBeInTheDocument();
+	});
+
+	it("shows a resolved comment with the agent's reply and reopens it through the RPC", async () => {
+		const user = userEvent.setup();
+		const stored: Task = {
+			...task,
+			review: [{
+				id: "done",
+				body: "Divide by runs",
+				createdAt: "2026-09-15T10:00:00.000Z",
+				sentAt: "2026-09-15T10:05:00.000Z",
+				resolvedAt: "2026-09-15T10:10:00.000Z",
+				resolvedBy: "agent",
+				replies: [{ id: "r1", author: "agent", body: "Now divides by runs.", createdAt: "2026-09-15T10:10:00.000Z" }],
+				anchor: { kind: "diff-line", fileId: "src/app.ts", filePath: "src/app.ts", side: "newFile", startLine: 1, endLine: 1 },
+			}],
+		};
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={stored}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		expect(screen.getByTestId("inline-comment-reply")).toHaveTextContent("Now divides by runs.");
+		expect(screen.queryByTestId("inline-comment-send")).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("inline-comment-reopen"));
+		expect(api.request.reopenReviewComment).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: "done" });
 		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toContain("persist me");
+			expect(screen.getByTestId("inline-comment-send")).toBeInTheDocument();
 		});
+	});
 
-		// Unmount and remount — the review must come back from localStorage rather
-		// than being wiped, the way it used to be on every diff (re)load.
-		first.unmount();
+	it("imports a review this browser still holds from the old localStorage store, then drops the key", async () => {
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+		localStorage.setItem(reviewKey, JSON.stringify({
+			savedAt: Date.now() - 60_000,
+			comments: {
+				"src/app.ts": {
+					oldFile: {},
+					newFile: { "1": { data: { comments: [{ id: "legacy-1", body: "carried over", createdAt: "2026-09-14T10:00:00.000Z", startLine: 1, endLine: 1, side: "newFile" }] } } },
+				},
+			},
+		}));
 
 		render(
 			<I18nProvider>
@@ -2428,9 +2513,18 @@ describe("TaskDiffViewer", () => {
 
 		await screen.findAllByTestId("mock-diff");
 		await waitFor(() => {
-			expect(screen.getAllByText("persist me").length).toBeGreaterThan(0);
+			expect(api.request.importReviewComments).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				comments: [expect.objectContaining({
+					id: "legacy-1",
+					body: "carried over",
+					anchor: { kind: "diff-line", fileId: "src/app.ts", filePath: "src/app.ts", side: "newFile", startLine: 1, endLine: 1 },
+				})],
+			});
 		});
-		expect(screen.getByText("Comment 1/1")).toBeInTheDocument();
+		expect(localStorage.getItem(reviewKey)).toBeNull();
+		expect(screen.getAllByText("carried over").length).toBeGreaterThan(0);
 	});
 
 	it("sweeps expired and corrupt review entries for other tasks on mount", async () => {
@@ -2467,60 +2561,8 @@ describe("TaskDiffViewer", () => {
 		expect(localStorage.getItem(unrelatedKey)).toBe("keep me");
 	});
 
-	it("drops a persisted review older than the 3-day TTL instead of restoring it", async () => {
+	it("Reset review clears comments through the task record after confirmation, and is hidden when empty", async () => {
 		const user = userEvent.setup();
-		const reviewKey = "dev3-inline-diff-review-v1:t1";
-
-		const first = render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		const diffs = await screen.findAllByTestId("mock-diff");
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "stale note");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
-
-		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toContain("stale note");
-		});
-
-		// Backdate the stored review past the 3-day retention window.
-		const stored = JSON.parse(localStorage.getItem(reviewKey) as string);
-		stored.savedAt = Date.now() - (3 * 24 * 60 * 60 * 1000 + 60_000);
-		localStorage.setItem(reviewKey, JSON.stringify(stored));
-
-		first.unmount();
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		await screen.findAllByTestId("mock-diff");
-		// Expired review must not come back, and the stale entry must be purged.
-		expect(screen.queryAllByText("stale note")).toHaveLength(0);
-		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
-		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toBeNull();
-		});
-	});
-
-	it("Reset review clears comments and storage after confirmation, and is hidden when empty", async () => {
-		const user = userEvent.setup();
-		const reviewKey = "dev3-inline-diff-review-v1:t1";
 		const showConfirm = vi.mocked(confirm);
 
 		render(
@@ -2543,7 +2585,11 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toContain("kill me");
+			expect(api.request.addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+				taskId: "t1",
+				projectId: "p1",
+				comment: expect.objectContaining({ body: "kill me", anchor: expect.objectContaining({ kind: "diff-line", filePath: expect.any(String) }) }),
+			}));
 		});
 		const resetButton = screen.getByTestId("review-reset-button");
 
@@ -2554,7 +2600,7 @@ describe("TaskDiffViewer", () => {
 			expect(showConfirm).toHaveBeenCalledTimes(1);
 		});
 		expect(screen.getAllByText("kill me").length).toBeGreaterThan(0);
-		expect(localStorage.getItem(reviewKey)).toContain("kill me");
+		expect(api.request.clearTaskReview).not.toHaveBeenCalled();
 
 		// Confirming wipes the comments and removes the persisted entry.
 		showConfirm.mockResolvedValueOnce(true);
@@ -2564,12 +2610,11 @@ describe("TaskDiffViewer", () => {
 			expect(screen.queryAllByText("kill me")).toHaveLength(0);
 		});
 		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
-		expect(localStorage.getItem(reviewKey)).toBeNull();
+		expect(api.request.clearTaskReview).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 	});
 
 	it("keeps the review after a send — marked as sent on success, untouched on failure", async () => {
 		const user = userEvent.setup();
-		const reviewKey = "dev3-inline-diff-review-v1:t1";
 		const showConfirm = vi.mocked(confirm);
 		vi.mocked(api.request.sendAgentMessageNow).mockRejectedValueOnce(new Error("no agent"));
 
@@ -2590,7 +2635,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toContain("send me");
+			expect(api.request.addReviewComment).toHaveBeenCalled();
 		});
 
 		// Failed send: the comments must survive so the reviewer can retry.
@@ -2603,7 +2648,7 @@ describe("TaskDiffViewer", () => {
 			});
 		});
 		expect(screen.getAllByText("send me").length).toBeGreaterThan(0);
-		expect(localStorage.getItem(reviewKey)).toContain("send me");
+		expect(api.request.markReviewCommentsSent).not.toHaveBeenCalled();
 
 		// Successful send: a resolved RPC only proves the keys left dev3, so the text
 		// is marked as sent and kept — never destroyed on an unprovable delivery.
@@ -2614,91 +2659,12 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getByTestId("review-export-sent-marker")).toBeInTheDocument();
 		});
 		expect(screen.getAllByText("send me").length).toBeGreaterThan(0);
-		expect(localStorage.getItem(reviewKey)).toContain("send me");
-		expect(localStorage.getItem(reviewKey)).toContain("sentAt");
+		expect(api.request.markReviewCommentsSent).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", commentIds: [expect.any(String)] }));
+		expect(api.request.deleteReviewComment).not.toHaveBeenCalled();
 		// Nothing is sent twice, and clearing stays an explicit, confirmed action.
 		expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 		expect(showConfirm).not.toHaveBeenCalled();
 		expect(screen.getByTestId("review-reset-button")).toBeInTheDocument();
-	});
-
-	it("still saves new comments when the existing localStorage entry is corrupt JSON", async () => {
-		const user = userEvent.setup();
-		const reviewKey = "dev3-inline-diff-review-v1:t1";
-
-		// Seed a corrupt entry for this task so JSON.parse throws on the first write attempt.
-		localStorage.setItem(reviewKey, "{not valid json");
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		const diffs = await screen.findAllByTestId("mock-diff");
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "after corrupt");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
-
-		// The write must succeed despite the corrupt existing entry — not be silently
-		// swallowed by the outer catch that would have wrapped the inner JSON.parse.
-		await waitFor(() => {
-			expect(localStorage.getItem(reviewKey)).toContain("after corrupt");
-		});
-	});
-
-	it("does not write task A review to task B storage when task.id changes mid-render", async () => {
-		const user = userEvent.setup();
-		const reviewKeyA = "dev3-inline-diff-review-v1:t1";
-		const reviewKeyB = "dev3-inline-diff-review-v1:t2";
-		const taskB: Task = { ...task, id: "t2", worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" };
-
-		const { rerender } = render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		const diffs = await screen.findAllByTestId("mock-diff");
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "task A note");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
-
-		await waitFor(() => {
-			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
-		});
-
-		// Simulate the user clicking a different task in the kanban while the diff viewer
-		// is still mounted — useTaskInlineDiffState resets inlineDiffRequest to null one
-		// render later, but during that intermediate render task.id has already advanced.
-		// The persist effect must not cross-write task A's review under task B's key.
-		rerender(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={taskB}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		// Give React a moment to flush all effects from the re-render.
-		await waitFor(() => {
-			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
-		});
-		// Task B's storage must NOT have been seeded with task A's review data.
-		expect(localStorage.getItem(reviewKeyB)).toBeNull();
 	});
 
 	it("opens the diff viewer in uncommitted mode by default even when the caller requested branch mode", async () => {

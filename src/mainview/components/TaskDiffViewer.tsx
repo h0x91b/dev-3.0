@@ -26,6 +26,11 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { resolveAutoDiffViewMode, resolveDiffViewMode } from "./global-settings/utils";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { extractReviewSnippet, getReviewFilePath, parseDiffHunkLines, type DiffSideKey } from "./diff-hunks";
+import { buildReviewPrompt, type ReviewAnchor, type ReviewComment, type ReviewDiffLineAnchor, type ReviewPromptEntry } from "../../shared/review";
+import { ReviewComposer } from "../review/ReviewComposer";
+import { ReviewThreadView } from "../review/ReviewThreadView";
+import { useTaskReview } from "../review/useTaskReview";
+import { dropLegacyReview, pruneLegacyReviews, readLegacyReview } from "../review/legacy-storage";
 import { PrConversationBlock } from "./pr-review/PrConversationBlock";
 import { GithubThreadView, OutdatedThreadsGroup, type ThreadSendState } from "./pr-review/GithubThreadView";
 import { buildThreadFixPrompt, groupGithubThreadsByFile, isLineRenderedInDiff, locateThread, partitionThreadsForDiff } from "./pr-review/mapping";
@@ -51,7 +56,6 @@ import "./TaskDiffViewer.css";
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
 const LS_DIFF_FILES_COLLAPSED = "dev3-inline-diff-files-collapsed-v1";
-const LS_DIFF_REVIEW = "dev3-inline-diff-review-v1";
 const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
 // `recent` mode: how many trailing commits (`HEAD~N..HEAD`) to diff. The presets
 // the ▾ popover offers, and the default N used on every open. N itself is never
@@ -152,16 +156,8 @@ type DiffLibrary = {
 
 type InlineCommentSideKey = DiffSideKey;
 
-interface InlineDiffComment {
-	id: string;
-	body: string;
-	createdAt: string;
-	startLine: number;
-	endLine: number;
-	side: InlineCommentSideKey;
-	/** Set once the comment was sent to the agent on its own; keeps it out of the batch export. */
-	sentAt?: string;
-}
+/** A review comment anchored to a diff line range — the only kind this viewer creates. */
+type InlineDiffComment = ReviewComment & { anchor: ReviewDiffLineAnchor };
 
 interface InlineDiffCommentThread {
 	comments: InlineDiffComment[];
@@ -176,6 +172,7 @@ type InlineDiffCommentsState = Record<string, InlineDiffCommentFileData>;
 
 interface InlineReviewExportEntry {
 	id: string;
+	anchor: ReviewAnchor;
 	fileId: string;
 	filePath: string;
 	side: InlineCommentSideKey;
@@ -251,6 +248,7 @@ interface TaskDiffFileSectionProps {
 	onCancelEditComment: () => void;
 	onSaveEditComment: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
+	onReopenComment: (commentId: string) => void;
 	onSendComment: (commentId: string) => void;
 	sendingCommentIds: Record<string, boolean>;
 	onToggleExpanded: () => void;
@@ -330,6 +328,21 @@ function getCopiedFilePath(worktreePath: string | null | undefined, file: TaskDi
 		return filePath;
 	}
 	return `${worktreePath.replace(/\/+$/, "")}/${filePath.replace(/^\/+/, "")}`;
+}
+
+/** The thread's line label: the widest range any of its comments covers. */
+function formatThreadLineLabel(
+	t: ReturnType<typeof useT>,
+	thread: InlineDiffCommentThread,
+	side: InlineCommentSideKey,
+	lineNumber: number,
+): string {
+	return formatInlineCommentLineLabel(
+		t,
+		side,
+		thread.comments.reduce((min, c) => Math.min(min, c.anchor.startLine), lineNumber),
+		thread.comments.reduce((max, c) => Math.max(max, c.anchor.endLine), lineNumber),
+	);
 }
 
 function getReviewCommentPreview(value: string, maxLength = 100): string {
@@ -484,48 +497,21 @@ function lineContainsQuery(container: HTMLElement, query: string): boolean {
 	return (container.textContent ?? "").toLocaleLowerCase().includes(needle);
 }
 
-function hasAnyInlineComments(state: InlineDiffCommentsState): boolean {
-	for (const fileData of Object.values(state)) {
-		for (const sideMap of [fileData.oldFile, fileData.newFile]) {
-			for (const slot of Object.values(sideMap)) {
-				if (slot.data.comments.length > 0) {
-					return true;
-				}
-			}
-		}
+/**
+ * The per-file / per-side / per-anchor-line map the diff widget API is keyed by,
+ * derived from the task's flat review list. Threads sit on the range's end line,
+ * where the widget and the composer render.
+ */
+function buildInlineCommentsState(comments: ReviewComment[]): InlineDiffCommentsState {
+	const state: InlineDiffCommentsState = {};
+	for (const comment of comments) {
+		if (comment.anchor.kind !== "diff-line") continue;
+		const { fileId, side, endLine } = comment.anchor;
+		const fileComments = state[fileId] ?? (state[fileId] = createEmptyInlineCommentFileData());
+		const slot = fileComments[side][endLine] ?? (fileComments[side][endLine] = { data: { comments: [] } });
+		slot.data.comments.push(comment as InlineDiffComment);
 	}
-	return false;
-}
-
-/** Rewrites one comment anywhere in the review state, leaving every other entry untouched. */
-function mapInlineComments(
-	state: InlineDiffCommentsState,
-	matches: (comment: InlineDiffComment) => boolean,
-	transform: (comment: InlineDiffComment) => InlineDiffComment,
-): InlineDiffCommentsState {
-	const nextState: InlineDiffCommentsState = {};
-	for (const [fileId, fileComments] of Object.entries(state)) {
-		const nextFileComments = createEmptyInlineCommentFileData();
-		for (const side of ["oldFile", "newFile"] as const) {
-			for (const [lineNumber, thread] of Object.entries(fileComments[side])) {
-				nextFileComments[side][lineNumber] = {
-					data: {
-						comments: thread.data.comments.map((comment) => (
-							matches(comment) ? transform(comment) : comment
-						)),
-					},
-				};
-			}
-		}
-		nextState[fileId] = nextFileComments;
-	}
-	return nextState;
-}
-
-/** Stamp `sentAt` on every comment the caller just handed to the agent. */
-function markInlineCommentsSent(state: InlineDiffCommentsState, ids: ReadonlySet<string>): InlineDiffCommentsState {
-	const sentAt = new Date().toISOString();
-	return mapInlineComments(state, (comment) => ids.has(comment.id), (comment) => ({ ...comment, sentAt }));
+	return state;
 }
 
 function buildInlineReviewExportEntries(
@@ -544,15 +530,17 @@ function buildInlineReviewExportEntries(
 		for (const side of ["oldFile", "newFile"] as const) {
 			for (const thread of Object.values(fileComments[side])) {
 				for (const comment of thread.data.comments) {
+					const { anchor } = comment;
 					result.push({
 						id: comment.id,
+						anchor: { ...anchor, filePath: getReviewFilePath(file) },
 						fileId: file.id,
 						filePath: getReviewFilePath(file),
-						side: comment.side,
-						startLine: comment.startLine,
-						endLine: comment.endLine,
+						side: anchor.side,
+						startLine: anchor.startLine,
+						endLine: anchor.endLine,
 						comment: comment.body,
-						snippet: extractReviewSnippet(file, comment.side, comment.startLine, comment.endLine),
+						snippet: extractReviewSnippet(file, anchor.side, anchor.startLine, anchor.endLine),
 						fileOrder: fileOrder.get(file.id) ?? Number.MAX_SAFE_INTEGER,
 						createdAt: comment.createdAt,
 						origin: "local",
@@ -598,11 +586,13 @@ function buildGithubReviewExportEntries(
 		const comment = thread.comments
 			.map((item) => (item.author ? `[${item.author}] ${item.body.trim()}` : item.body.trim()))
 			.join("\n\n");
+		const side: InlineCommentSideKey = thread.diffSide === "LEFT" ? "oldFile" : "newFile";
 		result.push({
 			id: thread.id,
+			anchor: { kind: "diff-line", fileId: location?.file.id ?? thread.path, filePath: thread.path, side, startLine: line, endLine: line },
 			fileId: location?.file.id ?? thread.path,
 			filePath: thread.path,
-			side: thread.diffSide === "LEFT" ? "oldFile" : "newFile",
+			side,
 			startLine: line,
 			endLine: line,
 			comment,
@@ -620,281 +610,48 @@ function buildGithubReviewExportEntries(
 	return result.sort(compareReviewExportEntries);
 }
 
-function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
-	const lines = ["<reviews>"];
-	let hasGithubEntries = false;
-
-	for (const entry of entries) {
-		const lineAttr = entry.startLine === entry.endLine
-			? String(entry.startLine)
-			: `"${entry.startLine}-${entry.endLine}"`;
-		if (entry.origin === "github") {
-			hasGithubEntries = true;
-			lines.push(`<review origin="github"${entry.author ? ` author="${entry.author}"` : ""}>`);
-		} else {
-			lines.push("<review>");
-		}
-		lines.push(`<file src="${entry.filePath}" line=${lineAttr}>`);
-		if (entry.snippet.before) {
-			lines.push(`-${entry.snippet.before}`);
-		}
-		if (entry.snippet.after) {
-			lines.push(`+${entry.snippet.after}`);
-		}
-		lines.push("</file>");
-		lines.push(`<comment>${entry.comment}</comment>`);
-		lines.push("</review>");
+/**
+ * Comments made on HTML artifacts belong to the same review: they list after
+ * the diff entries and ride along in the batch send, so one click hands the
+ * agent everything the user said about this task's output.
+ */
+function buildArtifactReviewExportEntries(comments: ReviewComment[]): InlineReviewExportEntry[] {
+	const result: InlineReviewExportEntry[] = [];
+	for (const comment of comments) {
+		if (comment.anchor.kind !== "artifact-element") continue;
+		result.push({
+			id: comment.id,
+			anchor: comment.anchor,
+			fileId: "",
+			filePath: comment.anchor.title,
+			side: "newFile",
+			startLine: 0,
+			endLine: 0,
+			comment: comment.body,
+			snippet: { before: null, after: null },
+			fileOrder: Number.MAX_SAFE_INTEGER,
+			createdAt: comment.createdAt,
+			origin: "local",
+			author: null,
+			sentAt: comment.sentAt ?? null,
+		});
 	}
-
-	lines.push("</reviews>");
-	lines.push("---");
-	lines.push(hasGithubEntries
-		? "Above are code review comments. Reviews marked origin=\"github\" come from GitHub PR reviewers; the rest are my own. Read them carefully and process all of them."
-		: "Above my comments about code changes, read them carefully and process all of them.");
-	return lines.join("\n");
+	return result;
 }
 
-function InlineCommentThreadView({
-	thread,
-	side,
-	lineNumber,
-	registerCommentRef,
-	editingCommentId,
-	onStartEdit,
-	onCancelEdit,
-	onSaveEdit,
-	onDeleteComment,
-	onSendComment,
-	sendingCommentIds,
-}: {
-	thread: InlineDiffCommentThread;
-	side: InlineCommentSideKey;
-	lineNumber: number;
-	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
-	editingCommentId: string | null;
-	onStartEdit: (commentId: string) => void;
-	onCancelEdit: () => void;
-	onSaveEdit: (commentId: string, body: string) => void;
-	onDeleteComment: (commentId: string) => void;
-	onSendComment: (commentId: string) => void;
-	sendingCommentIds: Record<string, boolean>;
-}) {
-	const t = useT();
-	const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const focusedEditCommentIdRef = useRef<string | null>(null);
-	const [editingCommentDraft, setEditingCommentDraft] = useState("");
-
-	useEffect(() => {
-		if (!editingCommentId) {
-			focusedEditCommentIdRef.current = null;
-			return;
-		}
-		if (focusedEditCommentIdRef.current === editingCommentId) {
-			return;
-		}
-		const textarea = editTextareaRef.current;
-		if (!textarea) {
-			return;
-		}
-		textarea.focus();
-		const end = textarea.value.length;
-		textarea.setSelectionRange(end, end);
-		focusedEditCommentIdRef.current = editingCommentId;
-	}, [editingCommentId]);
-
-	return (
-		<div
-			className="dev3-inline-comment dev3-inline-comment--thread border-t border-edge bg-base/75 px-4 py-3 space-y-2"
-			data-testid="inline-comment-thread"
-		>
-			<div className="dev3-inline-comment__meta text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted">
-				{formatInlineCommentLineLabel(
-					t,
-					side,
-					thread.comments.reduce((min, c) => Math.min(min, c.startLine), lineNumber),
-					thread.comments.reduce((max, c) => Math.max(max, c.endLine), lineNumber),
-				)}
-			</div>
-			{thread.comments.map((comment) => (
-				<div
-					key={comment.id}
-					ref={(element) => registerCommentRef(comment.id, element)}
-					data-inline-comment-id={comment.id}
-					className="dev3-inline-comment__bubble scroll-mt-24 rounded-lg border border-edge bg-raised px-3 py-2"
-				>
-					{editingCommentId === comment.id ? (
-						<div className="space-y-2">
-							<textarea
-								ref={editTextareaRef}
-								value={editingCommentDraft}
-								onChange={(event) => setEditingCommentDraft(event.target.value)}
-								rows={3}
-								className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
-							/>
-							<div className="flex items-center justify-end gap-2">
-								<button
-									type="button"
-									onClick={onCancelEdit}
-									className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-								>
-									{t("infoPanel.diffCommentCancel")}
-								</button>
-								<button
-									type="button"
-									onClick={() => onSaveEdit(comment.id, editingCommentDraft)}
-									disabled={!editingCommentDraft.trim()}
-									aria-label={t("infoPanel.diffReviewSave")}
-									className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-								>
-									{t("infoPanel.diffReviewSave")}
-								</button>
-							</div>
-						</div>
-					) : (
-						<div className="flex items-start justify-between gap-3">
-							<div className="min-w-0 flex-1 text-sm text-fg whitespace-pre-wrap break-words">
-								{comment.body}
-							</div>
-							<div className="flex shrink-0 items-center gap-1">
-								<button
-									type="button"
-									onClick={() => onSendComment(comment.id)}
-									disabled={sendingCommentIds[comment.id]}
-									data-testid="inline-comment-send"
-									aria-label={t("infoPanel.diffReviewSendComment")}
-									className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
-										comment.sentAt
-											? "border-success/40 bg-success/10 text-success"
-											: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-									}`}
-								>
-									<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-										{""}
-									</span>
-									<span>
-										{sendingCommentIds[comment.id]
-											? t("infoPanel.diffReviewSendCommentSending")
-											: comment.sentAt
-												? t("infoPanel.diffReviewSendCommentSent")
-												: t("infoPanel.diffReviewSendComment")}
-									</span>
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setEditingCommentDraft(comment.body);
-										onStartEdit(comment.id);
-									}}
-									aria-label={t("infoPanel.diffReviewEdit")}
-									className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-micro font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-								>
-									{t("infoPanel.diffReviewEdit")}
-								</button>
-								<button
-									type="button"
-									onClick={() => onDeleteComment(comment.id)}
-									aria-label={t("infoPanel.diffReviewDelete")}
-									className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-micro font-semibold text-danger transition-colors hover:bg-danger/15"
-								>
-									{t("infoPanel.diffReviewDelete")}
-								</button>
-							</div>
-						</div>
-					)}
-				</div>
-			))}
-		</div>
-	);
+function toReviewPromptEntry(entry: InlineReviewExportEntry): ReviewPromptEntry {
+	return {
+		id: entry.origin === "local" ? entry.id : null,
+		anchor: entry.anchor,
+		comment: entry.comment,
+		snippet: entry.snippet,
+		origin: entry.origin,
+		author: entry.author,
+	};
 }
 
-function InlineCommentComposer({
-	filePath,
-	side,
-	startLine,
-	endLine,
-	onCancel,
-	onSubmit,
-	onSubmitAndSend,
-}: {
-	filePath: string;
-	side: InlineCommentSideKey;
-	startLine: number;
-	endLine: number;
-	onCancel: () => void;
-	onSubmit: (body: string) => void;
-	onSubmitAndSend: (body: string) => void;
-}) {
-	const t = useT();
-	const [value, setValue] = useState("");
-	const trimmedValue = value.trim();
-
-	return (
-		<form
-			className="dev3-inline-comment dev3-inline-comment--composer border-t border-edge bg-base/90 px-4 py-3 space-y-3"
-			onSubmit={(event) => {
-				event.preventDefault();
-				if (!trimmedValue) {
-					return;
-				}
-				onSubmit(trimmedValue);
-				setValue("");
-			}}
-		>
-			<div className="space-y-1">
-				<div className="dev3-inline-comment__title text-xs font-semibold text-fg">
-					{t("infoPanel.diffCommentAdd")}
-				</div>
-				<div className="dev3-inline-comment__meta text-micro text-fg-3">
-					{filePath} · {formatInlineCommentLineLabel(t, side, startLine, endLine)}
-				</div>
-			</div>
-			<textarea
-				value={value}
-				onChange={(event) => setValue(event.target.value)}
-				placeholder={t("infoPanel.diffCommentPlaceholder")}
-				rows={3}
-				autoFocus
-				className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
-			/>
-			<div className="dev3-inline-comment__actions flex items-center justify-end gap-2">
-				<button
-					type="button"
-					onClick={onCancel}
-					className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-				>
-					{t("infoPanel.diffCommentCancel")}
-				</button>
-				{/* One-shot lane: a single remark goes straight to the agent and never
-				    lands in the batch review, so it costs one click instead of three. */}
-				<button
-					type="button"
-					onClick={() => {
-						if (!trimmedValue) {
-							return;
-						}
-						onSubmitAndSend(trimmedValue);
-						setValue("");
-					}}
-					disabled={!trimmedValue}
-					data-testid="inline-comment-composer-send"
-					title={t("infoPanel.diffCommentSubmitSendTooltip")}
-					className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-				>
-					<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-						{"\uf120"}
-					</span>
-					<span>{t("infoPanel.diffCommentSubmitSend")}</span>
-				</button>
-				<button
-					type="submit"
-					disabled={!trimmedValue}
-					className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-				>
-					{t("infoPanel.diffCommentSubmit")}
-				</button>
-			</div>
-		</form>
-	);
+function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
+	return buildReviewPrompt(entries.map(toReviewPromptEntry));
 }
 
 interface MarkdownPreviewThreadEntry {
@@ -922,7 +679,7 @@ function commentedLinesBySide(comments: InlineDiffCommentFileData): MarkdownComm
 		const lines = new Set<number>();
 		for (const slot of Object.values(slots)) {
 			for (const comment of slot.data.comments) {
-				for (let line = comment.startLine; line <= comment.endLine; line++) {
+				for (let line = comment.anchor.startLine; line <= comment.anchor.endLine; line++) {
 					lines.add(line);
 				}
 			}
@@ -964,6 +721,7 @@ function MarkdownPreviewReview({
 	onCancelEditComment,
 	onSaveEditComment,
 	onDeleteComment,
+	onReopenComment,
 	onSendComment,
 	sendingCommentIds,
 	registerCommentRef,
@@ -983,6 +741,7 @@ function MarkdownPreviewReview({
 	onCancelEditComment: () => void;
 	onSaveEditComment: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
+	onReopenComment: (commentId: string) => void;
 	onSendComment: (commentId: string) => void;
 	sendingCommentIds: Record<string, boolean>;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
@@ -1095,11 +854,8 @@ function MarkdownPreviewReview({
 						style={{ top: `${active.top + 6}px` }}
 						className="absolute left-0 z-10 w-[min(34rem,100%)] overflow-hidden rounded-lg border border-edge bg-overlay shadow-2xl"
 					>
-						<InlineCommentComposer
-							filePath={file.displayPath}
-							side={active.side}
-							startLine={active.startLine}
-							endLine={active.endLine}
+						<ReviewComposer
+							anchorLabel={`${file.displayPath} · ${formatInlineCommentLineLabel(t, active.side, active.startLine, active.endLine)}`}
 							onCancel={closeComposer}
 							onSubmit={(body) => {
 								onAddComment({
@@ -1142,7 +898,7 @@ function MarkdownPreviewReview({
 									location: formatInlineCommentLineLabel(
 										t,
 										entry.side,
-										entry.thread.comments[0]?.startLine ?? entry.lineNumber,
+										entry.thread.comments[0]?.anchor.startLine ?? entry.lineNumber,
 										entry.lineNumber,
 									),
 								})}
@@ -1157,16 +913,16 @@ function MarkdownPreviewReview({
 								</span>
 								<span>{t("infoPanel.diffMdPreviewReveal")}</span>
 							</button>
-							<InlineCommentThreadView
-								thread={entry.thread}
-								side={entry.side}
-								lineNumber={entry.lineNumber}
+							<ReviewThreadView
+								comments={entry.thread.comments}
+								label={formatThreadLineLabel(t, entry.thread, entry.side, entry.lineNumber)}
 								registerCommentRef={registerCommentRef}
 								editingCommentId={editingCommentId}
 								onStartEdit={onStartEditComment}
 								onCancelEdit={onCancelEditComment}
 								onSaveEdit={onSaveEditComment}
 								onDeleteComment={onDeleteComment}
+								onReopenComment={onReopenComment}
 								onSendComment={onSendComment}
 								sendingCommentIds={sendingCommentIds}
 							/>
@@ -1230,97 +986,6 @@ function readStoredReadState(): Record<string, boolean> {
 function writeStoredReadState(state: Record<string, boolean>): void {
 	try {
 		localStorage.setItem(LS_DIFF_READ_STATE, JSON.stringify(state));
-	} catch {}
-}
-
-function reviewStorageKey(taskId: string): string {
-	return `${LS_DIFF_REVIEW}:${taskId}`;
-}
-
-// A persisted review is a short-lived safety net, not a permanent store: it lets
-// the user come back and re-copy after an accidental clipboard clobber (e.g. a
-// stray terminal selection after copying). It is kept for at most this long since
-// the review was first created, then auto-expires so stale comments never linger.
-const REVIEW_TTL_MS = 3 * 24 * 60 * 60 * 1000;
-
-interface StoredReview {
-	savedAt: number;
-	comments: InlineDiffCommentsState;
-}
-
-function readStoredReview(taskId: string): InlineDiffCommentsState {
-	try {
-		const raw = localStorage.getItem(reviewStorageKey(taskId));
-		if (!raw) {
-			return {};
-		}
-		const parsed = JSON.parse(raw) as Partial<StoredReview> | null;
-		const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
-		const comments = parsed?.comments && typeof parsed.comments === "object" ? parsed.comments : null;
-		// Unknown/legacy shape or past the TTL — drop it.
-		if (savedAt === null || comments === null || Date.now() - savedAt > REVIEW_TTL_MS) {
-			localStorage.removeItem(reviewStorageKey(taskId));
-			return {};
-		}
-		return comments;
-	} catch {}
-	return {};
-}
-
-function writeStoredReview(taskId: string, state: InlineDiffCommentsState): void {
-	try {
-		if (!hasAnyInlineComments(state)) {
-			localStorage.removeItem(reviewStorageKey(taskId));
-			return;
-		}
-		// Preserve the original creation time across edits so the TTL counts from
-		// when the review was first started, not from the latest keystroke.
-		let savedAt = Date.now();
-		const existingRaw = localStorage.getItem(reviewStorageKey(taskId));
-		if (existingRaw) {
-			try {
-				const existing = JSON.parse(existingRaw) as Partial<StoredReview> | null;
-				if (typeof existing?.savedAt === "number") {
-					savedAt = existing.savedAt;
-				}
-			} catch {
-				// Corrupt existing entry — proceed with fresh savedAt so the write
-				// still completes instead of being silently swallowed by the outer catch.
-			}
-		}
-		const payload: StoredReview = { savedAt, comments: state };
-		localStorage.setItem(reviewStorageKey(taskId), JSON.stringify(payload));
-	} catch {}
-}
-
-// Global garbage-collection for persisted reviews. The per-key TTL in
-// readStoredReview only fires when *that* task's diff is reopened, so a review
-// for a task that is never revisited (or has been deleted) would linger forever.
-// This sweep walks every review key and drops expired or corrupt entries; it runs
-// whenever any diff viewer mounts, keeping the working set to "reviews touched in
-// the last few days" regardless of which tasks are reopened.
-function pruneExpiredReviews(now: number = Date.now()): void {
-	try {
-		const prefix = `${LS_DIFF_REVIEW}:`;
-		const staleKeys: string[] = [];
-		for (let i = 0; i < localStorage.length; i++) {
-			const key = localStorage.key(i);
-			if (!key || !key.startsWith(prefix)) {
-				continue;
-			}
-			try {
-				const parsed = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<StoredReview> | null;
-				const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
-				if (savedAt === null || now - savedAt > REVIEW_TTL_MS) {
-					staleKeys.push(key);
-				}
-			} catch {
-				staleKeys.push(key);
-			}
-		}
-		for (const key of staleKeys) {
-			localStorage.removeItem(key);
-		}
 	} catch {}
 }
 
@@ -1562,6 +1227,7 @@ function TaskDiffFileSection({
 	onCancelEditComment,
 	onSaveEditComment,
 	onDeleteComment,
+	onReopenComment,
 	onSendComment,
 	sendingCommentIds,
 	onToggleExpanded,
@@ -2081,6 +1747,7 @@ function TaskDiffFileSection({
 						onCancelEditComment={onCancelEditComment}
 						onSaveEditComment={onSaveEditComment}
 						onDeleteComment={onDeleteComment}
+						onReopenComment={onReopenComment}
 						onSendComment={onSendComment}
 						sendingCommentIds={sendingCommentIds}
 						registerCommentRef={registerCommentRef}
@@ -2110,11 +1777,8 @@ function TaskDiffFileSection({
 								clearRangeHighlight();
 							};
 							return (
-								<InlineCommentComposer
-									filePath={file.displayPath}
-									side={sideKey}
-									startLine={startLine}
-									endLine={lineNumber}
+								<ReviewComposer
+									anchorLabel={`${file.displayPath} · ${formatInlineCommentLineLabel(t, sideKey, startLine, lineNumber)}`}
 									onCancel={closeComposer}
 									onSubmit={(body) => {
 										onAddComment({
@@ -2153,16 +1817,16 @@ function TaskDiffFileSection({
 									/>
 								))}
 								{data?.local && (
-									<InlineCommentThreadView
-										thread={data.local}
-										side={getInlineCommentSideKey(side, diffLib.SplitSide)}
-										lineNumber={lineNumber}
+									<ReviewThreadView
+										comments={data.local.comments}
+										label={formatThreadLineLabel(t, data.local, getInlineCommentSideKey(side, diffLib.SplitSide), lineNumber)}
 										registerCommentRef={registerCommentRef}
 										editingCommentId={editingCommentId}
 										onStartEdit={onStartEditComment}
 										onCancelEdit={onCancelEditComment}
 										onSaveEdit={onSaveEditComment}
 										onDeleteComment={onDeleteComment}
+										onReopenComment={onReopenComment}
 										onSendComment={onSendComment}
 										sendingCommentIds={sendingCommentIds}
 									/>
@@ -2229,11 +1893,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	// preview (missing entry = on). Ephemeral view state (like GitHub's rich-diff
 	// toggle): resets on viewer mount, never persisted.
 	const [mdPreviewFiles, setMdPreviewFiles] = useState<Record<string, boolean>>({});
-	// Lazy-initialize from localStorage so the first persist-effect fire (when
-	// payload arrives) sees the stored review rather than `{}` — otherwise the
-	// persist effect would delete the localStorage entry before the restore effect's
-	// setInlineComments causes a second render that writes it back.
-	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>(() => readStoredReview(task.id));
+	// The review lives on the task record and is shared with the artifact viewer
+	// and the agent's CLI; this viewer only projects it onto the widget map.
+	const review = useTaskReview(task, project.id);
+	const inlineComments = useMemo(() => buildInlineCommentsState(review.comments), [review.comments]);
+	const importLegacyReview = review.importMany;
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [reviewSendState, setReviewSendState] = useState<"sending" | "sent" | undefined>();
 	// In-flight per-comment sends. The "sent" half of the state is not here: it
@@ -2354,6 +2018,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		? [
 			...buildInlineReviewExportEntries(visibleFiles, inlineComments),
 			...buildGithubReviewExportEntries(visibleFiles, prComments?.threads ?? [], githubExportSelection),
+			...buildArtifactReviewExportEntries(review.comments),
 		].sort(compareReviewExportEntries)
 		: [];
 	// Comments already sent one-by-one stay listed (greyed, marked) but leave the
@@ -2416,8 +2081,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	);
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
-	// The inline review is persisted per task (readStoredReview/writeStoredReview),
-	// so leaving the viewer never discards anything — close immediately without a
+	// The inline review is persisted on the task record, so leaving the viewer
+	// never discards anything — close immediately without a
 	// "discard review?" prompt.
 	const requestClose = useCallback(() => {
 		onBack();
@@ -2437,11 +2102,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		};
 	}, [navigationGuardRef]);
 
-	// Garbage-collect expired/orphaned persisted reviews across all tasks whenever a
-	// diff viewer opens, so localStorage never accumulates stale review entries for
-	// tasks that are never reopened (or have been deleted).
+	// Reviews used to live in localStorage; sweep what is left of that store.
 	useEffect(() => {
-		pruneExpiredReviews();
+		pruneLegacyReviews();
 	}, []);
 
 	const isInitialRequestSyncRef = useRef(true);
@@ -2620,7 +2283,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			setExpandedFiles({});
 			setReadFiles({});
 			setActiveFileId(null);
-			setInlineComments({});
 			setEditingCommentId(null);
 			return;
 		}
@@ -2641,11 +2303,15 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setExpandedFiles(nextExpandedFiles);
 		setReadFiles(nextReadFiles);
 		setActiveFileId(initialActiveFileId);
-		// Restore the persisted review for this task instead of wiping it — comments
-		// must survive diff reloads (e.g. a refresh after the agent edits files).
-		setInlineComments(readStoredReview(task.id));
 		setEditingCommentId(null);
-	}, [currentRequest.focusFile, payload, task.id]);
+		// A review this browser still holds from before comments lived on the task
+		// record is carried over once, then the old key goes.
+		const legacy = readLegacyReview(task.id);
+		if (legacy.length > 0) {
+			importLegacyReview(legacy);
+			dropLegacyReview(task.id);
+		}
+	}, [currentRequest.focusFile, importLegacyReview, payload, task.id]);
 
 	// Scroll spy: as the user scrolls the diff, highlight the file whose section is currently
 	// under the reading line (just below the sticky toolbar). rAF-throttled; only commits a
@@ -2701,28 +2367,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		fileButtonRefs.current[activeFileId]?.scrollIntoView({ block: "nearest" });
 	}, [activeFileId]);
 
-	// Tracks the task.id that inlineComments currently belongs to.
-	// Updated in the persist effect whenever task.id changes, so we can detect
-	// the intermediate render where task.id has advanced but inlineComments still
-	// holds the previous task's data (e.g. the user clicked a different task card
-	// in the kanban while the diff viewer was open — useTaskInlineDiffState resets
-	// inlineDiffRequest to null one render later, but the persist effect fires in
-	// that intermediate render and must not cross-contaminate storage).
-	const inlineCommentsOwnerRef = useRef(task.id);
-
-	// Persist the review on every change. Gated on `payload` so the transient
-	// in-memory clear during a diff (re)load does not erase the stored review.
-	// Also gated on the task.id matching the owner ref: if they diverge, task.id
-	// has just changed and inlineComments still contains the previous task's data,
-	// so we must skip the write.
-	useEffect(() => {
-		if (!payload || inlineCommentsOwnerRef.current !== task.id) {
-			inlineCommentsOwnerRef.current = task.id;
-			return;
-		}
-		writeStoredReview(task.id, inlineComments);
-	}, [inlineComments, payload, task.id]);
-
 	function addInlineComment({
 		fileId,
 		side,
@@ -2743,36 +2387,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 		const lo = Math.min(startLine, endLine);
 		const hi = Math.max(startLine, endLine);
-		// Threads are keyed by the anchor (end) line, where the widget/composer renders.
-		const anchorLine = hi;
+		const file = visibleFiles.find((item) => item.id === fileId);
 		const nextComment: InlineDiffComment = {
 			id: `${fileId}:${side}:${lo === hi ? lo : `${lo}-${hi}`}:${Date.now().toString(36)}`,
 			body: trimmedBody,
 			createdAt: new Date().toISOString(),
-			startLine: lo,
-			endLine: hi,
-			side,
+			anchor: { kind: "diff-line", fileId, filePath: file ? getReviewFilePath(file) : fileId, side, startLine: lo, endLine: hi },
 		};
-
-		setInlineComments((current) => {
-			const fileComments = current[fileId] ?? createEmptyInlineCommentFileData();
-			const sideComments = fileComments[side];
-			const existingThread = sideComments[anchorLine]?.data;
-			return {
-				...current,
-				[fileId]: {
-					...fileComments,
-					[side]: {
-						...sideComments,
-						[anchorLine]: {
-							data: {
-								comments: [...(existingThread?.comments ?? []), nextComment],
-							},
-						},
-					},
-				},
-			};
-		});
+		review.add(nextComment);
 		return nextComment.id;
 	}
 
@@ -2797,6 +2419,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const hi = Math.max(params.startLine, params.endLine);
 		const entry: InlineReviewExportEntry = {
 			id: commentId,
+			anchor: { kind: "diff-line", fileId: file.id, filePath: getReviewFilePath(file), side: params.side, startLine: lo, endLine: hi },
 			fileId: file.id,
 			filePath: getReviewFilePath(file),
 			side: params.side,
@@ -2815,7 +2438,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			.then((result) => {
 				// Marked, never deleted: a resolved RPC proves the keys were handed
 				// over, not that the agent ingested them, so the text must survive.
-				setInlineComments((current) => markInlineCommentsSent(current, new Set([commentId])));
+				review.markSent([commentId]);
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
@@ -2861,7 +2484,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
 			.then((result) => {
-				setInlineComments((current) => markInlineCommentsSent(current, new Set([commentId])));
+				review.markSent([commentId]);
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
@@ -2899,7 +2522,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				// Sent comments are marked, never destroyed. A resolved RPC only means
 				// the keys reached the terminal — the agent's TUI can still drop them —
 				// so wiping here silently ate reviews that never arrived.
-				setInlineComments((current) => markInlineCommentsSent(current, sentIds));
+				review.markSent(sentIds);
 				setEditingCommentId(null);
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewExportSendSuccessFile", { path: result.spilledPath })
@@ -2922,7 +2545,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				if (!confirmed) {
 					return;
 				}
-				setInlineComments({});
+				review.clear();
 				setEditingCommentId(null);
 			})
 			.catch(() => {});
@@ -3232,43 +2855,17 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 
-		// Editing revives the comment: the agent got the old text, so the new text
-		// has to be deliverable again — via its own send or the next batch.
-		setInlineComments((current) => mapInlineComments(current, (comment) => comment.id === commentId, (comment) => ({
-			...comment,
-			body: trimmedBody,
-			sentAt: undefined,
-		})));
+		review.update(commentId, trimmedBody);
 		cancelEditingComment();
 	}
 
 	function deleteInlineComment(commentId: string) {
-		setInlineComments((current) => {
-			const nextState: InlineDiffCommentsState = {};
-			for (const [fileId, fileComments] of Object.entries(current)) {
-				const nextFileComments = {
-					oldFile: {} as InlineDiffCommentFileData["oldFile"],
-					newFile: {} as InlineDiffCommentFileData["newFile"],
-				};
-				for (const side of ["oldFile", "newFile"] as const) {
-					for (const [lineNumber, thread] of Object.entries(fileComments[side])) {
-						const remainingComments = thread.data.comments.filter((comment) => comment.id !== commentId);
-						if (remainingComments.length > 0) {
-							nextFileComments[side][lineNumber] = {
-								data: {
-									comments: remainingComments,
-								},
-							};
-						}
-					}
-				}
-				if (Object.keys(nextFileComments.oldFile).length > 0 || Object.keys(nextFileComments.newFile).length > 0) {
-					nextState[fileId] = nextFileComments;
-				}
-			}
-			return nextState;
-		});
+		review.remove(commentId);
 		cancelEditingComment();
+	}
+
+	function reopenInlineComment(commentId: string) {
+		review.reopen(commentId);
 	}
 
 	function collapseFilePreservingStickyAnchor(fileId: string) {
@@ -4483,6 +4080,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								onCancelEditComment={cancelEditingComment}
 								onSaveEditComment={updateInlineComment}
 								onDeleteComment={deleteInlineComment}
+								onReopenComment={reopenInlineComment}
 								onSendComment={sendInlineCommentToAgent}
 								sendingCommentIds={sendingCommentIds}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
