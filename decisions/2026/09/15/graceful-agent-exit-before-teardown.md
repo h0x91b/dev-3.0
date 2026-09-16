@@ -47,9 +47,25 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Gemini `/quit`; the generic adapter returns null and teardown goes straight to the kill.
 - `src/bun/agent-graceful-exit.ts` — `requestGracefulAgentExit(task)` resolves live
   agent panes from `task.sessionState.panes` (tmux: joined with `list-panes` pane pids;
-  native: `pane-1` and its shell pid), skips panes whose tree is already empty, types the
-  program through `sendPaneInput`, then polls every 250 ms up to 30 s. It never throws.
-  When `ps` is unavailable it waits one blind 5 s grace instead of polling.
+  native: `pane-1` and its shell pid), types the program through `sendPaneInput`, then
+  polls every 250 ms up to 30 s. It never throws: the whole body is wrapped and every
+  failure comes back as an outcome.
+- **Two signals, deliberately not one.** Before typing, the step asks *"is the agent
+  itself running under this pane?"* — `agentPidsUnder` matches the recorded `agentCmd`
+  against the leading program names of each descendant's command line (argv0, plus the
+  script of an interpreted CLI, parsing stopped at the first flag because an agent's
+  command line carries the whole task prompt after its flags). After typing it asks the
+  different question *"has the pane gone quiet?"* — the whole subtree, because the exit
+  hook is a separate process that outlives the agent and waiting for it is the point.
+  Using "the agent is gone" as the completion signal would have reintroduced the bug.
+- **Absent process evidence is never read as "the agent left."** `collectProcessInfo`
+  reports a missing or failed `ps` as an EMPTY table (`runText` swallows every failure
+  and returns `""`), which counted as "no descendants" and therefore "already exited" —
+  silently disabling the step on any platform without `ps`, Windows included, while a
+  blind-wait branch written for that case could never run. `readAgentProcessEvidence`
+  now returns `null` on Windows, on a throw, and on an empty table, and the step skips
+  with `no-process-evidence` and an `info` log. Same rule as
+  `terminal-process-ownership/collector.ts`: absent evidence is reported, not guessed.
 - A new `gracefulAgentExit` lifecycle effect (`onError: "continue"`) is emitted
   immediately before every `destroyTaskPty` in `src/bun/lifecycle/machine.ts`; the
   executor case awaits the request. Machine and native-teardown tests pin the ordering.
@@ -62,6 +78,22 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   the same end state, one step earlier.
 - The 30 s bound is now the worst-case added latency of a teardown when an agent
   ignores the request. The step is logged at `warn` when it times out.
+- **Windows gets nothing from this step**, and says so in the log instead of pretending.
+  Process enumeration there needs a different mechanism (Job Object membership proves
+  identity but cannot enumerate a tree), so the native path stays exercised by unit
+  tests only until that exists.
+- Only Claude's `/exit` (2.1.273) and Gemini's `/quit` (gemini-cli 0.46.0, whose bundle
+  registers `quit` with `exit` as an alias) have been checked against the real CLI.
+  Codex, Cursor, Copilot and OpenCode ship compiled binaries and their quit commands are
+  taken from documentation, not observation. A wrong one costs the 30 s bound per
+  teardown for that harness and nothing else.
+- **Identity is not readiness.** A CLI that is alive but still in its trust prompt or
+  first-run wizard has no prompt to run a slash command in, so the Enter of the exit
+  program lands on whatever that dialog has selected. At teardown that is bounded —
+  the worst case is a default accepted in a worktree about to be deleted, and then the
+  30 s bound and the kill — but it is the same blind spot seq 1949/1950 hit from the
+  other side in #1785. The `SessionStart` hook receipt already routed through
+  `cli-socket-server.ts` is the signal to gate on if this ever needs to be exact.
 - A CLI whose quit command changes goes back to the kill path silently; the matrix row
   in `agent-support-matrix.md` is where the command is documented.
 
@@ -77,3 +109,11 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   is gone), and Ctrl-C first makes the request robust to both the busy and the idle case.
 - **Waiting on `pane_dead` / session exit.** Rejected: the pane survives the agent by
   design (`keepShell`), so it would always time out.
+- **Typing at any pane that has something running under it.** Rejected after review:
+  after the agent exits the pane belongs to a shell, so "busy" also means a job the user
+  started, which would earn a Ctrl-C and a stray `/exit` plus the full 30 s bound on a
+  teardown somebody is waiting for.
+- **Keeping the blind wait for platforms with no process table.** Rejected: without the
+  table the agent cannot be identified either, and a slash command typed at an
+  unidentified pane is worse than an honest skip. A logged skip also leaves a trace when
+  someone asks why Windows never runs exit hooks.

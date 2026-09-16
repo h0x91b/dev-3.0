@@ -158,7 +158,10 @@ describe("dev3 skill content", () => {
 
 	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("the agent is asked to quit first (`/exit`; SessionEnd hooks run, 30 s bound)");
+			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
+			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
+			expect(skill).toContain("your CLI is asked to quit first, so its exit hooks run (30 s bound)");
+			expect(skill).not.toContain("SessionEnd");
 		}
 	});
 

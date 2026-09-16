@@ -10,7 +10,7 @@
  * Run: `DEV3_HOME=$(mktemp -d) bun run test:agent-graceful-exit-e2e`
  */
 
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Task } from "../../shared/types";
@@ -31,7 +31,12 @@ const settle = (ms: number): Promise<void> => new Promise((resolve) => setTimeou
 
 function writeScripts(hookDelaySeconds: number): { launcher: string; log: string } {
 	const log = join(root, `hook-${hookDelaySeconds}.log`);
-	const agent = join(root, `fake-agent-${hookDelaySeconds}.sh`);
+	// Named `claude` on purpose: the step only types at a pane where it can SEE the
+	// recorded agent command running, so the fixture has to carry that name the way a
+	// real CLI does — `bash …/claude` is how ps reports an interpreted agent.
+	const agentDir = join(root, `agent-${hookDelaySeconds}`);
+	mkdirSync(agentDir, { recursive: true });
+	const agent = join(agentDir, "claude");
 	const launcher = join(root, `launcher-${hookDelaySeconds}.sh`);
 	writeFileSync(agent, `#!/bin/bash
 # Survive Ctrl-C like a TUI; die silently on SIGHUP like a CLI under kill-session.
@@ -110,6 +115,35 @@ async function hangingHookIsBounded(): Promise<void> {
 	check(!existsSync(log), "the kill that followed ran no hook (the hang was real)");
 }
 
+/** A pane that is busy with something that is NOT the agent must be left alone. */
+async function nonAgentChildIsNotAsked(): Promise<void> {
+	console.log("case: a pane running a non-agent job is never typed at");
+	const taskId = crypto.randomUUID();
+	const session = taskSessionName(taskId);
+	const launcher = join(root, "stranger.sh");
+	writeFileSync(launcher, "#!/bin/bash\nsleep 300\n");
+	chmodSync(launcher, 0o755);
+	await client.newSessionDetached({ sessionName: session, socket: SOCKET, command: `bash "${launcher}"`, cwd: root });
+	const [pane] = await client.listPanes(PANE_ID_FORMAT, { target: session, socket: SOCKET });
+	if (!pane) throw new Error("no pane");
+	await settle(400);
+	const task = {
+		id: taskId, projectId: "p", title: "stranger", description: "", status: "in-progress", createdAt: 0, updatedAt: 0,
+		tmuxSocket: SOCKET,
+		sessionState: {
+			panes: [{ paneId: pane.paneId, agentCmd: "claude", sessionId: null, agentId: null, configId: null, agentFamily: "claude" }],
+		},
+	} as unknown as Task;
+
+	const startedAt = Date.now();
+	const outcome = await requestGracefulAgentExit(task, { timeoutMs: 3_000 });
+	const elapsed = Date.now() - startedAt;
+	console.log(`  outcome: ${JSON.stringify(outcome)} in ${elapsed} ms`);
+	check(outcome.kind === "skipped", "reported as skipped, not waited on");
+	check(elapsed < 2_000, "returned at once instead of burning the bound");
+	await client.killSession(session, { socket: SOCKET, bestEffort: true });
+}
+
 async function killAloneLosesTheHook(): Promise<void> {
 	console.log("case: control — kill-session alone never runs the hook");
 	const { log, session } = await startTask(0);
@@ -123,6 +157,7 @@ async function main(): Promise<void> {
 	try {
 		await hookRunsWhenAskedToExit();
 		await hangingHookIsBounded();
+		await nonAgentChildIsNotAsked();
 		await killAloneLosesTheHook();
 	} finally {
 		await client.killServer({ socket: SOCKET }).catch(() => undefined);

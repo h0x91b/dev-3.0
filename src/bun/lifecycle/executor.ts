@@ -885,7 +885,8 @@ export async function executeLifecycleEffect(
 		}
 		case "gracefulAgentExit":
 			// Buys the agent its own exit hooks before the kill below; bounded, and it
-			// never throws — a timeout is logged and teardown proceeds regardless.
+			// catches its own failures — a timeout, an unreadable process table or a
+			// refused send is logged as an outcome and teardown proceeds regardless.
 			await requestGracefulAgentExit(ctx.sourceTask);
 			return {};
 		case "destroyTaskPty":

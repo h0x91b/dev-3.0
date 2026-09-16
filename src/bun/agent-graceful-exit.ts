@@ -6,12 +6,21 @@
  * runs on its way out — Claude Code's `SessionEnd` hooks are the case that surfaced
  * this: a hook that needs a couple of seconds is SIGKILLed as a stray worktree process
  * before it writes. This module types each adapter's quit command into every live
- * agent pane, then waits a bounded time for the agent's process tree to empty — which
- * includes its exit hooks. Whatever is still alive at the deadline is left to the kill
- * that follows; this step never blocks teardown for good.
+ * agent pane, then waits a bounded time for the pane's process tree to empty — which
+ * includes the hooks the agent leaves behind. Whatever is still alive at the deadline
+ * is left to the kill that follows; this step never blocks teardown for good.
+ *
+ * Two questions, deliberately answered by two different signals:
+ *  - BEFORE typing: is the agent itself running under this pane? Identity, matched
+ *    against the process table, so a shell job the user left behind never gets a
+ *    slash command typed at it.
+ *  - AFTER typing: has the pane's whole subtree emptied? Not "is the agent gone" —
+ *    an exit hook outlives the agent, and waiting for it is the entire point.
+ *
  * See `decisions/2026/09/15/graceful-agent-exit-before-teardown.md`.
  */
 
+import { basename } from "node:path";
 import { getAgentAdapter } from "../shared/agent-adapters";
 import type { PaneSessionEntry, Task } from "../shared/types";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
@@ -28,11 +37,11 @@ const log = createLogger("agent-exit");
 export const GRACEFUL_AGENT_EXIT_TIMEOUT_MS = 30_000;
 export const GRACEFUL_AGENT_EXIT_POLL_MS = 250;
 /**
- * When the process tree cannot be read at all (no `ps` on this platform), one blind
- * wait of this length replaces the poll: long enough for a hook that appends a line,
- * short enough that teardown still feels immediate.
+ * Freshness the poll asks of the shared `ps` snapshot. Below the poll interval, so
+ * every tick sees a new table, but non-zero so simultaneous teardowns share one spawn
+ * instead of each forking its own `ps`.
  */
-export const GRACEFUL_AGENT_EXIT_BLIND_WAIT_MS = 5_000;
+export const GRACEFUL_AGENT_EXIT_PROCESS_MAX_AGE_MS = 200;
 
 /** One live agent pane: where to type, and whose process tree says when it is gone. */
 export interface AgentExitTarget {
@@ -43,17 +52,23 @@ export interface AgentExitTarget {
 }
 
 export type GracefulAgentExitOutcome =
-	/** No live agent pane, or no adapter with a quit command — nothing was typed. */
-	| { kind: "skipped"; reason: "no-agent-pane" | "no-exit-command" | "already-exited" | "not-delivered"; detail?: string }
+	/**
+	 * Nothing was typed. `no-process-evidence` is the platform answer: without a
+	 * readable process table the agent cannot be identified, and typing a slash
+	 * command at an unidentified pane is worse than skipping the step.
+	 */
+	| {
+			kind: "skipped";
+			/** `no-agent-process`: the agent left, or what runs in the pane is not it. */
+			reason: "no-agent-pane" | "no-exit-command" | "no-agent-process" | "not-delivered" | "no-process-evidence" | "failed";
+			detail?: string;
+	  }
 	| { kind: "exited"; elapsedMs: number; panes: number }
-	| { kind: "timed-out"; elapsedMs: number; panes: number; stillRunning: string[] }
-	/** The tree could not be read; the blind wait ran instead of the poll. */
-	| { kind: "blind-wait"; elapsedMs: number; panes: number };
+	| { kind: "timed-out"; elapsedMs: number; panes: number; stillRunning: string[] };
 
 export interface GracefulAgentExitOptions {
 	timeoutMs?: number;
 	pollMs?: number;
-	blindWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
 }
@@ -88,9 +103,10 @@ export async function resolveAgentExitTargets(task: Task): Promise<AgentExitTarg
 	}
 	if (targets.length > 0) return targets;
 
-	// A legacy main pane, or a freshly launched Codex pane, can have no recorded id
-	// yet. Its entry is pane[0] and tmux lists the initial pane first. A recorded id
-	// that tmux no longer lists is a pane that is gone, not one to guess at.
+	// pane[0] is persisted at launch without an id (`tmux-pty.ts`) and gains one only
+	// once the pane is listed, so a single entry with no id is the normal main pane,
+	// not just legacy state. tmux lists the initial pane first. A recorded id that
+	// tmux no longer lists is a pane that is gone, not one to guess at.
 	const [firstRow] = rows ?? [];
 	const firstEntry = entries[0];
 	if (entries.length === 1 && firstEntry && !firstEntry.paneId && firstRow && firstRow.panePid > 0) {
@@ -99,31 +115,90 @@ export async function resolveAgentExitTargets(task: Task): Promise<AgentExitTarg
 	return [];
 }
 
-/**
- * Whether the agent under each pane root is gone. The launch script hands the pane
- * over to an interactive shell when the agent exits, so the pane itself stays alive
- * and the signal is the root having no descendants left. `null` when the tree
- * cannot be read on this platform.
- */
-export async function agentTreesEmpty(rootPids: readonly number[]): Promise<Map<number, boolean> | null> {
-	let tree: Map<number, number[]>;
-	try {
-		({ tree } = await collectProcessInfo({ maxAgeMs: 0 }));
-	} catch {
-		return null;
-	}
-	return new Map(rootPids.map((pid) => [pid, collectDescendants(pid, tree).length === 0] as const));
+/** The process table, as much of it as this step needs. */
+export interface AgentProcessEvidence {
+	tree: Map<number, number[]>;
+	cmdlines: Map<number, string>;
 }
 
 /**
- * Type each live agent's quit command and wait, bounded, for it to leave. Never
- * throws: every failure is logged and reported as an outcome, because the kill that
- * follows is the real guarantee — this step only buys the agent its exit hooks.
+ * The process table, or `null` when this platform cannot produce one.
+ *
+ * `collectProcessInfo` reports a failed or missing `ps` as an EMPTY table rather than
+ * an error — `runText` swallows every failure and returns "". An empty table would
+ * read as "every agent already left", so it is reported as absent evidence instead,
+ * the same rule `terminal-process-ownership/collector.ts` follows for Windows.
+ */
+export async function readAgentProcessEvidence(maxAgeMs = GRACEFUL_AGENT_EXIT_PROCESS_MAX_AGE_MS): Promise<AgentProcessEvidence | null> {
+	if (process.platform === "win32") return null;
+	try {
+		const { tree, cmdlines } = await collectProcessInfo({ maxAgeMs });
+		if (tree.size === 0) return null;
+		return { tree, cmdlines };
+	} catch {
+		return null;
+	}
+}
+
+/** Interpreter and packaging suffixes that hide an agent's own name. */
+const PROGRAM_SUFFIX = /\.(js|mjs|cjs|exe|cmd|bat)$/i;
+
+/**
+ * The program names a command line starts with: argv0 and, for an interpreted CLI,
+ * the script it runs (`node …/gemini.js`). Parsing stops at the first flag, because
+ * an agent's own command line carries the whole task prompt after its flags and any
+ * word in it would otherwise match.
+ */
+export function leadingProgramNames(cmdline: string): string[] {
+	const names: string[] = [];
+	for (const token of cmdline.trim().split(/\s+/)) {
+		if (!token) continue;
+		if (token.startsWith("-")) break;
+		names.push(basename(token).replace(PROGRAM_SUFFIX, "").toLowerCase());
+		if (names.length === 3) break;
+	}
+	return names;
+}
+
+/**
+ * The pids under `rootPid` that ARE this pane's agent — matched on the recorded
+ * launch command's own name, never on a substring of a command line.
+ */
+export function agentPidsUnder(target: AgentExitTarget, evidence: AgentProcessEvidence): number[] {
+	const wanted = basename(target.entry.agentCmd).replace(PROGRAM_SUFFIX, "").toLowerCase();
+	if (!wanted) return [];
+	return collectDescendants(target.rootPid, evidence.tree).filter((pid) => {
+		const cmdline = evidence.cmdlines.get(pid);
+		return cmdline ? leadingProgramNames(cmdline).includes(wanted) : false;
+	});
+}
+
+/**
+ * Whether the pane has nothing running under it any more. This — not "the agent
+ * process is gone" — is what ends the wait: an exit hook is a separate process that
+ * outlives the agent, and letting it finish is the reason this step exists.
+ */
+function paneSubtreeEmpty(rootPid: number, evidence: AgentProcessEvidence): boolean {
+	return collectDescendants(rootPid, evidence.tree).length === 0;
+}
+
+/**
+ * Type each live agent's quit command and wait, bounded, for its pane to go quiet.
+ * Never throws: every failure is logged and reported as an outcome, because the kill
+ * that follows is the real guarantee — this step only buys the agent its exit hooks.
  */
 export async function requestGracefulAgentExit(task: Task, options: GracefulAgentExitOptions = {}): Promise<GracefulAgentExitOutcome> {
+	try {
+		return await runGracefulAgentExit(task, options);
+	} catch (error) {
+		log.warn("graceful agent exit: step failed, proceeding to kill", { taskId: task.id.slice(0, 8), error: String(error) });
+		return { kind: "skipped", reason: "failed", detail: String(error) };
+	}
+}
+
+async function runGracefulAgentExit(task: Task, options: GracefulAgentExitOptions): Promise<GracefulAgentExitOutcome> {
 	const timeoutMs = options.timeoutMs ?? GRACEFUL_AGENT_EXIT_TIMEOUT_MS;
 	const pollMs = options.pollMs ?? GRACEFUL_AGENT_EXIT_POLL_MS;
-	const blindWaitMs = options.blindWaitMs ?? GRACEFUL_AGENT_EXIT_BLIND_WAIT_MS;
 	const sleep = options.sleep ?? defaultSleep;
 	const now = options.now ?? Date.now;
 	const taskId = task.id.slice(0, 8);
@@ -137,14 +212,23 @@ export async function requestGracefulAgentExit(task: Task, options: GracefulAgen
 	}
 	if (targets.length === 0) return { kind: "skipped", reason: "no-agent-pane" };
 
-	// Nothing to ask when the agent already left on its own — typing a slash command
-	// into the shell that replaced it would only litter the pane.
-	const before = await agentTreesEmpty(targets.map((target) => target.rootPid));
+	// No process table, no identity — and an unidentified pane is not one to type a
+	// slash command into. Said out loud, because the alternative is a feature that is
+	// silently off on a whole platform.
+	const evidence = await readAgentProcessEvidence();
+	if (!evidence) {
+		log.info("graceful agent exit: no process evidence on this platform, skipping", { taskId, platform: process.platform, panes: targets.length });
+		return { kind: "skipped", reason: "no-process-evidence" };
+	}
+
 	const asked: AgentExitTarget[] = [];
 	let alreadyGone = 0;
 	let withoutCommand = 0;
 	for (const target of targets) {
-		if (before?.get(target.rootPid)) {
+		const agentPids = agentPidsUnder(target, evidence);
+		if (agentPids.length === 0) {
+			// Either the agent already left, or whatever runs in this pane is not it.
+			// Both mean the same thing here: nothing to ask.
 			alreadyGone += 1;
 			continue;
 		}
@@ -154,7 +238,13 @@ export async function requestGracefulAgentExit(task: Task, options: GracefulAgen
 			log.info("graceful agent exit: no quit command for this agent", { taskId, paneId: target.paneId, agentCmd: target.entry.agentCmd });
 			continue;
 		}
-		const outcome = await sendPaneInput(task, target.paneId, program, { idPrefix: "agent-exit" });
+		let outcome: Awaited<ReturnType<typeof sendPaneInput>>;
+		try {
+			outcome = await sendPaneInput(task, target.paneId, program, { idPrefix: "agent-exit" });
+		} catch (error) {
+			log.warn("graceful agent exit: quit command could not be sent", { taskId, paneId: target.paneId, error: String(error) });
+			continue;
+		}
 		if (outcome.status === "delivered" || outcome.status === "indeterminate") {
 			asked.push(target);
 			continue;
@@ -168,25 +258,20 @@ export async function requestGracefulAgentExit(task: Task, options: GracefulAgen
 		});
 	}
 	if (asked.length === 0) {
-		if (alreadyGone === targets.length) return { kind: "skipped", reason: "already-exited" };
+		if (alreadyGone === targets.length) return { kind: "skipped", reason: "no-agent-process" };
 		if (alreadyGone + withoutCommand === targets.length) return { kind: "skipped", reason: "no-exit-command" };
 		return { kind: "skipped", reason: "not-delivered" };
 	}
 
 	const startedAt = now();
 	const deadline = startedAt + timeoutMs;
-	if (before === null) {
-		await sleep(blindWaitMs);
-		const elapsedMs = now() - startedAt;
-		log.info("graceful agent exit: process tree unreadable, waited blind", { taskId, panes: asked.length, elapsedMs });
-		return { kind: "blind-wait", elapsedMs, panes: asked.length };
-	}
 	const pids = asked.map((target) => target.rootPid);
 	for (;;) {
-		const empty = await agentTreesEmpty(pids);
-		if (empty === null) {
-			// The tree was readable a moment ago; treat a transient read failure as "keep waiting".
-		} else if (pids.every((pid) => empty.get(pid))) {
+		const fresh = await readAgentProcessEvidence();
+		if (fresh === null) {
+			// The table was readable a moment ago; treat a transient read failure as
+			// "keep waiting" rather than as "the pane is quiet".
+		} else if (pids.every((pid) => paneSubtreeEmpty(pid, fresh))) {
 			const elapsedMs = now() - startedAt;
 			log.info("graceful agent exit: agent left on request", { taskId, panes: asked.length, elapsedMs });
 			return { kind: "exited", elapsedMs, panes: asked.length };
@@ -195,8 +280,10 @@ export async function requestGracefulAgentExit(task: Task, options: GracefulAgen
 		await sleep(Math.min(pollMs, Math.max(1, deadline - now())));
 	}
 	const elapsedMs = now() - startedAt;
-	const finalEmpty = await agentTreesEmpty(pids);
-	const stillRunning = asked.filter((target) => !finalEmpty?.get(target.rootPid)).map((target) => target.paneId);
-	log.warn("graceful agent exit: timed out, proceeding to kill", { taskId, timeoutMs, elapsedMs, stillRunning });
+	const final = await readAgentProcessEvidence();
+	const stillRunning = asked
+		.filter((target) => !final || !paneSubtreeEmpty(target.rootPid, final))
+		.map((target) => target.paneId);
+	log.warn("graceful agent exit: timed out, proceeding to kill", { taskId, timeoutMs, elapsedMs, stillRunning, evidence: final ? "read" : "unreadable" });
 	return { kind: "timed-out", elapsedMs, panes: asked.length, stillRunning };
 }

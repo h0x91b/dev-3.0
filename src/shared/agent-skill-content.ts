@@ -122,7 +122,7 @@ const SKILL_COMPLETION_REQUEST = `
 
 \`dev3 task move --status completed\` does NOT complete anything directly — it opens an approval dialog and **blocks for up to 10 minutes**:
 
-- **Approved** → the agent is asked to quit first (\`/exit\`; SessionEnd hooks run, 30 s bound), then this worktree and terminal session are destroyed.
+- **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), then this worktree and terminal session are destroyed.
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
 - **Timeout** → the dialog may still be open; a later approval completes it.
 

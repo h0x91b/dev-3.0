@@ -23,7 +23,7 @@ vi.mock("../port-scanner", async (importOriginal) => {
 vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn() }));
 
 import {
-	GRACEFUL_AGENT_EXIT_BLIND_WAIT_MS,
+	leadingProgramNames,
 	requestGracefulAgentExit,
 	resolveAgentExitTargets,
 } from "../agent-graceful-exit";
@@ -34,6 +34,9 @@ import { tmux } from "../tmux";
 
 const AGENT_ROOT_PID = 4100;
 const AGENT_PID = 4101;
+const HOOK_PID = 4102;
+/** Anything else living under the pane's shell — a job the user left running. */
+const STRANGER_PID = 4199;
 
 function task(overrides: Partial<Task> = {}): Task {
 	return {
@@ -51,16 +54,25 @@ function task(overrides: Partial<Task> = {}): Task {
 	} as unknown as Task;
 }
 
-/** A process tree where `agentAlive` decides whether the pane root still has its child. */
-function tree(agentAlive: boolean): Map<number, number[]> {
-	const map = new Map<number, number[]>([[1, [AGENT_ROOT_PID]]]);
-	map.set(AGENT_ROOT_PID, agentAlive ? [AGENT_PID] : []);
-	return map;
+/**
+ * A process table with exactly the pids named under the pane root. The launch shell
+ * itself always exists — an empty table is a `ps` that failed, which is a different
+ * thing entirely and has its own test.
+ */
+function processInfo(under: readonly number[]): ProcessInfoResult {
+	const tree = new Map<number, number[]>([[1, [AGENT_ROOT_PID]]]);
+	tree.set(AGENT_ROOT_PID, [...under]);
+	const cmdlines = new Map<number, string>([
+		[AGENT_ROOT_PID, "/bin/zsh -l"],
+		[AGENT_PID, "/Users/dev/.local/bin/claude --session-id abc --model opus review the /exit path"],
+		[HOOK_PID, "/bin/bash /Users/dev/hooks/session-end.sh"],
+		[STRANGER_PID, "npm run watch"],
+	]);
+	return { tree, resources: new Map(), cmdlines };
 }
 
-function processInfo(agentAlive: boolean): ProcessInfoResult {
-	return { tree: tree(agentAlive), resources: new Map(), cmdlines: new Map() };
-}
+/** What a missing or failed `ps` actually produces: parsed output of "". */
+const UNREADABLE: ProcessInfoResult = { tree: new Map(), resources: new Map(), cmdlines: new Map() };
 
 /** A clock the test drives: `sleep` advances it and never waits for real. */
 function fakeClock() {
@@ -139,12 +151,22 @@ describe("resolveAgentExitTargets", () => {
 	});
 });
 
+describe("leadingProgramNames", () => {
+	it("reads argv0 and an interpreted CLI's script, and stops at the first flag", () => {
+		expect(leadingProgramNames("/usr/local/bin/codex")).toEqual(["codex"]);
+		expect(leadingProgramNames("node /opt/gemini/bundle/gemini.js --yolo")).toEqual(["node", "gemini"]);
+		expect(leadingProgramNames("/opt/opencode/opencode.exe")).toEqual(["opencode"]);
+		// The prompt lives after the flags, and it routinely quotes other agents' names.
+		expect(leadingProgramNames("/bin/claude --model opus tell me about codex")).toEqual(["claude"]);
+	});
+});
+
 describe("requestGracefulAgentExit", () => {
-	it("types the adapter's quit program and returns once the agent's tree is empty", async () => {
+	it("types the adapter's quit program and returns once the pane goes quiet", async () => {
 		vi.mocked(collectProcessInfo)
-			.mockResolvedValueOnce(processInfo(true)) // before asking: agent alive
-			.mockResolvedValueOnce(processInfo(true)) // first poll: still alive
-			.mockResolvedValueOnce(processInfo(false)); // second poll: gone
+			.mockResolvedValueOnce(processInfo([AGENT_PID])) // before asking: the agent itself is there
+			.mockResolvedValueOnce(processInfo([AGENT_PID])) // first poll: still running
+			.mockResolvedValueOnce(processInfo([])); // second poll: pane empty
 		const clock = fakeClock();
 
 		const outcome = await requestGracefulAgentExit(task(), { ...clock, pollMs: 250 });
@@ -161,8 +183,23 @@ describe("requestGracefulAgentExit", () => {
 		expect(outcome).toEqual({ kind: "exited", elapsedMs: 250, panes: 1 });
 	});
 
+	it("keeps waiting for an exit hook that outlives the agent", async () => {
+		vi.mocked(collectProcessInfo)
+			.mockResolvedValueOnce(processInfo([AGENT_PID])) // before asking
+			.mockResolvedValueOnce(processInfo([AGENT_PID, HOOK_PID])) // the hook has started
+			.mockResolvedValueOnce(processInfo([HOOK_PID])) // the agent is gone, the hook is not
+			.mockResolvedValueOnce(processInfo([])); // the hook finished
+		const clock = fakeClock();
+
+		const outcome = await requestGracefulAgentExit(task(), { ...clock, pollMs: 250 });
+
+		// The agent's own absence must never end the wait — buying the hook this time
+		// is the whole reason the step exists.
+		expect(outcome).toEqual({ kind: "exited", elapsedMs: 500, panes: 1 });
+	});
+
 	it("gives up at the deadline and reports which panes still run", async () => {
-		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo(true));
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
 		const clock = fakeClock();
 
 		const outcome = await requestGracefulAgentExit(task(), { ...clock, timeoutMs: 1_000, pollMs: 250 });
@@ -174,16 +211,29 @@ describe("requestGracefulAgentExit", () => {
 	});
 
 	it("does not type into a pane whose agent already left", async () => {
-		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo(false));
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([]));
 
 		const outcome = await requestGracefulAgentExit(task(), fakeClock());
 
 		expect(sendPaneInput).not.toHaveBeenCalled();
-		expect(outcome).toEqual({ kind: "skipped", reason: "already-exited" });
+		expect(outcome).toEqual({ kind: "skipped", reason: "no-agent-process" });
+	});
+
+	it("does not type at a pane running something that is not the agent", async () => {
+		// The launch script hands the pane to a shell when the agent exits, so whatever
+		// the user starts there is a descendant too. Busy is not the same as alive.
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([STRANGER_PID]));
+
+		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+
+		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(outcome).toEqual({ kind: "skipped", reason: "no-agent-process" });
 	});
 
 	it("skips a CLI with no known quit command", async () => {
-		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo(true));
+		const running = processInfo([AGENT_PID]);
+		running.cmdlines.set(AGENT_PID, "/usr/local/bin/my-agent --serve");
+		vi.mocked(collectProcessInfo).mockResolvedValue(running);
 		const custom = task({
 			sessionState: { panes: [{ paneId: "%3", agentCmd: "my-agent", sessionId: null, agentId: null, configId: null }] },
 		} as Partial<Task>);
@@ -195,7 +245,7 @@ describe("requestGracefulAgentExit", () => {
 	});
 
 	it("does not wait when the quit command could not be delivered", async () => {
-		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo(true));
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
 		vi.mocked(sendPaneInput).mockResolvedValue({
 			deliveryId: "d1",
 			backend: "tmux",
@@ -212,15 +262,37 @@ describe("requestGracefulAgentExit", () => {
 		expect(clock.sleep).not.toHaveBeenCalled();
 	});
 
-	it("waits one blind grace period when the process tree cannot be read", async () => {
-		vi.mocked(collectProcessInfo).mockRejectedValue(new Error("ps: not found"));
+	it("skips, loudly, when the process table is unreadable rather than empty", async () => {
+		// This is what a missing `ps` really produces: `runText` swallows the failure and
+		// returns "", which parses to an EMPTY table. Read as "no descendants" it would
+		// mean "every agent already left" — the feature silently off on any platform
+		// without `ps`. It must be evidence-absent instead.
+		vi.mocked(collectProcessInfo).mockResolvedValue(UNREADABLE);
 		const clock = fakeClock();
 
 		const outcome = await requestGracefulAgentExit(task(), clock);
 
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
-		expect(clock.sleep).toHaveBeenCalledWith(GRACEFUL_AGENT_EXIT_BLIND_WAIT_MS);
-		expect(outcome).toEqual({ kind: "blind-wait", elapsedMs: GRACEFUL_AGENT_EXIT_BLIND_WAIT_MS, panes: 1 });
+		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(clock.sleep).not.toHaveBeenCalled();
+		expect(outcome).toEqual({ kind: "skipped", reason: "no-process-evidence" });
+	});
+
+	it("skips when the process scan throws outright", async () => {
+		vi.mocked(collectProcessInfo).mockRejectedValue(new Error("ps: not found"));
+
+		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+
+		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(outcome).toEqual({ kind: "skipped", reason: "no-process-evidence" });
+	});
+
+	it("never throws when the pane send itself rejects", async () => {
+		vi.mocked(collectProcessInfo).mockResolvedValue(processInfo([AGENT_PID]));
+		vi.mocked(sendPaneInput).mockRejectedValue(new Error("tmux: no server"));
+
+		const outcome = await requestGracefulAgentExit(task(), fakeClock());
+
+		expect(outcome).toEqual({ kind: "skipped", reason: "not-delivered" });
 	});
 
 	it("never throws when tmux cannot list the panes", async () => {
