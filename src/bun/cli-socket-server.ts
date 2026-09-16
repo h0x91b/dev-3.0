@@ -5,6 +5,7 @@ import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
+import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
@@ -211,6 +212,20 @@ async function requirePaneTask(params: Record<string, unknown>): Promise<{ proje
 		const task = findTaskByRef(await data.loadTasks(project), taskId);
 		if (!task) throw taskNotFoundError(taskId, project);
 		return { project, task };
+	}
+	const found = await resolveTaskAcrossProjects(taskId);
+	if (!found) throw taskNotFoundError(taskId);
+	return found;
+}
+
+/** A task for `dev3 review`: scoped to a project when the CLI knows it, else found across projects. */
+async function resolveReviewTask(taskId: string, projectId: string | undefined): Promise<{ project: Project; task: Task }> {
+	if (projectId) {
+		const project = await data.getProject(projectId);
+		const tasks = await data.loadTasks(project);
+		const found = findTaskByRef(tasks, taskId);
+		if (!found) throw taskNotFoundError(taskId, project);
+		return { project, task: found };
 	}
 	const found = await resolveTaskAcrossProjects(taskId);
 	if (!found) throw taskNotFoundError(taskId);
@@ -1231,6 +1246,71 @@ const handlers: Record<string, Handler> = {
 		}
 
 		return task.notes ?? [];
+	},
+
+	/**
+	 * `dev3 review` — the agent's side of the review loop. Reads and writes the
+	 * same `Task.review` the viewers use; every write recomputes from the CURRENT
+	 * task inside the per-task lock (the same lost-update rule as notes).
+	 */
+	"review.list": async (params) => {
+		const taskId = params.taskId as string;
+		if (!taskId) throw new Error("taskId is required");
+		const { task } = await resolveReviewTask(taskId, params.projectId as string | undefined);
+		return task.review ?? [];
+	},
+
+	"review.resolve": async (params) => {
+		const taskId = params.taskId as string;
+		const ref = params.commentId as string;
+		if (!taskId) throw new Error("taskId is required");
+		if (!ref) throw new Error("commentId is required");
+		const by = (params.by as ReviewReplyAuthor) ?? "agent";
+		const reply = typeof params.reply === "string" && params.reply.trim() ? params.reply.trim() : undefined;
+		const { project, task } = await resolveReviewTask(taskId, params.projectId as string | undefined);
+		const resolved = resolveReviewCommentId(task.review, ref);
+		if ("error" in resolved) throw new Error(resolved.error);
+		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => ({
+			updates: { review: resolveReviewComment(current.review, resolved.id, by, reply) },
+			result: undefined,
+		}));
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return { commentId: resolved.id, task: updated };
+	},
+
+	"review.reopen": async (params) => {
+		const taskId = params.taskId as string;
+		const ref = params.commentId as string;
+		if (!taskId) throw new Error("taskId is required");
+		if (!ref) throw new Error("commentId is required");
+		const { project, task } = await resolveReviewTask(taskId, params.projectId as string | undefined);
+		const resolved = resolveReviewCommentId(task.review, ref);
+		if ("error" in resolved) throw new Error(resolved.error);
+		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => ({
+			updates: { review: reopenReviewComment(current.review, resolved.id) },
+			result: undefined,
+		}));
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return { commentId: resolved.id, task: updated };
+	},
+
+	"review.reply": async (params) => {
+		const taskId = params.taskId as string;
+		const ref = params.commentId as string;
+		const body = typeof params.body === "string" ? params.body.trim() : "";
+		if (!taskId) throw new Error("taskId is required");
+		if (!ref) throw new Error("commentId is required");
+		if (!body) throw new Error("body is required");
+		const author = (params.author as ReviewReplyAuthor) ?? "agent";
+		const { project, task } = await resolveReviewTask(taskId, params.projectId as string | undefined);
+		const resolved = resolveReviewCommentId(task.review, ref);
+		if ("error" in resolved) throw new Error(resolved.error);
+		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => ({
+			updates: { review: replyToReviewComment(current.review, resolved.id, { body, author }) },
+			result: undefined,
+		}));
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return { commentId: resolved.id, task: updated };
 	},
 
 	"note.delete": async (params) => {
