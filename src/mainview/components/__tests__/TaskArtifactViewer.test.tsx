@@ -612,3 +612,122 @@ describe("TaskArtifactViewer unsent input", () => {
 		expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-draft-restore", draft: { fields: DRAFT, custom: undefined } }, "*");
 	});
 });
+
+describe("TaskArtifactViewer comment mode", () => {
+	const reviewApi = () => mockedApi.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+	beforeEach(() => {
+		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
+		}
+		vi.mocked(toast.success).mockReset();
+		vi.mocked(toast.error).mockReset();
+	});
+
+	async function openViewer(task?: { id: string; review?: unknown[] }) {
+		render(
+			<I18nProvider>
+				<TaskArtifactViewer
+					taskId="task-7"
+					projectId="proj-1"
+					task={task as never}
+					taskStatus="in-progress"
+					artifacts={[versioned()]}
+					initialIndex={0}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const frame = await screen.findByTitle("Artifact v") as HTMLIFrameElement;
+		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("data-dev3-artifact-comments"));
+		return { frame, postMessage: vi.spyOn(frame.contentWindow!, "postMessage") };
+	}
+
+	function fromFrame(frame: HTMLIFrameElement, data: Record<string, unknown>) {
+		const event = new MessageEvent("message", { data });
+		Object.defineProperty(event, "source", { value: frame.contentWindow });
+		window.dispatchEvent(event);
+	}
+
+	it("hides the toggle when the viewer has no project to store comments in", async () => {
+		render(<I18nProvider><TaskArtifactViewer taskId="task-7" artifacts={[versioned()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await screen.findByTitle("Artifact v");
+		expect(screen.queryByTestId("artifact-viewer-comment")).not.toBeInTheDocument();
+	});
+
+	it("turns comment mode on in the frame, takes a pick, and stores the comment with an artifact anchor", async () => {
+		const { frame, postMessage } = await openViewer({ id: "task-7" });
+		await userEvent.click(screen.getByTestId("artifact-viewer-comment"));
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-comment-mode", on: true }, "*"));
+		expect(screen.getByTestId("artifact-review-panel")).toBeInTheDocument();
+
+		fromFrame(frame, { type: "dev3-artifact-comment-pick", pick: { selector: ".kpi:nth-of-type(2)", text: "Agent success 94.2%", heading: "Overview" } });
+		const composer = await screen.findByTestId("artifact-review-composer");
+		expect(composer).toHaveTextContent("Artifact v · Overview › Agent success 94.2%");
+
+		await userEvent.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Wrong number");
+		await userEvent.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(reviewApi().addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: "task-7",
+			projectId: "proj-1",
+			comment: expect.objectContaining({
+				body: "Wrong number",
+				anchor: { kind: "artifact-element", artifactId: "v", version: 9, title: "Artifact v", selector: ".kpi:nth-of-type(2)", text: "Agent success 94.2%", heading: "Overview" },
+			}),
+		}));
+		expect(screen.getByTestId("artifact-review-thread")).toHaveTextContent("Wrong number");
+		// The frame is told to draw the new pin.
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "dev3-artifact-comment-pins", pins: [expect.objectContaining({ n: 1, selector: ".kpi:nth-of-type(2)", resolved: false })] }),
+			"*",
+		));
+	});
+
+	it("draws pins from the task record, marks the ones the frame cannot place, and sends unsent comments as one prompt", async () => {
+		const review = [
+			{ id: "a1", body: "Wrong number", createdAt: "2026-09-15T10:00:00.000Z", anchor: { kind: "artifact-element", artifactId: "v", version: 9, title: "Artifact v", selector: ".kpi", text: "94.2%", heading: "Overview" } },
+			{ id: "a2", body: "Legend unreadable", createdAt: "2026-09-15T10:01:00.000Z", sentAt: "2026-09-15T10:02:00.000Z", anchor: { kind: "artifact-element", artifactId: "v", version: 8, title: "Artifact v", selector: ".pie", text: "Pipeline", heading: null } },
+			{ id: "other", body: "not mine", createdAt: "2026-09-15T10:03:00.000Z", anchor: { kind: "diff-line", fileId: "f", filePath: "f", side: "newFile", startLine: 1, endLine: 1 } },
+		];
+		const { frame, postMessage } = await openViewer({ id: "task-7", review });
+		// The first pins post raced the spy; the document's load re-sends them.
+		fireEvent.load(frame);
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "dev3-artifact-comment-pins", pins: [expect.objectContaining({ id: "a1", n: 1 }), expect.objectContaining({ id: "a2", n: 2 })] }),
+			"*",
+		));
+
+		await userEvent.click(screen.getByTestId("artifact-viewer-comment"));
+		expect(screen.getAllByTestId("artifact-review-thread")).toHaveLength(2);
+		fromFrame(frame, { type: "dev3-artifact-comment-placed", unmatched: ["a2"], matched: 1 });
+		await waitFor(() => expect(screen.getAllByTestId("artifact-review-thread")[1]).toHaveAttribute("data-outdated", "true"));
+		expect(screen.getAllByTestId("artifact-review-thread")[1]).toHaveTextContent("Not found in this version");
+
+		await userEvent.click(screen.getByTestId("artifact-review-send-all"));
+		await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
+		const { text } = reviewApi().sendAgentMessageNow.mock.calls[0][0] as { text: string };
+		expect(text).toContain('<review id="a1">');
+		expect(text).toContain('<artifact title="Artifact v" version="9" selector=".kpi" heading="Overview">');
+		expect(text).not.toContain("Legend unreadable");
+		expect(text).toContain("dev3 review resolve <id>");
+		await waitFor(() => expect(reviewApi().markReviewCommentsSent).toHaveBeenCalledWith({ taskId: "task-7", projectId: "proj-1", commentIds: ["a1"] }));
+	});
+
+	it("a pin click focuses its thread and Escape leaves comment mode before closing", async () => {
+		const onClose = vi.fn();
+		render(
+			<I18nProvider>
+				<TaskArtifactViewer taskId="task-7" projectId="proj-1" task={{ id: "task-7" }} taskStatus="in-progress" artifacts={[versioned()]} initialIndex={0} onClose={onClose} />
+			</I18nProvider>,
+		);
+		const frame = await screen.findByTitle("Artifact v") as HTMLIFrameElement;
+		fromFrame(frame, { type: "dev3-artifact-comment-focus", id: "a1" });
+		await waitFor(() => expect(screen.getByTestId("artifact-review-panel")).toBeInTheDocument());
+		fireEvent.keyDown(window, { key: "Escape" });
+		await waitFor(() => expect(screen.queryByTestId("artifact-review-panel")).not.toBeInTheDocument());
+		expect(onClose).not.toHaveBeenCalled();
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).toHaveBeenCalled();
+	});
+});
