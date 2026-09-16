@@ -392,7 +392,7 @@ ux_architecture:
           comment_count: { role: "status",       token: "bg-raised mono badge" }
           comment_item:  { role: "link",         token: "bg-raised/65, accent on hover; scroll-to-comment" }
       persistence:
-        store: "Task.review (src/shared/review.ts), one RPC per mutation, shared with the artifact viewer and `dev3 review`; the old localStorage review imports once."
+        store: "Task.review (src/shared/review.ts), one RPC per mutation, shared with every viewer and `dev3 review`; the old localStorage review imports once."
         anchors: "diff-line here; artifact-element, image-region, file-range (file preview text; an image preview takes image-region) and terminal-text (terminal selection chip) from their surfaces; the export card lists all."
         closed_by: "The agent via `dev3 review resolve <id> --reply`: reply under the bubble, Send becomes Reopen."
         cleared_by: ["reset_review button", "delete_comment"]
