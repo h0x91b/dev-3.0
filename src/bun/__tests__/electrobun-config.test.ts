@@ -19,6 +19,13 @@ describe("electrobun bundled resources", () => {
 		expect(config.build.copy["src/assets/artifact-template"]).toBe("artifact-template");
 	});
 
+	it("ships the freeze observer and its imports without a repository checkout", () => {
+		expect(config.build.copy["src/bun/freeze-diagnostics"]).toBe("freeze-diagnostics");
+		for (const name of ["worker.ts", "protocol.ts", "monitor.ts", "capture.ts"]) {
+			expect(readdirSync(fileURLToPath(new URL("../freeze-diagnostics", import.meta.url)))).toContain(name);
+		}
+	});
+
 	// The copy map is an allow-list, so a public asset absent from it is served as
 	// the SPA index.html instead of itself. That shipped twice: the favicons, then
 	// sw.js + manifest.webmanifest, which silently killed Web Push in every

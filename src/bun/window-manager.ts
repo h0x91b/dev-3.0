@@ -1,3 +1,5 @@
+import { recordFreezeDiagnostic, freezeBeat } from "./freeze-diagnostics";
+import type { FreezeBeat } from "./freeze-diagnostics/protocol";
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
@@ -200,7 +202,13 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		maxRequestTime: opts.maxRequestTime ?? 120_000,
 		handlers: {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			requests: { ...opts.handlers, setWindowTitleContext } as any,
+			requests: {
+				...opts.handlers, setWindowTitleContext,
+				rendererHeartbeat: (beat: FreezeBeat) => {
+					if (self) recordFreezeDiagnostic({ kind: "beat", windowId: id, beat: freezeBeat(beat) });
+					return opts.handlers.rendererHeartbeat?.(beat);
+				},
+			} as any,
 			messages: {},
 		},
 	});
@@ -266,14 +274,18 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	windows.add(entry);
 	focusedWindow = win;
 	log.info("Window created", { id, total: windows.size });
+	recordFreezeDiagnostic({ kind: "window", windowId: id, event: "created" });
 
 	win.on("focus", () => {
 		focusedWindow = win;
+		recordFreezeDiagnostic({ kind: "window", windowId: id, event: "focus" });
 		log.debug("Window focused", { id });
 		opts.onFocus?.(win);
 	});
 
+	win.on("blur", () => recordFreezeDiagnostic({ kind: "window", windowId: id, event: "blur" }));
 	win.on("close", () => {
+		recordFreezeDiagnostic({ kind: "window", windowId: id, event: "closed" });
 		self = null; // a late title report must not touch a closed window
 		windows.delete(entry);
 		if (focusedWindow === win) {

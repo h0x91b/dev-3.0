@@ -88,6 +88,7 @@ export default {
 			"changelog.json": "changelog.json",
 			[cliCopySource]: cliCopyDestination,
 			"src/assets/sounds": "sounds",
+			"src/bun/freeze-diagnostics": "freeze-diagnostics",
 			"src/assets/artifact-template": "artifact-template",
 			// macOS notification-click shim (empty dir on Linux) — see decisions/2026/07/05/native-notification-click-shim.md.
 			"dist/native": "native",

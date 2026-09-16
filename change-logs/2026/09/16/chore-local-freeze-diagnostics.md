@@ -1,0 +1,1 @@
+Add opt-in macOS freeze diagnostics with DEV3_DEBUG=1. An independent observer records host and renderer liveness, visibility, viewport and animation-frame progress, then saves bounded local stack samples when responsiveness stops; no diagnostics are uploaded and no recovery settings are changed.

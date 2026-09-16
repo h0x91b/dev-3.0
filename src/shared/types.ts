@@ -5798,6 +5798,9 @@ export type AppRPCSchema = {
 					artifactOpen?: boolean;
 					/** Age of the last artifact open/close in this page load; null = none. */
 					artifactIdleMs?: number | null;
+					viewport?: { width: number; height: number; dpr: number };
+					focused?: boolean;
+					animationFrameAgeMs?: number | null;
 				};
 				response: void;
 			};

@@ -8,6 +8,8 @@ import Electrobun, {
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
+import { startFreezeDiagnostics, recordFreezeDiagnostic } from "./freeze-diagnostics";
+import { resolve } from "node:path";
 import { startRendererWatchdog } from "./renderer-watchdog";
 import { applyArtifactFreezeRecovery, markArtifactFreezeRecovered, recordArtifactFreezeEvidence } from "./artifact-freeze-recovery";
 import {
@@ -403,6 +405,10 @@ async function getMainViewUrl(): Promise<string> {
 
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
+const stopFreezeDiagnostics = startFreezeDiagnostics({
+	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
+	version: APP_VERSION, build: lastBuildTime,
+});
 
 // --- Application Menu ---
 
@@ -634,7 +640,10 @@ startPortScanPoller(
 // window back if the new layout left part of it on no screen.
 startDisplayWatch({
 	getDisplays: () => Screen.getAllDisplays(),
-	onChange: ({ reason, displays }) => handleDisplayConfigurationChange(reason, displays),
+	onChange: ({ reason, displays }) => {
+		recordFreezeDiagnostic({ kind: "display", reason });
+		handleDisplayConfigurationChange(reason, displays);
+	},
 });
 
 // Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
@@ -808,6 +817,7 @@ setOnPaneExited((taskId, paneId) => {
 
 function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
+	stopFreezeDiagnostics();
 	stopAgentMessageLogWatches();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }

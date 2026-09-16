@@ -22,6 +22,8 @@ function newClientId(): string {
 
 export function startRendererHeartbeat(clientId = newClientId()): () => void {
 	let lastBeatAt = Date.now();
+	let lastFrameAt = lastBeatAt;
+	let frame: number | null = null;
 	// A hidden window has its timers throttled to about one tick a minute, so a gap
 	// spanning a hidden stretch is not a stall. Only this page can tell the two
 	// apart — the backend just sees a big number.
@@ -30,6 +32,9 @@ export function startRendererHeartbeat(clientId = newClientId()): () => void {
 	function beat() {
 		const at = Date.now();
 		const sinceLastBeatMs = at - lastBeatAt;
+		if (frame === null) {
+			frame = requestAnimationFrame(() => { lastFrameAt = Date.now(); frame = null; });
+		}
 		lastBeatAt = at;
 		const hidden = hiddenSinceLastBeat || document.visibilityState !== "visible";
 		hiddenSinceLastBeat = document.visibilityState !== "visible";
@@ -45,6 +50,9 @@ export function startRendererHeartbeat(clientId = newClientId()): () => void {
 					desktop: isElectrobun,
 					artifactOpen: artifactActivity.open > 0,
 					artifactIdleMs: artifactIdleMs(at),
+					viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
+					focused: document.hasFocus(),
+					animationFrameAgeMs: at - lastFrameAt,
 				})
 				?.catch(() => {});
 		} catch {
@@ -76,6 +84,7 @@ export function startRendererHeartbeat(clientId = newClientId()): () => void {
 
 	return () => {
 		clearInterval(timer);
+		if (frame !== null) cancelAnimationFrame(frame);
 		document.removeEventListener("visibilitychange", onVisibilityChange);
 		window.removeEventListener("pagehide", onPageHide);
 	};

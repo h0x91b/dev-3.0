@@ -245,6 +245,8 @@ export function stripNeutralizedEnvVars(env: Record<string, string | undefined>)
 }
 
 function isDeniedEnvVar(key: string): boolean {
+	// An explicit local diagnostic switch, not task/runtime wiring.
+	if (key === "DEV3_DEBUG") return false;
 	if (SHELL_ENV_DENYLIST.has(key)) return true;
 	if (NEUTRALIZED_ENV_VARS.has(key)) return true;
 	return SHELL_ENV_DENIED_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -382,6 +384,7 @@ export function applyFullShellEnvToProcess(shellEnv: ResolvedShellEnv, importEna
 	if (importEnabled) {
 		let injected = 0;
 		for (const [key, value] of Object.entries(shellEnv.fullEnv)) {
+			if (key === "DEV3_DEBUG" && process.env.DEV3_DEBUG !== undefined) continue;
 			process.env[key] = value;
 			injected++;
 		}

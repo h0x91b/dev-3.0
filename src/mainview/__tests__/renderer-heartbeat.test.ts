@@ -103,8 +103,8 @@ describe("startRendererHeartbeat", () => {
 		const open = heartbeat.mock.calls[heartbeat.mock.calls.length - 1][0];
 		expect(open).toMatchObject({ artifactOpen: true });
 		expect(Object.keys(open).sort()).toEqual([
-			"artifactIdleMs", "artifactOpen", "clientId", "desktop", "frameErrorPanes",
-			"hiddenSinceLastBeat", "sinceLastBeatMs", "terminals", "visible",
+			"animationFrameAgeMs", "artifactIdleMs", "artifactOpen", "clientId", "desktop", "focused", "frameErrorPanes",
+			"hiddenSinceLastBeat", "sinceLastBeatMs", "terminals", "viewport", "visible",
 		]);
 
 		artifactViewerClosed();
@@ -113,6 +113,17 @@ describe("startRendererHeartbeat", () => {
 		expect(closed).toMatchObject({ artifactOpen: false });
 		// Still recently an artifact window: the age is what says how recently.
 		expect(closed.artifactIdleMs).not.toBeNull();
+	});
+
+	it("reports stalled animation frames while JavaScript heartbeats continue", () => {
+		const raf = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(123);
+		try {
+			stop = startRendererHeartbeat("win-a");
+			vi.advanceTimersByTime(12_000);
+			expect(heartbeat.mock.calls[heartbeat.mock.calls.length - 1]?.[0]).toMatchObject({ animationFrameAgeMs: 12_000,
+				viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio } });
+			expect(raf).toHaveBeenCalledTimes(1);
+		} finally { raf.mockRestore(); }
 	});
 
 	it("says goodbye when the page goes away, so a close is not read as a freeze", () => {
