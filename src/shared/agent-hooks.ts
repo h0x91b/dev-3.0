@@ -322,17 +322,6 @@ export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
  */
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
 /**
- * Reports that a Claude session opened or closed, so dev3 knows when typed input
- * would land in the agent's input box rather than in one of its startup dialogs.
- *
- * Measured on claude 2.1.273: `SessionStart` does NOT fire while the workspace
- * trust dialog or the first-run theme wizard is up, and fires about 0.7 s after
- * the human accepts — which is exactly the receipt `agent-readiness.ts` needs.
- * It carries no status move on purpose: the board already has owners for that,
- * and a session merely opening is not the task going back to work.
- */
-export const CLAUDE_SESSION_HOOK_SUBCOMMAND = "hook claude-session";
-/**
  * The lifecycle events dev3 turns into board status moves. Codex emits these
  * names verbatim; Copilot's adapter maps its own camelCase names onto them, so
  * one status machine serves both instead of a second copy per harness.
@@ -506,16 +495,7 @@ export function buildClaudeHooks(
 	// an existing tool call without emitting a new user prompt event.
 	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
 
-	const sessionHook: HookEntry = {
-		type: "command",
-		command: `${dialect.cli} ${CLAUDE_SESSION_HOOK_SUBCOMMAND}`,
-		timeout: 5,
-	};
-
 	return {
-		// Readiness only, no status move — see CLAUDE_SESSION_HOOK_SUBCOMMAND.
-		SessionStart: [{ hooks: [sessionHook] }],
-		SessionEnd: [{ hooks: [sessionHook] }],
 		UserPromptSubmit: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
 			{

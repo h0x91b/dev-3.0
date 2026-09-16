@@ -44,10 +44,6 @@ beforeEach(() => {
 		return true;
 	});
 	mockSend.mockReset();
-	// The hook reads its pane and launch identity out of the environment, and this
-	// suite may itself be running inside tmux — pin all three so the assertions are
-	// about what the adapter sends, not about where the test happened to run.
-	for (const key of ["TMUX_PANE", "DEV3_PANE_ID", "DEV3_LAUNCH_ID"]) delete process.env[key];
 });
 
 afterEach(() => {

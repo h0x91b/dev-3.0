@@ -10,7 +10,6 @@ import { codexAccountIdForHome } from "../agent-accounts";
 import { resolveCodexResumeHome } from "../codex-resume-home";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { agentKey } from "../../shared/agent-adapters/families";
-import { forgetAgentPaneLaunch, forgetAgentReadiness, noteAgentLaunching, waitForAgentReadiness } from "../agent-readiness";
 import { evaluateCodexModelSupport } from "../../shared/agent-model-cli-requirements";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
@@ -1090,20 +1089,11 @@ export async function launchTaskPty(
 	// dev3's own defaults first, then project env (Project Settings / .dev3
 	// config) — overridable by lifecycle DEV3_* vars and per-agent-config env.
 	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
-	// Open the boot window BEFORE the env is built: the launch id it returns has to
-	// travel into the agent's environment, because its lifecycle hook echoing that
-	// id back is what distinguishes this launch's receipt from the one dev3 just
-	// replaced (agent-readiness.ts). Only for a harness that HAS lifecycle hooks —
-	// for any other the window would never close and every message would be refused.
-	const launchId = noteAgentLaunching(task.id, {
-		reportsLifecycle: getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec() !== null,
-		primary: true,
-	});
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...projectEnv,
 		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
-		...buildAgentEnv(extraEnv, task.id, launchId),
+		...buildAgentEnv(extraEnv, task.id),
 		...artifactTemplateEnv,
 	};
 	const userShell = getUserShell();
@@ -1376,10 +1366,7 @@ export async function launchColumnAgent(
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...(await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode })),
-		...buildAgentEnv(extraEnv, task.id, noteAgentLaunching(task.id, {
-			reportsLifecycle: getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec() !== null,
-			primary: false,
-		})),
+		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
 	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName("col-agent"));
@@ -1417,7 +1404,6 @@ export async function launchColumnAgent(
 }
 
 export function cleanupTaskTmuxState(taskId: string): void {
-	forgetAgentReadiness(taskId);
 	fileBrowserPaneIds.delete(taskId);
 	// One viewer pane per dev server, all keyed under this task.
 	for (const key of [...devViewerPaneIds.keys()]) {
@@ -3287,10 +3273,7 @@ async function spawnAgentInTask(params: {
 	const env: Record<string, string> = {
 		...AGENT_ENV_DEFAULTS,
 		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
-		...buildAgentEnv(extraEnv, task.id, noteAgentLaunching(task.id, {
-			reportsLifecycle: getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec() !== null,
-			primary: false,
-		})),
+		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
 	};
 
@@ -3511,10 +3494,7 @@ async function spawnSingleBugHunterPane(opts: {
 	const env: Record<string, string> = {
 		...AGENT_ENV_DEFAULTS,
 		...(await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath, { foreignCode: opts.task.foreignCode })),
-		...buildAgentEnv(extraEnv, opts.task.id, noteAgentLaunching(opts.task.id, {
-			reportsLifecycle: getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec() !== null,
-			primary: false,
-		})),
+		...buildAgentEnv(extraEnv, opts.task.id),
 		...ensureArtifactTemplateEnv(opts.project, opts.task, opts.worktreePath),
 	};
 	const existingPorts = portPool.getPortAssignments(opts.task.id);
@@ -3658,11 +3638,6 @@ async function rollBackHunterLaunch(
  */
 async function deliverHunterPrompt(task: Task, paneId: string, prompt: string): Promise<AgentPromptDelivery> {
 	try {
-		// This pane's agent was created seconds ago, which is exactly when its own
-		// trust or login dialog would be on screen — and the prompt's Enter would
-		// answer it (agent-readiness.ts). Wait for the pane's own receipt; if it
-		// never comes, the refusal below is the verdict, not a keystroke.
-		await waitForAgentReadiness(task.id, paneId);
 		return await deliverAgentPrompt(task, prompt, { kind: "pane", paneId });
 	} catch (err) {
 		return { status: "unconfirmed", reason: "backend-failure", detail: String(err) };
@@ -3857,12 +3832,8 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
  */
-export async function handlePaneExited(taskId: string, exitedPaneId: string): Promise<void> {
+export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
 	try {
-		// A pane that is gone is EVIDENCE, unlike elapsed time: its boot window can
-		// close for real, so an agent that died inside its own trust dialog stops
-		// holding the task's messages hostage (agent-readiness.ts).
-		forgetAgentPaneLaunch(taskId, exitedPaneId);
 		const { task, project } = await findTaskAcrossProjects(taskId);
 		if (!task || !project) return;
 		const panes = task.sessionState?.panes ?? [];

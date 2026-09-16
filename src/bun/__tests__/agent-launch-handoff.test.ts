@@ -17,10 +17,8 @@ vi.mock("../scheduled-message-scheduler", () => ({
 }));
 
 const pushCliToast = vi.fn();
-const pushCliAttention = vi.fn();
 vi.mock("../rpc-handlers", () => ({
 	pushCliToast: (...args: unknown[]) => pushCliToast(...args),
-	pushCliAttention: (...args: unknown[]) => pushCliAttention(...args),
 }));
 
 vi.mock("../git", () => ({
@@ -30,12 +28,6 @@ vi.mock("../git", () => ({
 import { wrapAgentMessage } from "../../shared/agent-message-envelope";
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES } from "../../shared/types";
 import { buildHandoffMessage, deliverLaunchHandoff, HANDOFF_SUBJECT } from "../agent-launch-handoff";
-import {
-	noteAgentLaunching,
-	noteAgentSessionAlive,
-	noteAgentSessionEnded,
-	resetAgentReadinessForTests,
-} from "../agent-readiness";
 
 const project = { id: "p1", path: "/tmp/proj" };
 const source = { taskId: "parent", seq: 7, title: "Parent" };
@@ -52,7 +44,6 @@ function liveTask(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	resetAgentReadinessForTests();
 	getProject.mockResolvedValue(project);
 	sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
 });
@@ -140,93 +131,5 @@ describe("deliverLaunchHandoff", () => {
 		expect(result).toBe(false);
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error" }));
-	});
-
-	// The whole of h0x91b/dev-3.0#1785 in one test: the pane is up and the task
-	// looks perfectly launchable, but the agent is still inside Claude Code's trust
-	// dialog. One Enter there answers its highlighted "No, exit".
-	it("types nothing while the agent is still booting", async () => {
-		getTask.mockResolvedValue(liveTask());
-		noteAgentLaunching("child-1234", { reportsLifecycle: true, primary: true });
-		let clock = 0;
-		const result = await deliverLaunchHandoff({
-			projectId: "p1",
-			childTaskId: "child-1234",
-			source,
-			sleep: async () => { clock += 60_000; },
-			now: () => clock,
-		});
-		expect(result).toBe(false);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(pushCliToast).toHaveBeenCalledWith(
-			expect.objectContaining({ message: expect.stringContaining("never finished starting up") }),
-		);
-		expect(pushCliAttention).toHaveBeenCalled();
-	});
-
-	// The wait is for a human reading a dialog, so it outlasts the pane budget by a
-	// long way — a two-minute give-up would put us straight back to dropping notes.
-	it("keeps waiting past the pane deadline while the agent is booting", async () => {
-		getTask.mockResolvedValue(liveTask());
-		const launch = noteAgentLaunching("child-1234", { reportsLifecycle: true, primary: true });
-		let clock = 0;
-		let ticks = 0;
-		await deliverLaunchHandoff({
-			projectId: "p1",
-			childTaskId: "child-1234",
-			source,
-			sleep: async () => {
-				clock += 10_000;
-				ticks += 1;
-				// The human accepts trust well after the 120s pane budget would have expired.
-				if (clock >= 300_000) noteAgentSessionAlive("child-1234", { sessionId: "sess-a", launchId: launch });
-			},
-			now: () => clock,
-		});
-		expect(ticks).toBeGreaterThan(12);
-		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
-		// Nobody is watching a pane an agent started: once the wait stops looking
-		// like an ordinary boot the card has to say so, exactly once.
-		expect(pushCliAttention).toHaveBeenCalledTimes(1);
-	});
-
-	it("delivers exactly once as soon as the agent reports in", async () => {
-		getTask.mockResolvedValue(liveTask());
-		const launch = noteAgentLaunching("child-1234", { reportsLifecycle: true, primary: true });
-		let clock = 0;
-		await deliverLaunchHandoff({
-			projectId: "p1",
-			childTaskId: "child-1234",
-			source,
-			sleep: async () => {
-				clock += 1_000;
-				noteAgentSessionAlive("child-1234", { sessionId: "sess-a", launchId: launch });
-			},
-			now: () => clock,
-		});
-		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
-	});
-
-	// "No, exit" chosen by the human: the agent is gone and the pane holds a bare
-	// shell. Typing the note there is how the reporter's `zsh: parse error` happened.
-	it("abandons the note when the agent's session ended before delivery", async () => {
-		getTask.mockResolvedValue(liveTask());
-		const launch = noteAgentLaunching("child-1234", { reportsLifecycle: true, primary: true });
-		noteAgentSessionAlive("child-1234", { sessionId: "sess-a", launchId: launch });
-		noteAgentSessionEnded("child-1234", { sessionId: "sess-a", launchId: launch });
-		const result = await deliverLaunchHandoff({ projectId: "p1", childTaskId: "child-1234", source });
-		expect(result).toBe(false);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(pushCliToast).toHaveBeenCalledWith(
-			expect.objectContaining({ message: expect.stringContaining("exited before") }),
-		);
-	});
-
-	// A harness dev3 has no lifecycle hooks for must not be held hostage by our own
-	// ignorance — the same rule harness-readiness.ts already follows.
-	it("delivers normally for a harness that reports no lifecycle at all", async () => {
-		getTask.mockResolvedValue(liveTask());
-		noteAgentLaunching("child-1234", { reportsLifecycle: false, primary: true });
-		await expect(deliverLaunchHandoff({ projectId: "p1", childTaskId: "child-1234", source })).resolves.toBe(true);
 	});
 });

@@ -204,7 +204,7 @@ export async function fireScheduledMessage(
 	project: Project,
 	task: Task,
 	message: ScheduledMessage,
-	opts: { late: boolean; hold?: boolean; retainIfBooting?: boolean },
+	opts: { late: boolean; hold?: boolean },
 ): Promise<{ delivery: AgentPromptDelivery; task: Task }> {
 	let delivery: AgentPromptDelivery = { status: "not-delivered", reason: "pane-absent", detail: "the task is finished" };
 	if (!isTerminal(task.status)) {
@@ -217,34 +217,14 @@ export async function fireScheduledMessage(
 			log.warn("Scheduled message delivery threw", { taskId: task.id.slice(0, 8), error: String(err) });
 		}
 	}
-	// The agent is mid-boot — most often a human has its trust or login prompt in
-	// front of them. That is not a delivery failure, it is "not yet", so the item
-	// stays queued and the next tick tries again. Dropping an authorized message
-	// because an ordinary startup was slow would be a new way to lose one.
-	if (opts.retainIfBooting !== false && isBooting(delivery) && !retainExpired(message)) {
-		log.info("Scheduled message held in the queue — the agent is still starting up", {
-			taskId: task.id.slice(0, 8),
-			messageId: message.id,
-		});
-		return { delivery, task };
-	}
-
 	await recordMessageAttempt(task, message, delivery);
 	const updated = await removeFromQueue(project, task, message.id);
 	const preview = messagePreview(message.text);
 	if (delivery.status === "not-delivered") {
-		// Name the real cause. "No live agent" is a lie when the agent is alive and
-		// sitting in its own trust prompt, and it sends the reader looking in the
-		// wrong place — the fix is to answer the dialog, not to restart anything.
-		const cause = isBooting(delivery)
-			? "the agent never finished starting up"
-			: delivery.reason === "agent-session-ended"
-				? "the agent session had ended"
-				: "no live agent";
 		notifyOutcome(project, task, {
-			toast: `Scheduled message not delivered — ${cause}: "${preview}"`,
+			toast: `Scheduled message not delivered — no live agent: "${preview}"`,
 			level: "error",
-			reason: `Scheduled message dropped (${cause}): "${preview}"`,
+			reason: `Scheduled message dropped (no live agent): "${preview}"`,
 		});
 	} else if (delivery.status === "unconfirmed") {
 		// Never silent. The message is out of the queue whatever happened, so saying
@@ -265,26 +245,6 @@ export async function fireScheduledMessage(
 		});
 	}
 	return { delivery, task: updated };
-}
-
-/** A refusal that says "not yet", as opposed to one that says "never". */
-function isBooting(delivery: AgentPromptDelivery): boolean {
-	return delivery.status === "not-delivered" && delivery.reason === "agent-booting";
-}
-
-/**
- * How long a queued message waits for an agent that is still starting.
- *
- * Bounded so the outcome is always user-visible: a human who never answers the
- * agent's trust prompt gets the ordinary "not delivered" toast and attention
- * badge in the end, rather than a message that sits in the queue forever with
- * nobody told.
- */
-export const BOOT_RETAIN_MS = 30 * 60_000;
-
-function retainExpired(message: ScheduledMessage, now: number = Date.now()): boolean {
-	const due = new Date(message.at).getTime();
-	return Number.isFinite(due) && now - due >= BOOT_RETAIN_MS;
 }
 
 /** Shared validation for a message's text; throws a usage-style error. */
@@ -367,13 +327,7 @@ export async function sendScheduledMessageNow(project: Project, taskId: string, 
 	const task = await data.getTask(project, taskId);
 	const message = (task.scheduledMessages ?? []).find((m) => m.id === messageId);
 	if (!message) throw new Error("Scheduled message not found");
-	// A click has to do something visible, so this path never retains: an agent
-	// that is still booting reports the refusal instead of quietly re-queuing.
-	const { task: updated } = await fireScheduledMessage(project, task, message, {
-		late: false,
-		hold: false,
-		retainIfBooting: false,
-	});
+	const { task: updated } = await fireScheduledMessage(project, task, message, { late: false, hold: false });
 	return updated;
 }
 
@@ -420,12 +374,7 @@ export async function sendMessageImmediately(
 	const delivery = await deliverToTarget(task, message, opts.hold !== false);
 	await recordMessageAttempt(task, message, delivery);
 	if (delivery.status === "not-delivered") {
-		// The detail names which of the three refusals this was — a booting agent, an
-		// ended session, or genuinely no pane — so a peer agent is not sent looking
-		// for a dead terminal when the answer is "somebody has to accept a dialog".
-		throw new Error(
-			`Could not deliver the message — ${delivery.detail ?? "the task has no live agent session"}.`,
-		);
+		throw new Error("Could not deliver the message — the task has no live agent session.");
 	}
 	return { ...delivery, spilledPath };
 }

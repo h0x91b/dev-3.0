@@ -62,7 +62,6 @@ export async function handleCopilotHook(
 		const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
 			? process.env.TMUX_PANE
 			: undefined;
-		const launchId = process.env.DEV3_LAUNCH_ID?.trim() || undefined;
 		try {
 			const response = await sendRequest(socketPath, "task.agentHook", {
 				taskId: context.taskId,
@@ -71,9 +70,6 @@ export async function handleCopilotHook(
 				harness: "copilot",
 				...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 				...(paneId ? { paneId } : {}),
-				// The generation token dev3 injected at spawn, so a receipt from the
-				// launch this one replaced is rejected instead of blessing it.
-				...(launchId ? { launchId } : {}),
 				...(event === "userPromptSubmitted" && payload.prompt ? { prompt: payload.prompt } : {}),
 				...(payload.turnId ? { turnId: payload.turnId } : {}),
 			}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
