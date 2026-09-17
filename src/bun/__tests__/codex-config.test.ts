@@ -1,18 +1,11 @@
-import { afterAll, describe, it, expect } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, it, expect } from "vitest";
 import { load } from "js-toml";
 import {
 	ensureCodexConfig,
-	codexConfigIsNarrowed,
-	codexConfigPath,
 	codexServersWithTransport,
 	ensureCodexProfileFile,
 	getCodexSyntaxForVersion,
 	hasNarrowedWorkspaceProfile,
-	repairCodexConfigFile,
-	repairNarrowedWorkspaceProfile,
 	pruneOrphanedMcpServers,
 	pickCodexProfileLaunchFlag,
 	tomlBasicString,
@@ -73,23 +66,6 @@ describe("ensureCodexConfig", () => {
 			const workspaceFsBlock = workspaceFs.slice(0, workspaceFs.indexOf("\n["));
 			expect(workspaceFsBlock).toContain('":root" = "read"');
 			expect(workspaceFsBlock).not.toContain('":minimal"');
-		});
-
-		it("never rewrites an existing workspace profile's filesystem grant", () => {
-			const existing = `default_permissions = "workspace"
-
-[permissions.workspace.filesystem]
-":minimal" = "read"
-
-[permissions.workspace.filesystem.":workspace_roots"]
-"." = "write"
-
-[permissions.workspace.network]
-enabled = true
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).toContain('":minimal" = "read"');
-			expect(result).not.toContain('":root" = "read"');
 		});
 
 		it("can trust an exact worktree path in addition to the shared worktrees root", () => {
@@ -1088,9 +1064,9 @@ theme = "github"
 // An older dev3 wrote `default_permissions = "workspace"` with `":minimal" =
 // "read"` into the user's global Codex config. That profile is narrower than
 // Codex's own default and, on a Homebrew install, stops standalone Codex from
-// starting a session at all. dev3 never repairs it unprompted — the shape is
-// indistinguishable from a hand-written profile — so detection only ever feeds
-// an offer, and the repair only ever runs from the user's click.
+// starting a session at all. dev3 put it there, so dev3 takes it back out on
+// the next launch — the fingerprint is exact, and a profile carrying anything
+// else belongs to the user and is never touched.
 // ---------------------------------------------------------------------------
 
 const NARROWED = `default_permissions = "workspace"
@@ -1105,87 +1081,53 @@ const NARROWED = `default_permissions = "workspace"
 enabled = true
 `;
 
+describe("repairing the profile an older dev3 narrowed", () => {
+	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
+	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
+	const patch = (config: string) => ensureCodexConfig(config, WORKTREES_PATH, SOCKETS_PATH, [], { codexVersion: "codex-cli 0.154.0" });
+
+	it("widens it to what Codex itself defaults to, with no prompt", () => {
+		const result = patch(NARROWED);
+		expect(result).toContain('":root" = "read"');
+	});
+
+	it("leaves the rest of the profile alone", () => {
+		const result = patch(NARROWED);
+		expect(result).toContain('[permissions.workspace.filesystem.":workspace_roots"]');
+		expect(result).toContain("enabled = true");
+		expect(result).toContain('default_permissions = "workspace"');
+	});
+
+	it("is a no-op on the next launch — a repaired config is not rewritten again", () => {
+		const once = patch(NARROWED);
+		expect(patch(once)).toBe(once);
+	});
+
+	it("never touches a profile carrying any other grant — that one is the user's", () => {
+		const handWritten = NARROWED.replace('":minimal" = "read"', '":minimal" = "read"\n"/Users/testuser/notes" = "read"');
+		const result = patch(handWritten);
+		expect(result).not.toContain('":root" = "read"');
+		expect(result).toContain('"/Users/testuser/notes" = "read"');
+	});
+
+	it("never touches a profile the user pointed default_permissions away from", () => {
+		const elsewhere = NARROWED.replace('default_permissions = "workspace"', 'default_permissions = "mine"');
+		expect(patch(elsewhere)).not.toContain('":root" = "read"');
+	});
+});
+
 describe("hasNarrowedWorkspaceProfile", () => {
+	const parse = (config: string) => load(config) as Parameters<typeof hasNarrowedWorkspaceProfile>[0];
+
 	it("recognizes the profile an older dev3 wrote", () => {
-		expect(hasNarrowedWorkspaceProfile(NARROWED)).toBe(true);
+		expect(hasNarrowedWorkspaceProfile(parse(NARROWED))).toBe(true);
 	});
 
 	it("says no once the grant is already wide", () => {
-		expect(hasNarrowedWorkspaceProfile(NARROWED.replace('":minimal"', '":root"'))).toBe(false);
+		expect(hasNarrowedWorkspaceProfile(parse(NARROWED.replace('":minimal"', '":root"')))).toBe(false);
 	});
 
-	it("says no when the profile carries any other grant — that is a hand-written one", () => {
-		const handWritten = NARROWED.replace('":minimal" = "read"', '":minimal" = "read"\n"/Users/testuser/notes" = "read"');
-		expect(hasNarrowedWorkspaceProfile(handWritten)).toBe(false);
-	});
-
-	it("says no when the user points default_permissions somewhere else", () => {
-		expect(hasNarrowedWorkspaceProfile(NARROWED.replace('"workspace"', '"dev3"'))).toBe(false);
-	});
-
-	it("says no for an empty, absent or unparsable config", () => {
-		expect(hasNarrowedWorkspaceProfile(null)).toBe(false);
-		expect(hasNarrowedWorkspaceProfile("")).toBe(false);
-		expect(hasNarrowedWorkspaceProfile("default_permissions = [[[")).toBe(false);
-	});
-});
-
-describe("repairNarrowedWorkspaceProfile", () => {
-	it("widens the grant to what Codex itself defaults to", () => {
-		const repaired = repairNarrowedWorkspaceProfile(NARROWED);
-		expect(repaired).toContain('":root" = "read"');
-		expect(repaired).toContain('[permissions.workspace.filesystem]');
-	});
-
-	it("leaves the rest of the file alone", () => {
-		const repaired = repairNarrowedWorkspaceProfile(NARROWED) ?? "";
-		expect(repaired).toContain('[permissions.workspace.filesystem.":workspace_roots"]');
-		expect(repaired).toContain("enabled = true");
-		expect(repaired.split("\n").length).toBeLessThanOrEqual(NARROWED.split("\n").length + 1);
-	});
-
-	it("writes nothing when there is nothing to repair", () => {
-		expect(repairNarrowedWorkspaceProfile(NARROWED.replace('":minimal"', '":root"'))).toBeNull();
-		expect(repairNarrowedWorkspaceProfile(null)).toBeNull();
-	});
-
-	it("is a no-op the second time — a double click cannot write twice", () => {
-		const once = repairNarrowedWorkspaceProfile(NARROWED) ?? "";
-		expect(repairNarrowedWorkspaceProfile(once)).toBeNull();
-	});
-});
-
-describe("the repair on disk", () => {
-	const dirs: string[] = [];
-	function home(config?: string): string {
-		const dir = mkdtempSync(join(tmpdir(), "codex-home-"));
-		dirs.push(dir);
-		mkdirSync(join(dir, ".codex"), { recursive: true });
-		if (config != null) writeFileSync(join(dir, ".codex", "config.toml"), config, "utf-8");
-		return dir;
-	}
-	afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
-
-	it("reports a narrowed config and repairs it in place", () => {
-		const dir = home(NARROWED);
-		expect(codexConfigIsNarrowed(dir)).toBe(true);
-		expect(repairCodexConfigFile(dir)).toBe(true);
-		expect(readFileSync(codexConfigPath(dir), "utf-8")).toContain('":root" = "read"');
-		expect(codexConfigIsNarrowed(dir)).toBe(false);
-	});
-
-	it("repairs nothing twice — the second call reports false and writes nothing", () => {
-		const dir = home(NARROWED);
-		expect(repairCodexConfigFile(dir)).toBe(true);
-		const after = readFileSync(codexConfigPath(dir), "utf-8");
-		expect(repairCodexConfigFile(dir)).toBe(false);
-		expect(readFileSync(codexConfigPath(dir), "utf-8")).toBe(after);
-	});
-
-	it("says no, and writes nothing, when there is no config at all", () => {
-		const dir = home();
-		expect(codexConfigIsNarrowed(dir)).toBe(false);
-		expect(repairCodexConfigFile(dir)).toBe(false);
-		expect(existsSync(codexConfigPath(dir))).toBe(false);
+	it("says no for a config with no permissions at all", () => {
+		expect(hasNarrowedWorkspaceProfile({})).toBe(false);
 	});
 });

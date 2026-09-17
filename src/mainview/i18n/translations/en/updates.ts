@@ -71,19 +71,6 @@ const updates = {
 	"rosetta.copiedBtn": "Copied!",
 	"rosetta.laterBtn": "Remind me later",
 
-	// Offer to undo the narrow Codex permission profile an older dev3 wrote
-	"codexRepair.title": "Codex can't start outside dev3",
-	"codexRepair.body":
-		"An older dev3 wrote a permission profile into your Codex config that is narrower than Codex's own default. On a Homebrew install that stops Codex from starting a session anywhere outside dev3. dev3 can put that one line back.",
-	"codexRepair.blastRadius": "dev3 would change one line in {path}:",
-	"codexRepair.scope": "Nothing else in the file changes, and dev3's own Codex sessions are unaffected either way.",
-	"codexRepair.failed": "Could not change the file — edit it yourself, or check its permissions.",
-	"codexRepair.repairBtn": "Fix it",
-	"codexRepair.repairingBtn": "Fixing…",
-	"codexRepair.laterBtn": "Not now",
-	"codexRepair.neverBtn": "Don't ask again",
-	"codexRepair.done": "Codex config repaired — standalone Codex works again.",
-
 	// Requirements
 	"requirements.title": "System Requirements",
 	"requirements.subtitle": "The following tools must be installed to use dev-3.0",

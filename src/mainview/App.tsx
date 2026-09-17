@@ -10,7 +10,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CodexProfileRepairOffer, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -71,7 +71,6 @@ import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
-import CodexProfileRepairModal from "./components/CodexProfileRepairModal";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
@@ -681,36 +680,6 @@ function App() {
 			.getRosettaWarning()
 			.then(setRosettaWarning)
 			.catch((err) => console.error("Failed to check Rosetta status:", err));
-	}, []);
-
-	// Offer to undo the narrow Codex permission profile an older dev3 wrote into
-	// ~/.codex/config.toml, which stops standalone Codex from starting on a
-	// Homebrew install. The host only reports the offer while that machine is
-	// really affected, so the condition clears itself once repaired; "Not now"
-	// asks again next launch, "Don't ask again" never does.
-	const [codexRepairOffer, setCodexRepairOffer] = useState<CodexProfileRepairOffer>(null);
-	useEffect(() => {
-		api.request
-			.getCodexProfileRepairOffer()
-			.then(setCodexRepairOffer)
-			.catch((err) => console.error("Failed to check the Codex permission profile:", err));
-	}, []);
-
-	const repairCodexProfile = useCallback(async () => {
-		const { repaired } = await api.request.repairCodexProfile();
-		if (!repaired) return false;
-		setCodexRepairOffer(null);
-		toast.success(t("codexRepair.done"), { source: "settings" });
-		return true;
-	}, [t]);
-
-	const declineCodexRepair = useCallback(() => {
-		setCodexRepairOffer(null);
-		setGlobalSettings((prev) => {
-			const next = { ...prev, codexProfileRepairDeclined: true };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
 	}, []);
 
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
@@ -3600,14 +3569,6 @@ function App() {
 					command={rosettaWarning.command}
 					kind={rosettaWarning.kind}
 					onClose={() => setRosettaWarning(null)}
-				/>
-			)}
-			{codexRepairOffer && (
-				<CodexProfileRepairModal
-					configPath={codexRepairOffer.configPath}
-					onRepair={repairCodexProfile}
-					onLater={() => setCodexRepairOffer(null)}
-					onNever={declineCodexRepair}
 				/>
 			)}
 			</>

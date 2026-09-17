@@ -1,8 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, realpathSync, symlinkSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, CodexProfileRepairOffer, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
 import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
 import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
@@ -32,7 +32,7 @@ import { validateEnvMap } from "../../shared/env-text";
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
 import type { LowBatteryStatus } from "../../shared/low-battery";
 import { installAgentSkills } from "../agent-skills";
-import { codexConfigIsNarrowed, codexConfigPath, repairCodexConfigFile } from "../codex-config";
+
 import { forceSelectLowBatteryStyle, lowBatteryStatus } from "../low-battery";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
@@ -585,40 +585,6 @@ async function getRosettaWarning(): Promise<RosettaWarningInfo> {
 	return info;
 }
 
-/**
- * Codex's filesystem-sandbox helper re-execs the Codex binary through the path
- * it was started with, while allowing only the canonicalized one, so a
- * symlinked install (every Homebrew one) cannot start a session under a profile
- * without full-disk read. An older dev3 wrote exactly such a profile into
- * `~/.codex/config.toml` for users who had none, which broke Codex *outside*
- * dev3. dev3 never repairs that silently — the profile is indistinguishable
- * from one the user wrote — so this reports whether the offer is warranted:
- * only on macOS, only with a symlinked binary, only with that exact profile,
- * and only until the user says no.
- */
-async function getCodexProfileRepairOffer(): Promise<CodexProfileRepairOffer> {
-	if (process.platform !== "darwin") return null;
-	const settings = await loadSettings();
-	if (settings.codexProfileRepairDeclined) return null;
-	if (!codexConfigIsNarrowed(homedir())) return null;
-	const { resolvedPath } = resolveBinaryPath("codex");
-	if (!resolvedPath) return null;
-	try {
-		if (realpathSync(resolvedPath) === resolvedPath) return null;
-	} catch {
-		return null;
-	}
-	log.info("Codex is broken by the narrow workspace profile an older dev3 wrote");
-	return { configPath: codexConfigPath(homedir()) };
-}
-
-async function repairCodexProfile(): Promise<{ repaired: boolean }> {
-	log.info("-> repairCodexProfile");
-	const repaired = repairCodexConfigFile(homedir());
-	log.info("<- repairCodexProfile", { repaired });
-	return { repaired };
-}
-
 async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
 	log.info("-> checkGhAvailable");
 	const status = await github.getGitHubCliStatus();
@@ -786,8 +752,6 @@ export const settingsConfigHandlers = {
 	getTelemetryProfile,
 	checkSystemRequirements,
 	getRosettaWarning,
-	getCodexProfileRepairOffer,
-	repairCodexProfile,
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,

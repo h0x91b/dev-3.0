@@ -76,19 +76,6 @@ const updates = {
 	"rosetta.copiedBtn": "Скопировано!",
 	"rosetta.laterBtn": "Напомнить позже",
 
-	// Предложение вернуть узкий профиль прав Codex, который записала старая dev3
-	"codexRepair.title": "Codex не запускается вне dev3",
-	"codexRepair.body":
-		"Старая версия dev3 записала в конфиг Codex профиль прав уже, чем собственный профиль Codex по умолчанию. На установке из Homebrew из-за этого Codex не может начать сессию нигде за пределами dev3. dev3 может вернуть эту строку на место.",
-	"codexRepair.blastRadius": "dev3 изменит одну строку в {path}:",
-	"codexRepair.scope": "Больше в файле ничего не изменится, а на сессии Codex внутри dev3 это не влияет в любом случае.",
-	"codexRepair.failed": "Не удалось изменить файл — поправьте его сами или проверьте права доступа.",
-	"codexRepair.repairBtn": "Исправить",
-	"codexRepair.repairingBtn": "Исправляю…",
-	"codexRepair.laterBtn": "Не сейчас",
-	"codexRepair.neverBtn": "Больше не спрашивать",
-	"codexRepair.done": "Конфиг Codex исправлен — отдельный Codex снова работает.",
-
 	// Requirements
 	"requirements.title": "Системные требования",
 	"requirements.subtitle": "Для работы dev-3.0 необходимы следующие инструменты",

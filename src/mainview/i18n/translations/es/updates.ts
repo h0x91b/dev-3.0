@@ -68,19 +68,6 @@ const updates = {
 	"rosetta.copiedBtn": "¡Copiado!",
 	"rosetta.laterBtn": "Recordar más tarde",
 
-	// Oferta para deshacer el perfil de permisos de Codex que escribió una dev3 antigua
-	"codexRepair.title": "Codex no arranca fuera de dev3",
-	"codexRepair.body":
-		"Una versión antigua de dev3 escribió en tu configuración de Codex un perfil de permisos más estrecho que el propio valor por defecto de Codex. En una instalación de Homebrew eso impide que Codex inicie una sesión fuera de dev3. dev3 puede devolver esa línea a su sitio.",
-	"codexRepair.blastRadius": "dev3 cambiará una línea en {path}:",
-	"codexRepair.scope": "Nada más del archivo cambia, y las sesiones de Codex dentro de dev3 no se ven afectadas en ningún caso.",
-	"codexRepair.failed": "No se pudo cambiar el archivo — edítalo tú mismo o revisa sus permisos.",
-	"codexRepair.repairBtn": "Arreglarlo",
-	"codexRepair.repairingBtn": "Arreglando…",
-	"codexRepair.laterBtn": "Ahora no",
-	"codexRepair.neverBtn": "No preguntar más",
-	"codexRepair.done": "Configuración de Codex reparada — Codex vuelve a funcionar por su cuenta.",
-
 	// Requirements
 	"requirements.title": "Requisitos del sistema",
 	"requirements.subtitle": "Las siguientes herramientas deben estar instaladas para usar dev-3.0",
