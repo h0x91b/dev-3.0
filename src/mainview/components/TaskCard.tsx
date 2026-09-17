@@ -28,6 +28,7 @@ import TaskCardRail from "./TaskCardRail";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useMobile } from "../hooks/useMobile";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
@@ -85,6 +86,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const isMobile = useMobile();
+	// The "spawn-variant" control (§5.10) hides only creation; existing variants stay usable.
+	const spawnVariantHidden = useIsControlHidden("spawn-variant");
 	const [moving, setMoving] = useState(false);
 	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
@@ -1143,7 +1146,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							{devServerControl}
 							{watchButton}
 							<div className="flex-1" />
-							{isActive && (
+							{isActive && !spawnVariantHidden && (
 								<Tooltip content={t("task.addVariant")} detail={t("ttip.task.addVariant")}>
 									<button
 										onClick={(e) => {

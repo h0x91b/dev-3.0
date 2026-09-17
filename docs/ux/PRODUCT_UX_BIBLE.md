@@ -384,6 +384,24 @@ The rule, three parts:
 
 The archived-task path (`TaskDetailModal`) is already a dedicated surface, so it takes the clamp and skips the cap.
 
+### 5.10 Per-control hiding + the Simplify View preset — `Observed`
+
+**The feature is per-control hiding, not a mode.** Any registered control (`HideableControlId`, `hideable-controls.ts`) can be individually hidden; the ids live in one set, `GlobalSettings.hiddenControls: string[]` (`hidden-controls.ts` mirrors it, same module-flag shape as `experimentalAgentTraffic`). **Absent id = visible** — a brand-new control is never pre-hidden for anyone. **Simplify View** (Settings → System → Advanced Experience) is a named *preset*: turning it on unions a closed list of ids into the set, exactly as if the user had hidden each by hand; its checked state is *derived* (every preset id currently hidden), not stored, so restoring one preset item honestly unchecks it. Off by default, reversible, destroys no data. Rejected: a second boolean flag beside the set (drift risk — the trap the first version of this feature built), a Settings checklist page, global header/command-palette/floating-toggle homes for the toggle itself (same rejections as any durable config).
+
+**Hiding a control:** desktop right-clicks it → one-item "Hide" menu (`HideableControl`, `useHideContextMenu`). Touch/remote have no right click, so a control already inside an overflow/action-sheet row gets a small always-visible Hide icon instead (`HideRowButton`).
+
+**Restoring — task info panel:** exactly **one** restore control, in panel *chrome* (§5.1 — chrome is not a bar, spends no bar budget), next to ⚙ and collapse; appears only while this panel has something hidden. Its dropdown groups hidden rows by bar; each row is dual-purpose — click runs the control's own action, a hover-revealed (always-visible on touch) return icon restores it — plus a permanent "Show all". Panel-scoped ids: Context bar (`diff-include-tests`), Session/Agent bar (`spawn-agent`, `bug-hunters`, `hibernate`, `scheduled-message`, `tmux-pane-controls`), Runtime bar (`scripts-runner`, `setup-dev-server`).
+
+**Restoring — global header:** no new icon. Exactly three ids are hideable there — `agent-traffic`, `project-terminal-button`, `remote-access-qr` — folding into the existing kebab as restore rows when hidden. Nothing else in the header is hideable: the ambient resource readout, the rate-limit indicator, and the header's tmux session manager are **not** in this set.
+
+**Non-toolbar surfaces** — no right-click affordance of their own, reachable only through the Simplify View preset (apply, or the panel's "Show all"): `stats-nav`, `automations-tab`, `keyboard-shortcut-editor` (the ⌘/ reference overlay is a different surface and stays), `custom-column-creation`, `label-creation`, `spawn-variant`.
+
+**Never hideable, by design:** hint navigation (`f`/`⌘G`) — no visible anchor to right-click and no row to restore it from, so gating it would silently dead-key its own ⌘/ advert; notes, image/artifact viewers, help mode/tours, diff-review comments and the GitHub review layer, the running dev-server control, open-in, ports.
+
+**Semantics, always:** hidden = unreachable at every entry point, never disabled — backing data/schedulers keep running (an automation still fires; existing labels/columns/variants/scheduled messages still render). A user parked on a hidden destination (`agent-traffic`, `stats`) redirects to `dashboard`. `FLAGGED_SHORTCUTS` (`keymap.ts`) is the only sanctioned way a shortcut may go dark with a hidden control.
+
+Evidence: `hideable-controls.ts`, `hidden-controls.ts`, `global-settings-cache.ts`, `HideableControl.tsx`, `PanelRestoreControl.tsx`, `AdvancedExperienceSection.tsx`, yaml `surfaces.settings.simplify_mode`.
+
 ## 6. Action taxonomy — `Observed`
 
 | Action type | Definition | Placement | Token role |

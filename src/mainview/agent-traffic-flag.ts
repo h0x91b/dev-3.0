@@ -11,6 +11,14 @@
 // While it is off the feature leaves NO trace: no header control, no ⇧⌘M, no
 // native-menu item, no palette command, no tip. A visible control that opens
 // nothing is worse than a hidden feature.
+//
+// This module knows nothing about hidden-controls/Simplify View — a control
+// can ALSO be individually hidden (hideable-controls.ts, id "agent-traffic"),
+// and every consumer combines both signals itself (`getAgentTrafficEnabled()
+// && !isControlHidden("agent-traffic")`, or the two hooks together in a
+// component). Baking that AND into this module once meant a second listener
+// re-dispatching this event whenever the OTHER flag changed — real coupling
+// between two features that should each own exactly one thing.
 
 export const AGENT_TRAFFIC_FLAG_CHANGED_EVENT = "agent-traffic-flag-changed" as const;
 

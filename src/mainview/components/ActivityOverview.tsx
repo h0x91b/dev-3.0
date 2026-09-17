@@ -27,6 +27,7 @@ import PriorityBadge from "./PriorityBadge";
 import Tooltip from "./Tooltip";
 import { CompleteCheckIcon } from "./PipelineRing";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ActivityOverviewProps {
@@ -123,6 +124,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const statsNavHidden = useIsControlHidden("stats-nav");
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	// Work parked on each board that this screen never lists — the number that
 	// makes "Open board" worth clicking instead of a decorative arrow.
@@ -920,7 +922,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							</span>
 						</div>
 					</div>
-				) : (
+				) : statsNavHidden ? null : (
 				<button
 					type="button"
 					data-hint-id="dashboard-stats"
