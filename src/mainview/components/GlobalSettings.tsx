@@ -130,6 +130,10 @@ function GlobalSettings({
 	// and flashing that on every macOS/Linux launch would put a plainly wrong sentence
 	// on screen — worse than a toggle that is briefly live on Windows.
 	const [prOriginTaskLinkSupported, setPrOriginTaskLinkSupported] = useState(true);
+	// Null until the host answers whether this machine can be sampled at all.
+	const [freezeDiagnostics, setFreezeDiagnostics] = useState<
+		{ supported: boolean; running: boolean; directory: string } | null
+	>(null);
 	// Null until the host answers — the backend picker stays inert rather than
 	// guessing that native is (un)available.
 	const [nativeTerminalAvailability, setNativeTerminalAvailability] =
@@ -286,6 +290,18 @@ function GlobalSettings({
 			.then((result) => setPrOriginTaskLinkSupported(result.supported))
 			.catch(() => {});
 	}, []);
+
+	// Null until the host answers — the freeze row stays inert rather than
+	// claiming a machine can be sampled before anyone has looked.
+	const refreshFreezeDiagnostics = useCallback(() => {
+		api.request.getFreezeDiagnosticsStatus()
+			.then((status) => setFreezeDiagnostics(status))
+			.catch(() => {});
+	}, []);
+
+	useEffect(() => {
+		refreshFreezeDiagnostics();
+	}, [refreshFreezeDiagnostics]);
 
 	useEffect(() => {
 		return () => clearTimeout(resetTimerRef.current);
@@ -653,6 +669,20 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleFreezeDiagnosticsToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				// Default-off opt-in: the key only exists while recording is wanted.
+				{ freezeDiagnosticsEnabled: enabled ? true : undefined },
+				{ tracking: { setting: "freeze_diagnostics_enabled", value: String(enabled) } },
+			);
+			// The host starts or stops the collector on save; read back what it did
+			// instead of assuming the switch and the worker agree.
+			refreshFreezeDiagnostics();
+		},
+		[persistSettingChange, refreshFreezeDiagnostics],
+	);
+
 	const handlePxpipeProxyToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -970,8 +1000,10 @@ function GlobalSettings({
 						<AdvancedExperienceSection
 							t={t}
 							globalSettings={globalSettings}
+							freezeDiagnostics={freezeDiagnostics}
 							onTerminalBidiToggle={handleTerminalBidiToggle}
 							onAgentTrafficToggle={handleAgentTrafficToggle}
+							onFreezeDiagnosticsToggle={handleFreezeDiagnosticsToggle}
 						/>
 						<DeveloperToolsSection
 							t={t}

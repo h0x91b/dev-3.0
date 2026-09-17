@@ -14,9 +14,11 @@ File writes, serialization, and retention cleanup are best-effort. A diagnostic 
 
 ## Local desktop freeze capture (macOS)
 
-Set `export DEV3_DEBUG=1` in your login-shell profile (for example `~/.zshrc`) before the next normal launch of a build containing this feature. Desktop shell-environment import admits this one `DEV3_*` variable; other internal variables remain excluded. If shell-environment import is disabled, pass the variable directly to the app launcher. An explicit launcher value, including `DEV3_DEBUG=0`, wins over the shell profile. Merely exporting in a terminal does not change an already-running GUI process.
+Turn on **Settings → System → Advanced Experience → Record app freezes (macOS)**. The switch is stored in `~/.dev3.0/settings.json` as `freezeDiagnosticsEnabled`, so it survives a restart and behaves the same however the app was started — Finder, Dock, terminal or the in-app updater. No environment variable takes part: `DEV3_DEBUG` no longer activates this, and the `DEV3_*` shell-import block has no carve-out any more.
 
-This switch is opt-in on every channel, including canary. It starts a macOS-only worker outside the host JavaScript loop. The daily app log confirms activation with `[freeze-diagnostics] Local freeze diagnostics enabled`. Without the switch there is no worker, process inspection, or stack sampling. The switch does not enable general debug logging or send anything to a telemetry service.
+The change applies immediately, in both directions: turning it on starts the collector in the running app, and turning it off stops it before the next second's heartbeat. Files already written are not deleted — they stay until the five-session rotation below drops them. Turning it off and on again starts a fresh session, which also resets the per-run sample budget.
+
+This switch is opt-in on every channel, including canary. It starts a macOS-only worker outside the host JavaScript loop; on Linux and Windows the row says so and the switch does nothing. In remote/browser mode the row still describes the **host** machine, because that is the one that freezes. The daily app log confirms activation with `[freeze-diagnostics] Local freeze diagnostics enabled`. Without the switch there is no worker, process inspection, or stack sampling. The switch does not enable general debug logging or send anything to a telemetry service.
 
 Records are under `~/.dev3.0/logs/freeze/` (or `DEV3_LOG_DIR/freeze`):
 
@@ -26,7 +28,7 @@ Records are under `~/.dev3.0/logs/freeze/` (or `DEV3_LOG_DIR/freeze`):
 
 The observer triggers on five seconds without host progress, ten seconds without a visible or natively focused window's heartbeat, or ten seconds without an animation-frame callback while visible. Its own scheduling gap gives a 20-second grace period and is explicitly recorded as **sleep or scheduling unknown**; the original timestamps are retained. Native focus can therefore expose a missing beat even when the renderer last reported hidden. A closed window is removed, and remote browser tabs are not registered.
 
-Sampling is capped at three incidents per launch, at least five minutes apart. Each command has a deadline; each journal chunk/sample is limited to 2 MiB, and the collector retains five sessions (at most about 170 MiB). Remove the variable, or set it to `0`, before the next normal launch to disable collection. Startup failure, missing assets, and unavailable OS tools leave the app running.
+Sampling is capped at three incidents per collector run, at least five minutes apart. Each command has a deadline; each journal chunk/sample is limited to 2 MiB, and the collector retains five sessions (at most about 170 MiB). Turn the switch off to stop collection — that takes effect at once and needs no restart. Startup failure, missing assets, and unavailable OS tools leave the app running.
 
 These files stay local and may contain private paths from native stacks. They contain no intentionally collected terminal output, task text, document contents or environment dump. Review captures locally before choosing to share them. A suspected stall is not a causal verdict: a lost RPC channel, debugger pause or OS scheduling problem can trigger the same record. Native stacks may still contain unnamed JIT frames. No automatic restart or preference change is performed.
 

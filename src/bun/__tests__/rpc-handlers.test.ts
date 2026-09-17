@@ -244,6 +244,17 @@ vi.mock("../settings", () => ({
 	recordFavoriteUsages: vi.fn(),
 }));
 
+vi.mock("../freeze-diagnostics", () => ({
+	applyFreezeDiagnosticsSetting: vi.fn(),
+	configureFreezeDiagnostics: vi.fn(),
+	stopFreezeDiagnostics: vi.fn(),
+	freezeDiagnosticsRunning: vi.fn(() => false),
+	freezeDiagnosticsSupported: vi.fn(() => true),
+	freezeDiagnosticsDirectory: vi.fn(() => "/logs/freeze"),
+	recordFreezeDiagnostic: vi.fn(),
+	freezeBeat: vi.fn((beat: unknown) => beat),
+}));
+
 vi.mock("../repo-config", () => {
 	const resolveProjectConfig = vi.fn((project: any, _configPath?: string) => project);
 	const pickScript = (p: string | undefined, w: string | undefined): string =>
@@ -2014,6 +2025,29 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(saveSettings).toHaveBeenCalledWith(
 			expect.objectContaining({ updateChannel: "beta", analyticsDistinctId: "id-minted-after-the-snapshot" }),
 		);
+	});
+
+	// The switch has to reach the collector in this session: a diagnostic that
+	// only starts at the next launch is useless while the app is misbehaving.
+	it("starts and stops the freeze collector when the stored switch changes", async () => {
+		const { applyFreezeDiagnosticsSetting } = await import("../freeze-diagnostics");
+		vi.mocked(loadSettings).mockResolvedValue({} as GlobalSettings);
+		await handlers.saveGlobalSettings({ freezeDiagnosticsEnabled: true } as GlobalSettings);
+		expect(applyFreezeDiagnosticsSetting).toHaveBeenCalledWith(true);
+
+		vi.mocked(applyFreezeDiagnosticsSetting).mockClear();
+		vi.mocked(loadSettings).mockResolvedValue({ freezeDiagnosticsEnabled: true } as GlobalSettings);
+		await handlers.saveGlobalSettings({} as GlobalSettings);
+		expect(applyFreezeDiagnosticsSetting).toHaveBeenCalledWith(false);
+	});
+
+	// An unrelated save must not restart a live collector (it would open a new
+	// journal and reset the per-run sample budget).
+	it("leaves the freeze collector alone when the switch did not change", async () => {
+		const { applyFreezeDiagnosticsSetting } = await import("../freeze-diagnostics");
+		vi.mocked(loadSettings).mockResolvedValue({ freezeDiagnosticsEnabled: true } as GlobalSettings);
+		await handlers.saveGlobalSettings({ freezeDiagnosticsEnabled: true, updateChannel: "beta" } as unknown as GlobalSettings);
+		expect(applyFreezeDiagnosticsSetting).not.toHaveBeenCalled();
 	});
 
 	it("does not release Focus Mode when an optional patch omits it", async () => {

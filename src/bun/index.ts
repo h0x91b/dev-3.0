@@ -8,7 +8,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
-import { startFreezeDiagnostics, recordFreezeDiagnostic } from "./freeze-diagnostics";
+import { applyFreezeDiagnosticsSetting, configureFreezeDiagnostics, recordFreezeDiagnostic, stopFreezeDiagnostics } from "./freeze-diagnostics";
 import { resolve } from "node:path";
 import { startRendererWatchdog } from "./renderer-watchdog";
 import { applyArtifactFreezeRecovery, markArtifactFreezeRecovered, recordArtifactFreezeEvidence } from "./artifact-freeze-recovery";
@@ -405,10 +405,12 @@ async function getMainViewUrl(): Promise<string> {
 
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
-const stopFreezeDiagnostics = startFreezeDiagnostics({
+configureFreezeDiagnostics({
 	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
 	version: APP_VERSION, build: lastBuildTime,
 });
+// The saved switch decides, so a Finder launch behaves like a terminal one.
+applyFreezeDiagnosticsSetting(loadSettingsSync().freezeDiagnosticsEnabled === true);
 
 // --- Application Menu ---
 

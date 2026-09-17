@@ -286,6 +286,17 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 			log.warn("Failed to apply the low-battery toggle (non-fatal)", { error: String(err) });
 		}
 	}
+	// Start or stop the freeze collector with the switch, not at the next launch:
+	// a diagnostic you turn on while the app misbehaves is worth nothing tomorrow,
+	// and turning it off must stop collection now.
+	if ((stored.freezeDiagnosticsEnabled === true) !== (next.freezeDiagnosticsEnabled === true)) {
+		try {
+			const { applyFreezeDiagnosticsSetting } = await import("../freeze-diagnostics");
+			applyFreezeDiagnosticsSetting(next.freezeDiagnosticsEnabled === true);
+		} catch (err) {
+			log.warn("Failed to apply the freeze-diagnostics toggle (non-fatal)", { error: String(err) });
+		}
+	}
 	// `resolvedTheme` may be absent (nothing has called setTmuxTheme yet); the
 	// live in-memory theme is the fallback, never a hardcoded "dark" — that would
 	// flip a light-theme user's terminals on an unrelated shell change.

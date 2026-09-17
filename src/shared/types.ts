@@ -1305,6 +1305,14 @@ export interface GlobalSettings {
 	 */
 	experimentalAgentTraffic?: boolean;
 	/**
+	 * Record local macOS freeze diagnostics (host/renderer liveness journals plus
+	 * bounded native stack samples under `~/.dev3.0/logs/freeze`). Off unless the
+	 * key is an explicit `true`, and nothing is ever uploaded. The host applies a
+	 * change straight away: turning it off stops the collector for this session
+	 * too, not only for the next launch.
+	 */
+	freezeDiagnosticsEnabled?: boolean;
+	/**
 	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
 	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
 	 * the default for a fresh install and for anyone upgrading, because having
@@ -5973,6 +5981,15 @@ export type AppRPCSchema = {
 			checkPrOriginTaskLinkSupported: {
 				params: void;
 				response: { supported: boolean };
+			};
+			/**
+			 * Whether this machine can record freeze diagnostics at all (macOS only)
+			 * and whether the collector is running right now. Asked of the host because
+			 * a remote browser answers for its own machine, not the one that freezes.
+			 */
+			getFreezeDiagnosticsStatus: {
+				params: void;
+				response: { supported: boolean; running: boolean; directory: string };
 			};
 			getPreventSleepState: {
 				params: void;

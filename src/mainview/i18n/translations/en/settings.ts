@@ -620,7 +620,7 @@ const settings = {
 	// Advanced Experience — beta behaviour; each entry states its own default
 	"settings.categoryAdvancedExperience": "Advanced Experience",
 	"settings.categoryAdvancedExperienceDesc":
-		"Beta behaviour that is useful but not stable yet. Each entry says whether it is on by default.",
+		"Beta behaviour and local diagnostics that are useful but not stable yet. Each entry says whether it is on by default.",
 	"settings.terminalBidi": "Right-to-left text in terminals (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",
@@ -631,6 +631,15 @@ const settings = {
 		"Watch what your agents write to each other: real tasks and messages from the last 24 hours, with older retained history available. Open with ⇧⌘M, then pick a presentation inside — Experiment 2, a flat graph of task cards, or Experiment 1, a 3D orbit.",
 	"settings.agentTrafficCaveat":
 		"While this is off the feature leaves no trace — no header control, no shortcut, no menu item, no palette command. Messages are still recorded on disk either way, so turning it on later shows the history you already have. Unread state is per browser, so reading on the desktop leaves a phone badge lit.",
+
+	"settings.freezeDiagnostics": "Record app freezes (macOS)",
+	"settings.freezeDiagnosticsDesc":
+		"When the app stops responding, write what happened to a local file: which windows were alive, what the host and the renderer were doing, plus a three-second stack sample. Off by default. Turning it on starts recording right away, and turning it off stops it right away — no restart either way.",
+	"settings.freezeDiagnosticsCaveat":
+		"Everything stays on this machine and nothing is sent anywhere. At most three samples per run, five minutes apart, and the five newest sessions are kept — files already written stay until that rotation drops them. Native stacks can contain file paths, so look before you share one.",
+	"settings.freezeDiagnosticsPath": "Files: {directory}",
+	"settings.freezeDiagnosticsUnsupported":
+		"Only macOS can be recorded — this app is running on another system, so the switch does nothing here.",
 
 	// Telemetry opt-out
 	"settings.telemetry": "Telemetry",
