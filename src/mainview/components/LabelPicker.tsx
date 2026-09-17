@@ -8,6 +8,7 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import type { Label, Project } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -47,6 +48,8 @@ function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onTogg
 	const pickerRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
+	// The "label-creation" control (§5.10) hides only creation; applying an existing label stays.
+	const labelCreationHidden = useIsControlHidden("label-creation");
 	const labels = project.labels ?? [];
 
 	const filtered = query
@@ -54,6 +57,7 @@ function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onTogg
 		: labels;
 
 	const showCreate =
+		!labelCreationHidden &&
 		query.trim().length > 0 &&
 		!labels.some((l) => l.name.toLowerCase() === query.trim().toLowerCase());
 

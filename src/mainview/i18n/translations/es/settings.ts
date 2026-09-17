@@ -622,6 +622,11 @@ const settings = {
 	"settings.categoryAdvancedExperience": "Experiencia avanzada",
 	"settings.categoryAdvancedExperienceDesc":
 		"Comportamiento en beta y diagnóstico local: útil, pero todavía no estable. Cada opción indica su valor por defecto.",
+	"settings.simplifyMode": "Simplificar vista",
+	"settings.simplifyModeDesc":
+		"Oculta superficies avanzadas y de interfaz — tráfico de agentes, estadísticas, automatizaciones, creación de variantes o agentes adicionales, cazadores de errores, hibernar, mensajes programados, controles de tmux, el ejecutor de scripts, el aviso de configurar el servidor de desarrollo, el editor de atajos de teclado, los indicadores de la cabecera y la creación de columnas o etiquetas — para que el ciclo diario de tablero, terminal y git se sienta más tranquilo.",
+	"settings.simplifyModeCaveat":
+		"No se elimina nada: las etiquetas, columnas, variantes y automatizaciones existentes siguen funcionando. Solo se oculta dónde se crean otras nuevas, y mientras está activo prevalece sobre los interruptores beta de abajo.",
 	"settings.terminalBidi": "Texto de derecha a izquierda en terminales (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",

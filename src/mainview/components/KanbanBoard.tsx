@@ -24,6 +24,7 @@ import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useAgents } from "../hooks/useAgents";
 import MobileBoardCarousel, { CAROUSEL_MAX_WIDTH, type CarouselColumn } from "./MobileBoardCarousel";
@@ -94,6 +95,8 @@ function KanbanBoard({
 	// on a space board act on the right repository.
 	const projectOfTask = useCallback((task: Task) => projectById.get(task.projectId) ?? project, [projectById, project]);
 	const isCarousel = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// The "custom-column-creation" control (§5.10) hides only creation; existing columns still render.
+	const columnCreationHidden = useIsControlHidden("custom-column-creation");
 	const statusColors = useStatusColors();
 	const agents = useAgents();
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
@@ -554,7 +557,7 @@ function KanbanBoard({
 
 	// Add-column affordance for the desktop board (issue #222). Rendered just before
 	// the Completed column so it stays in the active-lifecycle region of the board.
-	const addColumnButton = (
+	const addColumnButton = columnCreationHidden ? null : (
 		<button
 			key="add-column"
 			type="button"

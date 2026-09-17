@@ -621,6 +621,11 @@ const settings = {
 	"settings.categoryAdvancedExperience": "Advanced Experience",
 	"settings.categoryAdvancedExperienceDesc":
 		"Beta behaviour and local diagnostics that are useful but not stable yet. Each entry says whether it is on by default.",
+	"settings.simplifyMode": "Simplify View",
+	"settings.simplifyModeDesc":
+		"Hide advanced and chrome surfaces — agent traffic, stats, automations, spawning extra variants or agents, bug hunters, hibernate, scheduled messages, tmux controls, the scripts runner, the no-dev-script setup prompt, the keyboard-shortcut editor, header readouts, and column/label creation — so the day-to-day board, terminal and git loop reads calmer.",
+	"settings.simplifyModeCaveat":
+		"Nothing is deleted: existing labels, columns, variants and automations keep working. This only hides where new ones get created, and it overrides the beta toggles below while it is on.",
 	"settings.terminalBidi": "Right-to-left text in terminals (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",
