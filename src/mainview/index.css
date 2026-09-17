@@ -1270,6 +1270,19 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .git-anim:hover .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
 .git-anim:hover .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
 
+/* -- Branch chip: the fork draws out of the trunk, its tip commit pops in -- */
+@keyframes gtx-gb-fork {
+	0%, 12% { stroke-dashoffset: 1; }
+	46%, 100% { stroke-dashoffset: 0; }
+}
+@keyframes gtx-gb-tip {
+	0%, 42% { transform: scale(0); opacity: 0; }
+	58% { transform: scale(1.4); opacity: 1; }
+	70%, 100% { transform: scale(1); opacity: 1; }
+}
+.git-anim:hover .gtx-gb-fork { animation: gtx-gb-fork 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gb-tip { transform-origin: 17px 9.5px; animation: gtx-gb-tip 2.4s ease-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
 	.git-anim:hover [class^="gtx-"],
 	.git-anim:hover [class*=" gtx-"] {
@@ -1688,19 +1701,23 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-owner-check { animation: th-owner-check 2.4s ease-in-out infinite; }
 .task-anim:hover .th-owner-badge-idle, .task-anim:hover .th-owner-check-idle { opacity: 1; }
 
-/* -- Find bugs: the lens focuses in, the caught bug squirms -- */
+/* -- Find bugs: the lens bears down and thickens as it focuses, the caught bug
+   thrashes to get out. The one button whose whole point is "something is wrong
+   here", so it gets the loudest amplitude of the row — inside the glyph only,
+   never on the button box. -- */
 @keyframes th-fb-lens {
-	0%, 15% { transform: scale(1); }
-	35% { transform: scale(1.06); }
-	55% { transform: scale(.99); }
-	70%, 100% { transform: scale(1); }
+	0%, 12% { transform: scale(1); stroke-width: 1.7; }
+	34% { transform: scale(1.14); stroke-width: 2.3; }
+	56% { transform: scale(.96); stroke-width: 1.9; }
+	74%, 100% { transform: scale(1); stroke-width: 1.7; }
 }
 @keyframes th-fb-bug {
-	0%, 10% { transform: rotate(0deg) translate(0, 0); }
-	25% { transform: rotate(-6deg) translate(-.5px, .3px); }
-	45% { transform: rotate(5deg) translate(.5px, -.3px); }
-	65% { transform: rotate(-3deg) translate(-.3px, 0); }
-	80%, 100% { transform: rotate(0deg) translate(0, 0); }
+	0%, 8% { transform: rotate(0deg) translate(0, 0); }
+	22% { transform: rotate(-14deg) translate(-1.1px, .6px); }
+	40% { transform: rotate(12deg) translate(1.1px, -.6px); }
+	56% { transform: rotate(-9deg) translate(-.8px, .3px); }
+	72% { transform: rotate(5deg) translate(.4px, -.2px); }
+	86%, 100% { transform: rotate(0deg) translate(0, 0); }
 }
 .task-anim:hover .th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
 .task-anim:hover .th-fb-bug { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
@@ -1841,6 +1858,60 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
 .task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
 .task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
+
+/* -- Send later: the hands sweep a whole turn ahead, then the bells ring -- */
+@keyframes th-sl-hands {
+	0%, 10% { transform: rotate(0deg); }
+	62%, 100% { transform: rotate(360deg); }
+}
+@keyframes th-sl-bell-l {
+	0%, 62% { transform: rotate(0deg); }
+	70% { transform: rotate(-11deg); }
+	78% { transform: rotate(8deg); }
+	86% { transform: rotate(-4deg); }
+	94%, 100% { transform: rotate(0deg); }
+}
+@keyframes th-sl-bell-r {
+	0%, 62% { transform: rotate(0deg); }
+	70% { transform: rotate(11deg); }
+	78% { transform: rotate(-8deg); }
+	86% { transform: rotate(4deg); }
+	94%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-sl-hands { transform-origin: 12px 13px; animation: th-sl-hands 2.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+.task-anim:hover .th-sl-bell-l { transform-origin: 5px 3px; animation: th-sl-bell-l 2.4s ease-in-out infinite; }
+.task-anim:hover .th-sl-bell-r { transform-origin: 19px 3px; animation: th-sl-bell-r 2.4s ease-in-out infinite; }
+
+/* -- Hibernate: the skull sinks and dims as the session powers down, the
+   crossbones fold in after it and everything comes back untouched -- */
+@keyframes th-hb-skull {
+	0%, 14% { transform: translateY(0) scale(1); opacity: 1; }
+	46%, 68% { transform: translateY(1.8px) scale(.93); opacity: .45; }
+	94%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes th-hb-bone-a {
+	0%, 14% { transform: rotate(0deg); }
+	46%, 68% { transform: rotate(8deg); }
+	94%, 100% { transform: rotate(0deg); }
+}
+@keyframes th-hb-bone-b {
+	0%, 14% { transform: rotate(0deg); }
+	46%, 68% { transform: rotate(-8deg); }
+	94%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-hb-skull { transform-origin: 12px 9px; animation: th-hb-skull 2.4s ease-in-out infinite; }
+.task-anim:hover .th-hb-bone-a { transform-origin: 12px 16.8px; animation: th-hb-bone-a 2.4s ease-in-out infinite; }
+.task-anim:hover .th-hb-bone-b { transform-origin: 12px 16.8px; animation: th-hb-bone-b 2.4s ease-in-out infinite; }
+
+/* -- Artifacts: the brackets open up, the slash writes itself, the tab dot blinks -- */
+@keyframes th-ar-lt { 0%, 15%, 85%, 100% { transform: translateX(0); } 40%, 60% { transform: translateX(-1.1px); } }
+@keyframes th-ar-rt { 0%, 15%, 85%, 100% { transform: translateX(0); } 40%, 60% { transform: translateX(1.1px); } }
+@keyframes th-ar-slash { 0%, 18% { stroke-dashoffset: 1; } 52%, 100% { stroke-dashoffset: 0; } }
+@keyframes th-ar-dot { 0%, 55% { opacity: 1; } 62%, 70% { opacity: .2; } 78%, 100% { opacity: 1; } }
+.task-anim:hover .th-ar-lt { animation: th-ar-lt 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ar-rt { animation: th-ar-rt 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ar-slash { animation: th-ar-slash 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ar-dot { animation: th-ar-dot 2.4s ease-in-out infinite; }
 
 /* Fresh task-bound images/artifacts keep gently nudging until their viewer opens.
    Communicates ongoing unread state — intentionally infinite. */
