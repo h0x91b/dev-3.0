@@ -4812,3 +4812,56 @@ describe("events.list — the board's memory channel", () => {
 		});
 	});
 });
+
+describe("review.*", () => {
+	function wireReviewTask(task: Task): void {
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+	}
+	const comment = {
+		id: "c1234567-0000",
+		body: "Wrong number",
+		createdAt: "2026-09-15T10:00:00.000Z",
+		anchor: { kind: "diff-line", fileId: "f", filePath: "src/a.ts", side: "newFile", startLine: 1, endLine: 1 },
+	};
+
+	it("review.list returns the task's comments", async () => {
+		const project = makeProject();
+		const task = makeTask({ review: [comment] } as Partial<Task>);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const resp = await handleRequest(makeRequest("review.list", { taskId: task.id, projectId: "proj-1" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual([comment]);
+	});
+
+	it("review.resolve accepts an id prefix, stamps the agent and appends the reply", async () => {
+		const project = makeProject();
+		const task = makeTask({ review: [comment] } as Partial<Task>);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		wireReviewTask(task);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+		const resp = await handleRequest(makeRequest("review.resolve", { taskId: task.id, projectId: "proj-1", commentId: "c1234567", reply: "Fixed it" }));
+		expect(resp.ok).toBe(true);
+		const { commentId, task: updated } = resp.data as { commentId: string; task: Task };
+		expect(commentId).toBe("c1234567-0000");
+		expect(updated.review?.[0]).toMatchObject({ resolvedBy: "agent" });
+		expect(updated.review?.[0].replies?.[0]).toMatchObject({ author: "agent", body: "Fixed it" });
+	});
+
+	it("review.reply fails on an unknown id and on an empty body", async () => {
+		const project = makeProject();
+		const task = makeTask({ review: [comment] } as Partial<Task>);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let resp = await handleRequest(makeRequest("review.reply", { taskId: task.id, projectId: "proj-1", commentId: "zzz", body: "hi" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("not found");
+		resp = await handleRequest(makeRequest("review.reply", { taskId: task.id, projectId: "proj-1", commentId: "c1234567", body: "  " }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("body is required");
+	});
+});

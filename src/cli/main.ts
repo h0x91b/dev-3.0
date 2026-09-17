@@ -6,6 +6,7 @@ import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
+import { handleReview } from "./commands/review";
 import { handleEvents } from "./commands/events";
 import { handleVents } from "./commands/vents";
 import { handleOverview } from "./commands/overview";
@@ -62,6 +63,10 @@ Commands:
   dev3 note list [--task <id>]          List notes
   dev3 note show <id> [--task <task>]   Show one note's full body (8-char prefix works)
   dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
+  dev3 review list [--unresolved] [--json] [--task <id>]  The user's review comments on your diff and artifacts
+  dev3 review resolve <id> [--reply "..."] [--task <id>]  Close a comment you handled (8-char prefix works)
+  dev3 review reply <id> "..." [--task <id>]  Answer a comment without closing it
+  dev3 review reopen <id> [--task <id>]  Reopen a resolved comment
   dev3 vents "name" "markdown"          File anonymous dev3-platform feedback (opt-in)
   dev3 overview set "..." [--task <id>] Set task overview (one paragraph)
   dev3 overview show [--task <id>]      Show task overview (or description fallback)
@@ -372,6 +377,8 @@ async function main(): Promise<void> {
 				return await handleTask(subcommand, args, socketPath, context);
 			case "note":
 				return await handleNote(subcommand, args, socketPath, context);
+			case "review":
+				return await handleReview(subcommand, args, socketPath, context);
 			case "events":
 				// `events` takes no subcommand — re-parse from the raw args so a
 				// stray positional is reported instead of silently swallowed.

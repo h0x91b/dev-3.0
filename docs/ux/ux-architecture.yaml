@@ -362,28 +362,28 @@ ux_architecture:
       forbidden: ["task_lifecycle_action", "git_mutation", "global_destination", "github_write_action"]
       layout: "left Files aside (collapsible, 22rem: Review-export card + Files card) + right diff stream"
       github_review_layer:
-        note: "Read-only rendering of the task PR's review threads + top-level conversation. NO writes to GitHub of any kind (no reply, no resolve, no authoring) — every thread/comment links out to GitHub instead. Data: one cached on-demand RPC (gh GraphQL), fetched on diff open / manual refresh; badge counts stay on the background poller."
+        note: "Read-only rendering of the task PR's review threads + conversation. NO writes to GitHub (no reply, resolve or authoring) — every thread links out. Data: one cached on-demand RPC (gh GraphQL) on diff open / manual refresh; badge counts stay on the background poller."
         conversation_block: "Collapsible 'Conversation (N)' strip at the top of the diff stream — the ONE control cluster of this layer: collapse, show-resolved toggle, refresh, fetched-at, PR link. Never in the toolbar, never in the inspector."
         inline_threads: "GitHub threads render on their anchored lines via the same widget/extend API as local comments, visually distinct (GitHub glyph, author, timestamp, markdown body). Branch mode only; other modes show a slim 'N review threads -> Branch diff' hint (role link)."
-        outdated: "Threads that no longer map onto the rendered diff collapse into a per-file 'Outdated' group; threads on files absent from the diff collapse into a group inside the conversation block. Never silently dropped."
+        outdated: "Threads that no longer map onto the rendered diff collapse into a per-file 'Outdated' group (threads on absent files group inside the conversation block). Never silently dropped."
         thread_actions:
           send_to_agent:    { role: "secondary", note: "pushes the thread into the task terminal as a fix prompt; the surface primary stays review_copy" }
           open_on_github:   { role: "link",      note: "external deep link to the exact comment" }
           include_in_export: { role: "toggle",   note: "opt-in selection into the existing XML export; exported entries carry an origin marker (github vs local)" }
       md_preview_review:
-        note: "The per-file markdown rendered preview is a full review surface, not a read-only detour: it both creates and shows local comments, on the SAME per-file/per-side/per-line threads as the source diff."
-        trigger: "Text selection inside the preview -> floating 'Add comment' button over the selection rect -> shared InlineCommentComposer in a card anchored under the selection. Zero toolbar slots (same exemption class as the split-resize grip)."
-        anchoring: "Rendered blocks carry data-md-line-start/end from mdast node positions; the selection's line range = min(start)..max(end) of the blocks it touches. Side follows the rich-diff block: data-diff-kind=removed -> oldFile, added/context -> newFile."
-        forbidden: ["gutter in the preview", "per-block hover + widget", "toolbar comment-mode toggle", "a disabled button for an unmappable selection (show nothing)"]
-        existing_threads: "Two halves, both required: the commented block is marked in place (accent left border, via the line-stamping component override - never by mutating the DOM under React), and the threads render in full under the preview, ordered by line, each row scrolling to and flashing its block. Bubbles are NOT interleaved between blocks - the document is parsed as one unit, and splitting it would break reference links and footnote definitions. GitHub threads get one slim 'N review threads -> Source diff' link. Never silently dropped."
+        note: "The md preview is a full review surface: it creates and shows local comments on the SAME per-file/side/line threads as the source diff."
+        trigger: "Text selection -> floating 'Add comment' over the selection -> the shared ReviewComposer anchored under it. Zero toolbar slots (same exemption as the split-resize grip)."
+        anchoring: "Blocks carry data-md-line-start/end from mdast positions; range = min(start)..max(end) of touched blocks. Side follows the rich-diff block: removed -> oldFile, else newFile."
+        forbidden: ["gutter in the preview", "per-block hover + widget", "toolbar comment-mode toggle", "a disabled button for an unmappable selection"]
+        existing_threads: "Both halves required: the commented block is marked in place (accent left border via the line-stamping override, never by mutating the DOM under React) and the threads render in full under the preview, ordered by line, each row scrolling to and flashing its block. Bubbles are NOT interleaved between blocks — the document parses as one unit. GitHub threads get one slim 'N review threads -> Source diff' link. Never silently dropped."
       inline_comment_actions:
         note: "Actions on ONE local review comment, inside its bubble in the diff. Budget: 3 controls, no growth."
         controls:
           edit_comment:  { role: "neutral",   token: "border-edge + bg-base, hover:bg-elevated-hover" }
           delete_comment: { role: "destructive", token: "text-danger + border-danger/25 + bg-danger/10" }
-          send_to_agent: { role: "secondary", token: "border-edge + bg-base; success-tint (border-success/40 + bg-success/10 + text-success) once sent", note: "same pattern as github thread_actions.send_to_agent — pushes this one comment into the task terminal; the surface primary stays review_copy" }
+          send_to_agent: { role: "secondary", token: "border-edge + bg-base; success-tint once sent", note: "same pattern as github thread_actions.send_to_agent; the surface primary stays review_copy" }
         sent_state:
-          rule: "Sending is per comment and sticky: the comment is marked Sent (persisted with the review) and leaves the review_export payload, so review_copy / batch send cover ONLY unsent comments. Sent comments stay visible and re-readable in the export card, greyed with a Sent badge; editing a sent comment clears the mark so the edited text can be delivered again."
+          rule: "Sending is per comment and sticky: the comment is marked Sent and leaves the review_export payload, so review_copy / batch send cover ONLY unsent comments. Sent comments stay visible, greyed with a Sent badge; editing one clears the mark."
       review_export_card:
         note: "The one budgeted action cluster on this surface. One primary only. Payload = unsent comments only."
         controls:
@@ -392,12 +392,11 @@ ux_architecture:
           comment_count: { role: "status",       token: "bg-raised mono badge" }
           comment_item:  { role: "link",         token: "bg-raised/65, accent on hover; scroll-to-comment" }
       persistence:
-        store: "localStorage, keyed per task (dev3-inline-diff-review-v1:<taskId>)"
-        survives: ["unmount", "diff reload", "app restart"]
-        ttl: "3 days from review creation, then auto-expires on next read"
-        gc: "Global sweep on every diff-viewer mount walks all review keys and drops expired/corrupt entries, so reviews for tasks that are never reopened (or deleted) cannot accumulate."
-        cleared_by: ["reset_review button", "TTL expiry", "global sweep on diff open"]
-        rule: "Inline review is a short-lived safety net, not clipboard-only and not permanent. Clipboard is transport, not store. Leaving the surface does NOT discard the review — no discard-on-close guard."
+        store: "Task.review (src/shared/review.ts), one RPC per mutation, shared with every viewer and `dev3 review`; the old localStorage review imports once."
+        anchors: "diff-line here; artifact-element, image-region (image viewer and image previews), file-range (file preview text) and terminal-text (terminal chip) elsewhere; the export card lists all."
+        closed_by: "The agent via `dev3 review resolve <id> --reply`: reply under the bubble, Send becomes Reopen."
+        cleared_by: ["reset_review button", "delete_comment"]
+        rule: "Clipboard is transport, not store. Leaving the surface does NOT discard the review — no discard-on-close guard."
       evidence: ["src/mainview/components/TaskDiffViewer.tsx", "src/mainview/components/task-inline-diff.ts", "src/mainview/components/TaskDiffViewer.css"]
     modal:
       purpose: "Focused create/confirm flows."
@@ -557,7 +556,7 @@ ux_architecture:
       purpose: "Task-bound lightbox for images an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail, newest first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only -- no git/lifecycle/mutation, as with the diff viewer."
       feature_class: ["overlay_viewer", "object_action", "notification"]
       reached_from: ["arrival_push (rpc:cliShowImage -- auto-open only when focused on that task + window foreground; else toast + attention badge)", "inspector:image_count_badge (Context bar, count>0, next to diff_summary_badge)", "archived_task_modal:shared-outputs row (per image)", "command_palette ⇧⌘P (Show shared images, scope task)", "application_menu.Task"]
-      allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "download_image (header icon + own right-click menu; native WKWebView Save Image As is dead)", "reveal_original_path", "clear_images (destructive, confirm)"]
+      allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "download_image (header icon + own right-click menu; native WKWebView Save Image As is dead)", "reveal_original_path", "clear_images (destructive, confirm)", "comment_mode (one header toggle; drag a region or click a spot on the drawn picture -> image-region anchor, normalised 0..1; regions drawn over the picture; the same review aside as the artifact viewer)"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "persistent_inspector_button (badge is conditional on count>0)", "native_os_dialog", "svg_render (v1 — webview XSS)"]
       transport: "Reuses the notify/attention socket+pushMessage path: CLI `ui.show-image` -> bun copies files -> getPushMessage()('cliShowImage') -> rpc:cliShowImage CustomEvent -> App.tsx listener (badge + toast + auto-open rule)."
       persistence:
@@ -576,8 +575,9 @@ ux_architecture:
       purpose: "Task-bound interactive HTML via dev3 show-artifact; one viewer, three shapes (see layout)."
       feature_class: ["object_action", "data_visualization", "notification"]
       reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts count button", "archived_task_modal:shared-outputs row"]
-      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; header picker, newest on open)", "theme_sync", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery"]
+      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; header picker, newest on open)", "theme_sync", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery", "comment_mode"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "parent_dom_or_rpc_access", "native_dialog"]
+      comment_mode: "One header toggle (speech bubble; hidden without a project or on a finished task). The injected script reports the clicked element {selector, text, heading}; a 22rem aside reuses the diff viewer's composer and bubbles (src/mainview/review). The frame draws the pins; unplaced ids show as `Not found in this version`. Escape leaves the mode."
       find_in_content: "Floating bar over the iframe (top-right), toggled by Cmd/Ctrl+F (keymap.ts) plus exactly ONE earned magnifier icon in the header; the field never moves into the header. Full rule in bible section 10. The parent cannot reach the opaque-origin document, so query/step go by postMessage to an injected script owning highlight and scroll, reporting {matches,index}."
       security: "iframe sandbox=allow-scripts without allow-same-origin is the boundary; local CSS (@import chains included), classic JS and raster references become data URLs in the srcdoc. CSP deliberately permits all origins plus data/blob/file/views schemes, inline/eval runtimes, fetch and WebSockets, so artifact integrations need no policy tuning. Scripts originate from null and can self-navigate their iframe: artifacts are trusted task output, not an untrusted-code boundary."
       layout: "Mounted by App.tsx for every entry point, three shapes. DOCKED (default): portalled via utils/artifact-dock into TaskWorkspacePane's slot, right of the terminal, behind a role=separator drag/keyboard handle at a persisted width (dev3-artifact-panel-width; min 360px, max 80%). POPUP: centred fixed z-[70] card on a scrim, ~90% of the viewport, chosen by the default-off GlobalSettings.openArtifactsInPopup (registry id/anchor artifact-popup; its copy calls it an alternative for anyone the panel freezes, not a fix). The pane refuses the slot under the inline diff, on narrow and in immersive fullscreen; that and any paneless surface get the popup. OFFSCREEN: a docked viewer whose task the route leaves renders hidden, never popping up over another board; it stays mounted (document, version, draft) and owns no key. One slot, one viewer: a flip re-hosts the live artifact; no second instance exists."
@@ -585,7 +585,7 @@ ux_architecture:
       no_focus_trap: "The one divergence from the image lightbox: an artifact may draw a form the user sends to the agent, and the opaque-origin iframe is not in the trap tabbable set, so a trap would put it out of keyboard reach."
       export: "No assets -> HTML download. Any --assets files -> STORE ZIP of the HTML plus safe asset paths relative to it."
       open_in_external_browser: "One neutral external-link icon in the header, grouped with download (the hand-off pair). Desktop hands the stored HTML path to the OS browser via RPC (relative assets resolve on disk); browser/remote opens a blob URL of the composed document in a new tab, synchronously inside the click so popup blockers allow it. Failure is a toast, never a dialog. No shortcut."
-      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md"]
+      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md", "decisions/2026/09/16/review-comments-on-the-task-record.md"]
 
   action_types:
     primary_action:

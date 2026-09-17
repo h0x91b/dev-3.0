@@ -75,6 +75,7 @@ import { taskLifecycleHandlers } from "./rpc-handlers/task-lifecycle";
 import { gitOperationHandlers } from "./rpc-handlers/git-operations";
 import { tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
 import { notesLabelsHandlers } from "./rpc-handlers/notes-labels";
+import { reviewCommentHandlers } from "./rpc-handlers/review-comments";
 import { remoteAccessHandlers } from "./rpc-handlers/remote-access";
 import { scriptsHandlers } from "./rpc-handlers/scripts";
 import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
@@ -99,6 +100,7 @@ export const handlers = {
 	...gitOperationHandlers,
 	...tmuxPtyHandlers,
 	...notesLabelsHandlers,
+	...reviewCommentHandlers,
 	...remoteAccessHandlers,
 	...scriptsHandlers,
 	...portTunnelHandlers,

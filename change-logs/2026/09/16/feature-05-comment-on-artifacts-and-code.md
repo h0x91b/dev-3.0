@@ -1,0 +1,3 @@
+Short: Comment on anything the agent made
+
+Every surface an agent's output shows on now takes a review comment: click an element of an HTML artifact, drag a region on a shared image, select text in a previewed file, or select text in the terminal and hit the Comment chip — all through the same composer as diff comments. Comments live on the task instead of the browser, so the same list shows on the desktop, on a phone, and to the agent through `dev3 review list`, which can close a comment with `dev3 review resolve <id> --reply "…"` — the reply appears under the comment and its pin turns green.
