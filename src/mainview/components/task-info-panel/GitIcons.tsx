@@ -6,7 +6,8 @@ import type { SVGProps } from "react";
  *
  * Every icon carries `gtx-*` animation hooks: when a `.git-anim` ancestor
  * (the button / toggle) is hovered, pure-CSS keyframes in index.css act out
- * the operation the icon triggers — the diff types its added line and blinks
+ * the operation the icon triggers — the branch chip forks a new line off the
+ * trunk, the diff types its added line and blinks
  * the removed one, the commit dot lands on the branch and rings out, the rebase
  * commit rides the rail to the tip, the push arrow
  * launches into the cloud, the PR curve draws over and the sparkle twinkles,
@@ -31,15 +32,16 @@ function svgBase(className?: string): SVGProps<SVGSVGElement> {
 	};
 }
 
-// B1 — Branch (the chip that opens the branch menu): a side branch forks off the trunk.
+// B1 — Branch (the chip that opens the branch menu): a side branch forks off the
+// trunk. On hover the fork draws itself out and its tip commit pops into place.
 export function BranchIcon({ className }: GitIconProps) {
 	return (
 		<svg {...svgBase(className)}>
 			<line x1="7" y1="4.5" x2="7" y2="19.5" />
 			<circle cx="7" cy="19.5" r="1.8" />
 			<circle cx="7" cy="4.5" r="1.8" />
-			<circle cx="17" cy="9.5" r="1.8" />
-			<path d="M8.8 4.5 H13 a4 4 0 0 1 4 4 v-.2" />
+			<circle cx="17" cy="9.5" r="1.8" className="gtx gtx-gb-tip" />
+			<path d="M8.8 4.5 H13 a4 4 0 0 1 4 4 v-.2" pathLength={1} className="gtx-draw gtx-gb-fork" />
 		</svg>
 	);
 }
