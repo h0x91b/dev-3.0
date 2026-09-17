@@ -1,0 +1,1 @@
+The stars badges in the README and on the landing page now link to the repository root instead of the stargazers list, which is no longer usable for public visitors. The badge images, star counts and layout are unchanged.
