@@ -392,7 +392,7 @@ const settings = {
 	"importConversations.turnCount_many": "{count} реплик",
 	"importConversations.turnCount_other": "{count} реплик",
 	"importConversations.hint": "Свежие разговоры — активные за последнюю неделю — попадут в «Есть вопросы» со своей рабочей копией и веткой, остальные — в «Завершено». Пересказ разговора становится описанием задачи.",
-	"importConversations.codexNote": "Codex не даёт своим сессиям названий, поэтому строка Codex названа по первой вашей просьбе.",
+	"importConversations.requestTitleNote": "Некоторые сессии агент так и не назвал — такие строки названы по первой вашей просьбе.",
 	"importConversations.cancel": "Отмена",
 	"importConversations.close": "Закрыть",
 	"importConversations.importing": "Импортирую…",

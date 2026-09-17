@@ -378,7 +378,7 @@ const settings = {
 	"importConversations.turnCount_one": "{count} turno",
 	"importConversations.turnCount_other": "{count} turnos",
 	"importConversations.hint": "Lo activo en la última semana llega a Tiene preguntas con su propio worktree y rama; lo más antiguo llega a Completado. El resumen de la conversación se convierte en la descripción de la tarea.",
-	"importConversations.codexNote": "Codex no pone nombre a sus propias sesiones, así que una fila de Codex se titula con lo primero que pediste.",
+	"importConversations.requestTitleNote": "Algunas sesiones nunca recibieron nombre de su agente, así que esas filas se titulan con lo primero que pediste.",
 	"importConversations.cancel": "Cancelar",
 	"importConversations.close": "Cerrar",
 	"importConversations.importing": "Importando…",

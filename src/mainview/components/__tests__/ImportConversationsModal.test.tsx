@@ -37,6 +37,7 @@ function conversation(over: Partial<ImportableConversationView> = {}): Importabl
 		source: "claude",
 		sessionId: "sess-1",
 		title: "Fix the parser",
+		titledFromRequest: false,
 		workingDir: "/code/dev-3.0",
 		lastActivityMs: Date.now() - 2 * 24 * 60 * 60 * 1000,
 		turns: 12,
@@ -92,18 +93,18 @@ describe("ImportConversationsModal", () => {
 		expect(screen.getByText("Codex")).toBeInTheDocument();
 	});
 
-	// Codex writes no title of its own, so a Codex row is named after the first
-	// request. A list of Claude rows must not explain that.
-	it("explains the Codex titles only when the list actually holds a Codex row", async () => {
+	// A row whose agent never named the session is titled after the first request.
+	// A list where every session carries its own title must not explain that.
+	it("explains request-derived titles only when the list actually holds one", async () => {
 		const user = userEvent.setup();
 		renderModal();
 		await user.click(await screen.findByTestId("import-conversations-partial"));
-		expect(screen.queryByTestId("import-conversations-codex-note")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("import-conversations-request-title-note")).not.toBeInTheDocument();
 
-		mocks.scan.mockResolvedValue({ conversations: [conversation({ source: "codex" })] });
+		mocks.scan.mockResolvedValue({ conversations: [conversation({ source: "codex", titledFromRequest: true })] });
 		renderModal();
 		await user.click((await screen.findAllByTestId("import-conversations-partial"))[1]);
-		expect(screen.getAllByTestId("import-conversations-codex-note").length).toBeGreaterThan(0);
+		expect(screen.getAllByTestId("import-conversations-request-title-note").length).toBeGreaterThan(0);
 	});
 
 	it("imports everything the scan found when the default is left alone", async () => {

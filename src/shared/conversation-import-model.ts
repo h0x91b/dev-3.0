@@ -24,14 +24,16 @@ export const CONVERSATION_SOURCE_LABELS: Record<ConversationSource, string> = {
 
 /** One row of the import preview. The transcript path stays server-side. */
 export interface ImportableConversationView {
-	/**
-	 * Which agent wrote it. Shown, because the two are not the same offer: Claude
-	 * names its own conversations and Codex does not, so a Codex row is titled
-	 * after the first request instead.
-	 */
+	/** Which agent wrote it — shown, because the card says which CLI picks it up. */
 	source: ConversationSource;
 	sessionId: string;
 	title: string;
+	/**
+	 * The agent never named this session, so the title is the first thing the user
+	 * asked for. Always true for Codex, which writes no titles at all, and true for
+	 * a Claude session that carries no `ai-title` record.
+	 */
+	titledFromRequest: boolean;
 	/** Where it ran — worth showing when it is a subdirectory of the project. */
 	workingDir: string;
 	lastActivityMs: number;

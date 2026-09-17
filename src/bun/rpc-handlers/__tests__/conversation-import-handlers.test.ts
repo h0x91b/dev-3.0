@@ -87,6 +87,7 @@ function conversation(over: Partial<ImportableConversation> = {}): ImportableCon
 		source: "claude",
 		sessionId: "sess-1",
 		title: "Fix the parser",
+		titledFromRequest: false,
 		workingDir: "/code/dev-3.0",
 		transcriptPath: path,
 		gitBranch: "feat/parser",
@@ -144,6 +145,7 @@ describe("scanImportableConversations", () => {
 			source: "claude",
 			sessionId: "sess-1",
 			title: "Fix the parser",
+			titledFromRequest: false,
 			workingDir: "/code/dev-3.0",
 			lastActivityMs: Date.UTC(2026, 7, 26),
 			turns: 3,
@@ -177,6 +179,20 @@ describe("importConversations", () => {
 		expect(extras.title).toBe("Fix the parser");
 		expect(extras.importedSessionId).toBe("sess-1");
 		expect(extras.labelIds).toHaveLength(1);
+	});
+
+	// A session its agent never named imports exactly like any other — the title is
+	// the first request, and nothing downstream treats the card differently.
+	it("creates the same task for a conversation titled after the first request", async () => {
+		mocks.scanImportableConversations.mockReturnValue([
+			conversation({ sessionId: "sess-9", title: "Upgrade the Kafka client", titledFromRequest: true }),
+		]);
+		const result = await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-9"] });
+
+		expect(result.imported).toBe(1);
+		const { extras } = addTaskCall();
+		expect(extras.title).toBe("Upgrade the Kafka client");
+		expect(extras.importedSessionId).toBe("sess-9");
 	});
 
 	it("leads the description with the user's own request and says where it came from", async () => {
