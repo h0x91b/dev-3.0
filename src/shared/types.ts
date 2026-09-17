@@ -1313,6 +1313,13 @@ export interface GlobalSettings {
 	 */
 	freezeDiagnosticsEnabled?: boolean;
 	/**
+	 * The user answered "don't ask again" to the offer to widen the narrow Codex
+	 * permission profile an older dev3 wrote into `~/.codex/config.toml`. The
+	 * offer is the only way dev3 touches that profile, so this key is what makes
+	 * a refusal permanent. Repairing it clears the condition instead.
+	 */
+	codexProfileRepairDeclined?: boolean;
+	/**
 	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
 	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
 	 * the default for a fresh install and for anyone upgrading, because having
@@ -4488,6 +4495,15 @@ export interface RequirementCheckResult {
  */
 export type RosettaWarningInfo = { command: string; kind: "brew" | "dmg" } | null;
 
+/**
+ * Standalone Codex is broken by the narrow `workspace` permission profile an
+ * older dev3 wrote into the user's `~/.codex/config.toml`, and dev3 can repair
+ * it with one line. Non-null only when the breakage is real on this machine —
+ * macOS, a symlinked Codex binary, that exact profile — and the user has not
+ * already said no. `configPath` is shown so the offer names the file it edits.
+ */
+export type CodexProfileRepairOffer = { configPath: string } | null;
+
 // ---- Agent availability ----
 
 export interface AgentCheckResult {
@@ -5434,6 +5450,16 @@ export type AppRPCSchema = {
 			getRosettaWarning: {
 				params: void;
 				response: RosettaWarningInfo;
+			};
+			/** Is standalone Codex broken by the narrow profile an older dev3 wrote? */
+			getCodexProfileRepairOffer: {
+				params: void;
+				response: CodexProfileRepairOffer;
+			};
+			/** Apply that repair — only ever called from the user's own click. */
+			repairCodexProfile: {
+				params: void;
+				response: { repaired: boolean };
 			};
 			checkGhAvailable: {
 				params: void;

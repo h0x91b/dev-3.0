@@ -280,6 +280,7 @@ describe("saveSettings", () => {
 			lowBatteryEnabled: true,
 			lowBatteryDisabled: true,
 			lowBatteryAnnounced: true,
+			codexProfileRepairDeclined: true,
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,

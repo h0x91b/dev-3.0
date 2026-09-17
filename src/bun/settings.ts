@@ -198,6 +198,9 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// co-installed build keeps its own opt-out and announce flag.
 		lowBatteryDisabled: d.lowBatteryDisabled === true ? true : undefined,
 		lowBatteryAnnounced: d.lowBatteryAnnounced === true ? true : undefined,
+		// "Don't ask again" for the Codex permission-profile repair offer. Only an
+		// explicit true is stored: absent means the offer has not been refused.
+		codexProfileRepairDeclined: d.codexProfileRepairDeclined === true ? true : undefined,
 		// Bring-your-own-tunnel config; kept only when it names a runnable custom command.
 		remoteTunnel: sanitizeRemoteTunnel(d.remoteTunnel),
 		// Pinned remote-access port; anything outside the TCP range means "auto".

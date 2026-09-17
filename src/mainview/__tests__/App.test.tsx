@@ -17,6 +17,8 @@ vi.mock("../rpc", () => ({
 			getSystemMemory: vi.fn().mockResolvedValue(null),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
+			getCodexProfileRepairOffer: vi.fn().mockResolvedValue(null),
+			repairCodexProfile: vi.fn().mockResolvedValue({ repaired: true }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			// Opening a project board asks once whether there is anything to import.

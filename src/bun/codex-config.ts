@@ -764,6 +764,44 @@ async function probeCodex(flag: "--version" | "--help"): Promise<string | null> 
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
  */
+/**
+ * Whether this config still carries the narrow fallback profile an older dev3
+ * wrote: `default_permissions = "workspace"` whose only filesystem grant is
+ * `":minimal" = "read"`.
+ *
+ * That profile governs every Codex run outside dev3 and is narrower than
+ * Codex's own default, which is how it broke standalone Codex on Homebrew
+ * installs. dev3 never repairs it on its own — the shape is indistinguishable
+ * from one the user wrote by hand — so this only ever feeds an offer.
+ */
+export function hasNarrowedWorkspaceProfile(content: string | null): boolean {
+	if (!content?.trim()) return false;
+	let parsed: CodexConfig;
+	try {
+		parsed = load(content) as CodexConfig;
+	} catch {
+		return false;
+	}
+	if (parsed.default_permissions !== WORKSPACE_CODEX_PROFILE) return false;
+	const filesystem = (parsed.permissions?.[WORKSPACE_CODEX_PROFILE] as CodexPermissionsProfile | undefined)?.filesystem;
+	// Root-key subtables (`:project_roots`) parse as nested objects, not grants.
+	const grants = Object.entries(filesystem ?? {}).filter(([, mode]) => typeof mode === "string");
+	return grants.length === 1 && grants[0][0] === ":minimal" && grants[0][1] === "read";
+}
+
+/**
+ * The repair the user approved: widen that one grant to `":root" = "read"`,
+ * which is what Codex grants when no profile exists at all. Returns the config
+ * unchanged when the narrow profile is not there, so a double-click or a config
+ * edited in between writes nothing.
+ */
+export function repairNarrowedWorkspaceProfile(content: string | null): string | null {
+	if (!hasNarrowedWorkspaceProfile(content) || content == null) return null;
+	const header = `[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`;
+	const repaired = upsertSectionLine(content, header, WORKSPACE_FALLBACK_READ_KEY, '"read"');
+	return repaired === content ? null : repaired;
+}
+
 export function ensureCodexConfig(
 	content: string | null,
 	worktreesPath: string,
@@ -922,6 +960,8 @@ export function ensureCodexConfig(
 	// A `:minimal` fallback an older dev3 wrote is left as it is: its value is
 	// indistinguishable from a profile the user authored by hand, and widening
 	// someone's filesystem sandbox on a guess is worse than the narrow grant.
+	// `repairNarrowedWorkspaceProfile` below is the same edit made on purpose,
+	// once, after the user says yes to it.
 
 	// --- 4. Ensure [profiles.dev3*] config profiles ---
 	// On Codex ≥0.134 these profiles live in separate per-profile files (handled
@@ -1604,6 +1644,39 @@ export async function ensureCodexConfigFile(homePath: string): Promise<void> {
 
 	if (!syntax.profileV2) return;
 	ensureCodexProfileFiles(homePath);
+}
+
+/** The Codex config this user's standalone Codex reads. */
+export function codexConfigPath(homePath: string): string {
+	return join(homePath, ".codex", "config.toml");
+}
+
+/** Whether the narrow fallback profile is still sitting in this user's config. */
+export function codexConfigIsNarrowed(homePath: string): boolean {
+	try {
+		return hasNarrowedWorkspaceProfile(readFileSync(codexConfigPath(homePath), "utf-8"));
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Apply the approved repair to the file. Returns false when there was nothing
+ * to repair or the write failed — the caller says so rather than claiming a fix
+ * that did not land.
+ */
+export function repairCodexConfigFile(homePath: string): boolean {
+	const configPath = codexConfigPath(homePath);
+	try {
+		const repaired = repairNarrowedWorkspaceProfile(readFileSync(configPath, "utf-8"));
+		if (repaired == null) return false;
+		writeFileSync(configPath, repaired, "utf-8");
+		log.info("Widened the narrowed Codex workspace profile at the user's request", { path: configPath });
+		return true;
+	} catch (err) {
+		log.warn("Could not widen the narrowed Codex workspace profile", { error: String(err) });
+		return false;
+	}
 }
 
 /**

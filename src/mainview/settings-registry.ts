@@ -581,6 +581,10 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	// so an older co-installed build keeps its own opt-out and announce flag.
 	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
+	// The answer to a one-off repair offer that only appears while a machine is
+	// actually broken. An outcome, not a preference — there is nothing to set
+	// here once the offer is gone.
+	"codexProfileRepairDeclined",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 /** Runtime list used by the registry integrity test; the type check catches schema drift. */
@@ -634,6 +638,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"lowBatteryEnabled",
 	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
+	"codexProfileRepairDeclined",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry
