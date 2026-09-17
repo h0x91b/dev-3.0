@@ -378,7 +378,7 @@ const settings = {
 	"importConversations.turnCount_one": "{count} turn",
 	"importConversations.turnCount_other": "{count} turns",
 	"importConversations.hint": "Anything active in the last week lands in Has Questions with its own worktree and branch; older work lands in Completed. The retelling of the conversation becomes the task description.",
-	"importConversations.codexNote": "Codex does not name its own sessions, so a Codex row is titled after the first thing you asked for.",
+	"importConversations.requestTitleNote": "Some sessions were never named by their agent, so those rows are titled after the first thing you asked for.",
 	"importConversations.cancel": "Cancel",
 	"importConversations.close": "Close",
 	"importConversations.importing": "Importing…",

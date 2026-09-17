@@ -28,6 +28,7 @@ function toView(conversation: ImportableConversation): ImportableConversationVie
 		source: conversation.source,
 		sessionId: conversation.sessionId,
 		title: conversation.title,
+		titledFromRequest: conversation.titledFromRequest,
 		workingDir: conversation.workingDir,
 		lastActivityMs: conversation.lastActivityMs,
 		turns: conversation.turns,

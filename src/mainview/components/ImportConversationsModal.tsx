@@ -224,10 +224,11 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 						)}
 
 						<p className="text-fg-muted text-xs leading-5">{t("importConversations.hint")}</p>
-						{/* Only where it applies: a list of Claude rows should not explain Codex. */}
-						{conversations.some((c) => c.source === "codex") && (
-							<p className="text-fg-muted text-xs leading-5" data-testid="import-conversations-codex-note">
-								{t("importConversations.codexNote")}
+						{/* Only where it applies: a list where every agent named its own
+										session should not explain a fallback nobody used. */}
+						{conversations.some((c) => c.titledFromRequest) && (
+							<p className="text-fg-muted text-xs leading-5" data-testid="import-conversations-request-title-note">
+								{t("importConversations.requestTitleNote")}
 							</p>
 						)}
 					</div>

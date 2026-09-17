@@ -14,7 +14,7 @@ import {
 	classifyClaudeTranscript,
 	classifyCodexRollout,
 	codexHeaderFrom,
-	codexTitleFrom,
+	titleFromFirstRequest,
 	scanImportableConversations,
 } from "../conversation-import";
 import { isCodexInjectedUserText } from "../../shared/conversation-parsers/codex";
@@ -36,6 +36,8 @@ interface SeedOptions {
 	prompts?: string[];
 	sidechain?: boolean;
 	teammate?: boolean;
+	/** What Claude recorded as the client — `claude-desktop` for the desktop app. */
+	entrypoint?: string;
 	ageDays?: number;
 }
 
@@ -57,6 +59,7 @@ function seedConversation(sessionId: string, options: SeedOptions = {}): string 
 			...(options.cwd === null ? {} : { cwd: options.cwd ?? workingDir }),
 			...(options.gitBranch ? { gitBranch: options.gitBranch } : {}),
 			...(options.sidechain ? { isSidechain: true } : {}),
+			...(options.entrypoint ? { entrypoint: options.entrypoint } : {}),
 			message: { role: "user", content: [{ type: "text", text }] },
 		})),
 		// A tool result also arrives as a `user` record and must not count as a turn.
@@ -165,9 +168,41 @@ describe("classifyClaudeTranscript", () => {
 		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("teammate");
 	});
 
-	it("refuses to name a conversation Claude never titled", () => {
-		const file = seedConversation("s4", { title: null });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("untitled");
+	// `ai-title` is optional and often missing (221 of 829 files on the machine this
+	// was measured on). A session the human spoke in is a main session either way.
+	it("still names a main conversation Claude never titled, after the first request", () => {
+		const file = seedConversation("s4", { title: null, prompts: ["Fix the parser", "now the renderer"] });
+		expect(classifyClaudeTranscript(readFileSync(file, "utf-8"))).toMatchObject({
+			kind: "main",
+			title: null,
+			firstRequest: "Fix the parser",
+			turns: 2,
+		});
+	});
+
+	it("calls a transcript nobody ever spoke in empty", () => {
+		const file = seedConversation("s5", { title: null, prompts: [] });
+		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("empty");
+	});
+
+	// The harness echoes a slash command back into the `user` role. It is neither a
+	// turn nor a title — a card called `<command-name>/clear</command-name>` is not
+	// a card anybody can read.
+	it("ignores the wrappers Claude writes into the user role itself", () => {
+		const file = seedConversation("s6", {
+			title: null,
+			prompts: ["<command-name>/clear</command-name>", "<bash-input>ls</bash-input>", "Fix the parser"],
+		});
+		expect(classifyClaudeTranscript(readFileSync(file, "utf-8"))).toMatchObject({
+			kind: "main",
+			firstRequest: "Fix the parser",
+			turns: 1,
+		});
+	});
+
+	it("keeps agent-to-agent traffic, which also arrives in the user role wrapped in a tag", () => {
+		const file = seedConversation("s7", { title: null, prompts: ["<dev3-ai-message>\n<from-task>seq:7</from-task>\n</dev3-ai-message>"] });
+		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).turns).toBe(1);
 	});
 });
 
@@ -192,10 +227,64 @@ describe("scanImportableConversations", () => {
 		expect(byId.get("old")).toBe("completed");
 	});
 
-	it("offers nothing for subagent, teammate or untitled transcripts", () => {
+	it("offers nothing for subagent, teammate or empty transcripts", () => {
 		seedConversation("sub", { sidechain: true });
 		seedConversation("team", { teammate: true });
-		seedConversation("bare", { title: null });
+		seedConversation("silent", { title: null, prompts: [] });
+		expect(scan()).toEqual([]);
+	});
+
+	// The bug this replaced: a missing `ai-title` hid a real conversation entirely.
+	it("offers a conversation Claude never titled, named after the first request", () => {
+		seedConversation("bare", { title: null, prompts: ["Fix the parser"], ageDays: 1 });
+		expect(scan()).toMatchObject([{
+			source: "claude",
+			sessionId: "bare",
+			title: "Fix the parser",
+			titledFromRequest: true,
+			workingDir: project,
+			turns: 1,
+		}]);
+	});
+
+	it("offers an untitled desktop-app session the same way", () => {
+		seedConversation("desk", { title: null, entrypoint: "claude-desktop", prompts: ["Upgrade the Kafka client"] });
+		expect(scan()).toMatchObject([{ sessionId: "desk", title: "Upgrade the Kafka client", titledFromRequest: true }]);
+	});
+
+	it("marks a session Claude did title as not titled from the request", () => {
+		seedConversation("named", { title: "Fix the parser" });
+		expect(scan()).toMatchObject([{ title: "Fix the parser", titledFromRequest: false }]);
+	});
+
+	it("offers titled and untitled sessions together, and never one twice", () => {
+		seedConversation("named", { title: "Fix the parser", ageDays: 1 });
+		seedConversation("bare", { title: null, prompts: ["Rework the importer"], ageDays: 2 });
+		seedConversation("older", { title: null, prompts: ["Something older"], ageDays: 3 });
+		expect(scan().map((c) => c.sessionId)).toEqual(["named", "bare", "older"]);
+		expect(scan({ importedSessionIds: ["bare"] }).map((c) => c.sessionId)).toEqual(["named", "older"]);
+	});
+
+	// A transcript still being written ends mid-line, and a crashed one can hold
+	// half a record. Neither may cost the conversation its place on the list.
+	it("still offers a conversation whose file holds a broken line", () => {
+		const file = seedConversation("torn", { title: null, prompts: ["Fix the parser"] });
+		writeFileSync(file, `${readFileSync(file, "utf-8")}{"type":"user","message":{"role"`);
+		expect(scan().map((c) => [c.sessionId, c.title])).toEqual([["torn", "Fix the parser"]]);
+	});
+
+	it("skips a transcript that never recorded a session id", () => {
+		const dir = join(home, ".claude", "projects", claudeEncodePath(project));
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			join(dir, "no-id.jsonl"),
+			`${JSON.stringify({ type: "user", cwd: project, message: { role: "user", content: [{ type: "text", text: "Fix it" }] } })}\n`,
+		);
+		expect(scan()).toEqual([]);
+	});
+
+	it("skips a session whose only user records are harness wrappers", () => {
+		seedConversation("commands", { title: null, prompts: ["<command-name>/clear</command-name>"] });
 		expect(scan()).toEqual([]);
 	});
 
@@ -336,19 +425,19 @@ describe("codexHeaderFrom", () => {
 	});
 });
 
-describe("codexTitleFrom", () => {
+describe("titleFromFirstRequest", () => {
 	it("takes the first non-empty line of the request", () => {
-		expect(codexTitleFrom("\n\nFix the parser\nand then the renderer")).toBe("Fix the parser");
+		expect(titleFromFirstRequest("\n\nFix the parser\nand then the renderer")).toBe("Fix the parser");
 	});
 
 	it("cuts an over-long request at the width a task title has", () => {
-		const title = codexTitleFrom("x".repeat(200));
+		const title = titleFromFirstRequest("x".repeat(200));
 		expect(title).toHaveLength(80);
 		expect(title?.endsWith("…")).toBe(true);
 	});
 
 	it("has no title for a session the human never spoke in", () => {
-		expect(codexTitleFrom(null)).toBeNull();
+		expect(titleFromFirstRequest(null)).toBeNull();
 	});
 });
 

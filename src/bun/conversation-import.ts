@@ -38,13 +38,15 @@ import { claudeConfigDirs, codexSessionRoots } from "./agent-store-roots";
  */
 
 /** What a transcript turned out to be. The classes are mutually exclusive. */
-export type TranscriptClass = "main" | "subagent" | "teammate" | "untitled";
+export type TranscriptClass = "main" | "subagent" | "teammate" | "empty";
 
 export interface ClassifiedTranscript {
 	kind: TranscriptClass;
 	sessionId: string | null;
-	/** Claude's own title for the conversation (`ai-title` record). */
+	/** Claude's own title for the conversation (`ai-title` record), when it wrote one. */
 	title: string | null;
+	/** The human's first request — the title of a session Claude never named. */
+	firstRequest: string | null;
 	cwd: string | null;
 	gitBranch: string | null;
 	/** User messages that open a turn — what the reader means by "turns". */
@@ -59,9 +61,23 @@ export interface ClassifiedTranscript {
  * record 20%, and six other types made up the rest — it says nothing about what
  * the session was. Subagent and teammate runs bail out the moment they are
  * recognised, so the common case (77% of files are subagent runs) is cheap.
+ *
+ * What makes a session `main` is that a human spoke in it — NOT that Claude
+ * titled it. `ai-title` is optional and often absent: on a 829-file store here,
+ * 221 files carried none, and among the ones that are neither subagent nor
+ * teammate runs that is 105 real conversations. Gating on the title hid every
+ * one of them.
  */
 export function classifyClaudeTranscript(body: string): ClassifiedTranscript {
-	const result: ClassifiedTranscript = { kind: "untitled", sessionId: null, title: null, cwd: null, gitBranch: null, turns: 0 };
+	const result: ClassifiedTranscript = {
+		kind: "empty",
+		sessionId: null,
+		title: null,
+		firstRequest: null,
+		cwd: null,
+		gitBranch: null,
+		turns: 0,
+	};
 
 	for (const line of body.split("\n")) {
 		if (!line.trim()) continue;
@@ -81,10 +97,16 @@ export function classifyClaudeTranscript(body: string): ClassifiedTranscript {
 		result.cwd ??= stringField(record, "cwd");
 		result.gitBranch ??= stringField(record, "gitBranch");
 		if (record.type === "ai-title") result.title ??= stringField(record, "aiTitle");
-		if (record.type === "user" && record.isCompactSummary !== true && hasUserProse(record)) result.turns++;
+		if (record.type === "user" && record.isCompactSummary !== true) {
+			const prose = userProseText(record);
+			if (prose) {
+				result.turns++;
+				result.firstRequest ??= prose;
+			}
+		}
 	}
 
-	return { ...result, kind: result.title ? "main" : "untitled" };
+	return { ...result, kind: result.turns > 0 ? "main" : "empty" };
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | null {
@@ -93,20 +115,55 @@ function stringField(record: Record<string, unknown>, key: string): string | nul
 }
 
 /**
- * Does this `user` record open a turn? Only prose does: a record whose blocks are
- * all `tool_result` is the harness answering the agent, not the human speaking.
- * Same rule the turn assembler uses, so the count matches the parsed conversation.
+ * Wrappers Claude Code itself writes into the `user` role. Each is the harness
+ * echoing a slash command or a `!` bash line back into the transcript, not the
+ * human speaking — counting one as a turn inflates the count, and titling a card
+ * after one produces `<command-name>/clear</command-name>`.
+ *
+ * The list was read off a 829-file store, not guessed: those files open user
+ * records with exactly these tags plus `dev3-ai-message`, `teammate-message` and
+ * `task-notification` — agent traffic, which IS somebody speaking and stays.
  */
-function hasUserProse(record: Record<string, unknown>): boolean {
+const CLAUDE_HARNESS_WRAPPERS = [
+	"command-name",
+	"command-message",
+	"command-args",
+	"local-command-caveat",
+	"local-command-stdout",
+	"local-command-stderr",
+	"bash-input",
+	"bash-stdout",
+	"bash-stderr",
+];
+
+function isClaudeHarnessText(text: string): boolean {
+	const opener = /^<([a-zA-Z0-9_-]+)[\s>]/.exec(text);
+	return opener ? CLAUDE_HARNESS_WRAPPERS.includes(opener[1]) : false;
+}
+
+/**
+ * The prose this `user` record opens a turn with, or null when it opens none.
+ * A record whose blocks are all `tool_result` is the harness answering the
+ * agent — same rule the turn assembler uses, so the count matches the parsed
+ * conversation.
+ */
+function userProseText(record: Record<string, unknown>): string | null {
 	const message = record.message as Record<string, unknown> | undefined;
 	const content = message?.content;
-	if (typeof content === "string") return content.trim().length > 0;
-	if (!Array.isArray(content)) return false;
-	return content.some((block) => {
-		if (!block || typeof block !== "object") return false;
-		const b = block as Record<string, unknown>;
-		return b.type === "text" && typeof b.text === "string" && b.text.trim().length > 0;
-	});
+	const texts: string[] = [];
+	if (typeof content === "string") texts.push(content);
+	else if (Array.isArray(content)) {
+		for (const block of content) {
+			if (!block || typeof block !== "object") continue;
+			const b = block as Record<string, unknown>;
+			if (b.type === "text" && typeof b.text === "string") texts.push(b.text);
+		}
+	}
+	for (const text of texts) {
+		const trimmed = text.trim();
+		if (trimmed && !isClaudeHarnessText(trimmed)) return trimmed;
+	}
+	return null;
 }
 
 /**
@@ -223,11 +280,12 @@ function codexMessageText(content: unknown): string {
 /**
  * A one-line card title out of the request that opened the session.
  *
- * Claude ships an `ai-title` record and dev3 uses it verbatim; Codex ships
- * nothing, so the first request stands in. Cut at the first line break and at 80
+ * Used by both stores. Claude ships an `ai-title` record when it has one and
+ * dev3 uses it verbatim; Codex never ships one and Claude often does not either,
+ * and then the first request stands in. Cut at the first line break and at 80
  * characters — the same width the board gives an auto-generated task title.
  */
-export function codexTitleFrom(firstRequest: string | null): string | null {
+export function titleFromFirstRequest(firstRequest: string | null): string | null {
 	const line = firstRequest?.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
 	if (!line) return null;
 	return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
@@ -239,6 +297,8 @@ export interface ImportableConversation {
 	source: ConversationSource;
 	sessionId: string;
 	title: string;
+	/** The agent never named this session, so the title is the first request. */
+	titledFromRequest: boolean;
 	/** Where it ran. Always inside the project, always still on disk. */
 	workingDir: string;
 	transcriptPath: string;
@@ -319,13 +379,18 @@ function scanClaudeStore(context: ScanContext): ImportableConversation[] {
 				const body = readFileSafe(file);
 				if (body == null) continue;
 				const classified = classifyClaudeTranscript(body);
-				if (classified.kind !== "main" || !classified.sessionId || !classified.title) continue;
+				if (classified.kind !== "main" || !classified.sessionId) continue;
+				// `ai-title` is optional, so its absence may not hide the conversation —
+				// the first request names the card instead, exactly as on the Codex side.
+				const title = classified.title ?? titleFromFirstRequest(classified.firstRequest);
+				if (!title) continue;
 
 				const workingDir = resolveWorkingDir(classified.cwd, storeName, store.encoded, store.path);
 				const candidate = admit(context, {
 					source: "claude",
 					sessionId: classified.sessionId,
-					title: classified.title,
+					title,
+					titledFromRequest: classified.title == null,
 					workingDir,
 					transcriptPath: file,
 					gitBranch: classified.gitBranch,
@@ -370,7 +435,7 @@ function scanCodexStore(context: ScanContext): ImportableConversation[] {
 			const body = readFileSafe(file);
 			if (body == null) continue;
 			const classified = classifyCodexRollout(body);
-			const title = codexTitleFrom(classified.firstRequest);
+			const title = titleFromFirstRequest(classified.firstRequest);
 			// No request the human typed: a session that only ever received injected
 			// context has nothing to name a card after and nothing to pick up.
 			if (!title || classified.turns === 0) continue;
@@ -379,6 +444,7 @@ function scanCodexStore(context: ScanContext): ImportableConversation[] {
 				source: "codex",
 				sessionId: classified.sessionId ?? header.sessionId,
 				title,
+				titledFromRequest: true,
 				workingDir: classified.cwd ?? header.cwd,
 				transcriptPath: file,
 				gitBranch: classified.gitBranch,
