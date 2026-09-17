@@ -764,6 +764,24 @@ async function probeCodex(flag: "--version" | "--help"): Promise<string | null> 
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
  */
+/**
+ * Whether the config still carries the narrow fallback profile an older dev3
+ * wrote: `default_permissions = "workspace"` whose only filesystem grant is
+ * `":minimal" = "read"`.
+ *
+ * That profile governs every Codex run outside dev3, is narrower than Codex's
+ * own default, and is how standalone Codex broke on Homebrew installs. dev3
+ * wrote it, so dev3 takes it back out — the fingerprint is deliberately exact,
+ * and a profile carrying anything else is somebody's own and stays untouched.
+ */
+export function hasNarrowedWorkspaceProfile(parsed: CodexConfig): boolean {
+	if (parsed.default_permissions !== WORKSPACE_CODEX_PROFILE) return false;
+	const filesystem = (parsed.permissions?.[WORKSPACE_CODEX_PROFILE] as CodexPermissionsProfile | undefined)?.filesystem;
+	// Root-key subtables (`:project_roots`) parse as nested objects, not grants.
+	const grants = Object.entries(filesystem ?? {}).filter(([, mode]) => typeof mode === "string");
+	return grants.length === 1 && grants[0][0] === ":minimal" && grants[0][1] === "read";
+}
+
 export function ensureCodexConfig(
 	content: string | null,
 	worktreesPath: string,
@@ -919,9 +937,19 @@ export function ensureCodexConfig(
 
 		config = upsertRootLine(config, "default_permissions", '"workspace"');
 	}
-	// A `:minimal` fallback an older dev3 wrote is left as it is: its value is
-	// indistinguishable from a profile the user authored by hand, and widening
-	// someone's filesystem sandbox on a guess is worse than the narrow grant.
+	else if (hasNarrowedWorkspaceProfile(parsed)) {
+		// dev3 wrote this profile, and it is narrower than Codex's own default —
+		// which is what stops standalone Codex from starting on a Homebrew install.
+		// So dev3 widens it back on the next launch, at the same moment it patches
+		// everything else in this file. The fingerprint above is exact, so a
+		// profile carrying any other grant is the user's and is left alone.
+		config = upsertSectionLine(
+			config,
+			`[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`,
+			WORKSPACE_FALLBACK_READ_KEY,
+			'"read"',
+		);
+	}
 
 	// --- 4. Ensure [profiles.dev3*] config profiles ---
 	// On Codex ≥0.134 these profiles live in separate per-profile files (handled
@@ -1604,6 +1632,11 @@ export async function ensureCodexConfigFile(homePath: string): Promise<void> {
 
 	if (!syntax.profileV2) return;
 	ensureCodexProfileFiles(homePath);
+}
+
+/** The Codex config this user's standalone Codex reads. */
+export function codexConfigPath(homePath: string): string {
+	return join(homePath, ".codex", "config.toml");
 }
 
 /**

@@ -32,6 +32,7 @@ import { validateEnvMap } from "../../shared/env-text";
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
 import type { LowBatteryStatus } from "../../shared/low-battery";
 import { installAgentSkills } from "../agent-skills";
+
 import { forceSelectLowBatteryStyle, lowBatteryStatus } from "../low-battery";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
