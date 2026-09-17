@@ -1,6 +1,7 @@
+import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { Utils } from "../electrobun-platform";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
@@ -21,11 +22,12 @@ import { log } from "./shared";
  * decisions/2026/08/24/terminal-links-unique-suffix-fallback.md.
  *
  * All three handlers take client-supplied paths, so every path they touch is
- * gated to {@link allowedRoots} — the home directory plus registered project
- * roots. Resolution is gated too: an out-of-scope path must never become a
- * link that then refuses to open, and `..` segments let even a relative
- * candidate escape its base. Same exposure class as `listDirectory` behind
- * the same auth, but bounded — see decisions/2026/08/06/terminal-file-path-links.md.
+ * gated to {@link allowedRoots} — the home directory, the OS temp directories
+ * and registered project roots. Resolution is gated too: an out-of-scope path
+ * must never become a link that then refuses to open, and `..` segments let
+ * even a relative candidate escape its base. Same exposure class as
+ * `listDirectory` behind the same auth, but bounded — see
+ * decisions/2026/08/06/terminal-file-path-links.md.
  */
 
 const RESOLVE_TERMINAL_PATHS_MAX = 64;
@@ -38,7 +40,7 @@ const PREVIEW_IMAGE_MIME: Record<string, string> = {
 };
 
 async function statPathKind(absPath: string, roots: string[]): Promise<ResolvedTerminalPath | null> {
-	if (!roots.some((root) => isUnder(absPath, root))) return null;
+	if (!isPathAllowed(absPath, roots)) return null;
 	try {
 		const st = await stat(absPath);
 		if (st.isFile()) return { path: absPath, kind: "file" };
@@ -62,13 +64,60 @@ function isUnder(absPath: string, root: string): boolean {
 	return absPath === root || absPath.startsWith(root.endsWith("/") ? root : `${root}/`);
 }
 
+/**
+ * Agents park screenshots and scratch output in the OS temp directory, and both
+ * it and `/tmp` have a second spelling on macOS (`/private/...`), which the
+ * string-prefix gate would not otherwise recognise as the same place. A root of
+ * `/` would make the gate admit the whole filesystem, so a degenerate `TMPDIR`
+ * is dropped rather than trusted.
+ */
+function computeTempRoots(): string[] {
+	const roots = new Set<string>();
+	const add = (root: string) => {
+		if (!root || root === "/") return;
+		roots.add(root);
+		try {
+			roots.add(realpathSync(root));
+		} catch {
+			// no such directory on this system
+		}
+	};
+	add(tmpdir());
+	if (process.platform !== "win32") add("/tmp");
+	return [...roots];
+}
+
+// Constant for the process lifetime, and `realpathSync` is sync — resolve once.
+let cachedTempRoots: string[] | null = null;
+function tempRoots(): string[] {
+	cachedTempRoots ??= computeTempRoots();
+	return cachedTempRoots;
+}
+
 async function allowedRoots(): Promise<string[]> {
-	return [homedir(), ...(await projectRoots())];
+	return [homedir(), ...tempRoots(), ...(await projectRoots())];
+}
+
+/**
+ * The gate compares path strings and deliberately does not resolve symlinks —
+ * see decisions/2026/08/06/terminal-file-path-links.md. The temp directories are
+ * the one exception: they are world-writable, so a symlink planted there by any
+ * local account could aim at a file no root covers, and only following it before
+ * the stat tells the two apart.
+ */
+function isPathAllowed(absPath: string, roots: string[]): boolean {
+	if (!roots.some((root) => isUnder(absPath, root))) return false;
+	if (!tempRoots().some((root) => isUnder(absPath, root))) return true;
+	try {
+		return roots.some((root) => isUnder(realpathSync(absPath), root));
+	} catch {
+		// Unreadable or dangling: nothing to open either way.
+		return false;
+	}
 }
 
 async function isTerminalPathAllowed(absPath: string): Promise<boolean> {
-	const normalized = resolvePath(absPath);
-	return (await allowedRoots()).some((root) => isUnder(normalized, root));
+	return isPathAllowed(resolvePath(absPath), await allowedRoots());
 }
 
 async function terminalPathBases(params: { taskId?: string; projectId?: string }): Promise<string[]> {

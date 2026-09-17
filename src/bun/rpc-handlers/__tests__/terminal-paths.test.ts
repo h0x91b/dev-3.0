@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 
@@ -126,6 +126,65 @@ describe("resolveTerminalPaths", () => {
 		});
 		expect(resolved["/etc/hosts"]).toBeNull();
 		expect(resolved[`${"../".repeat(12)}etc/hosts`]).toBeNull();
+	});
+
+	// The gate builds a "/"-separated prefix, so on Windows nothing is ever under
+	// any root and the temp allowance is inert there — the same way the home and
+	// project roots are. See decisions/2026/09/16/terminal-links-allow-temp-dirs.md.
+	it.skipIf(process.platform === "win32")(
+		"resolves absolute paths under the OS temp directories, where agents park scratch files",
+		async () => {
+		// Not registered as a project and not under $HOME: only the temp-dir
+		// allowance can make these resolve.
+		const scratch = mkdtempSync(join(tmpdir(), "dev3-terminal-paths-scratch-"));
+		const inTmpdir = join(scratch, "rebuilt-1-cropped.png");
+		writeFileSync(inTmpdir, "png\n");
+		// On macOS `os.tmpdir()` is `/var/folders/…` whose real path is
+		// `/private/var/folders/…`; agents print both spellings of the same file.
+		const viaRealPath = join(realpathSync(scratch), "rebuilt-1-cropped.png");
+		const literalTmp = `/tmp/dev3-terminal-paths-${process.pid}.png`;
+		writeFileSync(literalTmp, "png\n");
+		try {
+			const { resolved } = await appHandlers.resolveTerminalPaths({
+				taskId: "task-1",
+				projectId: "proj-1",
+				paths: [inTmpdir, viaRealPath, literalTmp],
+			});
+			expect(resolved[inTmpdir]).toEqual({ path: inTmpdir, kind: "file" });
+			expect(resolved[viaRealPath]).toEqual({ path: viaRealPath, kind: "file" });
+			expect(resolved[literalTmp]).toEqual({ path: literalTmp, kind: "file" });
+		} finally {
+			rmSync(scratch, { recursive: true, force: true });
+			rmSync(literalTmp, { force: true });
+		}
+		},
+	);
+
+	// The temp dirs are world-writable, so this is the one place the string-prefix
+	// gate is not enough: unfollowed, a planted link hands out a file no root covers.
+	it.skipIf(process.platform === "win32")("refuses a temp-dir symlink pointing outside every allowed root", async () => {
+		const scratch = mkdtempSync(join(tmpdir(), "dev3-terminal-paths-escape-"));
+		const escape = join(scratch, "screenshot.png");
+		symlinkSync("/etc/hosts", escape);
+		const inward = join(scratch, "notes-link.txt");
+		symlinkSync(join(tmp, "notes.txt"), inward);
+		try {
+			const { resolved } = await appHandlers.resolveTerminalPaths({
+				taskId: "task-1",
+				projectId: "proj-1",
+				paths: [escape, inward],
+			});
+			expect(resolved[escape]).toBeNull();
+			expect(await appHandlers.readFilePreview({ path: escape })).toEqual({ kind: "not-found" });
+			await expect(appHandlers.openTerminalPath({ path: escape, mode: "system" })).rejects.toThrow(
+				/outside the allowed directories/,
+			);
+			// A link whose target is itself in scope still resolves — the check
+			// follows the link, it does not ban links.
+			expect(resolved[inward]).toEqual({ path: inward, kind: "file" });
+		} finally {
+			rmSync(scratch, { recursive: true, force: true });
+		}
 	});
 
 	it("resolves a bare filename to the one nested file whose path ends with it", async () => {

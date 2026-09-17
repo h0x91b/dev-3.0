@@ -15,7 +15,9 @@ import { isRelativeUrl } from "./markdown-urls";
  * The webview has no base URL pointing at the checkout, so such a src can never
  * load as a plain URL — it is read off disk through `readFilePreview` and swapped
  * in as a data URL. Same handler the terminal path preview uses, so the path is
- * gated to the home dir plus registered project roots on the bun side.
+ * gated on the bun side to the home dir, the OS temp directories and registered
+ * project roots. A src with enough `..` segments resolves into one of those temp
+ * directories, and this read needs no click — an image there loads on render.
  *
  * Markdown images are React components, so resolved data URLs remain stable
  * across parent renders without mutating renderer-owned DOM. The `src` arriving
