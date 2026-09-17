@@ -38,7 +38,20 @@ upstream Codex bug (openai/codex#38286, #45953); dev3's narrowed default is what
 
 ## Decision
 
-`ensureCodexConfig` writes `":root" = "read"` for the fallback `workspace` profile
+**dev3-owned launches start Codex by its resolved path.** `withResolvedCodexBinary`
+(`src/bun/rpc-handlers/shared-pure.ts`), applied in the launch handler (`tmux-pty.ts`, right after
+the binary-existence check) replaces a leading bare `codex` token with `realpathSync` of the path
+`resolveBinaryPath` already found. Grants are untouched, so dev3's sandbox posture is unchanged.
+It is macOS-only (Seatbelt is what mismatches), skips a command the user shaped themselves — an
+absolute path, a wrapper, any other token — skips a binary that is not a symlink, and returns the
+command unchanged on any failure rather than blocking a launch. Resolution runs per launch, so a
+`brew upgrade` that repoints the symlink is picked up on the next start.
+
+It lives at the launch boundary rather than in `resolveAgentCommand` on purpose: that function is
+pinned by golden command tests and runs in a vitest worker under Node, where the PATH lookup it
+would need cannot run.
+
+**The fallback profile no longer narrows Codex elsewhere.** `ensureCodexConfig` writes `":root" = "read"` for the fallback `workspace` profile
 (`WORKSPACE_FALLBACK_READ_KEY`) when it creates one. It does **not** rewrite a `:minimal` grant
 already present: dev3 cannot tell its own older output from a profile the user authored by hand —
 the value is identical either way — and widening somebody's filesystem sandbox on that guess is
@@ -56,7 +69,5 @@ deliberate: the alternative silently edits user-owned permissions.
 Leaving `default_permissions` unset: Codex then refuses to load the config at all, strictly worse.
 Adding the Codex binary's directory as a read root instead of `:root` (verified to work with
 `"/opt/homebrew/bin" = "read"`): narrower, but it hardcodes an install layout and papers over the
-upstream bug rather than removing dev3's unintended tightening. Launching Codex through its
-resolved executable path (verified to fix dev3-owned launches with `:minimal` intact): the right
-lever for dev3's own sessions, but it does nothing for standalone Codex and belongs in the launch
-path, not here.
+upstream bug rather than removing dev3's unintended tightening. Waiting for upstream alone
+(openai/codex#38286, #45953): leaves dev3's own Codex agents dead on every Homebrew install.

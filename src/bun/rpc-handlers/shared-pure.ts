@@ -385,6 +385,37 @@ function realExecDir(): string | undefined {
 }
 
 /**
+ * A Codex launch command that starts the binary by its resolved path.
+ *
+ * Codex reads out-of-workspace instructions through a Seatbelt helper that
+ * re-execs its own executable, and it allows the *canonicalized* path as that
+ * helper's read root while `sandbox-exec` receives the path Codex was started
+ * with. Homebrew starts it through a symlink, so the two disagree and the
+ * helper dies with `Operation not permitted` (exit 71) whenever the active
+ * permission profile lacks full-disk read — which dev3's own profile
+ * deliberately does. Starting the resolved path makes them agree and changes no
+ * grant. See
+ * `decisions/2026/09/17/codex-workspace-fallback-must-mirror-codex-default.md`.
+ *
+ * macOS only: Seatbelt is what mismatches. Only a command that begins with the
+ * bare binary token is rewritten, so an absolute path or a wrapper the user
+ * chose is left exactly as they wrote it, and a path that resolves to itself
+ * changes nothing. Any failure returns the command untouched — a launch is
+ * never blocked over this.
+ */
+export function withResolvedCodexBinary(command: string, binaryName: string, binaryPath: string): string {
+	if (process.platform !== "darwin") return command;
+	if (command !== binaryName && !command.startsWith(`${binaryName} `)) return command;
+	try {
+		const resolved = realpathSync(binaryPath);
+		if (resolved === binaryPath) return command;
+		return `${launchDialect().commandToken(resolved)}${command.slice(binaryName.length)}`;
+	} catch {
+		return command;
+	}
+}
+
+/**
  * Full preference-ordered tmux search list (after a user's custom path):
  * bundled (self-contained, always version-pinned) → Homebrew tmux@3.6 keg →
  * then resolveBinaryPath falls through to PATH and the fallback bin dirs.
