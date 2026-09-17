@@ -44,7 +44,22 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 128,
+	"PRODUCT_UX_BIBLE.md": 132,
+	// 130 → 132 for §5.10's rewrite from a single boolean to per-control hiding
+	// with Simplify View as a preset (real review feedback: the design moved
+	// substantially between when the section shipped `Proposed` and the code
+	// landing `Observed`). Marked `Observed` now that it is implemented — every
+	// other implemented section in this file already is. `main` had ~120 bytes
+	// of headroom; the rewrite is tighter per-clause than the section it
+	// replaces but covers panel restore, header restore, and the never-hideable
+	// list the old section never had to.
+	//
+	// 128 → 130 for §5.10 Simplify mode: a new global feature-visibility preference that
+	// subsumes Advanced Experience and hides a closed surface list. Compaction ran first —
+	// the section was cut from five paragraphs to three tight ones — but `main` had zero
+	// headroom (127.98 of 128) before this landed, so even the compacted rule needed 2 of
+	// the 2 KB raised. Status: Proposed, not yet implemented.
+	//
 	// 114 → 115 for `global_header.agent_rate_limit_indicator`: the header gained a second
 	// mutation (the default-account switch, pinned-only) and an undocumented mutation on an
 	// ambient readout is exactly what this manifest exists to prevent. Compaction was the
@@ -113,8 +128,19 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	"ux-architecture.yaml": 117,
-	"UX_DECISIONS.md": 81,
+	"ux-architecture.yaml": 120,
+	// 119 → 120: `surfaces.settings.simplify_mode` rewritten for per-control
+	// hiding (panel restore, header restore, preset-only list, never-hideable
+	// list) — the same review-driven rework as the bible's §5.10, status
+	// proposed -> observed. `main` had ~450 bytes of headroom.
+	// 117 → 119 and the log 81 → 82 for `surfaces.settings.simplify_mode`: the closed
+	// hide-list + never-hides list for the new Simplify preference. Compacted first
+	// (dropped one duplicated evidence line, shortened every string value) but `main`
+	// had ~50 bytes of headroom on each file before this landed. Status: Proposed.
+	"UX_DECISIONS.md": 83,
+	// 82 → 83: two follow-up log entries the same day widened `simplify_mode`'s hide-list
+	// and swapped spawn-extra-agent back for the Setup Dev Server prompt. Each entry is
+	// already the compact one-line-rule form; `main` had ~90 bytes of headroom for both.
 };
 
 /**

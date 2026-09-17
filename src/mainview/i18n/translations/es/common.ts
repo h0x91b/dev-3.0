@@ -282,6 +282,7 @@ const common = {
 	"traffic.terminal.title": "Captura del terminal",
 	"traffic.terminal.show": "Mostrar",
 	"traffic.terminal.hide": "Ocultar",
+	"hideableControls.hide": "Ocultar",
 	"traffic.terminal.refresh": "Actualizar",
 	"traffic.terminal.loading": "Leyendo el terminal…",
 	"traffic.terminal.isText": "Texto leído del terminal, no una imagen de él.",

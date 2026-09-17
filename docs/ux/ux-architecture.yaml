@@ -426,6 +426,19 @@ ux_architecture:
       allowed: ["configuration", "preference", "integration", "permission", "scripts"]
       forbidden: ["daily_operational_action"]
       notifications: "Owns focus mode, watch default, sound, browser alerts, and Web Push. Invites only link here; image auto-open stays in Tasks."
+      simplify_mode:
+        spec: "Per-control hiding, not a boolean mode. GlobalSettings.hiddenControls: string[] holds every hidden id (hidden-controls.ts mirrors it, same class as experimentalAgentTraffic). Absent id = visible, always. Simplify View (Settings -> System -> Advanced Experience) is a PRESET: on unions simplify_view_preset_ids into the set; its checked state is derived (every preset id hidden), not stored. Off by default, reversible, destroys no data."
+        hide_mechanism: "Desktop right-click -> one-item Hide menu (HideableControl/useHideContextMenu). Touch/remote: an always-visible Hide icon on the control's own overflow/sheet row (HideRowButton) -- no right click there."
+        panel_hideable: ["diff-include-tests (context bar)", "spawn-agent, bug-hunters, hibernate, scheduled-message, tmux-pane-controls (session/agent bar)", "scripts-runner, setup-dev-server (runtime bar)"]
+        panel_restore: "Exactly one restore control, in panel chrome (not a bar, no bar-budget cost) next to gear+collapse; appears only while something is hidden. Dropdown groups by bar; each row is dual-purpose (click runs the action, hover/touch-visible return icon restores), plus a permanent Show all."
+        header_hideable: ["agent-traffic", "project-terminal-button", "remote-access-qr"]
+        header_restore: "No new icon -- hidden header ids fold into the existing kebab as restore rows. Nothing else in the header is hideable: the ambient resource readout, the rate-limit indicator, and the header's tmux session manager are NOT in this set."
+        preset_only_no_individual_ui: ["stats-nav", "automations-tab", "keyboard-shortcut-editor (⌘/ reference overlay stays)", "custom-column-creation", "label-creation", "spawn-variant"]
+        never_hideable: ["hint navigation (no anchor to right-click, no row to restore -- would silently dead-key its own ⌘/ advert)", "notes", "image/artifact viewers", "help mode/tours", "diff-review comments + GitHub layer", "the running dev-server control", "open-in", "ports"]
+        semantics: "Hidden = unreachable at every entry point, never disabled; backing data/schedulers keep running. Parked-on-hidden-destination (agent-traffic, stats) redirects to dashboard; a shortcut going dark with a hidden control must go through FLAGGED_SHORTCUTS."
+        list_governance: "preset_only_no_individual_ui is closed; grows only with a budget_exception-grade reason."
+        status: "observed"
+        evidence: ["hideable-controls.ts", "hidden-controls.ts", "global-settings-cache.ts", "HideableControl.tsx", "task-info-panel/PanelRestoreControl.tsx", "AdvancedExperienceSection.tsx", "bible §5.10"]
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."

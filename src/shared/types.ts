@@ -1313,6 +1313,15 @@ export interface GlobalSettings {
 	 */
 	freezeDiagnosticsEnabled?: boolean;
 	/**
+	 * Stable ids (`HideableControlId`, src/mainview/hideable-controls.ts) of
+	 * every individually-hidden control — a right-click "Hide", a touch Hide
+	 * row, or the Simplify View preset all write into this same set. Absent id
+	 * = visible, always, even with the preset applied: a control never listed
+	 * here was never touched by anything. Hides UI only, never destroys data.
+	 * See PRODUCT_UX_BIBLE.md §5.10.
+	 */
+	hiddenControls?: string[];
+	/**
 	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
 	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
 	 * the default for a fresh install and for anyone upgrading, because having

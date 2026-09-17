@@ -19,6 +19,7 @@ import ProjectSpacesField from "./ProjectSpacesField";
 import ImportConversationsModal from "./ImportConversationsModal";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 
 const CONFIG_BOOLEAN_DEFAULTS = {
 	autoReviewEnabled: false,
@@ -1454,6 +1455,15 @@ function ProjectSettings({
 			? (initialTab === "automations" ? "automations" : "global")
 			: (initialTab ?? "global"),
 	);
+	// The "automations-tab" control (§5.10, typically via the Simplify View
+	// preset) hides this tab; never strand the user on it.
+	const automationsTabHidden = useIsControlHidden("automations-tab");
+	const labelCreationHidden = useIsControlHidden("label-creation");
+	useEffect(() => {
+		if (automationsTabHidden) {
+			setActiveTab((tab) => (tab === "automations" ? "global" : tab));
+		}
+	}, [automationsTabHidden]);
 
 	// ---- Project tab state (reads/writes projects.json) ----
 	const projectConfigFromProject = useCallback((p: Project): ProjectConfigValues => ({
@@ -2118,9 +2128,11 @@ function ProjectSettings({
 									</button>
 								</>
 							)}
-							<button type="button" {...tabButtonProps("automations")}>
-								{t("automations.tabLabel")}
-							</button>
+							{!automationsTabHidden && (
+								<button type="button" {...tabButtonProps("automations")}>
+									{t("automations.tabLabel")}
+								</button>
+							)}
 						</div>
 						<p className="text-fg-muted text-xs px-1">
 							{activeTab === "global" && t("projectSettings.tabGlobalDesc")}
@@ -2133,7 +2145,7 @@ function ProjectSettings({
 					</div>
 
 					{/* ======== Automations tab ======== */}
-					{activeTab === "automations" && (
+					{activeTab === "automations" && !automationsTabHidden && (
 						<div data-help-id="project-settings.automations">
 							<AutomationsPanel project={project} />
 						</div>
@@ -2215,9 +2227,11 @@ function ProjectSettings({
 										<EmptyHint>{t("labels.noLabels")}</EmptyHint>
 									)}
 								</div>
-								<AddRowButton onClick={handleAddLabel} disabled={labelSaving !== null}>
-									{t("labels.addLabel")}
-								</AddRowButton>
+								{!labelCreationHidden && (
+									<AddRowButton onClick={handleAddLabel} disabled={labelSaving !== null}>
+										{t("labels.addLabel")}
+									</AddRowButton>
+								)}
 							</div>
 							</SettingsSection>
 

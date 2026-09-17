@@ -3,6 +3,7 @@ import { markTrafficSeen } from "../../agent-traffic";
 import { useT } from "../../i18n";
 import { useAgentTraffic } from "../../hooks/useAgentTraffic";
 import { useAgentTrafficEnabled } from "../../hooks/useAgentTrafficEnabled";
+import { useIsControlHidden } from "../../hooks/useIsControlHidden";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import { AgentTrafficIcon } from "../HeaderIcons";
@@ -19,7 +20,9 @@ export default function AgentTrafficIndicator({
 	variant = "bar",
 }: Props) {
 	const t = useT();
-	const featureOn = useAgentTrafficEnabled();
+	const trafficEnabled = useAgentTrafficEnabled();
+	const trafficHidden = useIsControlHidden("agent-traffic");
+	const featureOn = trafficEnabled && !trafficHidden;
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const traffic = useAgentTraffic(projectId);
 	const seenRows = useRef(traffic.rows.length);

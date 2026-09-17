@@ -1,4 +1,5 @@
 import { getAgentTrafficEnabled } from "./agent-traffic-flag";
+import { isControlHidden } from "./hidden-controls";
 import type { TranslationKey } from "./i18n";
 import type { ShortcutSlot } from "../shared/types";
 import {
@@ -352,9 +353,13 @@ export function shortcutAppliesInMode(spec: ShortcutSpec, remote: boolean): bool
  * Shortcuts gated behind an experimental setting: listed only while their feature
  * exists. A combo the overlay advertises and nothing answers reads as a bug.
  */
+function agentTrafficVisible(): boolean {
+	return getAgentTrafficEnabled() && !isControlHidden("agent-traffic");
+}
+
 const FLAGGED_SHORTCUTS: Record<string, () => boolean> = {
-	"agent-traffic-log": getAgentTrafficEnabled,
-	"traffic-replay-play-pause": getAgentTrafficEnabled,
+	"agent-traffic-log": agentTrafficVisible,
+	"traffic-replay-play-pause": agentTrafficVisible,
 };
 
 /** Whether the shortcut's feature is currently switched on (true when ungated). */
