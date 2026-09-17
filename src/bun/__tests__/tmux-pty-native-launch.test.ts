@@ -206,6 +206,7 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	portableReadKey: vi.fn(() => ""),
 	resolveBinaryPath: vi.fn(() => ({ resolvedPath: "/usr/local/bin/claude" })),
 	shellQuote: vi.fn((s: string) => s),
+	withResolvedCodexBinary: vi.fn((command: string) => command),
 	writeLaunchScript: vi.fn(async () => undefined),
 }));
 

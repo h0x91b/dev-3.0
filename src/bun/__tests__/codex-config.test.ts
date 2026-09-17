@@ -52,11 +52,36 @@ describe("ensureCodexConfig", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain('default_permissions = "workspace"');
 			expect(result).toContain("[permissions.workspace.filesystem]");
-			expect(result).toContain('":minimal" = "read"');
+			expect(result).toContain('":root" = "read"');
 			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
 			expect(result).toContain('"." = "write"');
 			expect(result).toContain("[permissions.workspace.network]");
 			expect(result).toContain("enabled = true");
+		});
+
+		it("does not narrow the filesystem sandbox of Codex runs outside dev3", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
+			const workspaceFs = result.slice(result.indexOf("[permissions.workspace.filesystem]"));
+			const workspaceFsBlock = workspaceFs.slice(0, workspaceFs.indexOf("\n["));
+			expect(workspaceFsBlock).toContain('":root" = "read"');
+			expect(workspaceFsBlock).not.toContain('":minimal"');
+		});
+
+		it("never rewrites an existing workspace profile's filesystem grant", () => {
+			const existing = `default_permissions = "workspace"
+
+[permissions.workspace.filesystem]
+":minimal" = "read"
+
+[permissions.workspace.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.workspace.network]
+enabled = true
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toContain('":minimal" = "read"');
+			expect(result).not.toContain('":root" = "read"');
 		});
 
 		it("can trust an exact worktree path in addition to the shared worktrees root", () => {

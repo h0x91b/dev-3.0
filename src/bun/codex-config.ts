@@ -16,6 +16,13 @@ const log = createLogger("codex-config");
  */
 export const DEV3_CODEX_PROFILE = "dev3";
 export const WORKSPACE_CODEX_PROFILE = "workspace";
+/**
+ * Read grant of the fallback `workspace` profile. `:root` matches Codex's own
+ * default; `:minimal` used to be written here and silently narrowed the
+ * filesystem sandbox of every Codex run outside dev3.
+ */
+const WORKSPACE_FALLBACK_READ_KEY = '":root"';
+const WORKSPACE_FALLBACK_READ_LINE = `${WORKSPACE_FALLBACK_READ_KEY} = "read"`;
 
 interface CodexPermissionsProfile {
 	filesystem?: Record<string, unknown>;
@@ -751,6 +758,9 @@ async function probeCodex(flag: "--version" | "--help"): Promise<string | null> 
  * creates a generic `workspace` permission profile and sets it as the default
  * so Codex accepts configs that define [permissions.*] profiles.
  *
+ * That fallback governs every Codex run outside dev3, so its filesystem grant
+ * mirrors Codex's own built-in default (`:root` read) instead of tightening it.
+ *
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
  */
@@ -874,7 +884,7 @@ export function ensureCodexConfig(
 			const block = [
 				"",
 				`[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`,
-				'":minimal" = "read"',
+				WORKSPACE_FALLBACK_READ_LINE,
 				"",
 				workspaceProjectRootsHeader,
 				'"." = "write"',
@@ -886,10 +896,10 @@ export function ensureCodexConfig(
 			config = appendBlock(config, block);
 		} else {
 			if (workspacePerm.filesystem == null) {
-				const block = `\n${workspaceFsHeader}\n":minimal" = "read"\n`;
+				const block = `\n${workspaceFsHeader}\n${WORKSPACE_FALLBACK_READ_LINE}\n`;
 				config = appendBlock(config, block);
 			} else {
-				config = upsertSectionLine(config, workspaceFsHeader, '":minimal"', '"read"');
+				config = upsertSectionLine(config, workspaceFsHeader, WORKSPACE_FALLBACK_READ_KEY, '"read"');
 			}
 
 			if (!config.includes(workspaceProjectRootsHeader)) {
@@ -909,6 +919,9 @@ export function ensureCodexConfig(
 
 		config = upsertRootLine(config, "default_permissions", '"workspace"');
 	}
+	// A `:minimal` fallback an older dev3 wrote is left as it is: its value is
+	// indistinguishable from a profile the user authored by hand, and widening
+	// someone's filesystem sandbox on a guess is worse than the narrow grant.
 
 	// --- 4. Ensure [profiles.dev3*] config profiles ---
 	// On Codex ≥0.134 these profiles live in separate per-profile files (handled
