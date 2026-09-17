@@ -126,20 +126,9 @@ describe("shell environment bootstrap", () => {
 		const { resolveShellEnv } = await import("../shell-env");
 		const result = await resolveShellEnv();
 
-		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me", DEV3_DEBUG: "1" });
-	});
-
-	it("keeps an explicit diagnostic opt-out above the login-shell value", async () => {
-		const previous = process.env.DEV3_DEBUG;
-		try {
-			process.env.DEV3_DEBUG = "0";
-			const { applyFullShellEnvToProcess } = await import("../shell-env");
-			applyFullShellEnvToProcess({ fullEnv: { DEV3_DEBUG: "1" } }, true);
-			expect(process.env.DEV3_DEBUG).toBe("0");
-		} finally {
-			if (previous === undefined) delete process.env.DEV3_DEBUG;
-			else process.env.DEV3_DEBUG = previous;
-		}
+		// Every DEV3_* variable is internal wiring, with no carve-out: the freeze
+		// collector is a saved setting now, not a shell-profile export.
+		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
 	});
 
 	it("never inherits neutralized third-party vars (CLAUDE_CODE_DISABLE_MOUSE_CLICKS) into fullEnv", async () => {

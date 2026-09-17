@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFreezeMonitor } from "../freeze-diagnostics/monitor";
 import { createCaptureStore, createStackCapture, rendererPids } from "../freeze-diagnostics/capture";
-import { freezeDiagnosticsEnabled, freezeBeat } from "../freeze-diagnostics";
+import {
+	applyFreezeDiagnosticsSetting,
+	configureFreezeDiagnostics,
+	freezeBeat,
+	freezeDiagnosticsRunning,
+	freezeDiagnosticsSupported,
+	recordFreezeDiagnostic,
+	stopFreezeDiagnostics,
+} from "../freeze-diagnostics";
 import type { FreezeBeat } from "../freeze-diagnostics/protocol";
 
 vi.mock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn() }), getLogPath: () => "/unused" }));
@@ -23,13 +31,53 @@ function fixture() {
 }
 
 describe("opt-in local freeze diagnostics", () => {
-	it("is off by default, independent of canary, and macOS only", () => {
-		expect(freezeDiagnosticsEnabled({}, "darwin")).toBe(false);
-		expect(freezeDiagnosticsEnabled({ DEV3_CHANNEL: "canary" }, "darwin")).toBe(false);
-		expect(freezeDiagnosticsEnabled({ DEV3_DEBUG: "1" }, "darwin")).toBe(true);
-		expect(freezeDiagnosticsEnabled({ DEV3_DEBUG: "0" }, "darwin")).toBe(false);
-		expect(freezeDiagnosticsEnabled({ DEV3_DEBUG: "1" }, "linux")).toBe(false);
-		expect(freezeDiagnosticsEnabled({ DEV3_DEBUG: "1" }, "win32")).toBe(false);
+	it("can only record on macOS", () => {
+		expect(freezeDiagnosticsSupported("darwin")).toBe(true);
+		expect(freezeDiagnosticsSupported("linux")).toBe(false);
+		expect(freezeDiagnosticsSupported("win32")).toBe(false);
+	});
+	it("starts and stops the collector with the saved setting, on every platform the same way", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-toggle-"));
+		directories.push(dir);
+		const workerPath = join(dir, "worker.mjs");
+		// A worker that only stays alive: this proves the lifecycle, not the sampler.
+		writeFileSync(workerPath, "import { parentPort } from 'node:worker_threads';\nparentPort?.on('message', () => {});\n");
+
+		// Nothing is configured yet, so an enabled setting cannot start anything.
+		applyFreezeDiagnosticsSetting(true, "darwin");
+		expect(freezeDiagnosticsRunning()).toBe(false);
+
+		configureFreezeDiagnostics({ workerPath, version: "test", build: "test" });
+		try {
+			// An unsupported host ignores the setting instead of half-starting.
+			applyFreezeDiagnosticsSetting(true, "linux");
+			expect(freezeDiagnosticsRunning()).toBe(false);
+			applyFreezeDiagnosticsSetting(true, "win32");
+			expect(freezeDiagnosticsRunning()).toBe(false);
+
+			applyFreezeDiagnosticsSetting(true, "darwin");
+			expect(freezeDiagnosticsRunning()).toBe(true);
+			// Saving the settings again must not stack a second collector.
+			applyFreezeDiagnosticsSetting(true, "darwin");
+			expect(freezeDiagnosticsRunning()).toBe(true);
+
+			applyFreezeDiagnosticsSetting(false, "darwin");
+			expect(freezeDiagnosticsRunning()).toBe(false);
+			// Turning it off stops future collection: a beat now reaches nobody.
+			expect(() => recordFreezeDiagnostic({ kind: "host" })).not.toThrow();
+
+			// And it can come back on in the same session, without a restart.
+			applyFreezeDiagnosticsSetting(true, "darwin");
+			expect(freezeDiagnosticsRunning()).toBe(true);
+		} finally {
+			stopFreezeDiagnostics();
+		}
+		expect(freezeDiagnosticsRunning()).toBe(false);
+	});
+	it("ignores a missing worker asset instead of reporting a live collector", () => {
+		configureFreezeDiagnostics({ workerPath: join(tmpdir(), "dev3-freeze-absent.mjs"), version: "test", build: "test" });
+		applyFreezeDiagnosticsSetting(true, "darwin");
+		expect(freezeDiagnosticsRunning()).toBe(false);
 	});
 	it("copies only structural heartbeat fields", () => {
 		const safe = freezeBeat({ ...beat, prompt: "secret", viewport: { width: 100, height: 200, dpr: 2, title: "secret" } } as FreezeBeat);

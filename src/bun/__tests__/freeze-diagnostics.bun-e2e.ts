@@ -7,12 +7,14 @@ if (process.platform !== "darwin") {
 	console.log("SKIP: macOS sampling proof");
 } else {
 	const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-e2e-"));
-	process.env.DEV3_DEBUG = "1";
 	process.env.DEV3_LOG_DIR = dir;
-	const { startFreezeDiagnostics } = await import("../freeze-diagnostics");
+	const { applyFreezeDiagnosticsSetting, configureFreezeDiagnostics, stopFreezeDiagnostics } =
+		await import("../freeze-diagnostics");
 	const packaged = join(dir, "packaged-worker");
 	cpSync(new URL("../freeze-diagnostics", import.meta.url), packaged, { recursive: true });
-	const stop = startFreezeDiagnostics({ workerPath: join(packaged, "worker.ts"), version: "fixture", build: "fixture" });
+	configureFreezeDiagnostics({ workerPath: join(packaged, "worker.ts"), version: "fixture", build: "fixture" });
+	applyFreezeDiagnosticsSetting(true);
+	const stop = stopFreezeDiagnostics;
 	try {
 		await Bun.sleep(22_000);
 		const started = Date.now();

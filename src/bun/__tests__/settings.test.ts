@@ -108,6 +108,20 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).experimentalAgentTraffic).toBe(true);
 	});
 
+	/**
+	 * Freeze diagnostics is default-off: only an explicit true is a stored opt-in,
+	 * so a stray `false` never keeps the key alive on disk.
+	 */
+	it("stores only an explicit freeze-diagnostics opt-in", async () => {
+		expect((await loadSettings()).freezeDiagnosticsEnabled).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ freezeDiagnosticsEnabled: false }), null, 2), "utf-8");
+		expect((await loadSettings()).freezeDiagnosticsEnabled).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ freezeDiagnosticsEnabled: true }), null, 2), "utf-8");
+		expect((await loadSettings()).freezeDiagnosticsEnabled).toBe(true);
+	});
+
 	/** Terminal bidi is default-on too: an explicit false is the opt-out and must survive. */
 	it("keeps both explicit terminal-bidi choices and stores no default", async () => {
 		expect((await loadSettings()).experimentalTerminalBidi).toBeUndefined();
@@ -261,6 +275,7 @@ describe("saveSettings", () => {
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			experimentalAgentTraffic: true,
+			freezeDiagnosticsEnabled: true,
 			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
 			lowBatteryDisabled: true,

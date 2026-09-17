@@ -524,6 +524,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "freeze-diagnostics",
+		category: "system",
+		titleKey: "settings.freezeDiagnostics",
+		descriptionKey: "settings.freezeDiagnosticsDesc",
+		anchor: "freeze-diagnostics",
+		globalField: "freezeDiagnosticsEnabled",
+		storage: "global",
+	},
+	{
 		id: "telemetry",
 		category: "system",
 		titleKey: "settings.telemetry",
@@ -590,6 +599,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentCustomBinaryPaths",
 	"experimentalTerminalBidi",
 	"experimentalAgentTraffic",
+	"freezeDiagnosticsEnabled",
 	"agentTrafficExperiment",
 	"playSoundOnTaskComplete",
 	"externalApps",

@@ -1013,6 +1013,16 @@ async function checkPrOriginTaskLinkSupported(): Promise<{ supported: boolean }>
 	return { supported: deepLinkSchemeRegistered(process.platform) };
 }
 
+async function getFreezeDiagnosticsStatus(): Promise<{ supported: boolean; running: boolean; directory: string }> {
+	const { freezeDiagnosticsDirectory, freezeDiagnosticsRunning, freezeDiagnosticsSupported } =
+		await import("../freeze-diagnostics");
+	return {
+		supported: freezeDiagnosticsSupported(),
+		running: freezeDiagnosticsRunning(),
+		directory: freezeDiagnosticsDirectory(),
+	};
+}
+
 async function getPreventSleepState(): Promise<{ enabled: boolean; available: boolean; forcedByRemote: boolean }> {
 	const { isCaffeinateAvailable, isPreventSleepEnabled } = await import("../caffeinate");
 	const { isRemoteAccessActive } = await import("../remote-access-server");
@@ -1103,6 +1113,7 @@ export const appHandlers = {
 	checkCaffeinateAvailable,
 	checkCanaryChannelAvailable,
 	checkPrOriginTaskLinkSupported,
+	getFreezeDiagnosticsStatus,
 	getPreventSleepState,
 	setPreventSleep,
 	copyTerminalSelection,

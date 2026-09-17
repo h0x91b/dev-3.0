@@ -42,6 +42,9 @@ vi.mock("../../rpc", () => ({
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
 			checkCanaryChannelAvailable: vi.fn().mockResolvedValue({ available: true }),
 			checkPrOriginTaskLinkSupported: vi.fn().mockResolvedValue({ supported: true }),
+			getFreezeDiagnosticsStatus: vi
+				.fn()
+				.mockResolvedValue({ supported: true, running: false, directory: "/logs/freeze" }),
 			getNativeTerminalAvailability: vi
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),

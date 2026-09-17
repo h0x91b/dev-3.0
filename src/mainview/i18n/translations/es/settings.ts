@@ -621,7 +621,7 @@ const settings = {
 	// Advanced Experience — beta behaviour; each entry states its own default
 	"settings.categoryAdvancedExperience": "Experiencia avanzada",
 	"settings.categoryAdvancedExperienceDesc":
-		"Comportamiento en beta: útil, pero todavía no estable. Cada opción indica su valor por defecto.",
+		"Comportamiento en beta y diagnóstico local: útil, pero todavía no estable. Cada opción indica su valor por defecto.",
 	"settings.terminalBidi": "Texto de derecha a izquierda en terminales (BiDi)",
 	"settings.terminalBidiDesc":
 		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",
@@ -632,6 +632,15 @@ const settings = {
 		"Mira lo que tus agentes se escriben entre sí: tareas y mensajes reales de las últimas 24 horas, con acceso al historial anterior conservado. Se abre con ⇧⌘M y dentro eliges la presentación: Experimento 2, un grafo plano de tarjetas, o Experimento 1, una órbita 3D.",
 	"settings.agentTrafficCaveat":
 		"Mientras está desactivado la función no deja rastro: ni control en la cabecera, ni atajo, ni entrada de menú, ni comando de la paleta. Los mensajes se guardan en disco de todos modos, así que al activarla verás el historial que ya tienes. El estado de lectura es por navegador, así que leer en el escritorio deja el distintivo encendido en el móvil.",
+
+	"settings.freezeDiagnostics": "Registrar bloqueos de la app (macOS)",
+	"settings.freezeDiagnosticsDesc":
+		"Cuando la app deja de responder, escribe en un archivo local lo que ocurría: qué ventanas seguían vivas, qué hacían el host y la interfaz, y una muestra de pila de tres segundos. Desactivado por defecto. Al activarlo empieza a registrar de inmediato y al desactivarlo se detiene de inmediato, sin reiniciar en ningún caso.",
+	"settings.freezeDiagnosticsCaveat":
+		"Todo se queda en esta máquina y no se envía a ningún sitio. Como mucho tres muestras por ejecución, con cinco minutos entre ellas, y se conservan las cinco sesiones más recientes: los archivos ya escritos permanecen hasta que esa rotación los descarte. Las pilas nativas pueden contener rutas de archivos, así que revísalas antes de compartir alguna.",
+	"settings.freezeDiagnosticsPath": "Archivos: {directory}",
+	"settings.freezeDiagnosticsUnsupported":
+		"Solo se puede registrar en macOS: esta app se ejecuta en otro sistema, así que aquí el interruptor no hace nada.",
 
 	// Telemetry opt-out
 	"settings.telemetry": "Telemetría",
