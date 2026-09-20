@@ -9,7 +9,7 @@ maintaining code against a plugin API that moves weekly. This record is that dec
 
 ## Investigation
 
-Checked against omp/18.1.19 with a probe extension, not only its docs: `session_start`, `input`,
+Checked against omp/18.1.19 and again against 18.2.6 with a probe extension, not only its docs: `session_start`, `input`,
 `agent_start`, `tool_call`, `tool_execution_start/end`, `turn_start/end`, `session_stop`, `agent_end`
 and `session_shutdown` all fire, in that order; `ctx.sessionManager.getSessionId()` answers from
 `session_start` on with the id `--resume` takes; a `--hook` process inherits `$TMUX_PANE` and the
@@ -48,8 +48,23 @@ harnesses; the handler now carries a `harness` field for prompt recording. Choic
   nothing, the same guard Codex's declarations carry.
 - **`agent_end` is the stop**, skipped when `willContinue` says omp is about to retry, and
   approval events from another session in the same process are ignored.
+- **omp's completion bell is switched off** (`PI_NOTIFICATIONS=off` in `OMP_DEFAULT_ENV`,
+  `src/bun/agents.ts`). omp rings a bare BEL when a turn ends (`completion.notify`, on by default),
+  dev3's PTY reader turns any bare BEL into a `user-questions` move, and that move lands ~200 ms
+  before the extension's `Stop` — which then sees a task already parked and refuses to touch it.
+  Every finished turn ended in Has Questions on the first end-to-end run. The env var is omp's own
+  kill switch for terminal notifications, honoured before any per-setting check.
 
 ## Risks
+
+**The old generic skill reaches the agent through a directory dev3 does not own.** omp also
+loads `<home>/.agents/skills/` — and under WSL the *Windows* profile too — at lower precedence
+than `~/.omp/agent/skills/`. A machine where another dev3 install wrote the manual-status generic
+skill there (a Windows dev3 in this case) hands omp a `SKILL.md` that says "run `dev3 task move`
+at the start and end of every turn", so the agent may move the task itself before the extension
+reports. Harmless in practice — both agree on the destination — and the system prompt still
+carries the hook-aware body; a stale skill copy is a general dev3 problem, not an omp one.
+
 
 The plugin API is the risk: a renamed event or context field silently stops reports, and nothing
 but the board going stale says so — the generated module deliberately guards every access and logs

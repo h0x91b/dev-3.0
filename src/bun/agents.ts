@@ -701,11 +701,25 @@ export function claudeDefaultEnv(
 	return { ...CLAUDE_DEFAULT_ENV, ...sandbox };
 }
 
+/**
+ * omp rings a terminal bell when a turn completes (`completion.notify`, on by
+ * default). dev3 reads a bare BEL as "the agent needs the user" and parks the
+ * task in user-questions before the status extension's Stop arrives, which then
+ * refuses to move it — so every omp turn ended in the wrong column. This env
+ * is omp's own kill switch for all terminal notifications.
+ */
+export const OMP_DEFAULT_ENV: Record<string, string> = {
+	PI_NOTIFICATIONS: "off",
+};
+
 /** Build default env vars for an agent based on which CLI it is. */
 export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfiguration): Record<string, string> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	if (isClaudeCommand(baseCmd, agent.agentFamily)) {
 		return claudeDefaultEnv();
+	}
+	if (agentKey(baseCmd, agent.agentFamily) === "omp") {
+		return { ...OMP_DEFAULT_ENV };
 	}
 	return {};
 }

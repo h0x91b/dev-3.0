@@ -155,7 +155,7 @@ omp has no JSON hooks; it loads TypeScript extension modules in-process. dev3 ge
 | `tool_approval_resolved` | `PostToolUse` | → back to the remembered lane |
 | `agent_end` (not `willContinue`) | `Stop` | → `review-by-ai` or `review-by-user` |
 
-Every report carries `ctx.sessionManager.getSessionId()`, so the pane's resumable id is captured exactly as Codex's is and recovery runs `omp --resume <id>`. An explicitly passed `--hook` path faces no trust prompt in omp, so unlike Codex nothing needs bypassing. See [`omp-status-extension`](decisions/2026/09/14/omp-status-extension.md).
+Every report carries `ctx.sessionManager.getSessionId()`, so the pane's resumable id is captured exactly as Codex's is and recovery runs `omp --resume <id>`. An explicitly passed `--hook` path faces no trust prompt in omp, so unlike Codex nothing needs bypassing. Every omp launch also carries `PI_NOTIFICATIONS=off`: omp's completion bell would otherwise trip dev3's BEL → `user-questions` move a beat before the extension's `Stop`, parking every finished turn in Has Questions. See [`omp-status-extension`](decisions/2026/09/20/omp-status-extension.md).
 
 ## Windows: how generated commands are spelled
 

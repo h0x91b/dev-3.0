@@ -1,6 +1,6 @@
 # omp as a first-class agent
 
-> Superseded in part on 2026-09-20 by `decisions/2026/09/14/omp-status-extension.md`: status is no
+> Superseded in part on 2026-09-20 by `decisions/2026/09/20/omp-status-extension.md`: status is no
 > longer manual — a generated extension loaded with `--hook` reports it. The "no worktree trust"
 > point stands, with a correction: omp applies no trust gate to an explicitly passed `--hook` path.
 
