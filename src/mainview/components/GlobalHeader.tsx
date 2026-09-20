@@ -87,6 +87,7 @@ interface GlobalHeaderProps {
 	remoteAccessActive: boolean;
 	/** False until help mode has been opened once — see `HELP_ATTRACTOR_SCREENS`. */
 	helpDiscovered?: boolean;
+	suppressHelpCallout?: boolean;
 	/**
 	 * A guided tour is running. The callout stays down while it does: the tour is
 	 * already teaching, and bible §10 allows exactly one callout per screen.
@@ -131,9 +132,9 @@ const COUNTS_CACHE_TTL = 30_000;
 /** How often the update toast re-reads remote/headless state while it is on screen. */
 const RESTART_CONTEXT_POLL_MS = 5_000;
 
-function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning, suppressHelpCallout }: GlobalHeaderProps) {
 	const t = useT();
-	const highlightHelp = !helpDiscovered && !tourRunning && HELP_ATTRACTOR_SCREENS.has(route.screen);
+	const highlightHelp = !helpDiscovered && !tourRunning && !suppressHelpCallout && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
 	const compact = useCompact();
@@ -1369,7 +1370,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						kbd={HELP_MODE_SHORTCUT ? shortcutKeysFor(HELP_MODE_SHORTCUT) : undefined}
 						// The callout below says the same thing, in the same place — hovering
 						// would stack two copies of one sentence on top of each other.
-						disabled={highlightHelp}
+						disabled={highlightHelp || suppressHelpCallout}
 					>
 						<button
 							onClick={() => window.dispatchEvent(new CustomEvent("menu:enter-help-mode"))}

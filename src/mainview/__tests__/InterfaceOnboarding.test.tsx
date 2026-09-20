@@ -161,17 +161,21 @@ describe("interface onboarding request ownership", () => {
 describe("interface onboarding consent", () => {
 	it("switches only on explicit consent, then shows the lesson in the same dialog", async () => {
 		rpc.mockImplementation(async (request: InterfaceOnboardingRequest) => response(request.action === "disable" ? "lesson" : request.action === "acknowledge" ? null : "invite"));
-		render(<InterfaceOnboarding route={dashboard} blocked={false} />);
+		const visibility = vi.fn();
+		render(<InterfaceOnboarding route={dashboard} blocked={false} onVisibilityChange={visibility} />);
 		await flush();
+		expect(visibility).toHaveBeenLastCalledWith(true);
 		const dialog = screen.getByRole("dialog");
 		expect(rpc.mock.calls.every(([request]) => request.action === "poll")).toBe(true);
 		fireEvent.click(screen.getByRole("button", { name: "settings.fullInterfaceSwitch" }));
 		await flush();
 		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(visibility).toHaveBeenLastCalledWith(true);
 		expect(screen.getByRole("heading", { name: "settings.fullInterfaceLessonTitle" })).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "settings.fullInterfaceLessonDone" }));
 		await flush();
 		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(visibility).toHaveBeenLastCalledWith(false);
 	});
 
 	it("Escape postpones, restores sibling interactivity, then restores keyboard focus", async () => {

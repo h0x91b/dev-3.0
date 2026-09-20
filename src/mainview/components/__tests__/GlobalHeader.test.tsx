@@ -167,6 +167,8 @@ function renderHeader(
 		updateChangelog?: UpdateChangelog | null;
 		updateDownloadStatus?: string | null;
 		remoteAccessActive?: boolean;
+		suppressHelpCallout?: boolean;
+		helpDiscovered?: boolean;
 		goBack?: () => void;
 		goForward?: () => void;
 		canGoBack?: boolean;
@@ -200,6 +202,8 @@ function headerElement(
 				updateChangelog={extra?.updateChangelog}
 				updateDownloadStatus={extra?.updateDownloadStatus}
 				remoteAccessActive={extra?.remoteAccessActive ?? false}
+				suppressHelpCallout={extra?.suppressHelpCallout}
+				helpDiscovered={extra?.helpDiscovered}
 			/>
 		</I18nProvider>
 	);
@@ -1402,6 +1406,17 @@ describe("GlobalHeader — compact layout", () => {
 });
 
 describe("GlobalHeader — help mode button", () => {
+	it("temporarily suppresses onboarding competition without marking help discovered", () => {
+		mockMatchMedia(false);
+		const props = { helpDiscovered: false, suppressHelpCallout: true };
+		const view = renderHeader({ screen: "dashboard" }, [], undefined, [], props);
+		expect(screen.queryByTestId("help-attractor-callout")).toBeNull();
+		expect(screen.getByTestId("header-help-mode")).not.toHaveAttribute("data-help-attractor");
+		view.rerender(headerElement({ screen: "dashboard" }, [], undefined, [], { ...props, suppressHelpCallout: false }));
+		expect(screen.getByTestId("help-attractor-callout")).toBeInTheDocument();
+		expect(screen.getByTestId("header-help-mode")).toHaveAttribute("data-help-attractor", "on");
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.getTasks.mockResolvedValue([]);
