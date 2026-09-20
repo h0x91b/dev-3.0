@@ -1,3 +1,4 @@
+import type { InterfaceOnboardingRequest, InterfaceOnboardingResponse } from "./interface-onboarding";
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
 import type { ImportConversationsResult, ImportableConversationView } from "./conversation-import-model";
@@ -1312,15 +1313,13 @@ export interface GlobalSettings {
 	 * too, not only for the next launch.
 	 */
 	freezeDiagnosticsEnabled?: boolean;
-	/**
-	 * Stable ids (`HideableControlId`, src/mainview/hideable-controls.ts) of
-	 * every individually-hidden control — a right-click "Hide", a touch Hide
-	 * row, or the Simplify View preset all write into this same set. Absent id
-	 * = visible, always, even with the preset applied: a control never listed
-	 * here was never touched by anything. Hides UI only, never destroys data.
-	 * See PRODUCT_UX_BIBLE.md §5.10.
-	 */
+	/** Effective hidden ids, retained for older installed versions. */
 	hiddenControls?: string[];
+	/** Personal choices survive applying and removing the Simplified Mode preset. */
+	personalHiddenControls?: string[];
+	simplifiedMode?: boolean;
+	/** Original installation cohort; manual transitions are tracked by the host. */
+	simplifiedModeSource?: "fresh" | "existing";
 	/**
 	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
 	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
@@ -5849,6 +5848,10 @@ export type AppRPCSchema = {
 					extra?: Record<string, string | number | boolean | null>;
 				};
 				response: void;
+			};
+			interfaceOnboarding: {
+				params: InterfaceOnboardingRequest;
+				response: InterfaceOnboardingResponse;
 			};
 			/**
 			 * Liveness beat from a renderer, every ~2s. A wedged renderer cannot report

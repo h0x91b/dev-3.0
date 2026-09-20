@@ -1,3 +1,5 @@
+import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
+import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -264,8 +266,18 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// minted after the snapshot was taken, so trusting the payload erased it on every
 	// settings change and the install got a new id on every launch.
 	const stored = await loadSettings();
-	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
+	const next: GlobalSettings = {
+		...params,
+		...normalizeSimplifiedInterface({
+			...params,
+			simplifiedMode: params.simplifiedMode ?? stored.simplifiedMode,
+			personalHiddenControls: params.personalHiddenControls ?? stored.personalHiddenControls,
+		}),
+		simplifiedModeSource: stored.simplifiedModeSource,
+		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
+	};
 	await saveSettings(next);
+	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
 	// Turning the artifact popup off after a freeze recovery turned it on is the
 	// user overruling us; the recovery stands down for good rather than switching
 	// it back on at the next freeze. See artifact-freeze-recovery.ts.

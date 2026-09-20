@@ -716,10 +716,7 @@ function GlobalSettings({
 	);
 
 	const handleSimplifyModeToggle = useCallback((enabled: boolean) => {
-		// The preset writes/removes ids in the hidden-controls set directly
-		// (hidden-controls.ts owns persistence for every hide/restore action,
-		// not just this one) — there is no separate `simplifyMode` field to
-		// patch through the Settings screen's own local state.
+
 		if (enabled) applySimplifyViewPreset();
 		else unapplySimplifyViewPreset();
 		trackEvent("settings_changed", { setting: "simplify_mode", value: String(enabled) });
@@ -914,6 +911,7 @@ function GlobalSettings({
 						zoomLevel={zoomLevel}
 						onThemeChange={applyThemeChange}
 						onLocaleChange={handleLocaleChange}
+						onSimplifyModeToggle={handleSimplifyModeToggle}
 					/>
 				);
 			case "tasks":
@@ -1046,7 +1044,6 @@ function GlobalSettings({
 							onTerminalBidiToggle={handleTerminalBidiToggle}
 							onAgentTrafficToggle={handleAgentTrafficToggle}
 							onFreezeDiagnosticsToggle={handleFreezeDiagnosticsToggle}
-							onSimplifyModeToggle={handleSimplifyModeToggle}
 						/>
 						<DeveloperToolsSection
 							t={t}

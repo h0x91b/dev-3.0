@@ -10,9 +10,11 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
-## 2026-09-15 — Simplify View becomes a preset over per-control hiding
+## 2026-09-20 — Simplified Mode leads toward the Full interface
 
-Real review feedback: a single `simplifyMode` boolean over a hardcoded list doesn't scale or self-document new features. Rework: `GlobalSettings.hiddenControls` is one set of ids any control writes into (right-click Hide, or a touch Hide row); Simplify View unions a closed preset into it. A Settings checklist page was considered and rejected — right-click-in-place plus one restore control per container reads location, a checklist page does not. Bible §5.10 / yaml `simplify_mode`, now `Observed`.
+Bible §5.10 / yaml `simplify_mode`: fresh-only onboarding, calm persisted invitations, Appearance ownership and separate personal hiding. Repeated invitations encourage discovery without forced switching; merging preset and personal ids cannot preserve personal choices when leaving the preset. Supersedes the September 15 single-set rule; no new permanent chrome.
+
+2026-09-15 — Per-control hiding replaces a hardcoded mode. Preset ownership superseded 2026-09-20; in-place Hide and per-container restore remain — bible §5.10.
 
 ## 2026-09-12 — Traffic terminal is an observation
 

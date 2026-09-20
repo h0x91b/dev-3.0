@@ -1,3 +1,4 @@
+import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
@@ -2998,6 +2999,7 @@ function App() {
 				{routeH1 && <h1 className="sr-only">{routeH1}</h1>}
 				{terminalImmersiveVisible ? renderTerminalImmersiveScreen() : renderScreen()}
 			</main>
+			<InterfaceOnboarding route={state.route} blocked={helpMode || hintMode || !!tour || terminalImmersiveVisible || !!switcher.session} />
 			{!terminalImmersiveVisible && (
 			<>
 			{switcher.session && (

@@ -1,3 +1,4 @@
+import { interfaceOnboarding } from "../interface-onboarding";
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
@@ -1061,6 +1062,7 @@ async function copyTerminalSelection(params: { taskId: string; text: string; mou
 }
 
 export const appHandlers = {
+	interfaceOnboarding,
 	logRendererError,
 	logRendererDiagnostic,
 	rendererHeartbeat: recordRendererHeartbeat,
