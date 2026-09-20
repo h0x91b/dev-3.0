@@ -2306,11 +2306,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setActiveFileId(initialActiveFileId);
 		setEditingCommentId(null);
 		// A review this browser still holds from before comments lived on the task
-		// record is carried over once, then the old key goes.
+		// record is carried over once. The old key is the only other copy, so it
+		// goes only once the task record has actually taken the import.
 		const legacy = readLegacyReview(task.id);
 		if (legacy.length > 0) {
-			importLegacyReview(legacy);
-			dropLegacyReview(task.id);
+			const legacyTaskId = task.id;
+			void importLegacyReview(legacy).then((saved) => {
+				if (saved) dropLegacyReview(legacyTaskId);
+			});
 		}
 	}, [currentRequest.focusFile, importLegacyReview, payload, task.id]);
 

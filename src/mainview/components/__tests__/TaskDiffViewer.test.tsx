@@ -2525,8 +2525,40 @@ describe("TaskDiffViewer", () => {
 				})],
 			});
 		});
-		expect(localStorage.getItem(reviewKey)).toBeNull();
+		await waitFor(() => expect(localStorage.getItem(reviewKey)).toBeNull());
 		expect(screen.getAllByText("carried over").length).toBeGreaterThan(0);
+	});
+
+	it("keeps the old localStorage key when the import is refused, so the review is not lost", async () => {
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+		const stored = JSON.stringify({
+			savedAt: Date.now() - 60_000,
+			comments: {
+				"src/app.ts": {
+					oldFile: {},
+					newFile: { "1": { data: { comments: [{ id: "legacy-1", body: "carried over", createdAt: "2026-09-14T10:00:00.000Z", startLine: 1, endLine: 1, side: "newFile" }] } } },
+				},
+			},
+		});
+		localStorage.setItem(reviewKey, stored);
+		vi.mocked(api.request.importReviewComments).mockRejectedValueOnce(new Error("Task not found: t1"));
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await waitFor(() => expect(api.request.importReviewComments).toHaveBeenCalled());
+		// The optimistic copy rolls back, so the browser copy is the only one left.
+		await waitFor(() => expect(screen.queryAllByText("carried over")).toHaveLength(0));
+		expect(localStorage.getItem(reviewKey)).toBe(stored);
 	});
 
 	it("sweeps expired and corrupt review entries for other tasks on mount", async () => {

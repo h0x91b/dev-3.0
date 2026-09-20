@@ -246,10 +246,12 @@ beforeEach(() => {
  * Render TerminalView and drive the full async setup chain:
  *   fonts.load() resolves → setup() → ResizeObserver fires → rAF → term.focus()
  */
-async function renderAndSetup() {
+// canComment defaults to on here: these render the task terminal, the one host
+// whose id really names a task. A project terminal is the false case.
+async function renderAndSetup({ canComment = true }: { canComment?: boolean } = {}) {
 	let result!: ReturnType<typeof render>;
 	await act(async () => {
-		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" /></I18nProvider>);
+		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" canComment={canComment} /></I18nProvider>);
 		// Flush the microtask queue so the fonts.load() .then() runs → setup()
 		await Promise.resolve();
 		await Promise.resolve();
@@ -2433,6 +2435,52 @@ describe("TerminalView – comment on a selection", () => {
 		await act(async () => {
 			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+		await act(async () => { await Promise.resolve(); });
+		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
+	});
+
+	it("does not say a comment was saved when the task record refused it", async () => {
+		const { api } = await import("../rpc");
+		const addReviewComment = vi.mocked(api.request.addReviewComment as unknown as ReturnType<typeof vi.fn>);
+		addReviewComment.mockClear();
+		addReviewComment.mockRejectedValueOnce(new Error("Task not found: project-p1"));
+		vi.mocked(toast.info).mockClear();
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("boom");
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+
+		const { container } = await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 200, clientY: 120 }));
+		});
+		await act(async () => { await Promise.resolve(); });
+		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLButtonElement;
+		await act(async () => { fireEvent.click(chip); });
+		const composer = container.querySelector("[data-testid='terminal-comment-composer']") as HTMLElement;
+		const textarea = composer.querySelector("textarea") as HTMLTextAreaElement;
+		await act(async () => { fireEvent.change(textarea, { target: { value: "gone?" } }); });
+		const submit = Array.from(composer.querySelectorAll("button")).find((b) => b.textContent === "Add comment") as HTMLButtonElement;
+		await act(async () => { fireEvent.click(submit); });
+		await act(async () => { await Promise.resolve(); });
+
+		expect(vi.mocked(toast.error)).toHaveBeenCalled();
+		const info = vi.mocked(toast.info).mock.calls.map((call) => String(call[0]));
+		expect(info.some((message) => message.includes("Comment saved"))).toBe(false);
+	});
+
+	it("offers no chip where commenting is off: the id would name no task", async () => {
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("error: ENOENT");
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+		const { container } = await renderAndSetup({ canComment: false });
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 200, clientY: 120 }));
+			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "t1", text: "selected in tmux" } }));
 		});
 		await act(async () => { await Promise.resolve(); });
 		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();

@@ -105,6 +105,9 @@ export function ReviewAside({
 							data-outdated={outdated ? "true" : undefined}
 							className={comment.id === activeCommentId ? "bg-accent/5" : ""}
 							onClick={() => onActivate(comment.id)}
+							// Keyboard equivalent of that click: tabbing into any control of
+							// the thread activates it, so the aside is not mouse-only.
+							onFocusCapture={() => onActivate(comment.id)}
 						>
 							<ReviewThreadView
 								comments={[comment]}

@@ -109,7 +109,8 @@ export function ReviewThreadView({
 							<div className="space-y-2">
 								{/* Wraps: in a narrow panel the action row drops under the text instead of squeezing it to one letter per line. */}
 								<div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-									<div className="min-w-[10rem] flex-1 text-sm text-fg whitespace-pre-wrap break-words">
+									{/* min-w-0, not a floor: a 160px floor clipped the text in a phone-width aside. */}
+									<div className="min-w-0 flex-1 basis-40 text-sm text-fg whitespace-pre-wrap break-words">
 										{comment.body}
 									</div>
 									<div className="ml-auto flex flex-wrap items-center justify-end gap-1">

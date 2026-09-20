@@ -13,17 +13,25 @@ import {
 import { api } from "../rpc";
 import { toast } from "../toast";
 
+/**
+ * Every mutation resolves to whether the task record took it: `false` means the
+ * RPC was refused and the local copy has been rolled back. Callers that destroy
+ * the only other copy of a comment — or tell the user it is saved — must wait
+ * for it; the rest may ignore it.
+ */
+export type ReviewMutation = Promise<boolean>;
+
 export interface TaskReviewApi {
 	comments: ReviewComment[];
-	add(comment: ReviewComment): void;
-	update(commentId: string, body: string): void;
-	remove(commentId: string): void;
-	markSent(commentIds: Iterable<string>): void;
-	resolve(commentId: string, by: ReviewReplyAuthor, reply?: string): void;
-	reopen(commentId: string): void;
-	clear(): void;
+	add(comment: ReviewComment): ReviewMutation;
+	update(commentId: string, body: string): ReviewMutation;
+	remove(commentId: string): ReviewMutation;
+	markSent(commentIds: Iterable<string>): ReviewMutation;
+	resolve(commentId: string, by: ReviewReplyAuthor, reply?: string): ReviewMutation;
+	reopen(commentId: string): ReviewMutation;
+	clear(): ReviewMutation;
 	/** One-shot import of comments a browser still held in localStorage. */
-	importMany(comments: ReviewComment[]): void;
+	importMany(comments: ReviewComment[]): ReviewMutation;
 }
 
 /**
@@ -42,57 +50,58 @@ export function useTaskReview(task: Pick<Task, "id" | "review">, projectId: stri
 	}, [task.review]);
 
 	const taskId = task.id;
-	const run = useCallback((request: Promise<unknown>) => {
-		request.catch((err) => {
+	const run = useCallback((request: Promise<unknown>): ReviewMutation => {
+		return request.then(() => true).catch((err) => {
 			toast.error(String(err), { taskId });
 			setComments(serverRef.current ?? []);
+			return false;
 		});
 	}, [taskId]);
 
 	const add = useCallback((comment: ReviewComment) => {
 		setComments((current) => appendReviewComment(current, comment));
-		run(api.request.addReviewComment({ taskId, projectId, comment }));
+		return run(api.request.addReviewComment({ taskId, projectId, comment }));
 	}, [projectId, run, taskId]);
 
 	const update = useCallback((commentId: string, body: string) => {
 		setComments((current) => updateReviewCommentBody(current, commentId, body));
-		run(api.request.updateReviewComment({ taskId, projectId, commentId, body }));
+		return run(api.request.updateReviewComment({ taskId, projectId, commentId, body }));
 	}, [projectId, run, taskId]);
 
 	const remove = useCallback((commentId: string) => {
 		setComments((current) => deleteReviewComment(current, commentId));
-		run(api.request.deleteReviewComment({ taskId, projectId, commentId }));
+		return run(api.request.deleteReviewComment({ taskId, projectId, commentId }));
 	}, [projectId, run, taskId]);
 
 	const markSent = useCallback((commentIds: Iterable<string>) => {
 		const ids = [...commentIds];
-		if (ids.length === 0) return;
+		if (ids.length === 0) return Promise.resolve(true);
 		setComments((current) => markReviewCommentsSent(current, ids));
-		run(api.request.markReviewCommentsSent({ taskId, projectId, commentIds: ids }));
+		return run(api.request.markReviewCommentsSent({ taskId, projectId, commentIds: ids }));
 	}, [projectId, run, taskId]);
 
 	const resolve = useCallback((commentId: string, by: ReviewReplyAuthor, reply?: string) => {
 		setComments((current) => resolveReviewComment(current, commentId, by, reply));
-		run(api.request.resolveReviewComment({ taskId, projectId, commentId, by, reply }));
+		return run(api.request.resolveReviewComment({ taskId, projectId, commentId, by, reply }));
 	}, [projectId, run, taskId]);
 
 	const reopen = useCallback((commentId: string) => {
 		setComments((current) => reopenReviewComment(current, commentId));
-		run(api.request.reopenReviewComment({ taskId, projectId, commentId }));
+		return run(api.request.reopenReviewComment({ taskId, projectId, commentId }));
 	}, [projectId, run, taskId]);
 
 	const clear = useCallback(() => {
 		setComments([]);
-		run(api.request.clearTaskReview({ taskId, projectId }));
+		return run(api.request.clearTaskReview({ taskId, projectId }));
 	}, [projectId, run, taskId]);
 
 	const importMany = useCallback((imported: ReviewComment[]) => {
-		if (imported.length === 0) return;
+		if (imported.length === 0) return Promise.resolve(true);
 		setComments((current) => {
 			const known = new Set(current.map((comment) => comment.id));
 			return imported.filter((comment) => !known.has(comment.id)).reduce(appendReviewComment, current);
 		});
-		run(api.request.importReviewComments({ taskId, projectId, comments: imported }));
+		return run(api.request.importReviewComments({ taskId, projectId, comments: imported }));
 	}, [projectId, run, taskId]);
 
 	return { comments, add, update, remove, markSent, resolve, reopen, clear, importMany };

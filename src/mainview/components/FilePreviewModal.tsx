@@ -94,6 +94,9 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		[path, review.comments],
 	);
 	const [pendingRegion, setPendingRegion] = useState<Region | null>(null);
+	// Region picking is a mode, exactly as in the image viewer: without it every
+	// click on a previewed picture opens a comment composer.
+	const [commentMode, setCommentMode] = useState(false);
 	const [imageBox, setImageBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const measureImage = useCallback(() => {
@@ -120,7 +123,8 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const commentedLines = useMemo(() => {
 		const lines = new Set<number>();
 		for (const comment of fileComments) {
-			const anchor = comment.anchor as ReviewFileRangeAnchor;
+			if (comment.anchor.kind !== "file-range") continue;
+			const anchor: ReviewFileRangeAnchor = comment.anchor;
 			if (anchor.startLine === null) continue;
 			for (let n = anchor.startLine; n <= (anchor.endLine ?? anchor.startLine); n++) lines.add(n);
 		}
@@ -165,7 +169,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const rangeLabel = (anchor: Pick<ReviewFileRangeAnchor, "startLine" | "endLine">) => anchor.startLine === null
 		? ""
 		: anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}–${anchor.endLine}`;
-	const showAside = canComment && (pending !== null || pendingRegion !== null || fileComments.length > 0 || preview?.kind === "image");
+	const showAside = canComment && (pending !== null || pendingRegion !== null || fileComments.length > 0 || commentMode);
 	// Re-search whenever the body is replaced: the async load landing, and the
 	// raw/rendered toggle, both swap the text the ranges point into.
 	const find = useFindInElement(bodyRef, {
@@ -173,10 +177,12 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		onOpen: focusFindInput,
 	});
 
-	// Escape is staged: the find bar, then a pending comment, then the modal.
+	// Escape is staged: the find bar, then a pending comment, then comment mode,
+	// then the modal.
 	useEscapeKey(() => {
 		if (find.isOpen) find.close();
 		else if (pending || pendingRegion) { setPending(null); setPendingRegion(null); }
+		else if (commentMode) setCommentMode(false);
 		else onClose();
 	});
 
@@ -290,11 +296,11 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 								}}
 								className="max-w-full max-h-full object-contain rounded bg-base ring-1 ring-fg/10"
 							/>
-							{canComment && imageBox && (
+							{canComment && imageBox && (commentMode || fileComments.length > 0) && (
 								<ImageRegionOverlay
 									testId="file-image-review"
 									box={imageBox}
-									picking
+									picking={commentMode}
 									comments={fileComments}
 									activeCommentId={activeCommentId}
 									onActivate={setActiveCommentId}
@@ -393,6 +399,21 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 								</button>
 							))}
 						</div>
+					)}
+					{canComment && preview?.kind === "image" && (
+						<button
+							type="button"
+							data-testid="file-preview-comment-mode"
+							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); }}
+							title={t("imageViewer.commentMode")}
+							aria-label={t("imageViewer.commentMode")}
+							aria-pressed={commentMode}
+							className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${
+								commentMode ? "bg-accent/10 text-accent" : "text-fg-3 hover:text-fg hover:bg-fg/8"
+							}`}
+						>
+							<span aria-hidden="true" className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf075"}</span>
+						</button>
 					)}
 					<button
 						type="button"

@@ -316,12 +316,18 @@ interface TerminalViewProps {
 	 * click already leaves copy-mode) costs no tmux calls at all.
 	 */
 	onScrolledIntoHistory?: (scrolledUp: boolean) => void;
+	/**
+	 * Offer the "comment on this selection" chip. `taskId` here is a session key,
+	 * and a project terminal's key names no task at all — commenting there writes
+	 * a review nothing owns, so it stays off unless the host says otherwise.
+	 */
+	canComment?: boolean;
 }
 
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, canComment = false }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -348,6 +354,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const lastPointerUpRef = useRef<{ x: number; y: number } | null>(null);
 	const offerSelectionCommentRef = useRef<(text: string, event: MouseEvent | null) => void>(() => {});
 	offerSelectionCommentRef.current = (text, event) => {
+		if (!canComment) return;
 		const wrapper = wrapperRef.current;
 		if (!wrapper) return;
 		const rect = wrapper.getBoundingClientRect();
@@ -375,10 +382,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			createdAt: new Date().toISOString(),
 			anchor: { kind: "terminal-text", excerpt: clipReviewExcerpt(selectionComment.text) },
 		};
-		review.add(comment);
+		const saved = review.add(comment);
 		setSelectionComment(null);
+		// The "saved" toast waits for the task record: it used to fire next to the
+		// error toast of the very RPC that refused the comment.
 		if (andSend) reviewSend.sendOne(comment);
-		else toast.info(t("terminal.commentAdded"), { taskId });
+		else void saved.then((ok) => { if (ok) toast.info(t("terminal.commentAdded"), { taskId }); });
 	};
 	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);

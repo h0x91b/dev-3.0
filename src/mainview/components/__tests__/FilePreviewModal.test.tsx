@@ -332,6 +332,7 @@ describe("FilePreviewModal image review", () => {
 		Object.defineProperty(img, "clientWidth", { value: 400, configurable: true });
 		Object.defineProperty(img, "clientHeight", { value: 200, configurable: true });
 		fireEvent.load(img);
+		await user.click(screen.getByTestId("file-preview-comment-mode"));
 		const overlay = await screen.findByTestId("file-image-review-overlay");
 		overlay.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
 		fireEvent.pointerDown(overlay, { button: 0, clientX: 200, clientY: 100, pointerId: 1 });
@@ -345,5 +346,18 @@ describe("FilePreviewModal image review", () => {
 			}),
 		}));
 		expect(screen.getByTestId("file-image-review-region")).toBeInTheDocument();
+	});
+
+	it("leaves a previewed image alone until comment mode is on", async () => {
+		readFilePreview.mockResolvedValue({ kind: "image", dataUrl: "data:image/png;base64,AAAA", size: 10 } as FilePreviewResult);
+		render(
+			<I18nProvider>
+				<FilePreviewModal path="/wt/shots/after.png" taskId="t1" projectId="p1" task={{ id: "t1" }} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		const img = await screen.findByAltText("after.png");
+		fireEvent.load(img);
+		expect(screen.queryByTestId("file-image-review-overlay")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("file-review")).not.toBeInTheDocument();
 	});
 });

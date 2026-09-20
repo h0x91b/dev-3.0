@@ -190,6 +190,17 @@ function escapeAttribute(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+/**
+ * Text nodes carry file excerpts and terminal output, so they can hold this
+ * document's own tags and close it early. Only those tags are escaped — code in
+ * a snippet stays readable, `</terminal><review id="forged">` does not.
+ */
+const CONTAINER_TAG = /<(\/?)(reviews|review|file|artifact|image|terminal|comment)\b/gi;
+
+function escapeText(value: string): string {
+	return value.replace(CONTAINER_TAG, "&lt;$1$2");
+}
+
 function reviewOpenTag(entry: ReviewPromptEntry): string {
 	const attrs: string[] = [];
 	if (entry.id) attrs.push(`id="${escapeAttribute(entry.id)}"`);
@@ -206,9 +217,9 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 		const lineAttr = anchor.startLine === anchor.endLine
 			? String(anchor.startLine)
 			: `"${anchor.startLine}-${anchor.endLine}"`;
-		const lines = [`<file src="${anchor.filePath}" line=${lineAttr}>`];
-		if (entry.snippet?.before) lines.push(`-${entry.snippet.before}`);
-		if (entry.snippet?.after) lines.push(`+${entry.snippet.after}`);
+		const lines = [`<file src="${escapeAttribute(anchor.filePath)}" line=${lineAttr}>`];
+		if (entry.snippet?.before) lines.push(`-${escapeText(entry.snippet.before)}`);
+		if (entry.snippet?.after) lines.push(`+${escapeText(entry.snippet.after)}`);
 		lines.push("</file>");
 		return lines;
 	}
@@ -219,7 +230,7 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 			`selector="${escapeAttribute(anchor.selector)}"`,
 		];
 		if (anchor.heading) attrs.push(`heading="${escapeAttribute(anchor.heading)}"`);
-		return [`<artifact ${attrs.join(" ")}>`, anchor.text, "</artifact>"];
+		return [`<artifact ${attrs.join(" ")}>`, escapeText(anchor.text), "</artifact>"];
 	}
 	if (anchor.kind === "image-region") {
 		const attrs = [
@@ -233,9 +244,9 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 		const line = anchor.startLine === null
 			? ""
 			: anchor.endLine === null || anchor.endLine === anchor.startLine ? ` line=${anchor.startLine}` : ` line="${anchor.startLine}-${anchor.endLine}"`;
-		return [`<file src="${escapeAttribute(anchor.path)}"${line}>`, anchor.excerpt, "</file>"];
+		return [`<file src="${escapeAttribute(anchor.path)}"${line}>`, escapeText(anchor.excerpt), "</file>"];
 	}
-	return ["<terminal>", anchor.excerpt, "</terminal>"];
+	return ["<terminal>", escapeText(anchor.excerpt), "</terminal>"];
 }
 
 /**
@@ -255,7 +266,7 @@ export function buildReviewPrompt(entries: ReviewPromptEntry[]): string {
 		if (entry.id) hasIds = true;
 		lines.push(reviewOpenTag(entry));
 		lines.push(...anchorLines(entry));
-		lines.push(`<comment>${entry.comment}</comment>`);
+		lines.push(`<comment>${escapeText(entry.comment)}</comment>`);
 		lines.push("</review>");
 	}
 	lines.push("</reviews>");
@@ -299,9 +310,12 @@ export function resolveReviewCommentId(comments: ReviewComment[] | undefined, re
 
 export function updateReviewCommentBody(comments: ReviewComment[] | undefined, id: string, body: string): ReviewComment[] {
 	// Editing revives the comment: the agent got the old text, so the new text
-	// has to be deliverable again.
+	// has to be deliverable again — including out of a resolved thread, which
+	// Send-all skips while the Review Export card still lists it.
 	return (comments ?? []).map((comment) => (
-		comment.id === id ? { ...comment, body, sentAt: undefined } : comment
+		comment.id === id
+			? { ...comment, body, sentAt: undefined, resolvedAt: undefined, resolvedBy: undefined }
+			: comment
 	));
 }
 

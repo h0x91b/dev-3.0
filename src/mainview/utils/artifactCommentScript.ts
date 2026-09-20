@@ -52,6 +52,8 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 	var pins: ArtifactCommentPin[] = [];
 	var matched: Array<{ pin: ArtifactCommentPin; element: any }> = [];
 	var frame = 0;
+	/** Text → element, valid for one render() pass only. */
+	var textIndex: any = null;
 
 	function owned(node: any): boolean {
 		return Boolean(node && node.closest && node.closest("[" + OWNED + "]"));
@@ -189,20 +191,26 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 		}
 	}
 
-	function findByText(pin: ArtifactCommentPin): any {
-		if (!pin.text) return null;
+	// Text of every element, built once per render() instead of once per pin: a
+	// republish leaves every selector stale, which is when all of them scan.
+	function buildTextIndex(): any {
+		var index: any = {};
 		var all = doc.body ? doc.body.querySelectorAll("*") : [];
-		var candidate: any = null;
 		for (var i = 0; i < all.length; i++) {
 			var el = all[i];
 			if (owned(el)) continue;
 			var tag = el.tagName;
 			if (tag === "SCRIPT" || tag === "STYLE" || tag === "HTML" || tag === "BODY") continue;
-			if (cleanText(el.textContent) !== pin.text) continue;
-			// Prefer the innermost element carrying exactly that text.
-			candidate = el;
+			// Document order, last wins: the innermost element carrying that text.
+			index["t:" + cleanText(el.textContent)] = el;
 		}
-		return candidate;
+		return index;
+	}
+
+	function findByText(pin: ArtifactCommentPin): any {
+		if (!pin.text) return null;
+		if (!textIndex) textIndex = buildTextIndex();
+		return textIndex["t:" + pin.text] || null;
 	}
 
 	function locate(pin: ArtifactCommentPin): any {
@@ -242,6 +250,7 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 
 	function render(): void {
 		ensureStyle();
+		textIndex = null;
 		var previous = doc.querySelectorAll("[" + OWNED + "=target]");
 		for (var p = 0; p < previous.length; p++) previous[p].removeAttribute(OWNED);
 		if (!pinLayer) {
