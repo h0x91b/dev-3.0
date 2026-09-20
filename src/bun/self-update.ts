@@ -13,6 +13,8 @@
  */
 
 import { chmodSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { open } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { spawn } from "./spawn";
 import { createLogger } from "./logger";
@@ -35,6 +37,9 @@ const log = createLogger("self-update");
 /** Staging + rollback live INSIDE the install dir so every move is a same-filesystem rename. */
 const STAGED_DIR_NAME = ".dev3-staged";
 const STAGED_TARBALL_NAME = ".dev3-staged.tar.gz";
+const STAGED_TARBALL_PARTIAL_NAME = ".dev3-staged.tar.gz.partial";
+/** Abort a transfer that produces no response, body chunk, or disk progress for two minutes. */
+export const UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const PREV_DIR_NAME = ".dev3-prev";
 
 /**
@@ -186,6 +191,87 @@ export function _resetStagingMemo(): void {
 
 type StageResult = { ok: true; staged: StagedUpdate } | { ok: false; error: string };
 
+function waitForDownloadProgress<T>(
+	operation: Promise<T>,
+	controller: AbortController,
+	timeoutMs: number,
+): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timeout = setTimeout(() => {
+			controller.abort();
+			reject(new Error(`Update download made no progress for ${Math.ceil(timeoutMs / 1000)}s`));
+		}, timeoutMs);
+		timeout.unref?.();
+		operation.then(
+			(value) => {
+				clearTimeout(timeout);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timeout);
+				reject(error);
+			},
+		);
+	});
+}
+
+async function downloadTarball(url: string, path: string): Promise<void> {
+	const controller = new AbortController();
+	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+	let file: FileHandle | null = null;
+	try {
+		const response = await waitForDownloadProgress(
+			fetch(url, { signal: controller.signal }),
+			controller,
+			UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+		);
+		if (!response.ok) throw new Error(`HTTP ${response.status} downloading ${url}`);
+		if (!response.body) throw new Error(`Empty response body downloading ${url}`);
+
+		const rawLength = response.headers.get("content-length");
+		const expectedLength = rawLength === null ? null : Number.parseInt(rawLength, 10);
+		let written = 0;
+		reader = response.body.getReader();
+		file = await waitForDownloadProgress(
+			open(path, "w"),
+			controller,
+			UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+		);
+		while (true) {
+			const chunk = await waitForDownloadProgress(
+				reader.read(),
+				controller,
+				UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+			);
+			if (chunk.done) break;
+			let offset = 0;
+			while (offset < chunk.value.byteLength) {
+				const result = await waitForDownloadProgress(
+					file.write(chunk.value, offset, chunk.value.byteLength - offset),
+					controller,
+					UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+				);
+				if (result.bytesWritten === 0) throw new Error("Update download could not write to disk");
+				offset += result.bytesWritten;
+				written += result.bytesWritten;
+			}
+		}
+		await waitForDownloadProgress(
+			file.close(),
+			controller,
+			UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+		);
+		file = null;
+
+		if (expectedLength !== null && Number.isFinite(expectedLength) && written !== expectedLength) {
+			throw new Error(`Incomplete update download: expected ${expectedLength} bytes, received ${written}`);
+		}
+	} finally {
+		if (reader) void reader.cancel().catch(() => {});
+		if (file) await file.close().catch(() => {});
+	}
+}
+
 /**
  * Do the slow part while the server is still serving. Brew paths pre-fetch the
  * bottle; the tarball path downloads and extracts into the install dir so the
@@ -198,7 +284,7 @@ type StageResult = { ok: true; staged: StagedUpdate } | { ok: false; error: stri
  * CLI socket and all tmux forwarding down for that whole span — killing the very
  * browser session the handoff exists to preserve.
  */
-export async function stageUpdate(plan: UpdatePlan): Promise<StageResult> {
+export async function stageUpdate(plan: UpdatePlan, dir: string = installDir()): Promise<StageResult> {
 	const reused = reusableStaged(plan);
 	if (reused) {
 		log.info("Reusing the already-staged update", { kind: plan.kind });
@@ -215,19 +301,19 @@ export async function stageUpdate(plan: UpdatePlan): Promise<StageResult> {
 		const inFlight = staging;
 		const result = await inFlight.promise.catch((err) => ({ ok: false as const, error: String(err) }));
 		if (inFlight.key === planKey(plan)) return result;
-		return await stageUpdate(plan); // a different offer: retry now the paths are free
+		return await stageUpdate(plan, dir); // a different offer: retry now the paths are free
 	}
 	const started: { key: string; promise: Promise<StageResult> } = { key: planKey(plan), promise: undefined as never };
 	// The memo is cleared INSIDE the chain, so anyone awaiting `started.promise`
 	// already sees a free slot and cannot spin waiting on a settled promise.
-	started.promise = stageOnce(plan).finally(() => {
+	started.promise = stageOnce(plan, dir).finally(() => {
 		if (staging === started) staging = null;
 	});
 	staging = started;
 	return await started.promise;
 }
 
-async function stageOnce(plan: UpdatePlan): Promise<StageResult> {
+async function stageOnce(plan: UpdatePlan, dir: string): Promise<StageResult> {
 	if (plan.kind === "brew") {
 		// `brew update` refreshes the tap (without it the new formula is invisible);
 		// `brew fetch` downloads the bottle so `brew upgrade` is a local operation.
@@ -241,18 +327,18 @@ async function stageOnce(plan: UpdatePlan): Promise<StageResult> {
 		return { ok: true, staged };
 	}
 	if (plan.kind === "tarball") {
-		const dir = installDir();
 		if (!isWritable(dir)) {
 			return { ok: false, error: `Install directory is not writable: ${dir}` };
 		}
 		const tarPath = join(dir, STAGED_TARBALL_NAME);
+		const partialPath = join(dir, STAGED_TARBALL_PARTIAL_NAME);
 		const stagedDir = join(dir, STAGED_DIR_NAME);
 		rmSync(tarPath, { force: true });
+		rmSync(partialPath, { force: true });
 		rmSync(stagedDir, { recursive: true, force: true });
 		try {
-			const resp = await fetch(plan.url);
-			if (!resp.ok) return { ok: false, error: `HTTP ${resp.status} downloading ${plan.url}` };
-			await Bun.write(tarPath, resp);
+			await downloadTarball(plan.url, partialPath);
+			renameSync(partialPath, tarPath);
 			mkdirSync(stagedDir, { recursive: true });
 			const extracted = await run(["tar", "-xzf", tarPath, "-C", stagedDir]);
 			if (!extracted.ok) return { ok: false, error: `tar extract failed: ${extracted.error}` };
@@ -268,6 +354,7 @@ async function stageOnce(plan: UpdatePlan): Promise<StageResult> {
 			return { ok: false, error: `Download failed: ${err instanceof Error ? err.message : String(err)}` };
 		} finally {
 			rmSync(tarPath, { force: true });
+			rmSync(partialPath, { force: true });
 		}
 	}
 	return { ok: false, error: `Nothing to stage for a "${plan.kind}" plan` };

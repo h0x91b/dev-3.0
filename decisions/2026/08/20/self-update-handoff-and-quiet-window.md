@@ -1,5 +1,7 @@
 # Headless self-update: hand the tunnel over, and let the supervisor relaunch
 
+Superseded on 2026-09-20 by `decisions/2026/09/20/headless-updates-survive-running-agents.md`: running tasks no longer block unattended updates because their detached tmux sessions survive the restart.
+
 ## Context
 
 A `dev3 remote` box never gets updated. The operator runs the headless server on a long-lived

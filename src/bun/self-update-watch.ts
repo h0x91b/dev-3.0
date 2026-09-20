@@ -9,7 +9,7 @@
  *
  * Same 30-minute cadence as the desktop auto-check. The DECISION of whether a
  * moment is quiet enough is `evaluateQuietWindow` in `src/shared/self-update.ts`;
- * everything here just measures the three inputs it needs.
+ * everything here just measures the browser and terminal activity it needs.
  */
 
 import { createLogger } from "./logger";
@@ -62,25 +62,6 @@ const state: WatchState = {
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
-/**
- * How many tasks sit in the `in-progress` column right now, across every project
- * including the virtual "Operations" boards.
- *
- * A restart does NOT kill an agent — tmux sessions are detached and the headless
- * entry rehydrates lifecycles at boot — so this is not a safety gate. It is the
- * one condition strict enough to still apply past the 72-hour ceiling, because a
- * restart landing mid-worktree-creation is the one case that leaves real mess.
- */
-async function countTasksInProgress(): Promise<number> {
-	const data = await import("./data");
-	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
-	let count = 0;
-	for (const project of projects) {
-		const tasks = await data.loadTasks(project);
-		count += tasks.filter((task) => task.status === "in-progress").length;
-	}
-	return count;
-}
 
 /**
  * Milliseconds since the freshest terminal output on the box, or null when it
@@ -93,11 +74,9 @@ async function countTasksInProgress(): Promise<number> {
  * refuses: a probe that cannot see is not evidence of quiet.
  *
  * THE TMUX SERVER IS ASKED, NOT THIS PROCESS'S SESSION MAP. `getActiveSessionIds`
- * lists only sessions THIS process attached, and a restart attaches none —
- * `rehydrateTaskLifecycles` does not create pty sessions. Reading "no sessions" as
- * "nothing running at all" therefore declared a freshly restarted box silent while
- * detached agents were printing into it, which (with the usual zero browser
- * clients) left the in-progress task count as the only real gate.
+ * lists only sessions THIS process attached — none, right after a restart.
+ * Reading "no sessions" as "nothing running at all" would therefore declare a
+ * freshly restarted box silent while detached agents were still printing.
  */
 export async function probePtyIdleMs(now: number = Date.now()): Promise<number | null> {
 	try {
@@ -235,9 +214,8 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 		return;
 	}
 
-	const [tasksInProgress, ptyIdleMs] = await Promise.all([countTasksInProgress(), probePtyIdleMs()]);
+	const ptyIdleMs = await probePtyIdleMs();
 	const verdict = evaluateQuietWindow({
-		tasksInProgress,
 		ptyIdleMs,
 		browserClients: clients,
 		quietSinceMs: state.quietSinceMs,
@@ -261,7 +239,6 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 			log.info("Holding off the silent update", {
 				version: plan.version,
 				reason: verdict.reason,
-				tasksInProgress,
 				browserClients: clients,
 				ptyQuietThresholdMs: PTY_QUIET_MS,
 			});

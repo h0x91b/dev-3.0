@@ -5,6 +5,7 @@
  * successor.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UpdatePlan } from "../../shared/self-update";
@@ -12,9 +13,16 @@ import type { UpdatePlan } from "../../shared/self-update";
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 import { spawn } from "../spawn";
-import { _resetStagingMemo, spawnDetached, stageUpdate, VIEWS_DIR_AUTO_ENV } from "../self-update";
+import {
+	_resetStagingMemo,
+	spawnDetached,
+	stageUpdate,
+	UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+	VIEWS_DIR_AUTO_ENV,
+} from "../self-update";
 
 const mockSpawn = vi.mocked(spawn);
+const tempDirs: string[] = [];
 
 /** A child that succeeds immediately, with the shape `runCapture` reads. */
 function fakeChild(): unknown {
@@ -42,8 +50,51 @@ beforeEach(() => {
 
 afterEach(() => {
 	_resetStagingMemo();
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 	delete process.env[VIEWS_DIR_AUTO_ENV];
 	delete process.env.DEV3_VIEWS_DIR;
+});
+
+describe("tarball staging", () => {
+	it("times out a stalled body, removes the partial archive, and lets the next call retry", async () => {
+		vi.useFakeTimers();
+		const dir = mkdtempSync(join(tmpdir(), "dev3-self-update-stage-"));
+		tempDirs.push(dir);
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array([1, 2, 3]));
+			},
+		});
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(body, { headers: { "content-length": "6" } }))
+			.mockResolvedValueOnce(new Response("", { status: 503 }));
+		vi.stubGlobal("fetch", fetchMock);
+		const plan: UpdatePlan = {
+			kind: "tarball",
+			version: "1.54.1+canary.deadbeef",
+			url: "https://example.invalid/update.tar.gz",
+		};
+
+		const stalled = stageUpdate(plan, dir);
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS + 1);
+		const first = await stalled;
+		const second = await stageUpdate(plan, dir);
+
+		expect({
+			first,
+			partialExists: existsSync(join(dir, ".dev3-staged.tar.gz.partial")),
+			second,
+			fetchCalls: fetchMock.mock.calls.length,
+		}).toEqual({
+			first: { ok: false, error: expect.stringContaining("made no progress") },
+			partialExists: false,
+			second: { ok: false, error: expect.stringContaining("HTTP 503") },
+			fetchCalls: 2,
+		});
+	});
 });
 
 describe("stageUpdate is serialised", () => {

@@ -35,6 +35,7 @@ vi.mock("../tmux", () => ({
 }));
 
 import { buildPlan, runSelfUpdate, stageUpdate } from "../self-update";
+import { loadTasks } from "../data";
 import { tmux } from "../tmux";
 import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
@@ -49,6 +50,7 @@ const mockReadState = vi.mocked(readRemoteState);
 const mockRecordFailure = vi.mocked(recordUpdateFailure);
 const mockClients = vi.mocked(getConnectedClientCount);
 const mockSettings = vi.mocked(loadSettings);
+const mockTasks = vi.mocked(loadTasks);
 const mockListPanes = vi.mocked(tmux.listPanes);
 
 const TARBALL: UpdatePlan = { kind: "tarball", version: "1.46.0", url: "https://example.invalid/x.tar.gz" };
@@ -83,6 +85,7 @@ beforeEach(() => {
 	mockClients.mockReturnValue(0);
 	mockStage.mockResolvedValue({ ok: true, staged: { plan: TARBALL } });
 	mockRun.mockResolvedValue({ ok: true, restarting: true, message: "restarting" });
+	mockTasks.mockResolvedValue([]);
 	mockListPanes.mockResolvedValue([]);
 });
 
@@ -288,6 +291,17 @@ describe("pre-staging", () => {
 		await checkOnce(vi.fn());
 
 		expect(mockStage).not.toHaveBeenCalled();
+	});
+});
+
+describe("running agents", () => {
+	it("applies once the box is quiet even when tasks remain in progress", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([{ status: "in-progress" }] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
 	});
 });
 

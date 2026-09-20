@@ -270,9 +270,9 @@ export function describePlan(plan: UpdatePlan, install: InstallMethod): string {
 
 // ── The quiet window ────────────────────────────────────────────────────────
 
-/** All three conditions must hold together this long before a silent update fires. */
+/** Both quiet conditions must hold together this long before a silent update fires. */
 export const QUIET_HOLD_MS = 10 * 60 * 1000;
-/** Past this, politeness stops: only "no task in progress" is still required. */
+/** Past this, browser and terminal activity stop delaying the update. */
 export const QUIET_CEILING_MS = 72 * 60 * 60 * 1000;
 /** A terminal quieter than this counts as "not producing output". */
 export const PTY_QUIET_MS = 60 * 1000;
@@ -297,8 +297,6 @@ export function retryBackoffMs(failedAttempts: number): number {
 }
 
 export interface QuietWindowInput {
-	/** Tasks currently in the `in-progress` column, across every project. */
-	tasksInProgress: number;
 	/**
 	 * Milliseconds since the freshest terminal output anywhere, or null when the
 	 * backend cannot say. NULL IS TREATED AS BUSY, not as quiet: silence from a
@@ -331,10 +329,9 @@ export interface QuietWindowVerdict {
  * Should a silent update fire right now? A reducer, not a predicate: it owns the
  * "how long has it been quiet" clock so the caller only stores what it returns.
  *
- * If an update has been waiting longer than {@link QUIET_CEILING_MS}, the
- * condition set collapses to "no task in progress" alone — otherwise a browser
- * tab left open on a phone would keep a box on an old build indefinitely, which
- * is the exact failure this whole feature exists to fix.
+ * If an update has been waiting longer than {@link QUIET_CEILING_MS}, browser
+ * and terminal activity stop delaying it. Agents run in detached tmux sessions
+ * and survive the restart, so their task status is deliberately irrelevant.
  */
 export function evaluateQuietWindow(input: QuietWindowInput): QuietWindowVerdict {
 	const overdue = input.now - input.pendingSinceMs >= QUIET_CEILING_MS;
@@ -360,17 +357,10 @@ export function evaluateQuietWindow(input: QuietWindowInput): QuietWindowVerdict
 		}
 	}
 
-	if (input.tasksInProgress > 0) {
-		return {
-			decision: "wait",
-			reason: `${input.tasksInProgress} task(s) in progress`,
-			quietSinceMs: null,
-		};
-	}
 	if (overdue) {
 		return {
 			decision: "apply",
-			reason: "update has waited past the 72h ceiling and no task is in progress",
+			reason: "update has waited past the 72h ceiling",
 			quietSinceMs: input.quietSinceMs,
 		};
 	}
