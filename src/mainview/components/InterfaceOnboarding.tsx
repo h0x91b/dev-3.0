@@ -5,7 +5,7 @@ import { useT } from "../i18n";
 import { useInterfaceOnboarding } from "../hooks/useInterfaceOnboarding";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { AddAgentIcon, EyeIcon, SendLaterIcon } from "./TaskIcons";
+import { EyeIcon, SendLaterIcon } from "./TaskIcons";
 import "./InterfaceOnboarding.css";
 
 export default function InterfaceOnboarding({ route, blocked, onVisibilityChange }: {
@@ -77,9 +77,13 @@ function CapabilityPreview() {
 		<figcaption className="interface-invitation-preview-caption">{t("settings.fullInterfacePreviewLabel")}</figcaption>
 		<div aria-hidden="true">
 			<div className="interface-invitation-task">
-				<div className="interface-invitation-task-title"><TerminalMark />{t("settings.fullInterfaceTaskExample")}<span>···</span></div>
-				<div className="interface-invitation-tabs"><span>{t("settings.fullInterfaceAgentOne")}</span><span><AddAgentIcon />{t("settings.fullInterfaceAgentTwo")}</span></div>
-				<div className="interface-invitation-terminal"><span className="text-accent-emphasis">›</span> {t("settings.fullInterfacePerspective")}<br /><span className="text-fg-3">&nbsp; {t("settings.fullInterfaceSameTask")}</span><i /><i /><b /></div>
+				<div className="interface-invitation-task-title"><TerminalMark />{t("settings.fullInterfaceTaskExample")}<span>{t("settings.fullInterfaceParallelExample")}</span></div>
+				<div className="interface-invitation-panes">
+					{(["one", "two"] as const).map((agent) => <div key={agent} className={`interface-invitation-pane interface-invitation-pane--${agent}`}>
+						<div className="interface-invitation-pane-title"><span />{t(agent === "one" ? "settings.fullInterfaceAgentOne" : "settings.fullInterfaceAgentTwo")}</div>
+						<div className="interface-invitation-terminal"><span className="text-accent-emphasis">›</span> {t(agent === "one" ? "settings.fullInterfaceBuildExample" : "settings.fullInterfaceReviewExample")}<i /><i /><i /><b /></div>
+					</div>)}
+				</div>
 			</div>
 			<div className="interface-invitation-schedule"><SendLaterIcon /><div><small>{t("settings.fullInterfaceScheduledExample")}</small><strong>{t("settings.fullInterfaceTimeExample")}</strong></div></div>
 			<div className="interface-invitation-progress"><div><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4v16h17M8 15l4-5 4 2 5-7" /></svg>{t("settings.fullInterfaceStatsExample")}</span><small>{t("settings.fullInterfaceProgressExample")}</small></div><div className="interface-invitation-chart">{[27, 43, 35, 57, 48, 68, 62, 86, 74, 95].map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div></div>
