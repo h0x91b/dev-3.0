@@ -282,6 +282,15 @@ function GlobalSettings({
 				localStorage.removeItem("dev3-task-open-mode");
 			}
 		}).catch(() => {});
+		// Follow the settings push, like KanbanBoard does. Every save here sends the
+		// WHOLE object, so a snapshot taken at mount silently reverts anything written
+		// from outside this screen since — `hiddenControls` (a right-click "Hide", the
+		// Simplify View preset) being the field that actually got erased.
+		function onSettingsUpdated(e: Event) {
+			setGlobalSettingsState((e as CustomEvent<GlobalSettingsType>).detail);
+		}
+		window.addEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
+		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 	}, [setGlobalSettingsState]);
 
 	useEffect(() => {
