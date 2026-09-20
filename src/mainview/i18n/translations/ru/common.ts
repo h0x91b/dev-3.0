@@ -299,6 +299,7 @@ const common = {
 	"traffic.terminal.title": "Снимок терминала",
 	"traffic.terminal.show": "Показать",
 	"traffic.terminal.hide": "Скрыть",
+	"hideableControls.hide": "Скрыть",
 	"traffic.terminal.refresh": "Обновить",
 	"traffic.terminal.loading": "Читаем терминал…",
 	"traffic.terminal.isText": "Текст, считанный с терминала, а не его изображение.",

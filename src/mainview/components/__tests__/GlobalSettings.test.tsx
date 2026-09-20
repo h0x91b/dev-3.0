@@ -336,6 +336,35 @@ describe("GlobalSettings", () => {
 				expect.objectContaining({ taskSortOrder: "newest-first" }),
 			);
 		});
+
+		/**
+		 * Every save from this screen sends the WHOLE settings object, so a snapshot
+		 * taken at mount reverts anything written from outside it since. That is not
+		 * hypothetical: hiding a control (right-click "Hide", or the Simplify View
+		 * preset) writes `hiddenControls` from elsewhere, and one unrelated toggle
+		 * here used to wipe the whole set off disk.
+		 */
+		it("keeps a setting written from outside the screen after a push", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			window.dispatchEvent(
+				new CustomEvent("rpc:globalSettingsUpdated", {
+					detail: { ...mockGlobalSettings, hiddenControls: ["bug-hunters"] },
+				}),
+			);
+
+			await user.click(screen.getByText("Newest first"));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					taskSortOrder: "newest-first",
+					hiddenControls: ["bug-hunters"],
+				}),
+			);
+		});
 	});
 
 	describe("new-task terminal backend", () => {
