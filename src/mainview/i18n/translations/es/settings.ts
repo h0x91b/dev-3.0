@@ -294,7 +294,7 @@ const settings = {
 	"settings.pushUnsupported": "Este navegador no admite notificaciones push.",
 	"push.inviteBody": "Recib\u00ed avisos en este dispositivo cuando un agente te necesite: toc\u00e1 para configurar",
 	"settings.remoteSilentUpdate": "Actualizar una máquina remota por su cuenta",
-	"settings.remoteSilentUpdateDesc": "Permite que un servidor headless dev3 remote instale actualizaciones cuando no haya salida de terminal ni nadie conectado. Los agentes en ejecución, el enlace público y las sesiones abiertas sobreviven al reinicio. Desactívalo para mantener una máquina en una sola compilación mientras investigas. No afecta a esta aplicación de escritorio.",
+	"settings.remoteSilentUpdateDesc": "Permite que un servidor headless dev3 remote instale actualizaciones cuando no haya salida de terminal ni nadie conectado. Si el supervisor de procesos puede detener agentes en ejecución, dev3 espera; de lo contrario, sus terminales sobreviven. El enlace público y las sesiones abiertas se reconectan. Desactívalo para mantener una máquina en una sola compilación mientras investigas. No afecta a esta aplicación de escritorio.",
 	"settings.staticAccessCode": "Código de acceso remoto",
 	"settings.staticAccessCodeDesc": "Un código de inicio de sesión permanente para el acceso remoto. Se escribe en la pantalla de inicio de sesión del navegador y nunca aparece en una URL ni en un código QR. Cualquiera que lo tenga puede entrar tantas veces como quiera, desde cualquier dispositivo: hazlo largo. Déjalo vacío para permitir solo enlaces QR de un solo uso.",
 	"settings.staticAccessCodePlaceholder": "Sin código: solo enlaces QR",

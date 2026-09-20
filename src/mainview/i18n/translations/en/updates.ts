@@ -107,8 +107,8 @@ const updates = {
 	"changelog.noResults": "Nothing matches your search or filters.",
 	"changelog.resetFilters": "Reset filters",
 	"update.remoteLinkSurvives": "The public link and this session are kept — the page reconnects on its own.",
-	"update.tasksInProgressWarning_one": "{count} task is in progress. Its agent survives the restart, but you can wait if you'd rather.",
-	"update.tasksInProgressWarning_other": "{count} tasks are in progress. Their agents survive the restart, but you can wait if you'd rather.",
+	"update.tasksInProgressWarning_one": "{count} task is in progress. Restarting now can interrupt its agent.",
+	"update.tasksInProgressWarning_other": "{count} tasks are in progress. Restarting now can interrupt their agents.",
 	"changelog.showMore": "Show more",
 } as const;
 

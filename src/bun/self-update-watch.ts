@@ -9,15 +9,20 @@
  *
  * Same 30-minute cadence as the desktop auto-check. The DECISION of whether a
  * moment is quiet enough is `evaluateQuietWindow` in `src/shared/self-update.ts`;
- * everything here just measures the browser and terminal activity it needs.
+ * everything here measures the browser, terminal, and restart-ownership facts it
+ * needs. A supervisor-owned process cannot promise that detached agents survive:
+ * systemd and container runtimes may tear down the whole cgroup/container.
  */
 
-import { createLogger } from "./logger";
 import { evaluateQuietWindow, MAX_UPDATE_ATTEMPTS, PTY_QUIET_MS, retryBackoffMs, type UpdatePlan } from "../shared/self-update";
+import { ACTIVE_STATUSES, type RemoteUpdateAttempts, type Task } from "../shared/types";
 import type { UpdateChannel } from "../shared/update-channel";
-import type { RemoteUpdateAttempts } from "../shared/types";
+import * as data from "./data";
+import { createLogger } from "./logger";
+import { nativeTaskPanesAlive } from "./native-task-panes";
 import { readRemoteState, recordUpdateFailure } from "./remote-state";
-import { buildPlan, runSelfUpdate } from "./self-update";
+import { buildPlan, chooseRestartStrategy, runSelfUpdate } from "./self-update";
+import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 
 const log = createLogger("self-update-watch");
 
@@ -28,7 +33,7 @@ interface WatchState {
 	/** Version currently on offer, so a new release resets the pending clock. */
 	pendingVersion: string | null;
 	pendingSinceMs: number;
-	/** When the three quiet conditions last STARTED holding. Owned by the evaluator. */
+	/** When the measurable quiet conditions last STARTED holding. Owned by the evaluator. */
 	quietSinceMs: number | null;
 	/** Failed attempts at `pendingVersion`. Reset only by a NEW version appearing. */
 	failedAttempts: number;
@@ -62,10 +67,47 @@ const state: WatchState = {
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
+interface TaskUpdateSafety {
+	/** Persisted agent sessions a supervisor restart could terminate. */
+	agentsAtRisk: number;
+	/** A live native terminal has no output timestamp, so its idleness is unknowable. */
+	liveNativeSession: boolean;
+}
+
+function taskMayHaveAgentProcess(task: Task): boolean {
+	if (task.hibernated || task.draft) return false;
+	if (!ACTIVE_STATUSES.includes(task.status)) return false;
+	return task.preparing === true
+		|| task.shuttingDown === true
+		|| task.runtimeState?.runtime !== "idle";
+}
+
+async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+	let agentsAtRisk = 0;
+	let liveNativeSession = false;
+	for (const project of projects) {
+		for (const task of await data.loadTasks(project)) {
+			if (!taskMayHaveAgentProcess(task)) continue;
+			agentsAtRisk += 1;
+			if (taskTerminalBackendIdentity(task) !== "native") continue;
+			try {
+				if (await nativeTaskPanesAlive(task.id)) liveNativeSession = true;
+			} catch (error) {
+				log.debug("Native terminal activity probe could not prove a session quiet", {
+					taskId: task.id.slice(0, 8),
+					error: String(error),
+				});
+				liveNativeSession = true;
+			}
+		}
+	}
+	return { agentsAtRisk, liveNativeSession };
+}
 
 /**
- * Milliseconds since the freshest terminal output on the box, or null when it
- * cannot be read.
+ * Milliseconds since the freshest observable terminal output on the box, or
+ * null when activity cannot be read safely.
  *
  * tmux has no per-pane activity variable, so `window_activity` (epoch seconds,
  * per WINDOW) is the freshest honest signal — the same one `dev3 peek` reports and
@@ -78,8 +120,13 @@ let timer: ReturnType<typeof setInterval> | null = null;
  * Reading "no sessions" as "nothing running at all" would therefore declare a
  * freshly restarted box silent while detached agents were still printing.
  */
-export async function probePtyIdleMs(now: number = Date.now()): Promise<number | null> {
+export async function probePtyIdleMs(
+	now: number = Date.now(),
+	liveNativeSession?: boolean,
+): Promise<number | null> {
 	try {
+		const nativeSessionIsLive = liveNativeSession ?? (await inspectTaskUpdateSafety()).liveNativeSession;
+		if (nativeSessionIsLive) return null;
 		const { getActiveSessionIds } = await import("./pty-server");
 		const { tmux, DEFAULT_TMUX_SOCKET, isTmuxError } = await import("./tmux");
 		const { PEEK_PANE_FORMAT } = await import("./tmux/formats");
@@ -214,7 +261,19 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 		return;
 	}
 
-	const ptyIdleMs = await probePtyIdleMs();
+	const taskSafety = await inspectTaskUpdateSafety();
+	const restartStrategy = chooseRestartStrategy(process.env);
+	if (restartStrategy === "supervisor-exit" && taskSafety.agentsAtRisk > 0) {
+		state.quietSinceMs = null;
+		log.info("Holding off the silent update", {
+			version: plan.version,
+			reason: "the process supervisor may terminate running agents",
+			agentsAtRisk: taskSafety.agentsAtRisk,
+			restartStrategy,
+		});
+		return;
+	}
+	const ptyIdleMs = await probePtyIdleMs(Date.now(), taskSafety.liveNativeSession);
 	const verdict = evaluateQuietWindow({
 		ptyIdleMs,
 		browserClients: clients,

@@ -1,5 +1,7 @@
 # Headless updates survive running agents
 
+Superseded on 2026-09-20 by [`headless-update-safety-boundaries`](headless-update-safety-boundaries.md): running agents survive helper restarts, but supervisor-owned restarts must wait.
+
 ## Context
 
 The headless updater treated every `in-progress` task as a hard restart blocker, unlike the desktop updater. Long-running tasks could therefore prevent a ready canary update from applying indefinitely even though their tmux sessions survive a server restart.

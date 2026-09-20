@@ -232,11 +232,7 @@ async function downloadTarball(url: string, path: string): Promise<void> {
 		const expectedLength = rawLength === null ? null : Number.parseInt(rawLength, 10);
 		let written = 0;
 		reader = response.body.getReader();
-		file = await waitForDownloadProgress(
-			open(path, "w"),
-			controller,
-			UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
-		);
+		file = await open(path, "w");
 		while (true) {
 			const chunk = await waitForDownloadProgress(
 				reader.read(),
@@ -246,21 +242,13 @@ async function downloadTarball(url: string, path: string): Promise<void> {
 			if (chunk.done) break;
 			let offset = 0;
 			while (offset < chunk.value.byteLength) {
-				const result = await waitForDownloadProgress(
-					file.write(chunk.value, offset, chunk.value.byteLength - offset),
-					controller,
-					UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
-				);
+				const result = await file.write(chunk.value, offset, chunk.value.byteLength - offset);
 				if (result.bytesWritten === 0) throw new Error("Update download could not write to disk");
 				offset += result.bytesWritten;
 				written += result.bytesWritten;
 			}
 		}
-		await waitForDownloadProgress(
-			file.close(),
-			controller,
-			UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
-		);
+		await file.close();
 		file = null;
 
 		if (expectedLength !== null && Number.isFinite(expectedLength) && written !== expectedLength) {

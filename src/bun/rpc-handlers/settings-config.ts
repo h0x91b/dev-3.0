@@ -458,9 +458,9 @@ async function applyUpdate(): Promise<{ restarting: boolean; message?: string }>
  * headless box at all, whether the app is being reached remotely, and how many
  * tasks are mid-flight right now.
  *
- * The task count is a WARNING, not a gate. A restart does not kill an agent — tmux
- * sessions are detached and lifecycles are rehydrated at boot — so the button stays
- * enabled; the count just lets someone on a phone decide to wait a minute.
+ * The task count is a WARNING, not a gate because this is an explicit manual
+ * action. Helper restarts preserve detached tmux agents, but a process supervisor
+ * may terminate them, so the warning states that risk while leaving the choice live.
  *
  * `remoteActive` IS a gate, but only over the unattended countdown: nobody in a
  * browser can see a timer running on the desktop, so it must not fire under them.

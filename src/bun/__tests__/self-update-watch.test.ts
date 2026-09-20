@@ -9,6 +9,7 @@ import type { UpdatePlan } from "../../shared/self-update";
 
 vi.mock("../self-update", () => ({
 	buildPlan: vi.fn(),
+	chooseRestartStrategy: vi.fn(() => "helper"),
 	runSelfUpdate: vi.fn(),
 	stageUpdate: vi.fn(),
 }));
@@ -25,6 +26,8 @@ vi.mock("../data", () => ({
 	loadTasks: vi.fn(async () => []),
 }));
 vi.mock("../pty-server", () => ({ getActiveSessionIds: vi.fn(() => []) }));
+vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesAlive: vi.fn(async () => false) }));
 vi.mock("../remote-access-server", () => ({ getConnectedClientCount: vi.fn(() => 0) }));
 // The probe asks the tmux SERVER, not this process's session map, so every tick
 // reaches the client — real spawns here would hang the suite under fake timers.
@@ -34,24 +37,30 @@ vi.mock("../tmux", () => ({
 	isTmuxError: (err: unknown) => err instanceof Error && err.name === "TmuxError",
 }));
 
-import { buildPlan, runSelfUpdate, stageUpdate } from "../self-update";
-import { loadTasks } from "../data";
+import { buildPlan, chooseRestartStrategy, runSelfUpdate, stageUpdate } from "../self-update";
+import { loadProjects, loadTasks } from "../data";
+import { nativeTaskPanesAlive } from "../native-task-panes";
 import { tmux } from "../tmux";
 import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
 import { loadSettings } from "../settings";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { checkOnce, _resetWatchState } from "../self-update-watch";
 import { QUIET_HOLD_MS } from "../../shared/self-update";
 
 const mockBuildPlan = vi.mocked(buildPlan);
 const mockRun = vi.mocked(runSelfUpdate);
 const mockStage = vi.mocked(stageUpdate);
+const mockRestartStrategy = vi.mocked(chooseRestartStrategy);
 const mockReadState = vi.mocked(readRemoteState);
 const mockRecordFailure = vi.mocked(recordUpdateFailure);
 const mockClients = vi.mocked(getConnectedClientCount);
 const mockSettings = vi.mocked(loadSettings);
+const mockProjects = vi.mocked(loadProjects);
 const mockTasks = vi.mocked(loadTasks);
 const mockListPanes = vi.mocked(tmux.listPanes);
+const mockTaskBackend = vi.mocked(taskTerminalBackendIdentity);
+const mockNativeAlive = vi.mocked(nativeTaskPanesAlive);
 
 const TARBALL: UpdatePlan = { kind: "tarball", version: "1.46.0", url: "https://example.invalid/x.tar.gz" };
 
@@ -85,8 +94,12 @@ beforeEach(() => {
 	mockClients.mockReturnValue(0);
 	mockStage.mockResolvedValue({ ok: true, staged: { plan: TARBALL } });
 	mockRun.mockResolvedValue({ ok: true, restarting: true, message: "restarting" });
+	mockProjects.mockResolvedValue([{ id: "project" }] as never);
 	mockTasks.mockResolvedValue([]);
 	mockListPanes.mockResolvedValue([]);
+	mockRestartStrategy.mockReturnValue("helper");
+	mockTaskBackend.mockReturnValue("tmux");
+	mockNativeAlive.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -295,13 +308,65 @@ describe("pre-staging", () => {
 });
 
 describe("running agents", () => {
-	it("applies once the box is quiet even when tasks remain in progress", async () => {
+	const runningTask = {
+		id: "task-running",
+		status: "in-progress",
+		worktreePath: "/tmp/task-running",
+	};
+
+	it("allows a helper restart because the terminal processes survive it", async () => {
 		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
-		mockTasks.mockResolvedValue([{ status: "in-progress" }] as never);
+		mockTasks.mockResolvedValue([runningTask] as never);
 
 		await tickPastTheHold();
 
 		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("blocks a supervisor restart that could tear down the process cgroup", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("allows a supervisor restart after rehydration proves the agent is disconnected", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "idle", updatedAt: Date.now() },
+		}] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("treats a persisted live native session as busy when no output timestamp exists", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTaskBackend.mockReturnValue("native");
+		mockNativeAlive.mockResolvedValue(true);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+		expect(mockListPanes).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when native session liveness cannot be inspected", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTaskBackend.mockReturnValue("native");
+		mockNativeAlive.mockRejectedValue(new Error("native host unavailable"));
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
 	});
 });
 

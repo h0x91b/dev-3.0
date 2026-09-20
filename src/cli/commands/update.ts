@@ -22,9 +22,9 @@ What it does:
 
   If a headless server is running (\`dev3 remote\`), the update is handed to THAT
   process rather than done here, because only it can pass its port and its live
-  Cloudflare tunnel to the replacement — which is what keeps the public link and
-  your browser session working across the restart. Running agents survive: their
-  tmux sessions are detached and task lifecycles are rehydrated on boot.
+  Cloudflare tunnel to the replacement. Detached helper restarts preserve tmux
+  agents and the browser session. A systemd or container supervisor can terminate
+  running agents, so wait for them before applying a manual update.
 
   With no server running, the files are simply replaced and nothing restarts.
 
