@@ -18,7 +18,7 @@ import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesTaskQuery } from "../utils/taskSearch";
-import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
+import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
@@ -323,16 +323,14 @@ function KanbanBoard({
 		!!task.customColumnId && laneIdByProjectColumn.has(`${task.projectId}::${task.customColumnId}`);
 
 	// Facet resolver + funnel pool for the token-DSL filter. Custom-column tasks
-	// report the column name as their canonical status value (mirrors where they
-	// render), while still matching their underlying built-in status.
+	// match only their column name — where they render — never their underlying status.
 	const resolver: FacetResolver = useMemo(() => ({
 		agents,
 		labelsFor: (task) => (projectById.get(task.projectId)?.labels ?? []).filter((l) => task.labelIds?.includes(l.id)),
 		statusValuesFor: (task) => {
 			const ownColumns = projectById.get(task.projectId)?.customColumns ?? [];
 			const col = task.customColumnId ? ownColumns.find((c) => c.id === task.customColumnId) : undefined;
-			const label = customStatusLabels[task.status] || t(statusKey(task.status));
-			return col ? [col.name, task.status, label] : [task.status, label];
+			return taskStatusValues(task, col, customStatusLabels[task.status] || t(statusKey(task.status)));
 		},
 		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,

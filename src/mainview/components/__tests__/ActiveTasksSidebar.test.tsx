@@ -1016,6 +1016,42 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
 	});
 
+	it("keeps an unchecked custom column's tasks out of a built-in status selection (#1804)", async () => {
+		const user = userEvent.setup();
+		const projectWithCol: Project = {
+			...project,
+			customColumns: [{ id: "col-wait", name: "Waiting on Others", color: "#abcdef", llmInstruction: "" }],
+		};
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={projectWithCol}
+					tasks={[
+						makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null }),
+						makeTask({ id: "b", title: "Beta task", description: "Beta", status: "review-by-user", groupId: null as unknown as string, variantIndex: null }),
+						makeTask({ id: "w", title: "Waiting task", description: "Waiting", status: "review-by-user", customColumnId: "col-wait", groupId: null as unknown as string, variantIndex: null }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		await user.click(screen.getByRole("checkbox", { name: "Your Review" }));
+		await user.click(screen.getByRole("checkbox", { name: "Agent is Working" }));
+		expect(screen.getByText("Alpha task")).toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+		expect(screen.queryByText("Waiting task")).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("checkbox", { name: "Waiting on Others" }));
+		expect(screen.getByText("Waiting task")).toBeInTheDocument();
+	});
+
 	it("resets the filter on unmount (ephemeral, component state)", async () => {
 		const user = userEvent.setup();
 		const tasks = [

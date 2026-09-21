@@ -55,6 +55,15 @@ export interface FacetResolver {
 	prNumberFor?: (task: Task) => number | null;
 }
 
+/**
+ * `status:` match targets for a task. A task parked in an existing custom column
+ * matches ONLY that column — the column the user sees it in — never its
+ * underlying built-in status. Without a column it matches its status id + label.
+ */
+export function taskStatusValues(task: Task, column: { name: string } | undefined, statusLabel: string): string[] {
+	return column ? [column.name] : [task.status, statusLabel];
+}
+
 /** Resolve the display agent name for a task, or null when unassigned. */
 export function taskAgentName(task: Task, agents: CodingAgent[]): string | null {
 	return getTaskAgentMeta(task, agents).agent?.name ?? null;
