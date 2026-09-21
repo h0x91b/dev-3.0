@@ -7,6 +7,8 @@
 
 import type { GlobalSettings } from "../shared/types";
 import { api } from "./rpc";
+import { toast } from "./toast";
+import { translate } from "./i18n";
 
 let current: GlobalSettings | null = null;
 
@@ -23,8 +25,17 @@ export function getCachedGlobalSettings(): GlobalSettings | null {
  * fires before the first sync (astonishingly early) is a no-op rather than a
  * crash — there is nothing yet to merge into.
  */
-export function patchGlobalSettings(patch: Partial<GlobalSettings>): void {
-	if (!current) return;
-	current = { ...current, ...patch };
-	api.request.saveGlobalSettings(current).catch(() => {});
+export async function patchGlobalSettings(patch: Partial<GlobalSettings>): Promise<boolean> {
+	if (!current) return false;
+	const previous = current;
+	const next = { ...current, ...patch };
+	current = next;
+	try {
+		await api.request.saveGlobalSettings(next);
+		return true;
+	} catch {
+		if (current === next) current = previous;
+		toast.error(translate("settings.fullInterfaceError"), { source: "settings" });
+		return false;
+	}
 }

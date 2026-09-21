@@ -123,7 +123,7 @@ const help = {
 	"help.settings.agents.body":
 		"The coding agents you launch and their presets. Each configuration is a complete launch recipe — model, mode, flags; every task picks one at start. Drag to reorder the picker.",
 	"help.settings.appearance.title": "Appearance",
-	"help.settings.appearance.body": "Theme, language, zoom and scrolling — how the app looks and feels.",
+	"help.settings.appearance.body": "Simplified Mode, theme, language and zoom — how the app looks and feels.",
 	"help.settings.tasks.title": "Tasks & Board",
 	"help.settings.tasks.body":
 		"Board and task behavior defaults: where a dropped card lands in its column, how tasks open, review prompts, and feature tips.",

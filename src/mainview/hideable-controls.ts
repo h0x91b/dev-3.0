@@ -48,27 +48,4 @@ export const HEADER_HIDEABLE_IDS: readonly HideableControlId[] = [
 	"remote-access-qr",
 ];
 
-/**
- * Simplify View is a named preset, not a separate flag: turning it on writes
- * these ids into the hidden set, exactly as if the user had hidden each by
- * hand. A control absent from this list is never touched by the preset and
- * stays visible by default, even with Simplify View applied — that is how a
- * new feature announces itself instead of appearing pre-hidden for everyone.
- */
-export const SIMPLIFY_VIEW_PRESET_IDS: readonly HideableControlId[] = [
-	"agent-traffic",
-	"stats-nav",
-	"automations-tab",
-	"keyboard-shortcut-editor",
-	"custom-column-creation",
-	"label-creation",
-	"spawn-variant",
-	"spawn-agent",
-	"bug-hunters",
-	"hibernate",
-	"scheduled-message",
-	"tmux-pane-controls",
-	"scripts-runner",
-	"setup-dev-server",
-	"diff-include-tests",
-];
+export { SIMPLIFY_VIEW_PRESET_IDS } from "../shared/simplified-interface";

@@ -115,3 +115,48 @@ describe("Simplify View preset", () => {
 		expect(getHiddenControls().size).toBe(0);
 	});
 });
+
+describe("personal choices across interface modes", () => {
+	it("preserves a personal preset hide across repeated switches and restart sync", async () => {
+		await hideControl("bug-hunters");
+		await applySimplifyViewPreset();
+		await unapplySimplifyViewPreset();
+		expect(getHiddenControls()).toEqual(new Set(["bug-hunters"]));
+		const saved = saveGlobalSettings.mock.calls[saveGlobalSettings.mock.calls.length - 1]![0];
+		syncHiddenControlsFromGlobalSettings(saved);
+		await applySimplifyViewPreset();
+		await unapplySimplifyViewPreset();
+		expect(getHiddenControls()).toEqual(new Set(["bug-hunters"]));
+	});
+
+	it("does not invent personal hides when a fresh preset is removed", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: true, personalHiddenControls: [], hiddenControls: [...SIMPLIFY_VIEW_PRESET_IDS] });
+		await unapplySimplifyViewPreset();
+		expect(getHiddenControls().size).toBe(0);
+	});
+
+	it("retains ambiguous existing hides during upgrade", async () => {
+		syncHiddenControlsFromGlobalSettings({ hiddenControls: [...SIMPLIFY_VIEW_PRESET_IDS] });
+		expect(isSimplifyViewApplied()).toBe(true);
+		await unapplySimplifyViewPreset();
+		expect(getHiddenControls()).toEqual(new Set(SIMPLIFY_VIEW_PRESET_IDS));
+		expect(isSimplifyViewApplied()).toBe(false);
+	});
+
+	it("announces mode changes even when personal choices keep every preset control hidden", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [...SIMPLIFY_VIEW_PRESET_IDS] });
+		const listener = vi.fn();
+		window.addEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
+		await applySimplifyViewPreset();
+		expect(isSimplifyViewApplied()).toBe(true);
+		expect(listener).toHaveBeenCalledOnce();
+		window.removeEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
+	});
+
+	it("rolls back a rejected mode save and reports failure to the caller", async () => {
+		saveGlobalSettings.mockRejectedValueOnce(new Error("offline"));
+		expect(await applySimplifyViewPreset()).toBe(false);
+		expect(isSimplifyViewApplied()).toBe(false);
+		expect(getHiddenControls().size).toBe(0);
+	});
+});

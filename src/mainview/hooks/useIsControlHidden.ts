@@ -24,7 +24,7 @@ export function useIsControlHidden(id: HideableControlId): boolean {
 	return hidden;
 }
 
-/** Whether every Simplify View preset id is hidden — the Settings toggle's checked state. */
+/** The explicit Simplified Mode choice, independent of personal hidden controls. */
 export function useIsSimplifyViewApplied(): boolean {
 	const [applied, setApplied] = useState(isSimplifyViewApplied);
 

@@ -117,7 +117,7 @@ const help = {
 	"help.settings.agents.body":
 		"Los agentes de código que lanzas y sus presets. Cada configuración es una receta de lanzamiento completa — modelo, modo, flags; cada tarea elige una al empezar. Arrastra para reordenar.",
 	"help.settings.appearance.title": "Apariencia",
-	"help.settings.appearance.body": "Tema, idioma, zoom y desplazamiento — cómo se ve y se siente la aplicación.",
+	"help.settings.appearance.body": "Modo simplificado, tema, idioma y zoom: cómo se ve y se siente la aplicación.",
 	"help.settings.tasks.title": "Tareas y tablero",
 	"help.settings.tasks.body":
 		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta, cómo se abren las tareas, los prompts de revisión y los consejos.",

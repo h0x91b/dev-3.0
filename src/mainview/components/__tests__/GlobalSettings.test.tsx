@@ -1,3 +1,5 @@
+import { syncGlobalSettingsCache } from "../../global-settings-cache";
+import { setHiddenControlsForTests } from "../../hidden-controls";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
@@ -258,6 +260,24 @@ describe("GlobalSettings", () => {
 
 			await openAgent(user, "Codex");
 			expect(document.getElementById("agent-library-agent")).toHaveTextContent("Codex");
+		});
+	});
+
+	describe("Simplified Mode placement", () => {
+		it("belongs to Appearance and can be enabled there", async () => {
+			setupMocks();
+			syncGlobalSettingsCache(mockGlobalSettings);
+			setHiddenControlsForTests([]);
+			renderGlobalSettings("appearance");
+			await waitForLoad();
+			await userEvent.click(screen.getByRole("switch", { name: "Simplified Mode" }));
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(expect.objectContaining({ simplifiedMode: true }));
+		});
+		it("is absent from System", async () => {
+			setupMocks();
+			renderGlobalSettings("system");
+			await waitForLoad();
+			expect(screen.queryByRole("switch", { name: "Simplified Mode" })).toBeNull();
 		});
 	});
 

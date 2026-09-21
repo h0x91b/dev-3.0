@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
@@ -12,6 +13,7 @@ import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
 export function hostPublishesCanary(): boolean {
 	return canaryPublishesFor(hostOsName(process.platform), process.arch);
 }
+import { normalizeSimplifiedInterface, SIMPLIFY_VIEW_PRESET_IDS } from "../shared/simplified-interface";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -215,10 +217,14 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// Default-on beta toggle — an explicit false is the opt-out and must survive.
 		experimentalTerminalBidi:
 			typeof d.experimentalTerminalBidi === "boolean" ? d.experimentalTerminalBidi : undefined,
-		// Per-control hiding (§5.10): an opaque set of ids, deduped, absent when
-		// empty. Unknown ids are harmless (absent id = visible), so no allowlist
-		// against the registry — a future rename just orphans the old string.
-		hiddenControls: sanitizeHiddenControls(d.hiddenControls),
+		// Preserve unknown personal ids and keep the effective union readable
+		// by older installed versions that only understand hiddenControls.
+		...normalizeSimplifiedInterface({
+			hiddenControls: sanitizeHiddenControls(d.hiddenControls),
+			personalHiddenControls: Array.isArray(d.personalHiddenControls) ? sanitizeHiddenControls(d.personalHiddenControls) ?? [] : undefined,
+			simplifiedMode: typeof d.simplifiedMode === "boolean" ? d.simplifiedMode : undefined,
+		}),
+		simplifiedModeSource: d.simplifiedModeSource === "fresh" ? "fresh" : "existing",
 		// Default-on beta toggle — both booleans are stored, because an explicit
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:
@@ -244,10 +250,35 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 	};
 }
 
+function missingSettingsDefaults(): GlobalSettings {
+	const fresh = !existsSync(`${DEV3_HOME}/projects.json`) && !existsSync(`${DEV3_HOME}/data`);
+	const settings: GlobalSettings = {
+		...DEFAULT_SETTINGS,
+		simplifiedMode: fresh,
+		simplifiedModeSource: fresh ? "fresh" : "existing",
+		personalHiddenControls: [],
+		hiddenControls: fresh ? [...SIMPLIFY_VIEW_PRESET_IDS] : [],
+	};
+	mkdirSync(DEV3_HOME, { recursive: true });
+	const temporary = `${SETTINGS_FILE}.initial-${randomUUID()}`;
+	writeFileSync(temporary, JSON.stringify(settings, null, 2), { flag: "wx" });
+	try {
+		// Publish complete defaults once before bootstrap creates project data.
+		// Linking refuses to replace settings another process created first.
+		linkSync(temporary, SETTINGS_FILE);
+		return settings;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		return normalizeSettings(JSON.parse(readFileSync(SETTINGS_FILE, "utf-8")));
+	} finally {
+		unlinkSync(temporary);
+	}
+}
+
 export async function loadSettings(): Promise<GlobalSettings> {
 	try {
 		const file = Bun.file(SETTINGS_FILE);
-		if (!(await file.exists())) return { ...DEFAULT_SETTINGS };
+		if (!(await file.exists())) return missingSettingsDefaults();
 		return normalizeSettings(await file.json());
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -303,7 +334,7 @@ export async function recordFavoriteUsages(
 
 export function loadSettingsSync(): GlobalSettings {
 	try {
-		if (!existsSync(SETTINGS_FILE)) return { ...DEFAULT_SETTINGS };
+		if (!existsSync(SETTINGS_FILE)) return missingSettingsDefaults();
 		return normalizeSettings(JSON.parse(readFileSync(SETTINGS_FILE, "utf-8")));
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

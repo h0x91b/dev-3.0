@@ -1,0 +1,3 @@
+Short: Discover your full interface
+
+New installations start with Simplified Mode and receive occasional invitations with a compact preview of parallel agents, scheduled messages, and productivity stats to explore the Full interface after active use. Simplified Mode now lives in Settings → Appearance; switching and settings saves preserve individually hidden controls, and a short guide explains how to personalize the Full interface, with invitation and settings copy in English, Russian, and Spanish.

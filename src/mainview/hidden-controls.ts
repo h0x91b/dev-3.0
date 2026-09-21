@@ -1,35 +1,24 @@
-// ── Hidden-controls registry ──
-// One set of hidden control ids, mirrored from GlobalSettings.hiddenControls
-// so it reaches registries outside React (the keymap, the palette, the
-// native menu, the tip pool) the same way agent-traffic's own flag does.
-//
-// Absent id = visible. A control never added to the set (a brand-new
-// feature, or one the user never touched) always renders — Simplify View
-// only ever writes ids INTO this set, never assumes one that isn't there.
-//
-// Simplify View is not a separate boolean: it is the named preset in
-// hideable-controls.ts, applied/unapplied by writing/removing exactly those
-// ids. Two flags that could disagree — the trap the first version of this
-// feature built — cannot exist here, because there is only one set.
-
 import type { HideableControlId } from "./hideable-controls";
-import { SIMPLIFY_VIEW_PRESET_IDS } from "./hideable-controls";
+import {
+	normalizeSimplifiedInterface,
+	setSimplifiedInterfaceMode,
+	type SimplifiedInterfaceSettings,
+} from "../shared/simplified-interface";
 import { patchGlobalSettings } from "./global-settings-cache";
 
 export const HIDDEN_CONTROLS_CHANGED_EVENT = "hidden-controls-changed" as const;
 
+let state = normalizeSimplifiedInterface({ simplifiedMode: false });
 let hidden: ReadonlySet<string> = new Set();
 
-function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-	if (a.size !== b.size) return false;
-	for (const v of a) if (!b.has(v)) return false;
-	return true;
-}
-
-function announce(next: ReadonlySet<string>) {
-	if (setsEqual(next, hidden)) return;
-	hidden = next;
-	window.dispatchEvent(new CustomEvent(HIDDEN_CONTROLS_CHANGED_EVENT, { detail: Array.from(next) }));
+function announce(settings: SimplifiedInterfaceSettings) {
+	const next = normalizeSimplifiedInterface(settings);
+	const changed = next.simplifiedMode !== state.simplifiedMode
+		|| next.hiddenControls.length !== hidden.size
+		|| next.hiddenControls.some((id) => !hidden.has(id));
+	state = next;
+	hidden = new Set(next.hiddenControls);
+	if (changed) window.dispatchEvent(new CustomEvent(HIDDEN_CONTROLS_CHANGED_EVENT, { detail: [...hidden] }));
 }
 
 export function getHiddenControls(): ReadonlySet<string> {
@@ -40,55 +29,48 @@ export function isControlHidden(id: HideableControlId): boolean {
 	return hidden.has(id);
 }
 
-/** Whether every Simplify View preset id is currently hidden — the toggle's checked state. */
 export function isSimplifyViewApplied(): boolean {
-	return SIMPLIFY_VIEW_PRESET_IDS.every((id) => hidden.has(id));
+	return state.simplifiedMode;
 }
 
-/** Called wherever globalSettings lands in the renderer (initial load + push). */
-export function syncHiddenControlsFromGlobalSettings(settings: { hiddenControls?: string[] }): void {
-	announce(new Set(settings.hiddenControls ?? []));
+export function syncHiddenControlsFromGlobalSettings(settings: SimplifiedInterfaceSettings): void {
+	announce(settings);
 }
 
-function persist(next: ReadonlySet<string>) {
-	announce(next);
-	patchGlobalSettings({ hiddenControls: Array.from(next) });
+async function persist(next: SimplifiedInterfaceSettings): Promise<boolean> {
+	const previous = state;
+	const normalized = normalizeSimplifiedInterface(next);
+	announce(normalized);
+	const optimistic = state;
+	const saved = await patchGlobalSettings(normalized);
+	if (!saved && state === optimistic) announce(previous);
+	return saved;
 }
 
-/** Right-click "Hide" on any registered control. */
-export function hideControl(id: HideableControlId): void {
-	if (hidden.has(id)) return;
-	persist(new Set(hidden).add(id));
+export function hideControl(id: HideableControlId): Promise<boolean> {
+	if (state.personalHiddenControls.includes(id)) return Promise.resolve(true);
+	return persist({ ...state, personalHiddenControls: [...state.personalHiddenControls, id] });
 }
 
-/** The panel/header restore row for one control. */
-export function restoreControl(id: HideableControlId): void {
-	if (!hidden.has(id)) return;
-	const next = new Set(hidden);
-	next.delete(id);
-	persist(next);
+/** Restoring a preset control customizes the full interface, retaining the other hidden controls. */
+export function restoreControl(id: HideableControlId): Promise<boolean> {
+	if (!hidden.has(id)) return Promise.resolve(true);
+	return persist({ simplifiedMode: false, personalHiddenControls: [...hidden].filter((value) => value !== id) });
 }
 
-/** Settings toggle ON: union the preset into whatever is already hidden. */
-export function applySimplifyViewPreset(): void {
-	const next = new Set(hidden);
-	for (const id of SIMPLIFY_VIEW_PRESET_IDS) next.add(id);
-	persist(next);
+export function applySimplifyViewPreset(): Promise<boolean> {
+	return persist(setSimplifiedInterfaceMode(state, true));
 }
 
-/** Settings toggle OFF: remove exactly the preset's ids, leaving any other manual hides. */
-export function unapplySimplifyViewPreset(): void {
-	const next = new Set(hidden);
-	for (const id of SIMPLIFY_VIEW_PRESET_IDS) next.delete(id);
-	persist(next);
+export function unapplySimplifyViewPreset(): Promise<boolean> {
+	return persist(setSimplifiedInterfaceMode(state, false));
 }
 
-/** The escape hatch: clears every hidden id, preset or manual alike. */
-export function showAllControls(): void {
-	persist(new Set());
+export function showAllControls(): Promise<boolean> {
+	return persist({ simplifiedMode: false, personalHiddenControls: [] });
 }
 
-/** Test-only override — production code changes the set through the actions above. */
 export function setHiddenControlsForTests(ids: readonly string[]): void {
-	hidden = new Set(ids);
+	state = normalizeSimplifiedInterface({ hiddenControls: [...ids] });
+	hidden = new Set(state.hiddenControls);
 }

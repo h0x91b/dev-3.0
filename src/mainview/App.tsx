@@ -1,3 +1,4 @@
+import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
@@ -429,6 +430,7 @@ function App() {
 	// Help mode — the "Explain this screen" overlay (bible §5.4). Entered via
 	// ⇧⌘/, Help menu, the ⇧⌘P palette, or a HelpCard "Explain this screen" link.
 	const [helpMode, setHelpMode] = useState(false);
+	const [invitationVisible, setInvitationVisible] = useState(false);
 
 	// HelpCard navigation links dispatch a window event (no prop drilling from
 	// arbitrary HelpSpot hosts) — route them to the owning overlays here.
@@ -2984,6 +2986,7 @@ function App() {
 						updateDownloadStatus={updateDownloadStatus}
 						remoteAccessActive={remoteAccessActive}
 						helpDiscovered={globalSettings.helpModeDiscovered}
+						suppressHelpCallout={invitationVisible}
 						tourRunning={!!tour}
 					/>
 					{ghWarning && (
@@ -2998,6 +3001,7 @@ function App() {
 				{routeH1 && <h1 className="sr-only">{routeH1}</h1>}
 				{terminalImmersiveVisible ? renderTerminalImmersiveScreen() : renderScreen()}
 			</main>
+			<InterfaceOnboarding route={state.route} onVisibilityChange={setInvitationVisible} blocked={helpMode || hintMode || !!tour || terminalImmersiveVisible || !!switcher.session} />
 			{!terminalImmersiveVisible && (
 			<>
 			{switcher.session && (

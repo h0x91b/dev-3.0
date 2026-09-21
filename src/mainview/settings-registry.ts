@@ -507,11 +507,11 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "simplify-mode",
-		category: "system",
+		category: "appearance",
 		titleKey: "settings.simplifyMode",
 		descriptionKey: "settings.simplifyModeDesc",
 		anchor: "simplify-mode",
-		globalField: "hiddenControls",
+		globalField: "simplifiedMode",
 		storage: "global",
 	},
 	{
@@ -569,6 +569,9 @@ export type SettingsEntryAnchor = (typeof SETTINGS_ENTRIES)[number] extends infe
 
 /** GlobalSettings fields intentionally kept outside the visible settings registry. */
 export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
+	"hiddenControls",
+	"personalHiddenControls",
+	"simplifiedModeSource",
 	"resolvedTheme",
 	// Machine identity for analytics, not a preference — read-only in Debug -> Feature Flags.
 	"analyticsDistinctId",
@@ -608,6 +611,9 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentCustomBinaryPaths",
 	"experimentalTerminalBidi",
 	"hiddenControls",
+	"personalHiddenControls",
+	"simplifiedModeSource",
+	"simplifiedMode",
 	"experimentalAgentTraffic",
 	"freezeDiagnosticsEnabled",
 	"agentTrafficExperiment",

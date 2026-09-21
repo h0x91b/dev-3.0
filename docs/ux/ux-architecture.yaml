@@ -401,7 +401,7 @@ ux_architecture:
       evidence: ["src/mainview/components/TaskDiffViewer.tsx", "src/mainview/components/task-inline-diff.ts", "src/mainview/components/TaskDiffViewer.css"]
     modal:
       purpose: "Focused create/confirm flows."
-      allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config", "agent_request"]
+      allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config", "agent_request", "onboarding_invitation (§5.10)"]
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "GitPullErrorModal", "TmuxCheatSheetModal", "FolderPickerModal"]
       agent_request:
@@ -427,7 +427,8 @@ ux_architecture:
       forbidden: ["daily_operational_action"]
       notifications: "Owns focus mode, watch default, sound, browser alerts, and Web Push. Invites only link here; image auto-open stays in Tasks."
       simplify_mode:
-        spec: "Per-control hiding, not a boolean mode. GlobalSettings.hiddenControls: string[] holds every hidden id (hidden-controls.ts mirrors it, same class as experimentalAgentTraffic). Absent id = visible, always. Simplify View (Settings -> System -> Advanced Experience) is a PRESET: on unions simplify_view_preset_ids into the set; its checked state is derived (every preset id hidden), not stored. Off by default, reversible, destroys no data."
+        spec: "Simplified Mode is temporary onboarding; Settings -> Appearance owns it. Fresh installs start simplified; upgrades preserve choice. Explicit mode-owned preset hiding stays separate from personal hiddenControls; mode switches preserve those choices. New controls outside the preset remain visible."
+        invitation: "Bible §5.10 owns timing and consent: 3h active, postpone 1/3/9/14d then every 14d; manual enable every 14d. Persisted, host-deduplicated; calm foreground dashboard/board only, never typing/review/overlays. One React invitation, one primary switch, one postpone; acceptance stops reminders and teaches personal hiding once. No permanent chrome or second confirmation."
         hide_mechanism: "Desktop right-click -> one-item Hide menu (HideableControl/useHideContextMenu). Touch/remote: an always-visible Hide icon on the control's own overflow/sheet row (HideRowButton) -- no right click there."
         panel_hideable: ["diff-include-tests (context bar)", "spawn-agent, bug-hunters, hibernate, scheduled-message, tmux-pane-controls (session/agent bar)", "scripts-runner, setup-dev-server (runtime bar)"]
         panel_restore: "Exactly one restore control, in panel chrome (not a bar, no bar-budget cost) next to gear+collapse; appears only while something is hidden. Dropdown groups by bar; each row is dual-purpose (click runs the action, hover/touch-visible return icon restores), plus a permanent Show all."
@@ -438,7 +439,7 @@ ux_architecture:
         semantics: "Hidden = unreachable at every entry point, never disabled; backing data/schedulers keep running. Parked-on-hidden-destination (agent-traffic, stats) redirects to dashboard; a shortcut going dark with a hidden control must go through FLAGGED_SHORTCUTS."
         list_governance: "preset_only_no_individual_ui is closed; grows only with a budget_exception-grade reason."
         status: "observed"
-        evidence: ["hideable-controls.ts", "hidden-controls.ts", "global-settings-cache.ts", "HideableControl.tsx", "task-info-panel/PanelRestoreControl.tsx", "AdvancedExperienceSection.tsx", "bible §5.10"]
+        evidence: ["hideable-controls.ts", "hidden-controls.ts", "global-settings-cache.ts", "HideableControl.tsx", "task-info-panel/PanelRestoreControl.tsx", "AppearanceSettingsSection.tsx", "InterfaceOnboarding.tsx", "useInterfaceOnboarding.ts", "bible §5.10"]
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
