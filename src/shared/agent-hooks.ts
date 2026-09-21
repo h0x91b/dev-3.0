@@ -437,19 +437,16 @@ function buildStopGroups(
 	const move = (status: string, extra?: string) =>
 		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
-	const stopGroups: MatcherGroup[] = [
+	// The review group is unconditional: AI Review can be started by hand even
+	// when automatic review is off, and its reviewer shares these hooks (#1803).
+	return [
 		{
 			hooks: [{ type: "command", command: move(stopTarget, "--if-status in-progress") }],
 		},
-	];
-
-	if (stopTarget !== "review-by-user") {
-		stopGroups.push({
+		{
 			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
-		});
-	}
-
-	return stopGroups;
+		},
+	];
 }
 
 /**
