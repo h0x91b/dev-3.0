@@ -3131,8 +3131,9 @@ export interface PaneSessionEntry {
 	/** Resumable agent session ID for this pane. For agents that pre-assign at
 	 *  launch (Claude/Cursor `--session-id`/`--resume`, Gemini `--session-id`) this
 	 *  is set immediately; for Codex — which has no launch-time flag — it is filled
-	 *  in post-hoc from the lifecycle hook once the session exists (see
-	 *  cli-socket-server `captureCodexPaneSession`). Null until known / for agents
+	 *  in post-hoc from the lifecycle hook once the session exists, and omp the
+	 *  same way from its status extension (see cli-socket-server
+	 *  `capturePaneSession`). Null until known / for agents
 	 *  that support neither (OpenCode), which fall back to resume-last. */
 	sessionId: string | null;
 	/** Agent ID used at launch time. */

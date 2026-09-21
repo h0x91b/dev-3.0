@@ -1532,4 +1532,12 @@ describe("claudeDefaultEnv — Claude's bypass guard under uid 0", () => {
 		expect(getDefaultEnvForAgent(makeAgent())).toEqual(claudeDefaultEnv());
 		expect(getDefaultEnvForAgent(makeAgent({ baseCommand: "codex" }))).toEqual({});
 	});
+
+	// omp's completion bell would trip dev3's BEL → user-questions move ahead of
+	// the status extension's Stop, stranding every finished turn in Has Questions.
+	it("silences omp's terminal notifications, and only omp's", () => {
+		expect(getDefaultEnvForAgent(makeAgent({ baseCommand: "omp" }))).toEqual({ PI_NOTIFICATIONS: "off" });
+		expect(getDefaultEnvForAgent(makeAgent({ baseCommand: "my-omp", agentFamily: "omp" }))).toEqual({ PI_NOTIFICATIONS: "off" });
+		expect(getDefaultEnvForAgent(makeAgent({ baseCommand: "codex" })).PI_NOTIFICATIONS).toBeUndefined();
+	});
 });

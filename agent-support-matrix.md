@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
@@ -38,7 +38,7 @@ Last updated: 2026-09-16
 | **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic, via the shared `~/.agents/skills/` alias) | Yes (generic, `/skill:` prefix) |
 | **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` | `sessionStart` hook `additionalContext` (covers scratch + resume; never on the command line) | `--append-system-prompt <file>` |
 | **Session resume** | `--resume <id>` / `--continue` | `--resume <id>` / `--continue` | `resume <id>` / `resume --last` | `--resume <id>` / `--resume latest` | `--continue` | `--resume=<id>` / `--continue` | `--resume <id>` / `-c` |
-| **Targeted recovery** (resume the *exact* session, incl. multi-session worktrees) | Yes — pre-assign `--session-id` | Yes — pre-assign `--resume <uuid>` | Yes — session id captured per-pane from the lifecycle hook (`session_id` + `$TMUX_PANE`); no launch flag exists (see decision 125) | Yes — pre-assign `--session-id` (gemini-cli #26060; **not** version-guarded) | No — resume-last only (`--session` is resume-only) | Yes — pre-assign `--session-id <uuid>` (a non-UUID string is refused), and the hooks also report the id per pane | No — `--resume` selects an existing session |
+| **Targeted recovery** (resume the *exact* session, incl. multi-session worktrees) | Yes — pre-assign `--session-id` | Yes — pre-assign `--resume <uuid>` | Yes — session id captured per-pane from the lifecycle hook (`session_id` + `$TMUX_PANE`); no launch flag exists (see decision 125) | Yes — pre-assign `--session-id` (gemini-cli #26060; **not** version-guarded) | No — resume-last only (`--session` is resume-only) | Yes — pre-assign `--session-id <uuid>` (a non-UUID string is refused), and the hooks also report the id per pane | Yes — session id captured per-pane from the status extension (`getSessionId()` + `$TMUX_PANE`); no launch flag exists |
 | **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — | `--mode plan` / `--allow-tool write` / `--allow-all-tools` (`--no-ask-user`) / `--allow-all` | `--approval-mode always-ask\|write\|yolo`, always explicit — `default`, `plan` and `auto` say `always-ask`, since no flag means omp's own tier (`yolo` out of the box) |
 | **Effort level** | `--effort` | — | `--effort` | — | — | `--effort`, on a named reasoning model only — `--model auto` refuses it and the launch never starts, so the adapter drops it there | `--thinking` |
 | **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — | — (Copilot budgets in AI credits, not dollars) | — |
@@ -47,8 +47,8 @@ Last updated: 2026-09-16
 | **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — | — | — (omp's 9 roles unbound) |
 | **Agent selection** | — | — | — | — | `--agent` | — | — |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | Yes (`ensureCopilotTrust` → `config.json` `trustedFolders`) | — |
-| **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) | — (extension, planned) |
-| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Manual (SKILL.md) |
+| **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) | Yes (one generated extension loaded with `--hook`) |
+| **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Automatic via the status extension, `user-questions` included (`tool_approval_requested`) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
 
@@ -141,6 +141,22 @@ agent. (A hook *timeout* is fail-open for every event, including `preToolUse`.)
 channel: it only lists an `AGENTS.md` for the model to open later — the file's text
 never reaches the prompt — so an agent that never opens it never sees the protocol.
 
+### Oh My Pi (omp)
+
+omp has no JSON hooks; it loads TypeScript extension modules in-process. dev3 generates one, `~/.dev3.0/data/agent-hooks/omp-status.ts` (`src/shared/omp-status-extension.ts`), rewrites it before every launch, and passes it with `--hook <path>` on fresh launches and resumes alike. The module is inert unless the pane carries `DEV3_TASK_ID`, and translates omp's events into the same status vocabulary Codex reports, delivered as `dev3 hook omp` processes — one at a time, in event order, so a tool's "done" can never land after the agent's "stopped". While the agent is already known to be working, tool events are re-sent only every 10 s, so a long turn costs a handful of processes rather than one per tool call.
+
+| omp event | Reported as | Status transition |
+|-----------|-------------|-------------------|
+| `session_start` | `SessionStart` | → `in-progress` (a parked scratch task stays put) |
+| `input` (human text) | `UserPromptSubmit` + prompt | → `in-progress`; the text and a random submission id reach Agent traffic |
+| `agent_start` | `UserPromptSubmit` | → `in-progress` |
+| `tool_execution_start` / `tool_execution_end` | `PreToolUse` / `PostToolUse` | → `in-progress` |
+| `tool_approval_requested` | `PermissionRequest` | → `user-questions` |
+| `tool_approval_resolved` | `PostToolUse` | → back to the remembered lane |
+| `agent_end` (not `willContinue`) | `Stop` | → `review-by-ai` or `review-by-user` |
+
+Every report carries `ctx.sessionManager.getSessionId()`, so the pane's resumable id is captured exactly as Codex's is and recovery runs `omp --resume <id>`. An explicitly passed `--hook` path faces no trust prompt in omp, so unlike Codex nothing needs bypassing. Every omp launch also carries `PI_NOTIFICATIONS=off`: omp's completion bell would otherwise trip dev3's BEL → `user-questions` move a beat before the extension's `Stop`, parking every finished turn in Has Questions. See [`omp-status-extension`](decisions/2026/09/20/omp-status-extension.md).
+
 ## Windows: how generated commands are spelled
 
 Hook commands, the `!`-injected skill lines, and the Claude permission rule are
@@ -161,10 +177,11 @@ exits 0, so they never needed a shell fallback. See
 
 ### dev3 (task lifecycle)
 
-The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Three variants exist:
+The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Four variants exist:
 
 - **Claude variant** — deliberately short: the full protocol body is already injected into the system prompt via `--append-system-prompt`, so `SKILL.md` only auto-sets the status and shows `dev3 current --brief` (via `!` command injection, zero tool calls). The full body is written to `PROTOCOL.md` next to it as a fallback for sessions started outside the dev3 launcher. See decision 114.
 - **Codex variant** — full body; hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note. The same body is also injected out-of-band as a developer message via `-c developer_instructions=...` on every dev3 launch, including scratch tasks and resume (decision 115); the skill file remains the fallback for sessions started outside the dev3 launcher
+- **omp variant** — full body with the same hook-aware status section as Codex's, without the Codex shell note. The same body reaches omp as a file through `--append-system-prompt`; the skill file is the fallback for sessions started outside the dev3 launcher
 - **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
 All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval. They also treat an unqualified interactive artifact/report/dashboard request as a likely dev3 HTML artifact while preserving explicit Claude Artifact and build/package meanings. Each receives the same fixed six-file starter map, exact copy command, two-file edit boundary, and `dev3 show-artifact --assets` publish command.
@@ -191,11 +208,7 @@ For Gemini CLI specifically, dev-3.0 installs these managed skills only via the 
 
 omp does not read that shared `~/.agents/skills/` alias; it reads `~/.omp/agent/skills/` plus the
 other tools' directories (`~/.claude`, `~/.codex`, `~/.gemini`) at lower precedence, so it gets an
-explicit native copy of the generic body rather than inheriting Claude's short variant.
-
-omp is not wired for automatic status yet. It loads TypeScript extension modules through `--hook`,
-exposing turn and tool events, which is the channel a future hooks implementation would use; see
-[`omp-first-class-agent`](decisions/2026/09/12/omp-first-class-agent.md).
+explicit native copy of its own hook-aware body rather than inheriting Claude's short variant.
 
 ## LLM provider (per-agent backend)
 
@@ -247,3 +260,4 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/2026/07
 | `~/.copilot/settings.json` | GitHub Copilot CLI | dev3 merges its lifecycle hooks into the user's own settings file, replacing only what dev3 wrote before. Nothing is written under `~/.copilot/hooks/`, which can be root-owned on a managed machine |
 | `~/.copilot/permissions-config.json` | GitHub Copilot CLI | dev3 pre-approves its own CLI for the project, so an agent is not stopped by "Do you want to run this command?" on the status move its protocol just told it to make. Keyed by the repository's main working tree — which is what Copilot itself writes when the user approves from inside a worktree, so one entry covers every task of that project. Approvals the user granted themselves, and every other repository, are left untouched |
 | `~/.copilot/config.json` | GitHub Copilot CLI | dev3 appends the worktree's resolved path to `trustedFolders`, the only place Copilot reads folder trust from. Every other key — including `loggedInUsers` — is copied through untouched, the `//` header is preserved, and a file dev3 cannot parse is left exactly as found rather than risking the login. dev3 honours `COPILOT_HOME` rather than setting it |
+| `~/.dev3.0/data/agent-hooks/omp-status.ts` | Oh My Pi | Generated status extension, rewritten before every launch and loaded with `--hook`; reports the session's lifecycle through `dev3 hook omp` |

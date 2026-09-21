@@ -7,14 +7,14 @@ import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../shared/agent-message-hold-timing";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../shared/agent-skill-content";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../shared/agent-skill-content";
 import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
 import { applyLowBattery } from "./low-battery";
 
 // Re-exported for backward-compat: agents.ts and other callers import the
 // composed skill bodies from here. The section constants that compose them now
 // live in ../shared/agent-skill-content (pure, shared with the agent adapters).
-export { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../shared/agent-skill-content";
+export { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../shared/agent-skill-content";
 
 const log = createLogger("agent-skills");
 
@@ -86,6 +86,25 @@ Then begin working. Do not move the task status on session start; the injected \
 `;
 }
 
+export function buildOmpSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+	return `---
+name: dev3
+description: "${SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${OMP_SKILL_BODY}
+## On session start
+
+Run these two commands to learn about available CLI commands and your current task:
+
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
+
+Then begin working. Do not move the task status on session start; the dev3 status extension loaded into this session already owns that transition.
+`;
+}
+
 export function buildGenericSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
 	return `---
 name: dev3
@@ -111,15 +130,17 @@ const CLAUDE_SKILL_DIR = ".claude/skills/dev3";
 /** Codex skill directory (hook-aware, but no command injection support). */
 const CODEX_SKILL_DIR = ".codex/skills/dev3";
 
+/** omp skill directory (hook-aware). omp reads ~/.omp/agent/skills and, at lower
+ *  precedence, ~/.claude/skills — its own dir wins, so it gets its own body
+ *  rather than Claude's short one. */
+const OMP_SKILL_DIR = ".omp/agent/skills/dev3";
+
 /** Generic agent skill directories (no command injection support). */
 const GENERIC_SKILL_DIRS = [
 	".cursor/skills/dev3",
 	".agents/skills/dev3",
 	".opencode/skills/dev3",
 	".config/opencode/skills/dev3",
-	// omp reads ~/.omp/agent/skills and, at lower precedence, ~/.claude/skills —
-	// its own dir wins, so it gets the generic body rather than Claude's short one.
-	".omp/agent/skills/dev3",
 ];
 
 const DEV3_OPENAI_YAML = `interface:
@@ -1163,6 +1184,10 @@ export function getCodexSkillContent(): string {
 	return buildCodexSkillContent();
 }
 
+export function getOmpSkillContent(): string {
+	return buildOmpSkillContent();
+}
+
 export function getGenericSkillContent(): string {
 	return buildGenericSkillContent();
 }
@@ -1241,6 +1266,7 @@ const SHARE_ARTIFACT_SKILL_DIRS = [
 export const MANAGED_SKILL_FILES = [
 	CLAUDE_SKILL_DIR,
 	CODEX_SKILL_DIR,
+	OMP_SKILL_DIR,
 	...GENERIC_SKILL_DIRS,
 	CLAUDE_PROJECT_CONFIG_DIR,
 	...GENERIC_PROJECT_CONFIG_DIRS,
@@ -1590,6 +1616,20 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	} catch (err) {
 		log.warn("Failed to install Codex skill (non-fatal)", {
 			path: codexSkillFile,
+			error: String(err),
+		});
+	}
+
+	// Install the omp skill (hook-aware, like Codex's)
+	const ompSkillDir = `${home}/${OMP_SKILL_DIR}`;
+	const ompSkillFile = `${ompSkillDir}/SKILL.md`;
+	try {
+		mkdirSync(ompSkillDir, { recursive: true });
+		writeFileSync(ompSkillFile, getOmpSkillContent(), "utf-8");
+		log.info("omp skill installed", { path: ompSkillFile });
+	} catch (err) {
+		log.warn("Failed to install omp skill (non-fatal)", {
+			path: ompSkillFile,
 			error: String(err),
 		});
 	}
