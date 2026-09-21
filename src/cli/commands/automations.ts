@@ -10,7 +10,7 @@ import { readStdin } from "../stdin";
 function requireProjectId(args: ParsedArgs, context: CliContext | null): string {
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 	return projectId;
 }

@@ -223,7 +223,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const scratch = args.flags.scratch === "true";

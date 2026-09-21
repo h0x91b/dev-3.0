@@ -665,11 +665,13 @@ const COMMANDS: CommandHelp[] = [
 		name: "peek",
 		summary: "Read-only glance at a task's terminal — what it was doing and how fresh that is.",
 		subcommands: [],
-		usage: "dev3 peek [--task <id|seq:N>] [--pane <N|paneId>] [--lines <N>] [--json]",
+		usage: "dev3 peek [--task <id|seq:N>] [--project <id>] [--pane <N|paneId>] [--lines <N>] [--json]",
 		details: [
 			"Prints a header, one line per pane (command, alive/dead, age of last output) and the tail of the focused pane.",
-			"--task <id>      Any task in any project; defaults to the current worktree's task.",
-			"--project <id>   Narrow the search when a seq: ref matches tasks on several boards.",
+			"--task <id>      Any task on this project's board; defaults to the current worktree's task.",
+			"--project <id>   Look on ANOTHER board. Without it the lookup stays in the project the shell",
+			"                 sits in (its worktree, or the checkout the cwd belongs to), because every",
+			"                 board counts seq from 1. A ref this board lacks names the boards that have it.",
 			"--pane <N|id>    Tail another pane: the number from the summary, or its raw pane id.",
 			"--lines <N>      Tail budget, 1..1000 (default 120).",
 			"--json           Emit the raw snapshot object.",
@@ -684,17 +686,18 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 pane list [--task <id>] [--json]",
+				usage: "dev3 pane list [--task <id>] [--project <id>] [--json]",
 				summary: "Which terminal backend this task is on, which panes exist, which one is yours.",
 				details: [
 					"Read the backend from here rather than guessing it from the platform — the native",
 					"backend is not Windows-only, and tmux is not guaranteed to exist.",
 					"Also states whether a pane's SCREEN text can be read here at all (see `dev3 peek`).",
+					"--task is looked up on this project's board; --project <id> aims at another one.",
 				],
 			},
 			{
 				name: "run",
-				usage: 'dev3 pane run "<command>" [--below] [--label <name>] [--task <id>]',
+				usage: 'dev3 pane run "<command>" [--below] [--label <name>] [--task <id>] [--project <id>]',
 				summary: "Open a pane next to yours, run the command there, and mirror its output to a log.",
 				details: [
 					"Put flags AFTER the command so the command is not read as a flag value.",
@@ -708,7 +711,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "logs",
-				usage: "dev3 pane logs <run-id> [--lines <N>] [--task <id>] [--json]",
+				usage: "dev3 pane logs <run-id> [--lines <N>] [--task <id>] [--project <id>] [--json]",
 				summary: "The run's outcome (still running / exit code) plus a bounded tail of its output.",
 				details: [
 					"--lines <N>   Tail budget, 1..2000 (default 200). A dev server writes forever, so a read",
@@ -719,7 +722,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "close",
-				usage: "dev3 pane close <run-id> [--task <id>]",
+				usage: "dev3 pane close <run-id> [--task <id>] [--project <id>]",
 				summary: "Close the pane a run is executing in, which kills the command.",
 				details: ["The run's log stays readable with `dev3 pane logs` after the pane is gone."],
 			},

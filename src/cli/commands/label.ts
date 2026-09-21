@@ -9,7 +9,7 @@ async function listLabels(args: ParsedArgs, socketPath: string, context: CliCont
 	rejectUnknownFlags(args, ["project"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const resp = await sendRequest(socketPath, "label.list", { projectId });
@@ -31,7 +31,7 @@ async function createLabel(args: ParsedArgs, socketPath: string, context: CliCon
 	rejectUnknownFlags(args, ["project", "name", "color"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const name = (args.flags.name || args.positional[0] || "").trim();
@@ -53,7 +53,7 @@ async function deleteLabel(args: ParsedArgs, socketPath: string, context: CliCon
 	rejectUnknownFlags(args, ["project", "id"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const labelId = args.positional[0] || args.flags.id;
@@ -71,7 +71,7 @@ async function setTaskLabels(args: ParsedArgs, socketPath: string, context: CliC
 	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -97,7 +97,7 @@ async function clearTaskLabels(args: ParsedArgs, socketPath: string, context: Cl
 	rejectUnknownFlags(args, ["task", "task-id", "project", "clear"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitUsage("--project <id> is required (or run from inside a worktree)");
+		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 	}
 
 	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;

@@ -472,8 +472,34 @@ describe("resolveProjectId", () => {
 		expect(resolveProjectId(undefined, ctx)).toBe(TEST_PROJECT_ID);
 	});
 
-	it("returns undefined when neither flag nor context is present", async () => {
+	it("returns undefined when neither flag nor context is present and no project owns the cwd", async () => {
 		const { resolveProjectId } = await import("../context");
-		expect(resolveProjectId(undefined, null)).toBeUndefined();
+		expect(resolveProjectId(undefined, null, `${HOME}/nowhere-near-a-project`)).toBeUndefined();
+	});
+
+	it("falls back to the project whose checkout contains the cwd, with no task context at all", async () => {
+		// A plain `git clone` is a legitimate place to run a project-scoped command
+		// from; before this, every one of them answered "could not detect project".
+		const { resolveProjectId } = await import("../context");
+		const checkout = `${HOME}/checkouts/scoped-project`;
+		mkdirSync(`${checkout}/src/deep`, { recursive: true });
+		writeFileSync(PROJECTS_FILE, JSON.stringify([{ id: "proj-checkout-1", name: "Checkout", path: checkout }]));
+
+		expect(resolveProjectId(undefined, null, checkout)).toBe("proj-checkout-1");
+		expect(resolveProjectId(undefined, null, `${checkout}/src/deep`)).toBe("proj-checkout-1");
+		// A sibling directory that merely shares the prefix is NOT that project.
+		expect(resolveProjectId(undefined, null, `${checkout}-scratch`)).toBeUndefined();
+	});
+
+	it("keeps an explicit --project ahead of the checkout the cwd belongs to", async () => {
+		const { resolveProjectId } = await import("../context");
+		const checkout = `${HOME}/checkouts/scoped-project`;
+		mkdirSync(checkout, { recursive: true });
+		writeFileSync(PROJECTS_FILE, JSON.stringify([
+			{ id: "proj-checkout-1", name: "Checkout", path: checkout },
+			{ id: "proj-elsewhere-2", name: "Elsewhere", path: `${HOME}/checkouts/other` },
+		]));
+
+		expect(resolveProjectId("proj-elsewhere-2", null, checkout)).toBe("proj-elsewhere-2");
 	});
 });

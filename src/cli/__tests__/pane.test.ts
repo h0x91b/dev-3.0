@@ -108,14 +108,14 @@ describe("dev3 pane list", () => {
 		process.env.DEV3_PANE_ID = "pane-3";
 		mockSend.mockResolvedValue(okResp(listing()));
 		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, selfPaneId: "pane-3" });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "pane-3" });
 	});
 
 	it("names its own pane from TMUX_PANE on a tmux task", async () => {
 		process.env.TMUX_PANE = "%17";
 		mockSend.mockResolvedValue(okResp(listing()));
 		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, selfPaneId: "%17" });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "%17" });
 	});
 
 	it("prefers the native id when both are set, and sends nothing when neither is", async () => {
@@ -123,14 +123,14 @@ describe("dev3 pane list", () => {
 		process.env.TMUX_PANE = "%17";
 		mockSend.mockResolvedValue(okResp(listing()));
 		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, selfPaneId: "pane-3" });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "pane-3" });
 
 		delete process.env.DEV3_PANE_ID;
 		delete process.env.TMUX_PANE;
 		mockSend.mockClear();
 		mockSend.mockResolvedValue(okResp(listing()));
 		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, selfPaneId: undefined });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: undefined });
 	});
 });
 
@@ -142,6 +142,7 @@ describe("dev3 pane run", () => {
 		await handlePane("run", args({}, ["bun run build"]), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.run", {
 			taskId: TASK_ID,
+			projectId: "proj-001",
 			command: "bun run build",
 			placement: "right",
 			label: undefined,
