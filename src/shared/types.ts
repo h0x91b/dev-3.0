@@ -1384,11 +1384,12 @@ export interface GlobalSettings {
 	 */
 	openArtifactsInPopup?: boolean;
 	/**
-	 * Let a headless `dev3 remote` box install updates on its own once it is quiet
-	 * (no task in progress, no terminal output, no browser connected). Default ON —
-	 * the whole point is that nobody ever goes back to a terminal to type
-	 * `brew upgrade`. Turn it off to hold a box on one build while investigating.
-	 * Has no effect on the desktop app, which has its own updater.
+	 * Let a headless `dev3 remote` box install updates on its own once browser and
+	 * terminal activity are quiet. Default ON — the whole point is that nobody
+	 * ever goes back to a terminal to type `brew upgrade`. Helper restarts preserve
+	 * running agents; supervisor-owned restarts wait until no agent is at risk.
+	 * Turn it off to hold a box on one build while investigating. Has no effect on
+	 * the desktop app, which has its own updater.
 	 */
 	remoteSilentUpdate?: boolean;
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active

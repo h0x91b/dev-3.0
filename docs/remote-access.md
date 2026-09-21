@@ -67,27 +67,28 @@ tarball yet), a macOS `.app` Homebrew does not manage, or a cask whose recorded 
 drifted behind the running app. Refusals exit `15`.
 
 **By itself, once the box is quiet.** The server checks every 30 minutes and installs the
-update on its own when all three of these have held together for 10 minutes:
+update on its own after terminal output has stopped and no browser has been connected for
+10 minutes. A detached helper restart can proceed around running agents because their
+terminal processes survive. Under systemd or a container supervisor, dev3 also waits until
+no agent session is at risk because the supervisor can tear down the whole cgroup or
+container.
 
-- no task in the **In Progress** column,
-- no terminal producing output,
-- no browser connected.
-
-Past **72 hours** of waiting, only the first condition still applies — otherwise one browser
-tab left open on a phone could pin the box on an old build forever. Turn the whole thing off
-in **Settings → System → "Update a remote box on its own"** to hold a box on one build while
+Past **72 hours** of waiting, browser and observable terminal activity stop delaying the
+update, but the supervisor safety gate still applies. Turn the whole thing off in
+**Settings → System → "Update a remote box on its own"** to hold a box on one build while
 you investigate something.
 
-**The restart keeps your link.** The dying server hands its port and its *live* `cloudflared`
-process to the replacement, so the `*.trycloudflare.com` URL does not change, the host-bound
-session cookie still matches, and the browser reconnects on its own. Running agents survive
-too — their tmux sessions are detached and task lifecycles are rehydrated at boot.
+**The restart keeps your link.** With a detached helper, the dying server hands its port and
+its *live* `cloudflared` process to the replacement, so the `*.trycloudflare.com` URL does
+not change, the host-bound session cookie still matches, and the browser reconnects on its
+own. Detached tmux agents survive that restart too; native agents keep the unattended
+updater waiting because their output age cannot be observed after a server restart.
 
 Two caveats worth knowing:
 
-- **Under systemd** the unit's cgroup is torn down when the unit stops, which takes
-  `cloudflared` with it. The update still happens (systemd relaunches the unit), but the
-  public URL **changes** — re-run `dev3 remote url`.
+- **Under systemd** the unit's cgroup is torn down when the unit stops. Silent updates wait
+  for running agents, but a manual restart can still interrupt them. The update also loses
+  `cloudflared`, so the public URL changes — re-run `dev3 remote url`.
 - **There is no "updating…" screen.** A silent overnight restart looks exactly like the box
   falling over. `dev3 remote status` prints a `Last update:` line that explains it.
 

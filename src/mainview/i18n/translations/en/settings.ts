@@ -294,7 +294,7 @@ const settings = {
 	"settings.pushUnsupported": "This browser does not support push notifications.",
 	"push.inviteBody": "Get notified on this device when an agent needs you — tap to set it up",
 	"settings.remoteSilentUpdate": "Update a remote box on its own",
-	"settings.remoteSilentUpdateDesc": "Let a headless dev3 remote server install updates itself once the box is quiet — no task in progress, no terminal output, nobody connected. The public link and open sessions survive the restart. Turn it off to hold a box on one build while investigating. No effect on this desktop app.",
+	"settings.remoteSilentUpdateDesc": "Let a headless dev3 remote server install updates itself once terminal output stops and nobody is connected. If its process supervisor could stop running agents, dev3 waits for them; otherwise their terminals survive. The public link and open sessions reconnect. Turn it off to hold a box on one build while investigating. No effect on this desktop app.",
 	"settings.staticAccessCode": "Remote access code",
 	"settings.staticAccessCodeDesc": "A permanent sign-in code for remote access. It is typed on the browser's sign-in screen and never appears in a URL or a QR code. Anyone holding it can sign in as often as they like, from any device — make it long. Leave empty to allow only one-time QR links.",
 	"settings.staticAccessCodePlaceholder": "No code — QR links only",

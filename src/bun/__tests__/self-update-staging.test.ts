@@ -5,16 +5,37 @@
  * successor.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import type * as FsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UpdatePlan } from "../../shared/self-update";
 
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
+const slowFileIo = vi.hoisted(() => ({ openGate: null as Promise<void> | null }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		open: vi.fn(async (...args: Parameters<typeof actual.open>) => {
+			if (slowFileIo.openGate) await slowFileIo.openGate;
+			return actual.open(...args);
+		}),
+	};
+});
+
 import { spawn } from "../spawn";
-import { _resetStagingMemo, spawnDetached, stageUpdate, VIEWS_DIR_AUTO_ENV } from "../self-update";
+import {
+	_resetStagingMemo,
+	spawnDetached,
+	stageUpdate,
+	UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS,
+	VIEWS_DIR_AUTO_ENV,
+} from "../self-update";
 
 const mockSpawn = vi.mocked(spawn);
+const tempDirs: string[] = [];
 
 /** A child that succeeds immediately, with the shape `runCapture` reads. */
 function fakeChild(): unknown {
@@ -35,6 +56,7 @@ function commandsRun(): string[][] {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	slowFileIo.openGate = null;
 	_resetStagingMemo();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	mockSpawn.mockImplementation(() => fakeChild() as any);
@@ -42,8 +64,77 @@ beforeEach(() => {
 
 afterEach(() => {
 	_resetStagingMemo();
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 	delete process.env[VIEWS_DIR_AUTO_ENV];
 	delete process.env.DEV3_VIEWS_DIR;
+});
+
+describe("tarball staging", () => {
+	it("times out a stalled body, removes the partial archive, and lets the next call retry", async () => {
+		vi.useFakeTimers();
+		const dir = mkdtempSync(join(tmpdir(), "dev3-self-update-stage-"));
+		tempDirs.push(dir);
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array([1, 2, 3]));
+			},
+		});
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(body, { headers: { "content-length": "6" } }))
+			.mockResolvedValueOnce(new Response("", { status: 503 }));
+		vi.stubGlobal("fetch", fetchMock);
+		const plan: UpdatePlan = {
+			kind: "tarball",
+			version: "1.54.1+canary.deadbeef",
+			url: "https://example.invalid/update.tar.gz",
+		};
+
+		const stalled = stageUpdate(plan, dir);
+		await vi.waitFor(() => expect(existsSync(join(dir, ".dev3-staged.tar.gz.partial"))).toBe(true));
+		await vi.advanceTimersByTimeAsync(UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS + 1);
+		const first = await stalled;
+		const second = await stageUpdate(plan, dir);
+
+		expect({
+			first,
+			partialExists: existsSync(join(dir, ".dev3-staged.tar.gz.partial")),
+			second,
+			fetchCalls: fetchMock.mock.calls.length,
+		}).toEqual({
+			first: { ok: false, error: expect.stringContaining("made no progress") },
+			partialExists: false,
+			second: { ok: false, error: expect.stringContaining("HTTP 503") },
+			fetchCalls: 2,
+		});
+	});
+
+	it("waits for local file creation instead of abandoning a late handle", async () => {
+		vi.useFakeTimers();
+		const dir = mkdtempSync(join(tmpdir(), "dev3-self-update-stage-"));
+		tempDirs.push(dir);
+		const openGate = Promise.withResolvers<void>();
+		slowFileIo.openGate = openGate.promise;
+		vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))));
+		const plan: UpdatePlan = {
+			kind: "tarball",
+			version: "1.54.1+canary.deadbeef",
+			url: "https://example.invalid/update.tar.gz",
+		};
+
+		const staging = stageUpdate(plan, dir);
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(UPDATE_DOWNLOAD_IDLE_TIMEOUT_MS + 1);
+		openGate.resolve();
+		await vi.advanceTimersByTimeAsync(0);
+		const result = await staging;
+		expect(result).toEqual({
+			ok: false,
+			error: expect.stringContaining("has no `dev3` binary"),
+		});
+		expect(existsSync(join(dir, ".dev3-staged.tar.gz.partial"))).toBe(false);
+	});
 });
 
 describe("stageUpdate is serialised", () => {

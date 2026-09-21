@@ -9,15 +9,20 @@
  *
  * Same 30-minute cadence as the desktop auto-check. The DECISION of whether a
  * moment is quiet enough is `evaluateQuietWindow` in `src/shared/self-update.ts`;
- * everything here just measures the three inputs it needs.
+ * everything here measures the browser, terminal, and restart-ownership facts it
+ * needs. A supervisor-owned process cannot promise that detached agents survive:
+ * systemd and container runtimes may tear down the whole cgroup/container.
  */
 
-import { createLogger } from "./logger";
 import { evaluateQuietWindow, MAX_UPDATE_ATTEMPTS, PTY_QUIET_MS, retryBackoffMs, type UpdatePlan } from "../shared/self-update";
+import { ACTIVE_STATUSES, type RemoteUpdateAttempts, type Task } from "../shared/types";
 import type { UpdateChannel } from "../shared/update-channel";
-import type { RemoteUpdateAttempts } from "../shared/types";
+import * as data from "./data";
+import { createLogger } from "./logger";
+import { nativeTaskPanesAlive } from "./native-task-panes";
 import { readRemoteState, recordUpdateFailure } from "./remote-state";
-import { buildPlan, runSelfUpdate } from "./self-update";
+import { buildPlan, chooseRestartStrategy, runSelfUpdate } from "./self-update";
+import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 
 const log = createLogger("self-update-watch");
 
@@ -28,7 +33,7 @@ interface WatchState {
 	/** Version currently on offer, so a new release resets the pending clock. */
 	pendingVersion: string | null;
 	pendingSinceMs: number;
-	/** When the three quiet conditions last STARTED holding. Owned by the evaluator. */
+	/** When the measurable quiet conditions last STARTED holding. Owned by the evaluator. */
 	quietSinceMs: number | null;
 	/** Failed attempts at `pendingVersion`. Reset only by a NEW version appearing. */
 	failedAttempts: number;
@@ -62,29 +67,97 @@ const state: WatchState = {
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
-/**
- * How many tasks sit in the `in-progress` column right now, across every project
- * including the virtual "Operations" boards.
- *
- * A restart does NOT kill an agent — tmux sessions are detached and the headless
- * entry rehydrates lifecycles at boot — so this is not a safety gate. It is the
- * one condition strict enough to still apply past the 72-hour ceiling, because a
- * restart landing mid-worktree-creation is the one case that leaves real mess.
- */
-async function countTasksInProgress(): Promise<number> {
-	const data = await import("./data");
-	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
-	let count = 0;
-	for (const project of projects) {
-		const tasks = await data.loadTasks(project);
-		count += tasks.filter((task) => task.status === "in-progress").length;
-	}
-	return count;
+interface TaskUpdateSafety {
+	/** Persisted agent sessions a supervisor restart could terminate. */
+	agentsAtRisk: number;
+	/** A live native terminal has no output timestamp, so its idleness is unknowable. */
+	liveNativeSession: boolean;
 }
 
 /**
- * Milliseconds since the freshest terminal output on the box, or null when it
- * cannot be read.
+ * Could a supervisor restart right now kill a real agent process for this task,
+ * going by persisted state alone?
+ *
+ * DELIBERATELY NOT `taskAgentSessionLooksLive`: that predicate answers "should we
+ * TELL the user something", so it reads a missing `runtimeState` as live and hides
+ * `preparing`. Both are wrong here. A restart landing mid-worktree-creation is the
+ * one case that leaves real mess, and reading an absent hint as "running" lets a
+ * single stale record pin a supervisor-owned box on an old build FOREVER — the
+ * supervisor gate sits in front of the quiet window, so the 72-hour ceiling cannot
+ * release it.
+ *
+ * `runtimeState` is additive: a task written by an older build may simply not carry
+ * it. That is `unknown`, and the caller probes the terminal rather than guessing.
+ */
+function persistedAgentRisk(task: Task): "at-risk" | "idle" | "unknown" {
+	if (task.hibernated || task.draft) return "idle";
+	if (!task.worktreePath) return "idle"; // never launched: there is no agent to lose
+	if (!ACTIVE_STATUSES.includes(task.status)) return "idle";
+	if (task.preparing === true) return "at-risk";
+	const runtime = task.runtimeState?.runtime;
+	if (runtime === undefined) return "unknown";
+	return runtime === "idle" ? "idle" : "at-risk";
+}
+
+/** Does this task's terminal answer on ITS OWN backend? A native task is never asked through tmux. */
+async function terminalStillAlive(task: Task, native: boolean): Promise<boolean> {
+	if (!native) {
+		const { tmuxSessionExists } = await import("./pty-server");
+		return await tmuxSessionExists(task.id, task.tmuxSocket ?? undefined);
+	}
+	try {
+		return await nativeTaskPanesAlive(task.id);
+	} catch (error) {
+		log.debug("Native presence probe failed — assuming the agent is alive", {
+			taskId: task.id.slice(0, 8),
+			error: String(error),
+		});
+		return true;
+	}
+}
+
+async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+	let agentsAtRisk = 0;
+	let liveNativeSession = false;
+	for (const project of projects) {
+		for (const task of await data.loadTasks(project)) {
+			const risk = persistedAgentRisk(task);
+			if (risk === "idle") continue;
+			// AN UNUSABLE BACKEND FIELD MUST NOT THROW THE TICK AWAY. `taskTerminalBackendIdentity`
+			// rejects a record it cannot read, and one such task would otherwise abort every
+			// check for the life of the process — silent updates off, with one log line.
+			let native: boolean;
+			try {
+				native = taskTerminalBackendIdentity(task) === "native";
+			} catch (error) {
+				log.debug("Task terminal backend is unreadable — counting it as a live agent", {
+					taskId: task.id.slice(0, 8),
+					error: String(error),
+				});
+				agentsAtRisk += 1;
+				continue;
+			}
+			if (risk === "unknown" && !(await terminalStillAlive(task, native))) continue;
+			agentsAtRisk += 1;
+			if (!native) continue;
+			try {
+				if (await nativeTaskPanesAlive(task.id)) liveNativeSession = true;
+			} catch (error) {
+				log.debug("Native terminal activity probe could not prove a session quiet", {
+					taskId: task.id.slice(0, 8),
+					error: String(error),
+				});
+				liveNativeSession = true;
+			}
+		}
+	}
+	return { agentsAtRisk, liveNativeSession };
+}
+
+/**
+ * Milliseconds since the freshest observable terminal output on the box, or
+ * null when activity cannot be read safely.
  *
  * tmux has no per-pane activity variable, so `window_activity` (epoch seconds,
  * per WINDOW) is the freshest honest signal — the same one `dev3 peek` reports and
@@ -93,14 +166,19 @@ async function countTasksInProgress(): Promise<number> {
  * refuses: a probe that cannot see is not evidence of quiet.
  *
  * THE TMUX SERVER IS ASKED, NOT THIS PROCESS'S SESSION MAP. `getActiveSessionIds`
- * lists only sessions THIS process attached, and a restart attaches none —
- * `rehydrateTaskLifecycles` does not create pty sessions. Reading "no sessions" as
- * "nothing running at all" therefore declared a freshly restarted box silent while
- * detached agents were printing into it, which (with the usual zero browser
- * clients) left the in-progress task count as the only real gate.
+ * lists only sessions THIS process attached — none, right after a restart.
+ * Reading "no sessions" as "nothing running at all" would therefore declare a
+ * freshly restarted box silent while detached agents were still printing.
+ *
+ * `liveNativeSession` comes from {@link inspectTaskUpdateSafety} — the caller has
+ * already walked the board, so it is passed in rather than measured twice.
  */
-export async function probePtyIdleMs(now: number = Date.now()): Promise<number | null> {
+export async function probePtyIdleMs(
+	now: number,
+	liveNativeSession: boolean,
+): Promise<number | null> {
 	try {
+		if (liveNativeSession) return null;
 		const { getActiveSessionIds } = await import("./pty-server");
 		const { tmux, DEFAULT_TMUX_SOCKET, isTmuxError } = await import("./tmux");
 		const { PEEK_PANE_FORMAT } = await import("./tmux/formats");
@@ -235,9 +313,20 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 		return;
 	}
 
-	const [tasksInProgress, ptyIdleMs] = await Promise.all([countTasksInProgress(), probePtyIdleMs()]);
+	const taskSafety = await inspectTaskUpdateSafety();
+	const restartStrategy = chooseRestartStrategy(process.env);
+	if (restartStrategy === "supervisor-exit" && taskSafety.agentsAtRisk > 0) {
+		state.quietSinceMs = null;
+		log.info("Holding off the silent update", {
+			version: plan.version,
+			reason: "the process supervisor may terminate running agents",
+			agentsAtRisk: taskSafety.agentsAtRisk,
+			restartStrategy,
+		});
+		return;
+	}
+	const ptyIdleMs = await probePtyIdleMs(Date.now(), taskSafety.liveNativeSession);
 	const verdict = evaluateQuietWindow({
-		tasksInProgress,
 		ptyIdleMs,
 		browserClients: clients,
 		quietSinceMs: state.quietSinceMs,
@@ -261,7 +350,6 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 			log.info("Holding off the silent update", {
 				version: plan.version,
 				reason: verdict.reason,
-				tasksInProgress,
 				browserClients: clients,
 				ptyQuietThresholdMs: PTY_QUIET_MS,
 			});

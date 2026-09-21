@@ -114,10 +114,10 @@ const updates = {
 	"changelog.noResults": "Ничего не найдено по запросу или фильтрам.",
 	"changelog.resetFilters": "Сбросить фильтры",
 	"update.remoteLinkSurvives": "Публичная ссылка и эта сессия сохранятся — страница переподключится сама.",
-	"update.tasksInProgressWarning_one": "{count} задача в работе. Её агент переживёт перезапуск, но можно и подождать.",
-	"update.tasksInProgressWarning_few": "{count} задачи в работе. Их агенты переживут перезапуск, но можно и подождать.",
-	"update.tasksInProgressWarning_many": "{count} задач в работе. Их агенты переживут перезапуск, но можно и подождать.",
-	"update.tasksInProgressWarning_other": "{count} задач в работе. Их агенты переживут перезапуск, но можно и подождать.",
+	"update.tasksInProgressWarning_one": "{count} задача в работе. Перезапуск сейчас может прервать её агента.",
+	"update.tasksInProgressWarning_few": "{count} задачи в работе. Перезапуск сейчас может прервать их агентов.",
+	"update.tasksInProgressWarning_many": "{count} задач в работе. Перезапуск сейчас может прервать их агентов.",
+	"update.tasksInProgressWarning_other": "{count} задач в работе. Перезапуск сейчас может прервать их агентов.",
 	"changelog.showMore": "Показать ещё",
 };
 

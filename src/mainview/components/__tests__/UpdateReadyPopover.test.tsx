@@ -88,14 +88,12 @@ describe("UpdateReadyPopover — restart context", () => {
 		expect(screen.queryByText(/public link/)).toBeNull();
 	});
 
-	it("names how many tasks are in progress but LEAVES THE BUTTON ENABLED — it is a warning, not a gate", () => {
+	it("warns about tasks in progress but leaves the explicit restart action enabled", () => {
 		renderWith({ tasksInProgress: 3 });
 		expect(screen.getByText(/3 tasks are in progress/)).toBeInTheDocument();
+		expect(screen.getByText(/can interrupt their agents/)).toBeInTheDocument();
 		const restart = screen.getByRole("button", { name: "Restart to Update" });
-		expect(
-			(restart as HTMLButtonElement).disabled,
-			"a restart does not kill an agent (tmux sessions are detached and lifecycles rehydrate on boot), so blocking the button would refuse a safe action",
-		).toBe(false);
+		expect((restart as HTMLButtonElement).disabled).toBe(false);
 	});
 
 	it("uses the singular for one task", () => {

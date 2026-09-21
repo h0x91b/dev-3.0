@@ -242,7 +242,6 @@ describe("planUpdate", () => {
 describe("evaluateQuietWindow", () => {
 	const now = 1_000_000_000_000;
 	const base = {
-		tasksInProgress: 0,
 		ptyIdleMs: 10 * 60_000,
 		browserClients: 0,
 		quietSinceMs: now - QUIET_HOLD_MS,
@@ -252,16 +251,9 @@ describe("evaluateQuietWindow", () => {
 		now,
 	};
 
-	it("applies once all three conditions have held long enough", () => {
+	it("applies once both quiet conditions have held long enough", () => {
 		const verdict = evaluateQuietWindow(base);
 		expect(verdict.decision).toBe("apply");
-	});
-
-	it("waits — and RESETS the hold clock — while a task is in progress", () => {
-		const verdict = evaluateQuietWindow({ ...base, tasksInProgress: 2 });
-		expect(verdict.decision).toBe("wait");
-		expect(verdict.reason).toContain("2 task");
-		expect(verdict.quietSinceMs).toBeNull();
 	});
 
 	it("waits while a browser is connected — someone is looking at the board", () => {
@@ -304,15 +296,6 @@ describe("evaluateQuietWindow", () => {
 		});
 		expect(verdict.decision).toBe("apply");
 		expect(verdict.reason).toContain("ceiling");
-	});
-
-	it("but the ceiling never overrides a task in progress", () => {
-		const verdict = evaluateQuietWindow({
-			...base,
-			pendingSinceMs: now - QUIET_CEILING_MS - 1,
-			tasksInProgress: 1,
-		});
-		expect(verdict.decision).toBe("wait");
 	});
 
 	// Past the ceiling the quiet conditions stop applying, so WITHOUT a backoff a

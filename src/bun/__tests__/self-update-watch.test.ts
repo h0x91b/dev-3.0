@@ -9,6 +9,7 @@ import type { UpdatePlan } from "../../shared/self-update";
 
 vi.mock("../self-update", () => ({
 	buildPlan: vi.fn(),
+	chooseRestartStrategy: vi.fn(() => "helper"),
 	runSelfUpdate: vi.fn(),
 	stageUpdate: vi.fn(),
 }));
@@ -24,7 +25,12 @@ vi.mock("../data", () => ({
 	loadVirtualProjects: vi.fn(async () => []),
 	loadTasks: vi.fn(async () => []),
 }));
-vi.mock("../pty-server", () => ({ getActiveSessionIds: vi.fn(() => []) }));
+vi.mock("../pty-server", () => ({
+	getActiveSessionIds: vi.fn(() => []),
+	tmuxSessionExists: vi.fn(async () => true),
+}));
+vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesAlive: vi.fn(async () => false) }));
 vi.mock("../remote-access-server", () => ({ getConnectedClientCount: vi.fn(() => 0) }));
 // The probe asks the tmux SERVER, not this process's session map, so every tick
 // reaches the client — real spawns here would hang the suite under fake timers.
@@ -34,22 +40,32 @@ vi.mock("../tmux", () => ({
 	isTmuxError: (err: unknown) => err instanceof Error && err.name === "TmuxError",
 }));
 
-import { buildPlan, runSelfUpdate, stageUpdate } from "../self-update";
+import { buildPlan, chooseRestartStrategy, runSelfUpdate, stageUpdate } from "../self-update";
+import { loadProjects, loadTasks } from "../data";
+import { nativeTaskPanesAlive } from "../native-task-panes";
 import { tmux } from "../tmux";
 import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
 import { loadSettings } from "../settings";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { tmuxSessionExists } from "../pty-server";
 import { checkOnce, _resetWatchState } from "../self-update-watch";
 import { QUIET_HOLD_MS } from "../../shared/self-update";
 
 const mockBuildPlan = vi.mocked(buildPlan);
 const mockRun = vi.mocked(runSelfUpdate);
 const mockStage = vi.mocked(stageUpdate);
+const mockRestartStrategy = vi.mocked(chooseRestartStrategy);
 const mockReadState = vi.mocked(readRemoteState);
 const mockRecordFailure = vi.mocked(recordUpdateFailure);
 const mockClients = vi.mocked(getConnectedClientCount);
 const mockSettings = vi.mocked(loadSettings);
+const mockProjects = vi.mocked(loadProjects);
+const mockTasks = vi.mocked(loadTasks);
 const mockListPanes = vi.mocked(tmux.listPanes);
+const mockTaskBackend = vi.mocked(taskTerminalBackendIdentity);
+const mockNativeAlive = vi.mocked(nativeTaskPanesAlive);
+const mockTmuxSessionExists = vi.mocked(tmuxSessionExists);
 
 const TARBALL: UpdatePlan = { kind: "tarball", version: "1.46.0", url: "https://example.invalid/x.tar.gz" };
 
@@ -83,7 +99,13 @@ beforeEach(() => {
 	mockClients.mockReturnValue(0);
 	mockStage.mockResolvedValue({ ok: true, staged: { plan: TARBALL } });
 	mockRun.mockResolvedValue({ ok: true, restarting: true, message: "restarting" });
+	mockProjects.mockResolvedValue([{ id: "project" }] as never);
+	mockTasks.mockResolvedValue([]);
 	mockListPanes.mockResolvedValue([]);
+	mockRestartStrategy.mockReturnValue("helper");
+	mockTaskBackend.mockReturnValue("tmux");
+	mockNativeAlive.mockResolvedValue(false);
+	mockTmuxSessionExists.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -288,6 +310,138 @@ describe("pre-staging", () => {
 		await checkOnce(vi.fn());
 
 		expect(mockStage).not.toHaveBeenCalled();
+	});
+});
+
+describe("running agents", () => {
+	const runningTask = {
+		id: "task-running",
+		status: "in-progress",
+		worktreePath: "/tmp/task-running",
+	};
+
+	it("allows a helper restart because the terminal processes survive it", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([runningTask] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("blocks a supervisor restart that could tear down the process cgroup", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("allows a supervisor restart after rehydration proves the agent is disconnected", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "idle", updatedAt: Date.now() },
+		}] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("treats a persisted live native session as busy when no output timestamp exists", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTaskBackend.mockReturnValue("native");
+		mockNativeAlive.mockResolvedValue(true);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+		expect(mockListPanes).not.toHaveBeenCalled();
+	});
+
+	// `runtimeState` is ADDITIVE — a record written by an older build simply has none.
+	// Reading that as "an agent is running" let one stale task pin a supervisor-owned
+	// box on an old build forever: the gate sits in front of the quiet window, so the
+	// 72-hour ceiling never releases it. Unknown is probed, not assumed.
+	it("probes the terminal when the task carries no runtime hint, and updates once it answers dead", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTmuxSessionExists.mockResolvedValue(false);
+
+		await tickPastTheHold();
+
+		expect(mockTmuxSessionExists).toHaveBeenCalled();
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("blocks when that probe finds the session still alive", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTmuxSessionExists.mockResolvedValue(true);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("ignores a task that never launched — no worktree, no agent to lose", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{ id: "task-idle", status: "in-progress" }] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	// One unreadable `terminalBackend` used to throw out of the whole tick, which the
+	// caller only logs — silent updates dead for the life of the process, with no
+	// verdict anywhere. It counts as a live agent instead.
+	it("survives an unreadable terminal backend instead of throwing the tick away", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "running", updatedAt: Date.now() },
+		}] as never);
+		mockTaskBackend.mockImplementation(() => { throw new Error("unusable terminalBackend"); });
+
+		await tickPastTheHold();
+
+		// A helper restart ignores the count, so reaching the apply at all is the proof
+		// the throw was contained: an escaping one aborts the whole check.
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("counts a task whose terminal backend cannot be read as a live agent", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "running", updatedAt: Date.now() },
+		}] as never);
+		mockTaskBackend.mockImplementation(() => { throw new Error("unusable terminalBackend"); });
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when native session liveness cannot be inspected", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTaskBackend.mockReturnValue("native");
+		mockNativeAlive.mockRejectedValue(new Error("native host unavailable"));
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
 	});
 });
 

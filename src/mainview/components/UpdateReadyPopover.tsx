@@ -64,10 +64,10 @@ interface UpdateReadyPopoverProps {
 	changelog?: UpdateChangelog | null;
 	restarting: boolean;
 	/**
-	 * Tasks in the `in-progress` column right now. A WARNING, never a gate: the
-	 * restart does not kill an agent (tmux sessions are detached and lifecycles are
-	 * rehydrated on boot), so the button stays live — this only lets someone decide
-	 * to wait a minute. 0 renders nothing.
+	 * Tasks in the `in-progress` column right now. A WARNING, never a gate: this is
+	 * an explicit manual action, but a supervisor-owned restart can interrupt those
+	 * agents. The button stays live while the warning exposes that choice. 0 renders
+	 * nothing.
 	 */
 	tasksInProgress?: number;
 	/**
