@@ -25,7 +25,10 @@ vi.mock("../data", () => ({
 	loadVirtualProjects: vi.fn(async () => []),
 	loadTasks: vi.fn(async () => []),
 }));
-vi.mock("../pty-server", () => ({ getActiveSessionIds: vi.fn(() => []) }));
+vi.mock("../pty-server", () => ({
+	getActiveSessionIds: vi.fn(() => []),
+	tmuxSessionExists: vi.fn(async () => true),
+}));
 vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
 vi.mock("../native-task-panes", () => ({ nativeTaskPanesAlive: vi.fn(async () => false) }));
 vi.mock("../remote-access-server", () => ({ getConnectedClientCount: vi.fn(() => 0) }));
@@ -45,6 +48,7 @@ import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
 import { loadSettings } from "../settings";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { tmuxSessionExists } from "../pty-server";
 import { checkOnce, _resetWatchState } from "../self-update-watch";
 import { QUIET_HOLD_MS } from "../../shared/self-update";
 
@@ -61,6 +65,7 @@ const mockTasks = vi.mocked(loadTasks);
 const mockListPanes = vi.mocked(tmux.listPanes);
 const mockTaskBackend = vi.mocked(taskTerminalBackendIdentity);
 const mockNativeAlive = vi.mocked(nativeTaskPanesAlive);
+const mockTmuxSessionExists = vi.mocked(tmuxSessionExists);
 
 const TARBALL: UpdatePlan = { kind: "tarball", version: "1.46.0", url: "https://example.invalid/x.tar.gz" };
 
@@ -100,6 +105,7 @@ beforeEach(() => {
 	mockRestartStrategy.mockReturnValue("helper");
 	mockTaskBackend.mockReturnValue("tmux");
 	mockNativeAlive.mockResolvedValue(false);
+	mockTmuxSessionExists.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -356,6 +362,75 @@ describe("running agents", () => {
 
 		expect(mockRun).not.toHaveBeenCalled();
 		expect(mockListPanes).not.toHaveBeenCalled();
+	});
+
+	// `runtimeState` is ADDITIVE — a record written by an older build simply has none.
+	// Reading that as "an agent is running" let one stale task pin a supervisor-owned
+	// box on an old build forever: the gate sits in front of the quiet window, so the
+	// 72-hour ceiling never releases it. Unknown is probed, not assumed.
+	it("probes the terminal when the task carries no runtime hint, and updates once it answers dead", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTmuxSessionExists.mockResolvedValue(false);
+
+		await tickPastTheHold();
+
+		expect(mockTmuxSessionExists).toHaveBeenCalled();
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("blocks when that probe finds the session still alive", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([runningTask] as never);
+		mockTmuxSessionExists.mockResolvedValue(true);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("ignores a task that never launched — no worktree, no agent to lose", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{ id: "task-idle", status: "in-progress" }] as never);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	// One unreadable `terminalBackend` used to throw out of the whole tick, which the
+	// caller only logs — silent updates dead for the life of the process, with no
+	// verdict anywhere. It counts as a live agent instead.
+	it("survives an unreadable terminal backend instead of throwing the tick away", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "running", updatedAt: Date.now() },
+		}] as never);
+		mockTaskBackend.mockImplementation(() => { throw new Error("unusable terminalBackend"); });
+
+		await tickPastTheHold();
+
+		// A helper restart ignores the count, so reaching the apply at all is the proof
+		// the throw was contained: an escaping one aborts the whole check.
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	it("counts a task whose terminal backend cannot be read as a live agent", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockRestartStrategy.mockReturnValue("supervisor-exit");
+		mockTasks.mockResolvedValue([{
+			...runningTask,
+			runtimeState: { runtime: "running", updatedAt: Date.now() },
+		}] as never);
+		mockTaskBackend.mockImplementation(() => { throw new Error("unusable terminalBackend"); });
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
 	});
 
 	it("fails closed when native session liveness cannot be inspected", async () => {

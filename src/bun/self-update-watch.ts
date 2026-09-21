@@ -74,12 +74,46 @@ interface TaskUpdateSafety {
 	liveNativeSession: boolean;
 }
 
-function taskMayHaveAgentProcess(task: Task): boolean {
-	if (task.hibernated || task.draft) return false;
-	if (!ACTIVE_STATUSES.includes(task.status)) return false;
-	return task.preparing === true
-		|| task.shuttingDown === true
-		|| task.runtimeState?.runtime !== "idle";
+/**
+ * Could a supervisor restart right now kill a real agent process for this task,
+ * going by persisted state alone?
+ *
+ * DELIBERATELY NOT `taskAgentSessionLooksLive`: that predicate answers "should we
+ * TELL the user something", so it reads a missing `runtimeState` as live and hides
+ * `preparing`. Both are wrong here. A restart landing mid-worktree-creation is the
+ * one case that leaves real mess, and reading an absent hint as "running" lets a
+ * single stale record pin a supervisor-owned box on an old build FOREVER — the
+ * supervisor gate sits in front of the quiet window, so the 72-hour ceiling cannot
+ * release it.
+ *
+ * `runtimeState` is additive: a task written by an older build may simply not carry
+ * it. That is `unknown`, and the caller probes the terminal rather than guessing.
+ */
+function persistedAgentRisk(task: Task): "at-risk" | "idle" | "unknown" {
+	if (task.hibernated || task.draft) return "idle";
+	if (!task.worktreePath) return "idle"; // never launched: there is no agent to lose
+	if (!ACTIVE_STATUSES.includes(task.status)) return "idle";
+	if (task.preparing === true) return "at-risk";
+	const runtime = task.runtimeState?.runtime;
+	if (runtime === undefined) return "unknown";
+	return runtime === "idle" ? "idle" : "at-risk";
+}
+
+/** Does this task's terminal answer on ITS OWN backend? A native task is never asked through tmux. */
+async function terminalStillAlive(task: Task, native: boolean): Promise<boolean> {
+	if (!native) {
+		const { tmuxSessionExists } = await import("./pty-server");
+		return await tmuxSessionExists(task.id, task.tmuxSocket ?? undefined);
+	}
+	try {
+		return await nativeTaskPanesAlive(task.id);
+	} catch (error) {
+		log.debug("Native presence probe failed — assuming the agent is alive", {
+			taskId: task.id.slice(0, 8),
+			error: String(error),
+		});
+		return true;
+	}
 }
 
 async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
@@ -88,9 +122,25 @@ async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
 	let liveNativeSession = false;
 	for (const project of projects) {
 		for (const task of await data.loadTasks(project)) {
-			if (!taskMayHaveAgentProcess(task)) continue;
+			const risk = persistedAgentRisk(task);
+			if (risk === "idle") continue;
+			// AN UNUSABLE BACKEND FIELD MUST NOT THROW THE TICK AWAY. `taskTerminalBackendIdentity`
+			// rejects a record it cannot read, and one such task would otherwise abort every
+			// check for the life of the process — silent updates off, with one log line.
+			let native: boolean;
+			try {
+				native = taskTerminalBackendIdentity(task) === "native";
+			} catch (error) {
+				log.debug("Task terminal backend is unreadable — counting it as a live agent", {
+					taskId: task.id.slice(0, 8),
+					error: String(error),
+				});
+				agentsAtRisk += 1;
+				continue;
+			}
+			if (risk === "unknown" && !(await terminalStillAlive(task, native))) continue;
 			agentsAtRisk += 1;
-			if (taskTerminalBackendIdentity(task) !== "native") continue;
+			if (!native) continue;
 			try {
 				if (await nativeTaskPanesAlive(task.id)) liveNativeSession = true;
 			} catch (error) {
@@ -119,14 +169,16 @@ async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
  * lists only sessions THIS process attached — none, right after a restart.
  * Reading "no sessions" as "nothing running at all" would therefore declare a
  * freshly restarted box silent while detached agents were still printing.
+ *
+ * `liveNativeSession` comes from {@link inspectTaskUpdateSafety} — the caller has
+ * already walked the board, so it is passed in rather than measured twice.
  */
 export async function probePtyIdleMs(
-	now: number = Date.now(),
-	liveNativeSession?: boolean,
+	now: number,
+	liveNativeSession: boolean,
 ): Promise<number | null> {
 	try {
-		const nativeSessionIsLive = liveNativeSession ?? (await inspectTaskUpdateSafety()).liveNativeSession;
-		if (nativeSessionIsLive) return null;
+		if (liveNativeSession) return null;
 		const { getActiveSessionIds } = await import("./pty-server");
 		const { tmux, DEFAULT_TMUX_SOCKET, isTmuxError } = await import("./tmux");
 		const { PEEK_PANE_FORMAT } = await import("./tmux/formats");
