@@ -4,6 +4,8 @@ import {
 	createOsc8LinkProvider,
 	safeHttpUri,
 	safeFileUri,
+	safeOsc8Uri,
+	safeDeepLinkUri,
 	fileUriToLocalPath,
 	type HyperlinkLine,
 } from "../terminal-osc8-links";
@@ -391,5 +393,29 @@ describe("fileUriToLocalPath", () => {
 		expect(fileUriToLocalPath("https://a.dev/x")).toBeUndefined();
 		expect(fileUriToLocalPath("file://evil.example/x")).toBeUndefined();
 		expect(fileUriToLocalPath("file:///tmp/%zz")).toBeUndefined();
+	});
+});
+
+describe("safeDeepLinkUri", () => {
+	it("accepts the deep-link kinds the app navigates", () => {
+		expect(safeDeepLinkUri("dev3://task/a21540d6-4890-426f-81c1-41cfc460715e")).toBe(
+			"dev3://task/a21540d6-4890-426f-81c1-41cfc460715e",
+		);
+		expect(safeDeepLinkUri("dev3://new-task?project=p1&text=hi")).toBe("dev3://new-task?project=p1&text=hi");
+	});
+
+	it("refuses an unknown kind, whitespace and control characters", () => {
+		expect(safeDeepLinkUri("dev3://bogus/x")).toBeUndefined();
+		expect(safeDeepLinkUri("dev3://task/a b")).toBeUndefined();
+		expect(safeDeepLinkUri("dev3://task/a\nb")).toBeUndefined();
+	});
+
+	it("is the only non-web scheme an OSC 8 link may carry", () => {
+		expect(safeOsc8Uri("dev3://task/t1")).toBe("dev3://task/t1");
+		expect(safeOsc8Uri("https://example.com")).toBe("https://example.com");
+		expect(safeOsc8Uri("file:///tmp/a.ts")).toBe("file:///tmp/a.ts");
+		for (const hostile of ["javascript:alert(1)", "vscode://file/tmp/a", "smb://host/share", "data:text/html,x"]) {
+			expect(safeOsc8Uri(hostile)).toBeUndefined();
+		}
 	});
 });

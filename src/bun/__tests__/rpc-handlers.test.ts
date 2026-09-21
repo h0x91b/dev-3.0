@@ -6892,6 +6892,34 @@ describe("handlers.consumePendingQuitDialog", () => {
 });
 
 // ================================================================
+// handlers.resolveDeepLinkNav
+// ================================================================
+
+describe("handlers.resolveDeepLinkNav", () => {
+	it("finds a task in whichever project holds it, so a link across projects opens", async () => {
+		const data = await import("../data");
+		(data.loadProjects as any).mockResolvedValue([{ id: "proj-a" }, { id: "proj-b" }]);
+		(data.loadTasks as any).mockImplementation(async (project: any) =>
+			project.id === "proj-b" ? [{ id: "task-9" }] : [],
+		);
+		expect(await handlers.resolveDeepLinkNav({ url: "dev3://task/task-9" })).toEqual({
+			kind: "task",
+			taskId: "task-9",
+			projectId: "proj-b",
+		});
+	});
+
+	it("returns null for a task that does not exist and for a URL of an unknown kind", async () => {
+		const data = await import("../data");
+		(data.loadProjects as any).mockResolvedValue([{ id: "proj-a" }]);
+		(data.loadTasks as any).mockResolvedValue([]);
+		expect(await handlers.resolveDeepLinkNav({ url: "dev3://task/ghost" })).toBeNull();
+		expect(await handlers.resolveDeepLinkNav({ url: "dev3://bogus/x" })).toBeNull();
+		expect(await handlers.resolveDeepLinkNav({ url: "https://example.com" })).toBeNull();
+	});
+});
+
+// ================================================================
 // handlers.hideApp
 // ================================================================
 

@@ -265,6 +265,8 @@ const terminal = {
 	"terminal.pathLinkOpenFailed": "Couldn't open path: {error}",
 	"terminal.fileLinkNotFound": "Can't open {path} — it's missing, or outside the allowed folders.",
 	"terminal.fileLinkUnreadable": "That link isn't a readable file path: {uri}",
+	"terminal.deepLinkNotFound": "Nothing to open for {uri} — that task, project or space is gone.",
+	"terminal.deepLinkBad": "That isn't a dev3 link this app knows: {uri}",
 	"terminal.filePreviewLoading": "Loading preview…",
 	"terminal.filePreviewNotFound": "File not found — it may have been moved or deleted.",
 	"terminal.filePreviewBinary": "Binary file ({size}) — no preview available.",

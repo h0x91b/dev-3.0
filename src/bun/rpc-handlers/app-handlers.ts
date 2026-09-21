@@ -13,7 +13,8 @@ import { loadSettings, saveSettings } from "../settings";
 import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingNotificationNav as consumeNotificationNavPending } from "../notification-nav";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
-import type { DeepLinkNav } from "../../shared/deep-link";
+import { parseDeepLink, type DeepLinkNav } from "../../shared/deep-link";
+import { resolveDeepLink as resolveDeepLinkTarget } from "../deep-link";
 import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
@@ -83,6 +84,18 @@ async function consumePendingNotificationNav(): Promise<NotificationClickTarget 
 // calls this on mount and navigates. Same pull-on-mount rationale as above.
 async function consumePendingDeepLinkNav(): Promise<DeepLinkNav | null> {
 	return consumeDeepLinkNavPending();
+}
+
+// A `dev3://…` link clicked in terminal output. Same parse + resolve the
+// inbound `open-url` handler runs, minus the OS round trip: the window is
+// already open, so the renderer navigates with what comes back.
+async function resolveDeepLinkNav(params: { url: string }): Promise<DeepLinkNav | null> {
+	const target = parseDeepLink(params.url ?? "");
+	if (!target) {
+		log.warn("[deep-link] renderer asked to resolve an unrecognized URL");
+		return null;
+	}
+	return resolveDeepLinkTarget(target);
 }
 
 // Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
@@ -1073,6 +1086,7 @@ export const appHandlers = {
 	consumePendingQuitDialog,
 	consumePendingNotificationNav,
 	consumePendingDeepLinkNav,
+	resolveDeepLinkNav,
 	openNewWindow,
 	hideApp,
 	setWindowForeground,

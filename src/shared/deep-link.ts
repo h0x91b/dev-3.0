@@ -101,6 +101,45 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
 	}
 }
 
+// Characters a deep link may carry after the scheme. Deliberately narrower than
+// RFC 3986: brackets, quotes and parentheses only ever appear around a link in
+// prose, never inside one we build.
+const DEEP_LINK_TEXT_REGEX = /dev3:\/\/[\w\-.~%:/?#@!$&*+,;=]+/gi;
+const DEEP_LINK_TRAILING_PUNCTUATION = /[.,;:!?'"`)\]}>]+$/;
+
+/** One `dev3://…` link found in a line of plain text. */
+export interface DeepLinkMatch {
+	/** Exact matched text, trailing prose punctuation already dropped. */
+	raw: string;
+	target: DeepLinkTarget;
+	/** Start index in the scanned text. */
+	start: number;
+	/** Inclusive end index in the scanned text. */
+	end: number;
+}
+
+/**
+ * Find every well-formed `dev3://…` link in one line of plain text. Used by the
+ * terminal's link provider: a bare deep link printed by an agent is not a link
+ * to any terminal (ghostty-web's URL regex knows http(s), mailto, ftp… and
+ * nothing custom), so dev3 detects its own scheme itself.
+ *
+ * A match whose grammar `parseDeepLink` rejects is dropped, so an unknown host
+ * (`dev3://bogus/x`) never becomes a clickable dead end.
+ */
+export function findDeepLinksInText(text: string): DeepLinkMatch[] {
+	const found: DeepLinkMatch[] = [];
+	DEEP_LINK_TEXT_REGEX.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = DEEP_LINK_TEXT_REGEX.exec(text)) !== null) {
+		const raw = match[0].replace(DEEP_LINK_TRAILING_PUNCTUATION, "");
+		const target = parseDeepLink(raw);
+		if (!target) continue;
+		found.push({ raw, target, start: match.index, end: match.index + raw.length - 1 });
+	}
+	return found;
+}
+
 /** `dev3://task/<taskId>` */
 export function buildTaskDeepLink(taskId: string): string {
 	return `${DEEP_LINK_SCHEME}://task/${encodeURIComponent(taskId)}`;

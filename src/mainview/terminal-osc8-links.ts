@@ -1,4 +1,5 @@
 import type { ILink, ILinkProvider } from "ghostty-web";
+import { parseDeepLink } from "../shared/deep-link";
 
 /**
  * Clickable OSC 8 hyperlinks (`ESC ] 8 ; params ; URI ST text ESC ] 8 ; ; ST`).
@@ -62,9 +63,23 @@ export function safeFileUri(raw: string): string | undefined {
 	}
 }
 
-/** A URI an OSC 8 link is allowed to carry: http(s) or a local file URI. */
+/**
+ * Accept a `dev3://…` deep link, and only one whose grammar the app actually
+ * navigates: the parse decides, so an unknown host is rejected like any other
+ * scheme. Activation never leaves the app — it resolves the id against the
+ * boards and navigates in-app, which is also why this stays the ONLY non-web
+ * scheme allowed here. Anything else (`javascript:`, `vscode:`, `smb:`…) is
+ * either a dead click or someone else's handler, so it keeps being refused.
+ */
+export function safeDeepLinkUri(raw: string): string | undefined {
+	// eslint-disable-next-line no-control-regex
+	if (/[\x00-\x20\x7f]/.test(raw)) return undefined;
+	return parseDeepLink(raw) ? raw : undefined;
+}
+
+/** A URI an OSC 8 link is allowed to carry: http(s), a local file, or a dev3 deep link. */
 export function safeOsc8Uri(raw: string): string | undefined {
-	return safeHttpUri(raw) ?? safeFileUri(raw);
+	return safeHttpUri(raw) ?? safeFileUri(raw) ?? safeDeepLinkUri(raw);
 }
 
 // file.ts:12 or file.ts:12:5 baked into the URI path — same convention the
