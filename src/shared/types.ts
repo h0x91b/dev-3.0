@@ -9,6 +9,7 @@ import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotMode
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
+import type { ReviewComment, ReviewReplyAuthor } from "./review";
 import type { UpdateChannel } from "./update-channel";
 import type { TelemetryProfile } from "./telemetry-profile";
 export type { TelemetryProfile } from "./telemetry-profile";
@@ -2491,6 +2492,13 @@ export interface Task {
 	labelIds?: string[];
 	existingBranch?: string | null;
 	notes?: TaskNote[];
+	/**
+	 * The user's review of what the agent produced: comments anchored to diff
+	 * lines or artifact elements, with the agent's replies. Shared by every viewer
+	 * and by `dev3 review`; capped by {@link MAX_REVIEW_COMMENTS_KEPT}. See
+	 * `src/shared/review.ts`.
+	 */
+	review?: ReviewComment[];
 	customColumnId?: string | null;
 	/**
 	 * Append-only log of the task's title/overview as they changed over time.
@@ -5646,6 +5654,45 @@ export type AppRPCSchema = {
 			sendArtifactMessageToAgent: {
 				params: { taskId: string; text: string; artifactTitle: string; version: number; versionCount: number };
 				response: { spilledPath: string | null };
+			};
+			/** Review comments (`Task.review`): one RPC per mutation so an agent resolving through the CLI never races a whole-array write. */
+			addReviewComment: {
+				params: { taskId: string; projectId: string; comment: ReviewComment };
+				response: Task;
+			};
+			updateReviewComment: {
+				params: { taskId: string; projectId: string; commentId: string; body: string };
+				response: Task;
+			};
+			deleteReviewComment: {
+				params: { taskId: string; projectId: string; commentId: string };
+				response: Task;
+			};
+			markReviewCommentsSent: {
+				params: { taskId: string; projectId: string; commentIds: string[] };
+				response: Task;
+			};
+			resolveReviewComment: {
+				params: { taskId: string; projectId: string; commentId: string; by: ReviewReplyAuthor; reply?: string };
+				response: Task;
+			};
+			reopenReviewComment: {
+				params: { taskId: string; projectId: string; commentId: string };
+				response: Task;
+			};
+			replyReviewComment: {
+				params: { taskId: string; projectId: string; commentId: string; body: string; author: ReviewReplyAuthor };
+				response: Task;
+			};
+			/** Drop every review comment of the task — the confirmed "Reset review". */
+			clearTaskReview: {
+				params: { taskId: string; projectId: string };
+				response: Task;
+			};
+			/** One-shot import of a review a browser still holds in localStorage from before comments lived on the task. */
+			importReviewComments: {
+				params: { taskId: string; projectId: string; comments: ReviewComment[] };
+				response: Task;
 			};
 			addTaskNote: {
 				params: { taskId: string; projectId: string; content: string; source?: NoteSource };

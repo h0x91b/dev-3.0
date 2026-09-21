@@ -888,6 +888,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<TerminalView
 							ptyUrl={url}
 							taskId={taskId}
+							canComment
 							projectId={projectId}
 							onReady={(handle) => {
 								paneHandlesRef.current.set(paneId, handle);
@@ -922,6 +923,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					key={focusPaneId}
 					ptyUrl={activePaneUrl}
 					taskId={taskId}
+					canComment
 					projectId={projectId}
 					onReady={(handle) => {
 						if (focusPaneId) paneHandlesRef.current.set(focusPaneId, handle);
@@ -1100,6 +1102,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		<TerminalView
 			ptyUrl={ptyUrl}
 			taskId={taskId}
+			canComment
 			projectId={projectId}
 			onReady={(handle) => {
 				setTermHandle(handle);

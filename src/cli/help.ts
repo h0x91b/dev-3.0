@@ -211,6 +211,38 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "review",
+		summary: "The user's review comments on your work — diff lines and artifact elements — and how to close them.",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 review list [--unresolved] [--json] [--task <id>]",
+				summary: "List the task's review comments: id, status (open / sent / resolved), anchor, text, and any replies.",
+				details: [
+					"--unresolved  Only comments nobody has resolved yet — your to-do list.",
+					"--json        The raw comment records, anchors included.",
+					"A diff-line anchor names a file and line range; an artifact-element anchor names the artifact, its version, the heading and the element text — fix the report and republish under the same title.",
+				],
+			},
+			{
+				name: "resolve",
+				usage: 'dev3 review resolve <id> [--reply "..."] [--task <id>]',
+				summary: "Close a comment you handled (8-char prefix works); the reply shows on the thread in the viewer.",
+				details: ["--reply <text>  What you did; use - to read it from stdin."],
+			},
+			{
+				name: "reply",
+				usage: 'dev3 review reply <id> "..." [--task <id>]',
+				summary: "Answer a comment without closing it — ask for clarification or explain a disagreement.",
+			},
+			{
+				name: "reopen",
+				usage: "dev3 review reopen <id> [--task <id>]",
+				summary: "Reopen a resolved comment.",
+			},
+		],
+	},
+	{
 		name: "events",
 		summary: "Cross-task feed of what happened on the board — notes and column moves — addressed by a cursor.",
 		subcommands: [],
