@@ -1,7 +1,7 @@
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import {
 	PANE_RUN_TAIL_MAX_LINES,
@@ -12,7 +12,7 @@ import {
 } from "../../shared/pane-runs";
 
 const USAGE = `Usage:
-  dev3 pane list [--task <id>] [--json]                       Which backend you are on, which panes exist, which one is yours
+  dev3 pane list [--task <id>] [--project <id>] [--json]      Which backend you are on, which panes exist, which one is yours
   dev3 pane run "<command>" [--below] [--label <name>]        Run a command in a neighbouring pane; prints the run id
   dev3 pane logs <run-id> [--lines <N>] [--json]              The run's outcome + the tail of what it printed
   dev3 pane close <run-id>                                    Close the run's pane (kills the command)`;
@@ -27,13 +27,20 @@ function selfPaneId(): string | null {
 	return tmuxPane || null;
 }
 
-function requireTask(args: ParsedArgs, context: CliContext | null): string {
+/**
+ * Which task the pane call is about, scoped to the project the shell sits in.
+ * `seq:<N>` restarts at 1 on every board, so an unscoped ref could name a
+ * stranger's task; `--project` is the deliberate cross-project override.
+ */
+function taskTarget(args: ParsedArgs, context: CliContext | null): Record<string, unknown> {
 	const raw = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!raw) {
 		exitUsage(`No task in context — pass --task.\n${USAGE}`);
 		throw new Error("unreachable");
 	}
-	return expandShortId(raw, context);
+	const taskId = expandShortId(raw, context);
+	const projectId = resolveProjectId(args.flags.project, context);
+	return projectId ? { taskId, projectId } : { taskId };
 }
 
 /**
@@ -49,9 +56,9 @@ export async function handlePane(
 ): Promise<void> {
 	switch (subcommand) {
 		case "list": {
-			rejectUnknownFlags(args, ["task", "task-id", "json"]);
+			rejectUnknownFlags(args, ["task", "task-id", "project", "json"]);
 			const resp = await sendRequest(socketPath, "pane.list", {
-				taskId: requireTask(args, context),
+				...taskTarget(args, context),
 				selfPaneId: selfPaneId() ?? undefined,
 			});
 			if (!resp.ok) exitError(resp.error || "Failed to list the task's panes");
@@ -61,14 +68,14 @@ export async function handlePane(
 		}
 
 		case "run": {
-			rejectUnknownFlags(args, ["task", "task-id", "below", "label", "json"]);
+			rejectUnknownFlags(args, ["task", "task-id", "project", "below", "label", "json"]);
 			const command = args.positional[0];
 			if (!command) {
 				exitUsage(`dev3 pane run needs a command to run.\n${USAGE}`);
 				return;
 			}
 			const resp = await sendRequest(socketPath, "pane.run", {
-				taskId: requireTask(args, context),
+				...taskTarget(args, context),
 				command,
 				placement: "below" in args.flags ? "below" : "right",
 				label: args.flags.label,
@@ -87,7 +94,7 @@ export async function handlePane(
 		}
 
 		case "logs": {
-			rejectUnknownFlags(args, ["task", "task-id", "lines", "json"]);
+			rejectUnknownFlags(args, ["task", "task-id", "project", "lines", "json"]);
 			const runId = args.positional[0];
 			if (!runId) {
 				exitUsage(`dev3 pane logs needs a run id (see \`dev3 pane list\`).\n${USAGE}`);
@@ -101,7 +108,7 @@ export async function handlePane(
 				}
 			}
 			const resp = await sendRequest(socketPath, "pane.logs", {
-				taskId: requireTask(args, context),
+				...taskTarget(args, context),
 				runId,
 				lines: args.flags.lines === undefined ? undefined : Number(args.flags.lines),
 			});
@@ -112,13 +119,13 @@ export async function handlePane(
 		}
 
 		case "close": {
-			rejectUnknownFlags(args, ["task", "task-id"]);
+			rejectUnknownFlags(args, ["task", "task-id", "project"]);
 			const runId = args.positional[0];
 			if (!runId) {
 				exitUsage(`dev3 pane close needs a run id.\n${USAGE}`);
 				return;
 			}
-			const resp = await sendRequest(socketPath, "pane.close", { taskId: requireTask(args, context), runId });
+			const resp = await sendRequest(socketPath, "pane.close", { ...taskTarget(args, context), runId });
 			if (!resp.ok) exitError(resp.error || "Failed to close the run's pane");
 			const closed = (resp.data as { closed: boolean }).closed;
 			process.stdout.write(closed ? `closed the pane running ${runId}\n` : `no live pane is running ${runId}\n`);

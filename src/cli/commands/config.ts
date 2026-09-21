@@ -38,7 +38,7 @@ export async function handleConfig(
 	const worktreePath = context?.worktreePath;
 
 	if (subcommand === "export") {
-		if (!projectId) exitError("Could not detect project. Use --project <id> or run from a worktree.");
+		if (!projectId) exitError("Could not detect project. Use --project <id>, or run from the project's worktree or checkout.");
 		const resp = await sendRequest(socketPath, "config.export", { projectId, worktreePath });
 		if (!resp.ok) exitError(resp.error || "Failed to export config");
 		const result = resp.data as { path: string };
@@ -47,7 +47,7 @@ export async function handleConfig(
 	}
 
 	if (subcommand === "show" || !subcommand) {
-		if (!projectId) exitError("Could not detect project. Use --project <id> or run from a worktree.");
+		if (!projectId) exitError("Could not detect project. Use --project <id>, or run from the project's worktree or checkout.");
 		const resp = await sendRequest(socketPath, "config.show", { projectId, worktreePath });
 		if (!resp.ok) exitError(resp.error || "Failed to get config");
 

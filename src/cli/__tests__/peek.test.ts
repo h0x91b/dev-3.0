@@ -167,21 +167,20 @@ describe("dev3 peek", () => {
 		expect(stdoutOutput).toBe("");
 	});
 
-	it("looks across projects by default so a peer in another project resolves", async () => {
+	it("scopes a bare seq to the caller's own board, since every board counts from 1", async () => {
 		mockSend.mockResolvedValue(okResp(snapshot()));
 
 		await handlePeek(args({ task: "seq:7" }), SOCKET, CTX);
 
-		const params = mockSend.mock.calls[0][2] as Record<string, unknown>;
-		expect(params).not.toHaveProperty("projectId");
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ projectId: "proj-001" });
 	});
 
-	it("scopes the lookup only when --project is explicit", async () => {
+	it("reaches another board when --project says so", async () => {
 		mockSend.mockResolvedValue(okResp(snapshot()));
 
-		await handlePeek(args({ task: "seq:7", project: "proj-001" }), SOCKET, CTX);
+		await handlePeek(args({ task: "seq:7", project: "proj-002" }), SOCKET, CTX);
 
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ projectId: "proj-001" });
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ projectId: "proj-002" });
 	});
 
 	it("fails with the server's message when the task cannot be resolved", async () => {

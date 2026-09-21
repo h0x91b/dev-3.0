@@ -739,11 +739,26 @@ export function expandShortProjectId(id: string, context: CliContext | null): st
 
 /**
  * Resolve the target project ID from a parsed --project flag (expanding short IDs)
- * or fall back to the worktree context. Returns undefined when neither is present.
+ * or fall back to the project the cwd belongs to. Returns undefined when neither
+ * is present.
+ *
+ * Two sources of cwd-derived context, in order: the task worktree (or ops work
+ * dir) the shell sits in, then the registered project whose checkout contains
+ * the cwd. The second is what makes a plain `git clone` behave like a worktree —
+ * `dev3 label list` run in the project's own repo used to answer "could not
+ * detect project" purely because no task owned the directory.
+ *
+ * Deliberately NOT the project focused in the app's UI: a command's target must
+ * come from where the shell is, not from what the human clicked on last.
  */
-export function resolveProjectId(flagValue: string | undefined, context: CliContext | null): string | undefined {
+export function resolveProjectId(
+	flagValue: string | undefined,
+	context: CliContext | null,
+	cwd: string = process.cwd(),
+): string | undefined {
 	if (flagValue) return expandShortProjectId(flagValue, context);
-	return context?.projectId;
+	if (context?.projectId) return context.projectId;
+	return projectOwningCwd(cwd)?.id;
 }
 
 /**

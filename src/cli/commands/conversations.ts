@@ -103,7 +103,7 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitError("Could not determine project. Run from inside a worktree or pass --project <id>.");
+		exitError("Could not determine project. Run from the project's worktree or checkout, or pass --project <id>.");
 	}
 	const project = readProjectDirect(projectId);
 	if (!project) {
@@ -309,7 +309,7 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
-		exitError("Could not determine project. Run from inside a worktree or pass --project <id>.");
+		exitError("Could not determine project. Run from the project's worktree or checkout, or pass --project <id>.");
 	}
 	const project = readProjectDirect(projectId);
 	if (!project) {

@@ -1149,6 +1149,61 @@ describe("task.show", () => {
 		expect(resp.error).toContain("--project");
 	});
 
+	it("keeps a scoped lookup inside its project and names the board that does carry the ref", async () => {
+		// The whole point of scoping: a seq the caller's own board does not have
+		// must NOT come back as the stranger's task that happens to share the
+		// number. The answer still has to be actionable, so it names the board.
+		const projectA = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const projectB = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		vi.mocked(data.getProject).mockResolvedValue(projectA);
+		vi.mocked(data.loadProjects).mockResolvedValue([projectA, projectB]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) =>
+			p.id === "proj-b" ? [makeTask({ id: "bbbbbbbb-1111-2222-3333-444444444444", seq: 130, projectId: "proj-b" })] : [],
+		);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:130", projectId: "proj-a" }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain('Task not found in project "Alpha"');
+		expect(resp.error).toContain("does resolve on");
+		expect(resp.error).toContain("Beta");
+		expect(resp.error).toContain("--project proj-b");
+		// The stranger's task must not leak out as a result.
+		expect(resp.data).toBeUndefined();
+	});
+
+	it("stays quiet about other boards when no board carries the ref", async () => {
+		const projectA = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const projectB = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		vi.mocked(data.getProject).mockResolvedValue(projectA);
+		vi.mocked(data.loadProjects).mockResolvedValue([projectA, projectB]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:130", projectId: "proj-a" }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).not.toContain("does resolve on");
+	});
+
+	it("resolves the caller's own task when two boards share the seq", async () => {
+		const projectA = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const projectB = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		const mine = makeTask({ id: "aaaaaaaa-1111-2222-3333-444444444444", seq: 130, projectId: "proj-a" });
+		vi.mocked(data.getProject).mockResolvedValue(projectA);
+		vi.mocked(data.loadProjects).mockResolvedValue([projectA, projectB]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) =>
+			p.id === "proj-a" ? [mine] : [makeTask({ id: "bbbbbbbb-1111-2222-3333-444444444444", seq: 130, projectId: "proj-b" })],
+		);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:130", projectId: "proj-a" }));
+
+		expect(resp.ok).toBe(true);
+		expect((resp.data as Task).id).toBe(mine.id);
+	});
+
 	it("suggests the stable seq handle when a task id does not resolve", async () => {
 		const project = makeProject();
 		vi.mocked(data.getProject).mockResolvedValue(project);

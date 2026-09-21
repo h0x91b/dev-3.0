@@ -190,9 +190,46 @@ function taskNotFoundError(ref: string, scopedProject?: Project): Error {
 }
 
 /**
- * Put the task's archived title/overview history back on the record, leaving a
- * task with no history at all untouched rather than stamping an empty array on
- * it — the CLI's task shape stays exactly what it was before the sidecar.
+ * The same not-found error, plus the boards the ref DOES resolve on.
+ *
+ * A scoped lookup must never answer with a stranger's task, but "not found in
+ * project X" alone strands a caller whose peer lives on another board — they
+ * cannot pass `--project` without knowing which one. Naming the boards keeps the
+ * scope strict and the next command obvious. A scan failure degrades to the
+ * plain message rather than swallowing the real error.
+ */
+async function scopedTaskNotFoundError(ref: string, scopedProject: Project): Promise<Error> {
+	const base = taskNotFoundError(ref, scopedProject);
+	try {
+		const elsewhere: string[] = [];
+		for (const project of [...await data.loadProjects(), ...await data.loadVirtualProjects()]) {
+			if (project.id === scopedProject.id) continue;
+			try {
+				// A ref that is ambiguous ON that board still answers the question
+				// being asked here — the board carries it. Ambiguity is that board's
+				// problem once the caller aims at it.
+				if (findTaskByRef(await data.loadTasks(project), ref)) {
+					elsewhere.push(`"${project.name}" (--project ${project.id.slice(0, 8)})`);
+				}
+			} catch (err) {
+				// "Task ref … matches N variant tasks" means that board does carry it;
+				// an unreadable tasks.json means nothing and is skipped.
+				if (err instanceof Error && err.message.startsWith("Task ref")) {
+					elsewhere.push(`"${project.name}" (--project ${project.id.slice(0, 8)})`);
+				}
+			}
+		}
+		if (elsewhere.length === 0) return base;
+		return new Error(`${base.message}\n${ref} does resolve on: ${elsewhere.join(", ")}.`);
+	} catch {
+		return base;
+	}
+}
+
+/**
+ * Put the task's archived history back on the record, leaving a task with no
+ * history at all untouched rather than stamping an empty array on it — the CLI's
+ * task shape stays exactly what it was before the sidecar.
  */
 async function withArchivedHistory(project: Project, task: Task): Promise<Task> {
 	const history = await loadEffectiveTaskHistory(project, task);
@@ -210,7 +247,7 @@ async function requirePaneTask(params: Record<string, unknown>): Promise<{ proje
 	if (params.projectId) {
 		const project = await data.getProject(params.projectId as string);
 		const task = findTaskByRef(await data.loadTasks(project), taskId);
-		if (!task) throw taskNotFoundError(taskId, project);
+		if (!task) throw await scopedTaskNotFoundError(taskId, project);
 		return { project, task };
 	}
 	const found = await resolveTaskAcrossProjects(taskId);
@@ -320,7 +357,7 @@ async function resolveTaskFromParams(
 		const project = await data.getProject(params.projectId as string);
 		const tasks = await data.loadTasks(project);
 		const task = findTaskByRef(tasks, taskId, variantIndex);
-		if (!task) throw taskNotFoundError(taskId, project);
+		if (!task) throw await scopedTaskNotFoundError(taskId, project);
 		return { project, task };
 	}
 
@@ -815,7 +852,7 @@ const handlers: Record<string, Handler> = {
 			const project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
-			if (!task) throw taskNotFoundError(taskId, project);
+			if (!task) throw await scopedTaskNotFoundError(taskId, project);
 			return await withArchivedHistory(project, await syncTaskBranchName(project, task));
 		}
 
@@ -841,7 +878,7 @@ const handlers: Record<string, Handler> = {
 		} else {
 			task = (await resolveTaskAcrossProjects(taskId))?.task ?? null;
 		}
-		if (!task) throw taskNotFoundError(taskId, scopedProject);
+		if (!task) throw scopedProject ? await scopedTaskNotFoundError(taskId, scopedProject) : taskNotFoundError(taskId);
 
 		return await taskPeek({
 			task,
@@ -989,7 +1026,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId, project);
+			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -1198,7 +1235,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId, project);
+			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -1237,7 +1274,7 @@ const handlers: Record<string, Handler> = {
 			const project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId, project);
+			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -1326,7 +1363,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId, project);
+			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -1908,7 +1945,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId, project);
+			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);

@@ -30,10 +30,13 @@ export async function handlePeek(
 
 	const params: Record<string, unknown> = { taskId: expandShortId(rawTaskId, context) };
 
-	// Deliberately NOT the context project: a coordinator peeks at peers in other
-	// projects too, and the server resolves a bare ref across all of them. Passing
-	// `--project` narrows the search when a `seq:` ref is ambiguous.
-	if (args.flags.project) params.projectId = resolveProjectId(args.flags.project, context);
+	// The project the shell sits in SCOPES the lookup, exactly like every other
+	// task-targeting command: every board counts `seq` from 1, so resolving a bare
+	// ref across all of them would hand back a stranger's task. `--project` is the
+	// cross-project escape hatch; outside any project the lookup stays global and
+	// a collision is reported instead of guessed.
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	if (args.flags.pane !== undefined) {
 		const pane = String(args.flags.pane).trim();

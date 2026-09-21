@@ -68,7 +68,7 @@ export async function handleTasks(
 	if (subcommand === "list" || !subcommand) {
 		const projectId = resolveProjectId(args.flags.project, context);
 		if (!projectId) {
-			exitUsage("--project <id> is required (or run from inside a worktree)");
+			exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
 		}
 
 		const params: Record<string, unknown> = { projectId };
