@@ -66,4 +66,10 @@ export const ompAdapter: AgentAdapter = {
 	hooksSpec() {
 		return { kind: "omp" };
 	},
+
+	// No quit command has been observed against the real CLI, and a guess would be
+	// typed at somebody's agent — teardown goes straight to the kill instead.
+	exitProgram() {
+		return null;
+	},
 };

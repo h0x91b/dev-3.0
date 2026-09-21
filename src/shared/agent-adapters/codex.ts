@@ -1,7 +1,7 @@
 /** Codex adapter. Owns Codex's quirks: the `resume` subcommand, the theme
  *  profile rewrite, and the developer-instructions delivery channel. */
 import { CODEX_SKILL_BODY } from "../agent-skill-content";
-import { modelArgs, providerArgs } from "./common";
+import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter, CodexLaunchRuntime } from "./types";
@@ -142,5 +142,9 @@ export const codexAdapter: AgentAdapter = {
 
 	hooksSpec() {
 		return { kind: "codex" };
+	},
+
+	exitProgram() {
+		return slashExitProgram("/quit");
 	},
 };

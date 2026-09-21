@@ -50,7 +50,23 @@ Last updated: 2026-09-20
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) | Yes (one generated extension loaded with `--hook`) |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Automatic via the status extension, `user-questions` included (`tool_approval_requested`) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) |
+| **Graceful exit before teardown** (`exitProgram`) — runs only where launch readiness can be PROVED, see below | Ctrl-C, `/exit`, Enter — command verified against 2.1.273; SessionEnd hooks run | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command verified against gemini-cli 0.46.0 | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/exit`, Enter — command not validated | — (no quit command observed) |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
+
+### Graceful exit — two separate conditions, and the row above answers only one
+
+The quit command in that row is what dev3 WOULD type. Whether it types anything is a second
+question: the step refuses to send keystrokes to a CLI it cannot prove is at its prompt, because a
+trust dialog or first-run wizard would read the Enter as an answer. So a harness is covered only
+when **both** hold, and they fail independently:
+
+| Condition | How it is satisfied |
+|---|---|
+| The quit command is right | Observed against the real CLI. Today only Claude (2.1.273, by the change's author) and Gemini (gemini-cli 0.46.0, whose bundle registers `quit` with `exit` as an alias). The others are taken from documentation, and a wrong one costs the 30 s bound per teardown |
+| Readiness can be proved for the current launch | A launch-scoped readiness receipt for that harness. Without one the answer is `unknown` forever and the step never runs, whatever the quit command says |
+
+Claiming an agent is supported here means naming both. See
+`decisions/2026/09/15/graceful-agent-exit-before-teardown.md`.
 
 ## Status Hooks
 

@@ -132,6 +132,9 @@ export type TmuxFormatRow<F> = F extends TmuxFormat<infer T> ? T : never;
 /** Bare pane id per line (`%N`). */
 export const PANE_ID_FORMAT = tmuxFormat().string("paneId", "pane_id").build();
 
+/** Pane id + the pid of the process the pane was started with — graceful-exit polling. */
+export const PANE_ID_PID_FORMAT = tmuxFormat().string("paneId", "pane_id").number("panePid", "pane_pid").build();
+
 /** Pane id + root process pid — port/resource scanning. */
 export const PANE_PID_FORMAT = tmuxFormat().number("panePid", "pane_pid").build();
 
