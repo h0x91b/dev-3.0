@@ -1991,11 +1991,19 @@ describe("handlers.saveGlobalSettings", () => {
 		setPushMessage(push);
 	});
 
-	it("saves and broadcasts the new settings", async () => {
-		const settings = { updateChannel: "stable" } as GlobalSettings;
-		await handlers.saveGlobalSettings(settings);
-		expect(saveSettings).toHaveBeenCalledWith(settings);
-		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", settings);
+	it("saves and broadcasts normalized interface settings", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "beta" } as unknown as GlobalSettings);
+		await handlers.saveGlobalSettings({ updateChannel: "stable" } as GlobalSettings);
+		const expected = {
+			updateChannel: "stable",
+			simplifiedMode: false,
+			hiddenControls: [],
+			personalHiddenControls: [],
+			simplifiedModeSource: undefined,
+			analyticsDistinctId: undefined,
+		};
+		expect(saveSettings).toHaveBeenCalledWith(expected);
+		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", expected);
 	});
 
 	// Starring a preset in Settings has to reach the launch dialog, which keeps
