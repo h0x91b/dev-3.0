@@ -64,10 +64,12 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 	const needsYou: Task[] = [];
 	const waiting: Task[] = [];
 	const customByKey = new Map<string, Task[]>();
+	const knownColumns = new Set(orderedCustomColumns.map((c) => `${c.projectId}|${c.columnId}`));
 
 	for (const task of tasks) {
-		if (task.customColumnId) {
-			const key = `${task.projectId}|${task.customColumnId}`;
+		const key = `${task.projectId}|${task.customColumnId}`;
+		// A dangling customColumnId (column deleted) falls back to its status tier, as on the board.
+		if (task.customColumnId && knownColumns.has(key)) {
 			const existing = customByKey.get(key);
 			if (existing) existing.push(task);
 			else customByKey.set(key, [task]);

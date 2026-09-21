@@ -198,6 +198,19 @@ describe("groupTasksIntoTiers — custom columns", () => {
 		expect(kinds(tiers)).toEqual(["custom"]);
 	});
 
+	it("a task whose custom column no longer exists falls back to its status tier", () => {
+		const tasks = [
+			makeTask({ id: "dangling-review", status: "review-by-user", customColumnId: "deleted" }),
+			makeTask({ id: "dangling-working", status: "in-progress", customColumnId: "deleted" }),
+		];
+		const tiers = groupTasksIntoTiers(tasks, ctx({
+			orderedCustomColumns: [{ projectId: "p1", columnId: "onhold" }],
+		}));
+		expect(kinds(tiers)).toEqual(["needs-you", "waiting"]);
+		expect(ids(tiers[0].tasks)).toEqual(["dangling-review"]);
+		expect(ids(tiers[1].tasks)).toEqual(["dangling-working"]);
+	});
+
 	it("custom columns are priority-sorted internally", () => {
 		const tasks = [
 			makeTask({ id: "hold-p3", status: "in-progress", customColumnId: "onhold", priority: "P3" }),
