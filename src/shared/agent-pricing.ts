@@ -73,6 +73,8 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	// dropped to $0.25 (Fable 5 keeps the default $1). Must precede the "fable-5" row.
 	{ match: (id) => id.includes("fable-5-1") || id.includes("mythos-5-1"), rate: { input: 10, output: 50, cacheRead: 0.25 } },
 	{ match: (id) => id.includes("fable-5") || id.includes("mythos-5") || id.includes("mythos-preview"), rate: { input: 10, output: 50 } },
+	// Opus 5.5 undercut Opus 5: $4 / $20, cache reads at $0.20
+	{ match: (id) => id.includes("opus-5-5"), rate: { input: 4, output: 20, cacheRead: 0.2 } },
 	// Opus 4.8 reads cache at $0.25; the rest of the 4.5 – 4.8 tier at the default $0.50
 	{ match: (id) => id.includes("opus-4-8"), rate: { input: 5, output: 25, cacheRead: 0.25 } },
 	// Current Opus tier (4.5 – 4.8): $5 / $25

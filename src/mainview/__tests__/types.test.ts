@@ -364,14 +364,41 @@ describe("DEFAULT_AGENTS", () => {
 		}
 	});
 
-	it("defaults Claude to Opus 5 at Medium effort", () => {
+	it("uses the pinned 1M Opus 5.5 model in Opus 5.5 presets", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
-		expect(claude!.defaultConfigId).toBe("claude-auto-opus5-medium");
+		const opus55Configs = claude!.configurations.filter((config) => /-opus55(-|$)/.test(config.id));
+		expect(opus55Configs.map((c) => c.id)).toEqual([
+			"claude-auto-opus55-medium",
+			"claude-auto-opus55-high",
+			"claude-auto-opus55-xhigh",
+			"claude-bypass-opus55-medium",
+			"claude-bypass-opus55-high",
+			"claude-bypass-opus55-xhigh",
+			"claude-default-opus55",
+			"claude-plan-opus55",
+			"claude-approvals-opus55",
+		]);
+		for (const config of opus55Configs) {
+			expect(config.model).toBe("claude-opus-5-5[1m]");
+		}
+	});
+
+	it("defaults Claude to Opus 5.5 at Medium effort", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		expect(claude!.defaultConfigId).toBe("claude-auto-opus55-medium");
 
 		const cfg = claude!.configurations.find((c) => c.id === claude!.defaultConfigId);
-		expect(cfg!.model).toBe("claude-opus-5[1m]");
+		expect(cfg!.model).toBe("claude-opus-5-5[1m]");
 		expect(cfg!.effort).toBe("medium");
 		expect(cfg!.permissionMode).toBe("auto");
+	});
+
+	it("lists Opus 5.5 directly ahead of Opus 5 in every Claude mode group", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const ids = claude!.configurations.map((c) => c.id);
+		for (const opus5 of ids.filter((id) => /-opus5(-|$)/.test(id))) {
+			expect(ids[ids.indexOf(opus5) - 1], opus5).toBe(opus5.replace("-opus5", "-opus55"));
+		}
 	});
 
 	it("lists Opus 5 ahead of Opus 4.8 in every Claude mode group", () => {
