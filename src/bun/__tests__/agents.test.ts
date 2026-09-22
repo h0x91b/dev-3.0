@@ -1191,7 +1191,7 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		});
 	});
 
-	it("upgrades the previous Codex default to Astra Medium and puts Astra first", () => {
+	it("upgrades the Luna-era Codex default to the current default and puts it first", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const stored: CodingAgent[] = [{
 			...codex,
@@ -1207,16 +1207,40 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		const updated = applyLayoutResync(mergeWithDefaults(stored))
 			.find((agent) => agent.id === "builtin-codex")!;
 		expect(updated.configurations[0].id).toBe(updated.defaultConfigId);
-		expect(updated.configurations[0].model).toBe("gpt-6-astra");
+		expect(updated.configurations[0].model).toBe("gpt-6-sol");
 		expect(updated.configurations[0].additionalArgs).toContain('model_reasoning_effort="medium"');
 		expect(updated.configurations.find((config) => config.id === "codex-5.6-luna-xhigh-bypass")?.model)
 			.toBe("gpt-5.6-luna");
 	});
 
+	it("upgrades the Astra default to GPT-6 Sol Medium and moves the Sol plan workflows onto GPT-6 Sol", () => {
+		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
+		const stored: CodingAgent[] = [{
+			...codex,
+			configurations: [
+				{
+					id: "codex-default", name: "GPT-6 Astra Bypass [Medium] — Default",
+					model: "gpt-6-astra", version: 10,
+					additionalArgs: ["-c", 'model_reasoning_effort="medium"'],
+				},
+				{ ...codex.configurations.find((config) => config.id === "codex-plan")!, model: "gpt-5.6-sol", version: 7 },
+			],
+		}];
+		const updated = applyLayoutResync(mergeWithDefaults(stored))
+			.find((agent) => agent.id === "builtin-codex")!;
+		expect(updated.configurations[0].id).toBe(updated.defaultConfigId);
+		expect(updated.configurations[0].model).toBe("gpt-6-sol");
+		expect(updated.configurations[0].additionalArgs).toContain('model_reasoning_effort="medium"');
+		expect(updated.configurations.find((config) => config.id === "codex-plan")?.model).toBe("gpt-6-sol");
+		expect(updated.configurations.find((config) => config.id === "codex-6-astra-medium-bypass")?.model).toBe("gpt-6-astra");
+	});
+
 	it("ships canonical model labels on every Codex preset", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const expectedLabels: Record<string, string> = {
+			"gpt-6-sol": "GPT-6 Sol",
 			"gpt-6-astra": "GPT-6 Astra",
+			"gpt-6-luna": "GPT-6 Luna",
 			"gpt-5.6-sol": "GPT-5.6 Sol",
 			"gpt-5.6-terra": "GPT-5.6 Terra",
 			"gpt-5.6-luna": "GPT-5.6 Luna",
