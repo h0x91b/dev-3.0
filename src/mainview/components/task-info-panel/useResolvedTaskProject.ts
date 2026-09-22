@@ -3,19 +3,20 @@ import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { startVisibilityAwarePoll } from "../../utils/poll";
 
+/**
+ * The task's effective project config — the worktree's `.dev3/` files layered
+ * over the main checkout's, exactly as a dev-server start resolves them. The
+ * task is resolved backend-side, so a task with no worktree yet still sees the
+ * main checkout's config instead of the bare projects.json record.
+ */
 export function useResolvedTaskProject(task: Task, project: Project): Project {
 	const [resolvedProject, setResolvedProject] = useState(project);
 
 	useEffect(() => {
-		if (!task.worktreePath) {
-			setResolvedProject(project);
-			return;
-		}
-
 		let cancelled = false;
 
 		const fetchResolved = () => {
-			api.request.getResolvedProject({ projectId: project.id, worktreePath: task.worktreePath! })
+			api.request.getResolvedProject({ projectId: project.id, taskId: task.id })
 				.then((nextProject) => {
 					if (!cancelled) {
 						setResolvedProject(nextProject);
@@ -34,7 +35,7 @@ export function useResolvedTaskProject(task: Task, project: Project): Project {
 			cancelled = true;
 			stop();
 		};
-	}, [project, project.id, task.worktreePath]);
+	}, [project, project.id, task.id]);
 
 	return resolvedProject;
 }

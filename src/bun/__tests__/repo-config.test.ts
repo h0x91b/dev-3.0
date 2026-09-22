@@ -866,6 +866,21 @@ describe("resolveOperationalProjectConfig — worktree + main cascade", () => {
 		expect(resolved.devScript).toBe("main-local-dev");  // level 3 beats level 4
 	});
 
+	// The exact shape of the "Setup Dev Server" false prompt: config.local.json is
+	// gitignored, so it exists only in the main checkout. A worktree-only
+	// resolution reports no dev server for a project that starts one fine, which
+	// is why every task-scoped consumer must use THIS resolver.
+	it("a devScript only in the main checkout's local config is invisible to worktree-only resolution", async () => {
+		writeCfg(TEST_DIR, "config.local.json", { devScript: "bun run dev" });
+		const project = makeProject({ devScript: "" });
+
+		const worktreeOnly = await resolveProjectConfig(project, WT_DIR);
+		const operational = await resolveOperationalProjectConfig(project, WT_DIR);
+
+		expect(worktreeOnly.devScript).toBe("");
+		expect(operational.devScript).toBe("bun run dev");
+	});
+
 	// Scenario 2c: main config.json (level 4) is a fallback for NON-script fields too —
 	// the behavior the old resolver lacked (it ignored main for non-scripts).
 	it("main config.json portCount reaches a worktree with no config of its own", async () => {
