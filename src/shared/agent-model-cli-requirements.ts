@@ -41,12 +41,18 @@ export function isCliVersionAtLeast(version: CliVersion | null, threshold: CliVe
  * good 0.153.4 is untested, and this floor is the earliest release where the
  * CLI itself knows the model.
  *
- * `src/shared/__tests__/agent-model-cli-requirements.test.ts` fails when a
+ * `gpt-6-sol` and `gpt-6-luna` are absent from the bundled `models.json` even on
+ * `main` (2026-09-22): Codex receives them from the server-side model catalog,
+ * and both ran on codex-cli 0.155.1. No client-side floor is known.
+ *
+ * `src/bun/__tests__/agent-model-cli-requirements.test.ts` fails when a
  * builtin Codex preset names a model absent from this map: adding a preset for
  * a fresh model must state its requirement, even when that is `null`.
  */
 export const CODEX_MODEL_MIN_CLI_VERSION: Readonly<Record<string, string | null>> = {
 	"gpt-6-astra": "0.153.1",
+	"gpt-6-sol": null,
+	"gpt-6-luna": null,
 	"gpt-5.6-luna": null,
 	"gpt-5.6-sol": null,
 	"gpt-5.6-terra": null,

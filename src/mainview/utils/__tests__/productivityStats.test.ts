@@ -255,7 +255,7 @@ describe("computeProductivityStats — per-model-configuration breakdown", () =>
 			busiest: true,
 		});
 		expect(r.perModelConfiguration.find((config) => config.configId === "codex-default")?.name).toBe(
-			"GPT-6 Astra Bypass [Medium] — Default",
+			"GPT-6 Sol Bypass [Medium] — Default",
 		);
 	});
 

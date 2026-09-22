@@ -878,22 +878,59 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
-			// --- GPT-6 Astra ---
+			// --- GPT-6 Sol (frontier coding and agentic workflows) ---
 			{
 				id: "codex-default",
-				name: "GPT-6 Astra Bypass [Medium] — Default",
-				model: "gpt-6-astra",
-				groupLabel: "GPT-6 Astra",
+				name: "GPT-6 Sol Bypass [Medium] — Default",
+				model: "gpt-6-sol",
+				groupLabel: "GPT-6 Sol",
 				modeLabel: "Bypass [Medium] — Default",
-				version: 10,
+				version: 11,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
+			...createCodexReasoningPresets(
+				"gpt-6-sol",
+				"GPT-6 Sol",
+				"codex-6-sol",
+				["low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// Sol-only workflows follow the popular Bypass and Standard modes.
+			{
+				id: "codex-plan",
+				name: "GPT-6 Sol Plan [High]",
+				model: "gpt-6-sol",
+				groupLabel: "GPT-6 Sol",
+				modeLabel: "Plan [High]",
+				version: 8,
+				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-plan-then-bypass",
+				name: "GPT-6 Sol Plan → Bypass [High]",
+				model: "gpt-6-sol",
+				groupLabel: "GPT-6 Sol",
+				modeLabel: "Plan → Bypass [High]",
+				version: 8,
+				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+			},
+			// --- GPT-6 Astra ---
 			...createCodexReasoningPresets(
 				"gpt-6-astra",
 				"GPT-6 Astra",
 				"codex-6-astra",
-				["low", "high", "xhigh", "max", "ultra"],
 				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// --- GPT-6 Luna (focused, high-volume tasks) ---
+			...createCodexReasoningPresets(
+				"gpt-6-luna",
+				"GPT-6 Luna",
+				"codex-6-luna",
+				["medium", "high", "xhigh", "max"],
+				["medium", "high"],
 			),
 			// --- GPT-5.6 Luna (fast/affordable) ---
 			...createCodexReasoningPresets(
@@ -911,27 +948,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				["low", "medium", "high", "xhigh", "max", "ultra"],
 				["low", "medium", "high", "xhigh", "max", "ultra"],
 			),
-			// Sol-only workflows follow the popular Bypass and Standard modes.
-			{
-				id: "codex-plan",
-				name: "GPT-5.6 Sol Plan [High]",
-				model: "gpt-5.6-sol",
-				groupLabel: "GPT-5.6 Sol",
-				modeLabel: "Plan [High]",
-				version: 7,
-				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
-			},
-			{
-				id: "codex-plan-then-bypass",
-				name: "GPT-5.6 Sol Plan → Bypass [High]",
-				model: "gpt-5.6-sol",
-				groupLabel: "GPT-5.6 Sol",
-				modeLabel: "Plan → Bypass [High]",
-				version: 7,
-				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
-			},
 			// --- GPT-5.6 Terra (balanced: below the frontier tiers, above legacy) ---
 			...createCodexReasoningPresets(
 				"gpt-5.6-terra",

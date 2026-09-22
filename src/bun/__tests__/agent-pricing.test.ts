@@ -62,6 +62,12 @@ describe("resolveModelRate", () => {
 		expect(resolveModelRate("gpt-5-codex")).toMatchObject({ input: 1.25, output: 10, cacheRead: 0.125 });
 	});
 
+	it("prices the GPT-6 lineup at its short-context API rates", () => {
+		expect(resolveModelRate("gpt-6-astra")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheRead: 1 });
+		expect(resolveModelRate("gpt-6-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.2 });
+		expect(resolveModelRate("gpt-6-luna")).toMatchObject({ input: 0.1, output: 0.5, cacheWrite5m: 0.125, cacheRead: 0.01 });
+	});
+
 	it("leaves unpriced Codex preview models unresolved", () => {
 		expect(resolveModelRate("gpt-5.5-cyber")).toBeNull();
 		expect(resolveModelRate("gpt-5.3-codex-spark-preview")).toBeNull();

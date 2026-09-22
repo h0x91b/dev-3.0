@@ -420,35 +420,44 @@ describe("DEFAULT_AGENTS", () => {
 		}
 	});
 
-	it("uses Astra Medium bypass as the default Codex configuration", () => {
+	it("uses GPT-6 Sol Medium bypass as the default Codex configuration", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const cfg = codex!.configurations.find((c) => c.id === "codex-default");
 		expect(cfg).toBeDefined();
-		expect(cfg!.name).toBe("GPT-6 Astra Bypass [Medium] — Default");
-		expect(cfg!.model).toBe("gpt-6-astra");
+		expect(cfg!.name).toBe("GPT-6 Sol Bypass [Medium] — Default");
+		expect(cfg!.model).toBe("gpt-6-sol");
 		expect(cfg!.additionalArgs).toContain("--sandbox");
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
 		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="medium"');
 		expect(cfg!.additionalArgs).not.toContain('default_permissions="dev3"');
 	});
 
-	it("prioritizes Astra ahead of the existing Codex model tiers", () => {
+	it("leads with the GPT-6 tiers, Sol first, ahead of the GPT-5.x tiers", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const modelOrder = codex!.configurations
 			.map((config) => config.model)
 			.filter((model, index, models) => model != null && models.indexOf(model) === index);
-		expect(modelOrder).toEqual(["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
+		expect(modelOrder).toEqual(["gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
 
 		const modesFor = (model: string) => codex!.configurations
 			.filter((config) => config.model === model)
 			.map((config) => config.modeLabel);
-		expect(modesFor("gpt-6-astra")).toEqual([
+		expect(modesFor("gpt-6-sol")).toEqual([
 			"Bypass [Medium] — Default", "Bypass [Low]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
 			"Standard [Medium]", "Standard [Low]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
+			"Plan [High]", "Plan → Bypass [High]",
+		]);
+		expect(modesFor("gpt-6-astra")).toEqual([
+			"Bypass [Medium]", "Bypass [Low]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
+			"Standard [Medium]", "Standard [Low]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
+		]);
+		expect(modesFor("gpt-6-luna")).toEqual([
+			"Bypass [Medium]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]",
+			"Standard [Medium]", "Standard [High]",
 		]);
 		expect(modesFor("gpt-5.6-luna")).toEqual([
 			"Bypass [X-High]",
@@ -458,7 +467,6 @@ describe("DEFAULT_AGENTS", () => {
 		expect(modesFor("gpt-5.6-sol")).toEqual([
 			"Bypass [Low]", "Bypass [Medium]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
 			"Standard [Low]", "Standard [Medium]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
-			"Plan [High]", "Plan → Bypass [High]",
 		]);
 		expect(modesFor("gpt-5.6-terra")).toEqual([
 			"Bypass [Medium]", "Bypass [High]", "Bypass [X-High]",
@@ -470,9 +478,10 @@ describe("DEFAULT_AGENTS", () => {
 		]);
 	});
 
-	it("configures every generated GPT-5.6 Codex mode with matching effort and permissions", () => {
+	it("configures every generated GPT-6 and GPT-5.6 Codex mode with matching effort and permissions", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const generated = codex.configurations.filter((config) => config.id.startsWith("codex-5.6-"));
+		const generated = codex.configurations.filter((config) => /^codex-(6|5\.6)-/.test(config.id));
+		expect(generated.some((config) => config.model === "gpt-6-luna")).toBe(true);
 		for (const config of generated) {
 			const effort = config.modeLabel!.match(/\[([^\]]+)\]/)![1].toLowerCase().replace("x-high", "xhigh");
 			expect(config.additionalArgs).toContain(`model_reasoning_effort="${effort}"`);
