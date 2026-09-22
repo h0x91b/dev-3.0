@@ -257,6 +257,20 @@ const kanban = {
 	"task.confirmCancelFooter": "Задача будет перенесена в Cancelled.",
 	"task.confirmCancelLabel": "Отменить задачу",
 	"task.deleteConfirmLabel": "Удалить задачу",
+	"task.watchFailed": "Не удалось изменить слежение — попробуйте ещё раз. ({error})",
+
+	// TaskContextMenu (right-click on a task card / sidebar row)
+	"taskMenu.title": "Действия с задачей",
+	"taskMenu.open": "Открыть задачу",
+	"taskMenu.details": "Детали задачи…",
+	"taskMenu.labels": "Лейблы",
+	"taskMenu.priority": "Приоритет",
+	"taskMenu.rename": "Переименовать…",
+	"taskMenu.copyBranch": "Скопировать имя ветки",
+	"taskMenu.copyLink": "Скопировать ссылку на задачу",
+	"taskMenu.copyPath": "Скопировать путь к worktree",
+	"taskMenu.copied": "Скопировано в буфер обмена",
+	"taskMenu.delete": "Удалить задачу…",
 	"task.checkingBranchState": "Проверяем ветку на несохранённую работу…",
 	"task.branchStateUnknown": "Не удалось проверить ветку на несохранённую работу.",
 

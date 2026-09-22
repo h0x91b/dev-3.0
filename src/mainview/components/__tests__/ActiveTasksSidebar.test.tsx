@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
@@ -1815,5 +1815,47 @@ describe("ActiveTasksSidebar — revealing the selected task", () => {
 
 		expect(list().querySelector('[data-task-id="t1"]')).not.toBeNull();
 		expect(list().querySelector("[data-sidebar-tier] [data-sidebar-tier-header]")).not.toBeNull();
+	});
+});
+
+describe("ActiveTasksSidebar — row context menu", () => {
+	function renderRow(task: Task = makeTask()) {
+		return render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[task]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("opens the task menu on right-click and closes the terminal preview", async () => {
+		renderRow();
+		fireEvent.contextMenu(screen.getByTestId("sidebar-identity-t1"), { clientX: 30, clientY: 40 });
+
+		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
+		expect(screen.getByTestId("task-menu-labels")).toBeInTheDocument();
+		expect(terminalPreview.close).toHaveBeenCalled();
+	});
+
+	it("opens the same menu from the keyboard (Shift+F10)", async () => {
+		renderRow();
+		fireEvent.keyDown(screen.getByRole("button", { name: "Привет! как сам?" }), { key: "F10", shiftKey: true });
+
+		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
+	});
+
+	it("never opens on a task that is shutting down", () => {
+		renderRow(makeTask({ shuttingDown: true }));
+		fireEvent.contextMenu(screen.getByTestId("sidebar-identity-t1"), { clientX: 30, clientY: 40 });
+
+		expect(screen.queryByTestId("sidebar-task-menu-t1")).not.toBeInTheDocument();
 	});
 });

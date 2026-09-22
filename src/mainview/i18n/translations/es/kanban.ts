@@ -243,6 +243,20 @@ const kanban = {
 	"task.confirmCancelFooter": "La tarea pasará a Cancelled.",
 	"task.confirmCancelLabel": "Cancelar tarea",
 	"task.deleteConfirmLabel": "Eliminar tarea",
+	"task.watchFailed": "No se pudo actualizar el seguimiento: inténtalo de nuevo. ({error})",
+
+	// TaskContextMenu (right-click on a task card / sidebar row)
+	"taskMenu.title": "Acciones de la tarea",
+	"taskMenu.open": "Abrir tarea",
+	"taskMenu.details": "Detalles de la tarea…",
+	"taskMenu.labels": "Etiquetas",
+	"taskMenu.priority": "Prioridad",
+	"taskMenu.rename": "Renombrar…",
+	"taskMenu.copyBranch": "Copiar nombre de la rama",
+	"taskMenu.copyLink": "Copiar enlace a la tarea",
+	"taskMenu.copyPath": "Copiar ruta del worktree",
+	"taskMenu.copied": "Copiado al portapapeles",
+	"taskMenu.delete": "Eliminar tarea…",
 	"task.checkingBranchState": "Comprobando la rama por trabajo sin guardar…",
 	"task.branchStateUnknown": "No se pudo comprobar la rama por trabajo sin guardar.",
 
