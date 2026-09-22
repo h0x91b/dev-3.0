@@ -23,6 +23,7 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	// Claude
 	"claude-fable-5-1[1m]": "Fable 5.1",
 	"claude-fable-5": "Fable 5",
+	"claude-opus-5-5[1m]": "Opus 5.5",
 	"claude-opus-5[1m]": "Opus 5",
 	"claude-opus-4-8[1m]": "Opus 4.8",
 	"claude-sonnet-5": "Sonnet 5",

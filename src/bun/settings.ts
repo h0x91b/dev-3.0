@@ -83,7 +83,7 @@ function sanitizeRemoteTunnel(raw: unknown): GlobalSettings["remoteTunnel"] {
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-auto-opus5-medium",
+	defaultConfigId: "claude-auto-opus55-medium",
 	taskSortOrder: "oldest-first",
 	updateChannel: DEFAULT_UPDATE_CHANNEL,
 };
