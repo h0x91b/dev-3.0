@@ -67,6 +67,6 @@ describe("getAllAgents persistence", () => {
 		const persistedDefault = persisted
 			.find((agent) => agent.id === "builtin-codex")!
 			.configurations.find((config) => config.id === "codex-default")!;
-		expect(persistedDefault.groupLabel).toBe("GPT-6 Sol");
+		expect(persistedDefault.groupLabel).toBe("GPT-6 Astra");
 	});
 });

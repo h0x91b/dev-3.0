@@ -113,6 +113,8 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	// Luna now starts at Medium; Low did not provide a useful trade-off.
 	"codex-5.6-luna-low-bypass",
 	"codex-5.6-luna-low",
+	// Duplicate of `codex-default` now that Astra Bypass Medium is the default again.
+	"codex-6-astra-medium-bypass",
 ]);
 
 /** A model slug dev3 once shipped on a built-in Cursor preset, which the Cursor
@@ -247,7 +249,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 14;
+export const AGENTS_LAYOUT_REVISION = 15;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
