@@ -1628,7 +1628,21 @@ describe("TaskInfoPanel", () => {
 			expect(btn).not.toBeDisabled();
 		});
 
-		it("skips resolve when task has no worktreePath", async () => {
+		// The backend resolves the task itself, so the config cascade is the same
+		// one a start uses — including the main checkout's gitignored
+		// config.local.json, which a worktree never has a copy of.
+		it("resolves by taskId, not by worktree path", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ id: "task-9" }), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			expect(mockedApi.request.getResolvedProject).toHaveBeenCalledWith({
+				projectId: project.id,
+				taskId: "task-9",
+			});
+		});
+
+		it("still resolves when the task has no worktreePath yet", async () => {
 			await act(async () => {
 				renderPanel(
 					makeTask({ worktreePath: null }),
@@ -1636,7 +1650,7 @@ describe("TaskInfoPanel", () => {
 				);
 			});
 
-			expect(mockedApi.request.getResolvedProject).not.toHaveBeenCalled();
+			expect(mockedApi.request.getResolvedProject).toHaveBeenCalled();
 		});
 	});
 

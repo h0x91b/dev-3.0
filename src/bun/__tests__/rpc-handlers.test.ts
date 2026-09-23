@@ -1367,6 +1367,60 @@ describe("handlers.getProjects", () => {
 	});
 });
 
+describe("handlers.getResolvedProject", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	// The task header reads this to decide whether the task HAS a dev server. A
+	// worktree-only resolution misses the main checkout's gitignored
+	// config.local.json and shows "Setup Dev Server" for a project that starts one.
+	it("resolves through the worktree+main cascade, not the worktree alone", async () => {
+		const project = makeProject({ path: "/repo" });
+		const task = makeTask({ worktreePath: "/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getResolvedProject({ projectId: project.id, taskId: task.id });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(
+			project,
+			"/wt",
+			{ foreignCode: undefined },
+		);
+	});
+
+	// A reviewed branch must not be able to advertise its own devScript in the
+	// header when a start would refuse to run it.
+	it("passes foreignCode so a reviewed branch's commands stay untrusted", async () => {
+		const project = makeProject({ path: "/repo" });
+		const task = makeTask({ worktreePath: "/wt", foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getResolvedProject({ projectId: project.id, taskId: task.id });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(
+			project,
+			"/wt",
+			{ foreignCode: true },
+		);
+	});
+
+	it("resolves the project's own checkout when the task has no worktree yet", async () => {
+		const project = makeProject({ path: "/repo" });
+		const task = makeTask({ worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getResolvedProject({ projectId: project.id, taskId: task.id });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(
+			project,
+			undefined,
+			{ foreignCode: undefined },
+		);
+	});
+});
+
 describe("handlers.reorderProjects", () => {
 	beforeEach(() => vi.clearAllMocks());
 

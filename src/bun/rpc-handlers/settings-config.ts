@@ -67,10 +67,21 @@ function requireProjectName(raw: string): string {
 // existing `./settings-config` importers keep working.
 export { resolveOperationalProjectConfig } from "../repo-config";
 
-async function getResolvedProject(params: { projectId: string; worktreePath: string }): Promise<Project> {
-	log.debug("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
+/**
+ * The task-scoped config the UI reads to decide what a task HAS — a dev server,
+ * a setup script. It must use the same resolver a start uses
+ * ({@link repoConfig.resolveOperationalProjectConfig}), or the header disagrees
+ * with the machinery: a `devScript` set in the main checkout's gitignored
+ * `.dev3/config.local.json` never reaches a worktree, so a worktree-only
+ * resolution reports "no dev server" for a project that starts one fine.
+ */
+async function getResolvedProject(params: { projectId: string; taskId: string }): Promise<Project> {
+	log.debug("→ getResolvedProject", { projectId: params.projectId, taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
-	const resolved = await repoConfig.resolveProjectConfig(project, params.worktreePath);
+	const task = await data.getTask(project, params.taskId);
+	const resolved = await repoConfig.resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, {
+		foreignCode: task.foreignCode,
+	});
 	log.debug("← getResolvedProject");
 	return resolved;
 }

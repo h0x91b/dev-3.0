@@ -19,6 +19,9 @@ vi.mock("../../../rpc", () => ({
 			checkDevServer: vi.fn(),
 			runDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
+			// Polled on mount for every task, worktree or not — the config cascade
+			// is resolved backend-side from the task id.
+			getResolvedProject: vi.fn(() => Promise.resolve(PROJECT)),
 			logRendererDiagnostic: vi.fn(),
 		},
 	},
