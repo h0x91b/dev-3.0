@@ -51,9 +51,8 @@ async function verifyHeader(file: string, sessionId: string): Promise<void> {
 	}
 }
 
-/** Locate the exact saved conversation without choosing a different session. */
-export async function resolveCodexResumeHome(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string> {
-	if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Codex conversation ID: expected a UUID. Check the saved session ID before resuming.");
+/** Every Codex home a conversation may live in: the system login, each managed account, and any configured CODEX_HOME. */
+async function codexHomes(additionalHomes: string[], home: string): Promise<Set<string>> {
 	const accountsRoot = await optionalRoot(agentAccountStoreRoot(home, "codex"));
 	const managed = accountsRoot
 		? (await entries(accountsRoot)).filter((entry) => entry.isDirectory() || entry.isSymbolicLink()).map((entry) => join(accountsRoot, entry.name)).sort()
@@ -63,6 +62,76 @@ export async function resolveCodexResumeHome(sessionId: string, additionalHomes:
 		const root = await optionalRoot(resolve(candidate));
 		if (root) homes.add(root);
 	}
+	return homes;
+}
+
+async function rolloutFiles(root: string): Promise<string[]> {
+	const files: string[] = [];
+	const pending = [root];
+	while (pending.length) {
+		const dir = pending.pop()!;
+		for (const entry of await entries(dir)) {
+			const path = join(dir, entry.name);
+			if (entry.isDirectory()) pending.push(path);
+			else if (entry.isFile() && entry.name.startsWith("rollout-") && entry.name.endsWith(".jsonl")) files.push(path);
+		}
+	}
+	return files;
+}
+
+const CWD_PROBE_BYTES = 8 * 1024;
+
+/** The session header when it opens a user's own interactive conversation in `cwd`. */
+async function interactiveHeaderIn(file: string, cwdNeedle: string, cwd: string): Promise<string | null> {
+	let handle;
+	try {
+		handle = await open(file, "r");
+		const probe = Buffer.alloc(CWD_PROBE_BYTES);
+		const { bytesRead: probed } = await handle.read(probe, 0, CWD_PROBE_BYTES, 0);
+		if (!probe.subarray(0, probed).includes(cwdNeedle)) return null;
+		const buffer = Buffer.alloc(HEADER_LIMIT);
+		const { bytesRead } = await handle.read(buffer, 0, HEADER_LIMIT, 0);
+		const newline = buffer.subarray(0, bytesRead).indexOf(10);
+		if (newline < 0) return null;
+		const payload = JSON.parse(buffer.subarray(0, newline).toString("utf8"))?.payload;
+		// `cli` is the TUI a person talks to; exec runs, IDE threads and subagents are not.
+		if (payload?.cwd !== cwd || payload?.source !== "cli" || payload?.thread_source === "subagent") return null;
+		return typeof payload.id === "string" && SESSION_ID.test(payload.id) ? payload.id : null;
+	} catch {
+		return null;
+	} finally {
+		await handle?.close();
+	}
+}
+
+/**
+ * The most recently used interactive Codex conversation started in `cwd`, across
+ * every account store — for a task whose pane record was lost. Only a lookup:
+ * the caller still resolves (and verifies) the store with resolveCodexResumeHome.
+ */
+export async function findLatestCodexConversation(cwd: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string | null> {
+	const candidates: Array<{ file: string; mtimeMs: number }> = [];
+	for (const accountHome of await codexHomes(additionalHomes, home)) {
+		const root = await optionalRoot(join(accountHome, "sessions"));
+		if (!root) continue;
+		for (const file of await rolloutFiles(root)) {
+			try { candidates.push({ file, mtimeMs: (await stat(file)).mtimeMs }); }
+			catch { /* vanished while scanning */ }
+		}
+	}
+	candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+	const needle = `"cwd":${JSON.stringify(cwd)}`;
+	for (const { file } of candidates) {
+		const id = await interactiveHeaderIn(file, needle, cwd);
+		if (id) return id;
+	}
+	return null;
+}
+
+/** Locate the exact saved conversation without choosing a different session. */
+export async function resolveCodexResumeHome(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string> {
+	if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Codex conversation ID: expected a UUID. Check the saved session ID before resuming.");
+	const homes = await codexHomes(additionalHomes, home);
 	const verifiedFiles = new Set<string>();
 	const matches: Array<{ home: string; archived: boolean }> = [];
 	for (const accountHome of homes) {

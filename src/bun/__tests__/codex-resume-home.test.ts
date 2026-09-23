@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { resolveCodexResumeHome } from "../codex-resume-home";
+import { findLatestCodexConversation, resolveCodexResumeHome } from "../codex-resume-home";
 
 const ID = "01a09480-c8fc-7021-b4d1-73d850b67083";
 const OTHER = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
@@ -137,5 +137,69 @@ describe("resolveCodexResumeHome", () => {
 
 	it("rejects malformed ids before touching stores", async () => {
 		await expect(resolveCodexResumeHome("../session", [], home)).rejects.toThrow(/invalid|UUID/i);
+	});
+});
+
+describe("findLatestCodexConversation", () => {
+	const WT = "/Users/me/.dev3.0/worktrees/proj/5a354452/worktree";
+	const THIRD = "01a0cd81-4aeb-7cf3-ab4a-d793d9e74ead";
+	let clock = 1_790_000_000;
+
+	function conversation(root: string, id: string, payload: Record<string, unknown>): string {
+		const path = join(root, "sessions", "2026", "09", "12", `rollout-2026-09-12T10-24-23-${id}.jsonl`);
+		mkdirSync(dirname(path), { recursive: true });
+		// Real headers carry a large instructions blob after the fields we need.
+		const header = { timestamp: "2026-09-12T07:24:44.487Z", type: "session_meta", payload: { session_id: id, id, timestamp: "2026-09-12T07:24:23.196Z", cwd: WT, source: "cli", thread_source: "user", originator: "codex-tui", ...payload, base_instructions: "x".repeat(20_000) } };
+		writeFileSync(path, `${JSON.stringify(header)}\nconversation body\n`);
+		clock += 60;
+		utimesSync(path, clock, clock);
+		return path;
+	}
+
+	it("finds the worktree's conversation in a non-default account's store", async () => {
+		conversation(account("default"), OTHER, { cwd: "/somewhere/else" });
+		conversation(account("original"), ID, {});
+		expect(await findLatestCodexConversation(WT, [], home)).toBe(ID);
+	});
+
+	it("prefers the most recently used conversation over an older one of the same worktree", async () => {
+		// Store "a" is scanned first, so only the recency order can pick "b".
+		conversation(account("a"), ID, {});
+		const resumedLater = conversation(account("b"), THIRD, {});
+		clock += 600;
+		utimesSync(resumedLater, clock, clock);
+		expect(await findLatestCodexConversation(WT, [], home)).toBe(THIRD);
+	});
+
+	it.each([
+		["a subagent thread", { source: { subagent: { thread_spawn: { parent_thread_id: ID } } }, thread_source: "subagent" }],
+		["a codex exec run", { source: "exec", originator: "codex_exec" }],
+		["an IDE thread", { source: "vscode" }],
+		["another worktree whose path starts the same", { cwd: `${WT}-2` }],
+	])("ignores %s even when it is newer", async (_label, payload) => {
+		conversation(account("a"), ID, {});
+		conversation(account("b"), OTHER, payload);
+		expect(await findLatestCodexConversation(WT, [], home)).toBe(ID);
+	});
+
+	it("skips archived conversations and returns null when nothing matches", async () => {
+		const path = join(account("a"), "archived_sessions", `rollout-x-${ID}.jsonl`);
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, `${JSON.stringify({ type: "session_meta", payload: { id: ID, cwd: WT, source: "cli" } })}\n`);
+		expect(await findLatestCodexConversation(WT, [], home)).toBeNull();
+	});
+
+	it("tolerates a corrupt header next to a valid conversation", async () => {
+		conversation(account("a"), ID, {});
+		const broken = join(account("b"), "sessions", `rollout-y-${OTHER}.jsonl`);
+		mkdirSync(dirname(broken), { recursive: true });
+		writeFileSync(broken, `{"type":"session_meta","payload":{"cwd":${JSON.stringify(WT)}`);
+		expect(await findLatestCodexConversation(WT, [], home)).toBe(ID);
+	});
+
+	it("hands resolveCodexResumeHome an id it resolves to the holding store", async () => {
+		conversation(account("original"), ID, {});
+		const found = await findLatestCodexConversation(WT, [account("default")], home);
+		expect(await resolveCodexResumeHome(found!, [account("default")], home)).toBe(realpathSync(account("original")));
 	});
 });
