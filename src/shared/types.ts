@@ -878,21 +878,29 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
-			// --- GPT-6 Sol (frontier coding and agentic workflows) ---
+			// --- GPT-6 Astra (default: Sol is rejected under a ChatGPT-account login) ---
 			{
 				id: "codex-default",
-				name: "GPT-6 Sol Bypass [Medium] — Default",
-				model: "gpt-6-sol",
-				groupLabel: "GPT-6 Sol",
+				name: "GPT-6 Astra Bypass [Medium] — Default",
+				model: "gpt-6-astra",
+				groupLabel: "GPT-6 Astra",
 				modeLabel: "Bypass [Medium] — Default",
-				version: 11,
+				version: 12,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
+			...createCodexReasoningPresets(
+				"gpt-6-astra",
+				"GPT-6 Astra",
+				"codex-6-astra",
+				["low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// --- GPT-6 Sol (frontier coding and agentic workflows) ---
 			...createCodexReasoningPresets(
 				"gpt-6-sol",
 				"GPT-6 Sol",
 				"codex-6-sol",
-				["low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
 				["medium", "low", "high", "xhigh", "max", "ultra"],
 			),
 			// Sol-only workflows follow the popular Bypass and Standard modes.
@@ -916,14 +924,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
-			// --- GPT-6 Astra ---
-			...createCodexReasoningPresets(
-				"gpt-6-astra",
-				"GPT-6 Astra",
-				"codex-6-astra",
-				["medium", "low", "high", "xhigh", "max", "ultra"],
-				["medium", "low", "high", "xhigh", "max", "ultra"],
-			),
 			// --- GPT-6 Luna (focused, high-volume tasks) ---
 			...createCodexReasoningPresets(
 				"gpt-6-luna",
@@ -1164,6 +1164,9 @@ export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
 	// Bypass/Default effort tiers — the old preset skipped permissions, so map it to
 	// the Bypass Medium tier (its closest surviving behavioral + effort equivalent).
 	"claude-fable5-cost-trick": "claude-fable5-cost-trick-bypass-medium",
+	// Shipped for one release while GPT-6 Sol held `codex-default`; Astra Bypass
+	// Medium is `codex-default` again.
+	"codex-6-astra-medium-bypass": "codex-default",
 };
 
 /**
