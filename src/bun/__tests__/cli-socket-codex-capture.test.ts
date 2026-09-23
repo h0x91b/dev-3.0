@@ -78,6 +78,8 @@ function seed(tasks: Task[]): Project {
 		labels: [],
 	};
 	writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
+	// Past the one-time agents layout resync, as on any installed machine.
+	writeFileSync(join(dev3Home, "settings.json"), JSON.stringify({ agentsLayoutRevision: 1_000 }));
 	mkdirSync(join(dev3Home, "data", PROJECT_SLUG), { recursive: true });
 	writeFileSync(join(dev3Home, "data", PROJECT_SLUG, "tasks.json"), JSON.stringify(tasks, null, 2));
 	return project;
@@ -221,5 +223,58 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(readPanes()[0]?.sessionId).toBeNull();
 		// With no captured id, recovery uses resume-last.
 		expect(buildResumeCommand("codex", undefined)).toBe("codex resume --last");
+	});
+	it("follows a conversation resumed in a pane nobody recorded instead of leaving it on the dead one", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		// Seq 1801, 2026-09-14: the entry still named the failed pane %5 while the
+		// same conversation ran on in %6 — every hook from %6 used to be ignored.
+		seed([makeTask({ sessionState: { panes: [{ ...codexPane("%5", "conv-x"), accountId: "account-b" }] } })]);
+
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "conv-x", paneId: "%6" }));
+
+		expect(readPanes()).toEqual([expect.objectContaining({ paneId: "%6", sessionId: "conv-x", accountId: "account-b" })]);
+	});
+
+	it("recreates the main entry for the task's own agent after reconciliation removed every entry", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { buildResumeCommand } = await import("../agents");
+
+		seed([makeTask({ agentId: "builtin-codex", configId: "codex-default", sessionState: { panes: [] } })]);
+
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "01a09480-c8fc-7021-b4d1-73d850b67083", paneId: "%6" }));
+
+		const panes = readPanes();
+		expect(panes).toHaveLength(1);
+		expect(panes[0]).toMatchObject({ paneId: "%6", sessionId: "01a09480-c8fc-7021-b4d1-73d850b67083", agentId: "builtin-codex", configId: "codex-default", agentCmd: "codex" });
+		// No account is guessed: resume finds the store that holds the conversation.
+		expect(panes[0]?.accountId).toBeUndefined();
+		expect(buildResumeCommand(panes[0]!.agentCmd, panes[0]!.sessionId ?? undefined)).toBe("codex resume 01a09480-c8fc-7021-b4d1-73d850b67083");
+	});
+
+	it.each([
+		["another agent's task", { agentId: "builtin-claude", configId: null }],
+		["a task without an agent", { agentId: null, configId: null }],
+	])("does not invent a main entry on %s", async (_label, agent) => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		seed([makeTask({ ...agent, sessionState: { panes: [] } })]);
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "conv-x", paneId: "%6" }));
+
+		expect(readPanes()).toEqual([]);
+	});
+
+	it("skips an unknown pane when the stored entries leave it ambiguous", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		const panes = [codexPane("%1", "conv-a"), codexPane("%2", "conv-b")];
+		seed([makeTask({ agentId: "builtin-codex", sessionState: { panes } })]);
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "conv-new", paneId: "%9" }));
+
+		expect(readPanes()).toEqual(panes);
 	});
 });
