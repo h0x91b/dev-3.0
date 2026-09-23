@@ -38,6 +38,9 @@ import type { PaneInputProgram } from "../shared/pane-input";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
+import * as agents from "./agents";
+import { agentKey } from "../shared/agent-adapters/families";
+import { placePaneSession, type SessionPane } from "./pane-session-capture";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
@@ -730,12 +733,12 @@ async function paneSessionAlreadyRecorded(
  * the id is only knowable post-hoc: the lifecycle hook reports the resumable id
  * together with $TMUX_PANE (see src/cli/commands/status-hook-request.ts).
  *
- * Matching: extra panes store their tmux paneId at spawn, so match by paneId.
- * The main pane (panes[0]) is persisted without a paneId (assigned lazily by
- * pane-exit reconciliation); when no entry matches and exactly one entry has no
- * paneId, adopt that entry — it is the main pane — recording both its paneId and
- * session id. Ambiguous cases (no match, ≠1 null-paneId entries) are skipped; a
- * later hook fires once ids settle. A no-op once the id is already recorded.
+ * Matching, in order (see {@link placePaneSession}): the entry carrying this
+ * paneId; else the entry already carrying this session id (the conversation was
+ * resumed in a new pane); else the lone null-paneId entry (the main pane,
+ * persisted before its paneId is known); else — only when no entry is left at all
+ * and the reporting CLI is the task's own agent — a new main entry. Anything else
+ * is ambiguous and skipped. A no-op once the id is already recorded.
  *
  * The steady state is exactly that no-op — Codex fires this hook continuously for
  * the whole life of a session — so it is answered from the cached read BEFORE
@@ -747,26 +750,16 @@ async function capturePaneSession(
 	taskId: string,
 	paneId: string,
 	sessionId: string,
+	harness: PromptSubmitHarness,
 ): Promise<void> {
 	try {
 		if (await paneSessionAlreadyRecorded(project, taskId, paneId, sessionId)) return;
+		// Resolved outside the file lock: the agent registry has its own files.
+		const cached = await data.getTask(project, taskId);
+		const mainEntry = cached.sessionState?.panes?.length ? null : await ownAgentPaneEntry(cached, harness);
 		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
-			const panes = current.sessionState?.panes;
-			if (!panes?.length) return { updates: {}, result: { changed: false } };
-			let idx = panes.findIndex((p) => p.paneId === paneId);
-			let adoptPaneId = false;
-			if (idx === -1) {
-				const nullIdxs = panes.flatMap((p, i) => (p.paneId ? [] : [i]));
-				if (nullIdxs.length !== 1) return { updates: {}, result: { changed: false } };
-				idx = nullIdxs[0];
-				adoptPaneId = true;
-			}
-			if (panes[idx].sessionId === sessionId && !adoptPaneId) {
-				return { updates: {}, result: { changed: false } };
-			}
-			const nextPanes = panes.map((p, i) =>
-				i === idx ? { ...p, sessionId, ...(adoptPaneId ? { paneId } : {}) } : p,
-			);
+			const nextPanes = placePaneSession(current.sessionState?.panes ?? [], paneId, sessionId, mainEntry);
+			if (!nextPanes) return { updates: {}, result: { changed: false } };
 			return { updates: { sessionState: { panes: nextPanes } }, result: { changed: true } };
 		});
 		if (result.changed) {
@@ -776,6 +769,29 @@ async function capturePaneSession(
 	} catch (err) {
 		log.warn("Failed to capture agent pane session id (non-fatal)", { error: String(err) });
 	}
+}
+
+/**
+ * The main-pane entry a hook may recreate when pane-exit reconciliation left the
+ * task with none. Only for the task's own agent: resume relaunches panes[0] with
+ * the task's agent, so recording another CLI's conversation there would resume it
+ * with the wrong command. The account is left unset — Codex resume locates the
+ * account store from the conversation file itself.
+ */
+async function ownAgentPaneEntry(task: Task, harness: PromptSubmitHarness): Promise<SessionPane | null> {
+	if (!task.agentId) return null;
+	const agent = (await agents.getAllAgents()).find((entry) => entry.id === task.agentId);
+	if (!agent) return null;
+	const config = agents.findConfig(agent, task.configId);
+	const baseCommand = config?.baseCommandOverride || agent.baseCommand;
+	if (agentKey(baseCommand, agent.agentFamily) !== harness) return null;
+	return {
+		agentCmd: baseCommand,
+		sessionId: null,
+		agentId: task.agentId,
+		configId: task.configId,
+		...(agent.agentFamily ? { agentFamily: agent.agentFamily } : {}),
+	};
 }
 
 const handlers: Record<string, Handler> = {
@@ -1834,7 +1850,7 @@ const handlers: Record<string, Handler> = {
 		// Record the session id for this pane (targeted per-pane recovery).
 		const paneId = typeof params.paneId === "string" ? params.paneId : null;
 		if (sessionId && paneId) {
-			await capturePaneSession(project, task.id, paneId, sessionId);
+			await capturePaneSession(project, task.id, paneId, sessionId, harness);
 		}
 
 		// The submitted text rides on the same payload, so recording costs the

@@ -4,7 +4,7 @@ import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shar
 import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import * as agentAccounts from "../agent-accounts";
-import { resolveCodexResumeHome } from "../codex-resume-home";
+import { findLatestCodexConversation, resolveCodexResumeHome } from "../codex-resume-home";
 import {
 	activatePane,
 	closePane,
@@ -214,7 +214,7 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
-vi.mock("../codex-resume-home", () => ({ resolveCodexResumeHome: vi.fn() }));
+vi.mock("../codex-resume-home", () => ({ resolveCodexResumeHome: vi.fn(), findLatestCodexConversation: vi.fn(async () => null) }));
 
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
@@ -441,6 +441,7 @@ const {
 	launchTaskWithAgentChoice,
 } = await import("../rpc-handlers");
 const {
+	handlePaneExited,
 	nativeHunterColumnRatios,
 	tmuxAction,
 	tmuxKillPane,
@@ -448,6 +449,7 @@ const {
 	tmuxPaneNavigate,
 } = await import("../rpc-handlers/tmux-pty");
 const { AuxPaneUnavailableError } = await import("../task-aux-panes");
+const { placePaneSession } = await import("../pane-session-capture");
 const { dev3TaskTempPath } = await import("../temp-paths");
 const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
 
@@ -10683,6 +10685,174 @@ describe("resumeTask exact Codex session home", () => {
 		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
 		expect(pty.createSession).not.toHaveBeenCalled();
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+});
+
+// Seq 1801 (2026-09-14 → 09-23): the entry kept naming the failed pane %5 while
+// the conversation ran on in %6; %5's exit then dropped the only entry, the wake
+// screen had nothing to resume, and a fresh start picked the default account.
+describe("Codex conversation survives pane-exit reconciliation into a wake", () => {
+	let restoreResolve: () => void;
+	beforeEach(() => {
+		vi.clearAllMocks();
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "codex", extraEnv: {}, agentFamily: "codex" } as any);
+		restoreResolve = () => resolve.mockImplementation(original!);
+	});
+	afterEach(() => {
+		restoreResolve();
+		vi.mocked(resolveCodexResumeHome).mockReset();
+	});
+	const sessionId = "01a09480-c8fc-7021-b4d1-73d850b67083";
+	const home = "/tmp/account-original";
+	const stalePane = { agentCmd: "codex", agentFamily: "codex" as const, agentId: "builtin-codex", configId: "codex-default", sessionId, paneId: "%5" };
+
+	function arrange(panes: NonNullable<Task["sessionState"]>["panes"]) {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-codex", configId: "codex-default", sessionState: { panes } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%6"]);
+		return { project, task };
+	}
+
+	it("without the hook following the conversation, %5's exit leaves nothing to resume", async () => {
+		const { project, task } = arrange([stalePane]);
+		await handlePaneExited(task.id, "%5");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
+	});
+
+	it("a hook from %6 moves the entry there, so %5's exit keeps it and a later wake resumes it under its own store", async () => {
+		const { project, task } = arrange([stalePane]);
+		const followed = placePaneSession([stalePane], "%6", sessionId, null);
+		await data.updateTask(project, task.id, { sessionState: { panes: followed! }, hibernated: true });
+
+		await handlePaneExited(task.id, "%5");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%6", sessionId })]);
+
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-original" : undefined);
+		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		try {
+			await handlers.resumeTask({ taskId: task.id });
+			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-original" });
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("an entry recreated after the list emptied is resumed the same way", async () => {
+		const { project, task } = arrange([]);
+		const main = { agentCmd: "codex", sessionId: null, agentId: "builtin-codex", configId: "codex-default", agentFamily: "codex" as const };
+		await data.updateTask(project, task.id, { sessionState: { panes: placePaneSession([], "%6", sessionId, main)! } });
+		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		await handlers.resumeTask({ taskId: task.id });
+		expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+	});
+
+	it("a closed pane stays removed: reconciliation with no live pane drops it and nothing recreates it", async () => {
+		const { project, task } = arrange([stalePane]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%5");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		// Only a hook from a running agent can add an entry back.
+		expect(placePaneSession([], "%5", sessionId, null)).toBeNull();
+	});
+});
+
+// The tasks that already lost their record before the capture fix: nothing will
+// report their conversation again, so wake looks it up in the worktree's stores.
+describe("wake of a Codex task whose pane record was lost", () => {
+	const sessionId = "01a09480-c8fc-7021-b4d1-73d850b67083";
+	const home = "/tmp/account-original";
+	const codexAgent = { id: "builtin-codex", baseCommand: "codex", agentFamily: "codex", configurations: [] } as any;
+	let restore: Array<() => void> = [];
+	function override<T extends (...args: any[]) => any>(fn: T, impl: (...args: Parameters<T>) => ReturnType<T>) {
+		const mocked = vi.mocked(fn);
+		const original = mocked.getMockImplementation();
+		mocked.mockImplementation(impl as any);
+		restore.push(() => mocked.mockImplementation(original as any));
+	}
+	beforeEach(() => {
+		vi.clearAllMocks();
+		override(agents.resolveCommandForAgent, async () => ({ command: "codex", extraEnv: {}, agentFamily: "codex" }) as any);
+		override(agents.getAllAgents, async () => [codexAgent]);
+		override(agents.findConfig, () => ({ id: "codex-default", name: "Codex" }) as any);
+		vi.mocked(findLatestCodexConversation).mockResolvedValue(sessionId);
+		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+	});
+	afterEach(() => {
+		restore.forEach((undo) => undo());
+		restore = [];
+		vi.mocked(findLatestCodexConversation).mockReset().mockResolvedValue(null);
+		vi.mocked(resolveCodexResumeHome).mockReset();
+		vi.mocked(pty.tmuxSessionExists).mockReset().mockResolvedValue(true);
+	});
+	function arrange(overrides: Partial<Task> = {}) {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-codex", configId: "codex-default", status: "review-by-user", hibernated: true, worktreePath: "/tmp/wt-lost", sessionState: { panes: [] }, ...overrides });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		return { project, task };
+	}
+	// The terminal died with the reboot; only the restore probe sees it gone.
+	const openTerminal = (taskId: string) => {
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false);
+		return handlers.getPtyUrl({ taskId });
+	};
+
+	it("offers Resume on the wake screen without writing anything", async () => {
+		const { project, task } = arrange();
+		const result = await openTerminal(task.id);
+		expect(result).toMatchObject({ recoverable: true, hibernated: true, sessionState: { panes: [expect.objectContaining({ sessionId, agentId: "builtin-codex" })] } });
+		expect(findLatestCodexConversation).toHaveBeenCalledWith("/tmp/wt-lost", expect.any(Array));
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+	});
+
+	it("resumes that conversation under the store that holds it, not the default account, and records the pair", async () => {
+		const { project, task } = arrange();
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-original" : undefined);
+		try {
+			await handlers.resumeTask({ taskId: task.id });
+			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+			expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([expect.objectContaining({ sessionId, accountId: "account-original" })]);
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("offers recovery instead of a fresh launch for a non-hibernated task after its terminal died", async () => {
+		const { task } = arrange({ hibernated: false, status: "in-progress" });
+		const result = await openTerminal(task.id);
+		expect(result).toMatchObject({ recoverable: true, sessionState: { panes: [expect.objectContaining({ sessionId })] } });
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("keeps the old behaviour when no conversation of this worktree exists", async () => {
+		const { task } = arrange();
+		vi.mocked(findLatestCodexConversation).mockResolvedValue(null);
+		expect(await openTerminal(task.id)).toEqual({ recoverable: true, hibernated: true, sessionState: { panes: [] } });
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
+	});
+
+	it("never looks up a conversation for a task whose agent is not Codex", async () => {
+		const { task } = arrange({ agentId: "builtin-claude" });
+		override(agents.getAllAgents, async () => [{ id: "builtin-claude", baseCommand: "claude", configurations: [] } as any]);
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
+		expect(findLatestCodexConversation).not.toHaveBeenCalled();
+	});
+
+	it("leaves a task that still has pane records to its recorded ids", async () => {
+		const recorded = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+		const { task } = arrange({ sessionState: { panes: [{ agentCmd: "codex", agentFamily: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId: recorded }] } });
+		await handlers.resumeTask({ taskId: task.id });
+		expect(findLatestCodexConversation).not.toHaveBeenCalled();
+		expect(resolveCodexResumeHome).toHaveBeenCalledWith(recorded, expect.any(Array));
 	});
 });
 
