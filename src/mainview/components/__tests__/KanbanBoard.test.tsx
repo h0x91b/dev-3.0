@@ -634,6 +634,42 @@ describe("dangling customColumnId render fallback", () => {
 	});
 });
 
+describe("status filter with a custom column (issue #1804)", () => {
+	const waitingCol: CustomColumn = { id: "col-wait", name: "Waiting on Others", color: "#abcdef", llmInstruction: "" };
+	const statusTasks = [
+		makeTask({ id: "plain", seq: 1, status: "review-by-user" }),
+		makeTask({ id: "working", seq: 2, status: "in-progress" }),
+		makeTask({ id: "parked", seq: 3, status: "review-by-user", customColumnId: "col-wait" }),
+		makeTask({ id: "orphan", seq: 4, status: "review-by-user", customColumnId: "col-gone" }),
+	];
+
+	async function filterBoard(query: string) {
+		await renderBoardWith({ project: { ...project, customColumns: [waitingCol] }, tasks: statusTasks });
+		fireEvent.change(screen.getByPlaceholderText("Search tasks..."), { target: { value: query } });
+	}
+
+	function visibleTaskIds(): string[] {
+		const ids = document.querySelectorAll("[data-task-id]");
+		return [...new Set(Array.from(ids, (el) => el.getAttribute("data-task-id")!))].sort();
+	}
+
+	it("hides a custom-column task when only built-in statuses are selected", async () => {
+		await filterBoard("status:review-by-user status:in-progress");
+		// The deleted-column task falls back to its built-in status and still matches.
+		expect(visibleTaskIds()).toEqual(["orphan", "plain", "working"]);
+	});
+
+	it("shows a custom-column task only when its column is selected", async () => {
+		await filterBoard('status:review-by-user status:"Waiting on Others"');
+		expect(visibleTaskIds()).toEqual(["orphan", "parked", "plain"]);
+	});
+
+	it("shows every task when no status filter is set", async () => {
+		await filterBoard("");
+		expect(visibleTaskIds()).toEqual(["orphan", "parked", "plain", "working"]);
+	});
+});
+
 describe("mobile carousel mode", () => {
 	const originalInnerWidth = window.innerWidth;
 	const originalMatchMedia = window.matchMedia;

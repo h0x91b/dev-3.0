@@ -902,6 +902,56 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect((parkedRail.getAttribute("style") ?? "").toLowerCase()).toContain("#abcdef");
 	});
 
+	describe("status filter with a custom column (issue #1804)", () => {
+		const projectWithCol: Project = {
+			...project,
+			customColumns: [{ id: "col-wait", name: "Waiting on Others", color: "#abcdef", llmInstruction: "" }],
+		};
+		const statusTasks = [
+			makeTask({ id: "plain", status: "review-by-user", title: "Plain review task", groupId: null as unknown as string, variantIndex: null }),
+			makeTask({ id: "working", status: "in-progress", title: "Working task", groupId: null as unknown as string, variantIndex: null }),
+			makeTask({ id: "parked", status: "review-by-user", customColumnId: "col-wait", title: "Parked task", groupId: null as unknown as string, variantIndex: null }),
+		];
+
+		function renderWithStatusTasks() {
+			render(
+				<I18nProvider>
+					<ActiveTasksSidebar project={projectWithCol} tasks={statusTasks} activeTaskId="none" dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+				</I18nProvider>,
+			);
+			return screen.getByPlaceholderText("Search tasks...");
+		}
+
+		it("hides a custom-column task when only built-in statuses are selected", async () => {
+			const user = userEvent.setup();
+			await user.type(renderWithStatusTasks(), "status:review-by-user status:in-progress");
+
+			expect(screen.queryByText("Parked task")).not.toBeInTheDocument();
+			expect(screen.getByText("Plain review task")).toBeInTheDocument();
+			expect(screen.getByText("Working task")).toBeInTheDocument();
+		});
+
+		it("shows a custom-column task only when its column is selected", async () => {
+			const user = userEvent.setup();
+			await user.type(renderWithStatusTasks(), 'status:"Waiting on Others"');
+
+			expect(screen.getByText("Parked task")).toBeInTheDocument();
+			expect(screen.queryByText("Plain review task")).not.toBeInTheDocument();
+		});
+
+		it("restores every task once the status filter is cleared", async () => {
+			const user = userEvent.setup();
+			const input = renderWithStatusTasks();
+			await user.type(input, "status:in-progress");
+			expect(screen.queryByText("Parked task")).not.toBeInTheDocument();
+
+			await user.clear(input);
+			for (const title of ["Plain review task", "Working task", "Parked task"]) {
+				expect(screen.getByText(title)).toBeInTheDocument();
+			}
+		});
+	});
+
 	it("orders tasks within a group oldest-first by movedAt (longest-waiting on top)", () => {
 		render(
 			<I18nProvider>
