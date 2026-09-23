@@ -424,6 +424,8 @@ Two gates, escalating. Committing itself has no gate — commit freely, verify b
 
 **A green suite does not verify a visual surface.** Any change touching what the user sees can break subtly — layout shift, overflow on one viewport, console error, wrong state render. Drive the running UI, look at a screenshot, read the console before handing off. **Being a small change is not a reason to skip it** — small UI changes slip through the most. Only real exceptions: no visual surface at all, or the UI genuinely cannot be brought up. The full recipe (serving the app, the per-task isolated browser session, `agent-browser` usage) is the [`/debug-ui`](.claude/skills/debug-ui/SKILL.md) skill.
 
+This governs dev-3.0's own UI, the artifact shell (`src/assets/artifact-template/app.css`, `app.js`) included. A report an agent only publishes as a dev3 HTML artifact follows the starter's own rule instead: `src/assets/artifact-template/AUTHORING.md` § Before you publish.
+
 **Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [`streamer-mode-css-blur-masking`](decisions/2026/07/23/streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
 
 ## Key files

@@ -169,6 +169,15 @@ describe("bundled artifact starter contract", () => {
 		expect(docs).not.toContain("--images");
 	});
 
+	it("publishes ordinary reports without a browser pass and names the exceptions", () => {
+		expect(guide).toContain("## Before you publish — no browser pass by default");
+		expect(guide).toContain("is **not** part of making or revising an ordinary report");
+		expect(guide).toContain("`node --check report.js`");
+		expect(guide).toContain("First publish of a large report");
+		expect(guide).toContain("Being new is not a trigger for a small report");
+		expect(reference).not.toContain("Check print preview in both Light and Dark after changing layout");
+	});
+
 	it("keeps report authoring separate from the stable visual shell", () => {
 		const html = readFileSync(htmlPath, "utf8");
 		const css = readFileSync(cssPath, "utf8");

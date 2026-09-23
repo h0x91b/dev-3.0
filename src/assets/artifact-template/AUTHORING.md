@@ -57,6 +57,23 @@ Pass the **element**, never its id. `update()` and `remount()` take **no argumen
 
 Keep `data-dev3-artifact-template="v1"` on `<html>`, the dev3 icon and a `DEV3 ARTIFACT · <CATEGORY>` eyebrow, the theme and `A− / 100% / A+` controls in `.actions`, `Built with dev3 Artifacts` in the footer. Never define or shadow `window.dev3` — the viewer owns it. A path your JavaScript builds at runtime goes through `dev3Artifact.asset()`.
 
+## Before you publish — no browser pass by default
+
+Publish straight away. The shell already owns themes, text size, narrow-screen table stacking and print, so opening a browser, taking screenshots, or sweeping phone and desktop widths is **not** part of making or revising an ordinary report. This is the rule for artifacts; a general "check every rendered surface in a browser" rule is about product UI and does not apply here.
+
+What stays is seconds of work, no browser: `node --check report.js` (or `bun build report.js > /dev/null`) on every script you wrote, since one syntax error blanks the report; every `id` that `report.js` looks up exists in `index.html`; `show-artifact` exits 0.
+
+Open it in a browser once, only for the part at risk, when one of these holds:
+
+| Trigger | Check |
+|---|---|
+| First publish of a large report — several charts, a dozen panels, or a few hundred table rows | it renders and the console is clean |
+| Something the shell does not provide — your own CSS, a hand-built widget or drawing, live `fetch`/WebSocket, a `sendToAgent` form | that one piece works |
+| Someone reported it rendering wrong | reproduce, fix, confirm that defect |
+| The user asked for a check, a phone view, a print, or a size | exactly what they asked |
+
+Being new is not a trigger for a small report, and a revision that only changes text, data or rows inside existing panels never is. One width, the one that shows the risk — a narrow one only when the risk is narrow layout. A later version gets a pass only if its change brings a new trigger. Open `index.html` straight from the directory and close the browser when done.
+
 ## When the report needs more — `REFERENCE.md`
 
 | Read the section | When |
