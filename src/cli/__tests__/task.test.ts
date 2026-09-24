@@ -1315,6 +1315,38 @@ describe.each([
 		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("APP_NOT_RUNNING");
 		expect(callsOf("approval.status")).toHaveLength(0);
 	});
+
+	it("treats the app going down DURING a re-attach as another loss, not a hard error", async () => {
+		// Once the app confirmed the request is pending, a refused connect means it
+		// went away mid-wait: keep probing, do not surface APP_NOT_RUNNING.
+		script({
+			[method]: [emptyResponse(), new Error("APP_NOT_RUNNING"), okResp({ approved: false })],
+			"approval.status": [status("pending", "in-progress")],
+		});
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow(declineExit);
+		expect(callsOf(method)).toHaveLength(3);
+		expect(callsOf(method)[2][2]).toMatchObject({ attachOnly: true });
+	});
+
+	it("stops at the original deadline when the connection keeps dropping on accept", async () => {
+		vi.useFakeTimers();
+		try {
+			// Every attempt is accepted and then dropped, and the app keeps answering
+			// "pending" — without a deadline check the re-attach loop never ends.
+			mockSend.mockImplementation(async (_socket, called) => {
+				if (called === "approval.status") return status("pending", "in-progress");
+				vi.setSystemTime(Date.now() + 61_000);
+				throw emptyResponse();
+			});
+
+			await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("EXIT_25");
+			expect(callsOf(method).length).toBeLessThanOrEqual(12);
+			expect(stderrOutput).toContain("still pending");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
 
 // ─── --id flag support ───────────────────────────────────────────────────────

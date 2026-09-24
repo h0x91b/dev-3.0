@@ -345,10 +345,6 @@ function readServerParams(params: Record<string, unknown>): { server?: string; a
 	return { ...(server ? { server } : {}), ...(params.all === true ? { all: true } : {}) };
 }
 
-/**
- * `opts.variantIndex` is `dev3 message --variant <i>` and only that: no other
- * command accepts the flag, so every other caller resolves exactly as before.
- */
 function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
 	return {
@@ -415,6 +411,10 @@ async function requestDestructiveApproval(
 	return { approved: true, task: updated };
 }
 
+/**
+ * `opts.variantIndex` is `dev3 message --variant <i>` and only that: no other
+ * command accepts the flag, so every other caller resolves exactly as before.
+ */
 async function resolveTaskFromParams(
 	params: Record<string, unknown>,
 	opts?: { variantIndex?: number },

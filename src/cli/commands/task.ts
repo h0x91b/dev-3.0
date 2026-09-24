@@ -572,20 +572,30 @@ async function waitForDestructiveApproval(
 				const status = await probeApprovalStatus(socketPath, spec.kind, params);
 				return status ? { kind: "status", status, timedOut: true } : { kind: "unreachable", timedOut: true };
 			}
-			const lost = isApprovalTransportLoss(err) || (lostAt !== null && err instanceof Error && err.message === "APP_NOT_RUNNING");
+			// Once the app has confirmed the request is pending, a refused connect is
+			// the app going away mid-wait — the same loss, not "it was never there".
+			const lost = isApprovalTransportLoss(err) || (attachOnly && err instanceof Error && err.message === "APP_NOT_RUNNING");
 			if (!lost) throw err;
 		}
 
 		lostAt ??= Date.now();
+		let pending: AgentApprovalStatus;
 		for (;;) {
 			const status = await probeApprovalStatus(socketPath, spec.kind, params);
 			if (status && status.state !== "pending") return { kind: "status", status, timedOut: false };
-			if (status) break;
+			if (status) {
+				pending = status;
+				break;
+			}
 			if (Date.now() - lostAt >= APPROVAL_REATTACH_WINDOW_MS || Date.now() >= deadline) {
 				return { kind: "unreachable", timedOut: false };
 			}
 			await new Promise((r) => setTimeout(r, APPROVAL_REATTACH_INTERVAL_MS));
 		}
+		// The deadline is the original one, and only this check enforces it on the
+		// re-attach path: a connection that keeps dropping the moment it is accepted
+		// would otherwise loop here forever, long past the ten minutes.
+		if (Date.now() >= deadline) return { kind: "status", status: pending, timedOut: true };
 		if (!attachOnly) {
 			process.stderr.write("The connection to the app dropped; the request is still pending there — waiting on it again.\n");
 		}
