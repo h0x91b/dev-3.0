@@ -49,6 +49,39 @@ describe("buildClaudeUsageDays", () => {
 		expect(day1.startMs).toBeLessThan(day2.startMs);
 	});
 
+	it.each([
+		["no split", undefined, 7.5],
+		["empty split", {}, 7.5],
+		["only a 5m bucket", { ephemeral_5m_input_tokens: 500_000 }, 7.5],
+		["only a 1h bucket", { ephemeral_1h_input_tokens: 500_000 }, 8.625],
+		["partial split", { ephemeral_5m_input_tokens: 500_000, ephemeral_1h_input_tokens: 500_000 }, 8.625],
+		["complete split", { ephemeral_5m_input_tokens: 1_000_000, ephemeral_1h_input_tokens: 1_000_000 }, 9.75],
+	] as const)("prices all cache writes with %s", (_label, cacheCreation, expectedCost) => {
+		const { days } = buildClaudeUsageDays([
+			assistant("m1", "r1", "claude-sonnet-4-6", "2026-06-30T12:00:00Z", {
+				cache_creation_input_tokens: 2_000_000,
+				cache_creation: cacheCreation,
+			}),
+		]);
+
+		expect(days[0]).toMatchObject({ cacheCreationInputTokens: 2_000_000, costUsd: expectedCost });
+	});
+
+	it.each([false, true])("preserves mixed split and unsplit cache writes (reversed: %s)", (reversed) => {
+		const entries = [
+			assistant("m1", "r1", "claude-sonnet-4-6", "2026-06-30T12:00:00Z", {
+				cache_creation_input_tokens: 1_000_000,
+			}),
+			assistant("m2", "r2", "claude-sonnet-4-6", "2026-06-30T12:05:00Z", {
+				cache_creation_input_tokens: 2_000_000,
+				cache_creation: { ephemeral_5m_input_tokens: 1_000_000, ephemeral_1h_input_tokens: 1_000_000 },
+			}),
+		];
+		const { days } = buildClaudeUsageDays(reversed ? entries.reverse() : entries);
+
+		expect(days[0]).toMatchObject({ cacheCreationInputTokens: 3_000_000, costUsd: 13.5 });
+	});
+
 	it("prices a routed session through the catalog, because the wire name is a label the rate table never saw", () => {
 		const state = newUsageState();
 		// What a routed transcript actually records: <provider>/<the name the user

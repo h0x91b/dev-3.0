@@ -1,0 +1,1 @@
+Correct local agent cost accounting for Claude cache writes that omit a TTL breakdown. Unspecified cache writes now contribute to API-equivalent cost at the five-minute rate, including when mixed with explicitly timed writes.
