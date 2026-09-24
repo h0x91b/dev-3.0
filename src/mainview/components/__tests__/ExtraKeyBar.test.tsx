@@ -151,6 +151,112 @@ describe("ExtraKeyBar", () => {
 		expect(handle.sendInput).toHaveBeenCalled();
 	});
 
+	it("sends plain arrow sequences without Shift", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+
+		for (const [name, seq] of [["▲", "\x1b[A"], ["▼", "\x1b[B"], ["◀", "\x1b[D"], ["▶", "\x1b[C"]]) {
+			await userEvent.click(screen.getByRole("button", { name }));
+			expect(handle.sendInput).toHaveBeenLastCalledWith(seq);
+		}
+	});
+
+	it("sticky Shift sends Shift+Left once (Codex question stack), then releases", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+		const shift = screen.getByRole("button", { name: "Shift" });
+
+		await userEvent.click(shift);
+		expect(shift.getAttribute("aria-pressed")).toBe("true");
+		expect(handle.sendInput).not.toHaveBeenCalled();
+
+		await userEvent.click(screen.getByRole("button", { name: "◀" }));
+		expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[1;2D");
+		expect(shift.getAttribute("aria-pressed")).toBe("false");
+
+		await userEvent.click(screen.getByRole("button", { name: "◀" }));
+		expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[D");
+	});
+
+	it("sticky Shift encodes every arrow, Tab and Enter; other keys pass through", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+		const cases: Array<[string, string]> = [
+			["▲", "\x1b[1;2A"],
+			["▼", "\x1b[1;2B"],
+			["▶", "\x1b[1;2C"],
+			["◀", "\x1b[1;2D"],
+			["Tab", "\x1b[Z"],
+			["Enter", "\x1b\r"],
+			["Esc", "\x1b"],
+			["|", "|"],
+		];
+		for (const [name, seq] of cases) {
+			await userEvent.click(screen.getByRole("button", { name: "Shift" }));
+			await userEvent.click(screen.getByRole("button", { name }));
+			expect(handle.sendInput).toHaveBeenLastCalledWith(seq);
+		}
+		expect(handle.sendInput).toHaveBeenCalledTimes(cases.length);
+	});
+
+	it("tapping Shift twice cancels it", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+		const shift = screen.getByRole("button", { name: "Shift" });
+
+		await userEvent.click(shift);
+		await userEvent.click(shift);
+		expect(shift.getAttribute("aria-pressed")).toBe("false");
+		await userEvent.click(screen.getByRole("button", { name: "▶" }));
+		expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[C");
+	});
+
+	it("a held arrow keeps Shift for every repeat and the final tap", () => {
+		vi.useFakeTimers();
+		try {
+			const handle = makeHandle();
+			renderBar(handle);
+			fireEvent.click(screen.getByRole("button", { name: "Shift" }));
+			const key = screen.getByRole("button", { name: "◀" });
+
+			fireEvent.pointerDown(key);
+			vi.advanceTimersByTime(400 + 60 * 3);
+			fireEvent.pointerUp(key);
+			fireEvent.click(key);
+
+			const sent = vi.mocked(handle.sendInput).mock.calls.map(([data]) => data);
+			expect(sent).toEqual(["\x1b[1;2D", "\x1b[1;2D", "\x1b[1;2D", "\x1b[1;2D"]);
+			expect(screen.getByRole("button", { name: "Shift" }).getAttribute("aria-pressed")).toBe("false");
+
+			fireEvent.click(key);
+			expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[D");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("Ctrl+Shift on an arrow sends the Shift arrow and releases both", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+
+		await userEvent.click(screen.getByRole("button", { name: "Ctrl" }));
+		await userEvent.click(screen.getByRole("button", { name: "Shift" }));
+		await userEvent.click(screen.getByRole("button", { name: "◀" }));
+		expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[1;2D");
+		expect(screen.getByRole("button", { name: "Ctrl" }).getAttribute("aria-pressed")).toBe("false");
+		expect(screen.getByRole("button", { name: "Shift" }).getAttribute("aria-pressed")).toBe("false");
+	});
+
+	it("compose mode: Shift never steals focus to the terminal", async () => {
+		const handle = makeHandle();
+		renderBar(handle, { rawMode: false, onToggleRaw: () => {} });
+
+		await userEvent.click(screen.getByRole("button", { name: "Shift" }));
+		await userEvent.click(screen.getByRole("button", { name: "◀" }));
+		expect(handle.sendInput).toHaveBeenLastCalledWith("\x1b[1;2D");
+		expect(handle.focus).not.toHaveBeenCalled();
+	});
+
 	it("does NOT render the raw toggle without onToggleRaw", () => {
 		renderBar(makeHandle());
 		expect(screen.queryByTestId("extra-key-raw-toggle")).toBeNull();

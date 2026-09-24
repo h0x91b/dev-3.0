@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { InputHandler, Ghostty } from "ghostty-web";
-import { SHIFT_KEY_SEQUENCES, getShiftKeySequence } from "../shift-key-sequences";
+import { SHIFT_KEY_SEQUENCES, applyShiftToBarKey, getShiftKeySequence } from "../shift-key-sequences";
 
 /**
  * Build a custom key handler using the production getShiftKeySequence().
@@ -209,6 +209,24 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		);
 		container.fire(keyEvent("Enter", "Enter", SHIFT));
 		expect(sent).toEqual(["\r"]);
+	});
+
+	// ── Mobile key bar Shift matches a physical keyboard ─────────
+
+	it("bar Shift+arrows send the same bytes the desktop encoder does", () => {
+		for (const [code, plain] of [["ArrowUp", "\x1b[A"], ["ArrowDown", "\x1b[B"], ["ArrowRight", "\x1b[C"], ["ArrowLeft", "\x1b[D"]]) {
+			const { sent, fire } = setup();
+			fire(keyEvent(code, code, SHIFT));
+			expect(sent, code).toEqual([applyShiftToBarKey(plain)]);
+		}
+		expect(applyShiftToBarKey("\x1b[D")).toBe("\x1b[1;2D");
+	});
+
+	it("bar Shift+Tab / Shift+Enter match the desktop Shift sequences", () => {
+		expect(applyShiftToBarKey("\t")).toBe(SHIFT_KEY_SEQUENCES.Tab);
+		expect(applyShiftToBarKey("\r")).toBe(SHIFT_KEY_SEQUENCES.Enter);
+		expect(applyShiftToBarKey("\x1b")).toBe("\x1b");
+		expect(applyShiftToBarKey("|")).toBe("|");
 	});
 
 	// ── SHIFT_KEY_SEQUENCES map sanity checks ────────────────────

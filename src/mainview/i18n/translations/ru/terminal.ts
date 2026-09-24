@@ -268,6 +268,7 @@ const terminal = {
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
 	"terminal.scrollToLatest": "К последнему выводу",
 	"terminal.backspace": "Удалить слева",
+	"terminal.shiftModifierHint": "Shift для следующей клавиши — Shift+◀ открывает вопросы Codex",
 
 	// File path links in terminal output (Cmd/Ctrl+Click)
 	"terminal.pathLinkFolderBrowser": "Папки нельзя открыть из браузера — используйте настольное приложение.",
