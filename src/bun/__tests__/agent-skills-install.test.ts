@@ -9,10 +9,13 @@ describe("installAgentSkills", () => {
 	beforeEach(() => {
 		tempHome = mkdtempSync(join(tmpdir(), "dev3-agent-skills-"));
 		vi.resetModules();
+		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", undefined);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
+		vi.doUnmock("node:fs");
 		rmSync(tempHome, { recursive: true, force: true });
 	});
 
@@ -34,7 +37,7 @@ describe("installAgentSkills", () => {
 		}));
 
 		const mod = await import("../agent-skills");
-		return { installAgentSkills: mod.installAgentSkills, ensureCodexConfigFile };
+		return { ...mod, ensureCodexConfigFile };
 	}
 
 	it("removes legacy Gemini-specific copies when shared .agents skills are installed", async () => {
@@ -85,6 +88,70 @@ describe("installAgentSkills", () => {
 		expect(ompSkill).not.toContain("Start of every turn");
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-tmux"))).toBe(false);
 		expect(ensureCodexConfigFile).toHaveBeenCalledWith(tempHome);
+	});
+
+	it("installs compact references with complete family-specific fallbacks only when opted in", async () => {
+		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", "1");
+		const mod = await loadModule();
+		await mod.installAgentSkills();
+
+		for (const [dir, fallback] of [
+			[".codex/skills/dev3", mod.getCodexSkillContent()],
+			[".omp/agent/skills/dev3", mod.getOmpSkillContent()],
+			[".agents/skills/dev3", mod.getGenericSkillContent()],
+			[".cursor/skills/dev3", mod.getGenericSkillContent()],
+			[".opencode/skills/dev3", mod.getGenericSkillContent()],
+			[".config/opencode/skills/dev3", mod.getGenericSkillContent()],
+		]) {
+			const skill = readFileSync(join(tempHome, dir, "SKILL.md"), "utf-8");
+			expect(skill).toContain("read PROTOCOL.md in this skill's directory");
+			expect(skill).not.toContain("## Session-start checklist");
+			expect(readFileSync(join(tempHome, dir, "PROTOCOL.md"), "utf-8")).toBe(fallback);
+		}
+		expect(readFileSync(join(tempHome, ".claude/skills/dev3/SKILL.md"), "utf-8")).toBe(mod.getClaudeSkillContent());
+		const agents = readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8");
+		expect(agents).toContain("already injected by your launch");
+		expect(agents).toContain("If it is absent, load");
+	});
+
+	it("writes each complete fallback before exposing its compact skill", async () => {
+		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", "1");
+		const writes: string[] = [];
+		vi.doMock("node:fs", async (importOriginal) => {
+			const actual = await importOriginal<typeof import("node:fs")>();
+			return {
+				...actual,
+				writeFileSync: (path: string, data: string, encoding: "utf-8") => {
+					writes.push(String(path));
+					return actual.writeFileSync(path, data, encoding);
+				},
+			};
+		});
+		const { installAgentSkills } = await loadModule();
+		await installAgentSkills();
+		for (const dir of [".codex/skills/dev3", ".omp/agent/skills/dev3", ".agents/skills/dev3", ".cursor/skills/dev3", ".opencode/skills/dev3", ".config/opencode/skills/dev3"]) {
+			const fallback = writes.indexOf(join(tempHome, dir, "PROTOCOL.md"));
+			const wrapper = writes.indexOf(join(tempHome, dir, "SKILL.md"));
+			expect(fallback).toBeGreaterThanOrEqual(0);
+			expect(wrapper).toBeGreaterThan(fallback);
+		}
+	});
+
+	it.each([undefined, "0", "false", "true"])("restores original bytes after opting out with %s", async (flag) => {
+		const { installAgentSkills } = await loadModule();
+		await installAgentSkills();
+		const paths = [
+			".codex/skills/dev3/SKILL.md", ".omp/agent/skills/dev3/SKILL.md",
+			".agents/skills/dev3/SKILL.md", ".cursor/skills/dev3/SKILL.md",
+			".opencode/skills/dev3/SKILL.md", ".config/opencode/skills/dev3/SKILL.md",
+			".agents/AGENTS.md", ".claude/skills/dev3/SKILL.md",
+		];
+		const before = paths.map((path) => readFileSync(join(tempHome, path), "utf-8"));
+		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", "1");
+		await installAgentSkills();
+		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", flag);
+		await installAgentSkills();
+		expect(paths.map((path) => readFileSync(join(tempHome, path), "utf-8"))).toEqual(before);
 	});
 
 	it("can defer Codex config patching until the shell PATH is resolved", async () => {

@@ -67,7 +67,25 @@ The full protocol is already in your system prompt (the "dev3 — Task Lifecycle
 
 // ---- Codex and generic skills (no command injection support) ----
 
-export function buildCodexSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+const COMPACT_SKILL_DESCRIPTION = "Dev3 task lifecycle in ~/.dev3.0/worktrees/. Follow the injected dev3 Task Lifecycle Protocol when present; otherwise load this skill for the full reference.";
+
+function buildCompactSkillContent(dialect: HookCliDialect): string {
+	return `---
+name: dev3
+description: "${COMPACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# dev3 protocol reference
+
+If your context already includes the full "dev3 — Task Lifecycle Protocol" from your launch, follow that protocol, including its agent-specific status rules. No additional skill read or startup command is needed just to load the same instructions again.
+
+Otherwise, read PROTOCOL.md in this skill's directory before working in a dev3 managed worktree. That file is the complete fallback, including startup instructions, and remains available whenever you need to inspect the full reference. Run \`${dialect.cli} --help\` when you need the CLI reference.
+`;
+}
+
+export function buildCodexSkillContent(dialect: HookCliDialect = hookCliDialect(), compact = false): string {
+	if (compact) return buildCompactSkillContent(dialect);
 	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
@@ -86,7 +104,8 @@ Then begin working. Do not move the task status on session start; the injected \
 `;
 }
 
-export function buildOmpSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+export function buildOmpSkillContent(dialect: HookCliDialect = hookCliDialect(), compact = false): string {
+	if (compact) return buildCompactSkillContent(dialect);
 	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
@@ -105,7 +124,8 @@ Then begin working. Do not move the task status on session start; the dev3 statu
 `;
 }
 
-export function buildGenericSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+export function buildGenericSkillContent(dialect: HookCliDialect = hookCliDialect(), compact = false): string {
+	if (compact) return buildCompactSkillContent(dialect);
 	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
@@ -1341,7 +1361,14 @@ const LOW_BATTERY_ALWAYS_ON = `
 Load the \`low-battery\` skill (\`~/.agents/skills/low-battery/SKILL.md\`) before composing any substantial answer, and follow it. It is the answer format this machine expects: header block first, decision last, tables over prose. Skip it only when the Low Battery output style is already active — they are the same rules.
 `;
 
-function agentsMdBlock(lowBattery: boolean): string {
+function agentsMdBlock(lowBattery: boolean, compact = false): string {
+	if (compact) return `${AGENTS_MD_MARKER_START}
+## dev-3.0 Managed Worktree
+
+Inside \`~/.dev3.0/worktrees/\`, follow the full "dev3 — Task Lifecycle Protocol" already injected by your launch. If it is absent, load the \`/dev3\` skill (or \`~/.agents/skills/dev3/SKILL.md\`) before working. Use that protocol's agent-specific status rules; hook-owned lifecycle transitions need no manual status commands.
+
+**Codex shell note:** For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. The sandbox may block homebrew zsh.
+${lowBattery ? LOW_BATTERY_ALWAYS_ON : ""}${AGENTS_MD_MARKER_END}`;
 	return `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
@@ -1363,8 +1390,8 @@ ${lowBattery ? LOW_BATTERY_ALWAYS_ON : ""}${AGENTS_MD_MARKER_END}`;
  * Creates the file if missing; replaces an existing block if present;
  * appends if the file exists but has no dev3 block.
  */
-function installAgentsMd(lowBattery: boolean): void {
-	const block = agentsMdBlock(lowBattery);
+function installAgentsMd(lowBattery: boolean, compact = false): void {
+	const block = agentsMdBlock(lowBattery, compact);
 	const agentsDir = `${homedir()}/.agents`;
 	const agentsFile = `${agentsDir}/AGENTS.md`;
 
@@ -1588,6 +1615,8 @@ export interface InstallAgentSkillsOptions {
 
 export async function installAgentSkills(options: InstallAgentSkillsOptions = {}): Promise<void> {
 	const home = homedir();
+	// Installation-wide experiment: managed accounts also discover the shared .agents skill.
+	const compact = process.env.DEV3_COMPACT_AGENT_SKILLS === "1";
 
 	// Install Claude-specific skill (with command injection). SKILL.md is short
 	// (the protocol lives in the system prompt); PROTOCOL.md carries the full
@@ -1611,7 +1640,8 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	const codexSkillFile = `${codexSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(codexSkillDir, { recursive: true });
-		writeFileSync(codexSkillFile, getCodexSkillContent(), "utf-8");
+		if (compact) writeFileSync(`${codexSkillDir}/PROTOCOL.md`, getCodexSkillContent(), "utf-8");
+		writeFileSync(codexSkillFile, buildCodexSkillContent(hookCliDialect(), compact), "utf-8");
 		log.info("Codex skill installed", { path: codexSkillFile });
 	} catch (err) {
 		log.warn("Failed to install Codex skill (non-fatal)", {
@@ -1625,7 +1655,8 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	const ompSkillFile = `${ompSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(ompSkillDir, { recursive: true });
-		writeFileSync(ompSkillFile, getOmpSkillContent(), "utf-8");
+		if (compact) writeFileSync(`${ompSkillDir}/PROTOCOL.md`, getOmpSkillContent(), "utf-8");
+		writeFileSync(ompSkillFile, buildOmpSkillContent(hookCliDialect(), compact), "utf-8");
 		log.info("omp skill installed", { path: ompSkillFile });
 	} catch (err) {
 		log.warn("Failed to install omp skill (non-fatal)", {
@@ -1640,7 +1671,8 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 		const skillFile = `${skillDir}/SKILL.md`;
 		try {
 			mkdirSync(skillDir, { recursive: true });
-			writeFileSync(skillFile, getGenericSkillContent(), "utf-8");
+			if (compact) writeFileSync(`${skillDir}/PROTOCOL.md`, getGenericSkillContent(), "utf-8");
+			writeFileSync(skillFile, buildGenericSkillContent(hookCliDialect(), compact), "utf-8");
 			log.info("Agent skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent skill (non-fatal)", {
@@ -1776,7 +1808,7 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 
 	cleanupLegacyGeminiSkillDuplicates(home);
 	installOpenAiMetadata(home);
-	installAgentsMd(options.lowBattery === true);
+	installAgentsMd(options.lowBattery === true, compact);
 	ensureClaudeSettings(home);
 	if (options.configureCodex !== false) {
 		await ensureCodexConfigFile(home);
