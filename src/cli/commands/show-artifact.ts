@@ -18,6 +18,7 @@ const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
 const VIDEO_EXTS = new Set(SHARED_VIDEO_EXTS);
 const VALUE_FLAGS = new Set(["title", "task", "task-id", "project", "artifact-id"]);
 const BOOL_FLAGS = new Set(["new"]);
+const TEXT_EXTS = new Set([".md", ".markdown", ".txt"]);
 
 /** "16 MB" / "2.7 MB" — the unit a size error has to speak to be actionable. */
 function mb(bytes: number): string {
@@ -54,7 +55,8 @@ function collectDirectoryAssets(dir: string, htmlPath: string): string[] {
 /**
  * `dev3 show-artifact ./report-dir --title "Report"` publishes `index.html` plus
  * every asset under the directory; `dev3 show-artifact report.html --assets
- * app.css chart.png` names them by hand.
+ * app.css chart.png` names them by hand. A `.md` or `.txt` file publishes as
+ * text: the app renders it into the same viewer, no HTML to write.
  */
 export async function handleShowArtifact(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
 	let html = "";
@@ -97,7 +99,7 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 		else exitUsage(`Unexpected path: ${token}. Put local assets after --assets.`);
 	}
 
-	if (!html) exitUsage('Usage: dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
+	if (!html) exitUsage('Usage: dev3 show-artifact <report-dir | file.html | notes.md | notes.txt> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
 	let htmlPath = resolvePath(process.cwd(), html);
 	if (existsSync(htmlPath) && statSync(htmlPath).isDirectory()) {
 		const indexPath = join(htmlPath, "index.html");
@@ -105,9 +107,11 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 		if (!assets.length) assets.push(...collectDirectoryAssets(htmlPath, indexPath));
 		htmlPath = indexPath;
 	}
-	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`HTML file not found: ${html}`);
-	if (extname(htmlPath).toLowerCase() !== ".html") exitUsage(`Artifact must be an .html file: ${html}`);
-	if (statSync(htmlPath).size > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage("HTML artifact is too large (max 5 MB)");
+	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`Artifact file not found: ${html}`);
+	const sourceExt = extname(htmlPath).toLowerCase();
+	if (sourceExt !== ".html" && !TEXT_EXTS.has(sourceExt)) exitUsage(`Artifact must be an .html, .md or .txt file: ${html}`);
+	if (TEXT_EXTS.has(sourceExt) && assets.length) exitUsage("A Markdown or text artifact takes no --assets — publish an .html report to bundle files.");
+	if (statSync(htmlPath).size > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage("Artifact file is too large (max 5 MB)");
 	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets: ${assets.length} (max ${MAX_SHARED_ARTIFACT_ASSETS}). Publish the .html file with an explicit --assets list.`);
 
 	let videoBytes = 0;

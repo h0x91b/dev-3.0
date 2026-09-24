@@ -1621,9 +1621,12 @@ describe("App keyboard shortcuts", () => {
 
 				const toastButton = await screen.findByRole("button", { name: /#7 · Alpha · Report/ });
 				expect(screen.queryByTestId("artifact-viewer")).not.toBeInTheDocument();
+				// Nobody has seen it yet, so the artifact must stay unread until the click.
+				expect(api.request.markTaskSharedItemsRead).not.toHaveBeenCalled();
 
 				// The toast leaves the diff for the task screen, where the panel docks.
 				await userEvent.click(toastButton);
+				expect(api.request.markTaskSharedItemsRead).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t-artifact", kind: "artifacts" }));
 				await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
 				expect(screen.getByTestId("artifact-viewer")).not.toHaveAttribute("data-presentation", "offscreen");
 			});

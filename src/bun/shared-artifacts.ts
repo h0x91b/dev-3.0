@@ -23,6 +23,7 @@ import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
 import { createZip } from "./zip";
 import { projectSlug } from "./git";
+import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
 const VIDEO_EXTS = new Set(SHARED_VIDEO_EXTS);
@@ -113,8 +114,13 @@ export function saveSharedArtifact(
 	keyOptions?: { artifactId?: string; forceNew?: boolean },
 ): SharedArtifact {
 	const htmlStat = assertSourceFile(htmlPath);
-	if (extname(htmlPath).toLowerCase() !== ".html") {
-		throw new SharedArtifactError(`Artifact must be an .html file: ${htmlPath}`);
+	const sourceExt = extname(htmlPath).toLowerCase();
+	const isText = TEXT_ARTIFACT_EXTS.has(sourceExt);
+	if (sourceExt !== ".html" && !isText) {
+		throw new SharedArtifactError(`Artifact must be an .html, .md or .txt file: ${htmlPath}`);
+	}
+	if (isText && assetPaths.length > 0) {
+		throw new SharedArtifactError("A Markdown or text artifact takes no --assets — publish an .html report to bundle files");
 	}
 	if (htmlStat.size > MAX_SHARED_ARTIFACT_HTML_BYTES) {
 		throw new SharedArtifactError(`HTML artifact is too large (max ${MAX_SHARED_ARTIFACT_HTML_BYTES / 1024 / 1024} MB)`);
@@ -158,11 +164,15 @@ export function saveSharedArtifact(
 
 	const id = crypto.randomUUID();
 	const dir = `${artifactRoot(projectPath)}/${id}`;
-	const htmlName = safeBasename(htmlPath);
+	const sourceName = safeBasename(htmlPath);
+	const htmlName = isText ? `${sourceName.slice(0, -sourceExt.length) || "artifact"}.html` : sourceName;
 	const storedPath = `${dir}/${htmlName}`;
 	try {
 		mkdirSync(dir, { recursive: true });
-		const html = injectArtifactThemeContract(readFileSync(htmlPath, "utf8"));
+		const baseTitle = htmlName.replace(/\.html$/i, "");
+		const resolvedTitle = title?.trim() || baseTitle;
+		const source = readFileSync(htmlPath, "utf8");
+		const html = injectArtifactThemeContract(isText ? textArtifactHtml(source, sourceExt, resolvedTitle) : source);
 		writeFileSync(storedPath, html, "utf8");
 		const assets: SharedArtifactAsset[] = validatedAssets.map(({ path, name, ext, stat }) => {
 			const assetPath = resolvePath(dir, name);
@@ -170,8 +180,6 @@ export function saveSharedArtifact(
 			copyFileSync(path, assetPath);
 			return { name, storedPath: assetPath, originalPath: path, mime: MIME_BY_EXT[ext], bytes: stat.size };
 		});
-		const baseTitle = htmlName.replace(/\.html$/i, "");
-		const resolvedTitle = title?.trim() || baseTitle;
 		// `--new` mints a key nothing can ever match, so the publish stands alone
 		// while later plain publishes of the same title still group with each other.
 		const groupKey = keyOptions?.forceNew

@@ -621,9 +621,10 @@ const COMMANDS: CommandHelp[] = [
 		name: "show-artifact",
 		summary: "Surface a task-bound HTML artifact in the running app.",
 		subcommands: [],
-		usage: 'dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
+		usage: 'dev3 show-artifact <report-dir | file.html | notes.md | notes.txt> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
 		details: [
 			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, raster and MP4/WebM file under it.",
+			"<notes.md | .txt>     Publish Markdown or plain text as-is; the app renders it into the viewer (raw HTML shows as text, no --assets).",
 			"--assets <paths...>   Name local CSS, classic JS, raster and MP4/WebM assets by hand; all following paths belong to the artifact until the next flag.",
 			"                      A bundled clip is capped at 16 MB, and all clips together at 48 MB; poster images count as ordinary rasters.",
 			"--title <text>        Viewer title (defaults to the HTML filename).",
