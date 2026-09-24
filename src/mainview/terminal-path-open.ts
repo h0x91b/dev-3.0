@@ -1,7 +1,8 @@
 import type { TFunction } from "./i18n";
 import { api, isElectrobun } from "./rpc";
 import { toast } from "./toast";
-import { fileUriToLocalPath, safeFileUri } from "./terminal-osc8-links";
+import { fileUriToLocalPath, safeDeepLinkUri, safeFileUri } from "./terminal-osc8-links";
+import { parseDeepLink } from "../shared/deep-link";
 import type { ResolvedTerminalPath, TerminalPathOpenMode } from "../shared/types";
 
 /** App.tsx hosts the FilePreviewModal and listens for this event. */
@@ -57,6 +58,32 @@ export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TF
 	}
 }
 
+/**
+ * Open a `dev3://…` deep link printed in terminal output. The ids are resolved
+ * against the boards first (a task lives in whichever project holds it, so this
+ * crosses projects by itself), then the same in-app navigation a clicked link
+ * from the OS takes. It deliberately does NOT go out to the OS handler: that
+ * exists on macOS only, and bouncing through it would re-launch the app from a
+ * window that is already open.
+ */
+export async function activateDeepLinkUri(uri: string, ctx: Osc8ActivateContext): Promise<void> {
+	const { t, taskId } = ctx;
+	if (!parseDeepLink(uri)) {
+		toast.error(t("terminal.deepLinkBad", { uri }), { taskId, source: "terminal" });
+		return;
+	}
+	try {
+		const nav = await api.request.resolveDeepLinkNav({ url: uri });
+		if (!nav) {
+			toast.error(t("terminal.deepLinkNotFound", { uri }), { taskId, source: "terminal" });
+			return;
+		}
+		window.dispatchEvent(new CustomEvent("rpc:openDeepLink", { detail: nav }));
+	} catch (err) {
+		toast.error(t("terminal.pathLinkOpenFailed", { error: String(err) }), { taskId, source: "terminal" });
+	}
+}
+
 export interface Osc8ActivateContext {
 	t: TFunction;
 	taskId?: string;
@@ -75,6 +102,12 @@ export interface Osc8ActivateContext {
  */
 export async function activateOsc8Uri(uri: string, ctx: Osc8ActivateContext): Promise<void> {
 	const { t, taskId, projectId } = ctx;
+	// A dev3 deep link is in-app navigation, not an external open — the OSC 8
+	// target and the plain-text link take the same path from here.
+	if (safeDeepLinkUri(uri)) {
+		await activateDeepLinkUri(uri, ctx);
+		return;
+	}
 	const file = fileUriToLocalPath(uri);
 	if (!file) {
 		if (safeFileUri(uri)) {

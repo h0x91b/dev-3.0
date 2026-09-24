@@ -5545,6 +5545,15 @@ export type AppRPCSchema = {
 				params: void;
 				response: DeepLinkNav | null;
 			};
+			/**
+			 * Resolve a `dev3://…` URL the renderer found itself (a link clicked in
+			 * terminal output) into the same navigation an inbound OS deep link
+			 * produces. Null when the URL is malformed or its target is gone.
+			 */
+			resolveDeepLinkNav: {
+				params: { url: string };
+				response: DeepLinkNav | null;
+			};
 			openNewWindow: {
 				params: void;
 				response: void;

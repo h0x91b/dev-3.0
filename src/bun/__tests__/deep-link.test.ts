@@ -12,6 +12,7 @@ import {
 	buildSpaceDeepLink,
 	buildSpaceWebLink,
 	DEEP_LINK_WEB_BASE,
+	findDeepLinksInText,
 } from "../../shared/deep-link";
 
 vi.mock("../spaces-data", () => ({
@@ -267,5 +268,34 @@ describe("deepLinkSchemeRegistered", () => {
 		expect(deepLinkSchemeRegistered("darwin")).toBe(true);
 		expect(deepLinkSchemeRegistered("win32")).toBe(false);
 		expect(deepLinkSchemeRegistered("linux")).toBe(false);
+	});
+});
+
+describe("findDeepLinksInText", () => {
+	it("finds a task link printed in a line of prose, with its exact bounds", () => {
+		const text = "see dev3://task/a21540d6-4890-426f-81c1-41cfc460715e for the report";
+		const [match, ...rest] = findDeepLinksInText(text);
+		expect(rest).toEqual([]);
+		expect(match!.raw).toBe("dev3://task/a21540d6-4890-426f-81c1-41cfc460715e");
+		expect(text.slice(match!.start, match!.end + 1)).toBe(match!.raw);
+		expect(match!.target).toEqual({ kind: "task", taskId: "a21540d6-4890-426f-81c1-41cfc460715e" });
+	});
+
+	it("drops trailing prose punctuation but keeps a query string", () => {
+		expect(findDeepLinksInText("open dev3://project/p1.").map((m) => m.raw)).toEqual(["dev3://project/p1"]);
+		const [newTask] = findDeepLinksInText("(dev3://new-task?project=p1&text=hello%20world)");
+		expect(newTask!.raw).toBe("dev3://new-task?project=p1&text=hello%20world");
+		expect(newTask!.target).toEqual({ kind: "new-task", projectId: "p1", text: "hello world" });
+	});
+
+	it("finds every link on the line", () => {
+		expect(findDeepLinksInText("dev3://task/t1 and dev3://space/s2").map((m) => m.raw)).toEqual([
+			"dev3://task/t1",
+			"dev3://space/s2",
+		]);
+	});
+
+	it("ignores an unknown kind, an empty id and any other scheme", () => {
+		expect(findDeepLinksInText("dev3://bogus/x dev3://task/ http://example.com javascript:alert(1)")).toEqual([]);
 	});
 });

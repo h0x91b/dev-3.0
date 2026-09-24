@@ -53,11 +53,12 @@ import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
 import { spaceDroppedPaths } from "./terminal-drop-spacing";
 import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
+import { createDeepLinkProvider, type DeepLinkProvider } from "./terminal-deep-links";
 import { createOsc8Tracker, createOsc8LinkProvider } from "./terminal-osc8-links";
 import { cellFromMouseEvent } from "./terminal-cell-hit";
 import { installOsc8HoverTooltip, type Osc8HoverHandle } from "./terminal-osc8-hover";
 import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
-import { activateTerminalPath, activateOsc8Uri } from "./terminal-path-open";
+import { activateTerminalPath, activateOsc8Uri, activateDeepLinkUri } from "./terminal-path-open";
 import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
@@ -748,6 +749,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		let linkUnderlines: FilePathUnderlinesHandle | null = null;
 		let osc8Hover: Osc8HoverHandle | null = null;
 		let filePathLinks: FilePathLinkProvider | null = null;
+		let deepLinks: DeepLinkProvider | null = null;
 		// URI capture for OSC 8 hyperlinks — the wasm terminal never exposes a
 		// link's URI back to JS, so it is remembered from the raw PTY stream.
 		const osc8Tracker = createOsc8Tracker();
@@ -956,6 +958,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				},
 			});
 			term.registerLinkProvider(osc8Provider);
+			// Bare `dev3://…` links an agent printed: ghostty's URL regex knows no
+			// custom scheme, so nothing else would make them clickable.
+			deepLinks = createDeepLinkProvider({
+				term,
+				onActivate: (uri) => {
+					void activateDeepLinkUri(uri, { t: tRef.current, taskId, projectId });
+				},
+			});
+			term.registerLinkProvider(deepLinks);
 			// Label and destination are independent in OSC 8 — show the resolved
 			// target on hover so a mismatch is visible before the click.
 			osc8Hover = installOsc8HoverTooltip({
@@ -966,7 +977,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			linkUnderlines = installFilePathUnderlines({
 				term,
 				container: containerRef.current,
-				linksForRows: filePathLinks.linksForRows,
+				// Deep links get the same persistent underline as file paths — both
+				// are in-app targets the user should see without hunting for them.
+				linksForRows: (ys) => [...filePathLinks!.linksForRows(ys), ...(deepLinks?.linksForRows(ys) ?? [])],
 			});
 
 			// ghostty marks the container contenteditable="true", so ANY focus on
@@ -2177,6 +2190,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			osc8Hover?.dispose();
 			osc8Hover = null;
 			filePathLinks?.dispose();
+			deepLinks?.dispose?.();
 			filePathLinks = null;
 			osc8Tracker.dispose();
 			nativeSelectionClipboardCleanup?.();

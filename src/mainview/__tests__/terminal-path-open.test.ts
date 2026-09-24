@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { activateOsc8Uri, OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "../terminal-path-open";
+import { activateOsc8Uri, activateDeepLinkUri, OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "../terminal-path-open";
 import { api } from "../rpc";
 import { toast } from "../toast";
 
@@ -8,6 +8,7 @@ vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			resolveTerminalPaths: vi.fn(),
+			resolveDeepLinkNav: vi.fn(),
 			getGlobalSettings: vi.fn(),
 			openTerminalPath: vi.fn(),
 		},
@@ -75,5 +76,67 @@ describe("activateOsc8Uri", () => {
 		resolveTerminalPaths.mockRejectedValue(new Error("rpc down"));
 		await activateOsc8Uri("file:///repo/a.ts", { t });
 		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("terminal.pathLinkOpenFailed"), expect.anything());
+	});
+});
+
+const resolveDeepLinkNav = api.request.resolveDeepLinkNav as unknown as ReturnType<typeof vi.fn>;
+
+function navigated(): Promise<unknown> {
+	return new Promise((resolve) => {
+		window.addEventListener("rpc:openDeepLink", (event) => resolve((event as CustomEvent).detail), { once: true });
+	});
+}
+
+describe("activateDeepLinkUri", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("navigates in-app to the project the task was found in, never through window.open", async () => {
+		const nav = { kind: "task", taskId: "a21540d6-4890-426f-81c1-41cfc460715e", projectId: "proj-9" };
+		resolveDeepLinkNav.mockResolvedValue(nav);
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		const detail = navigated();
+		await activateDeepLinkUri("dev3://task/a21540d6-4890-426f-81c1-41cfc460715e", { t, taskId: "task-1" });
+		expect(resolveDeepLinkNav).toHaveBeenCalledWith({ url: "dev3://task/a21540d6-4890-426f-81c1-41cfc460715e" });
+		expect(await detail).toEqual(nav);
+		expect(open).not.toHaveBeenCalled();
+		open.mockRestore();
+	});
+
+	it("says the target is gone instead of navigating when nothing resolves", async () => {
+		resolveDeepLinkNav.mockResolvedValue(null);
+		await activateDeepLinkUri("dev3://task/does-not-exist", { t });
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("terminal.deepLinkNotFound"), expect.anything());
+	});
+
+	it("refuses a URL of an unknown kind without asking the backend", async () => {
+		await activateDeepLinkUri("dev3://bogus/x", { t });
+		expect(resolveDeepLinkNav).not.toHaveBeenCalled();
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("terminal.deepLinkBad"), expect.anything());
+	});
+
+	it("reports a failed resolve instead of throwing into the click handler", async () => {
+		resolveDeepLinkNav.mockRejectedValue(new Error("rpc down"));
+		await activateDeepLinkUri("dev3://project/p1", { t });
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("terminal.pathLinkOpenFailed"), expect.anything());
+	});
+});
+
+describe("activateOsc8Uri with a dev3 target", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("routes an OSC 8 deep-link target into in-app navigation", async () => {
+		const nav = { kind: "space", spaceId: "s1", projectId: "p1" };
+		resolveDeepLinkNav.mockResolvedValue(nav);
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		const detail = navigated();
+		await activateOsc8Uri("dev3://space/s1", { t });
+		expect(await detail).toEqual(nav);
+		expect(open).not.toHaveBeenCalled();
+		expect(resolveTerminalPaths).not.toHaveBeenCalled();
+		open.mockRestore();
 	});
 });

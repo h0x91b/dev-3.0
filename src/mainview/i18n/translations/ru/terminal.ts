@@ -277,6 +277,8 @@ const terminal = {
 	"terminal.pathLinkOpenFailed": "Не удалось открыть путь: {error}",
 	"terminal.fileLinkNotFound": "Не удалось открыть {path} — файла нет или он вне разрешённых папок.",
 	"terminal.fileLinkUnreadable": "Эта ссылка не похожа на путь к файлу: {uri}",
+	"terminal.deepLinkNotFound": "Нечего открывать по {uri} — этой задачи, проекта или пространства больше нет.",
+	"terminal.deepLinkBad": "Это не та dev3-ссылка, которую приложение понимает: {uri}",
 	"terminal.filePreviewLoading": "Загрузка предпросмотра…",
 	"terminal.filePreviewNotFound": "Файл не найден — возможно, его переместили или удалили.",
 	"terminal.filePreviewBinary": "Двоичный файл ({size}) — предпросмотр недоступен.",
