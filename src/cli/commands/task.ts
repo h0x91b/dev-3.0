@@ -12,6 +12,7 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
 import { handleTasks } from "./tasks";
+import { buildTaskShowJson } from "../task-json";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -201,10 +202,10 @@ function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | u
 }
 
 async function showTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "history", "notes"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "history", "notes", "json"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id> [--notes] [--history]");
+		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id> [--notes] [--history] [--json]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -214,10 +215,12 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const resp = await sendRequest(socketPath, "task.show", params);
 	if (!resp.ok) exitError(resp.error || "Failed to get task");
 
-	printTask(resp.data as Task, {
-		history: args.flags.history === "true",
-		notes: args.flags.notes === "true",
-	});
+	const opts = { history: args.flags.history === "true", notes: args.flags.notes === "true" };
+	if (args.flags.json !== undefined) {
+		process.stdout.write(`${JSON.stringify(buildTaskShowJson(resp.data as Task, opts), null, 2)}\n`);
+		return;
+	}
+	printTask(resp.data as Task, opts);
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {

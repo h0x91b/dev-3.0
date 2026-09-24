@@ -322,6 +322,34 @@ export async function cancelScheduledMessage(project: Project, taskId: string, m
 	return removeFromQueue(project, task, messageId);
 }
 
+/**
+ * `dev3 message --cancel <id>`: remove one pending message named by its id or a
+ * unique prefix of it. Resolved inside the tasks-file lock, so "not found" is the
+ * truth at removal time — a message that already fired reports not found instead
+ * of a cancel that never happened. One that is mid-delivery cannot be recalled.
+ */
+export async function cancelScheduledMessageByRef(
+	project: Project,
+	taskId: string,
+	ref: string,
+): Promise<{ task: Task; message: ScheduledMessage }> {
+	const needle = ref.trim().toLowerCase();
+	if (!needle) throw new Error("A scheduled message id is required");
+	const { task, result } = await data.updateTaskWith<ScheduledMessage>(project, taskId, (current) => {
+		const queue = current.scheduledMessages ?? [];
+		const matches = queue.filter((m) => m.id.toLowerCase().startsWith(needle));
+		if (matches.length === 0) {
+			throw new Error(`No pending scheduled message ${ref} on this task (it may have fired already). List them with: dev3 message --list`);
+		}
+		if (matches.length > 1) throw new Error(`Scheduled message id ${ref} is ambiguous — pass more characters.`);
+		const [message] = matches;
+		return { updates: { scheduledMessages: queue.filter((m) => m.id !== message.id) }, result: message };
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	log.info("Scheduled message cancelled", { taskId: task.id.slice(0, 8), messageId: result.id.slice(0, 8) });
+	return { task, message: result };
+}
+
 /** Deliver a pending scheduled message immediately and remove it (chip "Send now"). */
 export async function sendScheduledMessageNow(project: Project, taskId: string, messageId: string): Promise<Task> {
 	const task = await data.getTask(project, taskId);

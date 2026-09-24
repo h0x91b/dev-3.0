@@ -7,7 +7,8 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
 import { parseDelay, formatCountdown } from "../../shared/duration";
-import { resolveScheduleTarget } from "../../shared/schedule";
+import { describeScheduledTime, parseScheduleAt } from "../../shared/schedule-at";
+import { handleScheduledQueue, isScheduledQueueCommand } from "./message-schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
 import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
 import {
@@ -20,7 +21,8 @@ import {
 } from "../../shared/agent-message-hold-timing";
 
 const USAGE =
-	'Usage: dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm>] [--task <id>] [--variant <i>]';
+	'Usage: dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm[Z|±hh:mm]>] [--task <id>] [--variant <i>]\n' +
+	"       dev3 message --list [--json] [--task <id>]   |   dev3 message --cancel <id> [--task <id>]";
 
 const VARIANT_NEEDS_SEQ =
 	"--variant narrows a variant group addressed by seq. Pass --task seq:<N> --variant <i>.";
@@ -94,6 +96,7 @@ export async function handleMessage(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	if (isScheduledQueueCommand(args)) return handleScheduledQueue(args, socketPath, context);
 	rejectUnknownFlags(args, ["task", "task-id", "project", "in", "at", "message", "variant", "subject"]);
 
 	const rawText = singleTextInput(args, "message") ?? "";
@@ -168,16 +171,26 @@ export async function handleMessage(
 		if (ms == null) exitUsage(`Invalid --in duration "${args.flags.in}". Use e.g. 30m, 2h, 1h30m.`);
 		at = new Date(now + ms);
 	} else {
-		at = resolveScheduleTarget({ mode: "at", delayHours: 0, delayMinutes: 0, atTime: args.flags.at }, now);
-		if (!at) exitUsage(`Invalid --at time "${args.flags.at}". Use HH:MM (24-hour), e.g. 14:00.`);
+		at = parseScheduleAt(args.flags.at, now);
+		if (!at) {
+			exitUsage(
+				`Invalid --at time "${args.flags.at}". Use HH:MM (24-hour, this machine's clock), ` +
+					"HH:MMZ for UTC, HH:MM+03:00 for an offset, or 2026-09-25T06:00Z.",
+			);
+		}
+		if (at.getTime() <= now) exitUsage(`--at ${args.flags.at} is in the past.`);
 	}
 
 	params.at = at.toISOString();
 	const resp = await sendRequest(socketPath, "message.schedule", params);
 	if (!resp.ok) exitError(resp.error || "Failed to schedule message");
-	const data = resp.data as { taskId: string; pending: number };
-	const when = at.toLocaleString([], { hour: "2-digit", minute: "2-digit" });
+	const data = resp.data as { taskId: string; pending: number; messageId?: string };
+	const shortTask = data.taskId.slice(0, 8);
 	process.stdout.write(
-		`Message scheduled for ${when} (in ${formatCountdown(at.getTime() - now)}) on task ${data.taskId.slice(0, 8)}.\n`,
+		`Message scheduled for ${describeScheduledTime(at, now)} (in ${formatCountdown(at.getTime() - now)}) on task ${shortTask}.\n`,
 	);
+	// An older app does not return the id; `--list` still finds the message.
+	if (data.messageId) {
+		process.stdout.write(`Id ${data.messageId.slice(0, 8)} — cancel with: dev3 message --cancel ${data.messageId.slice(0, 8)} --task ${shortTask}\n`);
+	}
 }

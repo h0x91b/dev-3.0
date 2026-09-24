@@ -53,8 +53,8 @@ Auto-detects project and task from the worktree context.
 Commands:
   dev3 current [--brief]                Show current project, task, status
                                          (--brief: hide the full description if you already have it in your prompt)
-  dev3 task show [--task <id>] [--notes] [--history]  Full task details
-                                         (always shows current overview; --notes inlines note bodies, --history shows title/overview change log)
+  dev3 task show [--task <id>] [--notes] [--history] [--json]  Full task details
+                                         (always shows current overview; --notes inlines note bodies, --history shows title/overview change log; --json prints a stable object)
   dev3 task move [--task <id>] --status <status>  Change task status
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|standard]  Update task fields
@@ -75,7 +75,9 @@ Commands:
   dev3 label list                       List project labels
   dev3 label create "name" [--color "#hex"]  Create label
   dev3 label delete <id>                Delete label
-  dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
+  dev3 label set <id> [<id>...] [--task <task>]  REPLACE the task's labels with exactly these
+  dev3 label add <id> [<id>...] [--task <task>]  Add labels, keeping the existing ones
+  dev3 label remove <id> [<id>...] [--task <task>]  Remove only these labels
   dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
   dev3 automations list                 List project automations (scheduled agent runs)
@@ -97,7 +99,9 @@ Commands:
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
   dev3 attention --clear [--task <id>]  Lower the attention badge and drop its accumulated reasons
-  dev3 message --subject "<about 6 words>" "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later); --subject is required and stored with the message
+  dev3 message --subject "<about 6 words>" "text" [--in <dur> | --at <hh:mm[Z|±hh:mm]>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later); --subject is required and stored with the message
+  dev3 message --list [--json] [--task <id>]  Pending scheduled messages (id, due in local + UTC, sender)
+  dev3 message --cancel <id> [--task <id>]  Cancel one pending scheduled message
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image and MP4/WebM clip under it
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing

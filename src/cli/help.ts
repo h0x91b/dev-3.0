@@ -66,11 +66,14 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "show",
-				usage: "dev3 task show [<id>] [--task <id>] [--notes] [--history]",
+				usage: "dev3 task show [<id>] [--task <id>] [--notes] [--history] [--json]",
 				summary: "Show full task details (always includes the current overview).",
 				details: [
 					"--notes      Inline the task's note bodies.",
 					"--history    Show the title/overview change log.",
+					"--json       Stable machine-readable object (schemaVersion 1): id, seq, title,",
+					"             raw description, overview, status, branch, labelIds, priority, ...",
+					"             --notes / --history add those arrays to it.",
 					"Without an id, targets the current worktree's task.",
 				],
 			},
@@ -308,8 +311,21 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "set",
 				usage: "dev3 label set <id> [<id>...] [--task <id>]",
-				summary: "Assign labels to a task.",
-				details: ["--clear    Remove all labels from the task (dev3 label set --clear)."],
+				summary: "REPLACE the task's whole label set with exactly these labels.",
+				details: [
+					"Labels not listed are removed. Use `label add` to keep the existing ones.",
+					"--clear    Remove all labels from the task (dev3 label set --clear).",
+				],
+			},
+			{
+				name: "add",
+				usage: "dev3 label add <id> [<id>...] [--task <id>]",
+				summary: "Add labels to a task, keeping the ones it already has.",
+			},
+			{
+				name: "remove",
+				usage: "dev3 label remove <id> [<id>...] [--task <id>]",
+				summary: "Remove only these labels from a task; the rest stay.",
 			},
 		],
 	},
@@ -592,7 +608,7 @@ const COMMANDS: CommandHelp[] = [
 		name: "message",
 		summary: "Send text to the task's live agent now, or schedule it for later.",
 		subcommands: [],
-		usage: 'dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm>] [--task <id>] [--variant <i>]',
+		usage: 'dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <time>] [--task <id>] [--variant <i>] | dev3 message --list [--json] | dev3 message --cancel <id>',
 		details: [
 			`--subject <text>  REQUIRED. One line saying what the message is about: about`,
 			`                  ${MESSAGE_SUBJECT_WORD_GUIDANCE} words, ${MAX_MESSAGE_SUBJECT_LENGTH} characters at most (hard limit — an over-limit`,
@@ -604,7 +620,11 @@ const COMMANDS: CommandHelp[] = [
 			"                  Omitting it exits 17 with the corrected command.",
 			"Bare form delivers the text into the live agent immediately (types it + Enter).",
 			"--in <dur>    Schedule after a delay, e.g. 30m, 2h, 1h30m (Send later).",
-			"--at <hh:mm>  Schedule at the next occurrence of a local time (today or tomorrow).",
+			"--at <time>   Schedule at an absolute time. 14:00 = next 14:00 on THIS machine's clock;",
+			"              06:00Z = next 06:00 UTC; 06:00+03:00 = that offset; 2026-09-25T06:00Z = exact.",
+			"              The confirmation prints the time in local AND UTC, plus the message id.",
+			"--list        Pending scheduled messages on the target task (id, due time, sender); --json.",
+			"--cancel <id> Drop one pending message (8-char prefix works). One already firing cannot be recalled.",
 			"--variant <i> Pick one member of a variant group; needs --task seq:<N>, since a group",
 			"              shares its seq. The index is the card's <seq>-<i> suffix.",
 			"Text is ONE of: a positional arg, --message, - (read stdin), or @file. Backticks and $",

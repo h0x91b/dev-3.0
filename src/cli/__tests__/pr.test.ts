@@ -5,10 +5,12 @@ import type { CliContext } from "../context";
 
 vi.mock("../context", () => ({
 	readTaskDirect: vi.fn(() => null),
+	readProjectDirect: vi.fn(() => null),
 }));
 
-import { readTaskDirect } from "../context";
+import { readProjectDirect, readTaskDirect } from "../context";
 const mockReadTask = vi.mocked(readTaskDirect);
+const mockReadProject = vi.mocked(readProjectDirect);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -40,6 +42,7 @@ interface Call {
 	command: string;
 	args: string[];
 	cwd: string;
+	env?: Record<string, string>;
 }
 
 /**
@@ -53,8 +56,8 @@ function deps(
 ): { deps: PrDeps; calls: Call[] } {
 	const calls: Call[] = [];
 	const base: PrDeps = {
-		run: (command, runArgs, cwd) => {
-			calls.push({ command, args: runArgs, cwd });
+		run: (command, runArgs, cwd, env) => {
+			calls.push({ command, args: runArgs, cwd, env });
 			const key = [command, ...runArgs.slice(0, 2)].join(" ");
 			for (const [prefix, result] of Object.entries(responses)) {
 				if (key.startsWith(prefix)) return result;
@@ -91,6 +94,8 @@ beforeEach(() => {
 	}) as ReturnType<typeof vi.spyOn>;
 	mockReadTask.mockReset();
 	mockReadTask.mockReturnValue(null);
+	mockReadProject.mockReset();
+	mockReadProject.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -478,5 +483,85 @@ describe("dev3 pr create — refusals", () => {
 		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
 
 		expect(stderrOutput).toContain("already exists");
+	});
+});
+
+describe("dev3 pr — the project's GitHub account", () => {
+	const TOKEN = "gho_project_token_value";
+	const savedEnv: Record<string, string | undefined> = {};
+	const TOKEN_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
+
+	beforeEach(() => {
+		for (const name of TOKEN_VARS) {
+			savedEnv[name] = process.env[name];
+			delete process.env[name];
+		}
+	});
+	afterEach(() => {
+		for (const name of TOKEN_VARS) {
+			if (savedEnv[name] === undefined) delete process.env[name];
+			else process.env[name] = savedEnv[name];
+		}
+	});
+
+	function withAccount(login: string | null, host?: string) {
+		mockReadProject.mockReturnValue({ id: "proj-1", name: "p", path: "/repo", githubAuthLogin: login, githubAuthHost: host ?? null });
+	}
+
+	it("runs push, create and merge as the configured account, token only in the child env", async () => {
+		withAccount("work-bot");
+		const { deps: d, calls } = deps({ "gh auth token": ok(`${TOKEN}\n`) });
+
+		await handlePr("create", args({ title: "T", "auto-merge": "true" }), ctx(), d);
+
+		const tokenCall = ran(calls, "gh", ["auth", "token"])!;
+		expect(tokenCall.args).toEqual(["auth", "token", "--hostname", "github.com", "--user", "work-bot"]);
+		expect(tokenCall.env).toMatchObject({ GH_TOKEN: "", GITHUB_TOKEN: "" });
+		for (const call of [ran(calls, "gh", ["auth", "status"]), ran(calls, "git", ["push"]), ran(calls, "gh", ["pr", "create"]), ran(calls, "gh", ["pr", "merge"])]) {
+			expect(call?.env).toMatchObject({ GH_TOKEN: TOKEN, GITHUB_TOKEN: TOKEN });
+		}
+		expect(calls.some((c) => c.command === "gh" && c.args[0] === "auth" && c.args[1] === "switch")).toBe(false);
+		expect(stdoutOutput).toContain("acting as work-bot@github.com");
+		expect(stdoutOutput + stderrOutput).not.toContain(TOKEN);
+	});
+
+	it("uses the enterprise variables for a GHES host", async () => {
+		withAccount("me", "git.corp.example");
+		const { deps: d, calls } = deps({ "gh auth token": ok(TOKEN) });
+
+		await handlePr("auto-merge", args(), ctx(), d);
+
+		expect(ran(calls, "gh", ["pr", "merge"])?.env).toMatchObject({ GH_ENTERPRISE_TOKEN: TOKEN });
+		expect(ran(calls, "gh", ["pr", "merge"])?.env?.GH_TOKEN).toBeUndefined();
+	});
+
+	it("leaves the active account alone when the project names none", async () => {
+		withAccount(null);
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), ctx(), d);
+
+		expect(ran(calls, "gh", ["auth", "token"])).toBeUndefined();
+		expect(ran(calls, "gh", ["pr", "create"])?.env).toBeUndefined();
+	});
+
+	it("lets a token the caller exported win over the project setting", async () => {
+		withAccount("work-bot");
+		process.env.GH_TOKEN = "caller-token";
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), ctx(), d);
+
+		expect(ran(calls, "gh", ["auth", "token"])).toBeUndefined();
+	});
+
+	it("refuses before pushing, exit 23, when gh has no token for that account", async () => {
+		withAccount("ghost");
+		const { deps: d, calls } = deps({ "gh auth token": fail("no oauth token found for ghost") });
+
+		await expect(handlePr("create", args({ title: "T" }), ctx(), d)).rejects.toThrow("EXIT_23");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(stderrOutput).toContain("ghost@github.com");
 	});
 });

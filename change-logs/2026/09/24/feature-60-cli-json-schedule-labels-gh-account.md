@@ -1,0 +1,3 @@
+Short: Scriptable task show, cancellable scheduled messages
+
+`dev3 task show --json` prints a stable, versioned object (raw description, overview, status, branch, labels…); `dev3 message --at` accepts `06:00Z`, `06:00+03:00` and full ISO times, confirms in both local time and UTC with the message id, and new `dev3 message --list` / `--cancel <id>` manage pending scheduled messages. `dev3 label add` / `label remove` change single labels while `label set` is documented as replacing the whole set, and `dev3 pr create` / `pr auto-merge` now act as the project's GitHub account from Project Settings instead of whichever gh account is globally active.
