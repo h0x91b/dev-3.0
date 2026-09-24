@@ -99,6 +99,8 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain('dev3 show-artifact ./dev3-artifact-report --title "Report title"');
 			expect(skill).not.toContain("./dev3-artifact-report/index.html --assets");
 			expect(skill).not.toContain("--images");
+			expect(skill).toContain("an ordinary report or revision needs no browser pass or screenshots");
+			expect(skill).toContain("`AUTHORING.md` § Before you publish");
 		}
 	});
 

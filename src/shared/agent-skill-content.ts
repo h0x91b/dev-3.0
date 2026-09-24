@@ -191,18 +191,18 @@ Each server's output also lands as text in \`<taskDir>/logs/dev-server*.log\`, f
 const SKILL_ARTIFACTS = `
 ## dev3 HTML artifacts
 
-Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or demo usually means a **dev3 HTML artifact** — not Claude Artifacts — whenever an interactive visual fits. Do not override explicit meanings: Claude Artifacts, CI/build artifacts, package outputs, files for other systems.
+Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or demo usually means a **dev3 HTML artifact** — not Claude Artifacts — whenever an interactive visual fits. Explicit other meanings win: Claude Artifacts, CI/build artifacts, package outputs, files for other systems.
 
 \`$DEV3_ARTIFACT_TEMPLATE_DIR\` is a pristine task-local starter (\`dev3 artifact-template\` copies it in if the variable is missing; never invent a different template). The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` the depth behind it, \`index.html\` + \`report.js\` the edit surface, \`app.css\` + \`app.js\` the shell, \`dev3-icon.png\` the brand asset.
 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` — never edit the pristine source.
 2. Read the copied \`AUTHORING.md\` (the card), then edit only \`index.html\` and \`report.js\` unless the format itself must change. Open a \`REFERENCE.md\` section only when the report needs one. Do not read the shell files for ordinary reports.
-3. Keep content and data local; external chart/UI libraries and live \`fetch\`/WebSocket are allowed, as \`REFERENCE.md\` says.
-4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit: \`index.html\` plus every CSS, JS, image and MP4/WebM clip (16 MB each, 48 MB together) under it. Keep assets beside or below the HTML with relative paths; only a file outside it goes after \`--assets\`.
+3. Keep content and data local; CDN libraries and live \`fetch\`/WebSocket are fine (\`REFERENCE.md\`).
+4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit, every CSS, JS, image and MP4/WebM clip under it (16 MB each, 48 MB together); a file outside it goes after \`--assets\`. Publish straight away: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish names the exceptions.
 
 Re-running \`show-artifact\` **updates** the report: the same \`--title\` (or an explicit \`--artifact-id <slug>\`, which survives rewording) adds a VERSION to the row the user already has. Revise by publishing again, never by inventing \`report-v2.html\`; \`--new\` only for a genuinely different report that happens to share a title.
 
-Sharing it **outside** the app (a link, a phone, a GitHub comment) is a different job: load \`/dev3-share-artifact\`, which folds the report into one self-contained HTML and publishes it as a gist with a checked preview URL.
+Sharing it **outside** the app (a link, a phone, a GitHub comment) is a different job: \`/dev3-share-artifact\` folds it into one self-contained HTML and publishes a gist with a checked preview URL.
 `;
 
 const SKILL_GET_ATTENTION = `

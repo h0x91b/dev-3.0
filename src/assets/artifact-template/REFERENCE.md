@@ -236,7 +236,7 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Add `print-only` to concise context shown only in PDF.
 - Closed `details` sections expand for printing and return to their prior state afterwards.
 - For dense charts, set `--dev3-print-chart-height` on `<html>` to keep every label visible.
-- Check print preview in both Light and Dark after changing layout.
+- When the report is meant for paper and you changed its layout, check print preview once in the theme it will be printed in.
 
 ## Asking the user something (`window.dev3.sendToAgent`)
 
