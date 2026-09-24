@@ -143,6 +143,65 @@ describe("removeWorktree", () => {
 		expect(g("git branch", repo.local)).not.toContain("dev3/task-77777777");
 	});
 
+	it("swallows the failure when the checkout lost its .git link", async () => {
+		// Real user report: the registration survived while `<worktree>/.git` did
+		// not, so `git worktree remove --force` answered "validation failed ... does
+		// not exist" on every app start. Teardown aborted, the task stayed in
+		// `tearing-down`, and the same error came back at the next boot forever.
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			id: "55555555-6666-7777-8888-999999999999",
+			branchName: "dev3/task-55555555",
+		});
+		const wtPath = join(taskDir(project, task), "worktree");
+		mkdirSync(taskDir(project, task), { recursive: true });
+		g(`git worktree add -b dev3/task-55555555 "${wtPath}" main`, repo.local);
+		rmSync(join(wtPath, ".git"), { recursive: true, force: true });
+		mkdirSync(join(wtPath, ".claude"), { recursive: true });
+		writeFileSync(join(wtPath, ".claude", "settings.local.json"), "{}");
+		expect(g(`git worktree list`, repo.local)).toContain("prunable");
+
+		await removeWorktree(project, { ...task, worktreePath: wtPath });
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain(wtPath);
+		expect(g("git branch", repo.local)).not.toContain("dev3/task-55555555");
+	});
+
+	it("is idempotent across repeated teardown attempts on a lost checkout", async () => {
+		// The boot path re-dispatches teardown for a task still parked in
+		// `tearing-down`. A second pass must stay silent, not resurrect the error.
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			id: "44444444-3333-2222-1111-000000000000",
+			branchName: "dev3/task-44444444",
+		});
+		const wtPath = join(taskDir(project, task), "worktree");
+		mkdirSync(taskDir(project, task), { recursive: true });
+		g(`git worktree add -b dev3/task-44444444 "${wtPath}" main`, repo.local);
+		rmSync(join(wtPath, ".git"), { recursive: true, force: true });
+
+		const withPath = { ...task, worktreePath: wtPath };
+		await removeWorktree(project, withPath);
+		await expect(removeWorktree(project, withPath)).resolves.toBeUndefined();
+		expect(existsSync(wtPath)).toBe(false);
+	});
+
+	it("still rejects a locked worktree whose checkout is intact", async () => {
+		// The `.git`-missing classification must not widen into "every validation
+		// failure is a successful teardown".
+		const wtPath = join(repo.dir, "locked-intact");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		g(`git worktree lock "${wtPath}"`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "dev3/task-aaaaaaaa" });
+
+		await expect(removeWorktree(project, task)).rejects.toThrow("Failed to remove worktree");
+		expect(existsSync(wtPath)).toBe(true);
+		expect(g("git branch", repo.local)).toContain("dev3/task-aaaaaaaa");
+	});
+
 	it("removes worktree and deletes RENAMED branch correctly", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);

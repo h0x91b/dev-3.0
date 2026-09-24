@@ -2696,11 +2696,16 @@ export async function applySparseCheckout(
 }
 
 /**
- * `git worktree remove` failures that mean "git never knew about this path"
- * (metadata pruned, repo re-cloned, admin dir wiped) — not "removal refused".
+ * `git worktree remove` failures that mean "there is no working tree here any
+ * more" — not "removal refused". Two shapes, both unrecoverable by retrying:
+ * git never knew the path (metadata pruned, repo re-cloned, admin dir wiped),
+ * or the registration survived while the checkout's `.git` link did not, which
+ * git reports as a validation failure and refuses forever, `--force` included.
+ * A locked or dirty worktree is a different message and still rejects.
  */
 function isUnregisteredWorktreeError(stderr: string): boolean {
-	return /is not a working tree|is not a worktree|not a valid path/i.test(stderr);
+	return /is not a working tree|is not a worktree|not a valid path/i.test(stderr)
+		|| /cannot remove working tree:.*does not exist/i.test(stderr);
 }
 
 export async function removeWorktree(
@@ -2735,10 +2740,10 @@ export async function removeWorktree(
 		if (!removeResult.ok) {
 			const detail = removeResult.stderr.trim() || "git worktree remove exited unsuccessfully";
 			if (isUnregisteredWorktreeError(removeResult.stderr)) {
-				// Git has no metadata for this path, so there is no worktree left to
-				// remove — only an orphan directory. Blocking teardown here strands the
-				// task forever (nothing can ever make git recognize the path again).
-				log.warn("Worktree is not registered with git, treating as already removed", {
+				// Nothing git would call a working tree is left here — only a directory
+				// plus, at most, a prunable registration. Blocking teardown strands the
+				// task forever (nothing can ever make git accept the path again).
+				log.warn("Git has no working tree at this path, treating as already removed", {
 					path: targetPath,
 					taskId: task.id,
 					stderr: removeResult.stderr,
