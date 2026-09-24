@@ -1,6 +1,6 @@
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, canGoBack, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -526,15 +526,15 @@ function App() {
 	const artifactDockTaskId = artifactViewer && !artifactViewer.paneless && globalSettings.openArtifactsInPopup !== true
 		? artifactViewer.taskId
 		: null;
-	// A docked panel belongs to its task's screen. Leaving that screen used to clear
-	// the dock slot and re-host the same viewer as a centred popup over whatever
-	// board came next; instead it waits offscreen — still mounted, so the document,
-	// the version pick and an unsent draft come back with it — until the route
-	// returns to the task or the user closes it.
+	// A docked panel belongs to its task's screen. Leaving that screen — or covering
+	// it with the inline diff — used to clear the dock slot and re-host the same
+	// viewer as a centred popup; instead it waits offscreen — still mounted, so the
+	// document, the version pick and an unsent draft come back with it — until the
+	// task's workspace is on screen again or the user closes it.
 	const artifactOffscreen = artifactViewer !== null
 		&& !artifactViewer.paneless
 		&& globalSettings.openArtifactsInPopup !== true
-		&& routeTaskId(state.route) !== artifactViewer.taskId;
+		&& !routeShowsTaskWorkspace(state.route, artifactViewer.taskId);
 	// Auth failure for browser remote access (expired/invalid session).
 	// Seeded from the transport: with a dead session the expired verdict lands
 	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
@@ -1927,9 +1927,9 @@ function App() {
 			};
 			if (!taskId || !artifacts?.length) return;
 			dispatch({ type: "addBell", taskId, reason: t.plural("showArtifact.attention", newCount ?? 1) });
-			const viewingThisTask =
-				(state.route.screen === "task" && state.route.taskId === taskId) ||
-				(state.route.screen === "project" && state.route.activeTaskId === taskId);
+			// The diff hides the dock, so a fresh artifact there would open hidden: the
+			// toast is the signal, and clicking it returns to the task's terminal.
+			const viewingThisTask = routeShowsTaskWorkspace(state.route, taskId);
 			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
 			// A viewer waiting offscreen is not "already open" — republishing into it
 			// would update a panel nobody can see and swallow the toast that is the
@@ -1976,10 +1976,10 @@ function App() {
 			};
 			if (!taskId || !projectId || !artifacts?.length) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-			// Opened for a task that is not on screen? Then no pane will ever offer a
-			// slot for it, so it lives as a popup — only a viewer that started docked
-			// may later hide itself when the route walks away from its task.
-			const noPane = paneless === true || routeTaskId(routeRef.current) !== taskId;
+			// Opened for a task that is not on screen, or from over its diff? Then no
+			// pane offers a slot for it, so it lives as a popup — only a viewer that
+			// started docked may later hide itself when the route walks away from it.
+			const noPane = paneless === true || !routeShowsTaskWorkspace(routeRef.current, taskId);
 			setArtifactViewer({ taskId, projectId, taskStatus, artifacts, index: index ?? artifacts.length - 1, paneless: noPane });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);

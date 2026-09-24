@@ -146,6 +146,7 @@ vi.mock("../components/ProjectView", () => ({
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
 		dockArtifact?: boolean;
+		dispatch?: (action: { type: string; request?: unknown }) => void;
 	}) => (
 		<div
 			data-testid="project-screen"
@@ -154,7 +155,10 @@ vi.mock("../components/ProjectView", () => ({
 			data-task-view={props.taskView ? "true" : "false"}
 			data-dock-artifact={props.dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
-		/>
+		>
+			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
+			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
+		</div>
 	),
 }));
 vi.mock("../components/TaskWorkspaceView", () => ({
@@ -1546,6 +1550,83 @@ describe("App keyboard shortcuts", () => {
 
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-other"));
 			expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-presentation", "popup");
+		});
+
+		// The inline diff replaces the pane that holds the dock, so the docked viewer
+		// lost its slot and re-hosted itself as a popup over the diff the user just
+		// asked for. The diff is the task's screen too: the panel waits offscreen.
+		describe("while the inline diff is open", () => {
+			const panelSettings = {
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first" as const,
+				updateChannel: "stable" as const,
+			};
+
+			async function renderOnTask() {
+				vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+				vi.mocked(api.request.getGlobalSettings).mockResolvedValue(panelSettings);
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+				});
+				await renderApp();
+			}
+
+			function openArtifact(taskId = "t-artifact") {
+				act(() => {
+					window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+						detail: { taskId, projectId: "p1", artifacts: [artifact("a")], index: 0 },
+					}));
+				});
+			}
+
+			it("hides the docked viewer behind the diff, and re-docks it when the diff closes", async () => {
+				await renderOnTask();
+				openArtifact();
+				await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
+
+				await userEvent.click(screen.getByTestId("mock-open-diff"));
+
+				await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-presentation", "offscreen"));
+				expect(screen.getByTestId("artifact-viewer-offscreen")).toBeInTheDocument();
+				expect(document.documentElement.dataset.artifactViewer).toBeUndefined();
+
+				await userEvent.click(screen.getByTestId("mock-close-diff"));
+
+				await waitFor(() => expect(screen.getByTestId("artifact-viewer")).not.toHaveAttribute("data-presentation", "offscreen"));
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true");
+				expect(screen.getByText("Artifact a")).toBeInTheDocument();
+			});
+
+			it("shows an artifact opened from the diff as a popup instead of hiding it", async () => {
+				await renderOnTask();
+				await userEvent.click(screen.getByTestId("mock-open-diff"));
+
+				openArtifact();
+
+				const card = await screen.findByTestId("artifact-viewer");
+				expect(card).toHaveAttribute("data-presentation", "popup");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
+			});
+
+			it("raises the toast for a new artifact instead of covering the diff", async () => {
+				await renderOnTask();
+				await userEvent.click(screen.getByTestId("mock-open-diff"));
+
+				act(() => {
+					window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", {
+						detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a")], newCount: 1, taskSeq: 7, taskTitle: "Report", projectName: "Alpha" },
+					}));
+				});
+
+				const toastButton = await screen.findByRole("button", { name: /#7 · Alpha · Report/ });
+				expect(screen.queryByTestId("artifact-viewer")).not.toBeInTheDocument();
+
+				// The toast leaves the diff for the task screen, where the panel docks.
+				await userEvent.click(toastButton);
+				await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
+				expect(screen.getByTestId("artifact-viewer")).not.toHaveAttribute("data-presentation", "offscreen");
+			});
 		});
 	});
 

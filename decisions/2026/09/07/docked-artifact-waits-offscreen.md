@@ -21,8 +21,9 @@ and none of them is route-driven; `TaskArtifactViewer.tsx` decides presentation 
 
 ## Decision
 
-A third presentation, **offscreen**. `App` computes `artifactOffscreen` (route's task, from
-`routeTaskId`, is not the viewer's) and the viewer renders `card` inside a `hidden` wrapper
+A third presentation, **offscreen**. `App` computes `artifactOffscreen` (the route does not
+show the viewer's task workspace — `routeShowsTaskWorkspace`: another task, or this task with
+the inline diff open, since the diff replaces the pane that owns the slot) and the viewer renders `card` inside a `hidden` wrapper
 instead of the popup, owning no overlay layer, no ⌘F, no Escape and no terminal blanking.
 It stays mounted, so returning to the task re-docks the same viewer with its document,
 version pick and unsent draft.

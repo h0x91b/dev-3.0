@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff, routeShowsTaskWorkspace } from "../state";
 import type { Route } from "../state";
 import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
 import type { AppState, AppAction } from "../state";
@@ -1228,6 +1228,15 @@ describe("inline diff as a history step", () => {
 		expect(routeDiffRequest(board)).toBeNull();
 		// A project route with no active task cannot hold a diff.
 		expect(routeWithDiff(board, request)).toBeNull();
+	});
+
+	// The artifact dock lives in the workspace pane, which the diff replaces.
+	it("routeShowsTaskWorkspace is false while the diff covers the task", () => {
+		const taskId = routeTaskId(taskRoute)!;
+		expect(routeShowsTaskWorkspace(taskRoute, taskId)).toBe(true);
+		expect(routeShowsTaskWorkspace(routeWithDiff(taskRoute, request)!, taskId)).toBe(false);
+		expect(routeShowsTaskWorkspace(taskRoute, "another-task")).toBe(false);
+		expect(routeShowsTaskWorkspace(board, taskId)).toBe(false);
 	});
 });
 
