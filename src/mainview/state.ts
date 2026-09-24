@@ -142,6 +142,14 @@ export function routeDiffRequest(route: Route): TaskInlineDiffRequest | null {
 }
 
 /**
+ * True when the route shows this task's workspace pane — the terminal and the
+ * artifact dock beside it. The inline diff replaces that pane, so it does not count.
+ */
+export function routeShowsTaskWorkspace(route: Route, taskId: string): boolean {
+	return routeTaskId(route) === taskId && routeDiffRequest(route) === null;
+}
+
+/**
  * The same route with the diff open. Returns null for routes that cannot hold
  * one (no task in view) so the reducer can ignore a stray open.
  */
