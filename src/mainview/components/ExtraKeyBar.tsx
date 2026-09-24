@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { TerminalHandle } from "../TerminalView";
 import { useT } from "../i18n";
 import { useAttachUpload } from "../hooks/useAttachUpload";
+import { applyShiftToBarKey } from "../shift-key-sequences";
 
 interface ExtraKeyBarProps {
 	handle: TerminalHandle;
@@ -21,11 +22,27 @@ interface ExtraKeyBarProps {
 const REPEAT_DELAY_MS = 400;
 const REPEAT_INTERVAL_MS = 60;
 
+interface Modifiers {
+	ctrl: boolean;
+	shift: boolean;
+}
+
+const NO_MODIFIERS: Modifiers = { ctrl: false, shift: false };
+
+function applyModifiers(data: string, mods: Modifiers): string {
+	if (mods.ctrl && data.length === 1) {
+		const code = data.toUpperCase().charCodeAt(0);
+		if (code >= 64 && code <= 95) return String.fromCharCode(code - 64);
+	}
+	return mods.shift ? applyShiftToBarKey(data) : data;
+}
+
 /**
  * Extra key bar for mobile terminal access — provides keys
  * that are missing or hard to reach on mobile keyboards:
  * Esc, Enter, Backspace, arrows, Tab, Shift+Tab (agent-mode cycling in Claude
- * Code), Ctrl (sticky modifier), and common shell chars.
+ * Code), Ctrl and Shift (sticky one-shot modifiers — Shift+arrows reach Codex's
+ * question stack), and common shell chars.
  * The leading ⌨ button (when the host wires onToggleRaw) switches between
  * compose mode (default — TerminalComposer owns text entry) and raw mode
  * (direct typing into the terminal).
@@ -37,7 +54,16 @@ const REPEAT_INTERVAL_MS = 60;
  */
 function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTaskId, onAttachPaths }: ExtraKeyBarProps) {
 	const t = useT();
-	const [ctrlActive, setCtrlActive] = useState(false);
+	const [mods, setModsState] = useState<Modifiers>(NO_MODIFIERS);
+	// Read at send time, so a hold-to-repeat timer never acts on a stale closure.
+	const modsRef = useRef<Modifiers>(NO_MODIFIERS);
+	const setMods = useCallback((next: Modifiers) => {
+		modsRef.current = next;
+		setModsState(next);
+	}, []);
+	// Modifiers latched when a repeating key goes down: every repeat and the final
+	// tap of that press share them, instead of only the first emission.
+	const press = useRef<{ data: string; mods: Modifiers } | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const { uploading, attach } = useAttachUpload(attachProjectId, attachTaskId);
 
@@ -59,21 +85,13 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 	}, [handle, rawMode]);
 
 	const send = useCallback((data: string) => {
-		if (ctrlActive) {
-			if (data.length === 1) {
-				const code = data.toUpperCase().charCodeAt(0);
-				if (code >= 64 && code <= 95) {
-					handle.sendInput(String.fromCharCode(code - 64));
-					setCtrlActive(false);
-					refocus();
-					return;
-				}
-			}
-			setCtrlActive(false);
-		}
-		handle.sendInput(data);
+		const latched = press.current?.data === data ? press.current.mods : null;
+		press.current = null;
+		const active = latched ?? modsRef.current;
+		handle.sendInput(applyModifiers(data, active));
+		if (modsRef.current.ctrl || modsRef.current.shift) setMods(NO_MODIFIERS);
 		refocus();
-	}, [handle, ctrlActive, refocus]);
+	}, [handle, refocus, setMods]);
 
 	// Hold-to-repeat: the tap itself is handled by onClick, so the timer only
 	// emits the *extra* presses once the finger stays down past the delay.
@@ -90,25 +108,33 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 	const holdProps = useCallback((data: string) => ({
 		onPointerDown: () => {
 			stopRepeat();
+			const latched = { data, mods: modsRef.current };
+			press.current = latched;
 			repeat.current.delay = setTimeout(() => {
-				repeat.current.tick = setInterval(() => send(data), REPEAT_INTERVAL_MS);
+				repeat.current.tick = setInterval(() => {
+					handle.sendInput(applyModifiers(data, latched.mods));
+					refocus();
+				}, REPEAT_INTERVAL_MS);
 			}, REPEAT_DELAY_MS);
 		},
 		onPointerUp: stopRepeat,
 		onPointerLeave: stopRepeat,
-		onPointerCancel: stopRepeat,
-	}), [send, stopRepeat]);
+		onPointerCancel: () => {
+			stopRepeat();
+			press.current = null;
+		},
+	}), [handle, refocus, stopRepeat]);
 
-	const toggleCtrl = useCallback(() => {
-		setCtrlActive((prev) => !prev);
+	const toggleModifier = useCallback((key: keyof Modifiers) => {
+		setMods({ ...modsRef.current, [key]: !modsRef.current[key] });
 		refocus();
-	}, [refocus]);
+	}, [refocus, setMods]);
 
 	// All sizes in vw so they map to real physical screen pixels.
 	const btnBase = "flex-shrink-0 flex items-center justify-center rounded-[1vw] font-semibold select-none active:opacity-70 transition-opacity";
 	const btnStyle = "h-[11vw] min-w-[14vw] px-[2vw] text-[4vw]";
 	const btnNormal = `${btnBase} ${btnStyle} bg-elevated text-fg-2`;
-	const btnCtrl = `${btnBase} ${btnStyle} ${ctrlActive ? "bg-accent-fill text-white" : "bg-elevated text-fg-2"}`;
+	const btnModifier = (active: boolean) => `${btnBase} ${btnStyle} ${active ? "bg-accent-fill text-white" : "bg-elevated text-fg-2"}`;
 	const btnRaw = `${btnBase} h-[11vw] min-w-[12vw] px-[2vw] text-[4.5vw] ${rawMode ? "bg-accent-fill text-white" : "bg-elevated text-fg-2"}`;
 	const btnArrow = `${btnBase} h-[11vw] w-[11vw] text-[3.5vw] bg-elevated text-fg-2`;
 
@@ -186,7 +212,17 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\t")}>Tab</button>
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[Z")}>{"⇧Tab"}</button>
-			<button className={btnCtrl} onMouseDown={(e) => e.preventDefault()} onClick={toggleCtrl}>Ctrl</button>
+			<button className={btnModifier(mods.ctrl)} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleModifier("ctrl")} aria-pressed={mods.ctrl}>Ctrl</button>
+			<button
+				className={btnModifier(mods.shift)}
+				onMouseDown={(e) => e.preventDefault()}
+				onClick={() => toggleModifier("shift")}
+				aria-pressed={mods.shift}
+				title={t("terminal.shiftModifierHint")}
+				data-testid="extra-key-shift"
+			>
+				Shift
+			</button>
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 

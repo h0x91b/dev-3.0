@@ -256,6 +256,7 @@ const terminal = {
 	"terminal.rawKeyboard": "Direct keyboard input",
 	"terminal.scrollToLatest": "Back to latest output",
 	"terminal.backspace": "Backspace",
+	"terminal.shiftModifierHint": "Applies Shift to the next key — Shift+◀ opens Codex questions",
 
 	// File path links in terminal output (Cmd/Ctrl+Click)
 	"terminal.pathLinkFolderBrowser": "Folders can't be opened from the browser — use the desktop app.",

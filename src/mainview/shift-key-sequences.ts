@@ -37,6 +37,24 @@ export const SHIFT_KEY_SEQUENCES: Record<string, string> = {
 };
 
 /**
+ * The sticky Shift key on the mobile ExtraKeyBar: maps what an unmodified bar key
+ * sends to its Shift variant. Arrows get the xterm `;2` form (Codex opens its
+ * question stack on Shift+Left). Keys without a Shift variant pass through unchanged.
+ */
+const SHIFTED_BAR_KEYS: Record<string, string> = {
+	"\x1b[A": "\x1b[1;2A",
+	"\x1b[B": "\x1b[1;2B",
+	"\x1b[C": "\x1b[1;2C",
+	"\x1b[D": "\x1b[1;2D",
+	"\t": SHIFT_KEY_SEQUENCES.Tab,
+	"\r": SHIFT_ENTER_SEQUENCE,
+};
+
+export function applyShiftToBarKey(data: string): string {
+	return SHIFTED_BAR_KEYS[data] ?? data;
+}
+
+/**
  * Check if a keyboard event is a Shift-only functional key and return
  * the correct escape sequence, or null if not applicable.
  */
