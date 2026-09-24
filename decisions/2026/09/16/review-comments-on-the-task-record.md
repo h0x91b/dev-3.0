@@ -1,3 +1,5 @@
+> Superseded in part on 2026-09-24 by `decisions/2026/09/24/terminal-selection-offers-no-comment-chip.md`: a terminal selection no longer offers the `Comment` chip.
+
 # Review comments live on the task record, with a typed anchor per surface
 
 ## Context
