@@ -2,10 +2,12 @@ import type { CodingAgent, Label, Task } from "../../../shared/types";
 import {
 	isAttentionTask,
 	taskQueryContext,
+	taskStatusValues,
 	buildFilterGroups,
 	type FacetResolver,
 	type FilterFunnelOption,
 } from "../taskFacets";
+import { matchesTaskQuery } from "../taskSearch";
 
 const claude: CodingAgent = {
 	id: "builtin-claude",
@@ -89,6 +91,45 @@ describe("taskQueryContext", () => {
 	});
 });
 
+describe("taskStatusValues", () => {
+	const waiting = { name: "Waiting on Others" };
+	const builtInQuery = "status:review-by-user status:review-by-colleague status:in-progress status:review-by-ai";
+	const matches = (task: Task, column: { name: string } | undefined, query: string) =>
+		matchesTaskQuery(task, query, taskQueryContext(task, {
+			agents: [],
+			labelsFor: () => [],
+			statusValuesFor: (t) => taskStatusValues(t, column, "Your Review"),
+			priorityFor: () => "P3",
+			hasPortFor: () => false,
+			isAttentionFor: () => false,
+		}));
+
+	it("gives a custom-column task only its column name", () => {
+		expect(taskStatusValues(makeTask({ status: "review-by-user" }), waiting, "Your Review")).toEqual(["Waiting on Others"]);
+	});
+
+	it("gives a built-in task its status id and label", () => {
+		expect(taskStatusValues(makeTask({ status: "review-by-user" }), undefined, "Your Review")).toEqual(["review-by-user", "Your Review"]);
+	});
+
+	it("keeps a custom-column task out of built-in status selections (#1804)", () => {
+		const parked = makeTask({ status: "review-by-user", customColumnId: "col-wait" });
+		expect(matches(parked, waiting, builtInQuery)).toBe(false);
+		expect(matches(parked, waiting, 'status:"Your Review"')).toBe(false);
+	});
+
+	it("matches a custom-column task by its column, and with no status filter", () => {
+		const parked = makeTask({ status: "review-by-user", customColumnId: "col-wait" });
+		expect(matches(parked, waiting, `${builtInQuery} status:"Waiting on Others"`)).toBe(true);
+		expect(matches(parked, waiting, "")).toBe(true);
+	});
+
+	it("falls back to the underlying status when the custom column no longer exists", () => {
+		const dangling = makeTask({ status: "review-by-user", customColumnId: "deleted" });
+		expect(matches(dangling, undefined, builtInQuery)).toBe(true);
+	});
+});
+
 describe("buildFilterGroups", () => {
 	const statusCandidates: FilterFunnelOption[] = [
 		{ facet: "status", value: "in-progress", label: "Agent is Working" },
@@ -114,7 +155,7 @@ describe("buildFilterGroups", () => {
 			agents: [claude, codex],
 			labelsFor: (task) => labelsById[task.id] ?? [],
 			statusValuesFor: (task) =>
-				task.customColumnId === "col" ? ["On Hold", task.status, "Your Review"] : [task.status, "Agent is Working"],
+				task.customColumnId === "col" ? taskStatusValues(task, { name: "On Hold" }, "Your Review") : taskStatusValues(task, undefined, "Agent is Working"),
 			priorityFor: (task) => task.priority ?? "P2",
 			hasPortFor: (task) => ports.has(task.id),
 		isAttentionFor: (task) => isAttentionTask(task),

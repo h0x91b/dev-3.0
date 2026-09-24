@@ -34,9 +34,9 @@ export interface TaskQueryContext {
 	/** The task's resolved agent display name, or null when unassigned. */
 	agentName: string | null;
 	/**
-	 * Every value a `status:` token may substring-match: the internal status id,
-	 * the localized status label, and the custom-column name when the task is
-	 * parked in one.
+	 * Every value a `status:` token may substring-match: the internal status id
+	 * and localized status label — or only the custom-column name when the task
+	 * is parked in one (see `taskStatusValues`).
 	 */
 	statusValues: string[];
 	/** True when the task currently has at least one allocated port. */

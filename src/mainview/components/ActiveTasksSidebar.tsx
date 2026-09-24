@@ -13,7 +13,7 @@ import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { isFacetTokenActive, matchesTaskQuery, toggleFacetToken } from "../utils/taskSearch";
-import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
+import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import FilterFunnel from "./FilterFunnel";
 import TipCard from "./TipCard";
 import { useTipRotation } from "../hooks/useTipRotation";
@@ -345,8 +345,7 @@ function ActiveTasksSidebar({
 		statusValuesFor: (task) => {
 			const proj = projectById.get(task.projectId);
 			const col = task.customColumnId ? proj?.customColumns?.find((c) => c.id === task.customColumnId) : undefined;
-			const label = getStatusLabel(task.status, t, proj);
-			return col ? [col.name, task.status, label] : [task.status, label];
+			return taskStatusValues(task, col, getStatusLabel(task.status, t, proj));
 		},
 		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
