@@ -19,12 +19,13 @@ export { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY
 const log = createLogger("agent-skills");
 
 /**
- * Two descriptions on purpose. For Codex and the generic agents the SKILL.md IS
- * the protocol, so loading it is mandatory. A dev3-launched Claude already has
- * the protocol in its system prompt and the SessionStart hook has set the status,
- * so telling it to invoke the skill anyway costs a tool call that buys nothing.
+ * A dev3-launched agent already holds the protocol, so the Claude and pointer
+ * descriptions tell it NOT to invoke the skill. The pointer stays mandatory otherwise:
+ * Gemini and prompt-less Cursor/OpenCode launches have no other channel.
  */
 const CLAUDE_SKILL_DESCRIPTION = "Refreshes live dev3 task state (status, current task). Trigger: PWD is inside ~/.dev3.0/worktrees/ (the dev-3.0 managed path; other worktrees do NOT qualify). If your system prompt already has the 'dev3 — Task Lifecycle Protocol' section, dev3 launched you and you do NOT need to invoke this — follow that section. Invoke only when that section is missing.";
+
+const POINTER_SKILL_DESCRIPTION = "Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/); regular git worktrees or other paths do NOT qualify. If your system prompt or developer instructions already contain the 'dev3 — Task Lifecycle Protocol' section, dev3 launched you with it: follow that section and do NOT invoke this. Otherwise it is MANDATORY: invoke it BEFORE doing anything else, even if the user gives a direct command (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false).";
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
@@ -66,15 +67,26 @@ The full protocol is already in your system prompt (the "dev3 — Task Lifecycle
 }
 
 // ---- Codex and generic skills (no command injection support) ----
+//
+// Codex lists both ~/.codex/skills and ~/.agents/skills, so both copies are the same
+// short pointer: inline bodies loaded the protocol twice, and the generic one's manual
+// status rules contradict Codex's hooks. The bodies live in PROTOCOL.md, like Claude's.
 
-export function buildCodexSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+export function buildProtocolPointerSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
 	return `---
 name: dev3
-description: "${SKILL_DESCRIPTION}"
+description: "${POINTER_SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 
-${CODEX_SKILL_BODY}
+# dev3
+
+dev3 normally injects the full protocol at launch: a section headed "dev3 — Task Lifecycle Protocol" in your system prompt or developer instructions (not this file). If it is there, follow it — this file adds nothing. If it is NOT (a session started outside the dev3 app, or a launch that carried no protocol), read PROTOCOL.md in this skill's directory in full before doing anything else. Run \`${dialect.cli} --help\` when you need the full CLI reference.
+`;
+}
+
+export function buildCodexProtocolContent(dialect: HookCliDialect = hookCliDialect()): string {
+	return `${CODEX_SKILL_BODY}
 ## On session start
 
 Run these two commands to learn about available CLI commands and your current task:
@@ -105,14 +117,8 @@ Then begin working. Do not move the task status on session start; the dev3 statu
 `;
 }
 
-export function buildGenericSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
-	return `---
-name: dev3
-description: "${SKILL_DESCRIPTION}"
-user-invocable: true
----
-
-${GENERIC_SKILL_BODY}
+export function buildGenericProtocolContent(dialect: HookCliDialect = hookCliDialect()): string {
+	return `${GENERIC_SKILL_BODY}
 ## On session start
 
 Run these two commands to learn about available CLI commands and your current task:
@@ -1180,16 +1186,20 @@ export function getClaudeSkillContent(): string {
 	return buildClaudeSkillContent();
 }
 
-export function getCodexSkillContent(): string {
-	return buildCodexSkillContent();
+export function getProtocolPointerSkillContent(): string {
+	return buildProtocolPointerSkillContent();
+}
+
+export function getCodexProtocolContent(): string {
+	return buildCodexProtocolContent();
 }
 
 export function getOmpSkillContent(): string {
 	return buildOmpSkillContent();
 }
 
-export function getGenericSkillContent(): string {
-	return buildGenericSkillContent();
+export function getGenericProtocolContent(): string {
+	return buildGenericProtocolContent();
 }
 
 /** Claude Code project-config skill directory. */
@@ -1606,12 +1616,14 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 		});
 	}
 
-	// Install Codex-specific skill (hook-aware + shell note)
+	// Install the Codex pointer + its hook-aware PROTOCOL.md (the body itself
+	// reaches dev3-launched Codex as developer instructions).
 	const codexSkillDir = `${home}/${CODEX_SKILL_DIR}`;
 	const codexSkillFile = `${codexSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(codexSkillDir, { recursive: true });
-		writeFileSync(codexSkillFile, getCodexSkillContent(), "utf-8");
+		writeFileSync(codexSkillFile, getProtocolPointerSkillContent(), "utf-8");
+		writeFileSync(`${codexSkillDir}/PROTOCOL.md`, getCodexProtocolContent(), "utf-8");
 		log.info("Codex skill installed", { path: codexSkillFile });
 	} catch (err) {
 		log.warn("Failed to install Codex skill (non-fatal)", {
@@ -1634,13 +1646,14 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 		});
 	}
 
-	// Install generic skill for all other agents
+	// Install the generic pointer + manual-status PROTOCOL.md for all other agents
 	for (const dir of GENERIC_SKILL_DIRS) {
 		const skillDir = `${home}/${dir}`;
 		const skillFile = `${skillDir}/SKILL.md`;
 		try {
 			mkdirSync(skillDir, { recursive: true });
-			writeFileSync(skillFile, getGenericSkillContent(), "utf-8");
+			writeFileSync(skillFile, getProtocolPointerSkillContent(), "utf-8");
+			writeFileSync(`${skillDir}/PROTOCOL.md`, getGenericProtocolContent(), "utf-8");
 			log.info("Agent skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent skill (non-fatal)", {

@@ -1,3 +1,5 @@
+> Superseded in part on 2026-09-25 by `decisions/2026/09/25/codex-and-generic-dev3-skills-become-pointers.md`: Codex and generic skill files no longer keep the full body — they are pointers to a `PROTOCOL.md`, like Claude's.
+
 # 114 — Shrink the dev3 skill: dedupe the Claude channel, compress the body
 
 ## Context

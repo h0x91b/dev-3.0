@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	applyClaudeSettings,
 	buildClaudeSkillContent,
-	buildCodexSkillContent,
-	buildGenericSkillContent,
+	buildCodexProtocolContent,
+	buildGenericProtocolContent,
+	buildProtocolPointerSkillContent,
 	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
 	DEV3_AUTO_MODE_ALLOW_ENTRY,
@@ -11,8 +12,9 @@ import {
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCoordinatorSkillContent,
-	getCodexSkillContent,
-	getGenericSkillContent,
+	getCodexProtocolContent,
+	getGenericProtocolContent,
+	getProtocolPointerSkillContent,
 	getProjectConfigSkillContent,
 	getTmuxSkillContent,
 	getShareArtifactSkillContent,
@@ -37,7 +39,7 @@ import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 describe("platform feedback skill section (always present)", () => {
 	it("teaches every agent the private vent and opt-in public issue workflows", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("## Platform feedback — vents");
 			expect(skill).toContain('dev3 vents "short name" "markdown body"');
 			expect(skill).toContain("Anonymity is mandatory");
@@ -62,7 +64,7 @@ describe("platform feedback skill section (always present)", () => {
 
 describe("dev3 skill content", () => {
 	it("exempts in-task bug hunters from mutating the originating task", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("## In-task Bug Hunter isolation");
 			expect(skill).toContain("this overrides the session-start checklist and every lifecycle duty below");
 			expect(skill).toContain(
@@ -76,7 +78,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("blocks nested worktrees other skills ask for", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("This worktree already IS your isolation.");
 			expect(skill).toContain("`git worktree add`");
 			expect(skill).toContain("even when another skill, workflow, or agent tool asks for one");
@@ -85,7 +87,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("routes unqualified artifacts to the task-local dev3 starter", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("## dev3 HTML artifacts");
 			expect(skill).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
 			expect(skill).toContain('cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report');
@@ -105,7 +107,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("folds label guidance into the session-start title pass", () => {
-		const codexSkill = getCodexSkillContent();
+		const codexSkill = getCodexProtocolContent();
 		expect(codexSkill).toContain("aiming for **1-2 meaningful labels**");
 		expect(codexSkill).toContain("Labels, same session-start pass:");
 		expect(codexSkill).toContain("dev3 label list");
@@ -119,7 +121,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("front-loads a session-start checklist with an event-anchored hard gate", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("## Session-start checklist");
 			// Event-anchored gate, not "session start" which agents race past
 			expect(skill).toContain("finish it before ending your first turn");
@@ -132,22 +134,22 @@ describe("dev3 skill content", () => {
 	});
 
 	it("couples title-setting to the initial-overview moment", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("same pass as the title and labels");
 		}
 	});
 
 	it("keeps embedded label guidance consistent across agent variants", () => {
 		expect(CLAUDE_SKILL_BODY).toContain("Labels, same session-start pass:");
-		expect(getGenericSkillContent()).toContain("Labels, same session-start pass:");
+		expect(getGenericProtocolContent()).toContain("Labels, same session-start pass:");
 		expect(CLAUDE_SKILL_BODY).toContain("reuse existing ones");
-		expect(getGenericSkillContent()).toContain("reuse existing ones");
+		expect(getGenericProtocolContent()).toContain("reuse existing ones");
 		expect(CLAUDE_SKILL_BODY).toContain("attach it at once");
-		expect(getGenericSkillContent()).toContain("attach it at once");
+		expect(getGenericProtocolContent()).toContain("attach it at once");
 	});
 
 	it("gates completion on preserved work or an explicit user request", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("never move a task to `completed` or request approval while its work exists only in a disposable worktree");
 			expect(skill).toContain("preserved in the destination the task requires");
 			expect(skill).toContain("usually a PR merged into `main`");
@@ -159,7 +161,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
 			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
 			expect(skill).toContain("your CLI is asked to quit first, so its exit hooks run (30 s bound)");
@@ -168,17 +170,17 @@ describe("dev3 skill content", () => {
 	});
 
 	it("adds conservative dev-server control guidance across agent variants", () => {
-		expect(getCodexSkillContent()).toContain("## Dev Server Control");
-		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` and `logs` are low-risk");
-		expect(getCodexSkillContent()).toContain("have visible side effects");
+		expect(getCodexProtocolContent()).toContain("## Dev Server Control");
+		expect(getCodexProtocolContent()).toContain("`dev3 dev-server status` and `logs` are low-risk");
+		expect(getCodexProtocolContent()).toContain("have visible side effects");
 		expect(CLAUDE_SKILL_BODY).toContain("say what you are about to do first");
-		expect(getGenericSkillContent()).toContain("stop it again afterwards unless asked to keep it running");
+		expect(getGenericProtocolContent()).toContain("stop it again afterwards unless asked to keep it running");
 	});
 
 	// A project can declare several dev servers, so "start the dev server" is no
 	// longer one unambiguous action — the agent has to know it may need a name.
 	it("teaches the named dev-server commands in every agent variant", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("several dev servers by name");
 			expect(skill).toContain("dev3 dev-server start api");
 			expect(skill).toContain("`--all`");
@@ -188,7 +190,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("documents mutually exclusive notify duration and desktop forms", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain(
 				'`dev3 notify "message" [--level info|success|error] [--duration <seconds>]` — clickable in-app toast',
 			);
@@ -202,7 +204,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("teaches the backend-neutral pane commands, so a Windows agent is not sent to a binary it has no chance of finding", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).toContain("## Panes — for what the user wants to watch");
 			// A pane is opt-in: the user asked, or the process outlives the turn. Slowness alone is not a trigger.
 			expect(skill).toContain("**Your own shell is the default.**");
@@ -231,7 +233,7 @@ describe("dev3 skill content", () => {
 			[/^[^\n]*\btmux -L dev3\b/m, "hands out a raw tmux command as if tmux existed"],
 			[/socket `dev3`, session name/, "states a tmux session name as the agent's own"],
 		];
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			for (const [pattern, why] of forbidden) {
 				expect(pattern.test(skill), `injected skill ${why}: ${pattern}`).toBe(false);
 			}
@@ -241,7 +243,7 @@ describe("dev3 skill content", () => {
 	it("keeps the main /dev3 pane summary short (does not duplicate the full tmux reference)", () => {
 		// The detailed command reference must live in the separate /dev3-tmux skill,
 		// not be duplicated inline in the main skill body.
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent()]) {
 			expect(skill).not.toContain("Open a pane or window and run a command");
 			expect(skill).not.toContain("Resize a pane — absolute width / height");
 			expect(skill).not.toContain("Re-tile all panes in the window");
@@ -255,7 +257,7 @@ describe("dev3 skill content", () => {
 	// the interpolation actually reaches the rendered text.
 	it("quotes the live coalescing window instead of a hand-written number", () => {
 		const seconds = AGENT_MESSAGE_HOLD_IDLE_SECONDS;
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent(), getAskDev3SkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexProtocolContent(), getGenericProtocolContent(), getAskDev3SkillContent()]) {
 			expect(skill).toContain(`~${seconds}s of quiet`);
 			expect(skill).toMatch(new RegExp(`about ${seconds} seconds|takes about ${seconds} seconds`));
 			// No stale spelled-out number left next to the live one.
@@ -285,16 +287,31 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 		// holds as its initial prompt.
 		expect(skill).not.toContain("dev3 current`\n");
 	});
+});
 
-	it("codex and generic skill files keep the full body (their only reliable channel)", () => {
-		// Codex scratch tasks and Gemini/Cursor/OpenCode sessions get no
-		// system-prompt injection — SKILL.md is load-bearing for them.
-		expect(getCodexSkillContent()).toContain("## Session-start checklist");
-		expect(getGenericSkillContent()).toContain("## Session-start checklist");
+describe("Codex and generic SKILL.md (pointer — protocol lives in PROTOCOL.md)", () => {
+	it("gives Codex and the generic agents a short pointer, not a second copy of the body", () => {
+		// dev3-launched Codex already holds the body as developer instructions, and
+		// it lists the generic copy too — a full body there loaded the protocol twice.
+		const pointer = getProtocolPointerSkillContent();
+		expect(pointer).not.toContain("## Session-start checklist");
+		expect(pointer).not.toContain("## Task status management");
+		expect(pointer).toContain("read PROTOCOL.md in this skill's directory in full");
+		expect(pointer.length).toBeLessThan(2000);
+
+		const { description } = parseSkillFrontmatter(pointer);
+		expect(description).toContain("do NOT invoke this");
+		// Gemini and prompt-less Cursor/OpenCode launches have no other channel.
+		expect(description).toContain("Otherwise it is MANDATORY");
+	});
+
+	it("keeps the full body in each pointer's PROTOCOL.md", () => {
+		expect(getCodexProtocolContent()).toContain("## Session-start checklist");
+		expect(getGenericProtocolContent()).toContain("## Session-start checklist");
 	});
 
 	it("keeps normal Codex lifecycle transitions exclusively hook-owned", () => {
-		const codexSkill = getCodexSkillContent();
+		const codexSkill = getCodexProtocolContent();
 
 		expect(codexSkill).toContain("Never call `dev3 task move` for normal lifecycle transitions");
 		expect(codexSkill).toContain("semantic question that no native event can detect");
@@ -304,7 +321,7 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 		expect(codexSkill).not.toContain("move to `review-by-user` when finished");
 
 		// Agents without native hooks still need the manual protocol.
-		expect(getGenericSkillContent()).toContain("task move --status in-progress");
+		expect(getGenericProtocolContent()).toContain("task move --status in-progress");
 	});
 });
 
@@ -633,8 +650,9 @@ describe("skill content per platform dialect", () => {
 
 	it("keeps the POSIX skill text byte-identical to this machine's output", () => {
 		expect(buildClaudeSkillContent(POSIX)).toBe(getClaudeSkillContent());
-		expect(buildCodexSkillContent(POSIX)).toBe(getCodexSkillContent());
-		expect(buildGenericSkillContent(POSIX)).toBe(getGenericSkillContent());
+		expect(buildProtocolPointerSkillContent(POSIX)).toBe(getProtocolPointerSkillContent());
+		expect(buildCodexProtocolContent(POSIX)).toBe(getCodexProtocolContent());
+		expect(buildGenericProtocolContent(POSIX)).toBe(getGenericProtocolContent());
 		expect(buildClaudeSkillContent(POSIX)).toContain("~/.dev3.0/bin/dev3 current --brief");
 	});
 
@@ -650,10 +668,11 @@ describe("skill content per platform dialect", () => {
 
 		// The shared protocol body is dialect-neutral prose; only the generated
 		// session-start block is templated, so assert on that.
-		for (const content of [buildCodexSkillContent(WINDOWS), buildGenericSkillContent(WINDOWS)]) {
+		for (const content of [buildCodexProtocolContent(WINDOWS), buildGenericProtocolContent(WINDOWS)]) {
 			expect(content).toContain(`- \`${cli} --help\` — learn all available CLI commands`);
 			expect(content).toContain(`- \`${cli} current\` — see your current project, task, and status`);
 		}
+		expect(buildProtocolPointerSkillContent(WINDOWS)).toContain(`Run \`${cli} --help\``);
 	});
 
 	it("spells the Claude bash permission the same way the generated commands do", () => {
@@ -840,6 +859,7 @@ describe("managed skill frontmatter survives the parser that reads it", () => {
 		["dev3-bug-hunter", getBugHunterSkillContent()],
 		["ask-dev3", getAskDev3SkillContent()],
 		["dev3", getClaudeSkillContent()],
+		["dev3", getProtocolPointerSkillContent()],
 	];
 
 	it.each(skills)("parses %s with its whole description intact", (name, content) => {

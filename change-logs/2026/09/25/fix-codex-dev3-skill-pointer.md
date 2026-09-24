@@ -1,0 +1,1 @@
+Codex no longer loads the dev3 protocol twice per session: its dev3 skill, and the shared generic copy it also reads, are now short pointers to a PROTOCOL.md next to them, like Claude's. This also stops Codex from picking up the generic manual-status rules that contradict its hooks.
