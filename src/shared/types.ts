@@ -3019,8 +3019,20 @@ export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
  */
 export const SHARED_VIDEO_EXTS: readonly string[] = ["mp4", "webm"];
 
+/**
+ * Audio extensions a bundled artifact track may use (lowercase, no dot). All four
+ * were measured decoding in WKWebView (macOS 26) and Chromium; WebView2, WebKitGTK
+ * and older WebKit are unverified, so the reference asks for an MP3 fallback next
+ * to OGG. FLAC, Opus and AAC-in-ADTS stay out: transport would carry them, but
+ * playback would depend on the engine.
+ */
+export const SHARED_AUDIO_EXTS: readonly string[] = ["mp3", "m4a", "wav", "ogg"];
+
+/** Video plus audio: every extension that answers to the media caps below. */
+export const SHARED_MEDIA_EXTS: readonly string[] = [...SHARED_VIDEO_EXTS, ...SHARED_AUDIO_EXTS];
+
 /** Local asset extensions accepted by `dev3 show-artifact --assets`. */
-export const SHARED_ARTIFACT_ASSET_EXTS: readonly string[] = ["css", "js", ...SHARED_IMAGE_EXTS, ...SHARED_VIDEO_EXTS];
+export const SHARED_ARTIFACT_ASSET_EXTS: readonly string[] = ["css", "js", ...SHARED_IMAGE_EXTS, ...SHARED_MEDIA_EXTS];
 
 /** Maximum local assets accepted by one `dev3 show-artifact --assets` call. */
 export const MAX_SHARED_ARTIFACT_ASSETS = 40;
@@ -3029,21 +3041,21 @@ export const MAX_SHARED_ARTIFACT_ASSETS = 40;
 export const MAX_SHARED_ARTIFACT_ASSET_BYTES = 25 * 1024 * 1024;
 
 /**
- * Per-clip cap for a bundled artifact video (bytes), tighter than the generic
- * asset cap. Every asset reaches the viewer as one base64 data URL inside the
- * composed document, so a clip costs about 1.34× its bytes in the RPC payload and
- * again in the document string — and it is paid on every open, not on first play.
- * 16 MB holds a ~12 s 1080p screen capture with room to spare while keeping the
- * worst-case single clip under ~22 MB of transport.
+ * Per-file cap for a bundled artifact video or audio track (bytes), tighter than
+ * the generic asset cap. Every asset reaches the viewer as one base64 data URL
+ * inside the composed document, so a clip costs about 1.34× its bytes in the RPC
+ * payload and again in the document string — and it is paid on every open, not on
+ * first play. 16 MB holds a ~12 s 1080p screen capture with room to spare while
+ * keeping the worst-case single clip under ~22 MB of transport.
  */
-export const MAX_SHARED_ARTIFACT_VIDEO_BYTES = 16 * 1024 * 1024;
+export const MAX_SHARED_ARTIFACT_MEDIA_BYTES = 16 * 1024 * 1024;
 
 /**
- * Combined cap for all bundled videos in one artifact (bytes). Sits below
- * {@link MAX_SHARED_ARTIFACT_VIDEO_BYTES} × the asset count on purpose: five
+ * Combined cap for all bundled video and audio in one artifact (bytes). Sits below
+ * {@link MAX_SHARED_ARTIFACT_MEDIA_BYTES} × the asset count on purpose: five
  * clips of the per-file maximum would be a 100 MB document nobody can open.
  */
-export const MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES = 48 * 1024 * 1024;
+export const MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES = 48 * 1024 * 1024;
 
 // ---- Package scripts runner ----
 

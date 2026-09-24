@@ -13,6 +13,7 @@ import { exitUsage } from "../output";
 const BINARY_EXT = new Set([
 	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".bmp",
 	".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp4", ".webm", ".mp3",
+	".m4a", ".wav", ".ogg",
 	".svg",
 ]);
 
@@ -34,6 +35,9 @@ const MIME_BY_EXT: Record<string, string> = {
 	".mp4": "video/mp4",
 	".webm": "video/webm",
 	".mp3": "audio/mpeg",
+	".m4a": "audio/mp4",
+	".wav": "audio/wav",
+	".ogg": "audio/ogg",
 };
 
 /** A scheme, a protocol-relative URL or a bare fragment all resolve from the browser. */

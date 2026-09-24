@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { composeArtifactDocument } from "../artifactDocument";
 
 describe("composeArtifactDocument", () => {
@@ -128,7 +128,7 @@ describe("composeArtifactDocument", () => {
 		// A src the HTML scan never sees still resolves, so reports published before
 		// dev3Artifact.asset() existed keep rendering.
 		expect(output).toContain("MutationObserver");
-		expect(output).toContain("img,source,video");
+		expect(output).toContain("img,source,video,audio");
 	});
 
 
@@ -161,12 +161,59 @@ describe("composeArtifactDocument", () => {
 		expect(output).toContain('controls playsinline preload="metadata"');
 	});
 
+	it("rewrites a bundled track's audio src and source alternatives, leaving links for the viewer", () => {
+		const html = [
+			'<audio controls preload="metadata"><source src="audio/A.mp3" type="audio/mpeg"></audio>',
+			'<audio controls src="./audio/tone.wav"></audio>',
+			'<a href="audio/A.mp3" download>Download A</a>',
+		].join("");
+		const output = composeArtifactDocument(html, [
+			{ name: "audio/A.mp3", mime: "audio/mpeg", dataUrl: "data:audio/mpeg;base64,SUQz" },
+			{ name: "audio/tone.wav", mime: "audio/wav", dataUrl: "data:audio/wav;base64,UklG" },
+		]);
+
+		expect(output).toContain('<source src="data:audio/mpeg;base64,SUQz" type="audio/mpeg">');
+		expect(output).toContain('<audio controls src="data:audio/wav;base64,UklG">');
+		// The href stays a relative path: the click is routed to the viewer, which saves the asset.
+		expect(output).toContain('<a href="audio/A.mp3" download>');
+		expect(output).toContain("dev3-artifact-save-asset");
+	});
+
+	it("routes a click on a link to a bundled file to the viewer and heals audio built at runtime", async () => {
+		const output = composeArtifactDocument("<p></p>", [
+			{ name: "audio/A.mp3", mime: "audio/mpeg", dataUrl: "data:audio/mpeg;base64,SUQz" },
+		]);
+		const script = /<script data-dev3-artifact-assets>([\s\S]*?)<\/script>/.exec(output)![1];
+		const send = vi.fn();
+		(window as unknown as { __dev3ArtifactChannel: unknown }).__dev3ArtifactChannel = { send };
+		new Function(script)();
+
+		document.body.innerHTML = '<a id="named" href="./audio/A.mp3" download="Take A.mp3">A</a><a id="plain" href="audio/A.mp3">A</a><a id="other" href="https://example.com/x.mp3">x</a>';
+		document.getElementById("named")!.click();
+		document.getElementById("plain")!.click();
+		const external = new MouseEvent("click", { bubbles: true, cancelable: true });
+		document.getElementById("other")!.dispatchEvent(external);
+		expect(send.mock.calls.map((call) => call[0])).toEqual([
+			{ type: "dev3-artifact-save-asset", name: "audio/A.mp3", fileName: "Take A.mp3" },
+			{ type: "dev3-artifact-save-asset", name: "audio/A.mp3", fileName: "A.mp3" },
+		]);
+		expect(external.defaultPrevented).toBe(false);
+
+		const audio = document.createElement("audio");
+		audio.setAttribute("src", "audio/A.mp3");
+		document.body.appendChild(audio);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(audio.getAttribute("src")).toBe("data:audio/mpeg;base64,SUQz");
+	});
+
 	it("carries the blob retry for an engine that refuses a data: URL clip", () => {
 		const output = composeArtifactDocument('<video src="clip.mp4"></video>', [
 			{ name: "clip.mp4", mime: "video/mp4", dataUrl: "data:video/mp4;base64,TVA0" },
 		]);
 
-		expect(output).toContain("dev3VideoBlob");
+		expect(output).toContain("dev3MediaBlob");
+		expect(output).toContain("data:(?:video|audio)");
+		expect(output).toContain("tagName==='AUDIO'");
 		expect(output).toContain("URL.createObjectURL");
 		// The retry is driven by the element's own error event, so a working engine never runs it.
 		expect(output).toContain("document.addEventListener('error'");

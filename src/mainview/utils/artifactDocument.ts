@@ -44,18 +44,26 @@ function findScript(): string {
  */
 function assetRuntimeScript(assets: ArtifactAssetPayload[]): string {
 	const map = JSON.stringify(Object.fromEntries(assets.map((asset) => [asset.name, asset.dataUrl]))).replace(/</g, "\\u003c");
-	return `<script data-dev3-artifact-assets>window.__dev3ArtifactAssets=${map};(function(){var map=window.__dev3ArtifactAssets;function key(value){var clean=String(value).trim().split(/[?#]/)[0];if(/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#|\\/)/i.test(clean))return null;var out=[];clean.split('/').forEach(function(part){if(!part||part==='.')return;if(part==='..'){out.pop();return;}out.push(part);});return out.join('/')||null;}function heal(node){if(!node||node.nodeType!==1)return;var list=node.matches&&node.matches('img,source,video')?[node]:[];if(node.querySelectorAll)list=list.concat([].slice.call(node.querySelectorAll('img,source,video')));list.forEach(function(el){['src','poster'].forEach(function(attr){var raw=el.getAttribute(attr);if(!raw)return;var resolved=map[key(raw)];if(resolved)el.setAttribute(attr,resolved);});});}new MutationObserver(function(records){records.forEach(function(record){if(record.type==='attributes'){heal(record.target);return;}[].forEach.call(record.addedNodes,heal);});}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','poster']});${VIDEO_BLOB_FALLBACK}})();</script>`;
+	return `<script data-dev3-artifact-assets>window.__dev3ArtifactAssets=${map};(function(){var map=window.__dev3ArtifactAssets;function key(value){var clean=String(value).trim().split(/[?#]/)[0];if(/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#|\\/)/i.test(clean))return null;var out=[];clean.split('/').forEach(function(part){if(!part||part==='.')return;if(part==='..'){out.pop();return;}out.push(part);});return out.join('/')||null;}function heal(node){if(!node||node.nodeType!==1)return;var list=node.matches&&node.matches('img,source,video,audio')?[node]:[];if(node.querySelectorAll)list=list.concat([].slice.call(node.querySelectorAll('img,source,video,audio')));list.forEach(function(el){['src','poster'].forEach(function(attr){var raw=el.getAttribute(attr);if(!raw)return;var resolved=map[key(raw)];if(resolved)el.setAttribute(attr,resolved);});});}new MutationObserver(function(records){records.forEach(function(record){if(record.type==='attributes'){heal(record.target);return;}[].forEach.call(record.addedNodes,heal);});}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','poster']});${MEDIA_BLOB_FALLBACK}${ASSET_LINK_SAVE}})();</script>`;
 }
 
 /**
- * Second chance for a clip an engine refuses to read out of a `data:` URL — a
- * long-standing WebKit weakness that leaves the element with
+ * Second chance for a clip or a track an engine refuses to read out of a `data:`
+ * URL — a long-standing WebKit weakness that leaves the element with
  * `MEDIA_ERR_SRC_NOT_SUPPORTED` and no other symptom. The bytes are already in
  * the document, so the retry costs one `fetch` of a local URL and no round trip:
  * the same base64 becomes a blob the media stack reads like a file, which is also
  * what makes it seekable. Runs at most once per element.
  */
-const VIDEO_BLOB_FALLBACK = `function blobify(video){if(!video||video.dataset.dev3VideoBlob)return;video.dataset.dev3VideoBlob='1';var targets=[video].concat([].slice.call(video.querySelectorAll('source'))).filter(function(el){return /^data:video\\//i.test(el.getAttribute('src')||'');});if(!targets.length)return;Promise.all(targets.map(function(el){return fetch(el.getAttribute('src')).then(function(r){return r.blob();}).then(function(b){el.setAttribute('src',URL.createObjectURL(b));});})).then(function(){video.load();}).catch(function(){});}document.addEventListener('error',function(event){var el=event.target;if(!el||!el.tagName)return;var video=el.tagName==='VIDEO'?el:(el.tagName==='SOURCE'&&el.parentElement&&el.parentElement.tagName==='VIDEO'?el.parentElement:null);if(video)blobify(video);},true);`;
+const MEDIA_BLOB_FALLBACK = `function blobify(media){if(!media||media.dataset.dev3MediaBlob)return;media.dataset.dev3MediaBlob='1';var targets=[media].concat([].slice.call(media.querySelectorAll('source'))).filter(function(el){return /^data:(?:video|audio)\\//i.test(el.getAttribute('src')||'');});if(!targets.length)return;Promise.all(targets.map(function(el){return fetch(el.getAttribute('src')).then(function(r){return r.blob();}).then(function(b){el.setAttribute('src',URL.createObjectURL(b));});})).then(function(){media.load();}).catch(function(){});}document.addEventListener('error',function(event){var el=event.target;if(!el||!el.tagName)return;var parent=el.tagName==='SOURCE'?el.parentElement:el;if(parent&&(parent.tagName==='VIDEO'||parent.tagName==='AUDIO'))blobify(parent);},true);`;
+
+/**
+ * A link to a bundled file — `<a href="audio/take.mp3" download>` — cannot work in
+ * the frame: the relative href resolves against nothing, and the sandbox has no
+ * `allow-downloads`. The click goes to the viewer instead, which saves the copied
+ * asset from its own origin, the same route "Save image" takes.
+ */
+const ASSET_LINK_SAVE = `document.addEventListener('click',function(event){if(event.defaultPrevented||event.button)return;var a=event.target&&event.target.closest?event.target.closest('a[href]'):null;if(!a)return;var name=key(a.getAttribute('href'));if(!name||!map[name])return;event.preventDefault();var wanted=a.getAttribute('download');window.__dev3ArtifactChannel.send({type:'dev3-artifact-save-asset',name:name,fileName:wanted||name.split('/').pop()});},true);`;
 
 function assetKey(url: string): string | null {
 	const clean = url.trim().split(/[?#]/, 1)[0];
@@ -97,9 +105,10 @@ function rewriteAssetAttribute(
 /**
  * Prepare stored artifact HTML for the viewer. Relative local asset references are
  * replaced with copied data URLs so CSS, classic scripts, raster images and bundled
- * MP4/WebM clips work inside the opaque-origin sandboxed iframe, which has no origin
- * to resolve them against. `<video src>`, `<source src>` and `<video poster>` all
- * ride the same `src`/`poster` scan — a clip needs no markup of its own.
+ * video and audio work inside the opaque-origin sandboxed iframe, which has no origin
+ * to resolve them against. `<video src>`, `<audio src>`, `<source src>` and
+ * `<video poster>` all ride the same `src`/`poster` scan — media needs no markup of
+ * its own. Links to a bundled file are left alone and saved by the viewer on click.
  */
 export function composeArtifactDocument(
 	source: string,

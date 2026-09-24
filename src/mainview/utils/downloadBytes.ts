@@ -34,3 +34,11 @@ export function downloadDataUrl(dataUrl: string, fileName: string): void {
 	if (!parsed) throw new Error("unparseable data URL");
 	downloadBase64(parsed.base64, parsed.mime, fileName);
 }
+
+/** The link's `download` name when it is a plain file name, else the asset's own basename. */
+export function assetFileName(wanted: unknown, assetName: string): string {
+	const fallback = assetName.split("/").pop() || assetName;
+	if (typeof wanted !== "string") return fallback;
+	const clean = wanted.replace(/[\0-\x1f\x7f]/g, "").split(/[\\/]/).pop()?.trim().slice(0, 120) ?? "";
+	return clean && clean !== "." && clean !== ".." ? clean : fallback;
+}

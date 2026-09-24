@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CliResponse } from "../../shared/types";
-import { MAX_SHARED_ARTIFACT_VIDEO_BYTES } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_MEDIA_BYTES } from "../../shared/types";
 import type { CliContext } from "../context";
 import { handleShowArtifact } from "../commands/show-artifact";
 
@@ -147,15 +147,38 @@ describe("show-artifact", () => {
 		}));
 	});
 
+	it("collects MP3/M4A/WAV/OGG tracks from a report directory and accepts them after --assets", async () => {
+		const report = join(DIR, "audio-dir");
+		mkdirSync(join(report, "audio"), { recursive: true });
+		writeFileSync(join(report, "index.html"), "<!doctype html>");
+		for (const name of ["A.mp3", "B.m4a", "C.wav", "D.ogg"]) writeFileSync(join(report, "audio", name), "AUDIO");
+		writeFileSync(join(report, "audio", "E.flac"), "not an asset");
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([report], SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
+			assetPaths: ["A.mp3", "B.m4a", "C.wav", "D.ogg"].map((name) => join(report, "audio", name)),
+		}));
+
+		await handleShowArtifact([join(report, "index.html"), "--assets", join(report, "audio", "A.mp3")], SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
+			assetPaths: [join(report, "audio", "A.mp3")],
+		}));
+
+		const long = join(report, "audio", "long.wav");
+		writeFileSync(long, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
+		await expect(handleShowArtifact([join(report, "index.html"), "--assets", long], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrSpy.mock.calls.join("")).toMatch(/long\.wav is 16 MB \(max 16 MB per clip\)/);
+	});
+
 	it("refuses an oversize clip, an oversize set and an unplayable container before sending anything", async () => {
 		const over = join(DIR, "over.mp4");
-		writeFileSync(over, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES + 1));
+		writeFileSync(over, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
 		await expect(handleShowArtifact([HTML, "--assets", over], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrSpy.mock.calls.join("")).toMatch(/over\.mp4 is 16 MB \(max 16 MB per clip\)/);
 
 		const clips = ["v1", "v2", "v3", "v4"].map((name) => {
 			const path = join(DIR, `${name}.webm`);
-			writeFileSync(path, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES - 1));
+			writeFileSync(path, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES - 1));
 			return path;
 		});
 		await expect(handleShowArtifact([HTML, "--assets", ...clips], SOCKET, CTX)).rejects.toThrow("EXIT_3");

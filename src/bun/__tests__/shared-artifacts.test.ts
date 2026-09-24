@@ -4,8 +4,9 @@ import { inflateRawSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { SharedArtifact } from "../../shared/types";
-import { MAX_SHARED_ARTIFACT_VIDEO_BYTES } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_MEDIA_BYTES } from "../../shared/types";
 import { TINY_MP4, TINY_WEBM } from "./fixtures/tiny-clips";
+import { TINY_MP3, TINY_WAV } from "./fixtures/tiny-audio";
 
 const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-artifacts`);
 
@@ -413,12 +414,12 @@ describe("bundled video assets", () => {
 		writeFileSync(html, "<!doctype html>");
 
 		const huge = join(root, "huge.mp4");
-		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES + 1));
+		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
 		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/huge\.mp4 is 16 MB \(max 16 MB per clip\)/);
-		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/re-encode at a lower bitrate/);
+		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/re-encode it at a lower bitrate/);
 
 		// A clip stays under the per-file cap while the set blows the combined one.
-		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_VIDEO_BYTES - 1);
+		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES - 1);
 		const paths = ["a", "b", "c", "d"].map((name) => {
 			const path = join(root, `${name}.webm`);
 			writeFileSync(path, each);
@@ -435,5 +436,92 @@ describe("bundled video assets", () => {
 		writeFileSync(html, "<!doctype html>");
 		writeFileSync(mov, TINY_MP4);
 		expect(() => saveSharedArtifact("/my/project", html, [mov])).toThrow(/Unsupported artifact asset type "mov"/);
+	});
+});
+
+describe("bundled audio assets", () => {
+	beforeEach(() => rmSync(TEST_HOME, { recursive: true, force: true }));
+
+	function audioDir(name: string, body: string): { root: string; html: string } {
+		const root = join(SRC_DIR, name);
+		mkdirSync(join(root, "audio"), { recursive: true });
+		const html = join(root, "index.html");
+		writeFileSync(html, `<!doctype html><html><head></head><body>${body}</body></html>`);
+		return { root, html };
+	}
+
+	const PLAYER = [
+		'<audio controls preload="metadata"><source src="audio/A.mp3" type="audio/mpeg"></audio>',
+		'<a href="audio/A.mp3" download>Download A</a>',
+		'<audio controls src="audio/tone.wav"></audio>',
+	].join("");
+
+	it("stores MP3/M4A/WAV/OGG byte-exact with their MIME types, as data URLs and inside the ZIP", () => {
+		const { root, html } = audioDir("audio-store", PLAYER);
+		const mp3 = join(root, "audio", "A.mp3");
+		const wav = join(root, "audio", "tone.wav");
+		const m4a = join(root, "audio", "tone.m4a");
+		const ogg = join(root, "audio", "tone.ogg");
+		writeFileSync(mp3, TINY_MP3);
+		writeFileSync(wav, TINY_WAV);
+		writeFileSync(m4a, "M4A");
+		writeFileSync(ogg, "OGG");
+		const saved = saveSharedArtifact("/my/project", html, [mp3, wav, m4a, ogg], "Audio report");
+
+		expect(saved.assets.map((asset) => [asset.name, asset.mime])).toEqual([
+			["audio/A.mp3", "audio/mpeg"],
+			["audio/tone.wav", "audio/wav"],
+			["audio/tone.m4a", "audio/mp4"],
+			["audio/tone.ogg", "audio/ogg"],
+		]);
+		const content = loadSharedArtifactContent(saved);
+		const track = content.assets.find((asset) => asset.name === "audio/A.mp3")!;
+		expect(track.dataUrl.startsWith("data:audio/mpeg;base64,")).toBe(true);
+		expect(Buffer.from(track.dataUrl.split(",")[1], "base64").equals(TINY_MP3)).toBe(true);
+		const entries = unzipEntries(readFileSync(saved.bundlePath!));
+		expect(entries.get("audio/A.mp3")!.equals(TINY_MP3)).toBe(true);
+		expect(entries.get("audio/tone.wav")!.equals(TINY_WAV)).toBe(true);
+	});
+
+	it("puts audio under the media caps, not the generic asset cap", () => {
+		const { root, html } = audioDir("audio-limits", "");
+		const huge = join(root, "audio", "long.wav");
+		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
+		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/long\.wav is 16 MB \(max 16 MB per clip\)/);
+
+		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES - 1);
+		const paths = ["a.mp3", "b.mp3", "c.wav", "d.webm"].map((name) => {
+			const path = join(root, "audio", name);
+			writeFileSync(path, each);
+			return path;
+		});
+		expect(() => saveSharedArtifact("/my/project", html, paths)).toThrow(/video and audio total .* \(max 48 MB combined\)/);
+	});
+
+	it("refuses a report whose player points at a track that was not bundled, and stores nothing", () => {
+		const { html } = audioDir("audio-missing", PLAYER);
+		expect(() => saveSharedArtifact("/my/project", html, [])).toThrow(/audio\/A\.mp3: not bundled — .*publish the directory, or pass it after --assets/);
+		expect(existsSync(`${TEST_HOME}/worktrees`)).toBe(false);
+	});
+
+	it("names the conversion for an unsupported format instead of publishing a dead player", () => {
+		const { root, html } = audioDir("audio-flac", '<audio controls src="audio/take.flac"></audio>');
+		writeFileSync(join(root, "audio", "take.flac"), "FLAC");
+		expect(() => saveSharedArtifact("/my/project", html, [])).toThrow(/\.flac is not a supported artifact media type .* ffmpeg -i "audio\/take\.flac" "audio\/take\.mp3"/);
+	});
+
+	it("leaves data:, http(s) and blob media alone and does not check Markdown", () => {
+		const { html } = audioDir("audio-remote", [
+			'<audio controls src="data:audio/mpeg;base64,AAAA"></audio>',
+			'<audio controls src="https://example.com/a.mp3"></audio>',
+			'<a href="//cdn.example.com/b.wav" download>b</a>',
+			"<script>const a = '<audio src=\"audio/built-at-runtime.mp3\">';</script>",
+			'<!-- <audio src="audio/commented.mp3"> -->',
+		].join(""));
+		expect(() => saveSharedArtifact("/my/project", html, [])).not.toThrow();
+
+		const md = join(SRC_DIR, "audio-remote", "notes.md");
+		writeFileSync(md, '<audio src="audio/A.mp3"></audio>');
+		expect(() => saveSharedArtifact("/my/project", md, [])).not.toThrow();
 	});
 });

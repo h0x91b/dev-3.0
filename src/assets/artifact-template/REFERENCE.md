@@ -70,7 +70,7 @@ Two rules for report code:
 
 ## Publishing and assets
 
-`dev3 show-artifact ./dev3-artifact-report --title "Report title"` publishes the directory: `index.html` plus every CSS, classic JavaScript, raster and MP4/WebM file under it. Pass the HTML file instead when the report is a single file, and list files that live elsewhere after `--assets`:
+`dev3 show-artifact ./dev3-artifact-report --title "Report title"` publishes the directory: `index.html` plus every CSS, classic JavaScript, raster, MP4/WebM video and MP3/M4A/WAV/OGG audio file under it. Pass the HTML file instead when the report is a single file, and list files that live elsewhere after `--assets`:
 
 ```bash
 dev3 show-artifact ./dev3-artifact-report --title "Report title"
@@ -87,9 +87,9 @@ host.innerHTML = `<img src="${src}" alt="Run 42 timeline">`;
 element.style.backgroundImage = `url("${dev3Artifact.asset("shots/grid.png")}")`;
 ```
 
-It is safe everywhere: with no viewer map (file://, the extracted ZIP) it returns the path unchanged, and it leaves absolute URLs, data URLs, and CDN links alone. The viewer also heals a bare relative `src` (and a `video` `poster`) on `img`, `source` and `video` elements added after load, so an older report still renders — but write `asset()` in new code, because that fallback covers nothing else (CSS you build in JS, `fetch()`, canvas, a download link). Pass every imported stylesheet explicitly in `--assets` when it is not under the report directory. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
+It is safe everywhere: with no viewer map (file://, the extracted ZIP) it returns the path unchanged, and it leaves absolute URLs, data URLs, and CDN links alone. The viewer also heals a bare relative `src` (and a `video` `poster`) on `img`, `source`, `video` and `audio` elements added after load, so an older report still renders — but write `asset()` in new code, because that fallback covers nothing else (CSS you build in JS, `fetch()`, canvas). Pass every imported stylesheet explicitly in `--assets` when it is not under the report directory. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
 
-### Bundled video clips
+### Bundled media
 
 MP4 and WebM files publish like any other asset — nested paths and spaces included — and play with ordinary HTML5 markup. Nothing app-side is needed:
 
@@ -105,7 +105,22 @@ MP4 and WebM files publish like any other asset — nested paths and spaces incl
 - **Keep clips small anyway.** Every asset reaches the viewer inline in the document, so bytes are paid on each open, not on first play: aim for a few MB per clip (a 10 s 1080p screen capture lands around 1–3 MB).
 - Give both formats only when the codec matters; two encodes of the same clip double the budget. MP4/H.264 plays everywhere dev3 renders.
 - A clip whose `src` your report code builds at runtime goes through `dev3Artifact.asset("clips/tour.mp4")`, exactly like an image.
-- Video rides the downloadable ZIP and opens from `file://` too. `svg`, `mov`, `gif`-as-video and audio-only files are not artifact assets.
+- Video rides the downloadable ZIP and opens from `file://` too. `svg`, `mov` and `gif`-as-video are not artifact assets.
+
+**Audio** is the same kind of asset: MP3, M4A (AAC), WAV or OGG under the report directory, the same 16 MB per file and 48 MB for all video and audio together.
+
+```html
+<audio controls preload="metadata">
+  <source src="audio/take-a.mp3" type="audio/mpeg">
+</audio>
+<a href="audio/take-a.mp3" download>Download take A</a>
+```
+
+- **Prefer MP3.** MP3, M4A, WAV and OGG are verified in Chromium and in WebKit on macOS 26; Windows, Linux and mobile viewers are not verified yet. WAV is uncompressed — a minute is about 10 MB at CD quality. Give an OGG track an MP3 `<source>` after it.
+- Transport is not playback: dev3 carries the bytes, the viewer's engine decodes them. FLAC, Opus, AAC-in-ADTS and AIFF are refused rather than published to a player that may stay silent — convert them (`ffmpeg -i take.flac take.mp3`).
+- **A link to any bundled file downloads it** — audio, video or an image alike. `<a href="audio/take-a.mp3" download>` saves the file through the viewer, under the `download` name when you give one; in the ZIP and over `file://` it is an ordinary link.
+- A player or link pointing at a local media file that is not bundled, not supported, or outside the report directory stops `show-artifact` with one line per file and the fix. `data:`, `blob:` and `https:` sources are never checked.
+- A track whose `src` your code builds at runtime goes through `dev3Artifact.asset("audio/take-a.mp3")`, exactly like an image.
 
 ## Network access and external libraries
 

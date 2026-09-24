@@ -1,5 +1,7 @@
 # Bundled artifact video ships as an inline data URL, with a blob retry
 
+> Partly superseded on 2026-09-25 by `decisions/2026/09/25/artifact-audio-assets-and-media-reference-check.md`: audio joins the same delivery path, the caps are renamed `MAX_SHARED_ARTIFACT_MEDIA_BYTES` / `MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES` and cover video and audio together, and the blob retry is `MEDIA_BLOB_FALLBACK`.
+
 ## Context
 
 An artifact reaches the viewer as one composed `srcdoc` document inside an

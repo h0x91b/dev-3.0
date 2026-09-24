@@ -545,6 +545,8 @@ const common = {
 	"artifactViewer.saveImage": "Save image",
 	"artifactViewer.imageSaved": "Image saved to Downloads",
 	"artifactViewer.imageSaveFailed": "Couldn't save the image",
+	"artifactViewer.fileSaved": "File saved to Downloads",
+	"artifactViewer.fileSaveFailed": "Couldn't save the file",
 	"artifactViewer.draftKept": "You have an unsent answer on version {version}.",
 	"artifactViewer.draftBack": "Back to version {version}",
 	"artifactViewer.draftDismiss": "Hide this notice",

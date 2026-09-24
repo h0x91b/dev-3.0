@@ -21,7 +21,7 @@ import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { getArtifactDock, subscribeArtifactDock } from "../utils/artifact-dock";
 import { artifactViewerClosed, artifactViewerOpened } from "../artifact-activity";
-import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
+import { assetFileName, downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
@@ -322,7 +322,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 
 	const onFrameMessage = useCallback((incoming: unknown) => {
 		{
-			const data = incoming as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string; fields?: ArtifactDraft["fields"]; custom?: unknown } | null;
+			const data = incoming as { type?: string; src?: string; alt?: string; name?: string; fileName?: string; token?: number; matches?: number; index?: number; id?: number; text?: string; fields?: ArtifactDraft["fields"]; custom?: unknown } | null;
 			if (!data) return;
 			// Keyboard events inside the sandboxed document never reach this window, so
 			// the artifact's own ⌘F handler asks us to open the bar.
@@ -393,6 +393,20 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 						reply({ ok: false, reason: "failed", message: String(err) });
 						toast.error(t("artifactViewer.messageFailed"), { taskId });
 					});
+				return;
+			}
+			// A click on a link to a bundled file (`<a href="audio/a.mp3" download>`):
+			// the frame cannot download, so the copied asset is saved from here.
+			if (data.type === "dev3-artifact-save-asset") {
+				const asset = typeof data.name === "string" ? assetsRef.current.find((item) => item.name === data.name) : undefined;
+				const parsed = asset ? parseDataUrl(asset.dataUrl) : null;
+				if (!asset || !parsed) { toast.error(t("artifactViewer.fileSaveFailed"), { taskId }); return; }
+				try {
+					downloadBase64(parsed.base64, parsed.mime, assetFileName(data.fileName, asset.name));
+					toast.success(t("artifactViewer.fileSaved"), { taskId });
+				} catch {
+					toast.error(t("artifactViewer.fileSaveFailed"), { taskId });
+				}
 				return;
 			}
 			if (data.type !== "dev3-artifact-save-image" || typeof data.src !== "string") return;

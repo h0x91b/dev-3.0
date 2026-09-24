@@ -198,7 +198,7 @@ Inside a dev3 task, an unqualified "artifact", interactive report, dashboard or 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` — never edit the pristine source.
 2. Read the copied \`AUTHORING.md\` (the card), then edit only \`index.html\` and \`report.js\` unless the format itself must change. Open a \`REFERENCE.md\` section only when the report needs one. Do not read the shell files for ordinary reports.
 3. Keep content and data local; CDN libraries and live \`fetch\`/WebSocket are fine (\`REFERENCE.md\`).
-4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit, every CSS, JS, image and MP4/WebM clip under it (16 MB each, 48 MB together); a file outside it goes after \`--assets\`. Publish straight away: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish names the exceptions.
+4. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` — the directory publishes as a unit, every CSS, JS, image, video and audio file under it (16 MB each, 48 MB total); a file outside it goes after \`--assets\`. Publish straight away: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish names the exceptions.
 
 Re-running \`show-artifact\` **updates** the report: the same \`--title\` (or an explicit \`--artifact-id <slug>\`, which survives rewording) adds a VERSION to the row the user already has. Revise by publishing again, never by inventing \`report-v2.html\`; \`--new\` only for a genuinely different report that happens to share a title.
 
