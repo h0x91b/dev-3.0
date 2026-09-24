@@ -102,6 +102,22 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".claude/skills/dev3/PROTOCOL.md"))).toBe(true);
 	});
 
+	// Codex lists both of these directories; each holds a pointer, and each
+	// PROTOCOL.md keeps the status rules of the agents that actually read it.
+	it("writes pointer SKILL.md files with the right PROTOCOL.md for Codex and the generic agents", async () => {
+		const { installAgentSkills } = await loadModule();
+		await installAgentSkills();
+
+		const read = (rel: string) => readFileSync(join(tempHome, rel), "utf-8");
+		for (const dir of [".codex/skills/dev3", ".agents/skills/dev3", ".cursor/skills/dev3", ".opencode/skills/dev3"]) {
+			expect(read(`${dir}/SKILL.md`)).not.toContain("## Session-start checklist");
+			expect(read(`${dir}/PROTOCOL.md`)).toContain("## Session-start checklist");
+		}
+		expect(read(".codex/skills/dev3/PROTOCOL.md")).toContain("dev3 injects trusted native hooks into every Codex pane");
+		expect(read(".codex/skills/dev3/PROTOCOL.md")).not.toContain("Start of every turn");
+		expect(read(".agents/skills/dev3/PROTOCOL.md")).toContain("Start of every turn");
+	});
+
 	it("keeps shared AGENTS.md neutral about hook-owned versus manual lifecycle", async () => {
 		const { installAgentSkills } = await loadModule();
 		await installAgentSkills();
