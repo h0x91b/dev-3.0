@@ -3438,7 +3438,12 @@ async function spawnAgentInTask(params: {
 async function previewTaskHandoffHandler(params: { taskId: string; projectId: string }): Promise<HandoffPreview | null> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	return previewTaskHandoff(task);
+	try {
+		return await previewTaskHandoff(task);
+	} catch (error) {
+		log.warn("previewTaskHandoff failed; offering no handoff", { taskId: params.taskId.slice(0, 8), error: String(error) });
+		return null;
+	}
 }
 
 /** How long the hunter agents get to boot before their prompt is typed in. */

@@ -73,6 +73,47 @@ export function parseWorktreeConversations(
 	return parsed.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
+/** A transcript file as seen by `stat`, before anything reads its contents. */
+export interface TranscriptFingerprint {
+	path: string;
+	size: number;
+	mtimeMs: number;
+}
+
+export interface NewestTranscript extends ParsedTranscript {
+	fingerprint: TranscriptFingerprint;
+}
+
+/**
+ * The worktree's newest parseable conversation, reading as few files as possible:
+ * candidates are ordered by `stat` and parsed newest-first until one parses, so
+ * the usual cost is one file rather than every session the task ever had.
+ */
+export function newestWorktreeConversation(
+	worktreePath: string,
+	options: ParseConversationOptions & { home?: string; unchanged?: (fingerprint: TranscriptFingerprint) => boolean } = {},
+): NewestTranscript | "unchanged" | null {
+	const home = options.home ?? homedir();
+	const candidates: { kind: ConversationSource; fingerprint: TranscriptFingerprint }[] = [];
+	for (const file of transcriptFilesForWorktree(worktreePath, home)) {
+		if (!PARSEABLE_KINDS.has(file.kind)) continue;
+		try {
+			const stat = statSync(file.path);
+			candidates.push({ kind: file.kind as ConversationSource, fingerprint: { path: file.path, size: stat.size, mtimeMs: stat.mtimeMs } });
+		} catch {
+			// Vanished between discovery and stat: nothing to parse.
+		}
+	}
+	candidates.sort((a, b) => b.fingerprint.mtimeMs - a.fingerprint.mtimeMs);
+
+	for (const [index, { kind, fingerprint }] of candidates.entries()) {
+		if (index === 0 && options.unchanged?.(fingerprint)) return "unchanged";
+		const conversation = parseTranscriptFile(fingerprint.path, kind, options);
+		if (conversation) return { conversation, mtimeMs: fingerprint.mtimeMs, fingerprint };
+	}
+	return null;
+}
+
 /** The task container directory that holds `worktree/`, `logs/`, `diffs/`. */
 export function taskContainerDir(dev3Home: string, projectSlug: string, taskShortId: string): string {
 	return `${dev3Home}/worktrees/${projectSlug}/${taskShortId}`;
