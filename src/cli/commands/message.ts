@@ -4,6 +4,8 @@ import { checkMessageSubject, messageSubjectError } from "../../shared/agent-mes
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { readStdin } from "../stdin";
+import { singleTextInput } from "../text-input";
 import { parseDelay, formatCountdown } from "../../shared/duration";
 import { resolveScheduleTarget } from "../../shared/schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
@@ -82,7 +84,7 @@ function requireSubject(args: ParsedArgs, text: string): string {
  * Bare form sends immediately; `--in <dur>` (e.g. `10m`, `2h30m`) or
  * `--at <hh:mm>` (next occurrence today/tomorrow) queues it as a scheduled
  * message. Task auto-detected from the worktree; `--task`/`--project` override.
- * Text can be a positional arg, `--message`, or `@file`.
+ * Text can be a positional arg, `--message`, `-` (stdin), or `@file` — one of them.
  *
  * `--subject` is required on every form, immediate and scheduled alike: it is
  * stored with the message and it is the line the agent-traffic view renders.
@@ -94,7 +96,8 @@ export async function handleMessage(
 ): Promise<void> {
 	rejectUnknownFlags(args, ["task", "task-id", "project", "in", "at", "message", "variant", "subject"]);
 
-	const text = (args.positional[0] ?? args.flags.message ?? "").toString().trim();
+	const rawText = singleTextInput(args, "message") ?? "";
+	const text = (rawText === "-" ? await readStdin() : rawText).trim();
 	if (!text) exitUsage(USAGE);
 	if (text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
 		exitUsage(

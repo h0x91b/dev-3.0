@@ -10,6 +10,7 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
+import { singleTextInput } from "../text-input";
 import { handleTasks } from "./tasks";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
@@ -263,7 +264,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	// A literal "-" is the conventional CLI sentinel for reading the value
 	// from stdin. Read it only for the description flag so title-only creates
 	// never consume an interactive shell's input unexpectedly.
-	const stdinDescription = args.flags.description === "-" ? await readStdin() : undefined;
+	const rawDescription = singleTextInput(args, "description");
+	const stdinDescription = rawDescription === "-" ? await readStdin() : undefined;
 	const positionalContent = stdinDescription ?? args.positional[0]?.trim();
 
 	let title = args.flags.title?.trim();
@@ -339,6 +341,8 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		params.title = trimmed;
 	}
 	if (rawDesc !== undefined) {
+		// A bare flag parses as "true"; storing that would overwrite the real description.
+		if (rawDesc === "true") exitUsage('--description needs the text as its value (--description - reads stdin, "" clears it).');
 		const description = rawDesc === "-" ? await readStdin() : rawDesc;
 		params.description = description.trim();
 	}

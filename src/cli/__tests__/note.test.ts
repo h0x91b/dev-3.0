@@ -132,6 +132,29 @@ describe("note add", () => {
 		expect(mockSend.mock.calls[0]![2]!.content).toBe(markdown);
 	});
 
+	it("refuses positional text together with --content instead of dropping one", async () => {
+		await expect(
+			handleNote("add", args(["short"], { content: "the long report" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("given twice");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockReadStdin).not.toHaveBeenCalled();
+	});
+
+	it("refuses unquoted words that would each become a separate argument", async () => {
+		await expect(handleNote("add", args(["only", "the", "first"]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("3 separate text arguments");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses a bare --content rather than saving the word \"true\"", async () => {
+		await expect(handleNote("add", args([], { content: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("defaults source to ai", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 

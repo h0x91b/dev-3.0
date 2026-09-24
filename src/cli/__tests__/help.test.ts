@@ -62,7 +62,7 @@ describe("renderHelp — subcommand detail", () => {
 
 	it("documents stdin for supported long-text fields", () => {
 		expect(renderHelp("task", "update")).toContain("--description -");
-		expect(renderHelp("note", "add")).toContain("read it from stdin");
+		expect(renderHelp("note", "add")).toContain("--content -");
 		expect(renderHelp("automations", "create")).toContain("--prompt -");
 		expect(renderHelp("automations", "update")).toContain("--prompt -");
 	});
