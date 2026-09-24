@@ -74,8 +74,12 @@ export interface CliListener {
 	stop(): void;
 }
 
-/** Buffered partial NDJSON per connection (a request may span data events). */
-const pendingRequestText = new Map<unknown, string>();
+/**
+ * Buffered partial NDJSON per connection, kept as BYTES: a data event can end
+ * inside a multibyte UTF-8 character, and decoding each event on its own turns
+ * both halves into U+FFFD. Only a complete line is ever decoded.
+ */
+const pendingRequestBytes = new Map<unknown, Buffer>();
 
 function formatKiB(bytes: number): number {
 	return Math.ceil(bytes / 1024);
@@ -101,13 +105,13 @@ export function createSocketHandlers(handle: StartCliListenerOptions["handle"], 
 			log.debug("CLI client connected");
 		},
 		async data(socket: CliSocket, raw: string | Uint8Array) {
-			const text = typeof raw === "string" ? raw : Buffer.from(raw).toString("utf-8");
-			const buffered = pendingRequestText.get(socket) || "";
-			const combined = buffered + text;
-			const combinedBytes = Buffer.byteLength(combined, "utf-8");
+			const chunk = typeof raw === "string" ? Buffer.from(raw, "utf-8") : Buffer.from(raw);
+			const buffered = pendingRequestBytes.get(socket);
+			const combined = buffered ? Buffer.concat([buffered, chunk]) : chunk;
+			const combinedBytes = combined.length;
 
 			if (combinedBytes > MAX_CLI_REQUEST_BYTES) {
-				pendingRequestText.delete(socket);
+				pendingRequestBytes.delete(socket);
 				const errResp: CliResponse = {
 					id: "unknown",
 					ok: false,
@@ -120,13 +124,15 @@ export function createSocketHandlers(handle: StartCliListenerOptions["handle"], 
 			// Handle multiple NDJSON messages in one chunk — accumulate all
 			// responses first, then flush once to avoid interleaved partial writes.
 			let responseData = "";
-			const lines = combined.split("\n");
-			const tail = lines.pop() || "";
-			if (tail) {
-				pendingRequestText.set(socket, tail);
+			// "\n" is a single byte that never occurs inside a multibyte sequence.
+			const lastNewline = combined.lastIndexOf(0x0a);
+			const tail = combined.subarray(lastNewline + 1);
+			if (tail.length > 0) {
+				pendingRequestBytes.set(socket, Buffer.from(tail));
 			} else {
-				pendingRequestText.delete(socket);
+				pendingRequestBytes.delete(socket);
 			}
+			const lines = lastNewline === -1 ? [] : combined.subarray(0, lastNewline).toString("utf-8").split("\n");
 
 			for (const line of lines) {
 				if (!line.trim()) continue;
@@ -164,7 +170,7 @@ export function createSocketHandlers(handle: StartCliListenerOptions["handle"], 
 		},
 		close(socket: CliSocket) {
 			pendingWrites.delete(socket);
-			pendingRequestText.delete(socket);
+			pendingRequestBytes.delete(socket);
 			log.debug("CLI client disconnected");
 		},
 		error(_socket: CliSocket, error: unknown) {

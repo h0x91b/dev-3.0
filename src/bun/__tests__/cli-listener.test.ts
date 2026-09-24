@@ -265,6 +265,23 @@ describe("loopback request handling", () => {
 		expect(responses(socket)[0]).toMatchObject({ ok: true, data: { echoed: "note.add" } });
 	});
 
+	it("keeps a multibyte character intact when a data event splits its bytes", async () => {
+		const echoContent = async (req: CliRequest): Promise<CliResponse> => ({ id: req.id, ok: true, data: req.params });
+		const handlers = createSocketHandlers(echoContent, null);
+		const socket = mockSocket();
+		const content = "Проверка — привет 🙂 мир";
+		const bytes = Buffer.from(JSON.stringify({ id: "r", method: "note.add", params: { content } }) + "\n", "utf-8");
+		// Cut inside the 2-byte "П" and inside the 4-byte emoji.
+		const cutInCyrillic = bytes.indexOf(Buffer.from("П", "utf-8")) + 1;
+		const cutInEmoji = bytes.indexOf(Buffer.from("🙂", "utf-8")) + 2;
+
+		await handlers.data(socket, new Uint8Array(bytes.subarray(0, cutInCyrillic)));
+		await handlers.data(socket, new Uint8Array(bytes.subarray(cutInCyrillic, cutInEmoji)));
+		await handlers.data(socket, new Uint8Array(bytes.subarray(cutInEmoji)));
+
+		expect(responses(socket)[0].data).toEqual({ content });
+	});
+
 	it("answers every request in a batched chunk", async () => {
 		const { handlers, token } = startTcp();
 		const socket = mockSocket();

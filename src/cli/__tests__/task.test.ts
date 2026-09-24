@@ -561,6 +561,12 @@ describe("task update", () => {
 		expect(mockSend.mock.calls[0]![2]!.description).toBe(markdown);
 	});
 
+	it("refuses a bare --description instead of overwriting the description with \"true\"", async () => {
+		await expect(handleTask("update", args(["aaaaaaaa"], { description: "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("updates both title and description at once", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
@@ -1497,6 +1503,23 @@ describe("task create --description", () => {
 		expect(params.title).toBe("Release notes");
 		expect(params.description).toBe(markdown);
 	});
+
+	it("refuses a positional description together with --description instead of dropping one", async () => {
+		await expect(
+			handleTask("create", args(["positional text"], { project: "proj-001", title: "T", description: "flag text" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockReadStdin).not.toHaveBeenCalled();
+	});
+
+	it("refuses a positional description together with --description -", async () => {
+		await expect(
+			handleTask("create", args(["positional text"], { project: "proj-001", title: "T", description: "-" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+
+		expect(mockSend).not.toHaveBeenCalled();
+	});
 });
 
 // ─── task move: status validation ────────────────────────────────────────────
@@ -1711,24 +1734,6 @@ describe("task create with positional content (e.g. @file)", () => {
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.title).toBe("Port exposure");
 		expect(params.description).toBe(fileContent);
-	});
-
-	it("--description flag takes priority over positional content", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		await handleTask(
-			"create",
-			args(["file content here"], {
-				project: "proj-001",
-				title: "Task",
-				description: "Explicit desc",
-			}),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.description).toBe("Explicit desc");
 	});
 
 	it("uses first line of positional as title when --title is not provided", async () => {

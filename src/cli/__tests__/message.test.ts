@@ -8,8 +8,14 @@ vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
 }));
 
+vi.mock("../stdin", () => ({
+	readStdin: vi.fn(),
+}));
+
 import { sendRequest } from "../socket-client";
+import { readStdin } from "../stdin";
 const mockSend = vi.mocked(sendRequest);
+const mockReadStdin = vi.mocked(readStdin);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -55,6 +61,7 @@ beforeEach(() => {
 		throw new Error(`EXIT_${_code ?? 0}`);
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
+	mockReadStdin.mockReset();
 });
 
 afterEach(() => {
@@ -143,6 +150,42 @@ describe("message — scheduled", () => {
 	it("rejects an invalid --at time", async () => {
 		await expect(handleMessage(args(["x"], { at: "99:99" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toMatch(/invalid --at/i);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("message — text input", () => {
+	it("reads the body from stdin when the text is -, byte for byte", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId }));
+		const body = "Rename `note.ts` addNote — keep $HOME and \"quotes\"\nПроверка 🙂";
+		mockReadStdin.mockResolvedValue(`${body}\n`);
+
+		await handleMessage(args(["-"]), SOCKET, CTX);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend.mock.calls[0]![2]!.text).toBe(body);
+	});
+
+	it("reads stdin for --message - too", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId }));
+		mockReadStdin.mockResolvedValue("from stdin");
+
+		await handleMessage(args([], { message: "-" }), SOCKET, CTX);
+
+		expect(mockSend.mock.calls[0]![2]!.text).toBe("from stdin");
+	});
+
+	it("refuses positional text together with --message instead of dropping one", async () => {
+		await expect(handleMessage(args(["short"], { message: "the long body" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("given twice");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockReadStdin).not.toHaveBeenCalled();
+	});
+
+	it("refuses unquoted words instead of sending only the first", async () => {
+		await expect(handleMessage(args(["only", "the", "first"]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

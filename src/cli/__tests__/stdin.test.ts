@@ -10,6 +10,13 @@ describe("readStdin", () => {
 		expect(await readStdin(input)).toBe('# Plan\n\nQuote: "keep me"\n');
 	});
 
+	it("keeps a multibyte character intact when a chunk boundary splits its bytes", async () => {
+		const bytes = Buffer.from("Проверка 🙂", "utf-8");
+		const input = Readable.from([bytes.subarray(0, 1), bytes.subarray(1, 19), bytes.subarray(19)]);
+
+		expect(await readStdin(input)).toBe("Проверка 🙂");
+	});
+
 	it("returns an empty string for empty input", async () => {
 		expect(await readStdin(Readable.from([]))).toBe("");
 	});
