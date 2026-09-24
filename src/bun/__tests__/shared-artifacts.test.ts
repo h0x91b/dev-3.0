@@ -246,6 +246,59 @@ describe("saveSharedArtifact", () => {
 		expect(importedCss).not.toContain("../images/texture.png");
 	});
 
+	it("renders Markdown into a stored HTML page where raw HTML and unsafe links stay inert", () => {
+		const md = join(SRC_DIR, "daily.md");
+		writeFileSync(md, [
+			"# Daily <report>",
+			"",
+			"<script>window.ran = true</script>",
+			"",
+			"| Task | State |",
+			"|---|---|",
+			"| 1991 | done |",
+			"",
+			"[docs](https://dev3.h0x91b.com) [bad](javascript:alert(1)) ![shot](shots/a.png)",
+		].join("\n"));
+
+		const saved = saveSharedArtifact("/my/project", md, []);
+		const stored = readFileSync(saved.storedPath, "utf8");
+
+		expect(saved).toMatchObject({ kind: "html", name: "daily.html", title: "daily", originalPath: md, isUnread: true, assets: [] });
+		expect(saved.bundlePath).toBeUndefined();
+		expect(basename(saved.storedPath)).toBe("daily.html");
+		expect(stored).toContain("data-dev3-artifact-shell");
+		expect(stored).toContain("<h1>Daily &lt;report&gt;</h1>");
+		expect(stored).toContain("<td>1991</td>");
+		expect(stored).toContain('<a href="https://dev3.h0x91b.com" target="_blank" rel="noopener">docs</a>');
+		expect(stored).toContain("&lt;script&gt;window.ran = true&lt;/script&gt;");
+		expect(stored).not.toContain("<script>window.ran");
+		expect(stored).not.toContain("javascript:");
+		expect(stored).not.toContain("shots/a.png");
+		expect(loadSharedArtifactContent(saved).html).toBe(stored);
+	});
+
+	it("keeps a plain-text file verbatim and escaped, titled by --title", () => {
+		const txt = join(SRC_DIR, "notes.txt");
+		writeFileSync(txt, "Line 1\n  indented <b>not bold</b> & more\n");
+		const saved = saveSharedArtifact("/my/project", txt, [], "Night notes");
+		const stored = readFileSync(saved.storedPath, "utf8");
+		expect(saved.title).toBe("Night notes");
+		expect(saved.name).toBe("notes.html");
+		expect(stored).toContain("<title>Night notes</title>");
+		expect(stored).toContain('<pre class="dev3-plain">Line 1\n  indented &lt;b&gt;not bold&lt;/b&gt; &amp; more\n</pre>');
+	});
+
+	it("refuses assets beside a text artifact and any other source type", () => {
+		const md = join(SRC_DIR, "with-assets.md");
+		const image = join(SRC_DIR, "with-assets.png");
+		const pdf = join(SRC_DIR, "report.pdf");
+		writeFileSync(md, "# Hi");
+		writeFileSync(image, "PNGDATA");
+		writeFileSync(pdf, "%PDF");
+		expect(() => saveSharedArtifact("/my/project", md, [image])).toThrow(/takes no --assets/);
+		expect(() => saveSharedArtifact("/my/project", pdf, [])).toThrow(/\.html, \.md or \.txt/);
+	});
+
 	it("rejects assets outside the HTML directory instead of creating a broken bundle", () => {
 		const htmlDir = join(SRC_DIR, "contained");
 		mkdirSync(htmlDir, { recursive: true });

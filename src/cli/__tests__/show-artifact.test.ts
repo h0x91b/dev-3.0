@@ -167,6 +167,20 @@ describe("show-artifact", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	it("sends a Markdown or plain-text file as the artifact, and refuses assets beside it", async () => {
+		const md = join(DIR, "daily.md");
+		const txt = join(DIR, "daily.txt");
+		writeFileSync(md, "# Daily");
+		writeFileSync(txt, "Daily");
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([md, "--title", "Daily"], SOCKET, CTX);
+		await handleShowArtifact([txt], SOCKET, CTX);
+		expect(mockSend.mock.calls.map((call) => (call[2] as { htmlPath: string }).htmlPath)).toEqual([md, txt]);
+		mockSend.mockReset();
+		await expect(handleShowArtifact([md, "--assets", PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects non-HTML input and unsupported assets", async () => {
 		await expect(handleShowArtifact([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		await expect(handleShowArtifact([HTML, "--images", PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
