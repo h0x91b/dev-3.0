@@ -128,7 +128,13 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	"ux-architecture.yaml": 120,
+	"ux-architecture.yaml": 121,
+	// 120 → 121 for `surfaces.context_menu.task_menu` plus `row_context_menu` in
+	// `surfaces.sidebar.allowed`: the row context menu the §10 budget row has named as the
+	// sidebar's overflow home since it was written finally exists, and one shared task menu
+	// now serves the card and the row. `main` had ~75 bytes of headroom, and the rule is what
+	// stops the next agent forking a second per-surface menu, so it cannot be a pointer alone.
+	// Reasoning: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
 	// 119 → 120: `surfaces.settings.simplify_mode` rewritten for per-control
 	// hiding (panel restore, header restore, preset-only list, never-hideable
 	// list) — the same review-driven rework as the bible's §5.10, status

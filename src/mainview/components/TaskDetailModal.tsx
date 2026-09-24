@@ -34,11 +34,14 @@ interface TaskDetailModalProps {
 	onClose: () => void;
 	/** Opens the task workspace from a terminal-state confirmation card. */
 	onOpenTask?: () => void;
-	/** Opens the LaunchVariantsModal to start a todo task (agent + variant picker). */
-	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
+	/** Opens the LaunchVariantsModal to start a todo task (agent + variant picker).
+	 *  Absent on surfaces that only ever open the modal for a running task. */
+	onLaunchVariants?: (task: Task, targetStatus: TaskStatus) => void;
+	/** Opens straight into title editing — the context menu's "Rename…". */
+	autoRename?: boolean;
 }
 
-function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunchVariants }: TaskDetailModalProps) {
+function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunchVariants, autoRename }: TaskDetailModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const trapRef = useFocusTrap<HTMLDivElement>();
@@ -156,6 +159,11 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		setTimeout(() => renameInputRef.current?.focus(), 0);
 	}
 
+	// Opened from "Rename…": land in the title editor, not on the modal body.
+	useEffect(() => {
+		if (autoRename) handleStartRename();
+	}, [autoRename]);
+
 	async function handleRenameSave() {
 		const trimmed = renameValue.trim();
 		if (!trimmed || trimmed === getTaskTitle(task)) {
@@ -249,6 +257,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 	/** Start the task: close this modal and hand off to the launch-variants flow. */
 	function handleRun() {
+		if (!onLaunchVariants) return;
 		onClose();
 		onLaunchVariants(task, "in-progress");
 	}
@@ -651,17 +660,19 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									)}
 								</div>
 							</div>
-							<button
-								onClick={handleRun}
-								disabled={deleting || moving}
-								className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
-								title={t("task.run")}
-							>
-								<svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-									<path d="M8 5v14l11-7z" />
-								</svg>
-								{t("task.run")}
-							</button>
+							{onLaunchVariants && (
+								<button
+									onClick={handleRun}
+									disabled={deleting || moving}
+									className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
+									title={t("task.run")}
+								>
+									<svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+										<path d="M8 5v14l11-7z" />
+									</svg>
+									{t("task.run")}
+								</button>
+							)}
 						</div>
 					</div>
 				)}

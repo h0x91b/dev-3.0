@@ -27,6 +27,8 @@ import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import TaskCardRail from "./TaskCardRail";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { useStatusMenu } from "../hooks/useStatusMenu";
+import { useContextMenu } from "../hooks/useContextMenu";
+import TaskContextMenu from "./TaskContextMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useMobile } from "../hooks/useMobile";
@@ -113,9 +115,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const portsPopoverRef = useRef<HTMLDivElement>(null);
 	const portsAnchorRef = useRef<HTMLButtonElement>(null);
 
-	// Context menu ("Open in...") state
+	// "Open in..." menu, opened from the action strip. Right-click opens the full
+	// task menu instead (`contextMenu`).
 	const [ctxMenuOpen, setCtxMenuOpen] = useState(false);
 	const [ctxMenuPos, setCtxMenuPos] = useState({ top: 0, left: 0 });
+	const contextMenu = useContextMenu(task.shuttingDown);
 
 	const isPreparing = task.preparing === true;
 	// Transient teardown window pushed by the server while completing/cancelling
@@ -399,12 +403,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	function handleContextMenu(e: React.MouseEvent) {
 		if (isShuttingDown) return;
-		if (!task.worktreePath) return;
-		e.preventDefault();
-		e.stopPropagation();
 		preview.close();
-		setCtxMenuPos({ top: e.clientY, left: e.clientX });
-		setCtxMenuOpen(true);
+		contextMenu.handlers.onContextMenu(e);
 	}
 
 	function handleDragStart(e: React.DragEvent) {
@@ -1257,7 +1257,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				document.body
 			)}
 
-			{/* Context menu — "Open in..." */}
+			<TaskContextMenu
+				task={task}
+				project={project}
+				dispatch={dispatch}
+				pos={contextMenu.pos}
+				onClose={contextMenu.close}
+				onOpenTask={openTaskFromDialog}
+				onOpenDetails={() => setDetailOpen(true)}
+				testId={`card-task-menu-${task.id}`}
+			/>
+
+			{/* Action-strip "Open in..." — the right-click menu is TaskContextMenu. */}
 			{ctxMenuOpen && task.worktreePath && (
 				<OpenInMenu
 					position={ctxMenuPos}

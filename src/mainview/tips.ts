@@ -148,7 +148,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.rightClickOpen.body",
 		icon: "\u{F0379}", // nf-md-open_in_new
 		score: 3,
-		contexts: ["board"],
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "terminal-preview",

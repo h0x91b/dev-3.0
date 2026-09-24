@@ -5,6 +5,7 @@ import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, useLocale } from "../i18n";
 import { useStatusMenu } from "../hooks/useStatusMenu";
+import { useContextMenu } from "../hooks/useContextMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { useReducedMotion } from "../utils/useReducedMotion";
@@ -17,6 +18,7 @@ import PipelineDropdown from "./PipelineDropdown";
 import PriorityBadge from "./PriorityBadge";
 import StatusMenuPortal from "./StatusMenuPortal";
 import TaskCardRail from "./TaskCardRail";
+import TaskContextMenu from "./TaskContextMenu";
 import TaskPrBadges from "./TaskPrBadges";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
@@ -104,6 +106,7 @@ export default function ActiveTaskRow({
 	const [locale] = useLocale();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusMenu = useStatusMenu(narrow);
+	const contextMenu = useContextMenu(task.shuttingDown);
 	const [completing, setCompleting] = useState(false);
 	const [moving, setMoving] = useState(false);
 	const [hiding, setHiding] = useState(false);
@@ -193,11 +196,26 @@ export default function ActiveTaskRow({
 					.filter(Boolean)
 					.join(" — ")
 			}
-			onClick={onOpen}
+			onClick={() => {
+				// A long press opened the menu; the click that follows it is not a tap.
+				if (contextMenu.swallowClick()) return;
+				onOpen();
+			}}
+			{...contextMenu.handlers}
+			onContextMenu={(e) => {
+				closePreview();
+				contextMenu.handlers.onContextMenu(e);
+			}}
 			onKeyDown={(e) => {
 				// Row is a div (so the nested buttons are valid HTML); restore
 				// native button keyboard activation.
 				if (e.target !== e.currentTarget) return;
+				if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+					e.preventDefault();
+					const rect = e.currentTarget.getBoundingClientRect();
+					contextMenu.open({ x: rect.left + 24, y: rect.top + 24 });
+					return;
+				}
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
 					onOpen();
@@ -457,6 +475,16 @@ export default function ActiveTaskRow({
 					hideHeader={narrow}
 				/>
 			</StatusMenuPortal>
+
+			<TaskContextMenu
+				task={task}
+				project={taskProject}
+				dispatch={dispatch}
+				pos={contextMenu.pos}
+				onClose={contextMenu.close}
+				onOpenTask={onOpen}
+				testId={`sidebar-task-menu-${task.id}`}
+			/>
 		</div>
 	);
 }

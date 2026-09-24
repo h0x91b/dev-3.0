@@ -244,6 +244,20 @@ const kanban = {
 	"task.confirmCancelFooter": "This task will move to Cancelled.",
 	"task.confirmCancelLabel": "Cancel task",
 	"task.deleteConfirmLabel": "Delete task",
+	"task.watchFailed": "Couldn’t update Watch — try again. ({error})",
+
+	// TaskContextMenu (right-click on a task card / sidebar row)
+	"taskMenu.title": "Task actions",
+	"taskMenu.open": "Open task",
+	"taskMenu.details": "Task details…",
+	"taskMenu.labels": "Labels",
+	"taskMenu.priority": "Priority",
+	"taskMenu.rename": "Rename…",
+	"taskMenu.copyBranch": "Copy branch name",
+	"taskMenu.copyLink": "Copy deep link",
+	"taskMenu.copyPath": "Copy worktree path",
+	"taskMenu.copied": "Copied to clipboard",
+	"taskMenu.delete": "Delete task…",
 	"task.checkingBranchState": "Checking the branch for unsaved work…",
 	"task.branchStateUnknown": "Could not check the branch for unsaved work.",
 

@@ -1460,8 +1460,8 @@ describe("TaskCard", () => {
 		});
 	});
 
-	describe("context menu (Open in...)", () => {
-		it("shows context menu on right-click for active task with worktree", async () => {
+	describe("context menu", () => {
+		it("shows the task menu on right-click for active task with worktree", async () => {
 			renderCard(makeTask({
 				status: "in-progress",
 				worktreePath: "/tmp/worktree",
@@ -1471,18 +1471,24 @@ describe("TaskCard", () => {
 			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
 
 			await waitFor(() => {
-				expect(screen.getByText("Open in...")).toBeInTheDocument();
+				expect(screen.getByTestId("task-menu-labels")).toBeInTheDocument();
 			});
+			expect(screen.getByTestId("task-menu-openIn")).not.toBeDisabled();
 		});
 
-		it("does not show context menu for todo task without worktree", () => {
+		it("opens for a todo task without a worktree, with the worktree actions disabled", async () => {
 			renderCard(makeTask({ status: "todo", worktreePath: null }));
 			const card = screen.getByText("My task").closest("[draggable]")!;
 			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-			expect(screen.queryByText("Open in...")).not.toBeInTheDocument();
+
+			await waitFor(() => {
+				expect(screen.getByTestId("task-menu-rename")).toBeInTheDocument();
+			});
+			expect(screen.getByTestId("task-menu-openIn")).toBeDisabled();
+			expect(screen.getByTestId("task-menu-copyPath")).toBeDisabled();
 		});
 
-		it("calls openInApp when clicking an app in the context menu", async () => {
+		it("calls openInApp when clicking an app under Open in…", async () => {
 			renderCard(makeTask({
 				status: "in-progress",
 				worktreePath: "/tmp/worktree",
@@ -1490,6 +1496,8 @@ describe("TaskCard", () => {
 			}));
 			const card = screen.getByText("My task").closest("[draggable]")!;
 			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+
+			await userEvent.click(await screen.findByTestId("task-menu-openIn"));
 
 			await waitFor(() => {
 				expect(screen.getByText("Finder")).toBeInTheDocument();

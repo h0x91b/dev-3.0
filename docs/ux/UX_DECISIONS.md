@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-09-22 — One task context menu, card and sidebar row
+
+Bible §4 `Context menu` / yaml `surfaces.context_menu.task_menu`: right-click (long-press on touch) opens one shared `TaskContextMenu` for the task object, routing to the pickers, modals and RPCs that already exist. It may repeat a control the surface shows — a menu reached blind is not chrome. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
+
 ## 2026-09-20 — Simplified Mode leads toward the Full interface
 
 Bible §5.10 / yaml `simplify_mode`: fresh-only onboarding, calm persisted invitations, Appearance ownership and separate personal hiding. Repeated invitations encourage discovery without forced switching; merging preset and personal ids cannot preserve personal choices when leaving the preset. Supersedes the September 15 single-set rule; no new permanent chrome.
