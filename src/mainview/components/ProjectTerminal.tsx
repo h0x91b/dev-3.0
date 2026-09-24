@@ -46,8 +46,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 		else termHandle?.paste(`${escaped.join(" ")} `);
 	}
 
-	// A session key, not a task id: no task record backs it, which is why this
-	// terminal never offers review comments (`canComment` stays off below).
+	// A session key, not a task id: no task record backs it.
 	const sessionKey = `project-${projectId}`;
 
 	useEffect(() => {

@@ -393,7 +393,7 @@ ux_architecture:
           comment_item:  { role: "link",         token: "bg-raised/65, accent on hover; scroll-to-comment" }
       persistence:
         store: "Task.review (src/shared/review.ts), one RPC per mutation, shared with every viewer and `dev3 review`; the old localStorage review imports once."
-        anchors: "diff-line here; artifact-element, image-region (image viewer and image previews), file-range (file preview text) and terminal-text (terminal chip) elsewhere; the export card lists all."
+        anchors: "diff-line here; artifact-element, image-region (image viewer and image previews), file-range (file preview text) elsewhere, terminal-text for stored terminal comments (no new ones: the chip is gone); the export card lists all."
         closed_by: "The agent via `dev3 review resolve <id> --reply`: reply under the bubble, Send becomes Reopen."
         cleared_by: ["reset_review button", "delete_comment"]
         rule: "Clipboard is transport, not store. Leaving the surface does NOT discard the review — no discard-on-close guard."

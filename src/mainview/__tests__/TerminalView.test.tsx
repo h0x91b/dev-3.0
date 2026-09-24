@@ -131,9 +131,6 @@ vi.mock("../rpc", () => ({
 			logRendererDiagnostic: vi.fn().mockResolvedValue(undefined),
 			copyTerminalSelection: vi.fn().mockResolvedValue({ ok: true, tool: "pbcopy" }),
 			resolveTerminalPaths: vi.fn().mockResolvedValue({ resolved: {} }),
-			addReviewComment: vi.fn().mockResolvedValue(undefined),
-			markReviewCommentsSent: vi.fn().mockResolvedValue(undefined),
-			sendAgentMessageNow: vi.fn().mockResolvedValue({ spilledPath: null }),
 		},
 	},
 }));
@@ -246,12 +243,10 @@ beforeEach(() => {
  * Render TerminalView and drive the full async setup chain:
  *   fonts.load() resolves → setup() → ResizeObserver fires → rAF → term.focus()
  */
-// canComment defaults to on here: these render the task terminal, the one host
-// whose id really names a task. A project terminal is the false case.
-async function renderAndSetup({ canComment = true }: { canComment?: boolean } = {}) {
+async function renderAndSetup() {
 	let result!: ReturnType<typeof render>;
 	await act(async () => {
-		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" canComment={canComment} /></I18nProvider>);
+		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" /></I18nProvider>);
 		// Flush the microtask queue so the fonts.load() .then() runs → setup()
 		await Promise.resolve();
 		await Promise.resolve();
@@ -2389,16 +2384,16 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 	});
 });
 
-describe("TerminalView – comment on a selection", () => {
-	it("offers a comment chip after a selection and stores the comment with a terminal-text anchor", async () => {
-		const { api } = await import("../rpc");
-		const addReviewComment = vi.mocked(api.request.addReviewComment as unknown as ReturnType<typeof vi.fn>);
-		addReviewComment.mockClear();
+// The selection gesture used to pop a six-second "Comment" chip over the text.
+// It is gone: selecting copies, nothing else appears on top of the output.
+describe("TerminalView – a selection copies and offers nothing else", () => {
+	it("copies a ghostty selection without drawing anything over the terminal", async () => {
+		mockedCopyTerminalSelection.mockClear();
 		mockTermInstance.hasSelection.mockReturnValue(true);
 		mockTermInstance.getSelection.mockReturnValue("error: ENOENT\nat open()");
 		mockTermInstance.hasMouseTracking.mockReturnValue(false);
-
 		const { container } = await renderAndSetup();
+		const buttonsBefore = container.querySelectorAll("button").length;
 		const terminal = document.querySelector("[data-terminal='true']")!;
 		await act(async () => {
 			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
@@ -2406,107 +2401,23 @@ describe("TerminalView – comment on a selection", () => {
 		});
 		await act(async () => { await Promise.resolve(); });
 
-		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLButtonElement;
-		expect(chip).not.toBeNull();
-		await act(async () => { fireEvent.click(chip); });
-		const composer = container.querySelector("[data-testid='terminal-comment-composer']") as HTMLElement;
-		expect(composer).not.toBeNull();
-		expect(composer.textContent).toContain("error: ENOENT");
-
-		const textarea = composer.querySelector("textarea") as HTMLTextAreaElement;
-		await act(async () => { fireEvent.change(textarea, { target: { value: "This path is wrong" } }); });
-		const submit = Array.from(composer.querySelectorAll("button")).find((b) => b.textContent === "Add comment") as HTMLButtonElement;
-		await act(async () => { fireEvent.click(submit); });
-
-		expect(addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
-			taskId: "t1",
-			projectId: "p1",
-			comment: expect.objectContaining({ body: "This path is wrong", anchor: { kind: "terminal-text", excerpt: "error: ENOENT\nat open()" } }),
-		}));
-		expect(container.querySelector("[data-testid='terminal-comment-composer']")).toBeNull();
-	});
-
-	it("does not offer a chip when tmux mouse tracking owns the drag", async () => {
-		mockTermInstance.hasSelection.mockReturnValue(true);
-		mockTermInstance.getSelection.mockReturnValue("x");
-		mockTermInstance.hasMouseTracking.mockReturnValue(true);
-		const { container } = await renderAndSetup();
-		const terminal = document.querySelector("[data-terminal='true']")!;
-		await act(async () => {
-			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-		});
-		await act(async () => { await Promise.resolve(); });
+		expect(mockedCopyTerminalSelection).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", text: "error: ENOENT\nat open()" }));
 		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
+		expect(container.querySelectorAll("button").length).toBe(buttonsBefore);
 	});
 
-	it("does not say a comment was saved when the task record refused it", async () => {
-		const { api } = await import("../rpc");
-		const addReviewComment = vi.mocked(api.request.addReviewComment as unknown as ReturnType<typeof vi.fn>);
-		addReviewComment.mockClear();
-		addReviewComment.mockRejectedValueOnce(new Error("Task not found: project-p1"));
-		vi.mocked(toast.info).mockClear();
-		mockTermInstance.hasSelection.mockReturnValue(true);
-		mockTermInstance.getSelection.mockReturnValue("boom");
-		mockTermInstance.hasMouseTracking.mockReturnValue(false);
-
+	it("copies a tmux (OSC 52) selection without drawing anything over the terminal", async () => {
 		const { container } = await renderAndSetup();
-		const terminal = document.querySelector("[data-terminal='true']")!;
-		await act(async () => {
-			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 200, clientY: 120 }));
-		});
-		await act(async () => { await Promise.resolve(); });
-		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLButtonElement;
-		await act(async () => { fireEvent.click(chip); });
-		const composer = container.querySelector("[data-testid='terminal-comment-composer']") as HTMLElement;
-		const textarea = composer.querySelector("textarea") as HTMLTextAreaElement;
-		await act(async () => { fireEvent.change(textarea, { target: { value: "gone?" } }); });
-		const submit = Array.from(composer.querySelectorAll("button")).find((b) => b.textContent === "Add comment") as HTMLButtonElement;
-		await act(async () => { fireEvent.click(submit); });
-		await act(async () => { await Promise.resolve(); });
-
-		expect(vi.mocked(toast.error)).toHaveBeenCalled();
-		const info = vi.mocked(toast.info).mock.calls.map((call) => String(call[0]));
-		expect(info.some((message) => message.includes("Comment saved"))).toBe(false);
-	});
-
-	it("offers no chip where commenting is off: the id would name no task", async () => {
-		mockTermInstance.hasSelection.mockReturnValue(true);
-		mockTermInstance.getSelection.mockReturnValue("error: ENOENT");
-		mockTermInstance.hasMouseTracking.mockReturnValue(false);
-		const { container } = await renderAndSetup({ canComment: false });
-		const terminal = document.querySelector("[data-terminal='true']")!;
-		await act(async () => {
-			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 200, clientY: 120 }));
-			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "t1", text: "selected in tmux" } }));
-		});
-		await act(async () => { await Promise.resolve(); });
-		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
-	});
-});
-
-describe("TerminalView – comment chip for a tmux (OSC 52) selection", () => {
-	it("offers the chip when the copied text arrives through the OSC 52 event, placed at the last mouseup", async () => {
-		const { container } = await renderAndSetup();
+		const buttonsBefore = container.querySelectorAll("button").length;
 		const wrapper = container.firstElementChild as HTMLElement;
-		wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
 		await act(async () => {
 			fireEvent.mouseUp(wrapper, { clientX: 320, clientY: 240 });
 			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "t1", text: "selected in tmux" } }));
 		});
-		const chip = container.querySelector("[data-testid='terminal-comment-selection']") as HTMLElement;
-		expect(chip).not.toBeNull();
-		expect(chip.style.left).toBe("320px");
-		expect(chip.style.top).toBe("240px");
-	});
+		await act(async () => { await Promise.resolve(); });
 
-	it("ignores OSC 52 payloads for another task", async () => {
-		const { container } = await renderAndSetup();
-		await act(async () => {
-			window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: { taskId: "other", text: "x" } }));
-		});
+		expect(clipboardWriteTextMock).toHaveBeenCalledWith("selected in tmux");
 		expect(container.querySelector("[data-testid='terminal-comment-selection']")).toBeNull();
+		expect(container.querySelectorAll("button").length).toBe(buttonsBefore);
 	});
 });

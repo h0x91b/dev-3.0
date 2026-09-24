@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { useT } from "./i18n";
 import { toast } from "./toast";
-import { clipReviewExcerpt, type ReviewComment } from "../shared/review";
-import { ReviewComposer } from "./review/ReviewComposer";
-import { useReviewSend } from "./review/useReviewSend";
-import { useTaskReview } from "./review/useTaskReview";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { debugLog } from "./debug-log";
@@ -317,18 +313,12 @@ interface TerminalViewProps {
 	 * click already leaves copy-mode) costs no tmux calls at all.
 	 */
 	onScrolledIntoHistory?: (scrolledUp: boolean) => void;
-	/**
-	 * Offer the "comment on this selection" chip. `taskId` here is a session key,
-	 * and a project terminal's key names no task at all — commenting there writes
-	 * a review nothing owns, so it stays off unless the host says otherwise.
-	 */
-	canComment?: boolean;
 }
 
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, canComment = false }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -341,55 +331,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	tRef.current = t;
 	const containerRef = useRef<HTMLDivElement>(null);
 	const wrapperRef = useRef<HTMLDivElement>(null);
-	// Comment on selected terminal text: the selection gesture that auto-copies
-	// also offers a chip; the chip opens the shared review composer and the
-	// comment lands on the task review with a terminal-text anchor.
-	const reviewTask = useMemo(() => ({ id: taskId }), [taskId]);
-	const review = useTaskReview(reviewTask, projectId);
-	const reviewSend = useReviewSend(taskId, projectId, review);
-	const [selectionComment, setSelectionComment] = useState<{ text: string; x: number; y: number; composing: boolean } | null>(null);
-	const selectionCommentTimerRef = useRef<number | null>(null);
-	// Where the pointer last let go inside this terminal, for a chip that arrives
-	// without a mouse event of its own: a tmux selection copies through OSC 52,
-	// which reaches the renderer as a message, not as the mouseup that made it.
-	const lastPointerUpRef = useRef<{ x: number; y: number } | null>(null);
-	const offerSelectionCommentRef = useRef<(text: string, event: MouseEvent | null) => void>(() => {});
-	offerSelectionCommentRef.current = (text, event) => {
-		if (!canComment) return;
-		const wrapper = wrapperRef.current;
-		if (!wrapper) return;
-		const rect = wrapper.getBoundingClientRect();
-		const point = event
-			? { x: event.clientX - rect.left, y: event.clientY - rect.top }
-			: lastPointerUpRef.current ?? { x: rect.width / 2, y: 48 };
-		const x = Math.max(8, Math.min(point.x, rect.width - 120));
-		const y = Math.max(40, Math.min(point.y, rect.height - 8));
-		if (selectionCommentTimerRef.current) window.clearTimeout(selectionCommentTimerRef.current);
-		setSelectionComment({ text, x, y, composing: false });
-		// The chip is an offer, not a mode: it goes away on its own.
-		selectionCommentTimerRef.current = window.setTimeout(() => {
-			setSelectionComment((current) => (current && !current.composing ? null : current));
-		}, 6000);
-	};
-	const dismissSelectionCommentRef = useRef<() => void>(() => {});
-	dismissSelectionCommentRef.current = () => {
-		setSelectionComment((current) => (current && !current.composing ? null : current));
-	};
-	const addSelectionComment = (body: string, andSend: boolean) => {
-		if (!selectionComment) return;
-		const comment: ReviewComment = {
-			id: crypto.randomUUID(),
-			body,
-			createdAt: new Date().toISOString(),
-			anchor: { kind: "terminal-text", excerpt: clipReviewExcerpt(selectionComment.text) },
-		};
-		const saved = review.add(comment);
-		setSelectionComment(null);
-		// The "saved" toast waits for the task record: it used to fire next to the
-		// error toast of the very RPC that refused the comment.
-		if (andSend) reviewSend.sendOne(comment);
-		else void saved.then((ok) => { if (ok) toast.info(t("terminal.commentAdded"), { taskId }); });
-	};
 	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
 	// The pane the search resolved to, and its %-rect over the terminal canvas —
@@ -715,9 +656,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					{ method, len: text.length },
 				);
 			});
-			// A tmux mouse selection lands here rather than in the ghostty bridge, so
-			// this is where the terminal offers to turn it into a review comment.
-			if (text.trim()) offerSelectionCommentRef.current(text, null);
 		}
 
 		window.addEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
@@ -1726,7 +1664,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			function onMouseDown(event: MouseEvent) {
 				if (disposed) return;
-				dismissSelectionCommentRef.current();
 				try {
 					const container = containerRef.current;
 					selectionGestureActive =
@@ -1739,7 +1676,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}
 			}
 
-			function onMouseUp(event: MouseEvent) {
+			function onMouseUp() {
 				if (disposed) return;
 				if (!selectionGestureActive) return;
 				selectionGestureActive = false;
@@ -1750,7 +1687,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						if (mouseTracking || !term.hasSelection()) return;
 						const text = term.getSelection();
 						if (!text) return;
-						if (text.trim()) offerSelectionCommentRef.current(text, event);
 						copyDiagnosticsRef.current?.markSelection(text.length, mouseTracking);
 						api.request.copyTerminalSelection({
 							taskId,
@@ -2700,10 +2636,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		<div
 			ref={wrapperRef}
 			className="relative w-full h-full min-h-0 overflow-hidden"
-			onMouseUpCapture={(event) => {
-				const rect = event.currentTarget.getBoundingClientRect();
-				lastPointerUpRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-			}}
 		>
 			<div
 				ref={containerRef}
@@ -2715,36 +2647,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				onDragOver={handleDragOver}
 				onDrop={handleDrop}
 			/>
-			{selectionComment && !selectionComment.composing && (
-				<button
-					type="button"
-					data-testid="terminal-comment-selection"
-					style={{ left: selectionComment.x, top: selectionComment.y }}
-					title={t("terminal.commentSelectionTitle")}
-					onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
-					onClick={(event) => { event.stopPropagation(); setSelectionComment((current) => (current ? { ...current, composing: true } : current)); }}
-					className="absolute z-30 inline-flex h-8 -translate-y-full items-center gap-1.5 rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white shadow-lg transition-colors hover:bg-accent-fill-hover"
-				>
-					<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf075"}</span>
-					<span>{t("terminal.commentSelection")}</span>
-				</button>
-			)}
-			{selectionComment?.composing && (
-				<div
-					data-testid="terminal-comment-composer"
-					style={{ left: Math.min(selectionComment.x, Math.max(8, (wrapperRef.current?.clientWidth ?? 600) - 400)), top: Math.min(selectionComment.y, Math.max(8, (wrapperRef.current?.clientHeight ?? 400) - 220)) }}
-					onMouseDown={(event) => event.stopPropagation()}
-					onClick={(event) => event.stopPropagation()}
-					className="absolute z-30 w-[min(24rem,90%)] overflow-hidden rounded-lg border border-edge bg-overlay shadow-2xl"
-				>
-					<ReviewComposer
-						anchorLabel={`${t("terminal.commentSelection")} · ${clipReviewExcerpt(selectionComment.text, 80).split("\n")[0]}`}
-						onCancel={() => setSelectionComment(null)}
-						onSubmit={(body) => addSelectionComment(body, false)}
-						onSubmitAndSend={(body) => addSelectionComment(body, true)}
-					/>
-				</div>
-			)}
 			{syncing && (
 				<div
 					data-testid="terminal-sync-gate"
