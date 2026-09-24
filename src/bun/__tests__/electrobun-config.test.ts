@@ -26,6 +26,15 @@ describe("electrobun bundled resources", () => {
 		}
 	});
 
+	it("ships the handoff worker as the bundle build-cli writes, at the path the host loads", () => {
+		expect(config.build.copy["dist/workers"]).toBe("workers");
+		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
+		expect(buildCli).toContain('"--outdir", "dist/workers"');
+		const index = readFileSync(fileURLToPath(new URL("../index.ts", import.meta.url)), "utf-8");
+		expect(index).toContain('"workers", "conversation-handoff-worker.js"');
+		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("conversation-handoff-worker.ts");
+	});
+
 	// The copy map is an allow-list, so a public asset absent from it is served as
 	// the SPA index.html instead of itself. That shipped twice: the favicons, then
 	// sw.js + manifest.webmanifest, which silently killed Web Push in every

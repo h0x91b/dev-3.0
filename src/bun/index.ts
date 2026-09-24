@@ -55,6 +55,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
+import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { shouldActivateLaunchWindow } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import type { WindowState } from "./window-state";
@@ -406,6 +407,7 @@ async function getMainViewUrl(): Promise<string> {
 
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
+configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
 configureFreezeDiagnostics({
 	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
 	version: APP_VERSION, build: lastBuildTime,

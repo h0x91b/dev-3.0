@@ -36,6 +36,7 @@ import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
 import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 import { VIEWS_DIR_AUTO_ENV } from "./self-update";
+import { configureHandoffWorker } from "./conversation-handoff-runner";
 
 const log = createLogger("headless");
 
@@ -170,6 +171,10 @@ if (!process.env.DEV3_VIEWS_DIR) {
 	if (!process.env.DEV3_VIEWS_DIR) {
 		log.warn("Could not locate dist/ with index.html", { candidates });
 	}
+}
+// Headless serves dist/ itself, and the handoff worker bundle sits inside it.
+if (process.env.DEV3_VIEWS_DIR) {
+	configureHandoffWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "conversation-handoff-worker.js"));
 }
 
 // ── Ensure ~/.dev3.0/bin/dev3 resolves to this binary ──
