@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
+import { DESTRUCTIVE_APPROVAL_TARGET, isAgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
@@ -464,7 +465,222 @@ function targetsOwnSession(taskId: string, args: ParsedArgs, context: CliContext
 	return taskId === context.taskId;
 }
 
-async function requestCompletion(
+/** Everything that differs between the completion and the cancellation approval. */
+interface DestructiveApprovalSpec {
+	kind: DestructiveApprovalKind;
+	method: "task.requestCompletion" | "task.requestCancellation";
+	label: string;
+	intro: string;
+	lateOwn: string;
+	lateOther: string;
+	declined: string;
+	declinedHint: string;
+	declinedCode: number;
+	failed: string;
+}
+
+const COMPLETION_APPROVAL: DestructiveApprovalSpec = {
+	kind: "complete",
+	method: "task.requestCompletion",
+	label: "Completed",
+	intro: "Completing a task destroys its worktree and terminal session, so it requires user approval.",
+	lateOwn: "if the user approves later, the task will complete and this session will be destroyed.",
+	lateOther: "if the user approves later, that task completes and its worktree is destroyed. This session is not the target.",
+	declined: "User declined the completion request",
+	declinedHint: "The task keeps its current status and this session stays alive.\nContinue working or ask the user what they want to change before completing.",
+	declinedCode: CLI_EXIT_CODE_COMPLETION_DECLINED,
+	failed: "Failed to request task completion",
+};
+
+const CANCELLATION_APPROVAL: DestructiveApprovalSpec = {
+	kind: "cancel",
+	method: "task.requestCancellation",
+	label: "Cancelled",
+	intro: "Cancelling a task throws its work away — branch, worktree and everything uncommitted in it — so it requires user approval.",
+	lateOwn: "if the user approves later, the task will be cancelled and this session will be destroyed.",
+	lateOther: "if the user approves later, that task is cancelled and its worktree destroyed. This session is not the target.",
+	declined: "User declined the cancellation request",
+	declinedHint: "The task keeps its current status and this session stays alive.\nAsk the user what they want done with it instead of retrying.",
+	declinedCode: CLI_EXIT_CODE_CANCELLATION_DECLINED,
+	failed: "Failed to request task cancellation",
+};
+
+// After the socket drops mid-wait, how long the CLI keeps trying to reach the
+// same app again (a dev-server restart takes a few seconds), and how often.
+const APPROVAL_REATTACH_WINDOW_MS = 60_000;
+const APPROVAL_REATTACH_INTERVAL_MS = 2_000;
+const APPROVAL_STATUS_TIMEOUT_MS = 5_000;
+
+/**
+ * The connection closed or reset AFTER it was accepted, so the app may well
+ * hold the request. Distinct from a refused connect (APP_NOT_RUNNING), where
+ * nothing was ever sent. Matched by name/code so it survives module mocks.
+ */
+function isApprovalTransportLoss(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	const code = (err as NodeJS.ErrnoException).code;
+	return err.name === "EmptyResponseError" || code === "ECONNRESET" || code === "EPIPE";
+}
+
+function isSocketTimeout(err: unknown): boolean {
+	return err instanceof Error && err.message.startsWith("Socket timeout");
+}
+
+/** Read-only probe. Null when the app cannot say (unreachable, or too old to know the method). */
+async function probeApprovalStatus(
+	socketPath: string,
+	kind: DestructiveApprovalKind,
+	params: Record<string, unknown>,
+): Promise<AgentApprovalStatus | null> {
+	try {
+		const resp = await sendRequest(socketPath, "approval.status", { ...params, kind }, {
+			timeoutMs: APPROVAL_STATUS_TIMEOUT_MS,
+		});
+		return resp.ok ? resp.data as AgentApprovalStatus : null;
+	} catch {
+		return null;
+	}
+}
+
+type ApprovalWait =
+	| { kind: "response"; resp: CliResponse }
+	| { kind: "status"; status: AgentApprovalStatus; timedOut: boolean }
+	| { kind: "unreachable"; timedOut: boolean };
+
+/**
+ * Wait for the user's answer, surviving a socket that drops mid-wait.
+ *
+ * The request lives in the app, not on this connection, so a dropped socket
+ * says nothing about it. The CLI asks the same app where it stands and, if it
+ * is still pending, re-attaches with `attachOnly` — which joins that request
+ * and can never open a new dialog. The status probe goes first on purpose: an
+ * app too old to know `attachOnly` would read the re-attach as a fresh ask.
+ * The overall deadline is the original one; a re-attach never extends it.
+ */
+async function waitForDestructiveApproval(
+	spec: DestructiveApprovalSpec,
+	params: Record<string, unknown>,
+	socketPath: string,
+): Promise<ApprovalWait> {
+	const deadline = Date.now() + COMPLETION_APPROVAL_TIMEOUT_MS;
+	let attachOnly = false;
+	let lostAt: number | null = null;
+
+	for (;;) {
+		try {
+			const resp = await sendRequest(socketPath, spec.method, attachOnly ? { ...params, attachOnly: true } : params, {
+				timeoutMs: attachOnly ? Math.max(1, deadline - Date.now()) : COMPLETION_APPROVAL_TIMEOUT_MS,
+			});
+			if (resp.ok && isAgentApprovalNotAttached(resp.data)) {
+				return { kind: "status", status: resp.data.status, timedOut: false };
+			}
+			return { kind: "response", resp };
+		} catch (err) {
+			if (isSocketTimeout(err)) {
+				const status = await probeApprovalStatus(socketPath, spec.kind, params);
+				return status ? { kind: "status", status, timedOut: true } : { kind: "unreachable", timedOut: true };
+			}
+			// Once the app has confirmed the request is pending, a refused connect is
+			// the app going away mid-wait — the same loss, not "it was never there".
+			const lost = isApprovalTransportLoss(err) || (attachOnly && err instanceof Error && err.message === "APP_NOT_RUNNING");
+			if (!lost) throw err;
+		}
+
+		lostAt ??= Date.now();
+		let pending: AgentApprovalStatus;
+		for (;;) {
+			const status = await probeApprovalStatus(socketPath, spec.kind, params);
+			if (status && status.state !== "pending") return { kind: "status", status, timedOut: false };
+			if (status) {
+				pending = status;
+				break;
+			}
+			if (Date.now() - lostAt >= APPROVAL_REATTACH_WINDOW_MS || Date.now() >= deadline) {
+				return { kind: "unreachable", timedOut: false };
+			}
+			await new Promise((r) => setTimeout(r, APPROVAL_REATTACH_INTERVAL_MS));
+		}
+		// The deadline is the original one, and only this check enforces it on the
+		// re-attach path: a connection that keeps dropping the moment it is accepted
+		// would otherwise loop here forever, long past the ten minutes.
+		if (Date.now() >= deadline) return { kind: "status", status: pending, timedOut: true };
+		if (!attachOnly) {
+			process.stderr.write("The connection to the app dropped; the request is still pending there — waiting on it again.\n");
+		}
+		attachOnly = true;
+		lostAt = null;
+	}
+}
+
+function reportApproved(spec: DestructiveApprovalSpec, taskRef: string, task: Task | undefined, ownSession: boolean, context: CliContext | null): void {
+	process.stdout.write(
+		`User approved — task ${(task?.id ?? taskRef).slice(0, 8)} moved to ${spec.label}.\n` +
+		(task?.id === context?.taskId || (!task && ownSession)
+			? "This worktree and terminal session are being destroyed now.\n"
+			: "Its worktree and terminal session are being destroyed now; this session is unaffected.\n"),
+	);
+}
+
+/**
+ * Map the app's own record of the request onto an exit. Every branch says only
+ * what the record proves: no record is NOT a decline, and only the task's live
+ * status says whether the move happened.
+ */
+function reportApprovalStatus(
+	spec: DestructiveApprovalSpec,
+	status: AgentApprovalStatus,
+	timedOut: boolean,
+	ownSession: boolean,
+	codexStopHook: boolean,
+): void {
+	const target = DESTRUCTIVE_APPROVAL_TARGET[spec.kind];
+	if (status.state === "answered" && !status.approved) {
+		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
+	}
+	if (status.taskStatus === target) {
+		if (codexStopHook) {
+			process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+			return;
+		}
+		process.stdout.write(
+			status.state === "answered"
+				? `User approved — the task is now ${spec.label}. The answer arrived while this CLI was disconnected.\n`
+				: `The task is now ${spec.label}. The app has no record of how the request was answered, only that the task moved.\n`,
+		);
+		return;
+	}
+	if (status.state === "pending") {
+		exitError(
+			timedOut ? "Timed out waiting for the user's decision — the request is still pending" : "The approval request is still pending",
+			`The dialog is still open in the app — ${ownSession ? spec.lateOwn : spec.lateOther}\n` +
+			"Running the same command again waits on that same request; it does not open a second dialog.",
+			CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
+		);
+	}
+	if (status.state === "answered") {
+		// Approved, but the task is not (yet) in the target status: the move itself
+		// is the app's to report, and this CLI must not claim it happened.
+		exitError(
+			`The user approved, but the task is ${STATUS_LABELS[status.taskStatus] || status.taskStatus}, not ${spec.label}`,
+			"The approval was recorded while this CLI was disconnected; the move did not land (yet). Check the task before asking again.",
+		);
+	}
+	exitError(
+		"The approval request's outcome is unknown",
+		`The app has no record of this request — it restarted, the record aged out, or the request never arrived — and the task is ${STATUS_LABELS[status.taskStatus] || status.taskStatus}, not ${spec.label}.\n` +
+		"That is not evidence that the user declined or never saw it. Asking again opens a NEW dialog, so check with the user first.",
+		CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN,
+	);
+}
+
+/**
+ * `dev3 task move --status completed|cancelled`: ask the user, block on the
+ * dialog, and report exactly what the app knows. Two kinds with their own exit
+ * codes, because "the work landed" and "the work is garbage" are answers an
+ * agent must be able to tell apart.
+ */
+async function requestDestructiveApproval(
+	spec: DestructiveApprovalSpec,
 	taskId: string,
 	args: ParsedArgs,
 	socketPath: string,
@@ -476,105 +692,31 @@ async function requestCompletion(
 	if (projectId) params.projectId = projectId;
 	const ownSession = targetsOwnSession(taskId, args, context);
 
-	process.stderr.write(
-		"Completing a task destroys its worktree and terminal session, so it requires user approval.\n" +
-		"Waiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n",
-	);
+	process.stderr.write(`${spec.intro}\nWaiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n`);
 
-	let resp: CliResponse;
-	try {
-		resp = await sendRequest(socketPath, "task.requestCompletion", params, {
-			timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
-		});
-	} catch (err) {
-		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
-			exitError(
-				"Timed out waiting for the user's decision",
-				ownSession
-					? "The approval dialog may still be open in the app — if the user approves later, the task will complete and this session will be destroyed."
-					: "The approval dialog may still be open in the app — if the user approves later, that task completes and its worktree is destroyed. This session is not the target.",
-			);
+	const wait = await waitForDestructiveApproval(spec, params, socketPath);
+	if (wait.kind === "status") return reportApprovalStatus(spec, wait.status, wait.timedOut, ownSession, codexStopHook);
+	if (wait.kind === "unreachable") {
+		if (wait.timedOut) {
+			exitError("Timed out waiting for the user's decision", `The approval dialog may still be open in the app — ${ownSession ? spec.lateOwn : spec.lateOther}`);
 		}
-		throw err;
-	}
-	if (!resp.ok) exitError(resp.error || "Failed to request task completion");
-
-	const result = resp.data as { approved: boolean; task?: Task };
-	if (!result.approved) {
 		exitError(
-			"User declined the completion request",
-			"The task keeps its current status and this session stays alive.\nContinue working or ask the user what they want to change before completing.",
-			CLI_EXIT_CODE_COMPLETION_DECLINED,
+			"The approval request's outcome is unknown",
+			"The connection to the app dropped mid-wait and the app could not be reached again to ask where the request stands.\n" +
+			"Nothing here says whether it was answered. Check `dev3 task show` for the task's status before asking again — a new request opens a new dialog.",
+			CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN,
 		);
 	}
 
+	const resp = wait.resp;
+	if (!resp.ok) exitError(resp.error || spec.failed);
+	const result = resp.data as { approved: boolean; task?: Task };
+	if (!result.approved) exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	if (codexStopHook) {
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
 		return;
 	}
-	process.stdout.write(
-		`User approved — task ${(result.task?.id ?? taskId).slice(0, 8)} moved to Completed.\n` +
-		(result.task?.id === context?.taskId || (!result.task && ownSession)
-			? "This worktree and terminal session are being destroyed now.\n"
-			: "Its worktree and terminal session are being destroyed now; this session is unaffected.\n"),
-	);
-}
-
-/**
- * `dev3 task move --status cancelled`: ask the user to throw this task away.
- * Mirrors {@link requestCompletion} — same blocking approval dialog, same
- * 10-minute wait — with its own exit code, because "the work landed" and "the
- * work is garbage" are answers an agent must be able to tell apart.
- */
-async function requestCancellation(
-	taskId: string,
-	args: ParsedArgs,
-	socketPath: string,
-	context: CliContext | null,
-): Promise<void> {
-	const params: Record<string, unknown> = { taskId };
-	const projectId = resolveProjectId(args.flags.project, context);
-	if (projectId) params.projectId = projectId;
-	const ownSession = targetsOwnSession(taskId, args, context);
-
-	process.stderr.write(
-		"Cancelling a task throws its work away — branch, worktree and everything uncommitted in it — so it requires user approval.\n" +
-		"Waiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n",
-	);
-
-	let resp: CliResponse;
-	try {
-		resp = await sendRequest(socketPath, "task.requestCancellation", params, {
-			timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
-		});
-	} catch (err) {
-		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
-			exitError(
-				"Timed out waiting for the user's decision",
-				ownSession
-					? "The approval dialog may still be open in the app — if the user approves later, the task will be cancelled and this session will be destroyed."
-					: "The approval dialog may still be open in the app — if the user approves later, that task is cancelled and its worktree destroyed. This session is not the target.",
-			);
-		}
-		throw err;
-	}
-	if (!resp.ok) exitError(resp.error || "Failed to request task cancellation");
-
-	const result = resp.data as { approved: boolean; task?: Task };
-	if (!result.approved) {
-		exitError(
-			"User declined the cancellation request",
-			"The task keeps its current status and this session stays alive.\nAsk the user what they want done with it instead of retrying.",
-			CLI_EXIT_CODE_CANCELLATION_DECLINED,
-		);
-	}
-
-	process.stdout.write(
-		`User approved — task ${(result.task?.id ?? taskId).slice(0, 8)} moved to Cancelled.\n` +
-		(result.task?.id === context?.taskId || (!result.task && ownSession)
-			? "This worktree and terminal session are being destroyed now.\n"
-			: "Its worktree and terminal session are being destroyed now; this session is unaffected.\n"),
-	);
+	reportApproved(spec, taskId, result.task, ownSession, context);
 }
 
 /**
@@ -705,14 +847,14 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `completed` is not a direct move — it asks the user for approval in the
 	// app and blocks until they answer (or the wait times out).
 	if (newStatus === "completed") {
-		return requestCompletion(taskId, args, socketPath, context, codexStopHook);
+		return requestDestructiveApproval(COMPLETION_APPROVAL, taskId, args, socketPath, context, codexStopHook);
 	}
 
 	// `cancelled` is the same deal, and the dialog behind it is deliberately a
 	// red one: cancelling is an agent throwing its own task away, not reporting
 	// it done.
 	if (newStatus === "cancelled") {
-		return requestCancellation(taskId, args, socketPath, context);
+		return requestDestructiveApproval(CANCELLATION_APPROVAL, taskId, args, socketPath, context, false);
 	}
 
 	const params: Record<string, unknown> = { taskId, newStatus };

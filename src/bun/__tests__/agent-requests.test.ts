@@ -21,6 +21,9 @@ import {
 	setAgentRequestLaunchChoice,
 	markAgentRequestShown,
 	holdAgentRequestAutoApprove,
+	getAgentRequestState,
+	joinAgentRequest,
+	AGENT_REQUEST_OUTCOME_TTL_MS,
 	_resetAgentRequestsForTests,
 } from "../agent-requests";
 import type { TaskDialogSubject } from "../../shared/types";
@@ -424,5 +427,47 @@ describe("a user taking the dialog over", () => {
 		expect(holdAgentRequestAutoApprove(requestId)).toBe(false);
 		expect(holdAgentRequestAutoApprove("unknown-id")).toBe(false);
 		expect(push).not.toHaveBeenCalledWith("agentLaunchAutoApproveHeld", expect.anything());
+	});
+});
+
+// What a CLI that lost its socket asks. The states must stay distinct: pending
+// is not answered, a decline is not an approval, and "no record" is neither.
+describe("getAgentRequestState / joinAgentRequest", () => {
+	it("reports pending, then the answer, per kind and task", () => {
+		expect(getAgentRequestState("cancel", "task-1")).toEqual({ state: "none" });
+		const { requestId } = createAgentRequest("cancel", "task-1", "proj-1");
+		expect(getAgentRequestState("cancel", "task-1")).toEqual({ state: "pending", requestId });
+		expect(getAgentRequestState("complete", "task-1")).toEqual({ state: "none" });
+
+		resolveAgentRequest(requestId, { approved: false });
+		expect(getAgentRequestState("cancel", "task-1")).toMatchObject({ state: "answered", requestId, approved: false });
+	});
+
+	it("forgets an answer after the TTL and when a new request for the task starts", () => {
+		const first = createAgentRequest("complete", "task-1", "proj-1");
+		resolveAgentRequest(first.requestId, { approved: true });
+		const answered = getAgentRequestState("complete", "task-1");
+		expect(answered).toMatchObject({ state: "answered", approved: true });
+		const resolvedAt = (answered as { resolvedAt: number }).resolvedAt;
+		expect(getAgentRequestState("complete", "task-1", resolvedAt + AGENT_REQUEST_OUTCOME_TTL_MS + 1)).toEqual({ state: "none" });
+
+		const again = createAgentRequest("complete", "task-2", "proj-1");
+		resolveAgentRequest(again.requestId, { approved: false });
+		const next = createAgentRequest("complete", "task-2", "proj-1");
+		expect(getAgentRequestState("complete", "task-2")).toEqual({ state: "pending", requestId: next.requestId });
+	});
+
+	it("joins only a live request and never creates one", () => {
+		expect(joinAgentRequest("cancel", "task-1")).toBeNull();
+		expect(listPendingAgentRequests("cancel")).toEqual([]);
+
+		const created = createAgentRequest("cancel", "task-1", "proj-1", { dialog: { taskTitle: "T", subject: SUBJECT } });
+		const joined = joinAgentRequest("cancel", "task-1");
+		expect(joined?.requestId).toBe(created.requestId);
+		expect(joined?.decision).toBe(created.decision);
+		expect(listPendingAgentRequests("cancel")).toHaveLength(1);
+
+		resolveAgentRequest(created.requestId, { approved: false });
+		expect(joinAgentRequest("cancel", "task-1")).toBeNull();
 	});
 });

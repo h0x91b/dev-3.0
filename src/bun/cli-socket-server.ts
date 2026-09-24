@@ -16,7 +16,8 @@ import { SharedImageError, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
-import { createAgentRequest } from "./agent-requests";
+import { createAgentRequest, getAgentRequestState, joinAgentRequest } from "./agent-requests";
+import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../shared/agent-approval";
 import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
@@ -343,6 +344,72 @@ function readEnvParam(params: Record<string, unknown>): Record<string, string> |
 function readServerParams(params: Record<string, unknown>): { server?: string; all?: boolean } {
 	const server = typeof params.server === "string" && params.server ? params.server : undefined;
 	return { ...(server ? { server } : {}), ...(params.all === true ? { all: true } : {}) };
+}
+
+function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
+	const known = getAgentRequestState(kind, task.id);
+	return {
+		kind,
+		state: known.state,
+		...(known.state === "answered" ? { approved: known.approved } : {}),
+		taskStatus: task.status,
+	};
+}
+
+/**
+ * Completion and cancellation: one blocking approval each, pushed to every
+ * client and settled by the first answer.
+ *
+ * `attachOnly` is the re-attach a CLI makes after its socket dropped mid-wait.
+ * It joins the live request or reports how it ended, and never creates one: a
+ * restarted app has no request left, and opening a fresh dialog then would be a
+ * second ask the agent never made.
+ */
+async function requestDestructiveApproval(
+	kind: DestructiveApprovalKind,
+	params: Record<string, unknown>,
+): Promise<{ approved: boolean; task?: Task } | AgentApprovalNotAttached> {
+	const { project, task } = await resolveTaskFromParams(params);
+	const targetStatus = DESTRUCTIVE_APPROVAL_TARGET[kind];
+	const push = getPushMessage();
+	const dialog = {
+		taskTitle: getTaskTitle(task),
+		// Full read-only context (project, seq, priority, labels, overview)
+		// so the user recognizes which task the prompt destroys.
+		subject: buildTaskDialogSubject(task, project),
+	};
+
+	let request: { requestId: string; decision: Promise<{ approved: boolean }> };
+	if (params.attachOnly === true) {
+		const joined = joinAgentRequest(kind, task.id);
+		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
+		request = joined;
+	} else {
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		if (!push) {
+			throw new Error("No app window is connected — cannot ask the user for approval");
+		}
+		// Kept ON the request, not just pushed: the push is a one-shot event, so a
+		// renderer that reloads before answering can be handed it again on connect.
+		request = createAgentRequest(kind, task.id, project.id, { dialog });
+	}
+
+	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
+	// used to push nothing, so once a client lost the original dialog the request
+	// became unreachable from the CLI side (h0x91b/dev-3.0#1669). Clients dedup by
+	// `requestId`, so a dialog already on screen is untouched.
+	push?.(kind === "complete" ? "agentCompletionRequested" : "agentCancellationRequested", {
+		requestId: request.requestId, taskId: task.id, projectId: project.id, ...dialog,
+	});
+
+	const { approved } = await request.decision;
+	if (!approved) return { approved: false };
+	// Every caller joined to this request lands here; a repeat move to the same
+	// status is a no-op in the lifecycle machine.
+	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+	return { approved: true, task: updated };
 }
 
 /**
@@ -2050,36 +2117,7 @@ const handlers: Record<string, Handler> = {
 	// approves or declines in the app UI. Approval executes the move even if
 	// the requesting CLI has already disconnected (its tmux session may have
 	// hit a client-side timeout while the dialog stayed open).
-	"task.requestCompletion": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
-		if (task.status === "completed" || task.status === "cancelled") {
-			throw new Error(`Task is already ${task.status}`);
-		}
-		const push = getPushMessage();
-		if (!push) {
-			throw new Error("No app window is connected — cannot ask the user for approval");
-		}
-
-		// Kept ON the request, not just pushed: the push is a one-shot event, so a
-		// renderer that reloads before answering could never be handed the dialog
-		// again (a retry joins instead of re-pushing). It asks for this on connect.
-		const dialog = {
-			taskTitle: getTaskTitle(task),
-			// Full read-only context (project, seq, priority, labels, overview)
-			// so the user recognizes which task the prompt destroys.
-			subject: buildTaskDialogSubject(task, project),
-		};
-		const { requestId, decision } = createAgentRequest("complete", task.id, project.id, { dialog });
-		// Pushed on EVERY attempt — see the note on `task.requestCancellation`.
-		push("agentCompletionRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
-
-		const { approved } = await decision;
-		if (!approved) {
-			return { approved: false };
-		}
-		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "completed" });
-		return { approved: true, task: updated };
-	},
+	"task.requestCompletion": async (params) => requestDestructiveApproval("complete", params),
 
 	// Agent-initiated request to CANCEL a task — an agent cleaning up a task it
 	// should not have created. Same approval model as `task.requestCompletion`,
@@ -2087,36 +2125,15 @@ const handlers: Record<string, Handler> = {
 	// work away, and the dialog asking for it must not look like the other one.
 	// Never auto-approved (no `autoApproveAfterMs`) — nobody loses a worktree to
 	// a dialog they never saw.
-	"task.requestCancellation": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
-		if (task.status === "completed" || task.status === "cancelled") {
-			throw new Error(`Task is already ${task.status}`);
-		}
-		const push = getPushMessage();
-		if (!push) {
-			throw new Error("No app window is connected — cannot ask the user for approval");
-		}
+	"task.requestCancellation": async (params) => requestDestructiveApproval("cancel", params),
 
-		const dialog = {
-			taskTitle: getTaskTitle(task),
-			subject: buildTaskDialogSubject(task, project),
-		};
-		const { requestId, decision } = createAgentRequest("cancel", task.id, project.id, { dialog });
-		// Pushed on EVERY attempt, joined retries included. A retry used to push
-		// nothing, so once a client lost the original dialog — it was never
-		// connected, its transport dropped, the window reloaded mid-flight — the
-		// request became unreachable from the CLI side: every further attempt
-		// blocked the full ten minutes with nothing on screen, and only a NEW
-		// client connecting replayed it (h0x91b/dev-3.0#1669). Clients dedup by
-		// `requestId`, so a dialog already on screen is untouched.
-		push("agentCancellationRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
-
-		const { approved } = await decision;
-		if (!approved) {
-			return { approved: false };
-		}
-		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "cancelled" });
-		return { approved: true, task: updated };
+	// Read-only: where a completion/cancellation request stands. Never creates,
+	// joins or answers one — it is what a CLI asks after its wait timed out.
+	"approval.status": async (params) => {
+		const kind = params.kind;
+		if (kind !== "complete" && kind !== "cancel") throw new Error('kind must be "complete" or "cancel"');
+		const { task } = await resolveTaskFromParams(params);
+		return approvalStatusOf(kind, task);
 	},
 
 	// UI control: surface an in-app toast (or native OS notification) from the CLI.

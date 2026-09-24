@@ -1171,6 +1171,184 @@ describe("task move --status cancelled", () => {
 	});
 });
 
+// ─── approval after a dropped socket ────────────────────────────────────────
+// The request lives in the app, not on the connection. When the socket drops
+// mid-wait the CLI asks the SAME app where it stands (approval.status) and only
+// re-attaches (attachOnly) to a request it confirmed is pending — so neither a
+// retry nor a restart can ever open a second dialog. Pending, declined,
+// approved and unknown each get their own exit.
+
+function emptyResponse(): Error {
+	const err = new Error("Empty response from server");
+	err.name = "EmptyResponseError";
+	return err;
+}
+
+type Step = CliResponse | Error;
+
+/** Script sendRequest per method; each call consumes the next step (the last one repeats). */
+function script(steps: Record<string, Step[]>): void {
+	mockSend.mockImplementation(async (_socket, method) => {
+		const queue = steps[method];
+		if (!queue || queue.length === 0) throw new Error(`unexpected ${method}`);
+		const step = queue.length > 1 ? queue.shift()! : queue[0];
+		if (step instanceof Error) throw step;
+		return step;
+	});
+}
+
+function status(state: "pending" | "answered" | "none", taskStatus: string, approved?: boolean) {
+	return okResp({ kind: "cancel", state, taskStatus, ...(approved === undefined ? {} : { approved }) });
+}
+
+function callsOf(method: string) {
+	return mockSend.mock.calls.filter((call) => call[1] === method);
+}
+
+describe.each([
+	{ status: "cancelled", method: "task.requestCancellation", declineExit: "EXIT_22" },
+	{ status: "completed", method: "task.requestCompletion", declineExit: "EXIT_6" },
+] as const)("task move --status $status after the socket drops", ({ status: target, method, declineExit }) => {
+	it("re-attaches to a request the app confirms is pending, and reports the user's answer", async () => {
+		script({
+			[method]: [emptyResponse(), okResp({ approved: true, task: { ...FAKE_TASK, status: target } })],
+			"approval.status": [status("pending", "in-progress")],
+		});
+
+		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
+
+		const requests = callsOf(method);
+		expect(requests).toHaveLength(2);
+		expect(requests[0][2]).toEqual({ taskId: "aaaaaaaa" });
+		expect(requests[1][2]).toEqual({ taskId: "aaaaaaaa", attachOnly: true });
+		expect(stderrOutput).toContain("still pending there");
+		expect(stdoutOutput).toContain("User approved");
+	});
+
+	it("never re-sends the request when the app says the user already declined", async () => {
+		script({ [method]: [emptyResponse()], "approval.status": [status("answered", "in-progress", false)] });
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow(declineExit);
+		expect(callsOf(method)).toHaveLength(1);
+		expect(stderrOutput).toContain("User declined");
+	});
+
+	it("reports an approval that landed while disconnected as success", async () => {
+		script({ [method]: [emptyResponse()], "approval.status": [status("answered", target, true)] });
+
+		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
+		expect(callsOf(method)).toHaveLength(1);
+		expect(stdoutOutput).toContain("User approved");
+	});
+
+	it("exits 26 without re-asking when the app has no record and the task has not moved", async () => {
+		script({ [method]: [emptyResponse()], "approval.status": [status("none", "in-progress")] });
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("EXIT_26");
+		expect(callsOf(method)).toHaveLength(1);
+		expect(stderrOutput).toContain("outcome is unknown");
+		// No record is not evidence either way.
+		expect(stderrOutput).toContain("not evidence");
+		expect(stderrOutput).not.toContain("User declined");
+		expect(stderrOutput).not.toMatch(/nothing was approved/i);
+	});
+
+	it("reports the move when the app has no record but the task reached its target", async () => {
+		script({ [method]: [emptyResponse()], "approval.status": [status("none", target)] });
+
+		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
+		expect(stdoutOutput).toContain("no record of how the request was answered");
+		expect(stdoutOutput).not.toContain("User approved");
+	});
+
+	it("never re-attaches through an app that does not know approval.status", async () => {
+		vi.useFakeTimers();
+		try {
+			// An old app would read attachOnly as a fresh ask and answer it; the CLI
+			// must never get that far.
+			script({
+				[method]: [emptyResponse(), okResp({ approved: true, task: { ...FAKE_TASK, status: target } })],
+				"approval.status": [errResp("Unknown method: approval.status")],
+			});
+
+			const run = expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("EXIT_26");
+			await vi.advanceTimersByTimeAsync(61_000);
+			await run;
+			expect(callsOf(method)).toHaveLength(1);
+			expect(stderrOutput).toContain("could not be reached again");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps probing through a restart window, then re-attaches", async () => {
+		vi.useFakeTimers();
+		try {
+			const appDown = new Error("APP_NOT_RUNNING");
+			script({
+				[method]: [emptyResponse(), okResp({ approved: false })],
+				"approval.status": [appDown, appDown, status("pending", "in-progress")],
+			});
+
+			const run = expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow(declineExit);
+			await vi.advanceTimersByTimeAsync(10_000);
+			await run;
+			expect(callsOf("approval.status")).toHaveLength(3);
+			expect(callsOf(method)[1][2]).toMatchObject({ attachOnly: true });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("exits 25 when the wait ran out and the app says the request is still pending", async () => {
+		script({ [method]: [new Error("Socket timeout (600s)")], "approval.status": [status("pending", "in-progress")] });
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("EXIT_25");
+		expect(callsOf(method)).toHaveLength(1);
+		expect(stderrOutput).toContain("still pending");
+		expect(stderrOutput).toContain("does not open a second dialog");
+	});
+
+	it("does not treat a refused first connect as a lost request", async () => {
+		script({ [method]: [new Error("APP_NOT_RUNNING")], "approval.status": [status("pending", "in-progress")] });
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("APP_NOT_RUNNING");
+		expect(callsOf("approval.status")).toHaveLength(0);
+	});
+
+	it("treats the app going down DURING a re-attach as another loss, not a hard error", async () => {
+		// Once the app confirmed the request is pending, a refused connect means it
+		// went away mid-wait: keep probing, do not surface APP_NOT_RUNNING.
+		script({
+			[method]: [emptyResponse(), new Error("APP_NOT_RUNNING"), okResp({ approved: false })],
+			"approval.status": [status("pending", "in-progress")],
+		});
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow(declineExit);
+		expect(callsOf(method)).toHaveLength(3);
+		expect(callsOf(method)[2][2]).toMatchObject({ attachOnly: true });
+	});
+
+	it("stops at the original deadline when the connection keeps dropping on accept", async () => {
+		vi.useFakeTimers();
+		try {
+			// Every attempt is accepted and then dropped, and the app keeps answering
+			// "pending" — without a deadline check the re-attach loop never ends.
+			mockSend.mockImplementation(async (_socket, called) => {
+				if (called === "approval.status") return status("pending", "in-progress");
+				vi.setSystemTime(Date.now() + 61_000);
+				throw emptyResponse();
+			});
+
+			await expect(handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null)).rejects.toThrow("EXIT_25");
+			expect(callsOf(method).length).toBeLessThanOrEqual(12);
+			expect(stderrOutput).toContain("still pending");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 // ─── --id flag support ───────────────────────────────────────────────────────
 // The CLI should accept --id <taskId> as an alternative to positional arg.
 // This lets agents update/show/move ANY task, not just the current one.
