@@ -3,7 +3,9 @@
 #   • dev3-notifications — UNUserNotificationCenter posting + click delegate
 #     (decisions/2026/07/05/native-notification-click-shim.md);
 #   • dev3-window-menu   — registers the Window menu as NSApp.windowsMenu
-#     (decisions/2026/10/06/register-native-windows-menu.md).
+#     (decisions/2026/10/06/register-native-windows-menu.md);
+#   • dev3-mouse-nav     — swipe events (Logi-style mouse Back/Forward) → route history
+#     (decisions/2026/10/15/mouse-back-forward-swipe-shim.md).
 #
 # On Linux (and on macOS without clang) this produces an empty dist/native/ so
 # the electrobun.config.ts copy rule always has a source; each shim's loader
@@ -22,7 +24,7 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 
 if ! command -v clang >/dev/null 2>&1; then
-  echo "[build-native-macos] clang not found — skipping (no click callback, no native Window menu items)"
+  echo "[build-native-macos] clang not found — skipping (no click callback, no native Window menu items, no swipe back/forward)"
   exit 0
 fi
 
@@ -58,3 +60,4 @@ build_shim() {
 
 build_shim dev3-notifications "-framework Foundation -framework UserNotifications"
 build_shim dev3-window-menu "-framework AppKit"
+build_shim dev3-mouse-nav "-framework AppKit"

@@ -26,6 +26,7 @@ import { shouldAutoOpenDevTools } from "./devtools-auto-open";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
 import { adoptNativeWindowsMenu } from "./native-window-menu";
+import { initNativeMouseNav } from "./native-mouse-nav";
 import { handleNotificationClick } from "./notification-click";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { resolveDeepLink } from "./deep-link";
@@ -911,6 +912,9 @@ const nativeNotificationClicks = initNativeNotifications(() => {
 	log.info("[notif] native notification click", { outcome });
 });
 log.info(`[notif] click channel: ${nativeNotificationClicks ? "native delegate (foreground only)" : "none"}`);
+
+// Mouse Back/Forward buttons that the driver sends as swipes (Logi Options+).
+initNativeMouseNav((action) => sendToFocusedWindow("menuAction", { action }));
 
 // Inbound `dev3://…` deep links (macOS only — Electrobun registers the scheme
 // via CFBundleURLTypes, requires the app to live in /Applications). We resolve
