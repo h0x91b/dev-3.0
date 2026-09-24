@@ -961,7 +961,39 @@ async function reclaimStaleWorktreeDir(project: Project, wtPath: string): Promis
 	await run(["git", "worktree", "prune"], project.path);
 }
 
-const WORKTREE_ADD_RETRY_DELAYS_MS = [200, 500, 1_200];
+interface GitLockRetryPolicy {
+	attempts: number;
+	baseDelayMs: number;
+	maxDelayMs: number;
+	budgetMs: number;
+}
+
+const DEFAULT_WORKTREE_ADD_RETRY: GitLockRetryPolicy = {
+	attempts: 8,
+	baseDelayMs: 150,
+	maxDelayMs: 2_000,
+	budgetMs: 12_000,
+};
+
+let worktreeAddRetry = DEFAULT_WORKTREE_ADD_RETRY;
+
+/** Tests shrink the delays so an exhausted retry does not cost seconds of wall-clock. */
+export function _setWorktreeAddRetryPolicy(policy?: Partial<GitLockRetryPolicy>): void {
+	worktreeAddRetry = { ...DEFAULT_WORKTREE_ADD_RETRY, ...policy };
+}
+
+/**
+ * Exponential ceiling with "equal jitter": half fixed, half random. Launches that
+ * collided once must not wake up on the same millisecond and collide again.
+ */
+export function gitLockRetryDelayMs(
+	retry: number,
+	policy: Pick<GitLockRetryPolicy, "baseDelayMs" | "maxDelayMs">,
+	random: () => number = Math.random,
+): number {
+	const ceiling = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** retry);
+	return Math.round(ceiling / 2 + random() * (ceiling / 2));
+}
 
 /** Lock files git creates per-operation: another git process holds one right now. */
 function isGitLockContention(stderr: string): boolean {
@@ -970,11 +1002,25 @@ function isGitLockContention(stderr: string): boolean {
 }
 
 /**
+ * Every git command that lists worktrees dies while a sibling `worktree add` has
+ * created `.git/worktrees/<name>/commondir` but not yet written it. The errno
+ * text varies by platform ("Undefined error", "Result too large").
+ */
+function isSiblingWorktreeInitRace(stderr: string): boolean {
+	return /failed to read \S*worktrees[\\/][^\\/\s]+[\\/]commondir/i.test(stderr);
+}
+
+export function isTransientWorktreeAddFailure(stderr: string): boolean {
+	return isGitLockContention(stderr) || isSiblingWorktreeInitRace(stderr);
+}
+
+/**
  * `git worktree add` writes the new branch's tracking config into the repo-wide
- * .git/config, so variants of one task starting together lose the race for
- * config.lock ("could not lock config file … File exists"). The loser only has
- * to wait — but the failed attempt already created the branch, so every retry
- * re-runs the same reclaim the first attempt did.
+ * .git/config, so launches starting together — and any other git writing config
+ * meanwhile — lose the race for config.lock ("could not lock config file … File
+ * exists"). The loser only has to wait, but the failed attempt already created
+ * the branch (and possibly half its config section), so every retry re-runs the
+ * same reclaim the first attempt did. Other failures are returned untouched.
  */
 async function worktreeAddWithRetry(
 	args: string[],
@@ -982,16 +1028,32 @@ async function worktreeAddWithRetry(
 	wtPath: string,
 	createdBranch: string | undefined,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	const policy = worktreeAddRetry;
+	const startedAt = performance.now();
 	let result = await run(args, project.path);
-	for (const delayMs of WORKTREE_ADD_RETRY_DELAYS_MS) {
-		if (result.ok || !isGitLockContention(result.stderr)) break;
-		log.warn("Worktree add hit git lock contention, retrying", { wtPath, delayMs, stderr: result.stderr });
+	let attempt = 1;
+	while (!result.ok && isTransientWorktreeAddFailure(result.stderr) && attempt < policy.attempts) {
+		const delayMs = gitLockRetryDelayMs(attempt - 1, policy);
+		if (performance.now() - startedAt + delayMs > policy.budgetMs) break;
+		log.warn("Worktree add hit transient git contention, retrying", { wtPath, attempt, delayMs, stderr: result.stderr });
 		await new Promise((resolve) => setTimeout(resolve, delayMs));
+		attempt++;
 		await reclaimStaleWorktreeDir(project, wtPath);
 		if (createdBranch && await localBranchExists(project.path, createdBranch)) {
 			await run(["git", "branch", "-D", createdBranch], project.path);
+			// The reclaim can lose the same race. `add -b` over a surviving branch
+			// fails with a permanent "already exists", so spend the attempt waiting.
+			if (await localBranchExists(project.path, createdBranch)) continue;
 		}
 		result = await run(args, project.path);
+	}
+	if (!result.ok && isTransientWorktreeAddFailure(result.stderr) && attempt > 1) {
+		const elapsedS = ((performance.now() - startedAt) / 1000).toFixed(1);
+		log.error("Worktree add gave up on transient git contention", { wtPath, attempts: attempt, elapsedS });
+		return {
+			...result,
+			stderr: `${result.stderr.trimEnd()}\n(gave up after ${attempt} attempts over ${elapsedS}s: other git processes kept the repository busy)`,
+		};
 	}
 	return result;
 }

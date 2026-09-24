@@ -28,6 +28,9 @@ import {
 	removeWorktree,
 	createWorktree,
 	_resetFetchState,
+	_setWorktreeAddRetryPolicy,
+	gitLockRetryDelayMs,
+	isTransientWorktreeAddFailure,
 	getDefaultBranch,
 	isGitRepo,
 	applySparseCheckout,
@@ -620,57 +623,221 @@ describe("createWorktree", () => {
 		g("git branch -D dev3/task-dddddddd", repo.local);
 	});
 
-	// Variants of one task race for .git/config.lock while writing the new
+	// Launches starting together race for .git/config.lock while writing the new
 	// branch's upstream config; the loser exits after the branch already exists.
-	it("retries through .git/config lock contention held by another git process", async () => {
-		const project = makeProject(repo.local);
-		const task = makeTask({ id: "abababab-cdcd-efef-0101-232323232323" });
-		const lockPath = join(repo.local, ".git", "config.lock");
-		writeFileSync(lockPath, "");
-		const before = spawnedCommands.length;
-		// Released only once the first attempt has provably failed — the retry's
-		// `branch -D` of the leftover branch is what proves it. A timer here would
-		// let the lock expire before git ever reached the config write.
-		const release = setInterval(() => {
-			const cleanedUp = spawnedCommands
-				.slice(before)
-				.some((cmd) => cmd.join(" ").includes("branch -D dev3/task-abababab"));
-			if (cleanedUp) rmSync(lockPath, { force: true });
-		}, 5);
+	describe("transient git contention", () => {
+		const addsSince = (before: number) => spawnedCommands
+			.slice(before)
+			.filter((cmd) => cmd.join(" ").includes("worktree add"));
+		const branchDeletesSince = (before: number, branch: string) => spawnedCommands
+			.slice(before)
+			.filter((cmd) => cmd.join(" ").includes(`branch -D ${branch}`));
 
-		try {
-			const result = await createWorktree(project, task);
-			expect(existsSync(result.worktreePath)).toBe(true);
-			expect(result.branchName).toBe("dev3/task-abababab");
-			const adds = spawnedCommands
-				.slice(before)
-				.filter((cmd) => cmd.join(" ").includes("worktree add"));
-			expect(adds.length).toBeGreaterThanOrEqual(2);
-			g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
-			g("git branch -D dev3/task-abababab", repo.local);
-		} finally {
-			clearInterval(release);
-			rmSync(lockPath, { force: true });
-		}
+		beforeEach(() => _setWorktreeAddRetryPolicy({ baseDelayMs: 40, maxDelayMs: 80 }));
+		afterEach(() => _setWorktreeAddRetryPolicy());
+
+		it("retries through .git/config lock contention held by another git process", async () => {
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "abababab-cdcd-efef-0101-232323232323" });
+			const lockPath = join(repo.local, ".git", "config.lock");
+			writeFileSync(lockPath, "");
+			const before = spawnedCommands.length;
+			// Released only once the first attempt has provably failed — the retry's
+			// `branch -D` of the leftover branch is what proves it. A timer here would
+			// let the lock expire before git ever reached the config write.
+			// Once only: a second rmSync would delete git's own config.lock mid-write.
+			const release = setInterval(() => {
+				if (branchDeletesSince(before, "dev3/task-abababab").length > 0) {
+					clearInterval(release);
+					rmSync(lockPath, { force: true });
+				}
+			}, 5);
+
+			try {
+				const result = await createWorktree(project, task);
+				expect(existsSync(result.worktreePath)).toBe(true);
+				expect(result.branchName).toBe("dev3/task-abababab");
+				expect(addsSince(before).length).toBeGreaterThanOrEqual(2);
+				expect(g("git config branch.dev3/task-abababab.merge", repo.local).trim()).toBe("refs/heads/main");
+				g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+				g("git branch -D dev3/task-abababab", repo.local);
+			} finally {
+				clearInterval(release);
+				rmSync(lockPath, { force: true });
+			}
+		});
+
+		it("gives up after the attempt cap when the config lock is never released", async () => {
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "bcbcbcbc-cdcd-efef-0101-232323232323" });
+			const lockPath = join(repo.local, ".git", "config.lock");
+			writeFileSync(lockPath, "");
+			const before = spawnedCommands.length;
+
+			try {
+				const error = await createWorktree(project, task).then(() => null, (err: Error) => err);
+				expect(error?.message).toMatch(/could not lock config file/);
+				expect(error?.message).toMatch(/gave up after 8 attempts over \d+\.\ds/);
+				expect(addsSince(before)).toHaveLength(8);
+				// dev3 waits for somebody else's lock; it never removes it.
+				expect(existsSync(lockPath)).toBe(true);
+			} finally {
+				rmSync(lockPath, { force: true });
+				g("git branch -D dev3/task-bcbcbcbc", repo.local);
+			}
+		});
+
+		it("stops at the time budget before the attempt cap", async () => {
+			_setWorktreeAddRetryPolicy({ baseDelayMs: 200, maxDelayMs: 200, budgetMs: 350 });
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "cdcdcdcd-cdcd-efef-0101-232323232323" });
+			const lockPath = join(repo.local, ".git", "config.lock");
+			writeFileSync(lockPath, "");
+			const before = spawnedCommands.length;
+
+			try {
+				await expect(createWorktree(project, task)).rejects.toThrow(/could not lock config file/);
+				const adds = addsSince(before).length;
+				expect(adds).toBeGreaterThanOrEqual(2);
+				expect(adds).toBeLessThan(8);
+			} finally {
+				rmSync(lockPath, { force: true });
+				g("git branch -D dev3/task-cdcdcdcd", repo.local);
+			}
+		});
+
+		// A failed attempt leaves its branch behind. If deleting it loses the race
+		// too, `add -b` would hit a permanent "already exists" — so the round waits.
+		it("waits instead of re-adding when the leftover branch cannot be reclaimed yet", async () => {
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "acacacac-cdcd-efef-0101-232323232323" });
+			const configLock = join(repo.local, ".git", "config.lock");
+			const refLock = join(repo.local, ".git", "refs", "heads", "dev3", "task-acacacac.lock");
+			writeFileSync(configLock, "");
+			const before = spawnedCommands.length;
+			let refLocked = false;
+			const choreograph = setInterval(() => {
+				const deletes = branchDeletesSince(before, "dev3/task-acacacac").length;
+				if (!refLocked && deletes === 0 && addsSince(before).length === 1
+					&& existsSync(join(repo.local, ".git", "refs", "heads", "dev3", "task-acacacac"))) {
+					refLocked = true;
+					writeFileSync(refLock, "");
+				}
+				if (deletes >= 2) {
+					clearInterval(choreograph);
+					rmSync(refLock, { force: true });
+					rmSync(configLock, { force: true });
+				}
+			}, 2);
+
+			try {
+				const result = await createWorktree(project, task);
+				expect(existsSync(result.worktreePath)).toBe(true);
+				expect(branchDeletesSince(before, "dev3/task-acacacac").length).toBeGreaterThanOrEqual(2);
+				g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+				g("git branch -D dev3/task-acacacac", repo.local);
+			} finally {
+				clearInterval(choreograph);
+				rmSync(refLock, { force: true });
+				rmSync(configLock, { force: true });
+			}
+		});
+
+		// Every worktree-listing git command dies on a sibling whose metadata dir
+		// exists but whose commondir is still empty — a sibling `worktree add` mid-way.
+		it("retries past a sibling worktree that is still initializing, without touching it", async () => {
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "dededede-cdcd-efef-0101-232323232323" });
+			const sibling = join(repo.local, ".git", "worktrees", "sibling-in-flight");
+			mkdirSync(sibling, { recursive: true });
+			writeFileSync(join(sibling, "locked"), "initializing");
+			writeFileSync(join(sibling, "gitdir"), `${join(repo.dir, "sibling-in-flight")}/.git\n`);
+			writeFileSync(join(sibling, "commondir"), "");
+			const before = spawnedCommands.length;
+			const finishSibling = setInterval(() => {
+				if (addsSince(before).length > 0 && branchDeletesSince(before, "dev3/task-dededede").length > 0) {
+					clearInterval(finishSibling);
+					writeFileSync(join(sibling, "commondir"), "../..\n");
+				}
+			}, 5);
+
+			try {
+				const result = await createWorktree(project, task);
+				expect(existsSync(result.worktreePath)).toBe(true);
+				expect(addsSince(before).length).toBeGreaterThanOrEqual(2);
+				expect(readFileSync(join(sibling, "locked"), "utf-8")).toBe("initializing");
+				g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+				g("git branch -D dev3/task-dededede", repo.local);
+			} finally {
+				clearInterval(finishSibling);
+				rmSync(sibling, { recursive: true, force: true });
+			}
+		});
+
+		it("does not retry a failure that is not contention", async () => {
+			const project = makeProject(repo.local);
+			const task = makeTask({ id: "efefefef-cdcd-efef-0101-232323232323" });
+			const before = spawnedCommands.length;
+
+			await expect(createWorktree(project, task, "no-such-branch")).rejects.toThrow(/invalid reference|not a valid/);
+			expect(addsSince(before)).toHaveLength(1);
+		});
+
+		it("lands every launch of a concurrent batch while another process keeps writing config", async () => {
+			const project = makeProject(repo.local);
+			const tasks = Array.from({ length: 8 }, (_, i) => makeTask({ id: `f${i}f${i}f${i}f${i}-cdcd-efef-0101-232323232323` }));
+			let stop = false;
+			const noise = (async () => {
+				for (let i = 0; !stop; i++) {
+					await new Promise((resolve) => setTimeout(resolve, 1));
+					try { g(`git config dev3test.noise ${i}`, repo.local); } catch { /* lost the lock to a launch */ }
+				}
+			})();
+
+			try {
+				const results = await Promise.all(tasks.map((task) => createWorktree(project, task)));
+				expect(new Set(results.map((r) => r.branchName)).size).toBe(8);
+				const branches = g('git branch --format="%(refname:short)"', repo.local).split("\n");
+				expect(branches.filter((b) => b.startsWith("dev3/task-f")).sort())
+					.toEqual(results.map((r) => r.branchName).sort());
+				for (const r of results) {
+					expect(existsSync(r.worktreePath)).toBe(true);
+					expect(g(`git config branch.${r.branchName}.merge`, repo.local).trim()).toBe("refs/heads/main");
+				}
+			} finally {
+				stop = true;
+				await noise;
+			}
+		});
+	});
+});
+
+describe("git contention classification", () => {
+	it("treats config, ref and sibling-initializing failures as transient", () => {
+		expect(isTransientWorktreeAddFailure("error: could not lock config file .git/config: File exists")).toBe(true);
+		expect(isTransientWorktreeAddFailure(
+			"fatal: cannot lock ref 'refs/heads/x': Unable to create '/r/.git/refs/heads/x.lock': File exists.",
+		)).toBe(true);
+		expect(isTransientWorktreeAddFailure(
+			"fatal: failed to read .git/worktrees/worktree5/commondir: Undefined error: 0",
+		)).toBe(true);
+		expect(isTransientWorktreeAddFailure(
+			"fatal: failed to read C:\\r\\.git\\worktrees\\wt\\commondir: Result too large",
+		)).toBe(true);
 	});
 
-	it("gives up after 3 retries when the config lock is never released", async () => {
-		const project = makeProject(repo.local);
-		const task = makeTask({ id: "bcbcbcbc-cdcd-efef-0101-232323232323" });
-		const lockPath = join(repo.local, ".git", "config.lock");
-		writeFileSync(lockPath, "");
-		const before = spawnedCommands.length;
+	it("leaves permanent failures alone", () => {
+		expect(isTransientWorktreeAddFailure("fatal: a branch named 'x' already exists")).toBe(false);
+		expect(isTransientWorktreeAddFailure("fatal: invalid reference: nope")).toBe(false);
+		expect(isTransientWorktreeAddFailure("fatal: 'x' is already used by worktree at '/y'")).toBe(false);
+	});
 
-		try {
-			await expect(createWorktree(project, task)).rejects.toThrow(/could not lock config file/);
-			const adds = spawnedCommands
-				.slice(before)
-				.filter((cmd) => cmd.join(" ").includes("worktree add"));
-			expect(adds).toHaveLength(4);
-		} finally {
-			rmSync(lockPath, { force: true });
-			g("git branch -D dev3/task-bcbcbcbc", repo.local);
-		}
+	it("backs off exponentially up to the cap, with half of each delay random", () => {
+		const policy = { baseDelayMs: 150, maxDelayMs: 2_000 };
+		expect([0, 1, 2, 3, 4, 5].map((r) => gitLockRetryDelayMs(r, policy, () => 1)))
+			.toEqual([150, 300, 600, 1_200, 2_000, 2_000]);
+		expect([0, 1, 2, 3, 4, 5].map((r) => gitLockRetryDelayMs(r, policy, () => 0)))
+			.toEqual([75, 150, 300, 600, 1_000, 1_000]);
 	});
 });
 
