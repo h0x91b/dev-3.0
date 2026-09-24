@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { ModelCatalog } from "../../shared/model-catalog";
@@ -6,6 +6,8 @@ import type { ModelCatalog } from "../../shared/model-catalog";
 const h = vi.hoisted(() => ({
 	spawnMock: vi.fn(),
 	getDescendantPids: vi.fn<(pid: number) => Promise<number[]>>(),
+	findPortHolders: vi.fn(),
+	freePorts: null as Set<number> | null,
 	fs: {
 		existsSync: vi.fn((p: string) => p === "/opt/dev3/bifrost-http"),
 		mkdirSync: vi.fn(),
@@ -14,14 +16,40 @@ const h = vi.hoisted(() => ({
 		}),
 		writeFileSync: vi.fn(),
 		chmodSync: vi.fn(),
-		realpathSync: vi.fn(() => "/apps/dev3.app/Contents/MacOS/bun"),
+		appendFileSync: vi.fn(),
+		realpathSync: vi.fn((_path?: string) => "/apps/dev3.app/Contents/MacOS/bun"),
 	},
 	catalog: vi.fn<() => ModelCatalog>(),
 	keys: vi.fn<() => Record<string, string>>(),
 }));
 
 vi.mock("../spawn", () => ({ spawn: h.spawnMock }));
-vi.mock("../port-scanner", () => ({ getDescendantPids: h.getDescendantPids }));
+vi.mock("node:net", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:net")>();
+	return {
+		...actual,
+		createServer: (...args: Parameters<typeof actual.createServer>) => {
+			if (!h.freePorts) return actual.createServer(...args);
+			let error!: () => void;
+			let port = 0;
+			const server = {
+				unref() {},
+				once(_event: string, callback: () => void) { error = callback; },
+				listen(options: { port: number }, callback: () => void) {
+					port = options.port || 47312;
+					queueMicrotask(() => options.port === 0 || h.freePorts?.has(port) ? callback() : error());
+				},
+				address: () => ({ port }),
+				close(callback?: () => void) { callback?.(); },
+			};
+			return server;
+		},
+	};
+});
+vi.mock("../port-scanner", () => ({
+	getDescendantPids: h.getDescendantPids,
+	findPortHolders: h.findPortHolders,
+}));
 vi.mock("node:fs", () => h.fs);
 vi.mock("../paths", () => ({ DEV3_HOME: "/tmp/dev3-model-catalog-test" }));
 vi.mock("../model-catalog-store", () => ({
@@ -99,6 +127,10 @@ beforeEach(() => {
 	vi.unstubAllGlobals();
 	process.env.DEV3_BIFROST_BINARY = "/opt/dev3/bifrost-http";
 	h.getDescendantPids.mockResolvedValue([]);
+	h.findPortHolders.mockResolvedValue([]);
+	h.freePorts = null;
+	h.fs.realpathSync.mockImplementation((path?: string) =>
+		path?.includes("model-catalog-runtime") ? path : "/apps/dev3.app/Contents/MacOS/bun");
 	h.catalog.mockReturnValue(CATALOG);
 	h.keys.mockReturnValue({ "p-or": "sk-or-live", "p-custom": "sk-custom" });
 	h.fs.existsSync.mockImplementation((p: string) => p === "/opt/dev3/bifrost-http");
@@ -108,6 +140,15 @@ beforeEach(() => {
 	h.spawnMock.mockImplementation(() => liveProcess());
 	stubHttp();
 });
+
+afterEach(() => vi.restoreAllMocks());
+
+function remember(endpoint: unknown) {
+	h.fs.readFileSync.mockImplementation((target: string) => {
+		if (String(target).endsWith("endpoint.json")) return JSON.stringify(endpoint);
+		throw new Error("ENOENT");
+	});
+}
 
 describe("binary resolution", () => {
 	it("prefers an explicit development override", async () => {
@@ -247,16 +288,9 @@ describe("starting", () => {
 
 describe("surviving a restart", () => {
 	/** What the last start wrote to endpoint.json, or null. */
-	function rememberedEndpoint(): { port: number; sessionKey: string } | null {
+	function rememberedEndpoint(): { port: number; sessionKey: string; pid: number; ownerPid: number } | null {
 		const call = h.fs.writeFileSync.mock.calls.find(([target]) => String(target).endsWith("endpoint.json"));
 		return call ? JSON.parse(String(call[1])) : null;
-	}
-
-	function remember(endpoint: unknown) {
-		h.fs.readFileSync.mockImplementation((target: string) => {
-			if (String(target).endsWith("endpoint.json")) return JSON.stringify(endpoint);
-			throw new Error("ENOENT");
-		});
 	}
 
 	it("remembers the port and the session key it launched on", async () => {
@@ -266,6 +300,21 @@ describe("surviving a restart", () => {
 		expect(saved).toBeTruthy();
 		expect(runtime.baseUrl).toBe(`http://127.0.0.1:${saved?.port}`);
 		expect(saved?.sessionKey).toBe(runtime.sessionKey);
+		expect(saved?.pid).toBe(5150);
+		expect(saved?.ownerPid).toBe(process.pid);
+	});
+
+	it("loads endpoints written before ownership was recorded", async () => {
+		const endpoint = { port: 47311, sessionKey: "sk-bf-rememberedkey" };
+		remember(endpoint);
+		const { loadSidecarEndpoint } = await freshModule();
+		expect(loadSidecarEndpoint()).toEqual(endpoint);
+	});
+
+	it.each([0, -1, 1, 1.5, "123"])("ignores invalid ownership pid %s", async (pid) => {
+		remember({ port: 47311, sessionKey: "sk-bf-rememberedkey", pid, ownerPid: pid });
+		const { loadSidecarEndpoint } = await freshModule();
+		expect(loadSidecarEndpoint()).toEqual({ port: 47311, sessionKey: "sk-bf-rememberedkey" });
 	});
 
 	// A running agent has the base URL and token baked into its launch env, so a
@@ -355,6 +404,186 @@ describe("choosing the port", () => {
 	});
 });
 
+describe("reclaiming leaked proxies", () => {
+	const PROXY = 7001;
+	const OWNER = 7002;
+	const OTHER_PROXY = 7003;
+	const DEFAULT_PORT = 32123;
+	const REMEMBERED_PORT = 47311;
+	const RUNTIME = "/tmp/dev3-model-catalog-test/model-catalog-runtime";
+	let alive: Set<number>;
+	let table: string;
+	let files: string;
+	let holders: Map<number, number>;
+	let kill: MockInstance<typeof process.kill>;
+
+	beforeEach(() => {
+		alive = new Set([PROXY]);
+		table = `${PROXY} 1 /Applications/dev 3.app/bifrost-http\n`;
+		files = `p${PROXY}\nn${RUNTIME}/config.db\nn${RUNTIME}/logs.db\n`;
+		holders = new Map([[DEFAULT_PORT, PROXY]]);
+		h.freePorts = new Set([REMEMBERED_PORT]);
+		remember({ port: DEFAULT_PORT, sessionKey: "sk-bf-stable", pid: PROXY, ownerPid: OWNER });
+		h.findPortHolders.mockImplementation(async (ports: number[]) =>
+			ports.filter((port) => holders.has(port)).map((port) => ({ port, pid: holders.get(port), processName: "bifrost" })));
+		h.spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "ps" || cmd[0] === "lsof") {
+				return { stdout: streamOf(cmd[0] === "ps" ? table : files), exited: Promise.resolve(0) };
+			}
+			return liveProcess();
+		});
+		kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+			if (!alive.has(pid)) throw Object.assign(new Error("gone"), { code: "ESRCH" });
+			if (signal === "SIGTERM" || signal === "SIGKILL") {
+				alive.delete(pid);
+				for (const [port, holder] of holders) {
+					if (holder === pid) {
+						h.freePorts?.add(port);
+						holders.delete(port);
+					}
+				}
+			}
+			return true;
+		});
+	});
+
+	const signals = () => kill.mock.calls.filter(([, signal]) => signal !== 0);
+
+	it("terminates the recorded orphan before launching on the same default port and key", async () => {
+		const { ensureModelSidecar } = await freshModule();
+		expect(await ensureModelSidecar()).toEqual({ baseUrl: `http://127.0.0.1:${DEFAULT_PORT}`, sessionKey: "sk-bf-stable" });
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+		expect(h.findPortHolders).not.toHaveBeenCalled();
+		const launchIndex = h.spawnMock.mock.calls.findIndex(([cmd]) => cmd[0] === "/opt/dev3/bifrost-http");
+		const signalIndex = kill.mock.calls.findIndex(([, signal]) => signal === "SIGTERM");
+		expect(kill.mock.invocationCallOrder[signalIndex]).toBeLessThan(h.spawnMock.mock.invocationCallOrder[launchIndex]);
+	});
+
+	it("never reclaims a proxy owned by another live instance", async () => {
+		alive.add(OWNER);
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).not.toBe(`http://127.0.0.1:${DEFAULT_PORT}`);
+		expect(signals()).toEqual([]);
+	});
+
+	it("does not mistake denied owner inspection for a dead owner", async () => {
+		const original = kill.getMockImplementation()!;
+		kill.mockImplementation((pid, signal) => {
+			if (pid === OWNER) throw Object.assign(new Error("denied"), { code: "EPERM" });
+			return original(pid, signal);
+		});
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+	});
+
+	it("protects a live parent even when the recorded owner is dead", async () => {
+		alive.add(8001);
+		table = `${PROXY} 8001 /Applications/dev3.app/bifrost-http\n`;
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+	});
+
+	it("reclaims a legacy orphan with no ownership fields", async () => {
+		remember({ port: DEFAULT_PORT, sessionKey: "sk-bf-stable" });
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).toBe(`http://127.0.0.1:${DEFAULT_PORT}`);
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+		expect(h.spawnMock).toHaveBeenCalledWith(["ps", "-eo", "pid=,ppid=,comm="], expect.anything());
+		expect(h.spawnMock).toHaveBeenCalledWith(["lsof", "-a", "-p", String(PROXY), "-Fn"], expect.anything());
+	});
+
+	it("uses legacy identity when a writer left only a proxy pid", async () => {
+		remember({ port: DEFAULT_PORT, sessionKey: "sk-bf-stable", pid: PROXY });
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+	});
+
+	it("never signals a recorded pid that has already exited", async () => {
+		alive.delete(PROXY);
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+	});
+
+	it("leaves a reused pid or unrelated listener alone", async () => {
+		table = `${PROXY} 1 /usr/bin/other-server\n`;
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).not.toBe(`http://127.0.0.1:${DEFAULT_PORT}`);
+		expect(signals()).toEqual([]);
+	});
+
+	it.each([
+		`n${RUNTIME}/config.db\n`,
+		"n/tmp/another-runtime/config.db\nn/tmp/another-runtime/logs.db\n",
+	])("requires both database files from our exact runtime directory: %s", async (output) => {
+		files = output;
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+	});
+
+	it("compares open files against the real runtime path, including symlinks", async () => {
+		h.fs.realpathSync.mockReturnValue("/private/runtime");
+		files = "n/private/runtime/config.db\nn/private/runtime/logs.db\n";
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+	});
+
+	it.each(["ps", "lsof"])("fails closed when %s is unavailable", async (tool) => {
+		const original = h.spawnMock.getMockImplementation()!;
+		h.spawnMock.mockImplementation((cmd, ...args) => {
+			if (cmd[0] === tool) throw new Error("ENOENT");
+			return original(cmd, ...args);
+		});
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+	});
+
+	it("fails closed on Windows instead of trusting a reused pid", async () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		const { ensureModelSidecar } = await freshModule();
+		await ensureModelSidecar();
+		expect(signals()).toEqual([]);
+		expect(h.spawnMock.mock.calls.every(([cmd]) => cmd[0] === "/opt/dev3/bifrost-http")).toBe(true);
+	});
+
+	it("does not kill a recorded orphan on another port when the default is free", async () => {
+		h.freePorts?.add(DEFAULT_PORT);
+		holders = new Map([[REMEMBERED_PORT, PROXY]]);
+		remember({ port: REMEMBERED_PORT, sessionKey: "sk-bf-stable", pid: PROXY, ownerPid: OWNER });
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).toBe(`http://127.0.0.1:${DEFAULT_PORT}`);
+		expect(signals()).toEqual([]);
+	});
+
+	it("reclaims only the default orphan and leaves the other orphan serving its sessions", async () => {
+		alive.add(OTHER_PROXY);
+		holders.set(REMEMBERED_PORT, OTHER_PROXY);
+		h.freePorts?.delete(REMEMBERED_PORT);
+		remember({ port: REMEMBERED_PORT, sessionKey: "sk-bf-stable", pid: OTHER_PROXY, ownerPid: OWNER });
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).toBe(`http://127.0.0.1:${DEFAULT_PORT}`);
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+		expect(alive.has(OTHER_PROXY)).toBe(true);
+	});
+
+	it("reclaims the remembered port when an unrelated process holds the default", async () => {
+		alive.add(OTHER_PROXY);
+		holders = new Map([[DEFAULT_PORT, OTHER_PROXY], [REMEMBERED_PORT, PROXY]]);
+		h.freePorts?.delete(REMEMBERED_PORT);
+		table += `${OTHER_PROXY} 1 /usr/bin/other-server\n`;
+		remember({ port: REMEMBERED_PORT, sessionKey: "sk-bf-stable", pid: PROXY, ownerPid: OWNER });
+		const { ensureModelSidecar } = await freshModule();
+		expect((await ensureModelSidecar()).baseUrl).toBe(`http://127.0.0.1:${REMEMBERED_PORT}`);
+		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
+	});
+});
+
 describe("autostart", () => {
 	it("brings the proxy up with the app, so the catalog needs no operating", async () => {
 		const { autostartModelSidecar, getModelSidecarStatus } = await freshModule();
@@ -399,6 +628,71 @@ describe("autostart", () => {
 });
 
 describe("stopping", () => {
+	it("signals the running proxy before the synchronous quit call returns", async () => {
+		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
+		await ensureModelSidecar();
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		killModelSidecarNow();
+		expect(kill).toHaveBeenCalledExactlyOnceWith(5150, "SIGTERM");
+		expect(h.getDescendantPids).not.toHaveBeenCalled();
+	});
+
+	it("signals a spawned proxy before its health check resolves and never retries", async () => {
+		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		let release!: (response: Response) => void;
+		let entered!: () => void;
+		const checking = new Promise<void>((resolve) => { entered = resolve; });
+		vi.stubGlobal("fetch", vi.fn(() => {
+			entered();
+			return new Promise<Response>((resolve) => { release = resolve; });
+		}));
+		const start = ensureModelSidecar();
+		const rejected = expect(start).rejects.toThrow(/shutting down/);
+		await checking;
+		killModelSidecarNow();
+		expect(kill).toHaveBeenCalledExactlyOnceWith(5150, "SIGTERM");
+		release({ ok: true } as Response);
+		await rejected;
+		expect(h.spawnMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not spawn after quitting before the port probe resolves", async () => {
+		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
+		const start = ensureModelSidecar();
+		const rejected = expect(start).rejects.toThrow(/shutting down/);
+		killModelSidecarNow();
+		await rejected;
+		expect(h.spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("does nothing synchronously when no proxy exists", async () => {
+		const { killModelSidecarNow } = await freshModule();
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		expect(killModelSidecarNow).not.toThrow();
+		expect(kill).not.toHaveBeenCalled();
+	});
+
+	it("signals the proxy even while an RPC stop is waiting for its descendant scan", async () => {
+		const { ensureModelSidecar, stopModelSidecar, killModelSidecarNow } = await freshModule();
+		await ensureModelSidecar();
+		let release!: (pids: number[]) => void;
+		h.getDescendantPids.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		const stop = stopModelSidecar();
+		killModelSidecarNow();
+		expect(kill).toHaveBeenCalledExactlyOnceWith(5150, "SIGTERM");
+		release([]);
+		await stop;
+	});
+
+	it.each(["ESRCH", "EPERM"])("never throws when signalling fails with %s", async (code) => {
+		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
+		await ensureModelSidecar();
+		vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error(code), { code }); });
+		expect(killModelSidecarNow).not.toThrow();
+	});
+
 	it("terminates the process tree, not only the parent", async () => {
 		h.getDescendantPids.mockResolvedValue([6001]);
 		const killed: number[] = [];
