@@ -103,4 +103,15 @@ describe("task show --json", () => {
 		expect(stdout).toContain("Seq:");
 		expect(() => JSON.parse(stdout)).toThrow();
 	});
+
+	// `--json seq:12` swallows the id as the flag's value, leaving the worktree's
+	// own task — valid JSON for the WRONG task. Refuse instead of answering.
+	it("refuses --json with a value instead of silently printing another task", async () => {
+		const stderrSpy = vi.mocked(process.stderr.write);
+		await expect(
+			handleTask("show", args([], { json: "seq:12" }), SOCKET, { projectId: "proj-001", taskId: TASK.id, socketPath: SOCKET }),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrSpy.mock.calls.map((c) => String(c[0])).join("")).toContain("dev3 task show seq:12 --json");
+	});
 });

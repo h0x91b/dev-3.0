@@ -435,6 +435,20 @@ describe("task.addLabels / task.removeLabels — merge, never replace", () => {
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
+	// Two spellings of one label in a single call used to append it twice, and a
+	// repeated id in task.labelIds is as permanent as a dangling one.
+	it("add writes one entry when the same label is named twice", async () => {
+		withTask([]);
+		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full"]);
+	});
+
+	it("set writes one entry when the same label is named twice", async () => {
+		withTask([]);
+		await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), makeTask().id, { labelIds: ["lbl-1111-full"] });
+	});
+
 	it("remove drops only the named labels", async () => {
 		withTask(["lbl-1111-full", "lbl-2222-full", "lbl-3333-full"]);
 		const resp = await handleRequest(makeRequest("task.removeLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222"] }));

@@ -203,6 +203,11 @@ function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | u
 
 async function showTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "history", "notes", "json"]);
+	// `--json seq:12` parses as json="seq:12" with NO positional left, which used to
+	// print the worktree's own task as valid JSON — the wrong task, silently.
+	if (args.flags.json !== undefined && args.flags.json !== "true") {
+		exitUsage(`--json takes no value (got "${args.flags.json}"). The id goes first: dev3 task show ${args.flags.json} --json`);
+	}
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id> [--notes] [--history] [--json]");

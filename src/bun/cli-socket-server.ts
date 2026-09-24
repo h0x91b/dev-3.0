@@ -813,13 +813,15 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 	// match a real project label. Without this an id typo would be persisted
 	// verbatim into task.labelIds as permanent garbage (nothing prunes dangling
 	// labelIds), the UI would render zero labels for it, and the CLI would report success.
+	// Deduped after resolving: `label add lbl-1 lbl-1111-full` names one label twice
+	// and would otherwise append it twice, and nothing prunes a repeated id either.
 	const unknown: string[] = [];
-	const labelIds = rawLabelIds.map((raw) => {
+	const labelIds = [...new Set(rawLabelIds.map((raw) => {
 		const found = findByIdPrefix(projectLabels, raw, "label");
 		if (found) return found.id;
 		unknown.push(raw);
 		return raw;
-	});
+	}))];
 	if (unknown.length > 0) {
 		throw new Error(
 			`Label not found: ${unknown.join(", ")}. Run "dev3 label list" to see valid label IDs.`,
