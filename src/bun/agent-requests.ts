@@ -52,6 +52,32 @@ interface PendingAgentRequest {
 const pendingByRequestId = new Map<string, PendingAgentRequest>();
 const requestIdByKey = new Map<string, string>();
 
+/**
+ * How long an answer stays readable after it settled a request. A CLI whose
+ * socket dropped mid-wait asks within seconds; the window only has to outlive
+ * that re-attach, not become a history.
+ */
+export const AGENT_REQUEST_OUTCOME_TTL_MS = 15 * 60 * 1000;
+
+interface AgentRequestOutcome {
+	requestId: string;
+	approved: boolean;
+	resolvedAt: number;
+}
+
+const recentOutcomeByKey = new Map<string, AgentRequestOutcome>();
+
+/**
+ * What the app knows about a task's request of one kind — the authority a CLI
+ * that lost its socket asks instead of guessing. `none` covers both "never
+ * asked" and "asked before this app process started": requests live in memory
+ * and do not survive a restart.
+ */
+export type AgentRequestState =
+	| { state: "pending"; requestId: string }
+	| { state: "answered"; requestId: string; approved: boolean; resolvedAt: number }
+	| { state: "none" };
+
 function dedupKey(kind: AgentRequestKind, taskId: string): string {
 	return `${kind}:${taskId}`;
 }
@@ -90,6 +116,7 @@ export function createAgentRequest(
 		}
 	}
 
+	recentOutcomeByKey.delete(key);
 	const requestId = crypto.randomUUID();
 	let resolve!: (decision: AgentRequestDecision) => void;
 	const decision = new Promise<AgentRequestDecision>((r) => {
@@ -214,6 +241,33 @@ export function listPendingAgentRequests(
 	return out;
 }
 
+/** The pending request, or the answer that settled it recently, for one task and kind. */
+export function getAgentRequestState(kind: AgentRequestKind, taskId: string, now = Date.now()): AgentRequestState {
+	const key = dedupKey(kind, taskId);
+	const pendingId = requestIdByKey.get(key);
+	if (pendingId && pendingByRequestId.has(pendingId)) return { state: "pending", requestId: pendingId };
+	const outcome = recentOutcomeByKey.get(key);
+	if (outcome && now - outcome.resolvedAt <= AGENT_REQUEST_OUTCOME_TTL_MS) return { state: "answered", ...outcome };
+	if (outcome) recentOutcomeByKey.delete(key);
+	return { state: "none" };
+}
+
+/**
+ * Join the live request for a task without ever creating one. A CLI re-attaching
+ * after a dropped socket must not turn "the app restarted" into a brand-new
+ * dialog the agent never decided to open — that is a second ask, not a retry.
+ */
+export function joinAgentRequest(
+	kind: AgentRequestKind,
+	taskId: string,
+): { requestId: string; decision: Promise<AgentRequestDecision> } | null {
+	const pendingId = requestIdByKey.get(dedupKey(kind, taskId));
+	const entry = pendingId ? pendingByRequestId.get(pendingId) : undefined;
+	if (!entry) return null;
+	log.info("Re-attaching to agent request", { kind, taskId: taskId.slice(0, 8), requestId: entry.requestId });
+	return { requestId: entry.requestId, decision: entry.decision };
+}
+
 /** Resolve a pending request with the user's decision. Returns false if the request is unknown/expired. */
 export function resolveAgentRequest(requestId: string, decision: AgentRequestDecision): boolean {
 	const entry = pendingByRequestId.get(requestId);
@@ -223,6 +277,7 @@ export function resolveAgentRequest(requestId: string, decision: AgentRequestDec
 	}
 	pendingByRequestId.delete(requestId);
 	requestIdByKey.delete(dedupKey(entry.kind, entry.taskId));
+	recentOutcomeByKey.set(dedupKey(entry.kind, entry.taskId), { requestId, approved: decision.approved, resolvedAt: Date.now() });
 	if (entry.autoApproveTimer) clearTimeout(entry.autoApproveTimer);
 	entry.resolve(decision);
 	// The dialog was broadcast to every connected client (windows + remote
@@ -249,4 +304,5 @@ export function _resetAgentRequestsForTests(): void {
 	}
 	pendingByRequestId.clear();
 	requestIdByKey.clear();
+	recentOutcomeByKey.clear();
 }

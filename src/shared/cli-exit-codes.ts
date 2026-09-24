@@ -23,6 +23,8 @@ export const CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID = 21;
 export const CLI_EXIT_CODE_CANCELLATION_DECLINED = 22;
 export const CLI_EXIT_CODE_GH_UNAVAILABLE = 23;
 export const CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED = 24;
+export const CLI_EXIT_CODE_APPROVAL_STILL_PENDING = 25;
+export const CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN = 26;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -169,5 +171,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED,
 		description:
 			"`dev3 dev-server start|stop|restart` was called without naming a dev server on a project that declares several and has no default (no `devScript`), so NOTHING was started, stopped or restarted — there is no safe way to guess which process the caller meant. The message lists the declared names; pass one of them, or `--all` to act on every one. Distinct from exit 3 so automation can recognise this one case and retry with a name instead of treating it as a misspelled command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_APPROVAL_STILL_PENDING",
+		code: CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
+		description:
+			"`dev3 task move --status completed|cancelled` stopped waiting and the app confirms the request is STILL PENDING: the ten-minute wait ran out, or the connection dropped and came back after the wait was already spent. The dialog is still open and an answer will still take effect. Running the same command again waits on that same request — it does not open a second dialog. Distinct from exit 1 so an agent never reads 'still waiting' as 'failed' and asks anew.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN",
+		code: CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN,
+		description:
+			"`dev3 task move --status completed|cancelled` lost its connection mid-wait and cannot say how the request ended: the app has no record of it (it restarted, the record aged out, or the request never arrived) and the task has not moved to the target status — or the app could not be reached again at all. This is NOT evidence of a decline, nor that nothing was approved. Asking again opens a new dialog, so check the task and the user first.",
 	},
 ] as const;
