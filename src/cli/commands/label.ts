@@ -67,7 +67,24 @@ async function deleteLabel(args: ParsedArgs, socketPath: string, context: CliCon
 	process.stdout.write(`Deleted label ${labelId.slice(0, 8)}\n`);
 }
 
-async function setTaskLabels(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+type LabelChange = "set" | "add" | "remove";
+
+const LABEL_CHANGE_METHOD: Record<LabelChange, string> = {
+	set: "task.setLabels",
+	add: "task.addLabels",
+	remove: "task.removeLabels",
+};
+
+/**
+ * `label set` REPLACES the task's whole label set; `label add` / `label remove`
+ * change only the named labels and leave the rest alone.
+ */
+async function changeTaskLabels(
+	change: LabelChange,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+): Promise<void> {
 	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
@@ -80,17 +97,26 @@ async function setTaskLabels(args: ParsedArgs, socketPath: string, context: CliC
 	}
 	const taskId = expandShortId(rawTaskId, context);
 
-	// Collect label IDs from positional args
 	const labelIds = args.positional;
 	if (labelIds.length === 0) {
-		exitUsage('Usage: dev3 label set <label-id> [<label-id> ...]\nUse "dev3 label set --clear" to remove all labels.');
+		exitUsage(
+			change === "set"
+				? 'Usage: dev3 label set <label-id> [<label-id> ...]  (replaces ALL of the task\'s labels)\n' +
+					'Use "dev3 label add" to keep the existing ones, "dev3 label set --clear" to remove all.'
+				: `Usage: dev3 label ${change} <label-id> [<label-id> ...]`,
+		);
 	}
 
-	const resp = await sendRequest(socketPath, "task.setLabels", { taskId, projectId, labelIds });
-	if (!resp.ok) exitError(resp.error || "Failed to set labels");
+	const resp = await sendRequest(socketPath, LABEL_CHANGE_METHOD[change], { taskId, projectId, labelIds });
+	if (!resp.ok) exitError(resp.error || `Failed to ${change} labels`);
 
 	const task = resp.data as Task;
-	process.stdout.write(`Set ${task.labelIds?.length ?? 0} label(s) on task ${task.id.slice(0, 8)}\n`);
+	const now = task.labelIds ?? [];
+	const verb = change === "set" ? "Set" : change === "add" ? "Added" : "Removed";
+	process.stdout.write(
+		`${verb} label(s) on task ${task.id.slice(0, 8)}; it now has ${now.length}: ` +
+			`${now.length > 0 ? now.map((id) => id.slice(0, 8)).join(", ") : "(none)"}\n`,
+	);
 }
 
 async function clearTaskLabels(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
@@ -129,11 +155,14 @@ export async function handleLabel(
 			if (args.flags.clear === "true") {
 				return clearTaskLabels(args, socketPath, context);
 			}
-			return setTaskLabels(args, socketPath, context);
+			return changeTaskLabels("set", args, socketPath, context);
+		case "add":
+		case "remove":
+			return changeTaskLabels(subcommand, args, socketPath, context);
 		default:
 			exitUsage(
 				`Unknown subcommand: label ${subcommand || "(none)"}` +
-				"\nAvailable: label list, label create, label delete, label set",
+				"\nAvailable: label list, label create, label delete, label set, label add, label remove",
 			);
 	}
 }

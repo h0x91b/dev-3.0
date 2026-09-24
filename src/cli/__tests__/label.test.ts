@@ -97,3 +97,30 @@ describe("label set task targeting", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+describe("label add / remove / set semantics", () => {
+	it("add and remove go to their own merge methods, never the replacing one", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, labelIds: ["lbl-1", "lbl-2"] }));
+		await handleLabel("add", args(["lbl-2"]), SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.addLabels", { taskId: CTX.taskId, projectId: "proj-001", labelIds: ["lbl-2"] });
+
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, labelIds: ["lbl-1"] }));
+		await handleLabel("remove", args(["lbl-2"]), SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.removeLabels", { taskId: CTX.taskId, projectId: "proj-001", labelIds: ["lbl-2"] });
+		expect(mockSend).not.toHaveBeenCalledWith(SOCKET, "task.setLabels", expect.anything());
+	});
+
+	it("reports the resulting label set", async () => {
+		const out: string[] = [];
+		vi.mocked(process.stdout.write).mockImplementation((chunk: string | Uint8Array) => { out.push(String(chunk)); return true; });
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, labelIds: ["lbl-1aaaaaaa", "lbl-2bbbbbbb"] }));
+		await handleLabel("add", args(["lbl-2"]), SOCKET, CTX);
+		expect(out.join("")).toContain("it now has 2: lbl-1aaa, lbl-2bbb");
+	});
+
+	it("set with no ids warns that it replaces the whole set", async () => {
+		await expect(handleLabel("set", args([]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toMatch(/replaces ALL/);
+		expect(stderrOutput).toContain("dev3 label add");
+	});
+});

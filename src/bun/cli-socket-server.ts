@@ -27,7 +27,8 @@ import { appendNotificationLog } from "./notification-log";
 import type { NotificationLogInput, NotificationLogMode, NotificationLogOutcome } from "../shared/notification-log";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
-import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
+import { cancelScheduledMessageByRef, scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
+import { toScheduledMessageListing } from "../shared/scheduled-message-listing";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { recordTerminalPromptSubmission } from "./agent-terminal-prompt-log";
@@ -792,6 +793,52 @@ async function ownAgentPaneEntry(task: Task, harness: PromptSubmitHarness): Prom
 		configId: task.configId,
 		...(agent.agentFamily ? { agentFamily: agent.agentFamily } : {}),
 	};
+}
+
+/**
+ * `dev3 label set|add|remove`. `replace` writes the whole set; `add`/`remove`
+ * merge inside the tasks-file lock, so two agents labelling one task at once
+ * cannot drop each other's label the way a CLI-side read-modify-write would.
+ */
+async function changeTaskLabels(params: Record<string, unknown>, mode: "replace" | "add" | "remove"): Promise<Task> {
+	const rawLabelIds = params.labelIds as string[];
+	if (!params.taskId) throw new Error("taskId is required");
+	if (!params.projectId) throw new Error("projectId is required");
+	if (!Array.isArray(rawLabelIds)) throw new Error("labelIds must be an array");
+
+	const { project, task } = await resolveTaskFromParams(params);
+	const projectLabels = project.labels ?? [];
+
+	// Resolve short label ID prefixes to full UUIDs, rejecting any that do not
+	// match a real project label. Without this an id typo would be persisted
+	// verbatim into task.labelIds as permanent garbage (nothing prunes dangling
+	// labelIds), the UI would render zero labels for it, and the CLI would report success.
+	// Deduped after resolving: `label add lbl-1 lbl-1111-full` names one label twice
+	// and would otherwise append it twice, and nothing prunes a repeated id either.
+	const unknown: string[] = [];
+	const labelIds = [...new Set(rawLabelIds.map((raw) => {
+		const found = findByIdPrefix(projectLabels, raw, "label");
+		if (found) return found.id;
+		unknown.push(raw);
+		return raw;
+	}))];
+	if (unknown.length > 0) {
+		throw new Error(
+			`Label not found: ${unknown.join(", ")}. Run "dev3 label list" to see valid label IDs.`,
+		);
+	}
+
+	const updated = mode === "replace"
+		? await data.updateTask(project, task.id, { labelIds })
+		: (await data.updateTaskWith<void>(project, task.id, (current) => {
+			const existing = current.labelIds ?? [];
+			const next = mode === "add"
+				? [...existing, ...labelIds.filter((id) => !existing.includes(id))]
+				: existing.filter((id) => !labelIds.includes(id));
+			return { updates: { labelIds: next }, result: undefined };
+		})).task;
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	return updated;
 }
 
 const handlers: Record<string, Handler> = {
@@ -1752,39 +1799,11 @@ const handlers: Record<string, Handler> = {
 		return { taskId: task.id, projectId: project.id, delivered: true };
 	},
 
-	"task.setLabels": async (params) => {
-		const taskId = params.taskId as string;
-		const projectId = params.projectId as string;
-		const rawLabelIds = params.labelIds as string[];
-		if (!taskId) throw new Error("taskId is required");
-		if (!projectId) throw new Error("projectId is required");
-		if (!Array.isArray(rawLabelIds)) throw new Error("labelIds must be an array");
-
-		const { project, task } = await resolveTaskFromParams(params);
-		const projectLabels = project.labels ?? [];
-
-		// Resolve short label ID prefixes to full UUIDs, rejecting any that do not
-		// match a real project label. The CLI does not validate, so without this an
-		// id typo would be persisted verbatim into task.labelIds as permanent garbage
-		// (nothing prunes dangling labelIds, unlike customColumnId), the UI would
-		// silently render zero labels for it, and the CLI would still report success.
-		const unknown: string[] = [];
-		const labelIds = rawLabelIds.map((raw) => {
-			const found = findByIdPrefix(projectLabels, raw, "label");
-			if (found) return found.id;
-			unknown.push(raw);
-			return raw;
-		});
-		if (unknown.length > 0) {
-			throw new Error(
-				`Label not found: ${unknown.join(", ")}. Run "dev3 label list" to see valid label IDs.`,
-			);
-		}
-
-		const updated = await data.updateTask(project, task.id, { labelIds });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return updated;
-	},
+	"task.setLabels": (params) => changeTaskLabels(params, "replace"),
+	// Separate methods rather than a `mode` param on setLabels: an older app would
+	// ignore an unknown param and REPLACE the set, while an unknown method fails safe.
+	"task.addLabels": (params) => changeTaskLabels(params, "add"),
+	"task.removeLabels": (params) => changeTaskLabels(params, "remove"),
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
@@ -2265,7 +2284,28 @@ const handlers: Record<string, Handler> = {
 		const subject = requireMessageSubject(params.subject, text);
 		const source = await resolveAgentMessageSource(params, task.id);
 		const updated = await scheduleMessageCore(project, task, { text, at, source, subject });
-		return { taskId: task.id, projectId: project.id, at, pending: (updated.scheduledMessages ?? []).length };
+		const queue = updated.scheduledMessages ?? [];
+		// Appended under the tasks-file lock, so the returned queue ends with ours.
+		const messageId = queue[queue.length - 1]?.id;
+		return { taskId: task.id, projectId: project.id, at, pending: queue.length, messageId };
+	},
+
+	// `dev3 message --list`: the target task's pending scheduled messages, earliest first.
+	"message.scheduled.list": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
+		return {
+			taskId: task.id,
+			projectId: project.id,
+			seq: task.seq,
+			messages: toScheduledMessageListing(task.scheduledMessages ?? []),
+		};
+	},
+
+	// `dev3 message --cancel <id>`: drop one pending message without delivering it.
+	"message.scheduled.cancel": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
+		const { message } = await cancelScheduledMessageByRef(project, task.id, String(params.messageId ?? ""));
+		return { taskId: task.id, projectId: project.id, cancelled: toScheduledMessageListing([message])[0] };
 	},
 
 	// UI control: surface images (screenshots, renders, QA captures) an agent wants

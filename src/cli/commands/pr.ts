@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import type { ParsedArgs } from "../args";
 import { exitError, exitUsage } from "../output";
-import { readTaskDirect, type CliContext } from "../context";
+import { readProjectDirect, readTaskDirect, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { DEV3_HOME } from "../../bun/paths";
 import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shared/deep-link";
@@ -22,8 +22,8 @@ export interface PrCommandResult {
 }
 
 export interface PrDeps {
-	/** Run a binary and capture its output. Tests inject a fake. */
-	run(command: string, args: string[], cwd: string): PrCommandResult;
+	/** Run a binary and capture its output; `env` is merged over the inherited one. Tests inject a fake. */
+	run(command: string, args: string[], cwd: string, env?: Record<string, string>): PrCommandResult;
 	cwd: string;
 	platform: NodeJS.Platform;
 	/** `false` when the user turned the PR→task footer off in Settings → Tasks. */
@@ -31,9 +31,14 @@ export interface PrDeps {
 }
 
 export const realPrDeps: PrDeps = {
-	run: (command, args, cwd) => {
+	run: (command, args, cwd, env) => {
 		try {
-			const res = spawnSync(command, args, { cwd, encoding: "utf-8", timeout: 120_000 });
+			const res = spawnSync(command, args, {
+				cwd,
+				encoding: "utf-8",
+				timeout: 120_000,
+				...(env ? { env: { ...process.env, ...env } } : {}),
+			});
 			return { status: res.status, stdout: res.stdout || "", stderr: res.stderr || "" };
 		} catch (err) {
 			return { status: null, stdout: "", stderr: String(err) };
@@ -91,9 +96,10 @@ async function setAutoMerge(args: ParsedArgs, context: CliContext | null, deps: 
 	const strategy = off ? null : (resolveMergeMethod(args.flags.strategy ?? "true", "--strategy") as MergeMethod);
 	const target = args.positional[0]?.trim();
 
+	const cwd = context?.worktreePath ?? deps.cwd;
+	deps = withProjectGitHubAccount(deps, context, cwd);
 	requireAuthenticatedGh(deps);
 
-	const cwd = context?.worktreePath ?? deps.cwd;
 	const ghArgs = off ? ["pr", "merge", "--disable-auto"] : ["pr", "merge", "--auto", `--${strategy}`];
 	if (target) ghArgs.push(target);
 
@@ -124,9 +130,10 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 		exitUsage('--description needs a value: --description "..." , --description @file, or drop the flag.');
 	}
 
+	const cwd = context?.worktreePath ?? deps.cwd;
+	deps = withProjectGitHubAccount(deps, context, cwd);
 	requireAuthenticatedGh(deps);
 
-	const cwd = context?.worktreePath ?? deps.cwd;
 	const branch = currentBranch(cwd, deps);
 	const base = args.flags.base?.trim() || taskBaseBranch(context);
 	if (base && base === branch) {
@@ -194,6 +201,47 @@ function resolveMergeMethod(raw: string | undefined, flag = "--auto-merge"): Mer
 		exitUsage(`${flag} takes one of ${MERGE_METHODS.join(", ")} (default squash), got "${raw}".`);
 	}
 	return value as MergeMethod;
+}
+
+const TOKEN_ENV_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"] as const;
+
+/**
+ * Run every `gh`/`git` call as the GitHub account chosen for this project in
+ * Project Settings (`githubAuthLogin`/`githubAuthHost`), the same account the
+ * app's own PR buttons use. Without it `gh` acts as whichever account is active
+ * globally — and another agent may have just switched that.
+ *
+ * The token travels only in the child env of these calls: nothing is switched,
+ * written to disk, or printed. A token the caller already exported wins (an
+ * explicit per-command override), and no project account means today's behaviour.
+ */
+export function withProjectGitHubAccount(deps: PrDeps, context: CliContext | null, cwd: string): PrDeps {
+	if (!context?.projectId) return deps;
+	if (TOKEN_ENV_VARS.some((name) => process.env[name]?.trim())) return deps;
+	const project = readProjectDirect(context.projectId);
+	const login = project?.githubAuthLogin?.trim();
+	if (!login) return deps;
+	const host = project?.githubAuthHost?.trim() || "github.com";
+
+	// Ambient token vars blanked so they cannot answer for a different --user.
+	const neutral = Object.fromEntries(TOKEN_ENV_VARS.map((name) => [name, ""]));
+	const res = deps.run("gh", ["auth", "token", "--hostname", host, "--user", login], cwd, neutral);
+	// gh could not even start: leave the "gh is not installed" verdict to requireAuthenticatedGh.
+	if (res.status === null) return deps;
+	const token = res.stdout.trim();
+	if (res.status !== 0 || !token) {
+		exitError(
+			`this project's GitHub account ${login}@${host} (Project Settings) has no token in gh`,
+			`Run \`gh auth login --hostname ${host}\` as ${login}, or clear the account in Project Settings.\n${res.stderr.trim()}`,
+			CLI_EXIT_CODE_GH_UNAVAILABLE,
+		);
+	}
+	const publicHost = host === "github.com" || host.endsWith(".ghe.com");
+	const tokenEnv: Record<string, string> = publicHost
+		? { GH_TOKEN: token, GITHUB_TOKEN: token }
+		: { GH_ENTERPRISE_TOKEN: token, GITHUB_ENTERPRISE_TOKEN: token };
+	process.stdout.write(`GitHub       acting as ${login}@${host} (project setting)\n`);
+	return { ...deps, run: (command, args, runCwd, env) => deps.run(command, args, runCwd, { ...tokenEnv, ...env }) };
 }
 
 /**

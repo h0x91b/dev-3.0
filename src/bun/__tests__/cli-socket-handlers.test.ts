@@ -153,6 +153,7 @@ vi.mock("../agent-prompt-delivery", () => ({
 vi.mock("../scheduled-message-scheduler", () => ({
 	sendMessageImmediately: vi.fn(async () => ({ status: "delivered" })),
 	scheduleMessage: vi.fn(async (_project: unknown, task: { scheduledMessages?: unknown[] }) => task),
+	cancelScheduledMessageByRef: vi.fn(),
 }));
 
 vi.mock("../vents", () => ({
@@ -205,7 +206,7 @@ import { getServerPort } from "../remote-access-server";
 import { saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
-import { scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
+import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 
 // `task.open` imports the window layer lazily; mocking it keeps electrobun out.
 vi.mock("../window-manager", () => ({
@@ -363,6 +364,103 @@ describe("message.send / message.schedule — the subject gate", () => {
 		);
 		expect(good.ok).toBe(true);
 		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ subject: "wake-up ping" });
+	});
+});
+
+describe("message.scheduled.list / cancel — the CLI queue verbs", () => {
+	const queued = (id: string, at: string, extra: Record<string, unknown> = {}) =>
+		({ id, text: "wake   up\nplease", at, target: { kind: "agent" as const }, ...extra });
+
+	it("message.schedule returns the new message's id", async () => {
+		const task = makeTask({ scheduledMessages: [queued("old", "2099-01-01T00:00:00.000Z"), queued("new-id", "2099-01-02T00:00:00.000Z")] });
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(scheduleMessage).mockResolvedValueOnce(task);
+		const resp = await handleRequest(makeRequest("message.schedule", {
+			taskId: task.id, projectId: "proj-1", text: "later", subject: "s", at: new Date(Date.now() + 60_000).toISOString(),
+		}));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ messageId: "new-id", pending: 2 });
+	});
+
+	it("lists the queue earliest first, with sender seq and a flattened preview", async () => {
+		const task = makeTask({ scheduledMessages: [
+			queued("late", "2099-01-02T00:00:00.000Z", { subject: "second" }),
+			queued("early", "2099-01-01T00:00:00.000Z", { source: { taskId: "peer", seq: 12 } }),
+		] });
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const resp = await handleRequest(makeRequest("message.scheduled.list", { taskId: task.id, projectId: "proj-1" }));
+		expect(resp.ok).toBe(true);
+		const { messages } = resp.data as { messages: Array<Record<string, unknown>> };
+		expect(messages.map((m) => m.id)).toEqual(["early", "late"]);
+		expect(messages[0]).toMatchObject({ fromSeq: 12, subject: null, preview: "wake up please", target: "agent" });
+		expect(messages[1]).toMatchObject({ fromSeq: null, subject: "second" });
+	});
+
+	it("cancel goes through the locked by-ref core and reports what it removed", async () => {
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(cancelScheduledMessageByRef).mockResolvedValueOnce({ task, message: queued("abc123", "2099-01-01T00:00:00.000Z") } as never);
+		const resp = await handleRequest(makeRequest("message.scheduled.cancel", { taskId: task.id, projectId: "proj-1", messageId: "abc" }));
+		expect(resp.ok).toBe(true);
+		expect(cancelScheduledMessageByRef).toHaveBeenCalledWith(expect.anything(), task.id, "abc");
+		expect((resp.data as { cancelled: { id: string } }).cancelled.id).toBe("abc123");
+	});
+});
+
+describe("task.addLabels / task.removeLabels — merge, never replace", () => {
+	const project = () => makeProject({ labels: [
+		{ id: "lbl-1111-full", name: "a", color: "#000000" },
+		{ id: "lbl-2222-full", name: "b", color: "#000000" },
+		{ id: "lbl-3333-full", name: "c", color: "#000000" },
+	] });
+	function withTask(labelIds: string[]) {
+		const task = makeTask({ labelIds });
+		vi.mocked(data.getProject).mockResolvedValue(project());
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator: any) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+		return task;
+	}
+
+	it("add keeps existing labels, resolves prefixes, and skips duplicates", async () => {
+		withTask(["lbl-1111-full"]);
+		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222", "lbl-1111-full"] }));
+		expect(resp.ok).toBe(true);
+		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full", "lbl-2222-full"]);
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	// Two spellings of one label in a single call used to append it twice, and a
+	// repeated id in task.labelIds is as permanent as a dangling one.
+	it("add writes one entry when the same label is named twice", async () => {
+		withTask([]);
+		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full"]);
+	});
+
+	it("set writes one entry when the same label is named twice", async () => {
+		withTask([]);
+		await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), makeTask().id, { labelIds: ["lbl-1111-full"] });
+	});
+
+	it("remove drops only the named labels", async () => {
+		withTask(["lbl-1111-full", "lbl-2222-full", "lbl-3333-full"]);
+		const resp = await handleRequest(makeRequest("task.removeLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222"] }));
+		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full", "lbl-3333-full"]);
+	});
+
+	it("an unknown label id fails the whole call without writing", async () => {
+		withTask(["lbl-1111-full"]);
+		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["nope"] }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Label not found: nope");
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
 	});
 });
 

@@ -41,6 +41,7 @@ import {
 	fireScheduledMessage,
 	scheduleMessage,
 	cancelScheduledMessage,
+	cancelScheduledMessageByRef,
 	sendScheduledMessageNow,
 	sendMessageImmediately,
 } from "../scheduled-message-scheduler";
@@ -279,6 +280,24 @@ describe("cancel / send-now / immediate", () => {
 		await cancelScheduledMessage(project, task.id, "msg-1");
 		expect(data.updateTaskWith).toHaveBeenCalled();
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
+	});
+
+	it("cancelScheduledMessageByRef removes exactly the message its prefix names", async () => {
+		const task = makeTask({ scheduledMessages: [makeMessage({ id: "abc-111" }), makeMessage({ id: "def-222" })] });
+		mockUpdateTaskWith(task);
+		const { task: updated, message } = await cancelScheduledMessageByRef(project, task.id, "ABC");
+		expect(message.id).toBe("abc-111");
+		expect((updated.scheduledMessages ?? []).map((m) => m.id)).toEqual(["def-222"]);
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
+	});
+
+	it("cancelScheduledMessageByRef refuses a missing (already fired) or ambiguous id without writing", async () => {
+		const task = makeTask({ scheduledMessages: [makeMessage({ id: "abc-111" }), makeMessage({ id: "abc-222" })] });
+		mockUpdateTaskWith(task);
+		await expect(cancelScheduledMessageByRef(project, task.id, "zzz")).rejects.toThrow(/may have fired already/);
+		await expect(cancelScheduledMessageByRef(project, task.id, "abc")).rejects.toThrow(/ambiguous/);
+		await expect(cancelScheduledMessageByRef(project, task.id, "  ")).rejects.toThrow(/required/);
+		expect(pushFn).not.toHaveBeenCalled();
 	});
 
 	// "Send now" on the chip is a click, so it types at once — the same reason the

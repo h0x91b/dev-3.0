@@ -15,7 +15,7 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 ## Applying a role
 
 1. Ensure the label exists: `dev3 label list`. If missing, create it once: `dev3 label create "needs-triage"` (optionally `--color "#hex"`).
-2. Apply it: `dev3 label set <label-id> [<other-ids>...] --task <task-id>`. `dev3 label set` replaces the task's full label set, so include every label the task should keep.
+2. Apply it: `dev3 label set <label-id> [<other-ids>...] --task <task-id>`. `dev3 label set` replaces the task's full label set, so include every label the task should keep — or use `dev3 label add <id> --task <task-id>` / `dev3 label remove <id> --task <task-id>` to change one role label and keep the rest.
 3. Clear all labels with `dev3 label set --clear --task <task-id>`.
 
 For an external GitHub PR being triaged, apply the equivalent GitHub label instead: `gh pr edit <n> --add-label "<role>"` / `--remove-label "<role>"` (see `docs/agents/issue-tracker.md`).
