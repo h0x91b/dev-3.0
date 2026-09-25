@@ -73,7 +73,7 @@ The safe accounting change assigns Claude's unsplit cache-creation tokens, inclu
 
 The full injected system/developer protocol is retained: its diff is empty. Every original protocol line is **keep** in the injected body and **move** to a complete sibling fallback for the compact skill; no lifecycle rule is deleted. Only the redundant load instruction and wrapper are rewritten.
 
-The experiment is off by default. `DEV3_COMPACT_AGENT_SKILLS=1` opts the installing process into short wrappers for Codex, omp and shared generic skill locations. The full original skill, including its startup instructions, is written to sibling `PROTOCOL.md` first. Claude's existing short skill is unchanged. This adds files without renaming or migrating any user state.
+The experiment is off by default. `DEV3_COMPACT_AGENT_SKILLS=1` opts the installing process into short wrappers for Codex, omp and shared generic skill locations. The full original skill, including its startup instructions, is written first beside the installed skill, for example `~/.agents/skills/dev3/PROTOCOL.md`. Claude's existing short skill is unchanged. This adds files without renaming or migrating any user state.
 
 | Generated POSIX skill | Original bytes | Compact bytes | Removed from a skill read |
 | --- | ---: | ---: | ---: |
@@ -96,7 +96,7 @@ Prompt diff ledger (covers all changed text; unchanged full protocol is kept):
 | Managed block's shell guidance and optional Low Battery text | Keep | Existing environment and user style constraints |
 | Injected `CODEX_SKILL_BODY`, other family bodies, model/effort settings | Keep, byte-identical | No model behavior/default changes without an evaluation |
 
-To try it after building this branch's CLI, run `DEV3_COMPACT_AGENT_SKILLS=1 dev3 install-skills` in an isolated evaluation installation. Check that the selected `SKILL.md` is short and its sibling `PROTOCOL.md` is complete; test both dev3-launched and standalone sessions. For a persistent experiment, start the app with the same flag: app startup and settings-triggered reinstalls otherwise restore the default. To roll back, run `DEV3_COMPACT_AGENT_SKILLS=0 dev3 install-skills` and start fresh sessions. Removing the flag alone does not rewrite files already installed. No live installation was changed during this audit.
+To try it after building this branch's CLI, run `DEV3_COMPACT_AGENT_SKILLS=1 dev3 install-skills` in an isolated evaluation installation. Check that the selected `SKILL.md` is short and its installed fallback (for example `~/.agents/skills/dev3/PROTOCOL.md`) is complete; test both dev3-launched and standalone sessions. For a persistent experiment, start the app with the same flag: app startup and settings-triggered reinstalls otherwise restore the default. To roll back, run `DEV3_COMPACT_AGENT_SKILLS=0 dev3 install-skills` and start fresh sessions. Removing the flag alone does not rewrite files already installed. No live installation was changed during this audit.
 
 ## Run the local task audit
 
