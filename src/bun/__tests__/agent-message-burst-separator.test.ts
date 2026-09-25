@@ -4,7 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // actually receives — through `holdMessageForPane`, the path a real `dev3 message`
 // takes, with only the pane seam mocked. Byte counts are deliberately not the subject:
 // a welded burst has exactly the right number of bytes (issue #1608).
-vi.mock("../pane-input", () => ({ sendPaneInput: vi.fn() }));
+vi.mock("../pane-input", () => ({
+	sendPaneInput: vi.fn(),
+	deliverPaneInput: vi.fn(),
+	newPaneInputDeliveryId: (prefix: string) => `${prefix}-1`,
+	pinTaskPane: vi.fn(async () => ({
+		ok: true,
+		incarnation: { backend: "tmux", taskId: "task-1234", paneId: "%1", sessionName: "s", serverToken: "t" },
+	})),
+}));
 vi.mock("../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	taskSessionName: (taskId: string) => `dev3-task-${taskId}`,
@@ -22,7 +30,7 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { sendPaneInput } from "../pane-input";
+import { deliverPaneInput, sendPaneInput } from "../pane-input";
 import { holdMessageForPane } from "../agent-prompt";
 import { resetAgentMessageHolds } from "../agent-message-hold";
 import { wrapAgentMessage } from "../../shared/agent-message-envelope";
@@ -34,23 +42,20 @@ const task = { id: "task-1234", projectId: "p1", worktreePath: "/tmp/w" } as Tas
 const envelope = (body: string, seq: number) =>
 	wrapAgentMessage(body, { taskId: `t${seq}`, seq, title: `child ${seq}` }, "p1", `report ${seq}`);
 
-/** Everything typed into the pane, in the order it was typed. */
+/** Everything typed into the pane, in the order it was typed: held texts pin first, the rest do not. */
 function typedText(): string {
-	return vi
-		.mocked(sendPaneInput)
-		.mock.calls.flatMap((call) => call[2].flatMap((stage) => stage.steps.map((step) => ("text" in step ? step.text : ""))))
-		.join("");
+	const calls = [
+		...vi.mocked(deliverPaneInput).mock.calls.map((call, i) => ({ order: vi.mocked(deliverPaneInput).mock.invocationCallOrder[i]!, stages: call[1].stages })),
+		...vi.mocked(sendPaneInput).mock.calls.map((call, i) => ({ order: vi.mocked(sendPaneInput).mock.invocationCallOrder[i]!, stages: call[2] })),
+	].sort((a, b) => a.order - b.order);
+	return calls.flatMap(({ stages }) => stages.flatMap((stage) => stage.steps.map((step) => ("text" in step ? step.text : "")))).join("");
 }
 
 beforeEach(() => {
 	vi.useFakeTimers();
-	vi.mocked(sendPaneInput).mockResolvedValue({
-		deliveryId: "d",
-		backend: "tmux",
-		paneId: PANE,
-		status: "delivered",
-		acceptedThrough: 1,
-	});
+	const delivered = { deliveryId: "d", backend: "tmux", paneId: PANE, status: "delivered", acceptedThrough: 1 } as const;
+	vi.mocked(sendPaneInput).mockResolvedValue(delivered);
+	vi.mocked(deliverPaneInput).mockResolvedValue(delivered);
 });
 
 afterEach(() => {

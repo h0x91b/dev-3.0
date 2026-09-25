@@ -449,6 +449,14 @@ function strand(key: string, hold: Hold, landedTexts: string[], rest: Hold["deli
 	report(hold, { kind: "stranded", waiting: rest.length });
 }
 
+/**
+ * Whether this pane's input box holds dev3 text that was never submitted. A direct
+ * prompt must not be typed there: its Enter would submit that text and any draft behind it.
+ */
+export function hasStrandedAgentMessage(key: string): boolean {
+	return holds.get(key)?.stranded != null;
+}
+
 /** How many panes are holding a message right now (tests and diagnostics). */
 export function pendingAgentMessageHoldCount(): number {
 	return holds.size;

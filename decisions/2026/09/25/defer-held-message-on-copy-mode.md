@@ -20,7 +20,8 @@ A held `dev3 message` is typed when its pane goes quiet. If the user had scrolle
   - A raw keystroke CR (`flushHeldAgentMessagesForTask`) does not release it.
   - Later messages wait behind it untyped.
   - It is released only by `releaseStrandedAgentMessagesOnSubmission`, called at the top of `recordTerminalPromptSubmission` before its envelope filter, and only when the submitted text contains **every** landed text (`submissionMatchesTypedText`).
-  - Each quiet window it probes the pane (`pinTaskPane`), and drops the turn only on proof the pane is gone.
+  - Each quiet window it probes the pane (`pinTaskPane`), and drops the turn only on proof the pane is gone: absent, dead, or a **different server generation** than the one the text landed in (`samePaneIncarnation`). After a tmux restart the same `%id` is a new, empty box. The held text is therefore typed against a pin the adapter keeps (`typeHeldText` in `agent-prompt.ts`).
+  - A **direct** prompt (Commit, Create PR, rebase and role-brief hand-offs, concrete-pane prompts) into a pane holding a stranded turn is refused with `input-occupied` before any key is sent (`sendPromptToAgentPane`, `sendPromptToPane`). Its Enter would otherwise submit the stranded text and any draft behind it.
   - Both stranding and drops raise the receiving task's attention badge.
 - Every put-back goes through `requeue()`, which puts leftovers in front of a hold that started meanwhile. That fixes the split-burst overwrite (C6).
 
@@ -28,6 +29,7 @@ A held `dev3 message` is typed when its pane goes quiet. If the user had scrolle
 
 - A stranded turn has no deadline. With no matching hook it waits until the pane dies, and so does everything behind it. That covers harnesses without a prompt hook (Gemini, Cursor Agent), a hook that reaches another app process, a submission whose text differs from what was typed (a collapsed paste, or the user editing the text away), and an app that is offline.
 - Whether each harness's hook carries a pasted envelope in full is not observed live. This session's own Claude transcript shows full envelopes, 0 placeholders. A mismatch fails safe: the turn stays held.
+- The git-bar buttons show their existing "No agent terminal found" toast for an `input-occupied` refusal. The text is inaccurate there, though the stranded badge on the same card names the real cause.
 - The sender is not told afterwards. It was told `held`, and a new message-log status would be an on-disk schema change. The only record is the receiver's badge plus the app log.
 - Normal holds still flush on any keystroke CR, including one in vi copy mode (N1, already on main). That is unchanged here.
 

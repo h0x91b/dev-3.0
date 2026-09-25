@@ -40,7 +40,12 @@ import {
 	sendPromptToAgentPane,
 	sendPromptToPane,
 } from "../agent-prompt";
-import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask, resetAgentMessageHolds } from "../agent-message-hold";
+import {
+	deferHeldAgentMessagesForTask,
+	flushHeldAgentMessagesForTask,
+	releaseStrandedAgentMessagesOnSubmission,
+	resetAgentMessageHolds,
+} from "../agent-message-hold";
 import {
 	AGENT_MESSAGE_HOLD_CEILING_MS,
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
@@ -388,6 +393,54 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	});
+
+	/** Text lands, the Enter hits copy mode: the agent pane's box now holds an unsent peer message. */
+	async function strandCheckCi() {
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: true });
+		await holdMessageForAgentPane(TASK, "check CI, a peer message long enough to match", [agentPane("%1")]);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	}
+
+	// Commit / Create PR / rebase / role-brief hand-offs type AND press Enter at once; into
+	// a stranded box that Enter would submit the peer text and whatever the user typed after it.
+	it("refuses a direct prompt into a stranded box without sending a key, until a matching submission", async () => {
+		await strandCheckCi();
+
+		await expect(runPrompt(sendPromptToAgentPane(TASK, "commit your work", [agentPane("%1")]))).resolves.toMatchObject({
+			status: "not-started",
+			reason: "input-occupied",
+			retryableAsNewDelivery: true,
+		});
+		await expect(runPrompt(sendPromptToPane(TASK, "%1", "commit your work"))).resolves.toMatchObject({ reason: "input-occupied" });
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		releaseStrandedAgentMessagesOnSubmission(TASK_ID, "check CI, a peer message long enough to match");
+		await expect(runPrompt(sendPromptToAgentPane(TASK, "commit your work", [agentPane("%1")]))).resolves.toMatchObject({
+			status: "delivered",
+		});
+	});
+
+	it("does not refuse a direct prompt to a different pane of the same task", async () => {
+		await strandCheckCi();
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }] as never);
+		await expect(runPrompt(sendPromptToPane(TASK, "%2", "hunt bugs"))).resolves.toMatchObject({ status: "delivered" });
+	});
+
+	// tmux restarted while the app kept running: the same `%id` in the same session name is
+	// a new, empty box. Holding the old stranded turn for it would block the agent forever.
+	it("drops a stranded turn when the pane id now belongs to another tmux server generation", async () => {
+		pushCliAttention.mockClear();
+		await strandCheckCi();
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: "srv-token-2" } as never);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
+		await expect(runPrompt(sendPromptToAgentPane(TASK, "commit your work", [agentPane("%1")]))).resolves.toMatchObject({
+			status: "delivered",
+		});
 	});
 
 	it("refuses a message for a task with no agent pane, while its sender is listening", async () => {
