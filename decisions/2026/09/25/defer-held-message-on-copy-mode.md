@@ -29,7 +29,8 @@ A held `dev3 message` is typed when its pane goes quiet. If the user had scrolle
 
 - A stranded turn has no deadline. With no matching hook it waits until the pane dies, and so does everything behind it. That covers harnesses without a prompt hook (Gemini, Cursor Agent), a hook that reaches another app process, a submission whose text differs from what was typed (a collapsed paste, or the user editing the text away), and an app that is offline.
 - Whether each harness's hook carries a pasted envelope in full is not observed live. This session's own Claude transcript shows full envelopes, 0 placeholders. A mismatch fails safe: the turn stays held.
-- The git-bar buttons show their existing "No agent terminal found" toast for an `input-occupied` refusal. The text is inaccurate there, though the stranded badge on the same card names the real cause.
+- The direct-send refusal is not atomic with a release that is already in flight: `release()` removes the hold from the map while it types, so a direct send landing in those milliseconds sees no stranded hold. Direct sends and holds have never been serialized per pane; this is pre-existing and accepted. Where the turn strands because the pane entered copy mode, the guarded send refuses those direct keys too. Graceful exit (`agent-graceful-exit.ts`) is not a refused path; its program opens with `Ctrl-C`, verified to clear the input box only for Claude Code.
+- The refusal protects the direct prompt paths that go through `sendPromptToAgentPane` / `sendPromptToPane`. It is not a claim about every byte any dev3 path can write into a pane.
 - The sender is not told afterwards. It was told `held`, and a new message-log status would be an on-disk schema change. The only record is the receiver's badge plus the app log.
 - Normal holds still flush on any keystroke CR, including one in vi copy mode (N1, already on main). That is unchanged here.
 

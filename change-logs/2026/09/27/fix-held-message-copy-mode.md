@@ -1,0 +1,3 @@
+Short: Held messages survive terminal scrollback
+
+A `dev3 message` held for an agent pane is no longer lost when the user is scrolled up in that pane (tmux copy mode) as the hold releases: it keeps waiting, without pulling the user out of the scrollback, and is typed once after they scroll back down. If the user scrolls up in the moment between the text and its Enter, dev3 no longer presses Enter on it later (which could submit a half-written draft); the task shows a badge, button hand-offs such as Commit refuse to type into that box and say why, and the rest follows once the agent reports that input box submitted. A message that arrived while a large burst was still being typed is no longer dropped either.

@@ -6,9 +6,15 @@ import { I18nProvider } from "../../../i18n";
 import { useTaskBranchStatus } from "../useTaskBranchStatus";
 
 const createPullRequest = vi.fn();
+const commitTaskViaAgent = vi.fn();
 
 vi.mock("../../../rpc", () => ({
-	api: { request: { createPullRequest: (...args: unknown[]) => createPullRequest(...args) } },
+	api: {
+		request: {
+			createPullRequest: (...args: unknown[]) => createPullRequest(...args),
+			commitTaskViaAgent: (...args: unknown[]) => commitTaskViaAgent(...args),
+		},
+	},
 }));
 
 const toastCalls: Array<{ level: string; message: string }> = [];
@@ -27,9 +33,9 @@ function wrapper({ children }: { children: ReactNode }) {
 	return <I18nProvider>{children}</I18nProvider>;
 }
 
-async function createPRWithVerdict(status: AgentPromptDeliveryStatus) {
+async function createPRWithVerdict(status: AgentPromptDeliveryStatus, reason?: string) {
 	toastCalls.length = 0;
-	createPullRequest.mockResolvedValue({ delivery: { status } });
+	createPullRequest.mockResolvedValue({ delivery: { status, ...(reason ? { reason } : {}) } });
 	// `enabled: false` keeps the branch-status poll inert — this suite is only
 	// about what the user is told after the handoff.
 	const { result } = renderHook(
@@ -57,6 +63,33 @@ describe("useTaskBranchStatus — Create PR feedback", () => {
 	it("reports a proven no-pane as an error", async () => {
 		const calls = await createPRWithVerdict("not-delivered");
 		expect(calls).toEqual([{ level: "error", message: "No agent terminal found to hand PR creation to" }]);
+	});
+
+	// dev3 refused on purpose: typing the hand-off would have submitted the stranded peer
+	// message together with the user's draft. The terminal is there; saying otherwise is false.
+	it("names a stranded peer message, not a missing terminal, when the box is occupied", async () => {
+		const calls = await createPRWithVerdict("not-delivered", "input-occupied");
+		expect(calls).toEqual([
+			{ level: "error", message: "A peer message is waiting unsent in the agent's input box. Press Enter there, then try again" },
+		]);
+	});
+
+	it("keeps the no-terminal message for every other refusal reason", async () => {
+		const calls = await createPRWithVerdict("not-delivered", "pane-absent");
+		expect(calls).toEqual([{ level: "error", message: "No agent terminal found to hand PR creation to" }]);
+	});
+
+	it("gives the commit hand-off the same occupied-box message", async () => {
+		toastCalls.length = 0;
+		commitTaskViaAgent.mockResolvedValue({ delivery: { status: "not-delivered", reason: "input-occupied" } });
+		const { result } = renderHook(
+			() => useTaskBranchStatus({ task, project, dispatch: vi.fn(), navigate: vi.fn(), isTaskActive: true, enabled: false }),
+			{ wrapper },
+		);
+		await act(() => result.current.handleCommit());
+		expect(toastCalls).toEqual([
+			{ level: "error", message: "A peer message is waiting unsent in the agent's input box. Press Enter there, then try again" },
+		]);
 	});
 
 	it("passes autoMerge through and still reports the verdict", async () => {

@@ -10,7 +10,8 @@ import {
 } from "../../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
-import { useT } from "../../i18n";
+import { useT, type TranslationKey } from "../../i18n";
+import type { AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
 import { branchStatusCacheKey, readCachedBranchStatus, writeCachedBranchStatus } from "./branchStatusCache";
 import { mergeCompletionBlocker } from "./mergeCompletionBlocker";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
@@ -46,6 +47,15 @@ function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): str
 		return project.defaultCompareRefMode === "local" ? taskBaseBranch : "";
 	}
 	return projectDefaultCompareRef;
+}
+
+
+/**
+ * A hand-off refused because a peer message sits unsent in the agent's input box is
+ * not a missing terminal: dev3 held back so the user's draft is not submitted with it.
+ */
+function undeliveredMessageKey(delivery: AgentPromptDelivery, noPaneKey: TranslationKey): TranslationKey {
+	return delivery.reason === "input-occupied" ? "infoPanel.agentInputOccupied" : noPaneKey;
 }
 
 export function useTaskBranchStatus({
@@ -247,7 +257,7 @@ export function useTaskBranchStatus({
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.createPRAgentUnconfirmed"), { taskId: task.id });
 			} else {
-				toast.error(t("infoPanel.createPRAgentNoPane"), { taskId: task.id });
+				toast.error(t(undeliveredMessageKey(delivery, "infoPanel.createPRAgentNoPane")), { taskId: task.id });
 			}
 		} catch (err) {
 			toast.error(t("infoPanel.createPRFailed", { error: String(err) }), { taskId: task.id });
@@ -367,7 +377,7 @@ export function useTaskBranchStatus({
 				} else if (delivery.status === "unconfirmed") {
 					toast.info(t("infoPanel.rebaseAgentUnconfirmed"), { taskId: task.id });
 				} else {
-					toast.error(t("infoPanel.rebaseAgentNoPane"), { taskId: task.id });
+					toast.error(t(undeliveredMessageKey(delivery, "infoPanel.rebaseAgentNoPane")), { taskId: task.id });
 				}
 			} else {
 				await api.request.rebaseTask({
@@ -404,7 +414,7 @@ export function useTaskBranchStatus({
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.commitAgentUnconfirmed"), { taskId: task.id });
 			} else {
-				toast.error(t("infoPanel.commitAgentNoPane"), { taskId: task.id });
+				toast.error(t(undeliveredMessageKey(delivery, "infoPanel.commitAgentNoPane")), { taskId: task.id });
 			}
 		} catch (err) {
 			toast.error(t("infoPanel.commitFailed", { error: String(err) }), { taskId: task.id });

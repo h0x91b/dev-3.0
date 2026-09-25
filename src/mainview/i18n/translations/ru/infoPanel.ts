@@ -78,6 +78,7 @@ const infoPanel = {
 	"infoPanel.createPRFailed": "Не удалось создать PR: {error}",
 	"infoPanel.createPRAgentStarted": "Создание PR передано агенту — смотри в терминал",
 	"infoPanel.createPRAgentNoPane": "Не найден терминал агента для передачи создания PR",
+	"infoPanel.agentInputOccupied": "В поле ввода агента ждёт неотправленное сообщение от другого агента. Нажмите там Enter и повторите",
 	"infoPanel.createPRAgentUnconfirmed": "Создание PR отправлено агенту, но доставку подтвердить не удалось — смотри в терминал",
 	"infoPanel.createPRDisabledNoCommits": "Нет коммитов для создания PR",
 	"infoPanel.createPRDisabledUncommitted": "Нет коммитов для PR — сначала закоммить незакоммиченные изменения",
