@@ -319,6 +319,9 @@ const kanban = {
 	"scheduleMessage.scheduling": "Scheduling…",
 	"scheduleMessage.failed": "Failed to schedule: {error}",
 	"scheduleMessage.scheduleHint": "Will send {day} at {time} — in {rel}",
+	"scheduleMessage.discardConfirm": "Discard this unsent message?",
+	"scheduleMessage.keepEditing": "Keep editing",
+	"scheduleMessage.discard": "Discard message",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Add agent to this task",

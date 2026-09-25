@@ -332,6 +332,9 @@ const kanban = {
 	"scheduleMessage.scheduling": "Планирование…",
 	"scheduleMessage.failed": "Не удалось запланировать: {error}",
 	"scheduleMessage.scheduleHint": "Отправит {day} в {time} — через {rel}",
+	"scheduleMessage.discardConfirm": "Удалить неотправленное сообщение?",
+	"scheduleMessage.keepEditing": "Продолжить редактирование",
+	"scheduleMessage.discard": "Удалить сообщение",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Добавить агента в задачу",

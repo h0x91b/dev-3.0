@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ScheduleMessageModal from "../ScheduleMessageModal";
 import { I18nProvider } from "../../i18n";
@@ -125,5 +125,100 @@ describe("ScheduleMessageModal", () => {
 		await waitFor(() => expect(mockedApi.request.scheduleMessage).toHaveBeenCalled());
 		const call = mockedApi.request.scheduleMessage.mock.calls[0]![0];
 		expect(call.target).toEqual({ kind: "pane", paneId: "%4" });
+	});
+
+	describe("draft protection (BUG-14)", () => {
+		function backdrop() {
+			return screen.getByRole("dialog").parentElement!;
+		}
+
+		it("closes at once on Escape when nothing was typed", async () => {
+			const { onClose } = renderModal();
+			await userEvent.keyboard("{Escape}");
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("asks before discarding a typed message on Escape, and a second Escape keeps editing", async () => {
+			const { onClose } = renderModal();
+			const input = screen.getByTestId("schedule-message-input") as HTMLTextAreaElement;
+			await userEvent.type(input, "important prompt");
+			await userEvent.keyboard("{Escape}");
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.getByTestId("schedule-discard-confirm")).toBeInTheDocument();
+			await userEvent.keyboard("{Escape}");
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("schedule-discard-confirm")).toBeNull();
+			expect(input.value).toBe("important prompt");
+		});
+
+		it("asks before discarding on a backdrop click, and Discard closes deliberately", async () => {
+			const { onClose } = renderModal();
+			await userEvent.type(screen.getByTestId("schedule-message-input"), "important prompt");
+			const notPrevented = fireEvent.mouseDown(backdrop());
+			fireEvent.click(backdrop());
+			expect(onClose).not.toHaveBeenCalled();
+			expect(notPrevented).toBe(false);
+			expect(screen.getByRole("button", { name: "Keep editing" })).toHaveFocus();
+			await userEvent.click(screen.getByRole("button", { name: "Discard message" }));
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("Keep editing returns focus to the message with the text intact", async () => {
+			const { onClose } = renderModal();
+			const input = screen.getByTestId("schedule-message-input") as HTMLTextAreaElement;
+			await userEvent.type(input, "important prompt");
+			await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+			await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+			expect(onClose).not.toHaveBeenCalled();
+			expect(input.value).toBe("important prompt");
+			expect(input).toHaveFocus();
+		});
+
+		it("ignores a selection drag that starts in the textarea and is released on the backdrop", async () => {
+			const { onClose } = renderModal();
+			const input = screen.getByTestId("schedule-message-input");
+			fireEvent.mouseDown(input);
+			fireEvent.mouseUp(backdrop());
+			fireEvent.click(backdrop());
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("schedule-discard-confirm")).toBeNull();
+		});
+
+		it("does not treat an untouched composer seed as a draft to protect", async () => {
+			const { onClose } = renderModal("draft from composer");
+			await userEvent.keyboard("{Escape}");
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("cannot be dismissed while scheduling is in flight, and schedules exactly once", async () => {
+			let resolve!: (v: unknown) => void;
+			mockedApi.request.scheduleMessage.mockImplementation(() => new Promise((r) => { resolve = r; }) as never);
+			const { onClose, dispatch } = renderModal();
+			await userEvent.type(screen.getByTestId("schedule-message-input"), "go");
+			const submit = screen.getByRole("button", { name: /schedule/i });
+			fireEvent.click(submit);
+			fireEvent.click(submit);
+			await userEvent.keyboard("{Escape}");
+			fireEvent.mouseDown(backdrop());
+			fireEvent.click(backdrop());
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("schedule-discard-confirm")).toBeNull();
+			expect(mockedApi.request.scheduleMessage).toHaveBeenCalledTimes(1);
+			await act(async () => resolve({ id: task.id, scheduledMessages: [] }));
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("keeps the message and shows the error when scheduling fails", async () => {
+			mockedApi.request.scheduleMessage.mockRejectedValue(new Error("socket gone"));
+			const { onClose, dispatch } = renderModal();
+			const input = screen.getByTestId("schedule-message-input") as HTMLTextAreaElement;
+			await userEvent.type(input, "retry me");
+			await userEvent.click(screen.getByRole("button", { name: /schedule/i }));
+			expect(await screen.findByText(/socket gone/)).toBeInTheDocument();
+			expect(onClose).not.toHaveBeenCalled();
+			expect(dispatch).not.toHaveBeenCalled();
+			expect(input.value).toBe("retry me");
+		});
 	});
 });
