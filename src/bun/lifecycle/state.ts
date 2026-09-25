@@ -65,6 +65,8 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 		runtime: runtimeFromTask(task),
 		facts: {
 			hasWorktree: !!task.worktreePath,
+			worktreePath: task.worktreePath ?? null,
+			lifecycleStartedAt: task.lifecycleStartedAt ?? null,
 			projectKind: project.kind === "virtual" ? "virtual" : "git",
 			hasPrIdentity: task.prNumber != null,
 			draft: task.draft === true,

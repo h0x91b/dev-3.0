@@ -33,7 +33,7 @@ vi.mock("../../rpc", () => ({
 			taskPaneState: vi.fn(),
 			taskPaneAction: vi.fn(),
 			tmuxNewWindow: vi.fn(),
-			checkWorktreeExists: vi.fn(),
+			checkWorktreeState: vi.fn(),
 		},
 	},
 	isElectrobun: false,
@@ -171,7 +171,7 @@ beforeEach(() => {
 	vi.mocked(api.request.taskPaneState).mockReset();
 	vi.mocked(api.request.taskPaneAction).mockReset();
 	vi.mocked(api.request.tmuxNewWindow).mockReset();
-	vi.mocked(api.request.checkWorktreeExists).mockReset();
+	vi.mocked(api.request.checkWorktreeState).mockReset();
 
 	// Default PTY URL for tmux tasks
 	vi.mocked(api.request.getPtyUrl).mockResolvedValue({ url: `ws://localhost:9999?session=${TASK_ID}` });

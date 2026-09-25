@@ -1,6 +1,6 @@
 import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
@@ -946,6 +946,100 @@ async function localBranchExists(projectPath: string, branch: string): Promise<b
 }
 
 /**
+ * `createWorktree` found a leftover from an earlier run of this task that it
+ * cannot reclaim without losing work — or cannot prove it would not. Nothing was
+ * touched. The preparation-failure path must not clean up after it either
+ * (`preserveWorkspace` on the failure event), or it would delete what this
+ * refusal protected.
+ */
+export class WorkspaceReclaimRefusedError extends Error {
+	constructor(
+		readonly kind: "dirty-dir" | "unknown-dir" | "unique-commits" | "inspect-failed" | "tip-changed" | "no-fresh-branch" | "base-missing" | "base-unverified" | "base-diverged",
+		readonly detail: { path?: string; branch?: string; sha?: string; commits?: number | null },
+	) {
+		const where = [detail.branch && `branch ${detail.branch}${detail.sha ? ` (tip ${detail.sha})` : ""}`, detail.path && `folder ${detail.path}`]
+			.filter(Boolean).join(" and ");
+		const why = {
+			"dirty-dir": "has uncommitted or untracked files",
+			"unknown-dir": "is not a git worktree dev3 can inspect, and it is not empty",
+			"unique-commits": `holds ${detail.commits ?? "an unknown number of"} commit(s) found on no other branch, remote or tag`,
+			"inspect-failed": "could not be checked, so it is treated as holding work",
+			"tip-changed": "moved while it was being checked",
+			"no-fresh-branch": "left no free, valid name for a fresh variant branch",
+			"base-missing": "cannot be found any more, so there is nothing fresh to start from",
+			"base-unverified": "could not be refreshed from its remote, so its current tip is unknown",
+			"base-diverged": "differs between this machine and its remote",
+		}[kind];
+		super(
+			kind === "base-missing"
+				? `The branch this variant starts from (${detail.branch}) ${why}. Nothing was started or deleted. Start the task from a branch that exists.`
+				: kind === "base-unverified"
+					? `The branch this variant starts from (${detail.branch}) ${why}. Nothing was started or deleted. Check the network or the remote and start the task again.`
+				: kind === "base-diverged"
+					? `The branch this variant starts from (${detail.branch}) ${why} (${detail.sha}). Nothing was started or deleted: dev3 will not pick one side for you. Reconcile them (pull or push), then start the task again.`
+				: kind === "no-fresh-branch"
+					? `Every candidate name for a fresh variant branch (${detail.branch}) is taken or invalid, so nothing was started or deleted. `
+						+ "Earlier variant branches of this task are kept on purpose; review them and delete the ones you no longer need (git branch -D <name>), then start again."
+					: `This task still has ${where} from an earlier run, which ${why}. Nothing was started or deleted. `
+						+ "Keep what you need (commit it, or rename the branch with git branch -m), remove the leftover, then start the task again.",
+		);
+		this.name = "WorkspaceReclaimRefusedError";
+	}
+}
+
+/** A fresh variant run took a new name because earlier variant branches were still there. */
+export interface VariantBranchesKept {
+	kept: string[];
+	created: string;
+	baseRef: string;
+	baseSha: string;
+	/** true: verified against its remote just now; null: a local branch with no remote counterpart. */
+	fetched: boolean | null;
+}
+
+/** Commits reachable from `tip` and from no branch (except `excludeBranch`), remote or tag; null when git cannot say. */
+export async function commitsReachableOnlyFrom(projectPath: string, tip: string, excludeBranch?: string): Promise<number | null> {
+	// `--exclude` must precede the `--branches` it narrows, and takes the name without `refs/heads/`.
+	const args = ["git", "rev-list", "--count", tip, "--not", ...(excludeBranch ? [`--exclude=${excludeBranch}`] : []), "--branches", "--remotes", "--tags"];
+	const only = await run(args, projectPath);
+	const counted = only.ok ? Number.parseInt(only.stdout.trim(), 10) : Number.NaN;
+	return Number.isFinite(counted) ? counted : null;
+}
+
+/**
+ * Read-only preflight before a task folder is destroyed (the stale-folder reclaim,
+ * and the preparation-failure cleanup): allowed only when git shows no dirty or
+ * untracked file and no commit its HEAD alone reaches. Ignored files are NOT
+ * checked (decisions/2026/09/27/todo-reset-is-a-consented-teardown.md). Anything
+ * it cannot establish is refused.
+ */
+export async function assertWorkspaceReclaimable(wtPath: string): Promise<void> {
+	let entries: string[];
+	try {
+		if (!statSync(wtPath).isDirectory()) throw new WorkspaceReclaimRefusedError("unknown-dir", { path: wtPath });
+		entries = readdirSync(wtPath);
+	} catch (err) {
+		if (err instanceof WorkspaceReclaimRefusedError) throw err;
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw new WorkspaceReclaimRefusedError("inspect-failed", { path: wtPath });
+	}
+	if (entries.length === 0) return;
+	try {
+		lstatSync(`${wtPath}/.git`);
+	} catch {
+		throw new WorkspaceReclaimRefusedError("unknown-dir", { path: wtPath });
+	}
+	const status = await run(["git", "-C", wtPath, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"], wtPath);
+	if (!status.ok) throw new WorkspaceReclaimRefusedError("inspect-failed", { path: wtPath });
+	if (status.stdout.trim()) throw new WorkspaceReclaimRefusedError("dirty-dir", { path: wtPath });
+	const head = await run(["git", "-C", wtPath, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"], wtPath);
+	if (!head.ok || !head.stdout.trim()) throw new WorkspaceReclaimRefusedError("inspect-failed", { path: wtPath });
+	const onlyHere = await commitsReachableOnlyFrom(wtPath, head.stdout.trim());
+	if (onlyHere === null) throw new WorkspaceReclaimRefusedError("inspect-failed", { path: wtPath });
+	if (onlyHere > 0) throw new WorkspaceReclaimRefusedError("unique-commits", { path: wtPath, sha: head.stdout.trim(), commits: onlyHere });
+}
+
+/**
  * Free the task's own worktree directory before `git worktree add`. The path is
  * derived from task.id, so dev3 owns it: a leftover means a prior failed cleanup
  * or a re-run after the task was moved back to To Do. Stderr-driven retries do
@@ -1030,6 +1124,9 @@ async function worktreeAddWithRetry(
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
 	const policy = worktreeAddRetry;
 	const startedAt = performance.now();
+	// Only a branch THIS call creates may be deleted between attempts; one that
+	// already existed (a kept leftover) is never touched here.
+	const branchPreexisted = createdBranch ? await localBranchExists(project.path, createdBranch) : false;
 	let result = await run(args, project.path);
 	let attempt = 1;
 	while (!result.ok && isTransientWorktreeAddFailure(result.stderr) && attempt < policy.attempts) {
@@ -1039,7 +1136,7 @@ async function worktreeAddWithRetry(
 		await new Promise((resolve) => setTimeout(resolve, delayMs));
 		attempt++;
 		await reclaimStaleWorktreeDir(project, wtPath);
-		if (createdBranch && await localBranchExists(project.path, createdBranch)) {
+		if (createdBranch && !branchPreexisted && await localBranchExists(project.path, createdBranch)) {
 			await run(["git", "branch", "-D", createdBranch], project.path);
 			// The reclaim can lose the same race. `add -b` over a surviving branch
 			// fails with a permanent "already exists", so spend the attempt waiting.
@@ -1058,12 +1155,102 @@ async function worktreeAddWithRetry(
 	return result;
 }
 
+/** Suffix attempts for a fresh variant name before refusing — runaway growth becomes a refusal. */
+const VARIANT_NAME_ATTEMPTS = 20;
+
+async function isValidBranchName(projectPath: string, name: string): Promise<boolean> {
+	return (await run(["git", "check-ref-format", "--branch", name], projectPath)).ok;
+}
+
+/** Taken = a local branch OR a branch of that name on any remote (a later push would collide). */
+async function branchNameTaken(projectPath: string, name: string): Promise<boolean> {
+	if (await localBranchExists(projectPath, name)) return true;
+	const remote = await run(["git", "for-each-ref", "--format=%(refname)", `refs/remotes/*/${name}`], projectPath);
+	return !remote.ok || remote.stdout.trim().length > 0;
+}
+
+/**
+ * The commit a fresh variant starts from: the CURRENT tip of the branch the task
+ * names. Whenever the branch has a remote counterpart (it IS a remote-tracking
+ * ref, or a local branch with an upstream / an `origin/<name>`), freshness must be
+ * established against the remote, or the start is refused — never a silent stale
+ * base (Seq 2003 review 2003-014, coordinator ruling):
+ * - gone on the remote (`ls-remote` answers, but without the ref) → `base-missing`;
+ * - remote unreachable, fetch failed → `base-unverified` (retry later);
+ * - local and remote diverged → `base-diverged` (neither side is silently chosen);
+ * - local behind → the remote tip; local ahead or equal → the local tip.
+ * A local branch with no remote counterpart is its own current base.
+ */
+async function resolveVariantBase(projectPath: string, existingBranch: string): Promise<{ ref: string; sha: string; fetched: boolean | null }> {
+	const tipOf = async (ref: string): Promise<string | null> => {
+		const tip = await run(["git", "rev-parse", "--verify", "--quiet", `${ref}^{commit}`], projectPath);
+		return tip.ok && tip.stdout.trim() ? tip.stdout.trim() : null;
+	};
+	const isRemoteRef = (await run(["git", "rev-parse", "--verify", "--quiet", `refs/remotes/${existingBranch}`], projectPath)).ok;
+	let remoteName: string | null = null;
+	let remoteBranch: string | null = null;
+	if (isRemoteRef) {
+		// A remote name may itself contain "/": match the configured remote (git refuses
+		// nested remote names, so at most one matches; longest-first is belt and braces).
+		const remotes = await run(["git", "remote"], projectPath);
+		const owner = (remotes.ok ? remotes.stdout.split("\n").map((r) => r.trim()).filter(Boolean) : [])
+			.filter((r) => existingBranch.startsWith(`${r}/`))
+			.sort((a, b) => b.length - a.length)[0];
+		if (!owner) throw new WorkspaceReclaimRefusedError("base-unverified", { branch: existingBranch });
+		remoteName = owner;
+		remoteBranch = existingBranch.slice(owner.length + 1);
+	} else {
+		// Read the upstream from git's own metadata: a local upstream reports remote ".".
+		const upstream = await run([
+			"git", "for-each-ref", "--format=%(upstream:remotename)%09%(upstream:remoteref)", `refs/heads/${existingBranch}`,
+		], projectPath);
+		const [upRemote = "", upRef = ""] = upstream.ok ? upstream.stdout.trim().split("\t") : [];
+		if (upRemote && upRemote !== "." && upRef.startsWith("refs/heads/")) {
+			remoteName = upRemote;
+			remoteBranch = upRef.slice("refs/heads/".length);
+		} else if (!upRemote && await tipOf(`refs/remotes/origin/${existingBranch}`)) {
+			remoteName = "origin";
+			remoteBranch = existingBranch;
+		}
+	}
+
+	const localTip = isRemoteRef ? null : await tipOf(`refs/heads/${existingBranch}`);
+	if (!remoteName || !remoteBranch) {
+		if (!localTip) throw new WorkspaceReclaimRefusedError("base-missing", { branch: existingBranch });
+		return { ref: existingBranch, sha: localTip, fetched: null };
+	}
+
+	// No credential prompt: an answer is needed now, or the start is refused.
+	const probe = await run(["git", "ls-remote", "--heads", remoteName, `refs/heads/${remoteBranch}`], projectPath, {
+		timeoutMs: DEFAULT_FETCH_TIMEOUT_MS,
+		env: { GIT_TERMINAL_PROMPT: "0" },
+	});
+	if (!probe.ok) throw new WorkspaceReclaimRefusedError("base-unverified", { branch: `${remoteName}/${remoteBranch}` });
+	if (!probe.stdout.trim()) {
+		// The remote answered and the branch is not there (merged and deleted, say):
+		// a lingering remote-tracking ref is history, not a base.
+		if (isRemoteRef || !localTip) throw new WorkspaceReclaimRefusedError("base-missing", { branch: `${remoteName}/${remoteBranch}` });
+		// A local branch whose remote counterpart is gone is still the user's own.
+		return { ref: existingBranch, sha: localTip, fetched: null };
+	}
+	if (!await fetchFromRemote(projectPath, remoteName, remoteBranch)) {
+		throw new WorkspaceReclaimRefusedError("base-unverified", { branch: `${remoteName}/${remoteBranch}` });
+	}
+	const remoteTip = await tipOf(`refs/remotes/${remoteName}/${remoteBranch}`);
+	if (!remoteTip) throw new WorkspaceReclaimRefusedError("base-unverified", { branch: `${remoteName}/${remoteBranch}` });
+	if (!localTip || localTip === remoteTip) return { ref: `${remoteName}/${remoteBranch}`, sha: remoteTip, fetched: true };
+	const isAncestor = async (a: string, b: string) => (await run(["git", "merge-base", "--is-ancestor", a, b], projectPath)).ok;
+	if (await isAncestor(localTip, remoteTip)) return { ref: `${remoteName}/${remoteBranch}`, sha: remoteTip, fetched: true };
+	if (await isAncestor(remoteTip, localTip)) return { ref: existingBranch, sha: localTip, fetched: true };
+	throw new WorkspaceReclaimRefusedError("base-diverged", { branch: existingBranch, sha: `${localTip.slice(0, 12)} vs ${remoteName}/${remoteBranch} ${remoteTip.slice(0, 12)}` });
+}
+
 export async function createWorktree(
 	project: Project,
 	task: Task,
 	existingBranch?: string,
 	variantBranchName?: string,
-): Promise<{ worktreePath: string; branchName: string }> {
+): Promise<{ worktreePath: string; branchName: string; variantBranchesKept?: VariantBranchesKept }> {
 	await reportCurrentPreparationStage("creating-worktree");
 	const startedAt = performance.now();
 	const wtPath = worktreePath(project, task);
@@ -1074,42 +1261,53 @@ export async function createWorktree(
 	mkdirSync(`${tDir}/logs`, { recursive: true });
 
 	if (existingBranch && variantBranchName) {
-		// Multi-variant mode: create a new branch from the existing branch's HEAD
-		const resolvedBase = existingBranch;
+		// Multi-variant mode: a FRESH branch from the existing branch's current tip.
+		// A variant branch that already exists (kept by a reset, or by a failed
+		// preparation) is never adopted and never deleted: the run takes the next
+		// free name instead (decisions/2026/09/27/todo-reset-is-a-consented-teardown.md).
+		await assertWorkspaceReclaimable(wtPath);
+		await reclaimStaleWorktreeDir(project, wtPath);
+		const base = await resolveVariantBase(project.path, existingBranch);
 		log.info("Creating variant worktree from existing branch", {
-			wtPath, variantBranchName, base: resolvedBase, taskId: task.id,
+			wtPath, variantBranchName, base: base.ref, baseSha: base.sha, taskId: task.id,
 		});
 
-		await reclaimStaleWorktreeDir(project, wtPath);
-		// A leftover variant branch (re-run of a task that kept its branch) is
-		// checked out instead of recreated, so its commits survive the re-run.
-		const variantBranchSurvived = await localBranchExists(project.path, variantBranchName);
-		const variantAddArgs = variantBranchSurvived
-			? ["git", "worktree", "add", wtPath, variantBranchName]
-			: ["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase];
-
-		const result = await measureGitStep(
-			"createWorktree.variant.worktreeAdd",
-			{ taskId: task.id.slice(0, 8), wtPath, variantBranchName, base: resolvedBase },
-			() => worktreeAddWithRetry(
-				variantAddArgs,
-				project,
-				wtPath,
-				variantBranchSurvived ? undefined : variantBranchName,
-			),
-		);
-
-		if (!result.ok) {
+		const skipped: string[] = [];
+		for (let attempt = 0; attempt < VARIANT_NAME_ATTEMPTS; attempt++) {
+			const name = attempt === 0 ? variantBranchName : `${variantBranchName}-${attempt + 1}`;
+			if (!await isValidBranchName(project.path, name)) {
+				throw new WorkspaceReclaimRefusedError("no-fresh-branch", { branch: name });
+			}
+			if (await branchNameTaken(project.path, name)) {
+				skipped.push(name);
+				continue;
+			}
+			// Create-only (`-b` refuses an existing name atomically) and no branch
+			// cleanup between retries: a name another process takes after our probe
+			// is theirs, so a collision just moves on to the next suffix.
+			const result = await measureGitStep(
+				"createWorktree.variant.worktreeAdd",
+				{ taskId: task.id.slice(0, 8), wtPath, name, base: base.sha },
+				() => worktreeAddWithRetry(["git", "worktree", "add", "-b", name, wtPath, base.sha], project, wtPath, undefined),
+			);
+			if (result.ok) {
+				log.info("Variant worktree created", { wtPath, branch: name, skipped, durationMs: Math.round(performance.now() - startedAt) });
+				return {
+					worktreePath: wtPath,
+					branchName: name,
+					...(skipped.length > 0 ? { variantBranchesKept: { kept: skipped, created: name, baseRef: base.ref, baseSha: base.sha, fetched: base.fetched } } : {}),
+				};
+			}
+			if (/already exists/i.test(result.stderr) && await branchNameTaken(project.path, name)) {
+				skipped.push(name);
+				await assertWorkspaceReclaimable(wtPath);
+				await reclaimStaleWorktreeDir(project, wtPath);
+				continue;
+			}
 			log.error("Failed to create variant worktree", { stderr: result.stderr, taskId: task.id });
 			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
-
-		log.info("Variant worktree created", {
-			wtPath,
-			branch: variantBranchName,
-			durationMs: Math.round(performance.now() - startedAt),
-		});
-		return { worktreePath: wtPath, branchName: variantBranchName };
+		throw new WorkspaceReclaimRefusedError("no-fresh-branch", { branch: `${variantBranchName}…-${VARIANT_NAME_ATTEMPTS}` });
 	}
 
 	if (existingBranch) {
@@ -1120,6 +1318,7 @@ export async function createWorktree(
 			wtPath, existingBranch, resolvedBranch, isRemoteRef, taskId: task.id,
 		});
 
+		await assertWorkspaceReclaimable(wtPath);
 		await reclaimStaleWorktreeDir(project, wtPath);
 
 		const result = await measureGitStep(
@@ -1262,10 +1461,25 @@ export async function createWorktree(
 	// Reclaim stale leftovers from a prior failed cleanup before `git worktree
 	// add`. Both the path and the `dev3/task-*` branch are derived from task.id,
 	// so dev3 owns them and recreating them from the base branch is safe.
-	await reclaimStaleWorktreeDir(project, wtPath);
+	// Judge everything first, destroy second: the folder, then the task's own
+	// leftover branch. A branch a reset or teardown deliberately KEPT (its note
+	// failed, git refused the delete) holds commits found nowhere else.
+	await assertWorkspaceReclaimable(wtPath);
+	let leftoverTip: string | null = null;
 	if (await localBranchExists(project.path, branch)) {
+		const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`], project.path);
+		leftoverTip = tip.ok ? tip.stdout.trim() : null;
+		if (!leftoverTip) throw new WorkspaceReclaimRefusedError("inspect-failed", { branch });
+		const onlyHere = await commitsReachableOnlyFrom(project.path, leftoverTip, branch);
+		if (onlyHere === null) throw new WorkspaceReclaimRefusedError("inspect-failed", { branch, sha: leftoverTip });
+		if (onlyHere > 0) throw new WorkspaceReclaimRefusedError("unique-commits", { branch, sha: leftoverTip, commits: onlyHere });
+	}
+	await reclaimStaleWorktreeDir(project, wtPath);
+	if (leftoverTip) {
 		log.warn("Reclaiming leftover task branch", { taskId: task.id.slice(0, 8), branch });
-		await run(["git", "branch", "-D", branch], project.path);
+		// Compare-and-swap: deletes only the tip that was just judged.
+		const deleted = await run(["git", "update-ref", "-d", `refs/heads/${branch}`, leftoverTip], project.path);
+		if (!deleted.ok) throw new WorkspaceReclaimRefusedError("tip-changed", { branch, sha: leftoverTip });
 	}
 
 	const result = await measureGitStep(
@@ -2770,11 +2984,103 @@ function isUnregisteredWorktreeError(stderr: string): boolean {
 		|| /cannot remove working tree:.*does not exist/i.test(stderr);
 }
 
+/** A branch the reset path looked at, and why it survived when it did. */
+export interface RemoveWorktreeBranchOutcome {
+	deleted: Array<{ name: string; sha: string }>;
+	kept: Array<{ name: string; reason: "not-owned" | "variant-unproven" | "unique-commits" | "note-failed" | "delete-failed" | "missing" }>;
+}
+
+export interface OwnedBranchInfo {
+	name: string;
+	sha: string;
+	/** Commits reachable from this branch and from no other branch, remote ref or tag; null when git could not count them. */
+	commitsOnlyHere: number | null;
+}
+
+export interface RemoveWorktreeOptions {
+	/**
+	 * `legacy` (default): today's completion/cancellation rule. `task-owned`: a
+	 * branch is deleted only when dev3 provably created it for THIS task (the To Do
+	 * reset), judged separately for the live and the recorded branch.
+	 * `unique-kept` (preparation-failure cleanup): the legacy rule, but a branch
+	 * holding commits reachable from it alone is kept, and the delete is a
+	 * compare-and-swap on the tip that was judged.
+	 */
+	branchPolicy?: "legacy" | "task-owned" | "unique-kept";
+	/** Runs before each owned branch is deleted; a throw keeps that branch. */
+	beforeBranchDelete?: (branch: OwnedBranchInfo) => Promise<void>;
+}
+
+/**
+ * Did dev3 create this branch for this task? True for `dev3/task-<id>` and for a
+ * branch whose reflog shows it was renamed from it (agents rename it at the start
+ * of a run). Variant names (`<existing>-vN`) do NOT count: createWorktree adopts
+ * a user's branch of that name, so the name proves nothing. A disabled or expired
+ * reflog fails toward keeping the branch.
+ */
+export async function isTaskOwnedBranch(projectPath: string, task: Task, name: string): Promise<boolean> {
+	const own = `dev3/task-${shortId(task.id)}`;
+	if (name === own) return true;
+	const reflog = await run(["git", "reflog", "show", "--format=%gs", `refs/heads/${name}`, "--"], projectPath);
+	if (!reflog.ok) return false;
+	return reflog.stdout.split("\n").some((line) => line.includes(`renamed refs/heads/${own} to `));
+}
+
+async function ownedBranchInfo(projectPath: string, name: string): Promise<OwnedBranchInfo | null> {
+	const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${name}^{commit}`], projectPath);
+	if (!tip.ok || !tip.stdout.trim()) return null;
+	const sha = tip.stdout.trim();
+	const commitsOnlyHere = await commitsReachableOnlyFrom(projectPath, sha, name);
+	return { name, sha, commitsOnlyHere };
+}
+
+async function deleteTaskOwnedBranches(
+	project: Project,
+	task: Task,
+	candidates: string[],
+	beforeBranchDelete: RemoveWorktreeOptions["beforeBranchDelete"],
+): Promise<RemoveWorktreeBranchOutcome> {
+	const outcome: RemoveWorktreeBranchOutcome = { deleted: [], kept: [] };
+	for (const name of [...new Set(candidates)]) {
+		if (!await isTaskOwnedBranch(project.path, task, name)) {
+			log.info("Preserving branch not created by dev3 for this task", { branch: name });
+			const existing = task.existingBranch?.replace(/^origin\//, "");
+			const variantName = existing && task.variantIndex != null ? `${existing}-v${task.variantIndex}` : null;
+			const variantLike = !!variantName && (name === variantName || name.startsWith(`${variantName}-`));
+			outcome.kept.push({ name, reason: variantLike ? "variant-unproven" : "not-owned" });
+			continue;
+		}
+		const info = await ownedBranchInfo(project.path, name);
+		if (!info) {
+			outcome.kept.push({ name, reason: "missing" });
+			continue;
+		}
+		try {
+			await beforeBranchDelete?.(info);
+		} catch (err) {
+			log.warn("Keeping branch — its recovery note could not be written", { branch: name, error: String(err) });
+			outcome.kept.push({ name, reason: "note-failed" });
+			continue;
+		}
+		const deleted = await run(["git", "branch", "-D", name], project.path);
+		if (deleted.ok) {
+			log.info("Deleting branch", { branch: name });
+			outcome.deleted.push({ name, sha: info.sha });
+		} else {
+			log.warn("Keeping branch — git refused to delete it", { branch: name, stderr: deleted.stderr });
+			outcome.kept.push({ name, reason: "delete-failed" });
+		}
+	}
+	return outcome;
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
-): Promise<void> {
-	if (!task.worktreePath) return;
+	options: RemoveWorktreeOptions = {},
+): Promise<RemoveWorktreeBranchOutcome> {
+	const none: RemoveWorktreeBranchOutcome = { deleted: [], kept: [] };
+	if (!task.worktreePath) return none;
 
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
@@ -2831,6 +3137,11 @@ export async function removeWorktree(
 		await run(["git", "worktree", "prune"], project.path);
 	}
 
+	if (options.branchPolicy === "task-owned") {
+		const candidates = [liveBranch, task.branchName].filter((name): name is string => !!name);
+		return deleteTaskOwnedBranches(project, task, candidates, options.beforeBranchDelete);
+	}
+
 	if (branchToDelete) {
 		// Delete branches that dev3 created. We check task.branchName (the original name
 		// assigned at worktree creation) rather than the live branch name, because agents
@@ -2839,7 +3150,18 @@ export async function removeWorktree(
 		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/");
 		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
 			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
-		if (isDevBranch || isVariantBranch) {
+		if ((isDevBranch || isVariantBranch) && options.branchPolicy === "unique-kept") {
+			const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branchToDelete}^{commit}`], project.path);
+			const sha = tip.ok ? tip.stdout.trim() : "";
+			const onlyHere = sha ? await commitsReachableOnlyFrom(project.path, sha, branchToDelete) : null;
+			if (sha && onlyHere === 0) {
+				log.info("Deleting branch", { branch: branchToDelete });
+				await run(["git", "update-ref", "-d", `refs/heads/${branchToDelete}`, sha], project.path);
+			} else if (sha) {
+				log.warn("Keeping branch — it holds commits found nowhere else", { branch: branchToDelete, commits: onlyHere });
+				return { deleted: [], kept: [{ name: branchToDelete, reason: "unique-commits" }] };
+			}
+		} else if (isDevBranch || isVariantBranch) {
 			log.info("Deleting branch", { branch: branchToDelete });
 			await run(
 				["git", "branch", "-D", branchToDelete],
@@ -2849,4 +3171,5 @@ export async function removeWorktree(
 			log.info("Preserving user branch", { branch: branchToDelete });
 		}
 	}
+	return none;
 }

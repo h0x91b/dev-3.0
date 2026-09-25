@@ -57,7 +57,7 @@ const NATIVE_ABSENT_READS = 2;
 /** How long a "give the terminal the keyboard" wish waits for a pane to attach. */
 const FOCUS_REQUEST_TTL_MS = 15_000;
 
-type ErrorKind = "worktree-gone" | "session-ended";
+type ErrorKind = "worktree-gone" | "worktree-unreadable" | "session-ended";
 
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
@@ -232,8 +232,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			return;
 		}
 		try {
-			const exists = await api.request.checkWorktreeExists({ path: worktreePath });
-			setError({ kind: exists ? "session-ended" : "worktree-gone", path: worktreePath });
+			// Same criterion as the launch guard, or a folder without `.git` would
+			// offer Resume, fail, and offer Resume again.
+			const state = await api.request.checkWorktreeState({ path: worktreePath, requireGit: project?.kind !== "virtual" });
+			setError({
+				kind: state === "present" ? "session-ended" : state === "unreadable" ? "worktree-unreadable" : "worktree-gone",
+				path: worktreePath,
+			});
 		} catch {
 			setError({ kind: "worktree-gone", path: worktreePath });
 		}
@@ -708,6 +713,25 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						</div>
 						<p className="text-fg-muted text-xs">{hibernated ? t("terminal.wakeShellDesc") : t("terminal.startFreshDesc")}</p>
 					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// A permission error (lost Full Disk Access) makes an intact worktree look
+	// missing. Never offer Complete/Cancel/Reset over it — they would delete live work.
+	if (error?.kind === "worktree-unreadable") {
+		return (
+			<div className="flex items-center justify-center h-full">
+				<div data-testid="terminal-worktree-unreadable" className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
+					<div className="flex items-center gap-2 font-medium text-fg">
+						<span className="text-lg">⚠</span>
+						<span>{t("terminal.worktreeUnreadableTitle")}</span>
+					</div>
+					<code className="block bg-base text-fg-3 text-xs px-3 py-2 rounded border border-edge select-all break-all">
+						{error.path}
+					</code>
+					<p className="text-fg-3 text-sm">{t("terminal.worktreeUnreadableDesc")}</p>
 				</div>
 			</div>
 		);

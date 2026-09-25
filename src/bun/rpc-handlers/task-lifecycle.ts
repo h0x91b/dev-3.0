@@ -1,4 +1,4 @@
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
@@ -6,7 +6,7 @@ import * as git from "../git";
 import * as github from "../github";
 import { holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
-import { emitTaskSound } from "../lifecycle/executor";
+import { emitTaskSound, takeResetBranchOutcome } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 import { assertKnownLabelIds } from "../board-operations/labels";
@@ -265,6 +265,8 @@ export async function moveTask(params: {
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
 	enforceAllowedTransition?: boolean;
+	/** A deliberate start from outside the task — see `explicitLaunch` on the event. */
+	explicitLaunch?: boolean;
 }): Promise<Task> {
 	if (params.newStatus === undefined && params.customColumnId === undefined) {
 		throw new Error("A lifecycle move requires a status or custom column");
@@ -281,6 +283,7 @@ export async function moveTask(params: {
 		force: params.force,
 		clientPlayedSound: params.clientPlayedSound,
 		enforceAllowedTransition: params.enforceAllowedTransition,
+		explicitLaunch: params.explicitLaunch,
 	});
 }
 
@@ -884,7 +887,7 @@ async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]
 }
 
 async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved });
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "complete");
 	if (!known) {
 		log.debug("respondToAgentCompletionRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -902,10 +905,43 @@ async function listPendingCancellationRequests(): Promise<AgentCancellationReque
 }
 
 async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved });
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "cancel");
 	if (!known) {
 		log.debug("respondToAgentCancellationRequest: request expired or unknown", { requestId: params.requestId });
 	}
+}
+
+/** Reset dialogs still waiting for an answer — replayed like the cancellation ones. */
+async function listPendingResetRequests(): Promise<AgentCancellationRequest[]> {
+	return listPendingAgentRequests("reset").map((r) => ({
+		requestId: r.requestId,
+		taskId: r.taskId,
+		projectId: r.projectId,
+		taskTitle: r.dialog.taskTitle,
+		subject: r.dialog.subject,
+	}));
+}
+
+async function respondToAgentResetRequest(params: { requestId: string; approved: boolean }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "reset");
+	if (!known) {
+		log.debug("respondToAgentResetRequest: request expired or unknown", { requestId: params.requestId });
+	}
+}
+
+/**
+ * The UI's door to a To Do reset, called only after the user confirmed it. The
+ * lifecycle machine re-checks `consent` against the fresh task, so a dialog that
+ * outlived its run resets nothing.
+ */
+export async function resetTaskToTodo(params: { taskId: string; projectId: string; consent: TaskResetConsent }): Promise<TaskResetResult> {
+	log.info("→ resetTaskToTodo", { taskId: params.taskId.slice(0, 8) });
+	takeResetBranchOutcome(params.taskId);
+	const task = await dispatchLifecycleEvent(params.projectId, params.taskId, { type: "resetRequested", consent: params.consent });
+	const outcome = takeResetBranchOutcome(params.taskId);
+	const keptBranches = (outcome?.kept ?? []).flatMap((branch) =>
+		branch.reason === "missing" ? [] : [{ name: branch.name, reason: branch.reason }]);
+	return { task, keptBranches };
 }
 
 /**
@@ -921,7 +957,7 @@ async function respondToAgentLaunchRequest(params: {
 	const known = resolveAgentRequest(params.requestId, {
 		approved: params.approved,
 		...(params.approved && params.launch ? { launch: params.launch } : {}),
-	});
+	}, "launch");
 	if (!known) {
 		log.debug("respondToAgentLaunchRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -996,6 +1032,7 @@ async function openQuickShellInner(): Promise<Task> {
 	const updated = await dispatchLifecycleEvent(project.id, task.id, {
 		type: "moveRequested",
 		target: { status: "in-progress", customColumnId: null },
+		explicitLaunch: true,
 	}, { project, task });
 	log.info("← openQuickShell (created scratch)", { taskId: task.id.slice(0, 8) });
 	return updated;
@@ -1199,6 +1236,9 @@ export const taskLifecycleHandlers = {
 	respondToAgentCompletionRequest,
 	listPendingCancellationRequests,
 	respondToAgentCancellationRequest,
+	listPendingResetRequests,
+	respondToAgentResetRequest,
+	resetTaskToTodo,
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,
 	markAgentRequestShown,

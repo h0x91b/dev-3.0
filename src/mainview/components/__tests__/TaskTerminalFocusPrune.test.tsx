@@ -22,7 +22,7 @@ vi.mock("../../rpc", () => ({
 			getPanePtyUrl: vi.fn(),
 			taskPaneState: vi.fn(),
 			taskPaneAction: vi.fn(),
-			checkWorktreeExists: vi.fn(),
+			checkWorktreeState: vi.fn(),
 		},
 	},
 	isElectrobun: false,
@@ -99,7 +99,7 @@ beforeEach(() => {
 	vi.mocked(api.request.getPanePtyUrl).mockImplementation(({ paneId }: { paneId: string }) =>
 		Promise.resolve({ url: `ws://localhost:9999?session=${TASK_ID}~${paneId}` }),
 	);
-	vi.mocked(api.request.checkWorktreeExists).mockResolvedValue(true as never);
+	vi.mocked(api.request.checkWorktreeState).mockResolvedValue("present" as never);
 });
 
 function mountTerminal() {

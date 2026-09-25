@@ -4,6 +4,12 @@ import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFI
 
 // ---- Mocks ----
 
+vi.mock("../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: vi.fn((_project: unknown, path: string | null | undefined) => path ?? ""),
+	worktreeAccessState: vi.fn(() => "present"),
+}));
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
 	loadVirtualProjects: vi.fn(() => Promise.resolve([])),
@@ -571,6 +577,17 @@ describe("pane.* — the CLI's own pane surface", () => {
 		expect(startPaneRun).not.toHaveBeenCalled();
 	});
 
+	it("refuses a worktree that is gone, before starting anything (no $HOME fallback)", async () => {
+		const guard = await import("../task-workspace-guard");
+		vi.mocked(guard.assertTaskWorkspacePresent).mockImplementationOnce((_project, path) => {
+			throw new guard.TaskWorkspaceUnavailableError("missing", String(path));
+		});
+		const resp = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("worktree is missing");
+		expect(startPaneRun).not.toHaveBeenCalled();
+	});
+
 	it("reads, lists and closes runs of that task", async () => {
 		expect((await handleRequest(makeRequest("pane.logs", { taskId: makeTask().id, runId: "run-0123456789ab", lines: 50 }))).ok).toBe(true);
 		expect(vi.mocked(readPaneRun).mock.calls[0].slice(1)).toEqual(["run-0123456789ab", 50]);
@@ -963,6 +980,69 @@ describe("task.agentHook", () => {
 
 		const panes = store.get().sessionState?.panes ?? [];
 		expect(panes.every((p) => p.sessionId === null)).toBe(true);
+	});
+});
+
+// B1 (Seq 2003 review): no hook path may start a To Do card again — a hook from an
+// agent that outlived a reset would otherwise launch a fresh, unconsented run.
+describe("hooks never activate a To Do task", () => {
+	function stubTodo(): { project: Project; task: Task } {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+		return { project, task };
+	}
+
+	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"])(
+		"task.agentHook %s on a To Do task moves nothing (Codex/OMP/Copilot)", async (event) => {
+			const { project, task } = stubTodo();
+			const response = await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId: `todo-${event}`, event, toolName: "Bash", toolUseId: "t1",
+			}));
+			expect(response.ok).toBe(true);
+			expect(moveTask).not.toHaveBeenCalled();
+			expect(activateTask).not.toHaveBeenCalled();
+		},
+	);
+
+	it("a pending question on a To Do task moves nothing either", async () => {
+		const { project, task } = stubTodo();
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "todo-question", event: "PreToolUse", toolName: "request_user_input", toolUseId: "q1",
+		}));
+		expect(response.ok).toBe(true);
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("task.move from the task's OWN agent into an active column is a silent no-op (Claude hooks)", async () => {
+		const { project, task } = stubTodo();
+		const response = await handleRequest(makeRequest("task.move", {
+			taskId: task.id, projectId: project.id, newStatus: "in-progress", ifStatusNot: "review-by-ai", sourceTaskId: task.id,
+		}));
+		expect(response.ok).toBe(true);
+		expect(response.data).toEqual(task);
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("task.claudeStopFailure on a To Do task moves nothing", async () => {
+		const { project, task } = stubTodo();
+		const response = await handleRequest(makeRequest("task.claudeStopFailure", {
+			taskId: task.id, projectId: project.id, error: "server_error",
+		}));
+		expect(response.ok).toBe(true);
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("an explicit out-of-task task.move keeps today's start, marked explicitLaunch", async () => {
+		const { project, task } = stubTodo();
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "in-progress" });
+		await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: project.id, newStatus: "in-progress" }));
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "in-progress", explicitLaunch: true }));
 	});
 });
 
@@ -3571,6 +3651,7 @@ describe("task.move", () => {
 				ifStatus: undefined,
 				ifStatusNot: undefined,
 				enforceAllowedTransition: true,
+				explicitLaunch: true,
 			});
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
@@ -3604,6 +3685,7 @@ describe("task.move", () => {
 			ifStatus: undefined,
 			ifStatusNot: undefined,
 			enforceAllowedTransition: true,
+			explicitLaunch: true,
 		});
 	});
 
@@ -3847,7 +3929,7 @@ describe("task.move", () => {
 			throw new Error("PTY gone");
 		});
 		vi.mocked(runCleanupScript).mockRejectedValue(new Error("cleanup failed"));
-		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
 		vi.mocked(data.updateTask).mockResolvedValue({
 			...task,
 			status: "completed",

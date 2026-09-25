@@ -14,6 +14,12 @@ import type { Project, Task } from "../../shared/types";
 
 // ---- Mocks ----
 
+vi.mock("../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: (_project: unknown, path: string | null | undefined) => path ?? "",
+	worktreeAccessState: () => "present",
+}));
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 	realpathSync: vi.fn((p: string) => p),

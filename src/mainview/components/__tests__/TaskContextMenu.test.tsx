@@ -15,6 +15,7 @@ vi.mock("../../rpc", () => ({
 			deleteTask: vi.fn().mockResolvedValue(undefined),
 			moveTaskToProject: vi.fn().mockResolvedValue(undefined),
 			moveTaskToCustomColumn: vi.fn(),
+			moveTask: vi.fn(),
 			getAvailableApps: vi.fn().mockResolvedValue([{ id: "finder", name: "Finder", macAppName: "Finder" }]),
 			openInApp: vi.fn().mockResolvedValue(undefined),
 		},
@@ -177,5 +178,25 @@ describe("TaskContextMenu", () => {
 	it("keeps session-only actions disabled on a hibernated task", () => {
 		renderMenu(makeTask({ hibernated: true }));
 		expect(screen.getByTestId("task-menu-hibernate")).toBeDisabled();
+	});
+});
+
+// R1 (Seq 2003 review 2003-010): "Move to → Agent is Working" on a To Do card must
+// open the launch dialog; a bare moveTask is refused by the lifecycle.
+describe("TaskContextMenu → start a To Do card", () => {
+	it("hands the start to the launch dialog, sending no moveTask", async () => {
+		const { LAUNCH_REQUESTED_EVENT } = await import("../../utils/moveTaskToStatus");
+		const listener = vi.fn();
+		window.addEventListener(LAUNCH_REQUESTED_EVENT, listener);
+		try {
+			renderMenu(makeTask({ status: "todo", worktreePath: null }));
+			await userEvent.click(screen.getByText("Move to"));
+			await userEvent.click(await screen.findByText("Agent is Working"));
+			await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+			expect((listener.mock.calls[0]![0] as CustomEvent).detail.targetStatus).toBe("in-progress");
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
+		} finally {
+			window.removeEventListener(LAUNCH_REQUESTED_EVENT, listener);
+		}
 	});
 });

@@ -334,14 +334,18 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "task-move-user-questions":
 		case "task-move-review-ai":
 		case "task-move-review-user": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				await api.request.moveTask({ taskId, projectId, newStatus: TASK_MOVE_STATUS[action] });
-			} catch (err) {
-				console.error(`[menu] moveTask(${TASK_MOVE_STATUS[action]}) failed`, err);
-			}
+			// Same helper as the board, so "Move to To Do" on a running task gets the
+			// reset confirmation and a refused move is reported, not just logged.
+			const task = currentTask(state);
+			const project = state.projects?.find((p) => p.id === currentProjectId(state));
+			if (!task || !project) return;
+			await moveTaskToStatus({
+				task,
+				project,
+				newStatus: TASK_MOVE_STATUS[action],
+				dispatch: ctx.dispatch,
+				t: ctx.t,
+			});
 			return;
 		}
 

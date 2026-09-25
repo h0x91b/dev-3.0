@@ -23,6 +23,12 @@ const mocks = vi.hoisted(() => ({
 	newSessionDetached: vi.fn(async () => ({ stdout: "", stderr: "" })),
 }));
 
+vi.mock("../../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: (_project: unknown, path: string | null | undefined) => path ?? "",
+	worktreeAccessState: () => "present",
+}));
 vi.mock("../shared", () => ({
 	getPushMessage: () => null,
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

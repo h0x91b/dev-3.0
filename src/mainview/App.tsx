@@ -34,6 +34,7 @@ import AddProjectModal from "./components/AddProjectModal";
 import ImportConversationsModal from "./components/ImportConversationsModal";
 import CreateTaskModal from "./components/CreateTaskModal";
 import LaunchVariantsModal from "./components/LaunchVariantsModal";
+import { LAUNCH_REQUESTED_EVENT, type LaunchRequestedDetail } from "./utils/moveTaskToStatus";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
@@ -448,6 +449,16 @@ function App() {
 	// link. Consumed once by CreateTaskModal's initial description; cleared on close.
 	const [createTaskInitialText, setCreateTaskInitialText] = useState<string>("");
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
+	// Surfaces that only know "move to status" (context menu, native menu) start a
+	// To Do card through the same launch modal the board uses.
+	useEffect(() => {
+		const onLaunchRequested = (e: Event) => {
+			const { task, project, targetStatus } = (e as CustomEvent<LaunchRequestedDetail>).detail;
+			setLaunchModal({ task, project, targetStatus });
+		};
+		window.addEventListener(LAUNCH_REQUESTED_EVENT, onLaunchRequested);
+		return () => window.removeEventListener(LAUNCH_REQUESTED_EVENT, onLaunchRequested);
+	}, []);
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	// `newIds` freezes which images were unread at open time: opening marks them
 	// read, so without the snapshot the "these three are new" highlight would
@@ -2226,7 +2237,7 @@ function App() {
 		};
 	}, [dispatch, navigate, t]);
 
-	// Agent-initiated CANCELLATION requests. Same blocked-CLI contract as the
+	// Agent-initiated CANCELLATION and RESET requests. Same blocked-CLI contract as the
 	// completion effect above, deliberately its own dialog: cancelling throws the
 	// worktree and everything uncommitted in it away, so the prompt is red from
 	// border to badge, Cancel is autofocused, and the local git check is streamed
@@ -2234,8 +2245,27 @@ function App() {
 	// past a warning that has not arrived yet.
 	useEffect(() => {
 		const showing = cancellationDialogsShowingRef.current;
+		// Cancellation and reset both destroy the worktree, so they share this
+		// red dialog; each keeps its own channel, copy and answer RPC.
+		const kinds = [
+			{
+				event: "rpc:agentCancellationRequested",
+				toStatus: "cancelled" as const,
+				copy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessage", confirm: "app.agentCancellationConfirm", cancel: "app.agentCancellationCancel" } as const,
+				listPending: () => api.request.listPendingCancellationRequests({}),
+				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentCancellationRequest(params),
+			},
+			{
+				event: "rpc:agentResetRequested",
+				toStatus: "todo" as const,
+				copy: { title: "app.agentResetTitle", message: "app.agentResetMessage", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
+				listPending: () => api.request.listPendingResetRequests({}),
+				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentResetRequest(params),
+			},
+		];
+		type DialogKind = (typeof kinds)[number];
 
-		async function showCancellationDialog(request: {
+		async function showDestructiveDialog(kind: DialogKind, request: {
 			requestId: string;
 			taskId: string;
 			projectId: string;
@@ -2250,11 +2280,11 @@ function App() {
 			try {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
-					title: t("app.agentCancellationTitle"),
-					message: t("app.agentCancellationMessage"),
+					title: t(kind.copy.title),
+					message: t(kind.copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
-					confirmLabel: t("app.agentCancellationConfirm"),
-					cancelLabel: t("app.agentCancellationCancel"),
+					confirmLabel: t(kind.copy.confirm),
+					cancelLabel: t(kind.copy.cancel),
 					danger: true,
 					tone: "danger",
 					agentInitiated: true,
@@ -2267,7 +2297,7 @@ function App() {
 					signal: abort.signal,
 				});
 			} catch (err) {
-				console.error("[App] confirm (agent-cancellation) failed:", err);
+				console.error(`[App] confirm (${kind.event}) failed:`, err);
 			} finally {
 				abort.cleanup();
 				showing.delete(requestId);
@@ -2280,30 +2310,33 @@ function App() {
 				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
 				if (dest) navigate(dest);
 				dispatch({ type: "clearBell", taskId });
-				trackEvent("task_moved", { to_status: "cancelled", agent_requested: true });
+				trackEvent("task_moved", { to_status: kind.toStatus, agent_requested: true });
 			}
-			api.request.respondToAgentCancellationRequest({ requestId, approved }).catch((err) =>
-				console.error("respondToAgentCancellationRequest failed:", err),
+			kind.respond({ requestId, approved }).catch((err) =>
+				console.error(`[App] answering ${kind.event} failed:`, err),
 			);
 		}
 
-		function onAgentCancellationRequested(e: Event) {
-			void showCancellationDialog((e as CustomEvent).detail);
-		}
-		window.addEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
+		const listeners = kinds.map((kind) => {
+			const onRequested = (e: Event) => { void showDestructiveDialog(kind, (e as CustomEvent).detail); };
+			window.addEventListener(kind.event, onRequested);
+			return { kind, onRequested };
+		});
 
 		// Replayed on connect AND on every reconnect, for the same reason as the
 		// completion dialogs: the push is one-shot, so a transport that dropped
 		// while the request was created leaves nothing on screen.
 		function replayPending() {
-			api.request.listPendingCancellationRequests({}).then(async (pending) => {
-				if (pending.length === 0) return;
-				if (!await whenConfirmHostMounted()) {
-					console.error("[App] pending cancellation dialogs skipped — ConfirmHost never mounted");
-					return;
-				}
-				for (const request of pending) void showCancellationDialog(request);
-			}).catch((err) => console.error("listPendingCancellationRequests failed:", err));
+			for (const kind of kinds) {
+				kind.listPending().then(async (pending) => {
+					if (pending.length === 0) return;
+					if (!await whenConfirmHostMounted()) {
+						console.error(`[App] pending ${kind.event} dialogs skipped — ConfirmHost never mounted`);
+						return;
+					}
+					for (const request of pending) void showDestructiveDialog(kind, request);
+				}).catch((err) => console.error(`listPending (${kind.event}) failed:`, err));
+			}
 		}
 		replayPending();
 		const onRpcStatus = (e: Event) => {
@@ -2312,7 +2345,7 @@ function App() {
 		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
 
 		return () => {
-			window.removeEventListener("rpc:agentCancellationRequested", onAgentCancellationRequested);
+			for (const { kind, onRequested } of listeners) window.removeEventListener(kind.event, onRequested);
 			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		};
 	}, [dispatch, navigate, t]);

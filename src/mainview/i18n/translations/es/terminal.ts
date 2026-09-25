@@ -7,6 +7,8 @@ const terminal = {
 	"terminal.taskClosedHint": "Su terminal y su worktree se eliminaron al cerrar la tarea: ya no queda nada que ejecutar aquí.",
 	"terminal.envError": "Error del entorno de la tarea",
 	"terminal.worktreeNotFound": "El directorio de trabajo de la tarea ya no existe. Esto puede ocurrir cuando el worktree se elimina externamente.",
+	"terminal.worktreeUnreadableTitle": "dev3 no puede leer la carpeta de esta tarea",
+	"terminal.worktreeUnreadableDesc": "Se denegó el permiso, así que no se inició nada. Probablemente el worktree sigue ahí: comprueba que dev3 conserva el Acceso total al disco en Ajustes del Sistema → Privacidad y seguridad y vuelve a abrir la tarea.",
 	"terminal.errorPath": "Worktree no encontrado:",
 	"terminal.complete": "Completar",
 	"terminal.cancelTask": "Cancelar tarea",

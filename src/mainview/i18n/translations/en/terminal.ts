@@ -7,6 +7,8 @@ const terminal = {
 	"terminal.taskClosedHint": "Its terminal and worktree were removed when the task closed — there is nothing left to run here.",
 	"terminal.envError": "Task environment error",
 	"terminal.worktreeNotFound": "The task's working directory no longer exists. This can happen when the worktree is removed externally.",
+	"terminal.worktreeUnreadableTitle": "dev3 can't read this task's folder",
+	"terminal.worktreeUnreadableDesc": "Permission was denied, so nothing was started. The worktree is probably still there — check that dev3 still has Full Disk Access in System Settings → Privacy & Security, then reopen the task.",
 	"terminal.errorPath": "Worktree not found:",
 	"terminal.complete": "Complete",
 	"terminal.cancelTask": "Cancel Task",

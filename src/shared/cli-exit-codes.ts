@@ -25,6 +25,7 @@ export const CLI_EXIT_CODE_GH_UNAVAILABLE = 23;
 export const CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED = 24;
 export const CLI_EXIT_CODE_APPROVAL_STILL_PENDING = 25;
 export const CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN = 26;
+export const CLI_EXIT_CODE_RESET_DECLINED = 27;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -176,12 +177,18 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_APPROVAL_STILL_PENDING",
 		code: CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
 		description:
-			"`dev3 task move --status completed|cancelled` stopped waiting and the app confirms the request is STILL PENDING: the ten-minute wait ran out, or the connection dropped and came back after the wait was already spent. The dialog is still open and an answer will still take effect. Running the same command again waits on that same request — it does not open a second dialog. Distinct from exit 1 so an agent never reads 'still waiting' as 'failed' and asks anew.",
+			"`dev3 task move --status completed|cancelled|todo` (todo = a reset) stopped waiting and the app confirms the request is STILL PENDING: the ten-minute wait ran out, or the connection dropped and came back after the wait was already spent. The dialog is still open and an answer will still take effect. Running the same command again waits on that same request — it does not open a second dialog. Distinct from exit 1 so an agent never reads 'still waiting' as 'failed' and asks anew.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN",
 		code: CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN,
 		description:
-			"`dev3 task move --status completed|cancelled` lost its connection mid-wait and cannot say how the request ended: the app has no record of it (it restarted, the record aged out, or the request never arrived) and the task has not moved to the target status — or the app could not be reached again at all. This is NOT evidence of a decline, nor that nothing was approved. Asking again opens a new dialog, so check the task and the user first.",
+			"`dev3 task move --status completed|cancelled|todo` (todo = a reset) lost its connection mid-wait and cannot say how the request ended: the app has no record of it (it restarted, the record aged out, or the request never arrived) and the task has not moved to the target status — or the app could not be reached again at all. This is NOT evidence of a decline, nor that nothing was approved. Asking again opens a new dialog, so check the task and the user first.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_RESET_DECLINED",
+		code: CLI_EXIT_CODE_RESET_DECLINED,
+		description:
+			"`dev3 task move --status todo` on a task that needs a reset (it is active or still owns a worktree) asked the user for approval and it was NOT granted: the user declined, or the task's run ended before anyone answered (the request is then voided, never approved). This request stopped or deleted NOTHING. After a decline the task keeps its status, worktree and session; after a void, whatever ended the run (a completion, cancellation or another reset) may have removed its worktree. Distinct from exits 6 and 22: a reset keeps the card but throws the run away, and an agent must be able to tell that refusal apart from a refused completion or cancellation.",
 	},
 ] as const;

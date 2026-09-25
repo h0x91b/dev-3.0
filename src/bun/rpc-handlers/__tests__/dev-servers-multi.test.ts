@@ -59,6 +59,12 @@ const mocks = vi.hoisted(() => ({
 	tmuxBinaryPath: vi.fn(() => "/opt/homebrew/bin/tmux"),
 }));
 
+vi.mock("../../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: (_project: unknown, path: string | null | undefined) => path ?? "",
+	worktreeAccessState: () => "present",
+}));
 vi.mock("../../data", () => ({ getProject: mocks.getProject, getTask: mocks.getTask }));
 vi.mock("../settings-config", () => ({ resolveOperationalProjectConfig: mocks.resolveOperationalProjectConfig }));
 vi.mock("../../task-terminal-backend", () => ({ taskTerminalBackendIdentity: mocks.taskTerminalBackendIdentity }));

@@ -16,7 +16,7 @@
  * HARD RULE: never spawn `tmux` directly outside this module — always go
  * through the `tmux` client (see AGENTS.md).
  */
-export { tmux, TmuxClient } from "./client";
+export { tmux, TmuxClient, TmuxMissingCwdError } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
 export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE } from "./constants";
 export {

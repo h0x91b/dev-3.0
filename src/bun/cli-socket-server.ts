@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Project, Task, TaskPriority, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, taskSharedMedia, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, taskNeedsReset, taskResetConsent, normalizeTaskType, presetPromptForTaskType, taskSharedMedia, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
@@ -28,7 +28,7 @@ import { boardPorts } from "./board-operations/runtime";
 import { AGENT_ACTOR } from "./board-operations/types";
 import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
-import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "./rpc-handlers";
+import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, resetTaskToTodo, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "./rpc-handlers";
 import { appendNotificationLog } from "./notification-log";
 import type { NotificationLogInput, NotificationLogMode, NotificationLogOutcome } from "../shared/notification-log";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
@@ -51,6 +51,7 @@ import { placePaneSession, type SessionPane } from "./pane-session-capture";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
+import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 import { loadEffectiveTaskHistory } from "./task-blobs";
 import { taskPeek } from "./task-peek";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "./task-pane-runs";
@@ -356,8 +357,11 @@ function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentAppro
 	return {
 		kind,
 		state: known.state,
-		...(known.state === "answered" ? { approved: known.approved } : {}),
+		...(known.state === "answered" ? { approved: known.approved, ...(known.stale ? { stale: true } : {}) } : {}),
 		taskStatus: task.status,
+		// A legacy To Do card that owns a worktree is already `todo`: only this
+		// says whether the reset actually happened.
+		...(kind === "reset" ? { resetNeeded: taskNeedsReset(task) } : {}),
 	};
 }
 
@@ -370,11 +374,26 @@ function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentAppro
  * restarted app has no request left, and opening a fresh dialog then would be a
  * second ask the agent never made.
  */
+/** What each pending reset request asked to destroy, fixed when its dialog opened. */
+const resetConsentByRequestId = new Map<string, TaskResetConsent>();
+/**
+ * One reset per approved request, shared by every waiter joined to it: the
+ * original CLI, a retry, a re-attach after a dropped socket. Each must get the
+ * same truthful outcome, never a second attempt or a false "nothing happened".
+ */
+const resetRunByRequestId = new Map<string, Promise<TaskResetResult>>();
+
 async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
-): Promise<{ approved: boolean; task?: Task } | AgentApprovalNotAttached> {
+): Promise<{ approved: boolean; task?: Task; stale?: boolean; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
 	const { project, task } = await resolveTaskFromParams(params);
+	// A clean To Do card, a draft, a completed/cancelled task: moving it to To Do
+	// destroys nothing, so it stays the ordinary move it always was — no dialog.
+	if (kind === "reset" && params.attachOnly !== true && !taskNeedsReset(task)) {
+		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "todo", enforceAllowedTransition: true });
+		return { approved: true, task: moved, plainMove: true };
+	}
 	const targetStatus = DESTRUCTIVE_APPROVAL_TARGET[kind];
 	const push = getPushMessage();
 	const dialog = {
@@ -384,7 +403,7 @@ async function requestDestructiveApproval(
 		subject: buildTaskDialogSubject(task, project),
 	};
 
-	let request: { requestId: string; decision: Promise<{ approved: boolean }> };
+	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
 	if (params.attachOnly === true) {
 		const joined = joinAgentRequest(kind, task.id);
 		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
@@ -399,18 +418,43 @@ async function requestDestructiveApproval(
 		// Kept ON the request, not just pushed: the push is a one-shot event, so a
 		// renderer that reloads before answering can be handed it again on connect.
 		request = createAgentRequest(kind, task.id, project.id, { dialog });
+		if (kind === "reset" && !resetConsentByRequestId.has(request.requestId)) {
+			resetConsentByRequestId.set(request.requestId, taskResetConsent(task));
+		}
 	}
 
 	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
 	// used to push nothing, so once a client lost the original dialog the request
 	// became unreachable from the CLI side (h0x91b/dev-3.0#1669). Clients dedup by
 	// `requestId`, so a dialog already on screen is untouched.
-	push?.(kind === "complete" ? "agentCompletionRequested" : "agentCancellationRequested", {
+	push?.(kind === "complete" ? "agentCompletionRequested" : kind === "reset" ? "agentResetRequested" : "agentCancellationRequested", {
 		requestId: request.requestId, taskId: task.id, projectId: project.id, ...dialog,
 	});
 
-	const { approved } = await request.decision;
-	if (!approved) return { approved: false };
+	const { approved, stale } = await request.decision;
+	if (!approved) {
+		resetConsentByRequestId.delete(request.requestId);
+		return { approved: false, ...(stale ? { stale: true } : {}) };
+	}
+	if (kind === "reset") {
+		const { requestId } = request;
+		let run = resetRunByRequestId.get(requestId);
+		if (!run) {
+			// Consent is bound to the run the dialog showed; the machine refuses a
+			// different one and deletes nothing.
+			const consent = resetConsentByRequestId.get(requestId);
+			resetConsentByRequestId.delete(requestId);
+			run = consent
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent })
+				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
+			resetRunByRequestId.set(requestId, run);
+			void run.catch(() => {}).finally(() => {
+				setTimeout(() => resetRunByRequestId.delete(requestId), 60_000);
+			});
+		}
+		const { task: reset, keptBranches } = await run;
+		return { approved: true, task: reset, keptBranches };
+	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
 	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
@@ -1092,6 +1136,7 @@ const handlers: Record<string, Handler> = {
 		const { task, project } = await requirePaneTask(params);
 		const cwd = task.worktreePath;
 		if (!cwd) throw new Error(`task ${task.id.slice(0, 8)} has no worktree, so it has no pane to split`);
+		assertTaskWorkspacePresent(project, cwd);
 		return await startPaneRun({
 			task,
 			command: String(params.command ?? ""),
@@ -1865,6 +1910,8 @@ const handlers: Record<string, Handler> = {
 		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
 		}
+		// A To Do card has no run to report on — not even a pending question.
+		if (task.status === "todo") target = null;
 		const resumeStatus = event === "PermissionRequest"
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
@@ -1974,7 +2021,8 @@ const handlers: Record<string, Handler> = {
 			...(typeof params.lastAssistantMessage === "string" ? { lastAssistantMessage: params.lastAssistantMessage } : {}),
 		});
 
-		if (task.status === "completed" || task.status === "cancelled") {
+		// A To Do task has no turn to park: the failing agent outlived its run.
+		if (task.status === "completed" || task.status === "cancelled" || task.status === "todo") {
 			return { task, moved: false, reason };
 		}
 
@@ -2054,6 +2102,13 @@ const handlers: Record<string, Handler> = {
 		// human at a terminal (no sourceTaskId) both stay on the silent path.
 		const requester = await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
+		const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+		// A task's own agent never starts its To Do card again: after a reset the
+		// agent is dying, and its hooks (every tool call) must stay a quiet no-op.
+		if (isActivation && task.status === "todo" && sourceTaskId && sourceTaskId === task.id) {
+			log.info("Ignoring own-agent activation of a To Do task", { taskId: task.id.slice(0, 8), to: builtinStatus });
+			return task;
+		}
 		if (requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot })) {
 			return requestAgentLaunchApproval({
 				project,
@@ -2071,6 +2126,10 @@ const handlers: Record<string, Handler> = {
 			ifStatus,
 			ifStatusNot,
 			enforceAllowedTransition: true,
+			// No task context = an explicit command from outside any task (a person,
+			// a script). It keeps today's plain-move trust to start a To Do card and
+			// nothing more — it is never reset consent (that is `task.requestReset`).
+			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
 	},
 
@@ -2088,11 +2147,17 @@ const handlers: Record<string, Handler> = {
 	// a dialog they never saw.
 	"task.requestCancellation": async (params) => requestDestructiveApproval("cancel", params),
 
+	// `dev3 task move --status todo`. A task that needs a reset (active, or still
+	// owning a worktree) is reset only after the user approves it in the app —
+	// from any caller, task context or not. Never auto-approved; a request whose
+	// run ends first is voided, not approved. Anything else is a plain move.
+	"task.requestReset": async (params) => requestDestructiveApproval("reset", params),
+
 	// Read-only: where a completion/cancellation request stands. Never creates,
 	// joins or answers one — it is what a CLI asks after its wait timed out.
 	"approval.status": async (params) => {
 		const kind = params.kind;
-		if (kind !== "complete" && kind !== "cancel") throw new Error('kind must be "complete" or "cancel"');
+		if (kind !== "complete" && kind !== "cancel" && kind !== "reset") throw new Error('kind must be "complete", "cancel" or "reset"');
 		const { task } = await resolveTaskFromParams(params);
 		return approvalStatusOf(kind, task);
 	},

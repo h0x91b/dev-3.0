@@ -52,7 +52,7 @@ import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
 import { _resetUserShellCacheForTests } from "../shell-env";
-import { TmuxSpawnError, TMUX_CONF_DARK_PATH } from "../tmux";
+import { TmuxMissingCwdError, TmuxSpawnError, TMUX_CONF_DARK_PATH } from "../tmux";
 import {
 	cwdExists,
 	createSession,
@@ -250,18 +250,15 @@ describe("pty-server", () => {
 			expect(tmuxCall![0][tmuxCall![0].length - 1]).toBe("/bin/zsh");
 		});
 
-		it("logs a warning when cwd does not exist but still spawns (fork will fail)", () => {
-			// The pre-flight `existsSync(cwd)` check was removed (it was sync I/O
-			// in the hot path). A missing cwd now manifests as a failed fork —
-			// the child exits non-zero and `proc.exited` fires onPtyDied via the
-			// normal exit path. The synchronous early-return was the bottleneck.
+		it("refuses to start a session in a cwd that does not exist — tmux would open it in $HOME", () => {
+			// tmux `new-session -c <missing dir>` exits 0 and starts the pane in the
+			// user's home directory; it never fails the fork. The tmux client refuses
+			// instead (TmuxMissingCwdError), so no session is retained.
 			mockExistsSync.mockReturnValue(false);
 			const id = track("task-nocwd-01");
-			expect(() => createSession(id, "proj-1", "/tmp/nonexistent", "bash", {})).not.toThrow();
-			// spawn was still attempted (fork would fail in production, but the
-			// mocked spawn returns a healthy proc — so no onPtyDied callback fires
-			// here unless we wire up an actually-exiting proc, which other tests do).
-			expect(mockSpawn).toHaveBeenCalled();
+			expect(() => createSession(id, "proj-1", "/tmp/nonexistent", "bash", {})).toThrow(TmuxMissingCwdError);
+			expect(hasSession(id)).toBe(false);
+			expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && cmd.includes("new-session"))).toBe(false);
 		});
 
 		it("propagates a tmux spawn failure and does not retain a dead session", () => {

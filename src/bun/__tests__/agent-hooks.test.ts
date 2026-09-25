@@ -1416,3 +1416,13 @@ describe("generated hook commands stay instance-neutral", () => {
 		expect(CODEX_DEV3_HOOK_COMMAND).toContain("~/.dev3.0/bin/dev3");
 	});
 });
+
+describe("getAgentHookTargetStatus on a To Do task", () => {
+	// An agent that outlived a reset must never start the fresh card again.
+	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"] as const)(
+		"%s → no move", (event) => {
+			expect(getAgentHookTargetStatus(event, "todo", true)).toBeNull();
+			expect(getAgentHookTargetStatus(event, "todo", false)).toBeNull();
+		},
+	);
+});

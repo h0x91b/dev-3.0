@@ -171,6 +171,7 @@ describe("task.move destructive cleanup", () => {
 				ifStatus: undefined,
 				ifStatusNot: undefined,
 				enforceAllowedTransition: true,
+				explicitLaunch: true,
 			});
 		expect(mockCleanupTaskState).toHaveBeenCalledWith(task.id);
 		expect(mockReleasePorts).toHaveBeenCalledWith(task.id);

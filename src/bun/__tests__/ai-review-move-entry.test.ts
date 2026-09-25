@@ -53,6 +53,12 @@ const ALL_TMUX_CALLS = [
 ];
 
 // shared.ts reaches bun:ffi at import time (objc helpers); Node cannot resolve it.
+vi.mock("../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: (_project: unknown, path: string | null | undefined) => path ?? "",
+	worktreeAccessState: () => "present",
+}));
 vi.mock("bun:ffi", () => ({
 	dlopen: vi.fn(() => ({ symbols: {} })),
 	FFIType: { ptr: "ptr", function: "function", i32: "i32", void: "void" },

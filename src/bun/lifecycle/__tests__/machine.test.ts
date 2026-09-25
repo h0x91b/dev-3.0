@@ -219,6 +219,7 @@ describe("task lifecycle transition table", () => {
 			"gracefulAgentExit",
 			"destroyTaskPty",
 			"killDevServer",
+			"judgeFailureWorkspace",
 			"runCleanupScript",
 			"reapWorktreeProcesses",
 			"removeWorktree",
@@ -1107,6 +1108,7 @@ describe("draft tasks cannot be activated", () => {
 		const result = transition(state("todo"), {
 			type: "moveRequested",
 			target: { status: "in-progress", customColumnId: null },
+			explicitLaunch: true,
 		});
 
 		expect(result.next.column.status).toBe("in-progress");

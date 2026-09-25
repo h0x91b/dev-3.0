@@ -186,7 +186,7 @@ describe("removeWorktree", () => {
 
 		const withPath = { ...task, worktreePath: wtPath };
 		await removeWorktree(project, withPath);
-		await expect(removeWorktree(project, withPath)).resolves.toBeUndefined();
+		await expect(removeWorktree(project, withPath)).resolves.toEqual({ deleted: [], kept: [] });
 		expect(existsSync(wtPath)).toBe(false);
 	});
 
@@ -521,7 +521,9 @@ describe("createWorktree", () => {
 		g(`git worktree remove --force "${second.worktreePath}"`, repo.local);
 	});
 
-	it("re-runs a variant task whose worktree and variant branch survived", async () => {
+	// Changed semantics (Seq 2007 F4): a surviving variant branch is no longer
+	// adopted — the re-run starts fresh on the next free name, the old one stays.
+	it("re-runs a variant task on a fresh name when its worktree and variant branch survived", async () => {
 		g("git checkout -b feature/base", repo.local);
 		makeTaskCommits(repo.local);
 		g("git checkout main", repo.local);
@@ -535,10 +537,11 @@ describe("createWorktree", () => {
 		const second = await createWorktree(project, task, "feature/base", "feature/base-v1");
 
 		expect(existsSync(second.worktreePath)).toBe(true);
-		expect(second.branchName).toBe("feature/base-v1");
+		expect(second.branchName).toBe("feature/base-v1-2");
+		expect(g("git branch --list feature/base-v1", repo.local).trim()).toContain("feature/base-v1");
 
 		g(`git worktree remove --force "${second.worktreePath}"`, repo.local);
-		g("git branch -D feature/base-v1", repo.local);
+		g("git branch -D feature/base-v1 feature/base-v1-2", repo.local);
 	});
 
 	it("creates default task branch when no existing branch specified", async () => {

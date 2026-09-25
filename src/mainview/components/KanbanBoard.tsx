@@ -22,7 +22,7 @@ import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask,
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
-import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -182,6 +182,18 @@ function KanbanBoard({
 		}
 	}
 
+	// Every launch of a To Do card funnels through here. A card still owning a
+	// worktree from an earlier run is reset (with consent) first — the lifecycle
+	// refuses to re-initialise it, so launching it as-is could only fail.
+	async function openLaunchModal(task: Task, targetStatus: TaskStatus) {
+		if (task.status === "todo" && task.worktreePath) {
+			const outcome = await resetTaskToTodoWithConsent({ task, project: projectOfTask(task), dispatch, t });
+			if (outcome !== "reset") return;
+			task = { ...task, worktreePath: null, branchName: null };
+		}
+		setLaunchModal({ task, targetStatus });
+	}
+
 	async function handleTaskDrop(taskId: string, targetStatus: TaskStatus) {
 		setDragFromStatus(null);
 		setDragFromCustomColumnId(null);
@@ -201,8 +213,8 @@ function KanbanBoard({
 		if (task.status === targetStatus && !task.customColumnId) return;
 
 		// todo → active: open LaunchVariantsModal
-		if (task.status === "todo" && ACTIVE_STATUSES.includes(targetStatus) && !task.worktreePath) {
-			setLaunchModal({ task, targetStatus });
+		if (task.status === "todo" && ACTIVE_STATUSES.includes(targetStatus)) {
+			await openLaunchModal(task, targetStatus);
 			return;
 		}
 
@@ -577,8 +589,7 @@ function KanbanBoard({
 		navigate,
 		onAddTask: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
 		agents,
-		onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
-			setLaunchModal({ task, targetStatus }),
+		onLaunchVariants: (task: Task, targetStatus: TaskStatus) => { void openLaunchModal(task, targetStatus); },
 		onAddAttempts: (task: Task) =>
 			setLaunchModal({ task, targetStatus: task.status, mode: "addAttempts" }),
 		onTaskDrop: handleTaskDrop,
@@ -743,7 +754,7 @@ function KanbanBoard({
 					}}
 					onLaunchVariants={(task, targetStatus) => {
 						onCloseTaskDetail?.();
-						setLaunchModal({ task, targetStatus });
+						void openLaunchModal(task, targetStatus);
 					}}
 				/>
 			)}

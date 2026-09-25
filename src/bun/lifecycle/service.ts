@@ -33,13 +33,25 @@ export interface LifecycleActorRuntime {
 	activeActivities?: Set<LifecycleActivity>;
 }
 
-function errorEvent(effect: LifecycleEffect, error: unknown): LifecycleEvent | null {
+/** Matched by name so it survives module mocks and the detached-preparation boundary. */
+export function isWorkspaceReclaimRefusal(error: unknown): boolean {
+	return error instanceof Error && error.name === "WorkspaceReclaimRefusedError";
+}
+
+export function errorEvent(effect: LifecycleEffect, error: unknown): LifecycleEvent | null {
 	if (!effect.compensatingEvent) return null;
 	if (effect.compensatingEvent.type === "preparationFailed") {
 		return {
 			...effect.compensatingEvent,
 			error: error instanceof Error ? error.message : String(error),
 			compensating: true,
+			...(isWorkspaceReclaimRefusal(error) ? { preserveWorkspace: true } : {}),
+		};
+	}
+	if (effect.compensatingEvent.type === "resetFailed") {
+		return {
+			...effect.compensatingEvent,
+			error: `Task reset stopped: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 	if (effect.compensatingEvent.type === "teardownFailed") {

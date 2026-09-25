@@ -8,12 +8,14 @@ const log = createLogger("agent-requests");
  * Agent-initiated actions that need the user's explicit go-ahead before they
  * happen. Each kind blocks the requesting CLI until the user answers in the app.
  */
-export type AgentRequestKind = "complete" | "cancel" | "launch";
+export type AgentRequestKind = "complete" | "cancel" | "reset" | "launch";
 
 export interface AgentRequestDecision {
 	approved: boolean;
 	/** Present only for approved `launch` requests. */
 	launch?: AgentLaunchChoice;
+	/** Set when nobody answered: the run the request was about ended first. */
+	stale?: boolean;
 }
 
 /**
@@ -63,6 +65,8 @@ interface AgentRequestOutcome {
 	requestId: string;
 	approved: boolean;
 	resolvedAt: number;
+	/** Voided because its run ended — nobody answered. */
+	stale?: boolean;
 }
 
 const recentOutcomeByKey = new Map<string, AgentRequestOutcome>();
@@ -75,7 +79,7 @@ const recentOutcomeByKey = new Map<string, AgentRequestOutcome>();
  */
 export type AgentRequestState =
 	| { state: "pending"; requestId: string }
-	| { state: "answered"; requestId: string; approved: boolean; resolvedAt: number }
+	| { state: "answered"; requestId: string; approved: boolean; resolvedAt: number; stale?: boolean }
 	| { state: "none" };
 
 function dedupKey(kind: AgentRequestKind, taskId: string): string {
@@ -268,16 +272,29 @@ export function joinAgentRequest(
 	return { requestId: entry.requestId, decision: entry.decision };
 }
 
-/** Resolve a pending request with the user's decision. Returns false if the request is unknown/expired. */
-export function resolveAgentRequest(requestId: string, decision: AgentRequestDecision): boolean {
+/**
+ * Resolve a pending request with the user's decision. Returns false if the
+ * request is unknown/expired — or of another kind than the dialog answering it,
+ * so a "yes" drawn for one dialog can never settle a different request.
+ */
+export function resolveAgentRequest(requestId: string, decision: AgentRequestDecision, expectedKind?: AgentRequestKind): boolean {
 	const entry = pendingByRequestId.get(requestId);
 	if (!entry) {
 		log.debug("resolveAgentRequest: unknown requestId", { requestId });
 		return false;
 	}
+	if (expectedKind && entry.kind !== expectedKind) {
+		log.warn("resolveAgentRequest: answer for the wrong kind ignored", { requestId, kind: entry.kind, expectedKind });
+		return false;
+	}
 	pendingByRequestId.delete(requestId);
 	requestIdByKey.delete(dedupKey(entry.kind, entry.taskId));
-	recentOutcomeByKey.set(dedupKey(entry.kind, entry.taskId), { requestId, approved: decision.approved, resolvedAt: Date.now() });
+	recentOutcomeByKey.set(dedupKey(entry.kind, entry.taskId), {
+		requestId,
+		approved: decision.approved,
+		resolvedAt: Date.now(),
+		...(decision.stale ? { stale: true } : {}),
+	});
 	if (entry.autoApproveTimer) clearTimeout(entry.autoApproveTimer);
 	entry.resolve(decision);
 	// The dialog was broadcast to every connected client (windows + remote
@@ -296,6 +313,18 @@ export function resolveAgentRequest(requestId: string, decision: AgentRequestDec
 		approved: decision.approved,
 	});
 	return true;
+}
+
+/**
+ * The task's run ended (reset, completed, cancelled), so a pending request about
+ * THAT run must not be answerable any more — an approval arriving later would
+ * apply to a different run. Resolved as declined + stale, never approved.
+ */
+export function voidAgentRequest(kind: AgentRequestKind, taskId: string): boolean {
+	const pendingId = requestIdByKey.get(dedupKey(kind, taskId));
+	if (!pendingId) return false;
+	log.info("Voiding agent request — its run ended", { kind, taskId: taskId.slice(0, 8), requestId: pendingId });
+	return resolveAgentRequest(pendingId, { approved: false, stale: true });
 }
 
 export function _resetAgentRequestsForTests(): void {

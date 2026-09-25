@@ -21,7 +21,9 @@ import {
 	DEFAULT_REVIEW_PROMPT,
 	getPreparingStageProgress,
 	getTaskTitle,
+	taskResetConsentMatches,
 } from "../../shared/types";
+import { voidAgentRequest } from "../agent-requests";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
 import { dumpTerminalTaskConversations } from "../conversation-archive";
@@ -98,6 +100,11 @@ export interface LifecycleExecutionContext {
 	hooks: LifecycleExecutorHooks;
 	completedDiffStats?: CompletedDiffStats;
 	stateTask?: Task;
+	/** Set by `resetWorktree`: the worktree is gone, so a failed final write must say so. */
+	resetWorktreeRemoved?: boolean;
+	resetBranchOutcome?: git.RemoveWorktreeBranchOutcome;
+	/** Set by `judgeFailureWorkspace`: why the failure cleanup keeps the folder. */
+	failureWorkspaceKept?: string;
 }
 
 export interface LifecycleEffectOutcome {
@@ -128,6 +135,113 @@ function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 		};
 	}
 	return { runtime: runtime.phase, updatedAt: Date.now() };
+}
+
+/**
+ * What a reset clears. Everything describing the discarded run goes; the card's
+ * identity and its reusable configuration (title, description, notes, labels,
+ * priority, agent/config/account, existing branch, variant group) stay.
+ * `lifecycleStartedAt` goes too, so the next run stamps a fresh one — that is
+ * what makes an old consent stop matching a relaunch at the same path.
+ */
+function resetTaskUpdates(): Partial<Task> {
+	return {
+		status: "todo",
+		customColumnId: null,
+		worktreePath: null,
+		branchName: null,
+		runtimeState: runtimeState({ phase: "idle" }),
+		...clearedPreparationFields(),
+		hibernated: false,
+		sessionState: null,
+		prNumber: null,
+		prUrl: null,
+		prStatusCache: null,
+		mergeCompletionPrompt: null,
+		preparationError: null,
+		setupFailedExitCode: null,
+		setupFailedAgentRunning: null,
+		cloneFailures: null,
+		// Messages queued for the stopped agent belong to the run that ended; a
+		// deferred start (`scheduledLaunch`) is the card's own and stays.
+		scheduledMessages: null,
+		lifecycleStartedAt: undefined,
+	};
+}
+
+/**
+ * What the last reset of a task did with its branches, for the door that asked
+ * (RPC toast, CLI line) — the lifecycle result itself is only the Task.
+ */
+const resetBranchOutcomes = new Map<string, git.RemoveWorktreeBranchOutcome>();
+
+export function takeResetBranchOutcome(taskId: string): git.RemoveWorktreeBranchOutcome | null {
+	const outcome = resetBranchOutcomes.get(taskId) ?? null;
+	resetBranchOutcomes.delete(taskId);
+	return outcome;
+}
+
+/** Durable notes written mid-teardown must not push the still-active record over the "shutting down" view. */
+async function addResetNote(ctx: LifecycleExecutionContext, content: string): Promise<void> {
+	const [{ addNote }, { boardPorts }, { AGENT_ACTOR }] = await Promise.all([
+		import("../board-operations/task-notes"),
+		import("../board-operations/runtime"),
+		import("../board-operations/types"),
+	]);
+	// Written by dev3 itself, not by the user: the agent actor, source "ai".
+	await addNote({ ...boardPorts, push: () => {} }, ctx.project, ctx.task.id, content, AGENT_ACTOR);
+}
+
+const KEPT_REASON_TEXT: Record<git.RemoveWorktreeBranchOutcome["kept"][number]["reason"], string> = {
+	"not-owned": "dev3 did not create it for this task",
+	"variant-unproven": "a variant branch dev3 cannot prove it created",
+	"unique-commits": "it holds commits found on no other branch",
+	"note-failed": "its recovery note could not be written",
+	"delete-failed": "git refused to delete it",
+	missing: "it no longer exists",
+};
+
+function keptBranchesNote(outcome: git.RemoveWorktreeBranchOutcome): string | null {
+	const kept = outcome.kept.filter((branch) => branch.reason !== "missing");
+	if (kept.length === 0) return null;
+	return `Reset to To Do kept ${kept.map((branch) => `\`${branch.name}\` (${KEPT_REASON_TEXT[branch.reason]})`).join(", ")}.`;
+}
+
+/**
+ * The only breadcrumb to a deleted branch's commits, so it is written BEFORE the
+ * delete and a failure here keeps the branch (git.removeWorktree). Worded as
+ * intent: the delete can still be refused afterwards.
+ */
+async function recordResetBranchNote(ctx: LifecycleExecutionContext, branch: git.OwnedBranchInfo): Promise<void> {
+	const count = branch.commitsOnlyHere ?? "an unknown number of";
+	const content = [
+		`Reset to To Do is deleting branch \`${branch.name}\` at ${branch.sha}`
+			+ ` (${count} commit(s) reachable from no other branch, remote or tag).`,
+		`If you need it back: \`git branch ${branch.name}-recovered ${branch.sha}\` in ${ctx.project.path}`
+			+ " — this works until git garbage-collects unreachable commits.",
+	].join("\n");
+	await addResetNote(ctx, content);
+}
+
+/**
+ * Best-effort: the earlier variant branches are kept whether or not this lands,
+ * so a failed note never fails the start.
+ */
+async function noteFreshVariantBranch(project: Project, task: Task, info: git.VariantBranchesKept): Promise<void> {
+	const content = [
+		`This run started fresh on \`${info.created}\` from ${info.baseRef} at ${info.baseSha}.`,
+		`Branch name(s) already taken — earlier variant branches, or ones created meanwhile — were left untouched: ${info.kept.map((name) => `\`${name}\``).join(", ")}. Review them and delete the ones you no longer need (\`git branch -D <name>\`).`,
+	].join("\n");
+	try {
+		const [{ addNote }, { boardPorts }, { AGENT_ACTOR }] = await Promise.all([
+			import("../board-operations/task-notes"),
+			import("../board-operations/runtime"),
+			import("../board-operations/types"),
+		]);
+		await addNote({ ...boardPorts, push: () => {} }, project, task.id, content, AGENT_ACTOR);
+	} catch (error) {
+		log.warn("Could not record the fresh-variant note", { taskId: task.id.slice(0, 8), error: String(error) });
+	}
 }
 
 function clearedPreparationFields(): Pick<
@@ -302,6 +416,7 @@ async function prepareTask(
 				? git.createWorktree(resolvedProject, task, launch.existingBranch ?? undefined, launch.variantBranchName)
 				: git.createWorktree(resolvedProject, task, launch.existingBranch ?? undefined),
 		);
+		if (worktree.variantBranchesKept) await noteFreshVariantBranch(project, task, worktree.variantBranchesKept);
 		const resolved = await preparationStep(
 			task,
 			effect.runId,
@@ -875,6 +990,7 @@ export async function executeLifecycleEffect(
 							error: error instanceof Error ? error.message : String(error),
 							origin: effect.origin,
 							target: effect.target,
+							...(error instanceof Error && error.name === "WorkspaceReclaimRefusedError" ? { preserveWorkspace: true } : {}),
 						}, ctx.stateTask),
 					)
 					.catch((error) => {
@@ -921,7 +1037,21 @@ export async function executeLifecycleEffect(
 				ctx.sourceTask.worktreePath,
 			);
 			return {};
+		case "judgeFailureWorkspace": {
+			const worktreePath = ctx.sourceTask.worktreePath ?? derivedPreparationPath(ctx.project, ctx.sourceTask);
+			try {
+				await git.assertWorkspaceReclaimable(worktreePath);
+			} catch (error) {
+				// Fail closed: whatever went wrong, a folder we could not clear stays.
+				ctx.failureWorkspaceKept = error instanceof Error && error.name === "WorkspaceReclaimRefusedError"
+					? error.message
+					: `The task folder ${worktreePath} was kept: it could not be checked (${error instanceof Error ? error.message : String(error)}).`;
+				log.warn("Preparation failed; keeping the task folder it would have removed", { taskId: ctx.task.id.slice(0, 8), worktreePath });
+			}
+			return {};
+		}
 		case "runCleanupScript":
+			if (ctx.failureWorkspaceKept) return {};
 			await runCleanupScript(effect.allowDerivedPath && !ctx.sourceTask.worktreePath
 				? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
 				: ctx.sourceTask, ctx.project, {
@@ -950,6 +1080,7 @@ export async function executeLifecycleEffect(
 			);
 			return {};
 		case "reapWorktreeProcesses":
+			if (ctx.failureWorkspaceKept) return {};
 			// Best-effort on purpose (no "abort" policy): a stubborn foreign process
 			// must not block a completion. Survivors are logged by the reaper.
 			await reapWorktreeProcesses(
@@ -959,13 +1090,13 @@ export async function executeLifecycleEffect(
 			);
 			return {};
 		case "removeWorktree": {
+			if (ctx.failureWorkspaceKept) return {};
 			const worktreePath = effect.allowDerivedPath && !ctx.sourceTask.worktreePath
 				? derivedPreparationPath(ctx.project, ctx.sourceTask)
 				: ctx.sourceTask.worktreePath;
-			await git.removeWorktree(
-				ctx.project,
-				worktreePath ? { ...ctx.sourceTask, worktreePath } : ctx.sourceTask,
-			);
+			const target = worktreePath ? { ...ctx.sourceTask, worktreePath } : ctx.sourceTask;
+			if (effect.failureCleanup) await git.removeWorktree(ctx.project, target, { branchPolicy: "unique-kept" });
+			else await git.removeWorktree(ctx.project, target);
 			await forgetWorktreeTrust(worktreePath);
 			return {};
 		}
@@ -985,6 +1116,48 @@ export async function executeLifecycleEffect(
 				await forgetWorktreeTrust(worktreePath);
 			}
 			return {};
+		case "resetWorktree": {
+			const worktreePath = ctx.sourceTask.worktreePath;
+			const outcome = await git.removeWorktree(ctx.project, ctx.sourceTask, {
+				branchPolicy: "task-owned",
+				beforeBranchDelete: (branch) => recordResetBranchNote(ctx, branch),
+			});
+			ctx.resetWorktreeRemoved = true;
+			ctx.resetBranchOutcome = outcome;
+			await forgetWorktreeTrust(worktreePath);
+			return {};
+		}
+		case "persistResetTask": {
+			const applied = await data.updateTaskWith(ctx.project, ctx.task.id, (current) => {
+				const sameRun = current.status !== "completed"
+					&& current.status !== "cancelled"
+					&& taskResetConsentMatches(current, effect.consent);
+				return sameRun
+					? { updates: resetTaskUpdates(), result: true }
+					: { updates: {}, result: false };
+			});
+			if (!applied.result) {
+				throw new Error(ctx.resetWorktreeRemoved
+					? "the task changed elsewhere while it was being reset; its worktree is already removed — reset it again to finish"
+					: "the task changed elsewhere while it was being reset; nothing was written");
+			}
+			ctx.task = applied.task;
+			ctx.stateTask = ctx.task;
+			// The run is over: no approval asked about it may land on the fresh card —
+			// a late "complete" would otherwise mark it Completed.
+			for (const kind of ["reset", "complete", "cancel"] as const) voidAgentRequest(kind, ctx.task.id);
+			const outcome = ctx.resetBranchOutcome ?? { deleted: [], kept: [] };
+			resetBranchOutcomes.set(ctx.task.id, outcome);
+			const keptNote = keptBranchesNote(outcome);
+			if (keptNote) {
+				try {
+					await addResetNote(ctx, keptNote);
+				} catch (error) {
+					log.warn("Could not record the kept-branch note", { taskId: ctx.task.id.slice(0, 8), error: String(error) });
+				}
+			}
+			return {};
+		}
 		case "deleteTaskRecord":
 			await data.deleteTask(ctx.project, ctx.task.id);
 			return {};
@@ -1058,6 +1231,8 @@ export async function executeLifecycleEffect(
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
+			// The run ended: a reset approval still open for it must not apply later.
+			voidAgentRequest("reset", ctx.task.id);
 			return {};
 		}
 		case "persistPreparationStage": {
@@ -1078,13 +1253,14 @@ export async function executeLifecycleEffect(
 			return {};
 		}
 		case "persistPreparationFailure": {
+			const preparationError = [effect.error, ctx.failureWorkspaceKept].filter(Boolean).join("\n") || null;
 			const failureUpdates: Partial<Task> = {
 				status: "todo",
 				...clearedPreparationFields(),
 				worktreePath: null,
 				branchName: null,
 				customColumnId: null,
-				preparationError: effect.error,
+				preparationError,
 				runtimeState: runtimeState({ phase: "idle" }),
 			};
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, failureUpdates);

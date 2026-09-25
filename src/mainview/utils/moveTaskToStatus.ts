@@ -4,8 +4,21 @@ import { toast } from "../toast";
 import { trackEvent, agentNameFromId } from "../analytics";
 import posthog from "../posthog";
 import { confirmTaskCompletion } from "./confirmTaskCompletion";
+import { confirmTaskReset } from "./confirmTaskReset";
 import { playTaskCompletionSound } from "../task-sounds";
-import type { Task, Project, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, taskNeedsReset, type Task, type Project, type TaskStatus } from "../../shared/types";
+
+/**
+ * Starting a To Do card is a launch (agent + variant picker), never a bare column
+ * move: the lifecycle refuses a start without an explicit launch. Surfaces that
+ * only know "move to status" hand the launch to the app-level launch modal.
+ */
+export const LAUNCH_REQUESTED_EVENT = "dev3:launchRequested";
+export interface LaunchRequestedDetail {
+	task: Task;
+	project: Project;
+	targetStatus: TaskStatus;
+}
 import type { AppAction } from "../state";
 import type { TFunction } from "../i18n";
 
@@ -53,6 +66,55 @@ export interface MoveTaskToStatusOptions {
 	revertOnFailure?: boolean;
 }
 
+type ResetOptions = Pick<MoveTaskToStatusOptions,
+	"task" | "project" | "dispatch" | "t" | "onOpenTask" | "onMovingChange" | "afterOptimistic" | "onSuccess" | "onFailure" | "revertOnFailure">;
+
+/**
+ * Confirm, then reset: decline changes nothing (no optimistic update, no RPC).
+ * Exported for the launch paths that meet a To Do card still owning a worktree.
+ */
+export async function resetTaskToTodoWithConsent({
+	task,
+	project,
+	dispatch,
+	t,
+	onOpenTask,
+	onMovingChange,
+	afterOptimistic,
+	onSuccess,
+	onFailure,
+	revertOnFailure = true,
+}: ResetOptions): Promise<"declined" | "reset" | "failed"> {
+	const consent = await confirmTaskReset(task, project, t, onOpenTask);
+	if (!consent) return "declined";
+	const movedNow = new Date().toISOString();
+	dispatch({
+		type: "updateTask",
+		task: { ...task, status: "todo", customColumnId: null, movedAt: movedNow, statusEnteredAt: movedNow },
+	});
+	dispatch({ type: "clearBell", taskId: task.id });
+	afterOptimistic?.();
+	onMovingChange?.(true);
+	try {
+		const { task: updated, keptBranches } = await api.request.resetTaskToTodo({ taskId: task.id, projectId: project.id, consent });
+		dispatch({ type: "updateTask", task: updated });
+		if (keptBranches.length > 0) {
+			toast.info(t("task.resetKeptBranches", { branches: keptBranches.map((branch) => branch.name).join(", ") }), { taskId: task.id });
+		}
+		trackEvent("task_moved", { from_status: task.status, to_status: "todo", agent_name: agentNameFromId(task.agentId) });
+		posthog.capture("task_moved", { from_status: task.status, to_status: "todo" });
+		onSuccess?.();
+		return "reset";
+	} catch (err) {
+		onFailure?.(err);
+		if (revertOnFailure) dispatch({ type: "updateTask", task });
+		toast.error(t("task.resetFailed", { error: String(err) }), { taskId: task.id });
+		return "failed";
+	} finally {
+		onMovingChange?.(false);
+	}
+}
+
 /**
  * Single source of truth for moving a task to a new status from the UI.
  *
@@ -87,6 +149,27 @@ export async function moveTaskToStatus({
 	revertOnFailure = true,
 }: MoveTaskToStatusOptions): Promise<boolean> {
 	const terminal = isTerminalStatus(newStatus);
+
+	// To Do on a task with a run is a reset: a separate, always-confirmed path with
+	// no force retry — `force` must never turn a refused reset into a destructive one.
+	if (newStatus === "todo" && taskNeedsReset(task)) {
+		const outcome = await resetTaskToTodoWithConsent({ task, project, dispatch, t, onOpenTask, onMovingChange, afterOptimistic, onSuccess, onFailure, revertOnFailure });
+		return outcome !== "declined";
+	}
+
+	if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
+		// A card still owning a worktree from an earlier run is reset first.
+		let launchTask = task;
+		if (task.worktreePath) {
+			const outcome = await resetTaskToTodoWithConsent({ task, project, dispatch, t, onOpenTask });
+			if (outcome !== "reset") return false;
+			launchTask = { ...task, worktreePath: null, branchName: null };
+		}
+		window.dispatchEvent(new CustomEvent<LaunchRequestedDetail>(LAUNCH_REQUESTED_EVENT, {
+			detail: { task: launchTask, project, targetStatus: newStatus },
+		}));
+		return true;
+	}
 
 	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
 		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm });

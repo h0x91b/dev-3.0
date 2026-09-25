@@ -18,6 +18,12 @@ const originalHome = process.env.HOME;
 const PROJECT_PATH = "/tmp/codex-capture-project";
 const PROJECT_SLUG = "tmp-codex-capture-project";
 
+vi.mock("../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: (_project: unknown, path: string | null | undefined) => path ?? "",
+	worktreeAccessState: () => "present",
+}));
 vi.mock("../rpc-handlers", () => ({
 	isActive: vi.fn(() => true),
 	activateTask: vi.fn(),

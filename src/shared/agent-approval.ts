@@ -1,11 +1,12 @@
 import type { TaskStatus } from "./types";
 
-/** The two approvals that destroy a worktree, and the status each one moves to. */
-export type DestructiveApprovalKind = "complete" | "cancel";
+/** The approvals that destroy a worktree, and the status each one moves to. */
+export type DestructiveApprovalKind = "complete" | "cancel" | "reset";
 
 export const DESTRUCTIVE_APPROVAL_TARGET: Record<DestructiveApprovalKind, TaskStatus> = {
 	complete: "completed",
 	cancel: "cancelled",
+	reset: "todo",
 };
 
 /**
@@ -21,6 +22,10 @@ export interface AgentApprovalStatus {
 	/** Present only when `state` is `answered`. */
 	approved?: boolean;
 	taskStatus: TaskStatus;
+	/** Present when `answered`: the request was voided because its run ended — nobody answered it. */
+	stale?: boolean;
+	/** `reset` only: whether the task still has a run to reset. */
+	resetNeeded?: boolean;
 }
 
 /** Wire shape of an attach-only request that had no live request to join. */

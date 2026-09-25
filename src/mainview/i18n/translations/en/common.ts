@@ -28,6 +28,10 @@ const common = {
 	"app.agentCancellationMessage": "The AI agent working on this task asks to CANCEL it — it says the task should not exist, so nothing here is worth keeping.\n\nThis is not completion. Approving throws the work away: the branch, the worktree and everything uncommitted in it are destroyed and cannot be recovered.",
 	"app.agentCancellationConfirm": "Cancel task and delete work",
 	"app.agentCancellationCancel": "Keep the task",
+	"app.agentResetTitle": "Reset to To Do requested",
+	"app.agentResetMessage": "A dev3 command — usually an AI agent — asks to move this running task back to To Do. Approving stops its agent and deletes the worktree with everything uncommitted in it, plus its branch if dev3 created it. A task note records how to recover deleted commits.\n\nThe card stays in To Do with its title, description, notes, labels and settings, and starts fresh next time.",
+	"app.agentResetConfirm": "Reset task",
+	"app.agentResetCancel": "Keep as is",
 
 	// An agent asking to start another task (or a throwaway scratch peer)
 	"agentLaunch.title": "Agent wants to start this task",

@@ -345,7 +345,9 @@ export function getAgentHookTargetStatus(
 	autoReviewEnabled: boolean,
 	resumeStatus?: "in-progress" | "review-by-ai",
 ): TaskStatus | null {
-	if (currentStatus === "completed" || currentStatus === "cancelled") return null;
+	// A To Do task has no run for a hook to report on: an agent still alive there
+	// (a reset in flight, a legacy card) must never start it again.
+	if (currentStatus === "completed" || currentStatus === "cancelled" || currentStatus === "todo") return null;
 
 	switch (event) {
 		// Starting a session is not working: a scratch task launches parked in

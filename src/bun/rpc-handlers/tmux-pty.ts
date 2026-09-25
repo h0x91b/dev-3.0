@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
+import { assertTaskWorkspacePresent, worktreeAccessState } from "../task-workspace-guard";
 import { resolve } from "node:path";
-import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
+import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -945,6 +946,8 @@ export async function launchTaskPty(
 	resume = false,
 	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; accountId?: string | null; codexHome?: string },
 ): Promise<void> {
+	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
+	assertTaskWorkspacePresent(project, worktreePath);
 	const sessionId = opts?.sessionId;
 	const accountId = opts?.codexHome
 		? codexAccountIdForHome(opts.codexHome) ?? null
@@ -1315,6 +1318,7 @@ export async function launchColumnAgent(
 		log.warn("launchColumnAgent: no worktreePath, skipping", { taskId: task.id.slice(0, 8) });
 		return;
 	}
+	assertTaskWorkspacePresent(project, worktreePath);
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -1509,7 +1513,7 @@ async function startOneDevServer(
 	opId?: string,
 ): Promise<void> {
 	const { task, project, native, socket } = ctx;
-	const worktreePath = task.worktreePath!;
+	const worktreePath = assertTaskWorkspacePresent(project, task.worktreePath);
 	// Never trust the caller: `devServer.start` is reachable from the CLI, the
 	// renderer, and any other socket client, and only the CLI validates.
 	const callerEnv = sanitizeDevServerEnv(env);
@@ -1877,6 +1881,7 @@ async function openFileBrowser(params: { taskId: string; projectId: string }): P
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		if (!task.worktreePath) throw new Error("Task has no worktree");
+		assertTaskWorkspacePresent(project, task.worktreePath);
 
 		const tmuxSession = taskSessionName(task.id);
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
@@ -1940,8 +1945,8 @@ async function getTerminalPreview(params: { taskId: string }): Promise<string | 
 	return pty.capturePane(params.taskId);
 }
 
-async function checkWorktreeExists(params: { path: string }): Promise<boolean> {
-	return existsSync(params.path);
+async function checkWorktreeState(params: { path: string; requireGit?: boolean }): Promise<WorktreeAccessState> {
+	return worktreeAccessState(params.path, { requireGit: params.requireGit === true });
 }
 
 async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
@@ -1999,6 +2004,9 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		}
 
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
+			// Neither a restore, a resume offer nor a fresh launch for a worktree that
+			// is gone or unreadable: the renderer shows why instead.
+			assertTaskWorkspacePresent(foundProject, foundTask.worktreePath);
 			const identity = taskTerminalBackendIdentity(foundTask);
 			const sessionAlive = identity === "native"
 				? await nativeTaskPanesAlive(params.taskId)
@@ -2408,6 +2416,7 @@ async function rerunSetupScript(params: { taskId: string }): Promise<void> {
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
 	if (!task || !project) throw new Error(`Cannot re-run setup: task ${params.taskId} not found`);
 	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertTaskWorkspacePresent(project, task.worktreePath);
 
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
 	if (!resolved.setupScript.trim()) throw new Error("No setup script configured");
@@ -3254,6 +3263,7 @@ async function spawnAgentInTask(params: {
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree — cannot spawn agent");
 	}
+	assertTaskWorkspacePresent(project, task.worktreePath);
 
 	// Written BEFORE the split on purpose: a conversation that cannot be retold
 	// must fail with no pane opened, rather than leave a bare agent standing where
@@ -3508,6 +3518,7 @@ async function spawnSingleBugHunterPane(opts: {
 	accountId?: string | null;
 	split: { placement: AuxPanePlacement; size: string; tmuxTarget: string; nativeAnchor?: string };
 }): Promise<{ handle: AuxPaneHandle; baseCmd: string; agentFamily: AgentFamily | undefined }> {
+	assertTaskWorkspacePresent(opts.project, opts.worktreePath);
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
 		taskDescription: "",
@@ -3961,7 +3972,7 @@ export const tmuxPtyHandlers = {
 	getDevServerStatus,
 	openFileBrowser,
 	getTerminalPreview,
-	checkWorktreeExists,
+	checkWorktreeState,
 	getPtyUrl,
 	getProjectPtyUrl,
 	destroyProjectTerminal,

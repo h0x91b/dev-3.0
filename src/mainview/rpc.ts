@@ -101,6 +101,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	mergePromptResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:mergePromptResolved", { detail: payload })),
 	agentCompletionRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", { detail: payload })),
 	agentCancellationRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentCancellationRequested", { detail: payload })),
+	agentResetRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentResetRequested", { detail: payload })),
 	agentLaunchRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentLaunchRequested", { detail: payload })),
 	agentRequestResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", { detail: payload })),
 	agentLaunchAutoApproveHeld: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentLaunchAutoApproveHeld", { detail: payload })),

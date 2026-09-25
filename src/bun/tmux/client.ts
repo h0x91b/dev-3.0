@@ -15,6 +15,7 @@
  * (v1.29.1 ELOOP incident, decision 105).
  */
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { spawn as defaultSpawn } from "../spawn";
 import {
 	dereferenceTmuxShim,
@@ -37,6 +38,8 @@ type SpawnedProcess = ReturnType<SpawnFn>;
 export interface TmuxClientOptions {
 	/** Spawn implementation — defaults to the PATH-patched project wrapper. */
 	spawn?: SpawnFn;
+	/** Existence probe for pane working directories — defaults to `existsSync`. */
+	cwdExists?: (path: string) => boolean;
 	/** Default tmux socket for calls that don't pass one. */
 	socket?: string;
 }
@@ -90,13 +93,32 @@ const DEFAULT_RUN_TIMEOUT_MS = 10_000;
 
 type RunResult = BoundedRunResult;
 
+/**
+ * tmux given `-c <dir that does not exist>` exits 0 and starts the pane in
+ * `$HOME`. Every task launcher checks its worktree first; this is the backstop
+ * for a launcher that forgot. Format strings (`#{pane_current_path}`) pass.
+ */
+export class TmuxMissingCwdError extends Error {
+	constructor(readonly cwd: string) {
+		super(`Refusing to start a tmux pane in a directory that does not exist: ${cwd}`);
+		this.name = "TmuxMissingCwdError";
+	}
+}
+
 export class TmuxClient {
 	private readonly spawnFn: SpawnFn;
+	private readonly cwdExists: (path: string) => boolean;
 	readonly defaultSocket: string;
 
 	constructor(opts: TmuxClientOptions = {}) {
 		this.spawnFn = opts.spawn ?? defaultSpawn;
+		this.cwdExists = opts.cwdExists ?? existsSync;
 		this.defaultSocket = opts.socket ?? DEFAULT_TMUX_SOCKET;
+	}
+
+	private assertPaneCwd(cwd: string | undefined): void {
+		if (!cwd || cwd.includes("#{")) return;
+		if (!this.cwdExists(cwd)) throw new TmuxMissingCwdError(cwd);
 	}
 
 	// ── Binary surface (delegates to ./binary — the only path to it) ──
@@ -221,6 +243,7 @@ export class TmuxClient {
 		// `-f` on every server-starting command: without it tmux falls back to
 		// /etc/tmux.conf + ~/.tmux.conf and the user's personal settings leak
 		// into the dev3 server (decisions/2026/08/02/isolate-tmux-config.md).
+		this.assertPaneCwd(opts.cwd);
 		const args = ["-f", activeTmuxConfigPath(), "new-session", "-d"];
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);
@@ -270,6 +293,7 @@ export class TmuxClient {
 		/** Environment for the client PROCESS itself (not the session env). */
 		processEnv?: Record<string, string>;
 	} & SocketOpt): SpawnedProcess {
+		this.assertPaneCwd(opts.cwd);
 		const args = ["-f", opts.configFile, "new-session"];
 		if (opts.attachIfExists) args.push("-A");
 		args.push("-c", opts.cwd);
@@ -352,6 +376,7 @@ export class TmuxClient {
 		cwd?: string;
 		command?: string;
 	} & SocketOpt): Promise<{ paneId: string | null; stderr: string }> {
+		this.assertPaneCwd(opts.cwd);
 		const args = ["split-window", opts.orientation === "vertical" ? "-v" : "-h"];
 		if (opts.before) args.push("-b");
 		if (opts.size) args.push("-l", opts.size);
@@ -375,6 +400,7 @@ export class TmuxClient {
 		cwd?: string;
 		command?: string;
 	} & SocketOpt): Promise<{ paneId: string | null; stderr: string }> {
+		this.assertPaneCwd(opts.cwd);
 		const args = ["new-window"];
 		if (opts.name) args.push("-n", opts.name);
 		if (opts.printPaneId) args.push("-P", "-F", PANE_ID_FORMAT.formatString);

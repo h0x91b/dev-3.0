@@ -11,6 +11,7 @@
  * All native internals go through native-task-panes.ts.
  */
 import * as pty from "../pty-server";
+import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 import * as data from "../data";
 import {
 	tmux,
@@ -399,6 +400,7 @@ async function splitContext(taskId: string): Promise<{ cwd: string; env: Record<
 	if (!task || !project || !cwd) {
 		throw new Error(`Cannot split: no worktree on record for task ${taskId.slice(0, 8)}`);
 	}
+	assertTaskWorkspacePresent(project, cwd);
 	return { cwd, env: buildTaskLifecycleEnv(project, task, cwd) };
 }
 

@@ -4,6 +4,12 @@ import {
 	getAllowedTransitions,
 	HIBERNATED_TASK_MOVE_ERROR,
 	isStatusGuardBlocked,
+	LAUNCH_REQUIRES_EXPLICIT_START_ERROR,
+	RESET_BUSY_ERROR,
+	RESET_CONSENT_STALE_ERROR,
+	RESET_REQUIRES_CONSENT_ERROR,
+	taskResetConsentMatches,
+	TODO_OWNS_WORKTREE_ERROR,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	type TaskStatus,
 } from "../../shared/types";
@@ -83,6 +89,7 @@ function preparationFailureEffects(
 	state: LifecycleState,
 	error: string | null,
 	includeFailurePush: boolean,
+	preserveWorkspace = false,
 ): LifecycleEffect[] {
 	const effects: LifecycleEffect[] = [
 		effect({ type: "cancelPreparationProcesses" }),
@@ -95,10 +102,14 @@ function preparationFailureEffects(
 		effect({ type: "destroyTaskPty" }, "abort"),
 		effect({ type: "killDevServer" }),
 	];
-	if (state.facts.projectKind === "git" && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
+	if (!preserveWorkspace && state.facts.projectKind === "git" && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
+		// The folder at the derived path may be a stale leftover holding work (the
+		// failure can come before createWorktree ever judged it, or from a restart):
+		// judge it first; a refusal makes the three effects below keep everything.
+		effects.push(effect({ type: "judgeFailureWorkspace" }));
 		effects.push(effect({ type: "runCleanupScript", toStatus: "todo", allowDerivedPath: true }));
 		effects.push(effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }));
-		effects.push(effect({ type: "removeWorktree", allowDerivedPath: true }));
+		effects.push(effect({ type: "removeWorktree", allowDerivedPath: true, failureCleanup: true }));
 	}
 	effects.push(
 		effect({ type: "persistPreparationFailure", error }, "abort"),
@@ -170,6 +181,20 @@ function moveTransition(
 			],
 		};
 	}
+	// Leaving an active run for To Do destroys it, so a plain move never does it —
+	// not a board drag, not a hook, not a `force` retry. Only `resetRequested`,
+	// dispatched after the user confirmed, tears the run down.
+	if (
+		event.target.status === "todo"
+		&& state.column.status !== "todo"
+		&& !TERMINAL_STATUSES.has(state.column.status)
+		&& (ACTIVE_STATUSES.has(state.column.status) || state.facts.hasWorktree)
+	) {
+		return {
+			next: state,
+			effects: [effect({ type: "reject", message: RESET_REQUIRES_CONSENT_ERROR }, "abort")],
+		};
+	}
 	// A hibernated task is frozen in place. Refused at the same choke point the
 	// draft rule uses, so board drag, the status menu, automations, scheduled
 	// launches and the CLI are all covered at once. A move to a terminal status
@@ -238,6 +263,25 @@ function moveTransition(
 			next: state,
 			effects: [effect({ type: "reject", message: DRAFT_TASK_ACTIVATION_ERROR }, "abort")],
 		};
+	}
+
+	if (needsActivation && oldStatus === "todo") {
+		// Re-running createWorktree over a To Do card that still owns one wipes its
+		// branch and commits (C1). The card must be reset — with consent — first.
+		if (state.facts.hasWorktree) {
+			return {
+				next: state,
+				effects: [effect({ type: "reject", message: TODO_OWNS_WORKTREE_ERROR }, "abort")],
+			};
+		}
+		// Hooks carry neither: a hook from an agent that outlived a reset must never
+		// start the fresh card again.
+		if (!event.preparation && event.explicitLaunch !== true) {
+			return {
+				next: state,
+				effects: [effect({ type: "reject", message: LAUNCH_REQUIRES_EXPLICIT_START_ERROR }, "abort")],
+			};
+		}
 	}
 
 	if (needsActivation) {
@@ -370,6 +414,60 @@ function moveTransition(
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: target.status }),
 			...(launchAgentNow ? [effect({ type: "launchColumnAgent", column: target })] : []),
+		],
+	};
+}
+
+/**
+ * The confirmed reset to To Do: the cancellation teardown, in the same order and
+ * with the same abort points, then one compare-and-set write that lands the card
+ * in To Do. No status, runtime or pointer is persisted before that write (only
+ * the recovery notes are), so a crash anywhere leaves an ordinary active task (or
+ * one whose worktree is already gone) — never a half-reset card, and never a
+ * marker another app version could misread.
+ */
+function resetTransition(
+	state: LifecycleState,
+	event: Extract<LifecycleEvent, { type: "resetRequested" }>,
+): TransitionResult {
+	if (state.runtime.phase === "preparing" || state.runtime.phase === "tearing-down") {
+		return { next: state, effects: [effect({ type: "reject", message: RESET_BUSY_ERROR }, "abort")] };
+	}
+	const status = state.column.status;
+	const needsReset = !TERMINAL_STATUSES.has(status)
+		&& (ACTIVE_STATUSES.has(status) || state.facts.hasWorktree);
+	const consentHolds = taskResetConsentMatches({
+		worktreePath: state.facts.worktreePath ?? null,
+		lifecycleStartedAt: state.facts.lifecycleStartedAt ?? null,
+	}, event.consent);
+	if (!needsReset || !consentHolds) {
+		return { next: state, effects: [effect({ type: "reject", message: RESET_CONSENT_STALE_ERROR }, "abort")] };
+	}
+	const failed: LifecycleEvent = { type: "resetFailed", error: "Task reset failed" };
+	return {
+		next: {
+			...state,
+			column: { status: "todo", customColumnId: null },
+			runtime: { phase: "idle" },
+			facts: { ...state.facts, hasWorktree: false, hibernated: false, worktreePath: null, lifecycleStartedAt: null },
+		},
+		effects: [
+			effect({ type: "clearTaskRuntime" }),
+			effect({ type: "releasePorts" }),
+			effect({ type: "push", message: "taskUpdated", view: "shuttingDown" }),
+			effect({ type: "gracefulAgentExit" }),
+			effect({ type: "destroyTaskPty" }, "abort", failed),
+			effect({ type: "killDevServer" }),
+			effect({ type: "runCleanupScript", toStatus: "todo" }),
+			// The discarded run's conversation is kept, exactly as on cancellation.
+			effect({ type: "dumpTaskConversations" }),
+			effect({ type: "reapWorktreeProcesses" }),
+			...(state.facts.projectKind === "git"
+				? [effect({ type: "resetWorktree" }, "abort", failed)]
+				: []),
+			effect({ type: "persistResetTask", consent: event.consent }, "abort", failed),
+			effect({ type: "push", message: "taskUpdated", view: "current" }),
+			effect({ type: "notifyStatusChange", from: status, to: "todo" }),
 		],
 	};
 }
@@ -526,6 +624,16 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 				],
 			};
 		}
+		case "resetRequested":
+			return resetTransition(state, event);
+		case "resetFailed":
+			return {
+				next: state,
+				effects: [
+					effect({ type: "push", message: "taskUpdated", view: "current" }),
+					effect({ type: "reject", message: event.error }, "abort"),
+				],
+			};
 		case "wakeRequested": {
 			if (state.facts.hibernated !== true) return unchanged(state);
 			return {
@@ -642,7 +750,7 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					column: { status: "todo", customColumnId: null },
 					runtime: { phase: "idle" },
 				},
-				effects: preparationFailureEffects(state, event.error, true),
+				effects: preparationFailureEffects(state, event.error, true, event.preserveWorkspace === true),
 			};
 		}
 		case "preparationCancelled": {

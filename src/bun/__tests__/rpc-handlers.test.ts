@@ -20,6 +20,12 @@ import {
 
 // ---- Mocks ----
 
+vi.mock("../task-workspace-guard", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../task-workspace-guard")>()),
+	// Fixture worktree paths do not exist on disk; the guard has its own tests.
+	assertTaskWorkspacePresent: vi.fn((_project: unknown, path: string | null | undefined) => path ?? ""),
+	worktreeAccessState: vi.fn(() => "present"),
+}));
 vi.mock("electrobun/bun", () => ({
 	PATHS: {
 		VIEWS_FOLDER: "/fake-bundle/Resources/app/views/",
@@ -77,6 +83,8 @@ vi.mock("../data", () => ({
 
 vi.mock("../git", () => ({
 	removeWorktree: vi.fn(),
+	// A fresh fixture folder: the failure judge clears it.
+	assertWorkspaceReclaimable: vi.fn(async () => undefined),
 	createWorktree: vi.fn(),
 	applySparseCheckout: vi.fn(),
 	isGitRepo: vi.fn(),
@@ -172,7 +180,7 @@ vi.mock("../pty-server", () => ({
 // disk/probe logic that settings-config tests control per-case.
 vi.mock("../tmux", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../tmux")>();
-	const client = new actual.TmuxClient({ spawn: ((...args: unknown[]) => mockSpawn(...args)) as never });
+	const client = new actual.TmuxClient({ cwdExists: () => true, spawn: ((...args: unknown[]) => mockSpawn(...args)) as never });
 	client.selectBinary = vi.fn(async (preferred: string) => preferred) as never;
 	client.probeVersion = vi.fn(async () => "tmux 3.6a") as never;
 	client.dereferenceShim = vi.fn((p: string) => (p === "/mock/dev3-home/bin/tmux" ? "/opt/homebrew/bin/tmux" : p)) as never;
@@ -380,6 +388,7 @@ import { getUserShell } from "../shell-env";
 import { tmux } from "../tmux";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
+import * as workspaceGuard from "../task-workspace-guard";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
@@ -443,6 +452,7 @@ const {
 const {
 	handlePaneExited,
 	nativeHunterColumnRatios,
+	launchColumnAgent,
 	tmuxAction,
 	tmuxKillPane,
 	tmuxPaneCount,
@@ -491,6 +501,9 @@ function makeProject(overrides?: Partial<Project>): Project {
 }
 
 function makeTask(overrides?: Partial<Task>): Task {
+	// A To Do card owns no worktree unless a test says so: a To Do task with one is
+	// the legacy "earlier run" state the lifecycle refuses to re-initialise.
+	const todoDefaults: Partial<Task> = overrides?.status === "todo" ? { worktreePath: null, branchName: null } : {};
 	return {
 		id: "task-1",
 		seq: 1,
@@ -507,6 +520,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		configId: null,
 		createdAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
+		...todoDefaults,
 		...overrides,
 	};
 }
@@ -2624,7 +2638,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		mockTaskWrites(task);
 
-		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 		expect(result.status).toBe("in-progress");
 		expect(git.createWorktree).toHaveBeenCalled();
 		expect(pty.createSession).toHaveBeenCalled();
@@ -2644,7 +2658,7 @@ describe("handlers.moveTask", () => {
 			return { ...stored };
 		});
 
-		const result = await handlers.moveTask({
+		const result = await handlers.moveTask({ explicitLaunch: true,
 			taskId: stored.id,
 			projectId: project.id,
 			newStatus: "in-progress",
@@ -2665,7 +2679,7 @@ describe("handlers.moveTask", () => {
 		// must short-circuit before activateTask so no worktree is created.
 		vi.mocked(data.updateTask).mockResolvedValue(task);
 
-		const result = await handlers.moveTask({
+		const result = await handlers.moveTask({ explicitLaunch: true,
 			taskId: "task-1",
 			projectId: "proj-1",
 			newStatus: "in-progress",
@@ -2711,7 +2725,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		mockTaskWrites(task);
 
-		const result = await handlers.moveTask({
+		const result = await handlers.moveTask({ explicitLaunch: true,
 			taskId: "task-1",
 			projectId: "proj-1",
 			newStatus: "in-progress",
@@ -2732,7 +2746,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
-		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 
 		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-user" });
 	});
@@ -2747,7 +2761,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
-		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 
 		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-ai" });
 	});
@@ -2762,7 +2776,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "feature/login" });
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
-		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
 	});
 
@@ -2776,7 +2790,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
-		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 		expect(git.createWorktree).toHaveBeenCalled();
 	});
 
@@ -2797,7 +2811,7 @@ describe("handlers.moveTask", () => {
 			return current;
 		});
 
-		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
 			mergeCompletionPrompt: {
@@ -3246,7 +3260,7 @@ describe("handlers.deleteTask", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(pty.destroySession).mockImplementation(() => {});
-		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
 
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
@@ -3272,6 +3286,7 @@ describe("handlers.deleteTask", () => {
 		});
 		vi.mocked(git.removeWorktree).mockImplementation(async () => {
 			callOrder.push("removeWorktree");
+			return { deleted: [], kept: [] };
 		});
 
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
@@ -3291,7 +3306,7 @@ describe("handlers.deleteTask", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(pty.destroySession).mockImplementation(() => {});
-		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
 		vi.mocked(existsSync).mockReturnValue(true);
 		mockSpawn.mockImplementation(() => {
 			throw new Error("tmux unavailable");
@@ -3377,7 +3392,7 @@ describe("virtual task lifecycle", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		mockTaskWrites(task);
 
-		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+		const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(mkdir).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true });
@@ -3393,7 +3408,7 @@ describe("virtual task lifecycle", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		mockTaskWrites(task);
 
-		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+		const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
 
 		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/Users/me/Downloads", expect.anything(), expect.anything(), expect.anything());
 		expect(result.worktreePath).toBe("/Users/me/Downloads");
@@ -5233,7 +5248,7 @@ describe("handlers.cancelTaskPreparation", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		mockTaskWrites(task);
-		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
 		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-1");
 
 		const cancellation = handlers.cancelTaskPreparation({
@@ -5281,7 +5296,7 @@ describe("handlers.cancelTaskPreparation", () => {
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
 			id: task.id,
 			worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-1/worktree",
-		}));
+		}), { branchPolicy: "unique-kept" });
 	});
 
 	it("continues best-effort cleanup when a killed preparation process never reports exit", async () => {
@@ -5309,7 +5324,7 @@ describe("handlers.cancelTaskPreparation", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		mockTaskWrites(task);
-		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
 		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-stuck");
 
 		try {
@@ -5332,7 +5347,7 @@ describe("handlers.cancelTaskPreparation", () => {
 			expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
 				id: task.id,
 				worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-stuck/worktree",
-			}));
+			}), { branchPolicy: "unique-kept" });
 		} finally {
 			finishTaskPreparation(task.id, runId);
 			finishGit(137);
@@ -15128,5 +15143,90 @@ describe("handlers.saveAgents", () => {
 		expect(call).toBeTruthy();
 		// The merged list, not the caller's payload: overrides only exist merged.
 		expect(call?.[1]).toBe(merged);
+	});
+});
+
+// ================================================================
+// Missing-worktree precondition (Seq 2003 review 2003-004/005): tmux starts a
+// missing cwd in $HOME, so each launcher must refuse BEFORE any trust write or spawn.
+// ================================================================
+
+describe("launchers refuse a missing worktree before touching anything", () => {
+	const passthrough = (_project: unknown, path: string | null | undefined) => path ?? "";
+	function missing(): void {
+		vi.mocked(workspaceGuard.assertTaskWorkspacePresent).mockImplementation((_project, path) => {
+			throw new workspaceGuard.TaskWorkspaceUnavailableError("missing", String(path));
+		});
+	}
+	beforeEach(() => {
+		vi.clearAllMocks();
+		missing();
+	});
+	afterEach(() => {
+		vi.mocked(workspaceGuard.assertTaskWorkspacePresent).mockImplementation(passthrough);
+	});
+
+	function stub(task: Task): Project {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		return project;
+	}
+
+	it.each([
+		["no stored session", undefined],
+		["a stored session (would offer resume)", { panes: [{ agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" }] }],
+	])("getPtyUrl with %s: no restore, no launch", async (_label, sessionState) => {
+		stub(makeTask({ status: "in-progress", worktreePath: "/tmp/gone", sessionState }));
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		await expect(handlers.getPtyUrl({ taskId: "task-1" })).rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
+		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(agents.ensureClaudeTrust).not.toHaveBeenCalled();
+	});
+
+	it("runDevServer: the devScript never starts", async () => {
+		stub(makeTask({ status: "in-progress", worktreePath: "/tmp/gone" }));
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue({ ...makeProject(), devScript: "bun run dev" } as never);
+		await expect(handlers.runDevServer({ taskId: "task-1", projectId: "proj-1" })).rejects.toThrow(/worktree is missing/);
+		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && cmd.includes("new-session"))).toBe(false);
+	});
+
+	it("spawnAgentInTask: no agent pane, no trust write", async () => {
+		stub(makeTask({ id: "abcd1234-full-id", status: "in-progress", worktreePath: "/tmp/gone" }));
+		await expect(handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }))
+			.rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
+		expect(agents.ensureClaudeTrust).not.toHaveBeenCalled();
+		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && cmd.includes("split-window"))).toBe(false);
+	});
+
+	it("launchColumnAgent: the column agent never launches", async () => {
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/gone" });
+		const project = stub(task);
+		await expect(launchColumnAgent(project, task, { agentId: "builtin-claude", configId: null, prompt: "review" } as never, { paneTitle: "AI Review" }))
+			.rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
+		expect(agents.ensureClaudeTrust).not.toHaveBeenCalled();
+		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && cmd.includes("split-window"))).toBe(false);
+	});
+
+	it("rerunSetupScript refuses too", async () => {
+		stub(makeTask({ status: "in-progress", worktreePath: "/tmp/gone" }));
+		await expect(handlers.rerunSetupScript({ taskId: "task-1" })).rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
+	});
+
+	it("spawnBugHuntersInTask: no hunter pane, no trust write", async () => {
+		stub(makeTask({ id: "abcd1234-full-id", status: "in-progress", worktreePath: "/tmp/gone" }));
+		await expect(handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null, count: 2 }))
+			.rejects.toThrow();
+		expect(agents.ensureClaudeTrust).not.toHaveBeenCalled();
+		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && cmd.includes("split-window"))).toBe(false);
+	});
+
+	it("runScript (task script pane): nothing starts", async () => {
+		stub(makeTask({ status: "in-progress", worktreePath: "/tmp/gone" }));
+		await expect(handlers.runScript({ taskId: "task-1", projectId: "proj-1", scriptName: "build", source: "package", placement: "right" } as never))
+			.rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
+		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && (cmd.includes("split-window") || cmd.includes("new-window")))).toBe(false);
 	});
 });

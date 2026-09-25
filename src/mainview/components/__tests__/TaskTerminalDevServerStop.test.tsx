@@ -24,7 +24,7 @@ vi.mock("../../rpc", () => ({
 			taskPaneState: vi.fn(),
 			taskPaneAction: vi.fn(),
 			tmuxNewWindow: vi.fn(),
-			checkWorktreeExists: vi.fn(),
+			checkWorktreeState: vi.fn(),
 			stopDevServer: vi.fn(),
 			startDevServer: vi.fn(),
 			checkDevServer: vi.fn(),
@@ -115,7 +115,7 @@ beforeEach(() => {
 		Promise.resolve({ url: `ws://localhost:9999?session=${TASK_ID}~${paneId}` }),
 	);
 	vi.mocked(api.request.stopDevServer).mockResolvedValue(undefined as never);
-	vi.mocked(api.request.checkWorktreeExists).mockResolvedValue(true as never);
+	vi.mocked(api.request.checkWorktreeState).mockResolvedValue("present" as never);
 });
 
 afterEach(() => {

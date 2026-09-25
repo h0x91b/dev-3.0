@@ -57,6 +57,7 @@ export {
 	isTaskInProgress,
 	launchTaskWithAgentChoice,
 	moveTask,
+	resetTaskToTodo,
 } from "./rpc-handlers/task-lifecycle";
 export { activateTask, runCleanupScript, emitTaskSound } from "./lifecycle/executor";
 export { triggerColumnAgentIfNeeded } from "./lifecycle/service";

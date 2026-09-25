@@ -15,6 +15,7 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { parsePackageScripts } from "../package-scripts";
 import { parseMakefile } from "../makefile";
 import { runScript as runScriptInTmux } from "../script-runner";
+import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 import { getPushMessage, log } from "./shared-pure";
 
 async function parseRunnableScriptsHandler(params: {
@@ -62,6 +63,7 @@ async function runScriptHandler(params: {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertTaskWorkspacePresent(project, task.worktreePath);
 
 	let runner: ScriptRunner = "npm";
 	if (source === "make") {

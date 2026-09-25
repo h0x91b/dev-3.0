@@ -111,3 +111,31 @@ describe("handleMenuAction — terminal moves from the menu", () => {
 		expect(moveTaskToStatus).not.toHaveBeenCalled();
 	});
 });
+
+// R1 (Seq 2003 review 2003-010): the native menu's task moves go through the same
+// helper as the board, so a To Do start opens the launch dialog and a To Do move of
+// a running task asks for the reset — neither is a bare moveTask RPC.
+describe("handleMenuAction — task-move-* goes through moveTaskToStatus", () => {
+	const task = { id: "t1", projectId: "p1", status: "todo" };
+	const project = { id: "p1", name: "P" };
+	const taskCtx = {
+		state: {
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+			currentProjectTasks: [task],
+			projects: [project],
+		} as unknown as AppState,
+		dispatch: vi.fn(),
+		setLocale: vi.fn(),
+		t: ((key: string) => key) as never,
+	};
+
+	it.each([
+		["task-move-in-progress", "in-progress"],
+		["task-move-user-questions", "user-questions"],
+		["task-move-todo", "todo"],
+	] as const)("%s → moveTaskToStatus(%s)", async (action, newStatus) => {
+		moveTaskToStatus.mockClear();
+		await handleMenuAction(action, taskCtx);
+		expect(moveTaskToStatus).toHaveBeenCalledWith(expect.objectContaining({ task, project, newStatus }));
+	});
+});

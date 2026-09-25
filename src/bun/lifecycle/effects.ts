@@ -1,4 +1,4 @@
-import type { AppRPCSchema, CompletedDiffStats, TaskStatus } from "../../shared/types";
+import type { AppRPCSchema, CompletedDiffStats, TaskResetConsent, TaskStatus } from "../../shared/types";
 import type { LifecycleColumn, LifecycleEvent, LifecycleRuntime, LifecycleTaskPatch, PreparationLaunch } from "./events";
 
 type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
@@ -88,8 +88,19 @@ export type LifecycleEffect =
 	| ({ type: "captureCompletedDiffStats"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "dumpTaskConversations"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "reapWorktreeProcesses"; allowDerivedPath?: boolean } & EffectPolicy)
-	| ({ type: "removeWorktree"; allowDerivedPath?: boolean } & EffectPolicy)
+	/**
+	 * `failureCleanup`: the preparation-failure path — a branch is deleted only when
+	 * no commit is reachable from it alone, and nothing runs when the preceding
+	 * `judgeFailureWorkspace` found work to keep.
+	 */
+	| ({ type: "removeWorktree"; allowDerivedPath?: boolean; failureCleanup?: boolean } & EffectPolicy)
+	/** Preparation failure only: may the (derived) worktree folder be destroyed? */
+	| ({ type: "judgeFailureWorkspace" } & EffectPolicy)
 	| ({ type: "removeTaskWorkspace"; allowDerivedPath?: boolean } & EffectPolicy)
+	/** Reset only: remove the worktree, delete only branches dev3 owns, note each first. */
+	| ({ type: "resetWorktree" } & EffectPolicy)
+	/** Reset only: the single compare-and-set write that lands the card in To Do. */
+	| ({ type: "persistResetTask"; consent: TaskResetConsent } & EffectPolicy)
 	| ({ type: "deleteTaskRecord" } & EffectPolicy)
 	| ({
 		type: "persistColumn";

@@ -116,6 +116,76 @@ export const HIBERNATED_TASK_MOVE_ERROR =
 	"Task is hibernated — wake it from its terminal before moving it to another column.";
 
 /**
+ * Moving a running task back to To Do resets it: the agent is stopped and the
+ * worktree and dev3 branch are deleted. Only an explicit, confirmed reset does
+ * that; a plain move (board drag, hook, `force` retry) is refused with this.
+ */
+export const RESET_REQUIRES_CONSENT_ERROR =
+	"Moving this task to To Do resets it — it stops the agent and deletes the worktree. Confirm the reset to do that.";
+
+/** A To Do card still owning a worktree from an earlier run is never re-initialised silently. */
+export const TODO_OWNS_WORKTREE_ERROR =
+	"This To Do task still owns a worktree from an earlier run. Reset it before starting it again.";
+
+/** A To Do task starts only from an explicit launch — never from an agent hook. */
+export const LAUNCH_REQUIRES_EXPLICIT_START_ERROR =
+	"A To Do task can only be started explicitly (Start / Run, or `dev3 task move` from outside the task).";
+
+/** The run the user agreed to reset is no longer the task's current run. */
+export const RESET_CONSENT_STALE_ERROR =
+	"The task changed since the reset was confirmed — nothing was deleted. Confirm the reset again if you still want it.";
+
+/** Reset refuses to race the app's own preparation or teardown. */
+export const RESET_BUSY_ERROR =
+	"Task is still starting up or shutting down — try resetting it once it settles.";
+
+/**
+ * Does moving this task to To Do destroy anything? True for a task in an active
+ * column (it owns a session) or one that still owns a worktree. False for a
+ * clean To Do card, a draft, and completed/cancelled tasks — those moves stay
+ * plain and non-destructive.
+ */
+export function taskNeedsReset(task: Pick<Task, "status" | "worktreePath">): boolean {
+	if (task.status === "completed" || task.status === "cancelled") return false;
+	return ACTIVE_STATUSES.includes(task.status) || !!task.worktreePath;
+}
+
+/**
+ * What the user agreed to destroy, captured when the reset dialog opened: this
+ * worktree, in this run. `lifecycleStartedAt` is stamped on entering
+ * `in-progress` and cleared by a reset, so a relaunch at the same path no
+ * longer matches. `null` means the run carried no stamp.
+ */
+export type WorktreeAccessState = "present" | "missing" | "unreadable";
+
+/** A branch a reset left in place, and why — the user is told, never left to discover it. */
+export interface ResetKeptBranch {
+	name: string;
+	reason: "not-owned" | "variant-unproven" | "unique-commits" | "note-failed" | "delete-failed";
+}
+
+export interface TaskResetResult {
+	task: Task;
+	keptBranches: ResetKeptBranch[];
+}
+
+export interface TaskResetConsent {
+	worktreePath: string | null;
+	lifecycleStartedAt: string | null;
+}
+
+type ResetConsentFields = { worktreePath?: string | null; lifecycleStartedAt?: string | null };
+
+export function taskResetConsent(task: ResetConsentFields): TaskResetConsent {
+	return { worktreePath: task.worktreePath ?? null, lifecycleStartedAt: task.lifecycleStartedAt ?? null };
+}
+
+export function taskResetConsentMatches(task: ResetConsentFields, consent: TaskResetConsent): boolean {
+	return (task.worktreePath ?? null) === consent.worktreePath
+		&& (task.lifecycleStartedAt ?? null) === consent.lifecycleStartedAt;
+}
+
+/**
  * Prefix on every "could not work out what this task is about" rejection from
  * `task.create` — an unresolvable `--pr` or `--branch`. The CLI strips it and
  * exits with its own code, so like {@link DRAFT_TASK_ACTIVATION_ERROR} the
@@ -5245,6 +5315,15 @@ export type AppRPCSchema = {
 				params: { status: "completed" | "cancelled" };
 				response: { pushed: boolean };
 			};
+			/**
+			 * The one door to a destructive To Do reset from the UI, called only after
+			 * the user confirmed it. `consent` is what the dialog showed; a task that
+			 * moved on to another run since is refused with nothing deleted.
+			 */
+			resetTaskToTodo: {
+				params: { taskId: string; projectId: string; consent: TaskResetConsent };
+				response: TaskResetResult;
+			};
 			cancelTaskPreparation: {
 				params: { taskId: string; projectId: string };
 				response: Task;
@@ -5479,9 +5558,13 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: string | null;
 			};
-			checkWorktreeExists: {
-				params: { path: string };
-				response: boolean;
+			/**
+			 * `unreadable` is a permission error (lost Full Disk Access), not a gone
+			 * worktree — the renderer must never offer destructive recovery for it.
+			 */
+			checkWorktreeState: {
+				params: { path: string; requireGit?: boolean };
+				response: WorktreeAccessState;
 			};
 			checkForUpdate: {
 				params: void;
@@ -6286,6 +6369,18 @@ export type AppRPCSchema = {
 				response: AgentCancellationRequest[];
 			};
 			/**
+			 * Renderer answers an `agentResetRequested` dialog. Approval resets the
+			 * task to To Do (agent stopped, worktree and dev3 branch deleted).
+			 */
+			respondToAgentResetRequest: {
+				params: { requestId: string; approved: boolean };
+				response: void;
+			};
+			listPendingResetRequests: {
+				params: Record<string, never>;
+				response: AgentCancellationRequest[];
+			};
+			/**
 			 * Renderer answers an `agentLaunchRequested` dialog. Approval hands back
 			 * the variants + priority the user composed, and the blocked CLI request
 			 * launches the task with them; decline releases it with a refusal.
@@ -6406,6 +6501,11 @@ export type AppRPCSchema = {
 			 */
 			agentCancellationRequested: AgentCancellationRequest;
 			/**
+			 * Emitted when `dev3 task move --status todo` targets a task that needs a
+			 * reset. Same danger dialog shape as cancellation, its own channel.
+			 */
+			agentResetRequested: AgentCancellationRequest;
+			/**
 			 * Emitted when an agent asks to set ANOTHER task running — either
 			 * `dev3 task move --task <other> --status <active>` or
 			 * `dev3 task create --scratch --run`. The CLI blocks on the user's
@@ -6420,7 +6520,7 @@ export type AppRPCSchema = {
 			 * answer has to close the copies open on the other windows / remote
 			 * browsers — they can no longer decide anything.
 			 */
-			agentRequestResolved: { requestId: string; kind: "complete" | "launch"; taskId: string; projectId: string };
+			agentRequestResolved: { requestId: string; kind: "complete" | "cancel" | "reset" | "launch"; taskId: string; projectId: string };
 			/**
 			 * Somebody took a launch dialog over, so its auto-approval is off. The
 			 * dialog is broadcast to every client, and a copy on another window would

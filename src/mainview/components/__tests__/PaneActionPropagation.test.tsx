@@ -27,7 +27,7 @@ vi.mock("../../rpc", () => ({
 			taskPaneState: vi.fn(),
 			taskPaneAction: vi.fn(),
 			tmuxNewWindow: vi.fn(),
-			checkWorktreeExists: vi.fn(),
+			checkWorktreeState: vi.fn(),
 		},
 	},
 	isElectrobun: false,
@@ -115,7 +115,7 @@ beforeEach(() => {
 	);
 	vi.mocked(api.request.taskPaneState).mockReset().mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
 	vi.mocked(api.request.taskPaneAction).mockReset();
-	vi.mocked(api.request.checkWorktreeExists).mockReset().mockResolvedValue(true);
+	vi.mocked(api.request.checkWorktreeState).mockReset().mockResolvedValue("present");
 });
 
 afterEach(() => {

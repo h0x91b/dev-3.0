@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { DESTRUCTIVE_APPROVAL_TARGET, isAgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
@@ -468,7 +468,7 @@ function targetsOwnSession(taskId: string, args: ParsedArgs, context: CliContext
 /** Everything that differs between the completion and the cancellation approval. */
 interface DestructiveApprovalSpec {
 	kind: DestructiveApprovalKind;
-	method: "task.requestCompletion" | "task.requestCancellation";
+	method: "task.requestCompletion" | "task.requestCancellation" | "task.requestReset";
 	label: string;
 	intro: string;
 	lateOwn: string;
@@ -503,6 +503,19 @@ const CANCELLATION_APPROVAL: DestructiveApprovalSpec = {
 	declinedHint: "The task keeps its current status and this session stays alive.\nAsk the user what they want done with it instead of retrying.",
 	declinedCode: CLI_EXIT_CODE_CANCELLATION_DECLINED,
 	failed: "Failed to request task cancellation",
+};
+
+const RESET_APPROVAL: DestructiveApprovalSpec = {
+	kind: "reset",
+	method: "task.requestReset",
+	label: "To Do",
+	intro: "Moving an active task to To Do resets it — the agent is stopped and the worktree, its dev3 branch and everything uncommitted in it are deleted; the card stays in To Do for a fresh start. That requires user approval.",
+	lateOwn: "if the user approves later, the task is reset and this session will be destroyed.",
+	lateOther: "if the user approves later, that task is reset and its worktree destroyed. This session is not the target.",
+	declined: "The user declined the reset",
+	declinedHint: "The user declined — nothing was stopped or deleted: the task keeps its status, worktree and session.\nAsk the user what they want before requesting it again.",
+	declinedCode: CLI_EXIT_CODE_RESET_DECLINED,
+	failed: "Failed to request the task reset",
 };
 
 // After the socket drops mid-wait, how long the CLI keeps trying to reach the
@@ -635,9 +648,14 @@ function reportApprovalStatus(
 ): void {
 	const target = DESTRUCTIVE_APPROVAL_TARGET[spec.kind];
 	if (status.state === "answered" && !status.approved) {
+		if (status.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
 		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	}
-	if (status.taskStatus === target) {
+	// A legacy To Do card that owns a worktree is already `todo`, so for a reset the
+	// status alone proves nothing: a pending request is still pending, and only
+	// "no run left to reset" means it happened.
+	const reachedTarget = status.taskStatus === target && (spec.kind !== "reset" || status.resetNeeded === false);
+	if (reachedTarget) {
 		if (codexStopHook) {
 			process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
 			return;
@@ -710,13 +728,42 @@ async function requestDestructiveApproval(
 
 	const resp = wait.resp;
 	if (!resp.ok) exitError(resp.error || spec.failed);
-	const result = resp.data as { approved: boolean; task?: Task };
-	if (!result.approved) exitError(spec.declined, spec.declinedHint, spec.declinedCode);
+	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; keptBranches?: Array<{ name: string; reason: string }> };
+	if (!result.approved) {
+		if (result.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
+	}
+	if (result.plainMove) {
+		process.stdout.write(`Task ${(result.task?.id ?? taskId).slice(0, 8)} moved to ${STATUS_LABELS[result.task?.status ?? "todo"] || "To Do"} — it owned no run, so nothing was reset.\n`);
+		return;
+	}
 	if (codexStopHook) {
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
 		return;
 	}
 	reportApproved(spec, taskId, result.task, ownSession, context);
+	for (const branch of result.keptBranches ?? []) {
+		process.stdout.write(`Kept branch ${branch.name}: ${KEPT_BRANCH_REASON[branch.reason] ?? branch.reason}. The task's notes record it.\n`);
+	}
+}
+
+const KEPT_BRANCH_REASON: Record<string, string> = {
+	"not-owned": "dev3 did not create it for this task",
+	"variant-unproven": "a variant branch dev3 cannot prove it created",
+	"note-failed": "its recovery note could not be written",
+	"delete-failed": "git refused to delete it",
+};
+
+const STALE_APPROVAL = "The request was voided before anyone answered it";
+
+/**
+ * Voided = the run the request was about ended first (completed, cancelled or
+ * reset elsewhere). Whatever ended it may have removed the worktree — this
+ * request did nothing, but "nothing was deleted" would be a claim it cannot make.
+ */
+function staleApprovalHint(spec: DestructiveApprovalSpec): string {
+	return `The task's run ended before the ${spec.label} request was answered, so this request did nothing.\n`
+		+ "What ended the run (a completion, cancellation or reset) may have removed its worktree. Check `dev3 task show` before asking again.";
 }
 
 /**
@@ -836,7 +883,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const newStatus = args.flags.status;
 	if (!newStatus) {
-		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` and \`cancelled\` (both ask the user for approval); or a custom column ID (see \`dev3 current\`)`);
+		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` and \`cancelled\` (both ask the user for approval; \`todo\` asks too when it would reset a running task); or a custom column ID (see \`dev3 current\`)`);
 	}
 	// Non-built-in values may be custom column IDs — let the server validate
 
@@ -855,6 +902,15 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// it done.
 	if (newStatus === "cancelled") {
 		return requestDestructiveApproval(CANCELLATION_APPROVAL, taskId, args, socketPath, context, false);
+	}
+
+	// `todo` on a task with a run is a destructive reset, approved in the app by
+	// the user whoever asks; on anything else the app answers with a plain move.
+	if (newStatus === "todo") {
+		if (ifStatus || ifStatusNot) {
+			exitUsage("--if-status/--if-status-not cannot be combined with --status todo: moving a running task to To Do is a reset that the user approves in the app.");
+		}
+		return requestDestructiveApproval(RESET_APPROVAL, taskId, args, socketPath, context, false);
 	}
 
 	const params: Record<string, unknown> = { taskId, newStatus };

@@ -1,4 +1,4 @@
-import type { AppRPCSchema, ColumnAgentFailureReason, ColumnAgentIdentity, PreparingStage, Task, TaskStatus } from "../../shared/types";
+import type { AppRPCSchema, ColumnAgentFailureReason, ColumnAgentIdentity, PreparingStage, Task, TaskResetConsent, TaskStatus } from "../../shared/types";
 
 export interface LifecycleColumn {
 	status: TaskStatus;
@@ -22,6 +22,9 @@ export type LifecycleRuntime =
 
 export interface LifecycleFacts {
 	hasWorktree: boolean;
+	/** The two fields a reset consent is bound to (see `TaskResetConsent`). */
+	worktreePath?: string | null;
+	lifecycleStartedAt?: string | null;
 	projectKind: "git" | "virtual";
 	hasPrIdentity: boolean;
 	/** The task is an unfinished draft: no activation path may start it. */
@@ -85,6 +88,12 @@ export type LifecycleEvent =
 		force?: boolean;
 		clientPlayedSound?: boolean;
 		launchColumnAgent?: boolean;
+		/**
+		 * The move is a deliberate start from outside the task (quick shell, a
+		 * `dev3 task move` with no task context). A To Do task activates only
+		 * with this or with `preparation`; hooks never set either.
+		 */
+		explicitLaunch?: boolean;
 		runId?: string;
 		taskPatch?: LifecycleTaskPatch;
 		preparation?: {
@@ -94,6 +103,12 @@ export type LifecycleEvent =
 		};
 	}
 	| { type: "deleteRequested" }
+	/**
+	 * Confirmed reset to To Do. Only the UI's post-confirm RPC and an approved
+	 * `reset` agent request dispatch it; nothing infers consent from a move.
+	 */
+	| { type: "resetRequested"; consent: TaskResetConsent }
+	| { type: "resetFailed"; error: string }
 	| { type: "hibernateRequested" }
 	| { type: "wakeRequested" }
 	| {
@@ -118,6 +133,12 @@ export type LifecycleEvent =
 		origin?: LifecycleColumn;
 		target?: LifecycleColumn;
 		compensating?: boolean;
+		/**
+		 * createWorktree refused to reclaim a leftover holding work
+		 * (`WorkspaceReclaimRefusedError`): the failure must not run the cleanup
+		 * script or remove the worktree/branch it just protected.
+		 */
+		preserveWorkspace?: boolean;
 	}
 	| {
 		type: "preparationCancelled";

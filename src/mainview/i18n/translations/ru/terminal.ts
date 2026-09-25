@@ -7,6 +7,8 @@ const terminal = {
 	"terminal.taskClosedHint": "Её терминал и worktree удалены при закрытии задачи — запускать больше нечего.",
 	"terminal.envError": "Ошибка окружения задачи",
 	"terminal.worktreeNotFound": "Рабочая директория задачи больше не существует. Это может произойти, если worktree был удалён извне.",
+	"terminal.worktreeUnreadableTitle": "dev3 не может прочитать папку задачи",
+	"terminal.worktreeUnreadableDesc": "Доступ запрещён, поэтому ничего не запущено. Скорее всего, worktree на месте — проверьте, что у dev3 остался «Полный доступ к диску» в Системных настройках → Конфиденциальность и безопасность, и откройте задачу снова.",
 	"terminal.errorPath": "Worktree не найден:",
 	"terminal.complete": "Завершить",
 	"terminal.cancelTask": "Отменить задачу",

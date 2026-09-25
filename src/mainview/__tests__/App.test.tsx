@@ -68,6 +68,8 @@ vi.mock("../rpc", () => ({
 			listPendingCompletionRequests: vi.fn().mockResolvedValue([]),
 			respondToAgentCancellationRequest: vi.fn().mockResolvedValue(undefined),
 			listPendingCancellationRequests: vi.fn().mockResolvedValue([]),
+			respondToAgentResetRequest: vi.fn().mockResolvedValue(undefined),
+			listPendingResetRequests: vi.fn().mockResolvedValue([]),
 			getUnsavedWork: vi.fn().mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false }),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
 			// The launch dialog reports itself on screen on mount so the bun side
@@ -3838,6 +3840,56 @@ describe("App keyboard shortcuts", () => {
 					requestId: "req-c-orphan",
 					approved: false,
 				});
+			});
+		});
+	});
+
+	// R1: context menu / native menu start a To Do card through this app-level modal.
+	describe("launch requested from a status move", () => {
+		it("opens the launch dialog for the requested task", async () => {
+			await renderApp();
+			const task = { id: "t-launch", projectId: "p1", status: "todo", title: "Start me", description: "", worktreePath: null } as never;
+			const project = { id: "p1", name: "Alpha", path: "/a" } as never;
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("dev3:launchRequested", { detail: { task, project, targetStatus: "in-progress" } }));
+			});
+			await waitFor(() => expect(document.getElementById("launch-variants-title")).not.toBeNull());
+		});
+	});
+
+	// Reset shares the cancellation dialog's red chrome (it destroys the worktree)
+	// but has its own channel, copy and answer RPC — a "yes" for one must never
+	// answer the other.
+	describe("agent reset request dialog", () => {
+		afterEach(() => {
+			vi.mocked(api.request.listPendingResetRequests).mockResolvedValue([]);
+		});
+
+		it("asks with danger chrome and the reset copy, answering through the reset channel only", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentResetRequested", {
+					detail: { requestId: "req-r1", taskId: "t1", projectId: "p1", taskTitle: "Running task" },
+				}));
+			});
+			await waitFor(() => {
+				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r1", approved: false });
+			});
+			expect(api.request.respondToAgentCancellationRequest).not.toHaveBeenCalled();
+			const opts = vi.mocked(confirm).mock.calls[0][0];
+			expect(opts).toMatchObject({ agentInitiated: true, danger: true, tone: "danger", title: "Reset to To Do requested" });
+			expect(opts.deferred?.gateConfirm).toBe(true);
+		});
+
+		it("replays a pending reset request on connect", async () => {
+			vi.mocked(api.request.listPendingResetRequests).mockResolvedValue([
+				{ requestId: "req-r-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded", subject: undefined },
+			] as never);
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+			await waitFor(() => {
+				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r-orphan", approved: false });
 			});
 		});
 	});
