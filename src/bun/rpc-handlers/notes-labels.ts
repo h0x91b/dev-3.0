@@ -1,5 +1,5 @@
-import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskNote, TaskStatus } from "../../shared/types";
-import { LABEL_COLORS, appendTaskNote } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskStatus } from "../../shared/types";
+import { LABEL_COLORS } from "../../shared/types";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
 import type { NotificationLogPage } from "../../shared/notification-log";
 import * as data from "../data";
@@ -8,6 +8,9 @@ import { watchAgentMessageLog } from "../agent-message-log-watch";
 import { readNotificationLog as readNotifications } from "../notification-log";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
+import * as taskNotes from "../board-operations/task-notes";
+import { boardPorts } from "../board-operations/runtime";
+import { USER_ACTOR, actorFromNoteSource } from "../board-operations/types";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
@@ -264,52 +267,25 @@ async function markTaskSharedItemsRead(params: {
 async function addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
 	log.info("→ addTaskNote", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
-	const { task: updated, result: note } = await data.updateTaskWith(project, params.taskId, async (task) => {
-		const now = new Date().toISOString();
-		const note: TaskNote = {
-			id: crypto.randomUUID(),
-			content: params.content,
-			source: params.source ?? "user",
-			createdAt: now,
-			updatedAt: now,
-		};
-		return {
-			updates: { notes: appendTaskNote(task.notes, note) },
-			result: note,
-		};
-	});
+	const { task, note } = await taskNotes.addNote(boardPorts, project, params.taskId, params.content, actorFromNoteSource(params.source, USER_ACTOR));
 	log.info("← addTaskNote done", { taskId: params.taskId, noteId: note.id });
-	return updated;
+	return task;
 }
 
 async function updateTaskNote(params: { taskId: string; projectId: string; noteId: string; content: string }): Promise<Task> {
 	log.info("→ updateTaskNote", { taskId: params.taskId, noteId: params.noteId });
 	const project = await data.getProject(params.projectId);
-	const { task: updated } = await data.updateTaskWith(project, params.taskId, async (task) => ({
-		updates: {
-			notes: (task.notes ?? []).map((note) =>
-				note.id === params.noteId
-					? { ...note, content: params.content, updatedAt: new Date().toISOString() }
-					: note,
-			),
-		},
-		result: undefined,
-	}));
-	log.info("← updateTaskNote done", { taskId: params.taskId, noteId: params.noteId });
-	return updated;
+	const { task, verdict } = await taskNotes.updateNote(boardPorts, project, params.taskId, params.noteId, params.content);
+	log.info("← updateTaskNote done", { taskId: params.taskId, noteId: params.noteId, verdict });
+	return task;
 }
 
 async function deleteTaskNote(params: { taskId: string; projectId: string; noteId: string }): Promise<Task> {
 	log.info("→ deleteTaskNote", { taskId: params.taskId, noteId: params.noteId });
 	const project = await data.getProject(params.projectId);
-	const { task: updated } = await data.updateTaskWith(project, params.taskId, async (task) => ({
-		updates: {
-			notes: (task.notes ?? []).filter((note) => note.id !== params.noteId),
-		},
-		result: undefined,
-	}));
-	log.info("← deleteTaskNote done", { taskId: params.taskId, noteId: params.noteId });
-	return updated;
+	const { task, verdict } = await taskNotes.deleteNote(boardPorts, project, params.taskId, params.noteId);
+	log.info("← deleteTaskNote done", { taskId: params.taskId, noteId: params.noteId, verdict });
+	return task;
 }
 
 /**

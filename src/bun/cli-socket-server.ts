@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
@@ -21,6 +21,9 @@ import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentA
 import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
+import * as taskNotes from "./board-operations/task-notes";
+import { boardPorts } from "./board-operations/runtime";
+import { AGENT_ACTOR, actorFromNoteSource } from "./board-operations/types";
 import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
 import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
@@ -1374,23 +1377,9 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		// Recompute the notes array from the CURRENT task inside the per-task lock.
-		// Appending to a pre-lock snapshot (`task.notes`) races with any concurrent
-		// note write — two parallel `dev3 note add` calls (routine for multi-variant
-		// bug-hunters) would both read the same snapshot and the last writer would
-		// silently drop the other's note. Mirrors the RPC addTaskNote handler.
-		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => {
-			const now = new Date().toISOString();
-			const note: TaskNote = {
-				id: crypto.randomUUID(),
-				content,
-				source: (params.source as NoteSource) ?? "ai",
-				createdAt: now,
-				updatedAt: now,
-			};
-			return { updates: { notes: appendTaskNote(current.notes, note) }, result: note };
-		});
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		const { task: updated } = await taskNotes.addNote(
+			boardPorts, project, task.id, content, actorFromNoteSource(params.source as NoteSource | undefined, AGENT_ACTOR),
+		);
 		return updated;
 	},
 
@@ -1502,21 +1491,11 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		// Resolve + filter against the CURRENT task inside the per-task lock so a
-		// concurrent note write is not clobbered (same lost-update race the RPC twin
-		// avoids via updateTaskWith). Resolving the prefix on the pre-lock snapshot
-		// first lets us fail fast with a clear "Note not found" before taking the lock.
-		if (!findByIdPrefix(task.notes ?? [], noteId, "note")) {
-			throw new Error(`Note not found: ${noteId}`);
-		}
-		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => {
-			const before = current.notes ?? [];
-			const noteToDelete = findByIdPrefix(before, noteId, "note");
-			// Vanished between snapshot and lock (concurrent delete) — treat as done.
-			const notes = noteToDelete ? before.filter((n) => n.id !== noteToDelete.id) : before;
-			return { updates: { notes }, result: undefined };
-		});
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		// Prefix resolution is this adapter's job; the operation takes a full id. A
+		// note that vanished before the lock (concurrent delete) comes back as a no-op.
+		const note = findByIdPrefix(task.notes ?? [], noteId, "note");
+		if (!note) throw new Error(`Note not found: ${noteId}`);
+		const { task: updated } = await taskNotes.deleteNote(boardPorts, project, task.id, note.id);
 		return updated;
 	},
 
