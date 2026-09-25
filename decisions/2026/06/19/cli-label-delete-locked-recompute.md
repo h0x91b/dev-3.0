@@ -1,5 +1,7 @@
 # 074 — CLI `label.delete` recomputes labelIds inside the per-task lock
 
+> Superseded on 2026-09-25 by `decisions/2026/09/25/board-operations-own-task-metadata-notes-labels.md`: CLI and RPC label deletes now share one operation (`board-operations/labels.ts`), with no Electrobun import and the `{ deleted }` shape kept in the CLI adapter; unknown label ids are refused on every door.
+
 ## Context
 The CLI socket `label.delete` handler (`src/bun/cli-socket-server.ts`) removed a
 deleted label from every task by filtering `task.labelIds` from a snapshot loaded

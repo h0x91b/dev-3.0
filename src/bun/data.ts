@@ -574,6 +574,7 @@ export async function updateProjectWith<T>(
 			const idx = projects.findIndex((p) => p.id === projectId);
 			if (idx === -1) throw new Error(`Project not found: ${projectId}`);
 			const { updates, result } = await mutator(projects[idx]);
+			if (Object.keys(updates).length === 0) return { project: projects[idx], result };
 			projects[idx] = { ...projects[idx], ...updates };
 			await rawSaveVirtualProjects(projects);
 			return { project: projects[idx], result };
@@ -584,7 +585,9 @@ export async function updateProjectWith<T>(
 		const projects = await rawLoadAllProjects({ strict: true, persistMigrations: true });
 		const idx = projects.findIndex((p) => p.id === projectId);
 		if (idx === -1) throw new Error(`Project not found: ${projectId}`);
+		// An empty patch skips the save, as a no-op task update does (2026-08-16 record).
 		const { updates, result } = await mutator(projects[idx]);
+		if (Object.keys(updates).length === 0) return { project: projects[idx], result };
 		projects[idx] = { ...projects[idx], ...updates };
 		await rawSaveProjects(projects);
 		return { project: projects[idx], result };

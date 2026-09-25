@@ -1,6 +1,6 @@
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
-import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
@@ -9,7 +9,10 @@ import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
-import { clearMergeNotification } from "../lifecycle/activities";
+import { assertKnownLabelIds } from "../board-operations/labels";
+import { isScratchPlaceholderDescription, planTitleAndDescription, updateTaskMetadata, withoutUnchanged } from "../board-operations/task-metadata";
+import { boardPorts } from "../board-operations/runtime";
+import { USER_ACTOR } from "../board-operations/types";
 import { getResourceUsage } from "../resource-monitor";
 import {
 	nativeTerminalAvailability,
@@ -25,10 +28,6 @@ function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
 	const mm = String(now.getMinutes()).padStart(2, "0");
 	return `Scratch — ${hh}:${mm}`;
-}
-
-function isScratchPlaceholderDescription(description: string): boolean {
-	return /^Scratch — \d{2}:\d{2}$/.test(description.trim());
 }
 
 /**
@@ -784,47 +783,29 @@ async function editTask(params: {
 	}
 
 	const description = params.description ?? task.description;
-	const customTitle = params.customTitle !== undefined
-		? (params.customTitle?.trim() || null)
-		: (task.customTitle ?? null);
-
 	if (params.draft === false && !description.trim()) {
 		throw new Error("A draft needs a description before it can become a runnable task");
 	}
+	if (params.labelIds !== undefined) await assertKnownLabelIds(project, task, params.labelIds);
 
-	const updates: Partial<Task> = {};
-	if (params.description !== undefined) {
-		updates.description = params.description;
-		if (
-			task.scratch === true
-			&& params.description.trim()
-			&& !isScratchPlaceholderDescription(params.description)
-		) {
-			updates.scratch = false;
-		}
-	}
-	if (params.customTitle !== undefined) {
-		updates.customTitle = customTitle;
+	const { task: updated, result: applied } = await data.updateTaskWith(project, task.id, (current) => {
 		// Only the UI reaches this RPC, so a typed title is a real user edit and
-		// must lock the title against future agent renames (issue #583).
-		updates.titleEditedByUser = customTitle !== null;
-		if (task.scratch === true && customTitle !== null) updates.scratch = false;
-	}
-	if (!customTitle && (params.description !== undefined || params.customTitle !== undefined)) {
-		// A draft parked with no description keeps the placeholder title it was
-		// created with, so its card stays recognisable on the board.
-		updates.title = titleFromDescription(description) || task.title || draftPlaceholderTitle();
-	}
-	if (params.priority !== undefined) updates.priority = params.priority;
-	if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
-	if (params.existingBranch !== undefined) {
-		updates.existingBranch = params.existingBranch;
-		updates.baseBranch = data.deriveTaskBaseBranch(project, params.existingBranch);
-	}
-	if (params.draft !== undefined) updates.draft = params.draft;
-
-	const updated = await data.updateTask(project, task.id, updates);
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		// locks the title against future agent renames (issue #583).
+		const { updates } = planTitleAndDescription(current, {
+			...(params.customTitle !== undefined ? { title: { value: params.customTitle } } : {}),
+			...(params.description !== undefined ? { description: params.description } : {}),
+		}, USER_ACTOR, { fallbackTitle: () => draftPlaceholderTitle() });
+		if (params.priority !== undefined) updates.priority = params.priority;
+		if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
+		if (params.existingBranch !== undefined) {
+			updates.existingBranch = params.existingBranch;
+			updates.baseBranch = data.deriveTaskBaseBranch(project, params.existingBranch);
+		}
+		if (params.draft !== undefined) updates.draft = params.draft;
+		const changed = withoutUnchanged(current, updates);
+		return { updates: changed, result: Object.keys(changed).length > 0 };
+	});
+	if (applied) boardPorts.push("taskUpdated", { projectId: project.id, task: updated });
 	log.info("← editTask done", { taskId: task.id, draft: updated.draft === true });
 	return updated;
 }
@@ -832,42 +813,26 @@ async function editTask(params: {
 async function renameTask(params: { taskId: string; projectId: string; customTitle: string | null }): Promise<Task> {
 	log.info("→ renameTask", { taskId: params.taskId, customTitle: params.customTitle });
 	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const trimmed = params.customTitle?.trim() || null;
-	// This RPC is invoked only from the UI (Create Task modal + InlineRename) —
-	// so any non-null write here is a real user edit and must lock the title
-	// against future agent renames. Clearing the title (`null`) also clears
-	// the user-edit flag so the auto-generated title is back in play.
-	const updated = await data.updateTask(project, task.id, {
-		customTitle: trimmed,
-		titleEditedByUser: trimmed !== null,
-		...(task.scratch === true && trimmed !== null ? { scratch: false } : {}),
-	});
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← renameTask done", { taskId: task.id });
-	return updated;
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, { title: { value: params.customTitle } }, USER_ACTOR);
+	log.info("← renameTask done", { taskId: task.id, verdict });
+	return task;
 }
 
 async function setUserOverview(params: { taskId: string; projectId: string; userOverview: string }): Promise<Task> {
 	log.info("→ setUserOverview", { taskId: params.taskId, len: params.userOverview?.length ?? 0 });
 	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const trimmed = params.userOverview?.trim();
-	if (!trimmed) throw new Error("userOverview is required — use clearUserOverview to remove it");
-	const updated = await data.updateTask(project, task.id, { userOverview: trimmed });
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← setUserOverview done", { taskId: task.id });
-	return updated;
+	if (!params.userOverview?.trim()) throw new Error("userOverview is required — use clearUserOverview to remove it");
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, { userOverview: params.userOverview }, USER_ACTOR);
+	log.info("← setUserOverview done", { taskId: task.id, verdict });
+	return task;
 }
 
 async function clearUserOverview(params: { taskId: string; projectId: string }): Promise<Task> {
 	log.info("→ clearUserOverview", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const updated = await data.updateTask(project, task.id, { userOverview: null });
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← clearUserOverview done", { taskId: task.id });
-	return updated;
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, { userOverview: null }, USER_ACTOR);
+	log.info("← clearUserOverview done", { taskId: task.id, verdict });
+	return task;
 }
 
 async function toggleTaskWatch(params: { taskId: string; projectId: string; watched: boolean }): Promise<Task> {
@@ -897,19 +862,9 @@ async function setTaskForeignCode(params: { taskId: string; projectId: string; f
 async function setTaskManualCompletion(params: { taskId: string; projectId: string; manualCompletion: boolean }): Promise<Task> {
 	log.info("→ setTaskManualCompletion", { taskId: params.taskId, manualCompletion: params.manualCompletion });
 	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const changed = task.manualCompletion !== params.manualCompletion;
-	if (!changed) return task;
-	// Changing the completion policy starts a fresh merge-decision cycle. This
-	// keeps an earlier Not now answer from hiding the newly enabled prompt.
-	const updated = await data.updateTask(project, task.id, {
-		manualCompletion: params.manualCompletion,
-		mergeCompletionPrompt: null,
-	});
-	clearMergeNotification(task.id);
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← setTaskManualCompletion done", { taskId: task.id });
-	return updated;
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, { manualCompletion: params.manualCompletion }, USER_ACTOR);
+	log.info("← setTaskManualCompletion done", { taskId: task.id, verdict });
+	return task;
 }
 
 /**

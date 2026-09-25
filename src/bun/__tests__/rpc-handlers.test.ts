@@ -453,8 +453,25 @@ const { placePaneSession } = await import("../pane-session-capture");
 const { dev3TaskTempPath } = await import("../temp-paths");
 const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
 
+/**
+ * Board operations write through `updateTaskWith`/`updateProjectWith`. Run their
+ * mutators against the mocked board (`getTask`/`getProject`) and hand a non-empty
+ * patch to the mocked `updateTask`/`updateProject`, so handler tests keep asserting
+ * on the patch. Rules are tested on a real board in `board-operations-*.test.ts`.
+ */
+function bridgeLockedWrites(): void {
+	vi.mocked(data.updateTaskWith).mockImplementation(async (project, taskId, mutator) => {
+		const current = await data.getTask(project, taskId);
+		const { updates, result } = await mutator(current);
+		if (Object.keys(updates).length === 0) return { task: current, result };
+		const written = await data.updateTask(project, taskId, updates);
+		return { task: written ?? { ...current, ...updates }, result };
+	});
+}
+
 beforeEach(async () => {
 	await _resetLifecycleActorsForTest();
+	bridgeLockedWrites();
 });
 
 // ---- Test helpers ----
@@ -3537,7 +3554,7 @@ describe("handlers.editTask", () => {
 	});
 
 	it("saves a whole draft in a single write", async () => {
-		const project = makeProject();
+		const project = makeProject({ labels: [{ id: "l1", name: "one", color: "#ef4444" }] });
 		const task = makeTask({ status: "todo", draft: true, description: "" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3562,8 +3579,9 @@ describe("handlers.editTask", () => {
 			priority: "P1",
 			labelIds: ["l1"],
 			existingBranch: "feature/x",
-			draft: true,
 		}));
+		// Already a draft: an unchanged field is left out of the patch.
+		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).not.toHaveProperty("draft");
 	});
 
 	it("keeps the placeholder title of a draft that still has no description", async () => {
@@ -3573,11 +3591,11 @@ describe("handlers.editTask", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(task);
 
-		await handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "", draft: true });
+		const result = await handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "", draft: true });
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
-			title: "Draft — 09:12",
-		}));
+		// Everything already matches, so nothing is rewritten and the placeholder stays.
+		expect(result.title).toBe("Draft — 09:12");
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("promotes a draft into a runnable task", async () => {
@@ -3714,9 +3732,11 @@ describe("handlers.renameTask", () => {
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 
 		await handlers.renameTask({ taskId: "task-1", projectId: "proj-1", customTitle: null });
+		// Clearing recomputes the auto title from the description (one rule for every door).
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
 			customTitle: null,
 			titleEditedByUser: false,
+			title: "Test task description",
 		});
 	});
 
@@ -3753,9 +3773,11 @@ describe("handlers.renameTask", () => {
 		vi.mocked(data.updateTask).mockResolvedValue(task);
 
 		await handlers.renameTask({ taskId: "task-1", projectId: "proj-1", customTitle: "   " });
+		// Clearing recomputes the auto title from the description (one rule for every door).
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
 			customTitle: null,
 			titleEditedByUser: false,
+			title: "Test task description",
 		});
 	});
 });
@@ -7389,9 +7411,10 @@ describe("handlers.setTaskLabels", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("sets label IDs on a task", async () => {
-		const project = makeProject();
+		const project = makeProject({ labels: [{ id: "l1", name: "one", color: "#ef4444" }, { id: "l2", name: "two", color: "#14b8a6" }] });
 		const updated = makeTask({ labelIds: ["l1", "l2"] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({ labelIds: [] }));
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 
 		const result = await handlers.setTaskLabels({ taskId: "task-1", projectId: "proj-1", labelIds: ["l1", "l2"] });
@@ -13031,10 +13054,8 @@ describe("setTaskManualCompletion", () => {
 		});
 
 		expect(result).toEqual(updated);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			manualCompletion: true,
-			mergeCompletionPrompt: null,
-		});
+		// No stored merge prompt to reset, so the patch carries only the policy.
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { manualCompletion: true });
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: updated });
 		expect(push).not.toHaveBeenCalledWith("manualCompletionChanged", expect.anything());
 	});
