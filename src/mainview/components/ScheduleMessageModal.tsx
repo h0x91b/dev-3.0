@@ -43,10 +43,36 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const keepEditingRef = useRef<HTMLButtonElement>(null);
+	// State updates land a render late; a ref closes the double-click window.
+	const submittingRef = useRef(false);
 
 	const trapRef = useFocusTrap<HTMLDivElement>();
-	useEscapeKey(onClose);
+
+	// An untouched composer seed is not a loss — the composer still holds it.
+	const hasUnsentEdits = text.trim().length > 0 && text.trim() !== (initialText ?? "").trim();
+
+	function requestClose() {
+		if (submittingRef.current) return;
+		if (hasUnsentEdits) setConfirmDiscard(true);
+		else onClose();
+	}
+
+	function keepEditing() {
+		setConfirmDiscard(false);
+		taRef.current?.focus();
+	}
+
+	useEscapeKey(() => {
+		if (confirmDiscard) keepEditing();
+		else requestClose();
+	});
+
+	useEffect(() => {
+		if (confirmDiscard) keepEditingRef.current?.focus();
+	}, [confirmDiscard]);
 
 	// Insert an uploaded worktree-relative path at the cursor (or at the end),
 	// on its own line — same convention as the description editor.
@@ -96,7 +122,8 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const canSubmit = !submitting && text.trim().length > 0 && scheduleTarget != null;
 
 	async function handleSubmit() {
-		if (!canSubmit || !scheduleTarget) return;
+		if (!canSubmit || !scheduleTarget || submittingRef.current) return;
+		submittingRef.current = true;
 		setSubmitting(true);
 		setError(null);
 		const target: ScheduledMessageTarget = targetValue === "agent" ? { kind: "agent" } : { kind: "pane", paneId: targetValue };
@@ -117,6 +144,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 			onClose();
 		} catch (err) {
 			setError(String(err));
+			submittingRef.current = false;
 			setSubmitting(false);
 		}
 	}
@@ -124,7 +152,14 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-			onClick={onClose}
+			onClick={(e) => e.stopPropagation()}
+			// mousedown, not click: a text selection released over the backdrop
+			// dispatches its click here too and would read as "close".
+			onMouseDown={(e) => {
+				if (e.target !== e.currentTarget) return;
+				e.preventDefault(); // keep focus inside the dialog, not on <body>
+				requestClose();
+			}}
 		>
 			<div
 				ref={trapRef}
@@ -226,22 +261,46 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				)}
 
 				{/* Footer */}
-				<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3">
-					<button
-						onClick={onClose}
-						disabled={submitting}
-						className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5"
+				{confirmDiscard ? (
+					<div
+						className="px-6 py-4 border-t border-edge flex flex-wrap items-center justify-between gap-2 bg-danger/10"
+						data-testid="schedule-discard-confirm"
 					>
-						{t("kanban.cancel")}
-					</button>
-					<button
-						onClick={handleSubmit}
-						disabled={!canSubmit}
-						className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
-					>
-						{submitting ? t("scheduleMessage.scheduling") : t("scheduleMessage.schedule")}
-					</button>
-				</div>
+						<span role="alert" className="text-fg-2 text-sm">{t("scheduleMessage.discardConfirm")}</span>
+						<div className="flex flex-wrap gap-2 shrink-0">
+							<button
+								ref={keepEditingRef}
+								onClick={keepEditing}
+								className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:ring-2 focus:ring-edge-active focus:text-fg"
+							>
+								{t("scheduleMessage.keepEditing")}
+							</button>
+							<button
+								onClick={onClose}
+								className="px-3 py-1 bg-danger-fill text-white text-sm font-medium rounded-lg hover:bg-danger-fill-hover transition-colors"
+							>
+								{t("scheduleMessage.discard")}
+							</button>
+						</div>
+					</div>
+				) : (
+					<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3">
+						<button
+							onClick={requestClose}
+							disabled={submitting}
+							className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5"
+						>
+							{t("kanban.cancel")}
+						</button>
+						<button
+							onClick={handleSubmit}
+							disabled={!canSubmit}
+							className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+						>
+							{submitting ? t("scheduleMessage.scheduling") : t("scheduleMessage.schedule")}
+						</button>
+					</div>
+				)}
 			</div>
 		</div>
 	);
