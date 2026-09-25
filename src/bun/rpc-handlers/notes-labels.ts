@@ -9,71 +9,28 @@ import { readNotificationLog as readNotifications } from "../notification-log";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
 import * as taskNotes from "../board-operations/task-notes";
+import * as labels from "../board-operations/labels";
 import { boardPorts } from "../board-operations/runtime";
 import { USER_ACTOR } from "../board-operations/types";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
-	const { result: label } = await data.updateProjectWith(params.projectId, async (project) => {
-		const labels = project.labels ?? [];
-		const usedColors = new Set(labels.map((existingLabel) => existingLabel.color));
-		const color = params.color ?? LABEL_COLORS.find((candidate) => !usedColors.has(candidate)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
-		const newLabel: Label = {
-			id: crypto.randomUUID(),
-			name: params.name.trim(),
-			color,
-		};
-		return {
-			updates: { labels: [...labels, newLabel] },
-			result: newLabel,
-		};
-	});
+	const { result: label } = await labels.createLabel(boardPorts, params.projectId, { name: params.name, color: params.color });
 	log.info("← createLabel done", { labelId: label.id });
 	return label;
 }
 
 async function updateLabel(params: { projectId: string; labelId: string; name?: string; color?: string }): Promise<Label> {
 	log.info("→ updateLabel", { projectId: params.projectId, labelId: params.labelId });
-	const { result: updated } = await data.updateProjectWith(params.projectId, async (project) => {
-		const labels = project.labels ?? [];
-		const idx = labels.findIndex((label) => label.id === params.labelId);
-		if (idx === -1) throw new Error(`Label not found: ${params.labelId}`);
-		const nextLabel: Label = {
-			...labels[idx],
-			...(params.name !== undefined ? { name: params.name.trim() } : {}),
-			...(params.color !== undefined ? { color: params.color } : {}),
-		};
-		const newLabels = [...labels];
-		newLabels[idx] = nextLabel;
-		return {
-			updates: { labels: newLabels },
-			result: nextLabel,
-		};
-	});
-	log.info("← updateLabel done", { labelId: updated.id });
-	return updated;
+	const { result: label, verdict } = await labels.updateLabel(boardPorts, params.projectId, params.labelId, { name: params.name, color: params.color });
+	log.info("← updateLabel done", { labelId: label.id, verdict });
+	return label;
 }
 
 async function deleteLabel(params: { projectId: string; labelId: string }): Promise<void> {
 	log.info("→ deleteLabel", { projectId: params.projectId, labelId: params.labelId });
-	const project = await data.getProject(params.projectId);
-	await data.updateProjectWith(params.projectId, async (currentProject) => ({
-		updates: {
-			labels: (currentProject.labels ?? []).filter((label) => label.id !== params.labelId),
-		},
-		result: undefined,
-	}));
-	const tasks = await data.loadTasks(project);
-	const affectedTasks = tasks.filter((task) => task.labelIds?.includes(params.labelId));
-	for (const task of affectedTasks) {
-		await data.updateTaskWith(project, task.id, async (currentTask) => ({
-			updates: {
-				labelIds: (currentTask.labelIds ?? []).filter((id) => id !== params.labelId),
-			},
-			result: undefined,
-		}));
-	}
-	log.info("← deleteLabel done", { removed_from_tasks: affectedTasks.length });
+	const { result } = await labels.deleteLabel(boardPorts, params.projectId, params.labelId);
+	log.info("← deleteLabel done", { removed_from_tasks: result.removedFromTasks });
 }
 
 async function createCustomColumn(params: { projectId: string; name: string; color?: string }): Promise<CustomColumn> {
@@ -206,29 +163,16 @@ async function reorderColumns(params: { projectId: string; columnOrder: string[]
 
 async function reorderLabels(params: { projectId: string; labelOrder: string[] }): Promise<Project> {
 	log.info("→ reorderLabels", { projectId: params.projectId, labelOrder: params.labelOrder });
-	const { project: updated, result: reorderedCount } = await data.updateProjectWith(params.projectId, async (project) => {
-		const existing = project.labels ?? [];
-		const reordered = params.labelOrder
-			.map((id) => existing.find((label) => label.id === id))
-			.filter((label): label is Label => label !== undefined);
-		for (const label of existing) {
-			if (!reordered.find((candidate) => candidate.id === label.id)) reordered.push(label);
-		}
-		return {
-			updates: { labels: reordered },
-			result: reordered.length,
-		};
-	});
-	getPushMessage()?.("projectUpdated", { project: updated });
-	log.info("← reorderLabels done", { count: reorderedCount });
-	return updated;
+	const { project, result: count } = await labels.reorderLabels(boardPorts, params.projectId, params.labelOrder);
+	log.info("← reorderLabels done", { count });
+	return project;
 }
 
 async function setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
 	log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
 	const project = await data.getProject(params.projectId);
-	const task = await data.updateTask(project, params.taskId, { labelIds: params.labelIds });
-	log.info("← setTaskLabels done", { taskId: params.taskId });
+	const { task, verdict } = await labels.changeTaskLabels(boardPorts, project, params.taskId, { mode: "replace", labelIds: params.labelIds });
+	log.info("← setTaskLabels done", { taskId: params.taskId, verdict });
 	return task;
 }
 

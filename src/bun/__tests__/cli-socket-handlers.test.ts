@@ -111,6 +111,18 @@ vi.mock("../rpc-handlers", () => {
 	};
 });
 
+// The shared board operations push through the production port; route it to the
+// mocked barrel so these adapter tests keep asserting on `getPushMessage`.
+vi.mock("../board-operations/runtime", async () => {
+	const barrel = await import("../rpc-handlers");
+	return {
+		boardPorts: {
+			push: (name: string, payload: unknown) => barrel.getPushMessage()?.(name, payload),
+			clearMergeNotification: (taskId: string) => barrel.clearMergeNotification(taskId),
+		},
+	};
+});
+
 vi.mock("../notification-log", () => ({
 	appendNotificationLog: vi.fn(),
 }));
@@ -274,8 +286,32 @@ function makeRequest(method: string, params: Record<string, unknown> = {}): CliR
 
 // ---- Tests ----
 
+/**
+ * The operations write through `updateTaskWith`/`updateProjectWith`. Run their
+ * mutators against the mocked board and hand a non-empty patch to the mocked
+ * `updateTask`/`updateProject`, so adapter tests can keep asserting on the patch.
+ * Rules themselves are tested on a real board in `board-operations-*.test.ts`.
+ */
+function bridgeLockedWrites(): void {
+	vi.mocked(data.updateTaskWith).mockImplementation(async (project, taskId, mutator) => {
+		const current = (await data.loadTasks(project)).find((candidate) => candidate.id === taskId);
+		if (!current) throw new Error(`Task not found: ${taskId}`);
+		const { updates, result } = await mutator(current);
+		if (Object.keys(updates).length === 0) return { task: current, result };
+		const written = await data.updateTask(project, taskId, updates);
+		return { task: written ?? { ...current, ...updates }, result };
+	});
+	vi.mocked(data.updateProjectWith).mockImplementation(async (projectId, mutator) => {
+		const current = await data.getProject(projectId);
+		const { updates, result } = await mutator(current);
+		if (Object.keys(updates).length > 0) await data.updateProject(projectId, updates);
+		return { project: { ...current, ...updates }, result };
+	});
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
+	bridgeLockedWrites();
 	vi.mocked(isNotificationSuppressed).mockReturnValue(false);
 	vi.mocked(activeNotificationSuppression).mockReturnValue([]);
 	vi.mocked(isProjectSilenced).mockReturnValue(false);
@@ -445,8 +481,8 @@ describe("task.addLabels / task.removeLabels — merge, never replace", () => {
 
 	it("set writes one entry when the same label is named twice", async () => {
 		withTask([]);
-		await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
-		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), makeTask().id, { labelIds: ["lbl-1111-full"] });
+		const resp = await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full"]);
 	});
 
 	it("remove drops only the named labels", async () => {
@@ -2517,10 +2553,8 @@ describe("task.update", () => {
 		}));
 
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			manualCompletion: true,
-			mergeCompletionPrompt: null,
-		});
+		// No stored merge prompt to reset, so the patch carries only the policy.
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { manualCompletion: true });
 		expect(clearMergeNotification).toHaveBeenCalledWith(task.id);
 		expect(pushFn).toHaveBeenCalledWith("manualCompletionChanged", {
 			taskId: task.id,
@@ -3961,17 +3995,17 @@ describe("label.delete", () => {
 		const projMutator = vi.mocked(data.updateProjectWith).mock.calls[0][1];
 		expect(await projMutator(project)).toEqual({
 			updates: { labels: [labels[1]] },
-			result: undefined,
+			result: true,
 		});
 		// Should update affected task via the locked mutator (no lost-update race)
-		expect(data.updateTaskWith).toHaveBeenCalledWith(project, "t1", expect.any(Function));
+		expect(data.updateTaskWith).toHaveBeenCalledWith(expect.objectContaining({ id: project.id }), "t1", expect.any(Function));
 		// Should NOT update task that didn't have the label
 		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
 		// The mutator must recompute labelIds from the CURRENT task, not a stale snapshot
 		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2];
 		expect(await mutator({ ...taskWithLabel, labelIds: ["lbl-full-uuid-1234", "lbl-2", "lbl-3"] } as any)).toEqual({
 			updates: { labelIds: ["lbl-2", "lbl-3"] },
-			result: undefined,
+			result: true,
 		});
 	});
 
@@ -4222,6 +4256,7 @@ describe("task.setLabels", () => {
 		const updated = { ...task, labelIds: [] };
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 

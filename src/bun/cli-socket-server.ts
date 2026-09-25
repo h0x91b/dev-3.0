@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Project, Task, TaskPriority, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
@@ -22,11 +22,13 @@ import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import * as taskNotes from "./board-operations/task-notes";
+import * as labelOps from "./board-operations/labels";
+import { updateTaskMetadata, type TaskMetadataChange } from "./board-operations/task-metadata";
 import { boardPorts } from "./board-operations/runtime";
 import { AGENT_ACTOR } from "./board-operations/types";
 import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
-import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "./rpc-handlers";
 import { appendNotificationLog } from "./notification-log";
 import type { NotificationLogInput, NotificationLogMode, NotificationLogOutcome } from "../shared/notification-log";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
@@ -866,9 +868,8 @@ async function ownAgentPaneEntry(task: Task, harness: PromptSubmitHarness): Prom
 }
 
 /**
- * `dev3 label set|add|remove`. `replace` writes the whole set; `add`/`remove`
- * merge inside the tasks-file lock, so two agents labelling one task at once
- * cannot drop each other's label the way a CLI-side read-modify-write would.
+ * `dev3 label set|add|remove`. This adapter resolves short prefixes and owns the
+ * "Label not found" wording; the shared operation merges inside the tasks-file lock.
  */
 async function changeTaskLabels(params: Record<string, unknown>, mode: "replace" | "add" | "remove"): Promise<Task> {
 	const rawLabelIds = params.labelIds as string[];
@@ -898,16 +899,7 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 		);
 	}
 
-	const updated = mode === "replace"
-		? await data.updateTask(project, task.id, { labelIds })
-		: (await data.updateTaskWith<void>(project, task.id, (current) => {
-			const existing = current.labelIds ?? [];
-			const next = mode === "add"
-				? [...existing, ...labelIds.filter((id) => !existing.includes(id))]
-				: existing.filter((id) => !labelIds.includes(id));
-			return { updates: { labelIds: next }, result: undefined };
-		})).task;
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	const { task: updated } = await labelOps.changeTaskLabels(boardPorts, project, task.id, { mode, labelIds });
 	return updated;
 }
 
@@ -1168,56 +1160,25 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		const updates: Partial<Task> = {};
-		const force = Boolean(params.force);
-		let titlePreserved = false;
+		const change: TaskMetadataChange = {};
 
 		// Priority goes through the dedicated setter below (its own lock + push),
-		// NOT folded into the `updates` patch.
+		// NOT folded into the metadata change.
 		let priority = undefined;
 		if (params.priority !== undefined) {
 			priority = normalizePriority(String(params.priority));
 			if (!priority) throw new Error(`Invalid priority "${params.priority}". Use P0, P1, P2, P3, or P4.`);
 		}
+		// Empty string (--title "") is an explicit reset. A user-edited title is guarded
+		// inside the operation: refused for an agent unless --force.
 		if (params.title !== undefined) {
-			const newTitle = (params.title as string) || null;
-			// Defensive guard: refuse to overwrite a UI-set title from the CLI
-			// unless --force is passed. The agent skill instructs agents to
-			// leave user-edited titles alone, and this is the backstop.
-			// We key off `titleEditedByUser` — NOT `customTitle != null` — so
-			// that titles previously set by another agent (via this same CLI
-			// path) remain rewritable. Empty string (--title "") still goes
-			// through as an explicit reset, even when the user edited it.
-			if (newTitle && task.titleEditedByUser && !force) {
-				titlePreserved = true;
-			} else {
-				updates.customTitle = newTitle;
-				if (newTitle && task.scratch === true) updates.scratch = false;
-				// CLI writes never claim a user edit — only the UI rename RPC does.
-				// When the user explicitly clears their title via --title "" we
-				// also drop the user-edit flag so future agents can rename again.
-				if (!newTitle) updates.titleEditedByUser = false;
-			}
+			change.title = { value: (params.title as string) || null, force: Boolean(params.force) };
 		}
-		if (params.description !== undefined) {
-			const description = params.description as string;
-			updates.description = description;
-			if (
-				task.scratch === true
-				&& description.trim()
-				&& !/^Scratch — \d{2}:\d{2}$/.test(description.trim())
-			) {
-				updates.scratch = false;
-			}
-			// Only recompute auto-title if there's no custom override
-			if (!task.customTitle && !updates.customTitle) {
-				updates.title = titleFromDescription(description);
-			}
-		}
-		// Task type and the preamble in the description move together, always. The
-		// preset prompt is frozen into the description at creation, so flipping the
-		// field alone would produce a task the data calls a coordinator while its
-		// agent was never told it is one — a badge nobody behind it honours.
+		if (params.description !== undefined) change.description = params.description as string;
+		// Task type and the preamble in the description move together, always — in the
+		// same write. The preset prompt is frozen into the description at creation, so
+		// flipping the field alone would produce a task the data calls a coordinator while
+		// its agent was never told it is one — a badge nobody behind it honours.
 		let taskTypeChange: { next: TaskType | null; agentPrompt: string } | undefined;
 		// `--print-role`: the caller IS the agent behind this task and reads the role
 		// brief in the command output, so the brief is returned rather than typed into
@@ -1236,7 +1197,7 @@ const handlers: Record<string, Handler> = {
 			}
 			if ((task.taskType ?? null) !== next) {
 				const settings = await loadSettings();
-				const base = (updates.description as string | undefined) ?? task.description;
+				const base = change.description ?? task.description;
 				// Strip EVERY type's preamble before building, so switching between two
 				// roles cannot leave the old brief behind, and a repeat cannot stack two
 				// copies of a 40-line preamble onto one description.
@@ -1244,9 +1205,9 @@ const handlers: Record<string, Handler> = {
 				for (const type of TASK_TYPES) {
 					ownText = withoutPresetPrompt(ownText, presetPromptForTaskType(type, project, settings));
 				}
-				updates.taskType = next;
 				const preamble = next ? presetPromptForTaskType(next, project, settings) : null;
-				updates.description = preamble ? withPresetPrompt(ownText, preamble) : ownText;
+				change.taskType = next;
+				change.description = preamble ? withPresetPrompt(ownText, preamble) : ownText;
 				taskTypeChange = {
 					next,
 					agentPrompt: preamble
@@ -1255,22 +1216,19 @@ const handlers: Record<string, Handler> = {
 				};
 			}
 		}
-		let manualCompletion: boolean | undefined;
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");
 			}
-			manualCompletion = params.manualCompletion;
-			if (task.manualCompletion !== manualCompletion) {
-				updates.manualCompletion = manualCompletion;
-				updates.mergeCompletionPrompt = null;
-			}
+			change.manualCompletion = params.manualCompletion;
 		}
 
+		// Keyed on which params were provided, never on the verdict: a same-value
+		// --title is a quiet no-op, not an error.
 		if (
-			Object.keys(updates).length === 0
+			params.title === undefined
+			&& params.description === undefined
 			&& priority === undefined
-			&& !titlePreserved
 			&& params.manualCompletion === undefined
 			&& params.taskType === undefined
 		) {
@@ -1278,22 +1236,11 @@ const handlers: Record<string, Handler> = {
 		}
 
 		let updated = task;
-		if (Object.keys(updates).length > 0) {
-			updated = await data.updateTask(project, task.id, updates);
-			if (manualCompletion !== undefined && task.manualCompletion !== manualCompletion) {
-				clearMergeNotification(task.id);
-			}
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			if (manualCompletion !== undefined && task.manualCompletion !== manualCompletion) {
-				getPushMessage()?.("manualCompletionChanged", {
-					taskId: updated.id,
-					projectId: project.id,
-					manualCompletion,
-					taskSeq: updated.seq,
-					taskTitle: getTaskTitle(updated),
-					projectName: project.name,
-				});
-			}
+		let titlePreserved = false;
+		if (Object.keys(change).length > 0) {
+			const result = await updateTaskMetadata(boardPorts, project, task.id, change, AGENT_ACTOR);
+			updated = result.task;
+			titlePreserved = result.rejected.includes("title");
 		}
 		if (priority !== undefined) {
 			const changed = await data.setTaskPriority(project, task.id, priority);
@@ -1334,9 +1281,7 @@ const handlers: Record<string, Handler> = {
 			throw new Error("overview text is required");
 		}
 		const { project, task } = await resolveTaskFromParams(params);
-		const updated = await data.updateTask(project, task.id, { overview: overview.trim() });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return updated;
+		return (await updateTaskMetadata(boardPorts, project, task.id, { overview }, AGENT_ACTOR)).task;
 	},
 
 	"overview.show": async (params) => {
@@ -1350,9 +1295,7 @@ const handlers: Record<string, Handler> = {
 
 	"overview.clear": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const updated = await data.updateTask(project, task.id, { overview: null });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return updated;
+		return (await updateTaskMetadata(boardPorts, project, task.id, { overview: null }, AGENT_ACTOR)).task;
 	},
 
 	"note.add": async (params) => {
@@ -1664,19 +1607,7 @@ const handlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 		if (!name) throw new Error("name is required");
 
-		// Build + append the label from the CURRENT project inside the project lock.
-		// Reading project.labels before the lock and writing back [...labels, label]
-		// races with any concurrent label write (another create, or a label.delete):
-		// the last writer clobbers the other's change. updateProjectWith recomputes
-		// inside the lock. Mirrors the RPC createLabel handler.
-		const { result: label } = await data.updateProjectWith(projectId, async (current) => {
-			const labels = current.labels ?? [];
-			const usedColors = new Set(labels.map((l) => l.color));
-			const color = (params.color as string) ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
-			const newLabel: Label = { id: crypto.randomUUID(), name, color };
-			return { updates: { labels: [...labels, newLabel] }, result: newLabel };
-		});
-		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
+		const { result: label } = await labelOps.createLabel(boardPorts, projectId, { name, color: params.color as string | undefined });
 		return label;
 	},
 
@@ -1690,26 +1621,7 @@ const handlers: Record<string, Handler> = {
 		const label = findByIdPrefix(project.labels ?? [], labelId, "label");
 		if (!label) throw new Error(`Label not found: ${labelId}`);
 
-		// Recompute the surviving labels from the CURRENT project inside the lock so
-		// a concurrent label.create is not clobbered (same lost-update race the
-		// per-task loop below already avoids). Mirrors the RPC deleteLabel handler.
-		await data.updateProjectWith(projectId, async (current) => ({
-			updates: { labels: (current.labels ?? []).filter((l) => l.id !== label.id) },
-			result: undefined,
-		}));
-		// Remove from all tasks. Recompute labelIds from the CURRENT task inside the
-		// per-task lock (updateTaskWith) — filtering a pre-lock snapshot would clobber
-		// any concurrent labelIds change. Mirrors the RPC deleteLabel handler.
-		const tasks = await data.loadTasks(project);
-		for (const task of tasks.filter((t) => t.labelIds?.includes(label.id))) {
-			await data.updateTaskWith(project, task.id, async (currentTask) => ({
-				updates: {
-					labelIds: (currentTask.labelIds ?? []).filter((id) => id !== label.id),
-				},
-				result: undefined,
-			}));
-		}
-		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
+		await labelOps.deleteLabel(boardPorts, projectId, label.id);
 		return { deleted: label.id };
 	},
 
