@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "assumptions": [
+    "Offline API-equivalent estimate using the current local rate table, not an invoice or subscription bill.",
+    "Standard short-context rates only; no historical, batch, priority, regional, long-context, or custom-provider pricing.",
+    "Codex input includes cache reads and writes; Claude input excludes them. Absent optional cache counters mean zero.",
+    "Unsplit cache writes use the table's 5-minute write rate. Partial Claude splits price the remainder at that rate.",
+    "Native Codex response records replace legacy token counts within a file; unmatched legacy cumulative totals mark coverage incomplete. Latest identified snapshots replace earlier ones in manifest/file order.",
+    "Identified request records group Codex response_id or Claude message.id + requestId; they are distinct from user turns and may not equal provider invoice requests.",
+    "Legacy records are less reliable usage deltas; repeated cumulative totals are suppressed. Cross-file legacy overlap cannot be reliably detected.",
+    "Task completion and parent/subagent attribution come only from the manifest. Include every attempt and child transcript; omitted files are not discovered.",
+    "Cache token share uses all prompt tokens; request hit share uses identified request records only. Legacy hit share is reported separately as a usage-record proxy.",
+    "Tool metrics use parsed local conversation events; parsed user turns may include setup-message boundaries; missing error flags are unknown outcomes, and output bytes are not tokens or billing-source attribution.",
+    "Tool events and user turns may repeat across resumed files; retries, context sources, compaction costs, and failed requests without usage are not inferred.",
+    "Only model identifiers are retained. Task, request, session, and tool identifiers, paths, content, and timestamps are omitted."
+  ],
+  "suppliedUsageAccounted": true,
+  "usageRecords": 13,
+  "identifiedRequestRecords": 13,
+  "legacyUsageRecords": 0,
+  "unpricedRecords": 0,
+  "incompleteRecords": 0,
+  "tokens": {
+    "input": 94006,
+    "output": 2504,
+    "cacheRead": 815104,
+    "cacheWrite5m": 0,
+    "cacheWrite1h": 0
+  },
+  "knownCostUsd": {
+    "input": 0.9400599999999999,
+    "output": 0.12520000000000003,
+    "cacheRead": 0.8151039999999998,
+    "cacheWrite5m": 0,
+    "cacheWrite1h": 0,
+    "total": 1.8803640000000001
+  },
+  "totalCostUsd": 1.8803640000000001,
+  "cacheTokenShare": 0.8965955714929986,
+  "requestCacheHitShare": 1,
+  "usageRecordCacheHitShare": 1,
+  "costByRole": {
+    "parent": {
+      "input": 0.9400599999999999,
+      "output": 0.12520000000000003,
+      "cacheRead": 0.8151039999999998,
+      "cacheWrite5m": 0,
+      "cacheWrite1h": 0,
+      "total": 1.8803640000000001
+    },
+    "subagent": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite5m": 0,
+      "cacheWrite1h": 0,
+      "total": 0
+    }
+  },
+  "taskCount": 1,
+  "completedTasks": 0,
+  "apiEquivalentCostPerCompletedTaskUsd": null,
+  "knownCostPerCompletedTaskUsd": null,
+  "tasks": [
+    {
+      "task": 1,
+      "completed": false,
+      "suppliedUsageAccounted": true,
+      "duplicateUsageRecords": 0,
+      "usageRecords": 13,
+      "identifiedRequestRecords": 13,
+      "legacyUsageRecords": 0,
+      "unpricedRecords": 0,
+      "incompleteRecords": 0,
+      "tokens": {
+        "input": 94006,
+        "output": 2504,
+        "cacheRead": 815104,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0
+      },
+      "knownCostUsd": {
+        "input": 0.9400599999999999,
+        "output": 0.12520000000000003,
+        "cacheRead": 0.8151039999999998,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0,
+        "total": 1.8803640000000001
+      },
+      "totalCostUsd": 1.8803640000000001,
+      "cacheTokenShare": 0.8965955714929986,
+      "requestCacheHitShare": 1,
+      "usageRecordCacheHitShare": 1,
+      "costByRole": {
+        "parent": {
+          "input": 0.9400599999999999,
+          "output": 0.12520000000000003,
+          "cacheRead": 0.8151039999999998,
+          "cacheWrite5m": 0,
+          "cacheWrite1h": 0,
+          "total": 1.8803640000000001
+        },
+        "subagent": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite5m": 0,
+          "cacheWrite1h": 0,
+          "total": 0
+        }
+      },
+      "transcripts": [
+        {
+          "transcript": 1,
+          "source": "codex",
+          "role": "parent",
+          "stream": "native-response",
+          "invalidLines": 0,
+          "nonblankLines": 101,
+          "usageRecords": 13,
+          "ignoredLegacyRecords": 12,
+          "duplicateUsageRecords": 0,
+          "tools": {
+            "parsedUserTurns": 2,
+            "toolCalls": 13,
+            "toolResults": 12,
+            "explicitErrorResults": 0,
+            "resultsWithoutErrorFlag": 12,
+            "toolOutputCharacters": 232921,
+            "toolOutputBytes": 238208
+          },
+          "gaps": []
+        }
+      ],
+      "requests": [
+        {
+          "record": 1,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 21907,
+            "output": 149,
+            "cacheRead": 12032,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.21907,
+            "output": 0.00745,
+            "cacheRead": 0.012032,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.238552
+          },
+          "gaps": []
+        },
+        {
+          "record": 2,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 9635,
+            "output": 166,
+            "cacheRead": 33792,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.09635,
+            "output": 0.0083,
+            "cacheRead": 0.033792,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.138442
+          },
+          "gaps": []
+        },
+        {
+          "record": 3,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 4950,
+            "output": 186,
+            "cacheRead": 43264,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.0495,
+            "output": 0.0093,
+            "cacheRead": 0.043264,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.102064
+          },
+          "gaps": []
+        },
+        {
+          "record": 4,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 8054,
+            "output": 175,
+            "cacheRead": 48000,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.08054,
+            "output": 0.00875,
+            "cacheRead": 0.048,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.13729000000000002
+          },
+          "gaps": []
+        },
+        {
+          "record": 5,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 316,
+            "output": 128,
+            "cacheRead": 55936,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.00316,
+            "output": 0.0064,
+            "cacheRead": 0.055936,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.065496
+          },
+          "gaps": []
+        },
+        {
+          "record": 6,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 7828,
+            "output": 109,
+            "cacheRead": 56064,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.07828,
+            "output": 0.00545,
+            "cacheRead": 0.056064,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.139794
+          },
+          "gaps": []
+        },
+        {
+          "record": 7,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 6442,
+            "output": 243,
+            "cacheRead": 63744,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.06442,
+            "output": 0.01215,
+            "cacheRead": 0.063744,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.140314
+          },
+          "gaps": []
+        },
+        {
+          "record": 8,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 436,
+            "output": 189,
+            "cacheRead": 70016,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.00436,
+            "output": 0.00945,
+            "cacheRead": 0.070016,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.083826
+          },
+          "gaps": []
+        },
+        {
+          "record": 9,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 6436,
+            "output": 261,
+            "cacheRead": 70272,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.06436,
+            "output": 0.01305,
+            "cacheRead": 0.070272,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.147682
+          },
+          "gaps": []
+        },
+        {
+          "record": 10,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 6823,
+            "output": 327,
+            "cacheRead": 76544,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.06823,
+            "output": 0.01635,
+            "cacheRead": 0.076544,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.161124
+          },
+          "gaps": []
+        },
+        {
+          "record": 11,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 15572,
+            "output": 249,
+            "cacheRead": 83200,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.15572,
+            "output": 0.01245,
+            "cacheRead": 0.0832,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.25137
+          },
+          "gaps": []
+        },
+        {
+          "record": 12,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 5314,
+            "output": 87,
+            "cacheRead": 98560,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.05314,
+            "output": 0.00435,
+            "cacheRead": 0.09856,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.15605
+          },
+          "gaps": []
+        },
+        {
+          "record": 13,
+          "source": "codex",
+          "role": "parent",
+          "model": "gpt-6-astra",
+          "stream": "native-response",
+          "identityAvailable": true,
+          "tokens": {
+            "input": 293,
+            "output": 235,
+            "cacheRead": 103680,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0
+          },
+          "cached": true,
+          "costUsd": {
+            "input": 0.00293,
+            "output": 0.01175,
+            "cacheRead": 0.10368,
+            "cacheWrite5m": 0,
+            "cacheWrite1h": 0,
+            "total": 0.11835999999999999
+          },
+          "gaps": []
+        }
+      ]
+    }
+  ]
+}

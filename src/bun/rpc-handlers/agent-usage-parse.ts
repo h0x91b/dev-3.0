@@ -91,12 +91,17 @@ export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 
 	const acc = countsFor(state, day.date, day.startMs, model);
 	const cacheCreation = usage.cache_creation as Record<string, unknown> | undefined;
+	const cacheTotal = finiteNumber(usage.cache_creation_input_tokens);
+	const cache5m = finiteNumber(cacheCreation?.ephemeral_5m_input_tokens);
+	const cache1h = finiteNumber(cacheCreation?.ephemeral_1h_input_tokens);
+	// Keep unsplit writes at the default 5m rate, including any partial split's remainder.
+	const unsplitCache = Math.max(0, cacheTotal - cache5m - cache1h);
 	acc.inputTokens += finiteNumber(usage.input_tokens);
 	acc.outputTokens += finiteNumber(usage.output_tokens);
-	acc.cacheCreationInputTokens += finiteNumber(usage.cache_creation_input_tokens);
+	acc.cacheCreationInputTokens += cacheTotal;
 	acc.cacheReadInputTokens += finiteNumber(usage.cache_read_input_tokens);
-	acc.cacheCreation5mInputTokens! += finiteNumber(cacheCreation?.ephemeral_5m_input_tokens);
-	acc.cacheCreation1hInputTokens! += finiteNumber(cacheCreation?.ephemeral_1h_input_tokens);
+	acc.cacheCreation5mInputTokens! += cache5m + unsplitCache;
+	acc.cacheCreation1hInputTokens! += cache1h;
 }
 
 /** Reset per-file Codex context while preserving accumulated usage and dedup state. */

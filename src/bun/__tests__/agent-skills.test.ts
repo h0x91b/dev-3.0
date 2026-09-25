@@ -4,6 +4,7 @@ import {
 	buildClaudeSkillContent,
 	buildCodexSkillContent,
 	buildGenericSkillContent,
+	buildOmpSkillContent,
 	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
 	DEV3_AUTO_MODE_ALLOW_ENTRY,
@@ -880,5 +881,35 @@ describe("ask-dev3 skill routing", () => {
 
 		expect(skill).toContain("Send a report to someone outside dev3 → ask for a link.");
 		expect(skill).toContain("`/dev3-share-artifact`** — publish an HTML report as a gist");
+	});
+});
+
+
+describe("compact dev3 skill references", () => {
+	const builders = [buildCodexSkillContent, buildOmpSkillContent, buildGenericSkillContent];
+
+	it("keeps default content intact and skips duplicate reads only when the protocol is present", () => {
+		for (const build of builders) {
+			expect(build()).toBe(build(undefined, false));
+			expect(build()).toContain("## On session start");
+			const compact = build(undefined, true);
+			expect(compact).toContain('If your context already includes the full "dev3 — Task Lifecycle Protocol"');
+			expect(compact).toContain("Otherwise, read PROTOCOL.md");
+			expect(compact).toContain("including startup instructions");
+			expect(compact).toContain("whenever you need to inspect the full reference");
+			expect(compact).not.toContain("# dev3 — Task Lifecycle Protocol");
+		}
+	});
+
+	it("uses the supplied Windows CLI dialect without POSIX startup commands", () => {
+		const dialect = hookCliDialect({ platform: "win32", homeDir: "C:\\Users\\Alice", execDir: "C:\\App", exists: () => false });
+		for (const build of builders) {
+			const compact = build(dialect, true);
+			expect(compact).toContain(`${dialect.cli} --help`);
+			expect(compact).toContain("dev3.exe");
+			expect(compact).not.toContain("~/.dev3.0/bin/dev3");
+			expect(compact).not.toContain("2>&1");
+			expect(compact).toContain("PROTOCOL.md in this skill's directory");
+		}
 	});
 });
