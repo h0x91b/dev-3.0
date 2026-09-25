@@ -2714,6 +2714,12 @@ export interface Task {
 	 */
 	sharedImages?: SharedImage[];
 	/**
+	 * Clips the agent surfaced via `dev3 show-video`, oldest→newest. A field of
+	 * their own so older app versions, which read every `sharedImages` entry's
+	 * bytes, never see them; read both lists through {@link taskSharedMedia}.
+	 */
+	sharedVideos?: SharedImage[];
+	/**
 	 * HTML artifacts an agent surfaced via `dev3 show-artifact`, oldest→newest.
 	 * Each artifact is stored in its own additive `shared-artifacts/<id>/`
 	 * directory together with any `--assets` files and an optional ZIP bundle.
@@ -3005,6 +3011,25 @@ export const SHARED_IMAGE_EXTS: readonly string[] = ["png", "jpg", "jpeg", "gif"
 
 /** Per-image size cap for `dev3 show-image` (bytes). */
 export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Per-video cap for `dev3 show-video` (bytes). Held at the image cap because a
+ * video takes the same road — one base64 read over RPC, ~1.34× its bytes, in the
+ * desktop bridge and over the remote tunnel alike — and is paid on every open.
+ */
+export const MAX_SHARED_VIDEO_BYTES = 25 * 1024 * 1024;
+
+/** True for a {@link SharedImage} record that `dev3 show-video` stored. */
+export function isSharedVideo(item: { mime: string }): boolean {
+	return item.mime.startsWith("video/");
+}
+
+/** A task's shared images and clips as one oldest→newest history — what the viewer steps through. */
+export function taskSharedMedia(task: Pick<Task, "sharedImages" | "sharedVideos">): SharedImage[] {
+	const videos = task.sharedVideos ?? [];
+	if (videos.length === 0) return task.sharedImages ?? [];
+	return [...(task.sharedImages ?? []), ...videos].sort((a, b) => a.createdAt - b.createdAt);
+}
 
 /** Max images accepted in a single `dev3 show-image` invocation. */
 export const MAX_SHARED_IMAGES_PER_CALL = 20;
@@ -3610,6 +3635,8 @@ export function appendTaskMovement(
  * removed. Rendered in the {@link https://…|TaskImageViewer} lightbox with a
  * clickable history (newest activated first). Bytes reach the webview via the
  * existing `readImageBase64` RPC (works in desktop and browser transports).
+ * `dev3 show-video` clips use this same record in `Task.sharedVideos` and play
+ * in the same viewer; a `video/*` {@link SharedImage.mime} marks them ({@link isSharedVideo}).
  */
 export interface SharedImage {
 	id: string;
@@ -6533,6 +6560,8 @@ export type AppRPCSchema = {
 				projectId: string;
 				images: SharedImage[];
 				newCount: number;
+				/** Kind of the new arrivals (`dev3 show-video` sends "video"). Absent = images. */
+				newKind?: "image" | "video";
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;

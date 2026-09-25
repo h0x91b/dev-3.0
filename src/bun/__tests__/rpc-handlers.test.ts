@@ -7451,6 +7451,38 @@ describe("handlers.markTaskSharedItemsRead", () => {
 		expect(result.sharedImages?.map((image) => image.isUnread)).toEqual([false, true, undefined]);
 	});
 
+	it("marks images and clips read from one viewer call, each in its own list", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedImages: [{ id: "shot", isUnread: true }] as Task["sharedImages"],
+			sharedVideos: [{ id: "clip", isUnread: true }, { id: "later", isUnread: true }] as Task["sharedVideos"],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+
+		const result = await handlers.markTaskSharedItemsRead({ taskId: "task-1", projectId: "proj-1", kind: "images", itemIds: ["shot", "clip"] });
+
+		expect(result.sharedImages?.map((item) => [item.id, item.isUnread])).toEqual([["shot", false]]);
+		expect(result.sharedVideos?.map((item) => [item.id, item.isUnread])).toEqual([["clip", false], ["later", true]]);
+	});
+
+	it("does not invent a sharedVideos field on a task that never had clips", async () => {
+		const project = makeProject();
+		const task = makeTask({ sharedImages: [{ id: "shot", isUnread: true }] as Task["sharedImages"] });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		let written: Partial<Task> = {};
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			written = updates;
+			return { task: { ...task, ...updates }, result };
+		});
+		await handlers.markTaskSharedItemsRead({ taskId: "task-1", projectId: "proj-1", kind: "images", itemIds: ["shot"] });
+		expect("sharedVideos" in written).toBe(false);
+	});
+
 	it("marks only the requested artifacts as read", async () => {
 		const project = makeProject();
 		const task = makeTask({

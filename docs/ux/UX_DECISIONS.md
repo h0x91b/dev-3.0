@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-09-25 — Clips play inside the image viewer
+
+Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-video` clips (own `sharedVideos` field, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md.
+
 ## 2026-09-22 — One task context menu, card and sidebar row
 
 Bible §4 `Context menu` / yaml `surfaces.context_menu.task_menu`: right-click (long-press on touch) opens one shared `TaskContextMenu` for the task object, routing to the pickers, modals and RPCs that already exist. It may repeat a control the surface shows — a menu reached blind is not chrome. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.

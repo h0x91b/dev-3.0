@@ -1,4 +1,4 @@
-import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskStatus } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, SharedImage, Task, TaskStatus } from "../../shared/types";
 import { LABEL_COLORS } from "../../shared/types";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
 import type { NotificationLogPage } from "../../shared/notification-log";
@@ -186,14 +186,12 @@ async function markTaskSharedItemsRead(params: {
 	const itemIds = new Set(params.itemIds);
 	const { task } = await data.updateTaskWith(project, params.taskId, (current) => {
 		if (params.kind === "images") {
-			return {
-				updates: {
-					sharedImages: (current.sharedImages ?? []).map((image) =>
-						itemIds.has(image.id) && image.isUnread ? { ...image, isUnread: false } : image,
-					),
-				},
-				result: undefined,
-			};
+			// "images" is the viewer's whole history: shared images and shared clips.
+			const markRead = (list: SharedImage[] | undefined) =>
+				list?.map((item) => (itemIds.has(item.id) && item.isUnread ? { ...item, isUnread: false } : item));
+			const updates: Partial<Task> = { sharedImages: markRead(current.sharedImages) ?? [] };
+			if (current.sharedVideos) updates.sharedVideos = markRead(current.sharedVideos);
+			return { updates, result: undefined };
 		}
 		return {
 			updates: {

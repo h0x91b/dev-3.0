@@ -9,6 +9,8 @@ interface ImageSaveMenuProps {
 	onDownload: () => void;
 	onCopyPath?: () => void;
 	onClose: () => void;
+	/** Label the items for a video instead of an image. */
+	video?: boolean;
 }
 
 /**
@@ -18,7 +20,7 @@ interface ImageSaveMenuProps {
  * brings its own. Escape belongs to the host overlay, which knows it must close the
  * menu before itself.
  */
-export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose }: ImageSaveMenuProps) {
+export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, video = false }: ImageSaveMenuProps) {
 	const t = useT();
 	const ref = useRef<HTMLDivElement>(null);
 
@@ -61,12 +63,12 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose }: I
 		>
 			<button type="button" role="menuitem" data-testid="image-save-menu-download" onClick={onDownload} className={item}>
 				<span className={glyph} style={{ fontFamily: ICON }}>{""}</span>
-				{t("imageViewer.download")}
+				{t(video ? "imageViewer.downloadVideo" : "imageViewer.download")}
 			</button>
 			{onCopyPath && (
 				<button type="button" role="menuitem" data-testid="image-save-menu-copy-path" onClick={onCopyPath} className={item}>
 					<span className={glyph} style={{ fontFamily: ICON }}>{""}</span>
-					{t("imageViewer.copyPath")}
+					{t(video ? "imageViewer.copyVideoPath" : "imageViewer.copyPath")}
 				</button>
 			)}
 		</div>

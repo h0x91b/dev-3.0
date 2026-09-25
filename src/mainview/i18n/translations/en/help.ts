@@ -211,7 +211,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Shared images",
 	"help.viewer.images.body":
-		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, download an image (also on right-click), copy its path, or reveal the original file on disk.",
+		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, download an image (also on right-click), copy its path, or reveal the original file on disk. A video shared with `dev3 show-video` plays in place: play, pause, seek and volume are on the player, and it never starts on its own.",
 	"help.viewer.artifact.title": "Artifact",
 	"help.viewer.artifact.body":
 		"An interactive HTML report an agent built with `dev3 show-artifact`, sandboxed and opened as a popup over the task — the same way images open. Go fullscreen, step through past artifacts, or download it as HTML (or a ZIP when it bundles images). Escape closes it.",

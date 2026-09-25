@@ -5,15 +5,24 @@
  * cache path (decision 2026/07/21 artifact-image-save-via-parent).
  */
 export function downloadBase64(base64: string, mime: string, fileName: string): void {
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+	const url = URL.createObjectURL(base64ToBlob(base64, mime));
+	downloadObjectUrl(url, fileName);
+	setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Anchor-click download of a `blob:` URL the caller owns (and revokes). */
+export function downloadObjectUrl(url: string, fileName: string): void {
 	const anchor = document.createElement("a");
 	anchor.href = url;
 	anchor.download = fileName;
 	anchor.click();
-	setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function base64ToBlob(base64: string, mime: string): Blob {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return new Blob([bytes], { type: mime });
 }
 
 export function parseDataUrl(src: string): { mime: string; base64: string } | null {

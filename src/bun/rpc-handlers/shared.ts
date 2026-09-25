@@ -187,6 +187,8 @@ export interface TerminalFocusImagePayload {
 	projectId: string;
 	images: SharedImage[];
 	newCount: number;
+	/** What the new arrivals are — picks the toast and badge wording. Absent = images. */
+	newKind?: "image" | "video";
 	taskSeq?: number;
 	taskTitle?: string;
 	projectName?: string;

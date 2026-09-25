@@ -299,6 +299,9 @@ const infoPanel = {
 	"infoPanel.imagesBadge_one": "Ver {count} imagen compartida",
 	"infoPanel.imagesBadge_other": "Ver {count} imágenes compartidas",
 	"infoPanel.imagesLabel": "Imágenes",
+	"infoPanel.mediaBadge_one": "Ver {count} elemento compartido",
+	"infoPanel.mediaBadge_other": "Ver {count} imágenes y vídeos compartidos",
+	"infoPanel.mediaLabel": "Multimedia",
 	"infoPanel.artifactsBadge_one": "Ver {count} artefacto compartido",
 	"infoPanel.artifactsBadge_other": "Ver {count} artefactos compartidos",
 	"infoPanel.artifactAssets_one": "{count} recurso",
@@ -306,6 +309,7 @@ const infoPanel = {
 	"infoPanel.artifactsLabel": "Artefactos",
 	"infoPanel.sharedItemsUnread": "Hay elementos nuevos sin ver",
 	"infoPanel.openSharedImage": "Abrir la imagen {name}",
+	"infoPanel.openSharedVideo": "Abrir el vídeo {name}",
 	"infoPanel.openSharedArtifact": "Abrir el artefacto {name}",
 
 	"infoPanel.restoreHidden": "Mostrar controles ocultos",

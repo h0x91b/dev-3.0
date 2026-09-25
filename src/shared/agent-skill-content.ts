@@ -212,7 +212,7 @@ Pull the user back deliberately — enough that they never miss something needin
 
 - \`dev3 attention "reason"\` — red badge on the card until the user opens the task (reasons accumulate, up to 5). Default for anything that needs them. \`--clear\` lowers it the moment the cause is resolved and they never came; a badge outliving its cause trains them to ignore badges.
 - \`dev3 notify "message" [--level info|success|error] [--duration <seconds>]\` — clickable in-app toast (ephemeral, 2s–30s). \`--desktop\` instead sends a native OS notification that shows even when the app is backgrounded; never combine the two flags.
-- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts); files are copied into the worktree and **each \`--caption\` annotates the image it immediately follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, put them in front of the user rather than describing them or leaving a path to open.
+- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts; \`show-video\` plays MP4/WebM ≤25 MB there); files are copied into the worktree and **each \`--caption\` annotates the file it follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, show them rather than describing them or leaving a path to open.
 - \`dev3 show-artifact <report-dir | file.html | .md | .txt> [--assets <file...>] [--title "..."]\` — **show an HTML artifact** (see the artifacts section above).
 - \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`). Check BEFORE pinging.
 

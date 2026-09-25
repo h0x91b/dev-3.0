@@ -36,6 +36,16 @@ vi.mock("../shared-images", () => ({
 		createdAt: 1,
 		...(caption ? { caption } : {}),
 	})),
+	saveSharedVideo: vi.fn((_projectPath: string, src: string, caption?: string) => ({
+		id: `vid-${src}`,
+		storedPath: `/wt/shared-images/${src.split("/").pop()}`,
+		originalPath: src,
+		name: src.split("/").pop() ?? src,
+		mime: "video/mp4",
+		bytes: 1,
+		createdAt: 1,
+		...(caption ? { caption } : {}),
+	})),
 }));
 
 vi.mock("../shared-artifacts", () => ({
@@ -215,7 +225,7 @@ import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
-import { saveSharedImage } from "../shared-images";
+import { saveSharedImage, saveSharedVideo } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
 import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
@@ -1797,6 +1807,46 @@ describe("ui.show-image", () => {
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
 		expect(pushFn).not.toHaveBeenCalledWith("cliShowImage", expect.anything());
 		expect(pushCliShowImage).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newCount: 1 }));
+	});
+
+	it("ui.show-video stores clips through the video path into the same history", async () => {
+		const project = makeProject();
+		const existing = { id: "old", storedPath: "/wt/a.png", originalPath: "/tmp/a.png", name: "a.png", mime: "image/png", bytes: 1, createdAt: 0 };
+		const task = makeTask({ seq: 4, sharedImages: [existing] });
+		const pushFn = vi.fn();
+		wireShowImage(project, task, pushFn);
+		const imageSpy = vi.mocked(saveSharedImage);
+		const videoSpy = vi.mocked(saveSharedVideo);
+		imageSpy.mockClear();
+		videoSpy.mockClear();
+
+		const resp = await handleRequest(
+			makeRequest("ui.show-video", { taskId: task.id, projectId: project.id, images: [{ path: "/tmp/demo.mp4", caption: "play me" }] }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, stored: 1 });
+		expect(videoSpy).toHaveBeenCalledWith(project.path, "/tmp/demo.mp4", "play me");
+		expect(imageSpy).not.toHaveBeenCalled();
+		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
+		expect(cliPush?.[1]).toMatchObject({ newKind: "video", newCount: 1 });
+		expect(cliPush?.[1].images.map((i: SharedImage) => i.mime)).toEqual(["image/png", "video/mp4"]);
+		// Clips land in their own additive field; the image list older versions read is untouched.
+		const calls = vi.mocked(data.updateTaskWith).mock.calls;
+		const update = calls[calls.length - 1]?.[2] as (t: Task) => { updates: Partial<Task> };
+		const { updates } = update(task);
+		expect(updates.sharedVideos?.map((v) => v.originalPath)).toEqual(["/tmp/demo.mp4"]);
+		expect("sharedImages" in updates).toBe(false);
+	});
+
+	it("ui.show-image still labels its arrivals as images", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 5 });
+		const pushFn = vi.fn();
+		wireShowImage(project, task, pushFn);
+		await handleRequest(makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/a.png"] }));
+		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
+		expect(cliPush?.[1].newKind).toBe("image");
 	});
 
 	it("accepts the images:[{path,caption}] shape and threads per-image captions", async () => {

@@ -638,6 +638,20 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "show-video",
+		summary: "Play MP4/WebM clips in the task's image viewer.",
+		subcommands: [],
+		usage: 'dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...] [--task <id>]',
+		details: [
+			"Same history, badge and viewer as show-image: the viewer switches to a player for a clip.",
+			"Each --caption annotates the clip it immediately follows. Up to 20 files per call.",
+			"MP4 or WebM, 25 MB per file — trim or re-encode longer clips. H.264/AAC MP4 is the safest codec choice;",
+			"whether a codec plays depends on the engine (only Chromium playback of H.264, VP8 and VP9 was measured).",
+			"A codec the engine cannot decode (HEVC in Chromium, for one) shows a notice pointing at Open in default app.",
+			"Files are copied into the task's shared store, so the original may be deleted afterwards. Never autoplays.",
+		],
+	},
+	{
 		name: "show-artifact",
 		summary: "Surface a task-bound HTML artifact in the running app.",
 		subcommands: [],

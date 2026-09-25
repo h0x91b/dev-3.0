@@ -7,7 +7,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedVideo, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -158,6 +158,7 @@ function TaskInfoPanel({
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const sharedMedia = taskSharedMedia(task);
 	// Per-control hiding (§5.10) — each of these can be individually hidden
 	// (right-click "Hide") and restored from the panel's one restore control.
 	const spawnAgentHidden = useIsControlHidden("spawn-agent");
@@ -1520,20 +1521,20 @@ function TaskInfoPanel({
 
 							<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
 
-							{(task.sharedImages?.length ?? 0) > 0 && (
+							{sharedMedia.length > 0 && (
 								<button
 									type="button"
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-											detail: { taskId: task.id, projectId: project.id, images: task.sharedImages },
+											detail: { taskId: task.id, projectId: project.id, images: sharedMedia },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}
 								>
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
-									<span className="flex-1 text-sm font-medium">{t("infoPanel.imagesLabel")}</span>
-									<span className="text-xs font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
+									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedVideo) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
+									<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
 								</button>
 							)}
 

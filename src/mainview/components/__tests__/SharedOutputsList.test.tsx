@@ -69,6 +69,18 @@ describe("SharedOutputsList", () => {
 		expect(detail.images).toHaveLength(3);
 	});
 
+	it("shows a clip as a play tile under the Media heading and opens it in the same viewer", async () => {
+		const clip = { ...image("clip"), storedPath: "/wt/shared-images/clip.mp4", name: "clip.mp4", mime: "video/mp4", createdAt: 1_780_000_000_001 };
+		const spy = vi.fn();
+		window.addEventListener("dev3:openImageViewer", spy);
+		renderList({ sharedImages: [image("shot")], sharedVideos: [clip] });
+		expect(screen.getByRole("heading", { name: /Media/ })).toBeInTheDocument();
+		expect(screen.getByTestId("shared-video-card")).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Open video clip.mp4" }));
+		window.removeEventListener("dev3:openImageViewer", spy);
+		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ index: 1 });
+	});
+
 	it("opens the artifact popup at the clicked row", async () => {
 		const spy = vi.fn();
 		window.addEventListener("dev3:openArtifactViewer", spy);

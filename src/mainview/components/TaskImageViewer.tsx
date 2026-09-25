@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SharedImage, Task } from "../../shared/types";
+import { isSharedVideo, type SharedImage, type Task } from "../../shared/types";
 import { clipReviewExcerpt, type ReviewComment, type ReviewImageRegionAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
@@ -12,7 +12,7 @@ import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
-import { downloadDataUrl } from "../utils/downloadBytes";
+import { base64ToBlob, downloadDataUrl, downloadObjectUrl, parseDataUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 
 interface TaskImageViewerProps {
@@ -51,6 +51,10 @@ const TALL_RATIO = 2.2;
  * the desktop shell and the remote browser. Pure React overlay — no native
  * dialog (project rule).
  *
+ * A `dev3 show-video` clip swaps the stage for a `<video controls>` player that
+ * never autoplays; its bytes become a `blob:` URL (seekable, freed on close) and
+ * load only when the clip is the active item, never eagerly for the rail.
+ *
  * While open it marks <html data-image-viewer="open">, which hides the ghostty
  * WebGL terminal canvas behind it (index.css). In WKWebView a WebGL canvas is
  * promoted to a hardware overlay plane that paints ABOVE any DOM scrim, so
@@ -61,8 +65,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const newSet = useMemo(() => new Set(newIds ?? []), [newIds]);
 	const newCount = newSet.size;
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
-	// Cache of image id → data URL ("__error__" marks a failed load).
+	// Cache of image id → data URL, or `blob:` URL for a video ("__error__" marks a failed load).
 	const [urls, setUrls] = useState<Record<string, string>>({});
+	const objectUrlsRef = useRef<string[]>([]);
+	useEffect(() => () => { for (const url of objectUrlsRef.current) URL.revokeObjectURL(url); }, []);
+	// The player's own failure (codec / container the engine cannot decode).
+	const [videoError, setVideoError] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
 	// Our own right-click menu over the image: WKWebView's native "Save Image As…"
@@ -89,6 +97,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// image or the layout changes; the overlay sits exactly on it.
 	const [pictureBox, setPictureBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 	const thumbStripRef = useRef<HTMLDivElement>(null);
+	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
 	// against the background loader so each image is read at most once.
@@ -102,11 +111,13 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	}, [images.length]);
 
 	const current = images[index];
+	const isVideo = current ? isSharedVideo(current) : false;
+	const hasVideos = useMemo(() => images.some(isSharedVideo), [images]);
 	// Aspect-driven display mode: tall captures scroll vertically ("width"),
 	// everything else is centred + contained ("fit") and gets pinch-to-zoom.
 	const isTall = natural ? natural.h / natural.w >= TALL_RATIO : false;
 	const fit: "fit" | "width" = fitOverride ?? (isTall ? "width" : "fit");
-	const zoom = usePinchZoom(fit === "fit" && !commentMode);
+	const zoom = usePinchZoom(fit === "fit" && !commentMode && !isVideo);
 	const imageComments = useMemo(
 		() => (current ? review.comments.filter((comment) => comment.anchor.kind === "image-region" && comment.anchor.imageId === current.id) : []),
 		[current, review.comments],
@@ -149,6 +160,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		try {
 			const res = await api.request.readImageBase64({ path: img.storedPath });
 			dataUrl = res?.dataUrl ?? "__error__";
+			const parsed = isSharedVideo(img) && res?.dataUrl ? parseDataUrl(res.dataUrl) : null;
+			if (parsed) {
+				dataUrl = URL.createObjectURL(base64ToBlob(parsed.base64, img.mime));
+				if (mountedRef.current) objectUrlsRef.current.push(dataUrl);
+				else URL.revokeObjectURL(dataUrl);
+			}
 		} catch {
 			dataUrl = "__error__";
 		}
@@ -159,7 +176,10 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// stepping through the rail feels instant.
 	useEffect(() => {
 		for (const j of [index, index + 1, index - 1]) {
-			if (j >= 0 && j < images.length) void loadImage(images[j]);
+			if (j < 0 || j >= images.length) continue;
+			// A clip is read only when it is the one on stage — its bytes dwarf an image's.
+			if (j !== index && isSharedVideo(images[j])) continue;
+			void loadImage(images[j]);
 		}
 	}, [index, images, loadImage]);
 
@@ -168,7 +188,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// in as you scrub. The dedupe set skips anything the priority effect grabbed.
 	useEffect(() => {
 		let cancelled = false;
-		const pending = images.filter((im) => !startedRef.current.has(im.id));
+		const pending = images.filter((im) => !startedRef.current.has(im.id) && !isSharedVideo(im));
 		let cursor = 0;
 		const CONCURRENCY = 4;
 		async function worker() {
@@ -220,6 +240,16 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	useEffect(() => {
 		function onKey(e: KeyboardEvent) {
 			const consume = () => { e.preventDefault(); e.stopPropagation(); };
+			const target = e.target instanceof HTMLElement ? e.target : null;
+			// A focused player owns its arrows (seek) and Space (play/pause).
+			if (target?.tagName === "VIDEO" && (e.key.startsWith("Arrow") || e.key === " " || e.key === "Home" || e.key === "End")) return;
+			if (e.key === " " && videoRef.current && !target?.closest("button, input, textarea, [contenteditable='true']")) {
+				consume();
+				const video = videoRef.current;
+				if (video.paused) void video.play().catch(() => {});
+				else video.pause();
+				return;
+			}
 			if (e.key === "ArrowRight") { consume(); go(1); }
 			else if (e.key === "ArrowLeft") { consume(); go(-1); }
 			else if (e.key === "Home") { consume(); setIndex(0); }
@@ -241,6 +271,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setFitOverride(null);
 		setPendingRegion(null);
 		setActiveCommentId(null);
+		setVideoError(false);
 		zoom.reset();
 		if (stageRef.current) stageRef.current.scrollTop = 0;
 	}, [index, zoom.reset]);
@@ -266,10 +297,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setMenu(null);
 		if (!currentUrl || isError) return;
 		try {
-			downloadDataUrl(currentUrl, current.name);
-			toast.success(t("imageViewer.saved"), { taskId });
+			if (isVideo) downloadObjectUrl(currentUrl, current.name);
+			else downloadDataUrl(currentUrl, current.name);
+			toast.success(t(isVideo ? "imageViewer.videoSaved" : "imageViewer.saved"), { taskId });
 		} catch {
-			toast.error(t("imageViewer.saveFailed"), { taskId });
+			toast.error(t(isVideo ? "imageViewer.videoSaveFailed" : "imageViewer.saveFailed"), { taskId });
 		}
 	};
 
@@ -297,7 +329,9 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setActiveCommentId(comment.id);
 		if (andSend) send.sendOne(comment);
 	};
-	const showOverlay = canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
+	const showOverlay = !isVideo && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
+	const copyLabel = t(isVideo ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
+	const downloadLabel = t(isVideo ? "imageViewer.downloadVideo" : "imageViewer.download");
 
 	return (
 		<div
@@ -308,7 +342,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				ref={containerRef}
 				role="dialog"
 				aria-modal="true"
-				aria-label={t("imageViewer.title")}
+				aria-label={t(hasVideos ? "imageViewer.titleMedia" : "imageViewer.title")}
 				tabIndex={-1}
 				className={`relative flex flex-col overflow-hidden bg-elevated outline-none ${
 					fullscreen
@@ -334,7 +368,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						{index + 1} / {images.length}
 					</span>
 					<HelpSpot topicId="viewer.images" />
-					{isTall && (
+					{isTall && !isVideo && (
 						<button
 							type="button"
 							onClick={() => setFitOverride(fit === "width" ? "fit" : "width")}
@@ -345,7 +379,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 							<span className="text-base leading-none" style={{ fontFamily: ICON }}>{fit === "width" ? "" : ""}</span>
 						</button>
 					)}
-					{canComment && (
+					{canComment && !isVideo && (
 						<button
 							type="button"
 							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); }}
@@ -371,8 +405,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<button
 						type="button"
 						onClick={copyPath}
-						title={t("imageViewer.copyPath")}
-						aria-label={t("imageViewer.copyPath")}
+						title={copyLabel}
+						aria-label={copyLabel}
 						className={iconBtn}
 					>
 						<span className={`text-base leading-none ${copied ? "text-success" : ""}`} style={{ fontFamily: ICON }}>{copied ? "" : ""}</span>
@@ -381,8 +415,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						type="button"
 						onClick={saveImage}
 						disabled={!currentUrl || isError}
-						title={t("imageViewer.download")}
-						aria-label={t("imageViewer.download")}
+						title={downloadLabel}
+						aria-label={downloadLabel}
 						data-testid="image-viewer-download"
 						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
 					>
@@ -415,14 +449,27 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<div
 						ref={setStage}
 						onContextMenu={openMenu}
-						style={{ touchAction: fit === "width" ? "pan-y" : "none" }}
+						style={{ touchAction: isVideo ? "manipulation" : fit === "width" ? "pan-y" : "none" }}
 						className={`absolute inset-0 ${fit === "width" ? "overflow-y-auto overflow-x-hidden p-3" : "overflow-hidden p-4 flex items-center justify-center"}`}
 					>
-						{isError ? (
-							<div className="flex flex-col items-center gap-2 text-fg-3">
+						{isError || (isVideo && videoError) ? (
+							<div data-testid="viewer-media-error" className="flex max-w-md flex-col items-center gap-2 text-center text-fg-3">
 								<span className="text-3xl leading-none" style={{ fontFamily: ICON }}>{""}</span>
-								<span className="text-sm">{t("imageViewer.loadError")}</span>
+								<span className="text-sm">{t(!isVideo ? "imageViewer.loadError" : isError ? "imageViewer.videoLoadError" : "imageViewer.videoUnsupported")}</span>
 							</div>
+						) : isVideo && currentUrl ? (
+							<video
+								key={current.id}
+								ref={videoRef}
+								src={currentUrl}
+								controls
+								playsInline
+								preload="metadata"
+								aria-label={current.name}
+								data-testid="viewer-main-video"
+								onError={() => setVideoError(true)}
+								className="max-h-full max-w-full rounded-lg bg-black outline-none"
+							/>
 						) : currentUrl ? (
 							<img
 								ref={imgRef}
@@ -516,6 +563,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						{images.map((img, i) => {
 							const thumbUrl = urls[img.id];
 							const isNew = newSet.has(img.id);
+							const thumbIsVideo = isSharedVideo(img);
 							return (
 								<button
 									key={img.id}
@@ -529,7 +577,16 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 										i === index ? "border-accent" : isNew ? "border-success" : "border-edge/50 hover:border-edge-active"
 									} ${isNew ? "ring-2 ring-success/60 ring-offset-1 ring-offset-raised" : ""}`}
 								>
-									{thumbUrl && thumbUrl !== "__error__" ? (
+									{thumbIsVideo ? (
+										<span
+											data-testid="viewer-thumb-video"
+											title={t("imageViewer.video")}
+											className="flex h-full w-full items-center justify-center bg-black/80 text-white text-lg"
+											style={{ fontFamily: ICON }}
+										>
+											{"\uf04b"}
+										</span>
+									) : thumbUrl && thumbUrl !== "__error__" ? (
 										<img src={thumbUrl} alt={img.name} className="h-full w-full object-cover" draggable={false} />
 									) : (
 										<span className="flex h-full w-full items-center justify-center bg-elevated text-fg-muted text-xs" style={{ fontFamily: ICON }}>{"\u{F02E9}"}</span>
@@ -546,6 +603,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						onDownload={saveImage}
 						onCopyPath={() => { setMenu(null); void copyPath(); }}
 						onClose={() => setMenu(null)}
+						video={isVideo}
 					/>
 				)}
 			</div>
