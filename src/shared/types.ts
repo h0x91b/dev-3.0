@@ -244,8 +244,8 @@ export function isStatusGuardBlocked(
  * rank (P0 = 0 = most important). Stored explicitly on every task; tasks created
  * before this field existed are stamped {@link DEFAULT_PRIORITY} by a load-time
  * in-place content migration (paths untouched — older app versions ignore the
- * unknown field). Priority belongs to the logical task, so every variant in a
- * group shares one value and the group never splits across sort bands.
+ * unknown field). Each variant carries its own value: new variants inherit the
+ * source's priority at creation, then change independently.
  */
 export type TaskPriority = "P0" | "P1" | "P2" | "P3" | "P4";
 
@@ -5192,8 +5192,8 @@ export type AppRPCSchema = {
 				response: { backend: TerminalBackendIdentity };
 			};
 			setTaskPriority: {
-				// Writes the priority to the whole variant group; returns every task
-				// it changed so all open surfaces re-render live.
+				// Writes the priority to this task only (never its variant siblings);
+				// returns the task when it changed, so open surfaces re-render live.
 				params: { taskId: string; projectId: string; priority: TaskPriority };
 				response: Task[];
 			};

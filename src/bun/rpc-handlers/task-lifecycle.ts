@@ -331,9 +331,9 @@ export async function launchTaskWithAgentChoice(params: {
 	const { agentId, configId, accountId } = first;
 
 	// Priority lands before the move so the card never appears in the wrong sort
-	// band, and goes through the group-wide setter rather than `taskPatch`.
-	// spawnVariants copies the source's priority onto every sibling, so setting it
-	// here is also what keeps a whole agent-requested group out of the P3 band.
+	// band, and goes through the dedicated setter rather than `taskPatch`.
+	// spawnVariants copies the source's priority onto every new sibling, so setting
+	// it here is also what keeps a whole agent-requested group out of the P3 band.
 	if (priority !== undefined && priority !== stored.priority) {
 		for (const changed of await data.setTaskPriority(project, stored.id, priority)) {
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: changed });
@@ -567,8 +567,8 @@ async function spawnVariants(params: {
 				notes: sourceTask.notes,
 				overview: sourceTask.overview,
 				userOverview: sourceTask.userOverview,
-				// Priority belongs to the whole variant group — without the copy a
-				// P0 launch would spawn P3 siblings.
+				// New variants start at the source's priority — without the copy a
+				// P0 launch would spawn P3 siblings. Each changes independently after.
 				priority: sourceTask.priority,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
@@ -692,9 +692,8 @@ async function addAttempts(params: {
 				titleEditedByUser: sourceTask.titleEditedByUser,
 				// Attempts share the source task's labels (same group).
 				labelIds: sourceTask.labelIds,
-				// Attempts share the source task's priority (priority belongs to the
-				// whole variant group), otherwise re-running a P0 task spawns a P3
-				// sibling and the group's priority becomes inconsistent.
+				// Attempts start at the source task's priority, otherwise re-running a
+				// P0 task spawns a P3 sibling. Each changes independently after.
 				priority: sourceTask.priority,
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
@@ -816,8 +815,6 @@ async function editTask(params: {
 		// created with, so its card stays recognisable on the board.
 		updates.title = titleFromDescription(description) || task.title || draftPlaceholderTitle();
 	}
-	// Priority is a whole-group property, but a draft is never part of a variant
-	// group (nothing can launch it), so the plain per-task write is correct here.
 	if (params.priority !== undefined) updates.priority = params.priority;
 	if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
 	if (params.existingBranch !== undefined) {

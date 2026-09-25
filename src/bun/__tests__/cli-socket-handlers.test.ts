@@ -1080,10 +1080,10 @@ describe("task.update — priority", () => {
 		expect(data.setTaskPriority).not.toHaveBeenCalled();
 	});
 
-	it("accepts a case-insensitive priority and writes it group-wide", async () => {
+	it("accepts a case-insensitive priority and writes it to this task", async () => {
 		const project = makeProject();
 		const task = makeTask();
-		const changed = [makeTask({ priority: "P0" }), makeTask({ id: "task-sibling-uuid", priority: "P0" })];
+		const changed = [makeTask({ priority: "P0" })];
 		const pushFn = vi.fn();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
@@ -1095,8 +1095,7 @@ describe("task.update — priority", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(data.setTaskPriority).toHaveBeenCalledWith(project, task.id, "P0");
-		// Pushes an update for every changed task in the group.
-		expect(pushFn).toHaveBeenCalledTimes(2);
+		expect(pushFn).toHaveBeenCalledTimes(1);
 		expect((resp.data as { task: Task }).task.priority).toBe("P0");
 	});
 

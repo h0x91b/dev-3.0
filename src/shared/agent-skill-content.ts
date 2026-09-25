@@ -88,7 +88,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Task priority
 
-\`P0\` (highest) … \`P4\` (lowest), default \`P3\`; the board sorts by it. \`dev3 task update --priority P0..P4\` sets it for the whole variant group.
+\`P0\` (highest) … \`P4\` (lowest), default \`P3\`; the board sorts by it. \`dev3 task update --priority P0..P4\` sets it for this task only.
 
 **Do NOT set or change a priority on your own initiative** — only when the user explicitly asks. It is their judgment of importance, same protected class as user-edited titles. Never re-prioritize during triage, cleanup, or "helpfully."
 

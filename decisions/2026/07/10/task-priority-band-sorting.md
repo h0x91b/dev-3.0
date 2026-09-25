@@ -1,5 +1,7 @@
 # 122 — Task priority (P0–P4): strict bands over manual order, drag-as-re-prioritization
 
+> Superseded in part on 2026-09-25 by `decisions/2026/09/25/variant-priority-is-per-task.md`: priority is no longer written to the whole variant group — each variant keeps its own.
+
 ## Context
 
 The board treated every task as equally important; the only ways to surface an urgent task were fragile manual drag-ordering (per-column, invisible as data) or abusing labels (no ordering semantics). We added a five-level priority (`P0` highest … `P4` lowest, default `P3`) that the board and active-tasks sidebar sort by. Two design choices were non-obvious and are recorded here.

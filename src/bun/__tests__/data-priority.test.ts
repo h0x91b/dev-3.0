@@ -22,7 +22,7 @@ beforeEach(() => {
 	mkdirSync(TEST_HOME, { recursive: true });
 });
 
-import { addTask, setTaskPriority, updateTask } from "../data";
+import { addTask, loadTasks, setTaskPriority, updateTask } from "../data";
 
 const testProject: Project = {
 	id: "proj-1",
@@ -99,25 +99,41 @@ describe("priority load migration", () => {
 });
 
 // ============================================================
-// setTaskPriority — group-wide write
+// setTaskPriority — one task, never its variant siblings
 // ============================================================
 
 describe("setTaskPriority", () => {
-	it("writes the priority to every task in the variant group", async () => {
+	it("writes only the target variant; live and finished siblings keep their priority", async () => {
 		seedTasks([
-			makeTask({ id: "g-v1", seq: 1, groupId: "g1", variantIndex: 1, priority: "P2" }),
-			makeTask({ id: "g-v2", seq: 1, groupId: "g1", variantIndex: 2, priority: "P2" }),
-			makeTask({ id: "solo", seq: 2, priority: "P2" }),
+			makeTask({ id: "g-v1", seq: 1, groupId: "g1", variantIndex: 1, priority: "P2", status: "review-by-user" }),
+			makeTask({ id: "g-v2", seq: 1, groupId: "g1", variantIndex: 2, priority: "P2", status: "in-progress" }),
+			makeTask({ id: "g-v3", seq: 1, groupId: "g1", variantIndex: 3, priority: "P2", status: "completed" }),
+			makeTask({ id: "g-v4", seq: 1, groupId: "g1", variantIndex: 4, priority: "P2", status: "cancelled" }),
 		]);
 
 		const changed = await setTaskPriority(testProject, "g-v1", "P0");
 
-		expect(new Set(changed.map((t) => t.id))).toEqual(new Set(["g-v1", "g-v2"]));
+		expect(changed.map((t) => t.id)).toEqual(["g-v1"]);
 		const saved = readSavedTasks();
 		expect(saved.find((t) => t.id === "g-v1")!.priority).toBe("P0");
-		expect(saved.find((t) => t.id === "g-v2")!.priority).toBe("P0");
-		// A task outside the group is untouched.
-		expect(saved.find((t) => t.id === "solo")!.priority).toBe("P2");
+		for (const id of ["g-v2", "g-v3", "g-v4"]) {
+			const sibling = saved.find((t) => t.id === id)!;
+			expect(sibling.priority).toBe("P2");
+			expect(sibling.updatedAt).toBe("2025-01-01T00:00:00Z");
+		}
+	});
+
+	it("keeps diverged sibling priorities across a reload and a second write", async () => {
+		seedTasks([
+			makeTask({ id: "g-v1", seq: 1, groupId: "g1", variantIndex: 1, priority: "P3" }),
+			makeTask({ id: "g-v2", seq: 1, groupId: "g1", variantIndex: 2, priority: "P3" }),
+		]);
+		await setTaskPriority(testProject, "g-v1", "P1");
+		await setTaskPriority(testProject, "g-v2", "P4");
+
+		const reloaded = await loadTasks(testProject);
+		expect(reloaded.find((t) => t.id === "g-v1")!.priority).toBe("P1");
+		expect(reloaded.find((t) => t.id === "g-v2")!.priority).toBe("P4");
 	});
 
 	it("only writes the single task when it has no group", async () => {
