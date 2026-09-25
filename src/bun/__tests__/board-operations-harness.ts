@@ -22,17 +22,17 @@ export interface RecordedPush {
 
 export interface RecordingPorts extends BoardPorts {
 	pushes: RecordedPush[];
-	manualCompletionCalls: string[];
+	clearMergeNotificationCalls: string[];
 }
 
 export function recordingPorts(): RecordingPorts {
 	const pushes: RecordedPush[] = [];
-	const manualCompletionCalls: string[] = [];
+	const clearMergeNotificationCalls: string[] = [];
 	return {
 		pushes,
-		manualCompletionCalls,
+		clearMergeNotificationCalls,
 		push: (name, payload) => { pushes.push({ name, payload }); },
-		manualCompletionChanged: (taskId) => { manualCompletionCalls.push(taskId); },
+		clearMergeNotification: (taskId) => { clearMergeNotificationCalls.push(taskId); },
 	};
 }
 

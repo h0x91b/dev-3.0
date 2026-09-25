@@ -10,7 +10,7 @@ import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
 import * as taskNotes from "../board-operations/task-notes";
 import { boardPorts } from "../board-operations/runtime";
-import { USER_ACTOR, actorFromNoteSource } from "../board-operations/types";
+import { USER_ACTOR } from "../board-operations/types";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
@@ -267,7 +267,7 @@ async function markTaskSharedItemsRead(params: {
 async function addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
 	log.info("→ addTaskNote", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
-	const { task, note } = await taskNotes.addNote(boardPorts, project, params.taskId, params.content, actorFromNoteSource(params.source, USER_ACTOR));
+	const { task, note } = await taskNotes.addNote(boardPorts, project, params.taskId, params.content, USER_ACTOR, params.source);
 	log.info("← addTaskNote done", { taskId: params.taskId, noteId: note.id });
 	return task;
 }

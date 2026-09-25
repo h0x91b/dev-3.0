@@ -98,3 +98,19 @@ describe("board operations — notes", () => {
 		expect(ports.pushes).toEqual([]);
 	});
 });
+
+describe("board operations — production push port", () => {
+	it("resolves the push hook at call time, so a hook installed after import still receives pushes", async () => {
+		board = await createBoard();
+		const { boardPorts } = await import("../board-operations/runtime");
+		const notes = await import("../board-operations/task-notes");
+		const { AGENT_ACTOR } = await import("../board-operations/types");
+		const { setPushMessage } = await import("../rpc-handlers/shared-pure");
+		const received: string[] = [];
+		setPushMessage((name) => { received.push(name); });
+
+		await notes.addNote(boardPorts, board.project, "task-1", "late hook", AGENT_ACTOR);
+
+		expect(received).toEqual(["taskUpdated"]);
+	});
+});

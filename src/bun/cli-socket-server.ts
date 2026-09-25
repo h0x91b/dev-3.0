@@ -23,7 +23,7 @@ import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import * as taskNotes from "./board-operations/task-notes";
 import { boardPorts } from "./board-operations/runtime";
-import { AGENT_ACTOR, actorFromNoteSource } from "./board-operations/types";
+import { AGENT_ACTOR } from "./board-operations/types";
 import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
 import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
@@ -1378,7 +1378,7 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const { task: updated } = await taskNotes.addNote(
-			boardPorts, project, task.id, content, actorFromNoteSource(params.source as NoteSource | undefined, AGENT_ACTOR),
+			boardPorts, project, task.id, content, AGENT_ACTOR, params.source as NoteSource | undefined,
 		);
 		return updated;
 	},

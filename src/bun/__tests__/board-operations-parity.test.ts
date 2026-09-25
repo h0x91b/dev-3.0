@@ -63,7 +63,7 @@ describe("board operations — GUI and CLI doors agree on notes", () => {
 		expect(pushes.filter((p) => p.name === "taskUpdated").map((p) => (p.payload.task as Task).id)).toEqual(["task-1", "task-2"]);
 	});
 
-	it("an explicit source overrides each door's default actor", async () => {
+	it("an explicit source is a note attribute: it overrides the door's default source only", async () => {
 		board = await createBoard();
 		await recordProductionPushes();
 		const { gui, cli } = await doors();

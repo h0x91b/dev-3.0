@@ -10,7 +10,7 @@ import type { BoardPorts } from "./types";
  */
 export const boardPorts: BoardPorts = {
 	push: (name, payload) => getPushMessage()?.(name, payload),
-	manualCompletionChanged: async (taskId) => {
+	clearMergeNotification: async (taskId) => {
 		const { clearMergeNotification } = await import("../lifecycle/activities");
 		clearMergeNotification(taskId);
 	},

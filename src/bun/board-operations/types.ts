@@ -1,21 +1,17 @@
 import type { NoteSource, Project, Task } from "../../shared/types";
 
 /**
- * Who asked for a board change. The door a request came through (GUI RPC or CLI
- * socket) is NOT the actor: adapters decide it explicitly, so a rule like "an agent
- * may not overwrite a user-edited title" is enforced the same way from either door.
+ * Who asked for a board change, fixed by the door: the GUI RPC adapter always passes
+ * `user`, the CLI socket adapter always `agent`. Never derived from a caller-supplied
+ * field — a self-declared value must not become a policy input. The rules that read
+ * it (title guard, note source default, manual-completion toast) live in the ops.
  */
 export type BoardActor = { kind: "user" } | { kind: "agent" };
 
 export const USER_ACTOR: BoardActor = { kind: "user" };
 export const AGENT_ACTOR: BoardActor = { kind: "agent" };
 
-export function actorFromNoteSource(source: NoteSource | undefined, fallback: BoardActor): BoardActor {
-	if (source === "user") return USER_ACTOR;
-	if (source === "ai") return AGENT_ACTOR;
-	return fallback;
-}
-
+/** Default note source for an actor; a caller-supplied `source` is a note attribute, not an actor. */
 export function noteSourceOf(actor: BoardActor): NoteSource {
 	return actor.kind === "user" ? "user" : "ai";
 }
@@ -36,8 +32,11 @@ export type BoardPushEvent = "taskUpdated" | "projectUpdated" | "manualCompletio
 export interface BoardPorts {
 	/** Fans out to every window, browser client and peer instance in production. */
 	push(name: BoardPushEvent, payload: Record<string, unknown>): void;
-	/** A task's completion policy flipped: the lifecycle drops its merge-prompt reservation. */
-	manualCompletionChanged(taskId: string): void | Promise<void>;
+	/**
+	 * Drop the lifecycle's merge-prompt reservation after a completion-policy flip.
+	 * Borrowed from the lifecycle (it runs outside the actor mailbox, as before).
+	 */
+	clearMergeNotification(taskId: string): void | Promise<void>;
 }
 
 export interface TaskOpResult {

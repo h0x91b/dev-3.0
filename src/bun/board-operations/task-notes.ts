@@ -1,4 +1,4 @@
-import type { Project, TaskNote } from "../../shared/types";
+import type { NoteSource, Project, TaskNote } from "../../shared/types";
 import { appendTaskNote } from "../../shared/types";
 import * as data from "../data";
 import { noteSourceOf, pushTaskUpdated, type BoardActor, type BoardPorts, type TaskOpResult } from "./types";
@@ -15,11 +15,12 @@ export async function addNote(
 	taskId: string,
 	content: string,
 	actor: BoardActor,
+	source: NoteSource = noteSourceOf(actor),
 ): Promise<TaskOpResult & { note: TaskNote }> {
 	if (!content) throw new Error("content is required");
 	const { task, result: note } = await data.updateTaskWith(project, taskId, (current) => {
 		const now = new Date().toISOString();
-		const note: TaskNote = { id: crypto.randomUUID(), content, source: noteSourceOf(actor), createdAt: now, updatedAt: now };
+		const note: TaskNote = { id: crypto.randomUUID(), content, source, createdAt: now, updatedAt: now };
 		return { updates: { notes: appendTaskNote(current.notes, note) }, result: note };
 	});
 	pushTaskUpdated(ports, project, task);
