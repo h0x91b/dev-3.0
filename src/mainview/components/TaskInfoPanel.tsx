@@ -472,7 +472,6 @@ function TaskInfoPanel({
 				projectId: project.id,
 				priority,
 			});
-			// Priority is group-wide, so the RPC returns every changed variant.
 			for (const changedTask of changed) {
 				dispatch({ type: "updateTask", task: changedTask });
 			}

@@ -1448,9 +1448,9 @@ describe("launchTaskWithAgentChoice", () => {
 		vi.mocked(data.setTaskPriority).mockReset();
 	});
 
-	it("applies the launch priority group-wide before the task moves", async () => {
+	it("applies the launch priority before the task moves", async () => {
 		// Issue #1496: the launch dialog's priority pick (or the inherited default)
-		// is not part of the single-task patch — priority belongs to the group.
+		// goes through the dedicated setter, not the single-task patch.
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", status: "todo", priority: "P3" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -4541,8 +4541,7 @@ describe("handlers.spawnVariants", () => {
 
 	// The priority the user picks in the Create-Task modal is stored on the
 	// source task, which becomes variant #1 in place — sibling variants must
-	// inherit it (priority is group-wide), otherwise a P0 launch would spawn
-	// P3 siblings and split the group across sort bands.
+	// start at it, otherwise a P0 launch would spawn P3 siblings.
 	it("preserves priority from the source task on sibling variants", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, priority: "P0" });
@@ -4851,8 +4850,8 @@ describe("handlers.addAttempts", () => {
 	});
 
 	// Added attempts belong to the same group as the source task, so they must
-	// carry the same priority — priority belongs to the whole variant group, so
-	// re-running a P0 task must not spawn a P3 sibling.
+	// start at the same priority — re-running a P0 task must not spawn a P3
+	// sibling.
 	it("inherits priority from the source task into added attempts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({

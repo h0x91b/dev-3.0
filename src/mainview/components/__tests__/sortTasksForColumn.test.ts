@@ -98,6 +98,16 @@ describe("sortTasksForColumn — oldest-first (default)", () => {
 		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["v2", "loner", "v1"]);
 	});
 
+	it("sorts variants with diverged priorities into their own bands", () => {
+		const tasks = [
+			makeTask({ id: "v1", groupId: "g", variantIndex: 0, priority: "P1", statusEnteredAt: day(9) }),
+			makeTask({ id: "loner", priority: "P2", statusEnteredAt: day(5) }),
+			makeTask({ id: "v2", groupId: "g", variantIndex: 1, priority: "P3", statusEnteredAt: day(1) }),
+		];
+		// Priority outranks the clock, which alone would give v2, loner, v1.
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["v1", "loner", "v2"]);
+	});
+
 	it("ignores a legacy columnOrder left over on disk", () => {
 		const tasks = [
 			makeTask({ id: "pinned", columnOrder: 0, statusEnteredAt: day(9) }),

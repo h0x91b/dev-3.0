@@ -997,15 +997,16 @@ export async function updateTaskWith<T>(
 }
 
 /**
- * Write one value across a whole variant group (or the single task when
- * ungrouped) under the tasks-file lock. `op` names the write and its value for
+ * Write one value under the tasks-file lock, either to the target alone or across
+ * its whole variant group (`wholeGroup`). `op` names the write and its value for
  * the log — without it every caller's lines would be indistinguishable.
  */
-async function updateTaskGroup(
+async function updateTasks(
 	project: Project,
 	taskId: string,
 	op: string,
 	apply: (task: Task) => Task | null,
+	wholeGroup: boolean,
 ): Promise<Task[]> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
@@ -1018,7 +1019,7 @@ async function updateTaskGroup(
 		const changed: Task[] = [];
 		for (let i = 0; i < tasks.length; i++) {
 			const task = tasks[i];
-			const inGroup = target.groupId ? task.groupId === target.groupId : task.id === target.id;
+			const inGroup = wholeGroup && target.groupId ? task.groupId === target.groupId : task.id === target.id;
 			if (!inGroup) continue;
 			const updated = apply(task);
 			if (!updated) continue;
@@ -1033,32 +1034,29 @@ async function updateTaskGroup(
 }
 
 /**
- * Set a task's priority. Priority belongs to the logical task, so this writes the
- * value to EVERY task sharing the target's `groupId` (or just the single task when
- * ungrouped) — a variant group therefore never splits across sort bands. Returns
- * the tasks it changed (empty when the value already matched everywhere). Bumps
- * `updatedAt` on changed tasks but never `movedAt` — priority is orthogonal to the
- * column/status move timeline.
+ * Set ONE task's priority. Variants are independent attempts, so siblings keep
+ * their own values — users rank the variant they prefer this way. Returns the
+ * changed task (empty when the value already matched). Bumps `updatedAt` but never
+ * `movedAt` — priority is orthogonal to the column/status move timeline.
  */
 export function setTaskPriority(project: Project, taskId: string, priority: TaskPriority): Promise<Task[]> {
-	return updateTaskGroup(project, taskId, `priority=${priority}`, (task) =>
-		task.priority === priority ? null : { ...task, priority },
-	);
+	const apply = (task: Task) => (task.priority === priority ? null : { ...task, priority });
+	return updateTasks(project, taskId, `priority=${priority}`, apply, false);
 }
 
 /**
  * Hide or reveal a task in the Active Tasks sidebar. Visibility belongs to the
- * logical task, so this writes across the whole variant group exactly like
- * {@link setTaskPriority}. Reveal DELETES the field rather than storing `false`,
- * matching how `addTask` omits it — one state, one representation on disk.
+ * logical task, so this writes across the whole variant group. Reveal DELETES
+ * the field rather than storing `false`, matching how `addTask` omits it — one
+ * state, one representation on disk.
  */
 export function setTaskHidden(project: Project, taskId: string, hidden: boolean): Promise<Task[]> {
-	return updateTaskGroup(project, taskId, `hidden=${hidden}`, (task) => {
+	return updateTasks(project, taskId, `hidden=${hidden}`, (task) => {
 		if (Boolean(task.hidden) === hidden) return null;
 		if (hidden) return { ...task, hidden: true };
 		const { hidden: _revealed, ...rest } = task;
 		return rest;
-	});
+	}, true);
 }
 
 /**

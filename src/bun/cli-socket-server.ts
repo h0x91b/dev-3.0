@@ -1169,8 +1169,8 @@ const handlers: Record<string, Handler> = {
 		const force = Boolean(params.force);
 		let titlePreserved = false;
 
-		// Priority is group-wide (belongs to the logical task), so it is applied via
-		// the dedicated setter below, NOT folded into the single-task `updates` patch.
+		// Priority goes through the dedicated setter below (its own lock + push),
+		// NOT folded into the `updates` patch.
 		let priority = undefined;
 		if (params.priority !== undefined) {
 			priority = normalizePriority(String(params.priority));
