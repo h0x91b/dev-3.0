@@ -132,6 +132,8 @@ export const PANE_INPUT_REASON_SCHEMA = {
 	"pane-absent": { on: ["not-started"], retryable: false },
 	"pane-dead": { on: ["not-started", "partial"], retryable: false },
 	"incarnation-changed": { on: ["not-started", "partial"], retryable: false },
+	// Same pane, alive, but scrolled up in tmux copy mode: the keys would go to the mode.
+	"pane-in-mode": { on: ["not-started", "partial"], retryable: true },
 	"owner-unknown": { on: ["not-started"], retryable: true },
 	"owner-unreachable": { on: ["not-started", "indeterminate"], retryable: true },
 	"read-only": { on: ["not-started"], retryable: true },

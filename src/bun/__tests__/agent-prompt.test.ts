@@ -25,6 +25,9 @@ vi.mock("../tmux", () => ({
 	TMUX_AGENT_PANE_OPTION: "@dev3_agent",
 	TMUX_LAST_AGENT_PANE_OPTION: "@dev3_last_agent_pane",
 }));
+const pushCliAttention = vi.hoisted(() => vi.fn());
+vi.mock("../rpc-handlers/shared", () => ({ pushCliAttention }));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -339,11 +342,52 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 	it("sends no Enter when the text itself did not land", async () => {
 		// A refused text stage leaves an unknown input box, so an Enter into it would
 		// submit whatever is sitting there.
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false } as never);
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false });
 		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
 
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 2);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+	});
+
+	it("waits out a scrolled-up pane instead of losing the message, and lands it once", async () => {
+		// Copy mode refuses the keys but it is still the same pane: the user will scroll back.
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: false, inMode: true })
+			.mockResolvedValueOnce({ sent: false, inMode: true });
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 2);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(1)).toEqual([{ literal: "check CI" }]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(4);
+		expect(sentChunks(2)).toEqual([{ literal: "check CI" }]);
+		expect(sentChunks(3)).toEqual([{ keys: ["Enter"] }]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(4);
+	});
+
+	it("strands a turn whose Enter hit copy mode: no more keys, a badge, and a drop once the pane is gone", async () => {
+		pushCliAttention.mockClear();
+		// The text lands; the user scrolled up in the gap, so the Enter is refused.
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: true });
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({ taskId: TASK_ID, reason: expect.stringContaining("not sent") }));
+
+		// An hour of the pane staying alive: dev3 never types or presses anything more.
+		await vi.advanceTimersByTimeAsync(60 * 60_000);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 	});
 
 	it("refuses a message for a task with no agent pane, while its sender is listening", async () => {

@@ -165,3 +165,55 @@ describe("exactly once", () => {
 		expect(rows()).toHaveLength(0);
 	});
 });
+
+// The hook is the only release a stranded turn has: dev3's text is in the box with no
+// Enter after it. Synthetic payloads through the real seam — not a live harness run.
+describe("a prompt-submit hook and a stranded held message", () => {
+	const PEER = "<dev3-ai-message>peer report that landed without its Enter</dev3-ai-message>";
+
+	async function strandedTurn() {
+		const { agentMessageHoldKey, holdAgentMessage } = await import("../agent-message-hold");
+		const { AGENT_MESSAGE_HOLD_IDLE_MS } = await import("../../shared/agent-message-hold-timing");
+		const later = vi.fn(() => "landed" as const);
+		holdAgentMessage(agentMessageHoldKey("tmux", task.id, "%1"), {
+			text: PEER,
+			bytes: 10,
+			deliver: () => "landed",
+			submit: () => "deferred",
+		}, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		holdAgentMessage(agentMessageHoldKey("tmux", task.id, "%1"), {
+			text: "<dev3-ai-message>the message waiting behind it</dev3-ai-message>",
+			bytes: 10,
+			deliver: later,
+			submit: () => "landed",
+		}, {});
+		return { later, idle: AGENT_MESSAGE_HOLD_IDLE_MS };
+	}
+
+	beforeEach(async () => {
+		vi.useFakeTimers();
+		(await import("../agent-message-hold")).resetAgentMessageHolds();
+	});
+
+	it("releases it when the submitted text contains the stranded message, and still suppresses the row", async () => {
+		const { later, idle } = await strandedTurn();
+		expect(submit(`${PEER}\nand the user's own line`)).toBe("envelope");
+		await vi.advanceTimersByTimeAsync(idle + 1);
+		expect(later).toHaveBeenCalledTimes(1);
+		expect(rows()).toHaveLength(0);
+		vi.useRealTimers();
+	});
+
+	it("keeps it for a submission that does not contain it: unmatched, collapsed paste, empty", async () => {
+		const { later, idle } = await strandedTurn();
+		expect(submit("an unrelated prompt from the user")).toBe("recorded");
+		submit("[Pasted text #1 +2 lines]");
+		submit("");
+		await vi.advanceTimersByTimeAsync(idle * 4);
+		expect(later).not.toHaveBeenCalled();
+		const { pendingAgentMessageHoldCount } = await import("../agent-message-hold");
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+		vi.useRealTimers();
+	});
+});

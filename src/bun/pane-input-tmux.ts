@@ -6,6 +6,7 @@
 
 import {
 	describePaneIncarnation,
+	isPaneInputRetryableAsNewDelivery,
 	type PaneInputKey,
 	type PaneInputOutcome,
 	type PaneInputProgram,
@@ -79,7 +80,7 @@ export async function executeTmuxPaneInput(
 		...base,
 		status: "not-started",
 		reason,
-		retryableAsNewDelivery: false,
+		retryableAsNewDelivery: isPaneInputRetryableAsNewDelivery(reason),
 		detail,
 	});
 	/** A clean stop: everything up to `accepted` went out, nothing after it ran. */
@@ -109,8 +110,9 @@ export async function executeTmuxPaneInput(
 		}
 
 		let sent: boolean;
+		let inMode: boolean;
 		try {
-			({ sent } = await tmux.sendKeysGuarded({
+			({ sent, inMode } = await tmux.sendKeysGuarded({
 				pane: incarnation.paneId,
 				serverToken: incarnation.serverToken,
 				session: incarnation.sessionName,
@@ -149,14 +151,20 @@ export async function executeTmuxPaneInput(
 			};
 		}
 
+		if (!sent && inMode) {
+			// Still THIS incarnation, only scrolled up: a caller that can wait may retry later.
+			return stoppedClean(
+				accepted,
+				"pane-in-mode",
+				`${describePaneIncarnation(incarnation)} is in copy mode (the user scrolled up), so nothing was sent`,
+			);
+		}
 		if (!sent) {
-			// The guard was false inside the same server turn, so nothing went out. tmux gives
-			// one bit: moved, restarted, gone and copy-mode all answer the same way. A pane in
-			// copy mode is still THIS incarnation, so re-pinning returns the same refusal.
+			// The guard was false inside the same server turn, so nothing went out.
 			return stoppedClean(
 				accepted,
 				"incarnation-changed",
-				`${describePaneIncarnation(incarnation)} did not pass the guard (moved, restarted, gone, or sitting in copy mode), so nothing was sent`,
+				`${describePaneIncarnation(incarnation)} did not pass the guard (moved, restarted, or gone), so nothing was sent`,
 			);
 		}
 		accepted += stage.steps.length;

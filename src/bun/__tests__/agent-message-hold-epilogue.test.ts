@@ -9,11 +9,15 @@ vi.mock("../logger", () => ({
 }));
 
 const {
-	holdAgentMessage,
+	holdAgentMessage: holdAgentMessageWithText,
 	agentMessageHoldKey,
 	resetAgentMessageHolds,
 	flushHeldAgentMessagesForTask,
 } = await import("../agent-message-hold");
+type HeldDeliveryResult = import("../agent-message-hold").HeldDeliveryResult;
+type HeldAgentMessage = import("../agent-message-hold").HeldAgentMessage;
+const holdAgentMessage = (key: string, message: Omit<HeldAgentMessage, "text">, context: Record<string, string>) =>
+	holdAgentMessageWithText(key, { text: "", ...message }, context);
 
 const KEY = agentMessageHoldKey("tmux", "task-1", "%1");
 
@@ -31,10 +35,10 @@ afterEach(() => {
 function recorder() {
 	const order: string[] = [];
 	const message = (name: string, epilogue?: string) => ({
-		deliver: () => { order.push(name); return true; },
+		deliver: (): HeldDeliveryResult => { order.push(name); return "landed"; },
 		...(epilogue ? { epilogue: () => { order.push(epilogue); return true; } } : {}),
 		bytes: 0,
-		submit: () => { order.push("enter"); },
+		submit: (): HeldDeliveryResult => { order.push("enter"); return "landed"; },
 	});
 	return { order, message };
 }
@@ -77,10 +81,10 @@ describe("held message epilogue", () => {
 	it("still sends the Enter when the trailer throws", async () => {
 		const order: string[] = [];
 		holdAgentMessage(KEY, {
-			deliver: () => { order.push("msg"); return true; },
+			deliver: (): HeldDeliveryResult => { order.push("msg"); return "landed"; },
 			epilogue: () => { throw new Error("board unavailable"); },
 			bytes: 0,
-			submit: () => { order.push("enter"); },
+			submit: (): HeldDeliveryResult => { order.push("enter"); return "landed"; },
 		}, {});
 
 		await vi.runAllTimersAsync();
@@ -92,10 +96,10 @@ describe("held message epilogue", () => {
 	it("types no trailer when the message itself landed nowhere", async () => {
 		const order: string[] = [];
 		holdAgentMessage(KEY, {
-			deliver: () => false,
+			deliver: (): HeldDeliveryResult => "failed",
 			epilogue: () => { order.push("board"); return true; },
 			bytes: 0,
-			submit: () => { order.push("enter"); },
+			submit: (): HeldDeliveryResult => { order.push("enter"); return "landed"; },
 		}, {});
 
 		await vi.runAllTimersAsync();

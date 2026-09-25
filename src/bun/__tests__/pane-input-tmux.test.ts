@@ -83,7 +83,7 @@ function submitStages(text: string, submitDelayMs: number): PaneInputStage[] {
 }
 
 beforeEach(() => {
-	vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: true });
+	vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: true, inMode: false });
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -201,7 +201,7 @@ describe("a false guard means nothing was sent", () => {
 	// The pane moved to another session, or this is a different tmux server that minted
 	// the same %id. Either way the keys never left, inside the same server turn.
 	it("reports incarnation-changed and stops, with nothing accepted", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false });
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false });
 		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
 		expect(outcome).toMatchObject({
 			status: "not-started",
@@ -210,10 +210,16 @@ describe("a false guard means nothing was sent", () => {
 		});
 	});
 
+	it("reports pane-in-mode, retryable, when copy mode alone refused the keys", async () => {
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: true });
+		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
+		expect(outcome).toMatchObject({ status: "not-started", reason: "pane-in-mode", retryableAsNewDelivery: true });
+	});
+
 	it("keeps the accepted prefix when a later stage's guard fails", async () => {
 		vi.mocked(tmux.sendKeysGuarded)
-			.mockResolvedValueOnce({ sent: true })
-			.mockResolvedValueOnce({ sent: false });
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: false });
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
 		expect(outcome).toMatchObject({
 			status: "partial",
@@ -232,7 +238,7 @@ describe("a failure's verdict follows its dispatch phase", () => {
 	});
 
 	it("treats a spawn failure mid-program as a clean partial", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true }).mockRejectedValueOnce(spawnFailure());
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true, inMode: false }).mockRejectedValueOnce(spawnFailure());
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
 		expect(outcome).toMatchObject({ status: "partial", acceptedThrough: 1, uncertainStep: null });
 	});
@@ -268,7 +274,7 @@ describe("a failure's verdict follows its dispatch phase", () => {
 	});
 
 	it("counts the accepted prefix into a mid-program non-zero exit", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true }).mockRejectedValueOnce(exitFailure());
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true, inMode: false }).mockRejectedValueOnce(exitFailure());
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
 		expect(outcome).toMatchObject({
 			status: "indeterminate",
@@ -354,7 +360,7 @@ describe("one stage still fits what each backend can physically carry", () => {
 // directions, so flipping it silently was free.
 describe("a pane that vanished between pin and send", () => {
 	it("reports a clean not-started when the guard proves nothing was sent", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false });
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false });
 		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
 		// Not retryable by canon: the caller must PIN again, not resend against a pane whose
 		// incarnation it can no longer vouch for.

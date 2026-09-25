@@ -535,7 +535,14 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		const [[name, text]] = loadedBuffers(spawnFn);
 		expect(text).toBe("hi");
 		expect(argv[8]).toBe(`paste-buffer -d -p -r -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`);
-		expect(result).toEqual({ sent: true });
+		// The else branch: 1 only when copy mode was the one condition that failed.
+		expect(argv[9]).toBe(
+			"display-message -p -t %3 'dev3-pane-input-in-mode:" +
+				"#{&&:#{==:#{@dev3_server_token},srv-token-1}," +
+				"#{&&:#{==:#{session_name},dev3-task-abc12345}," +
+				"#{&&:#{==:#{pane_dead},0},#{!=:#{pane_in_mode},0}}}}'",
+		);
+		expect(result).toEqual({ sent: true, inMode: false });
 	});
 
 	// `-p` is the whole point: it wraps the payload in bracketed paste when the running app
@@ -603,6 +610,7 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		const { client, spawnFn } = makeClient({ stdout: "" });
 		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "secret" }] })).resolves.toEqual({
 			sent: false,
+			inMode: false,
 		});
 		const [[name]] = loadedBuffers(spawnFn);
 		await vi.waitFor(() =>
@@ -627,6 +635,20 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		const { client } = makeClient({ stdout: "" });
 		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).resolves.toEqual({
 			sent: false,
+			inMode: false,
+		});
+	});
+
+	it("reports inMode only when the else branch says copy mode alone refused", async () => {
+		const scrolled = makeClient({ stdout: "dev3-pane-input-in-mode:1\n" });
+		await expect(scrolled.client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).resolves.toEqual({
+			sent: false,
+			inMode: true,
+		});
+		const foreign = makeClient({ stdout: "dev3-pane-input-in-mode:0\n" });
+		await expect(foreign.client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).resolves.toEqual({
+			sent: false,
+			inMode: false,
 		});
 	});
 

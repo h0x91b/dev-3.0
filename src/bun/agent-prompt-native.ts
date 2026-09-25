@@ -113,18 +113,23 @@ function performNativeDelivery(
 	const delayMs = holdAgentMessage(
 		agentMessageHoldKey("native", taskId, paneId),
 		{
+			// Native never strands a turn (every write counts as landed), so it needs no probe.
+			text: prompt,
 			deliver: (separator) => {
 				terminal.write(`${separator}${prompt}`);
 				// A native write cannot be acknowledged, so "it landed" is the best answer
 				// there is — the same assumption the held CR has always been sent on.
-				return true;
+				return "landed";
 			},
 			// The native arm folds its trailer into `prompt` before it gets here, so this
 			// is the whole cost of the message; the burst cap applies the same way.
 			bytes: utf8Length(prompt),
 			// The same gap a hand-off leaves: a CR written straight after the last paste
 			// is read as part of it, and the burst never gets submitted.
-			submit: () => scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId }),
+			submit: () => {
+				scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
+				return "landed";
+			},
 		},
 		{ taskId: taskId.slice(0, 8), paneId },
 	);

@@ -22,6 +22,7 @@ import {
 	promptSubmissionKey,
 	terminalPromptPreview,
 } from "../shared/agent-terminal-prompt";
+import { releaseStrandedAgentMessagesOnSubmission } from "./agent-message-hold";
 import { appendAgentMessageLog } from "./agent-message-log";
 import { claimDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { createLogger } from "./logger";
@@ -94,6 +95,9 @@ export function recordTerminalPromptSubmission(
 	now: Date = new Date(),
 ): TerminalPromptOutcome {
 	const { project, task, harness, prompt } = submission;
+	// Before every filter: a stranded peer message is an envelope, and the agent
+	// reporting it submitted is the only proof that box is free again.
+	releaseStrandedAgentMessagesOnSubmission(task.id, prompt);
 	const text = normalizeSubmittedPrompt(prompt);
 	if (!text) return "empty";
 	if (isDev3EnvelopeText(text)) return "envelope";

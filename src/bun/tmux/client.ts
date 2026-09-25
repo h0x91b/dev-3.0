@@ -71,6 +71,7 @@ export type TmuxPaneSighting =
 
 /** Printed by a guarded send if and only if the guard held and the keys went out. */
 const GUARDED_SEND_MARKER = "dev3-pane-input-sent";
+const GUARDED_SEND_IN_MODE_MARKER = "dev3-pane-input-in-mode:";
 /** The server option holding this server's generation token, for its whole lifetime. */
 const SERVER_TOKEN_OPTION = "@dev3_server_token";
 /** Bound for the token command: a wedged server must not hold a session's setup open. */
@@ -572,7 +573,8 @@ export class TmuxClient {
 	/**
 	 * Validate the pane's incarnation and send in ONE command list, so nothing can move
 	 * the pane in between. `{ sent: false }` means NOTHING went out — an unknown pane
-	 * included (tmux exits 0).
+	 * included (tmux exits 0). `inMode` says the ONLY failed condition was copy mode:
+	 * the same pane, still alive, that will take the keys once the user scrolls back.
 	 *
 	 * Literal text is loaded into a private tmux buffer and pasted with `paste-buffer -p`,
 	 * NOT typed with `send-keys`. Typed bytes reach the pane as whatever the kernel hands
@@ -600,7 +602,7 @@ export class TmuxClient {
 			/** Kill and reap the command when this aborts. */
 			signal?: AbortSignal;
 		} & SocketOpt,
-	): Promise<{ sent: boolean }> {
+	): Promise<{ sent: boolean; inMode: boolean }> {
 		if (!/^[A-Za-z0-9_.-]+$/.test(opts.session)) throw new Error(`unsafe tmux session name: ${opts.session}`);
 		if (!/^%\d+$/.test(opts.pane)) throw new Error(`unsafe tmux pane id: ${opts.pane}`);
 		if (!/^[A-Za-z0-9-]{1,64}$/.test(opts.serverToken)) throw new Error(`unsafe tmux server token: ${opts.serverToken}`);
@@ -623,17 +625,20 @@ export class TmuxClient {
 		// preflight: a dead pane stays addressable, and a pane in copy mode routes send-keys
 		// through the MODE key table — measured: the marker still prints and the program
 		// receives nothing, which would be a false `delivered`.
-		const guard =
+		const identity = (mode: string) =>
 			`#{&&:#{==:#{${SERVER_TOKEN_OPTION}},${opts.serverToken}},` +
 			`#{&&:#{==:#{session_name},${opts.session}},` +
-			`#{&&:#{==:#{pane_dead},0},#{==:#{pane_in_mode},0}}}}`;
+			`#{&&:#{==:#{pane_dead},0},#{${mode}:#{pane_in_mode},0}}}}`;
+		// The else branch tells a scrolled-up pane from a foreign one in the same server
+		// turn: it prints 1 only when identity and liveness held and copy mode alone refused.
 		const args = [
 			"if-shell",
 			"-t",
 			opts.pane,
 			"-F",
-			guard,
+			identity("=="),
 			[...commands, `display-message -p ${GUARDED_SEND_MARKER}`].join(" ; "),
+			`display-message -p -t ${opts.pane} '${GUARDED_SEND_IN_MODE_MARKER}${identity("!=")}'`,
 		];
 		// One send is now several tmux commands, so `timeoutMs` is the budget for ALL of
 		// them: spending it whole on each would let one stage run past the deadline its
@@ -655,7 +660,7 @@ export class TmuxClient {
 			const result = await this.run(opts.socket, args, bounds());
 			if (result.exitCode !== 0) throw new TmuxError(args, result.exitCode, result.stderr);
 			pasted = result.stdout.includes(GUARDED_SEND_MARKER);
-			return { sent: pasted };
+			return { sent: pasted, inMode: !pasted && result.stdout.includes(`${GUARDED_SEND_IN_MODE_MARKER}1`) };
 		} finally {
 			// `-d` dropped every buffer that was actually pasted; a refused guard or a failure
 			// leaves one behind, and a message body must not linger in the server's buffer

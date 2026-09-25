@@ -133,7 +133,7 @@ async function deliversExactBytes(): Promise<void> {
 async function sendsNothingAfterAMove(): Promise<void> {
 	await client.movePane({ source: minePane, target: `${OTHER}:`, socket: SOCKET });
 	await settle();
-	const { sent } = await client.sendKeysGuarded({
+	const { sent, inMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
 		session: MINE,
@@ -141,6 +141,7 @@ async function sendsNothingAfterAMove(): Promise<void> {
 		socket: SOCKET,
 	});
 	check(!sent, "a moved pane reports nothing sent");
+	check(!inMode, "a moved pane is not reported as copy mode");
 	await settle();
 	check(received("mine") === "", "nothing reached the moved pane");
 	check(received("other") === "", "nothing reached the other task either");
@@ -233,7 +234,7 @@ async function guardRefusesADeathAfterPreflight(): Promise<void> {
 	}
 	check(dead, "tmux reports the pane dead while still listing it");
 
-	const { sent } = await client.sendKeysGuarded({
+	const { sent, inMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
 		session: MINE,
@@ -241,6 +242,7 @@ async function guardRefusesADeathAfterPreflight(): Promise<void> {
 		socket: SOCKET,
 	});
 	check(!sent, "the guard refuses a pane that died after the preflight");
+	check(!inMode, "a dead pane is not reported as copy mode");
 	check(!received("mine").includes("MUST-NOT-ARRIVE"), "the dead pane received nothing");
 }
 
@@ -302,18 +304,28 @@ async function refusesAPaneSittingInCopyMode(): Promise<void> {
 	// not assumed, against a real server.
 	console.log(`  MEASURED - shared PANE_IN_MODE_FORMAT parsed: paneId=${JSON.stringify(modeRow?.paneId)}, inMode=${JSON.stringify(modeRow?.inMode)}`);
 	check(modeRow?.paneId === minePane, `the shared format parses the pane id (${JSON.stringify(modeRow?.paneId)} vs ${minePane})`);
-	const { sent } = await client.sendKeysGuarded({
+	const { sent, inMode: reportedInMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
 		session: MINE,
 		chunks: [{ literal: "COPY-MODE-PROBE" }],
 		socket: SOCKET,
 	});
+	// A foreign generation on a scrolled-up pane must NOT read as "only scrolled up".
+	const foreign = await client.sendKeysGuarded({
+		pane: minePane,
+		serverToken: `${serverToken}-other`,
+		session: MINE,
+		chunks: [{ literal: "COPY-MODE-PROBE" }],
+		socket: SOCKET,
+	});
 	await settle();
 	const landed = received("mine");
-	console.log(`  MEASURED - copy mode: sent=${sent}, pane_in_mode=${inMode}, sink=${JSON.stringify(landed)}`);
+	console.log(`  MEASURED - copy mode: sent=${sent}, inMode=${reportedInMode}, pane_in_mode=${inMode}, sink=${JSON.stringify(landed)}`);
 	await client.exitCopyMode(minePane, { socket: SOCKET }).catch(() => undefined);
 	check(!sent, "the guard refuses a pane sitting in copy mode");
+	check(reportedInMode, "the refusal says the pane is only in copy mode");
+	check(!foreign.sent && !foreign.inMode, "a foreign token on a scrolled-up pane is not reported as copy mode");
 	check(!landed.includes("COPY-MODE-PROBE"), "nothing reached the program through the mode key table");
 }
 

@@ -78,6 +78,7 @@ import {
 	holdAgentMessage,
 	pendingAgentMessageHoldCount,
 	resetAgentMessageHolds,
+	type HeldDeliveryResult,
 } from "../agent-message-hold";
 import {
 	AGENT_MESSAGE_HOLD_CEILING_MS,
@@ -1354,7 +1355,7 @@ describe("noteHumanTerminalInput", () => {
 	const session = { taskId: TASK } as any;
 
 	function heldMessage() {
-		const item = { deliver: vi.fn<() => boolean>(() => true), bytes: 0, submit: vi.fn<() => void>() };
+		const item = { text: "", deliver: vi.fn<() => HeldDeliveryResult>(() => "landed"), bytes: 0, submit: vi.fn<() => HeldDeliveryResult>(() => "landed") };
 		holdAgentMessage(agentMessageHoldKey("tmux", TASK, "%1"), item, {});
 		return item;
 	}

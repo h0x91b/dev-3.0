@@ -1,5 +1,7 @@
 # 201 — Backend-neutral pane input: at-most-once with honest verdicts
 
+> Superseded in part on 2026-09-25 by `decisions/2026/09/25/defer-held-message-on-copy-mode.md`: a copy-mode refusal is now its own reason, `pane-in-mode`, not `incarnation-changed`.
+
 ## Context
 
 tmux lets any process `send-keys` into a pane it does not render; the native backend had no
@@ -42,8 +44,9 @@ native arm gains bind-on-demand and vacant-claim, or it is deleted as unreachabl
 
 Native never returns `delivered` until its host can acknowledge input, and tmux `delivered`
 means the server took the keys rather than that the pane's program read them — a pane in copy
-mode fails the guard outright and reports `incarnation-changed`, so the first consumer must
-exit copy mode before pinning instead of retrying. At-most-once holds within one executor
+mode fails the guard outright and reports `pane-in-mode` (retryable; see
+[`defer-held-message-on-copy-mode`](../../09/25/defer-held-message-on-copy-mode.md)), and a
+caller that can wait retries later rather than forcing the pane out of its mode. At-most-once holds within one executor
 process, one pinned incarnation and the retention window; a stale `attempt: 1` after eviction
 may execute. Ledger quarantine guards the native path, while on tmux the server serializes
 commands across clients instead. The ledger's per-pane queue cleanup is deliberately not
