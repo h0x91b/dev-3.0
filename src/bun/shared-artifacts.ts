@@ -14,11 +14,12 @@ import {
 	MAX_SHARED_ARTIFACT_HTML_BYTES,
 	MAX_SHARED_ARTIFACT_ASSET_BYTES,
 	MAX_SHARED_ARTIFACT_ASSETS,
-	MAX_SHARED_ARTIFACT_VIDEO_BYTES,
-	MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES,
+	MAX_SHARED_ARTIFACT_MEDIA_BYTES,
+	MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES,
 	SHARED_ARTIFACT_ASSET_EXTS,
-	SHARED_VIDEO_EXTS,
+	SHARED_MEDIA_EXTS,
 } from "../shared/types";
+import { unplayableMediaReferences } from "./artifact-media-references";
 import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
 import { createZip } from "./zip";
@@ -26,7 +27,7 @@ import { projectSlug } from "./git";
 import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
-const VIDEO_EXTS = new Set(SHARED_VIDEO_EXTS);
+const MEDIA_EXTS = new Set(SHARED_MEDIA_EXTS);
 const MAX_TOTAL_ASSET_BYTES = 100 * 1024 * 1024;
 const MIME_BY_EXT: Record<string, string> = {
 	css: "text/css",
@@ -39,6 +40,10 @@ const MIME_BY_EXT: Record<string, string> = {
 	bmp: "image/bmp",
 	mp4: "video/mp4",
 	webm: "video/webm",
+	mp3: "audio/mpeg",
+	m4a: "audio/mp4",
+	wav: "audio/wav",
+	ogg: "audio/ogg",
 };
 
 /** "16 MB" / "2.7 MB" — the unit a size error has to speak to be actionable. */
@@ -130,36 +135,44 @@ export function saveSharedArtifact(
 	}
 	const seenNames = new Set<string>();
 	let totalAssetBytes = 0;
-	let totalVideoBytes = 0;
+	let totalMediaBytes = 0;
 	const validatedAssets = assetPaths.map((path) => {
 		const stat = assertSourceFile(path);
 		const name = assetNameFor(htmlPath, path);
 		const ext = extname(name).replace(/^\./, "").toLowerCase();
 		if (!ASSET_EXTS.has(ext)) throw new SharedArtifactError(`Unsupported artifact asset type "${ext || "(none)"}": ${path}`);
-		const isVideo = VIDEO_EXTS.has(ext);
-		// A clip pays its bytes on every open of the artifact, so it answers to a
-		// tighter cap than a stylesheet — and the error has to say what to do.
-		if (isVideo && stat.size > MAX_SHARED_ARTIFACT_VIDEO_BYTES) {
+		const isMedia = MEDIA_EXTS.has(ext);
+		// A clip or a track pays its bytes on every open of the artifact, so it
+		// answers to a tighter cap than a stylesheet — and the error says what to do.
+		if (isMedia && stat.size > MAX_SHARED_ARTIFACT_MEDIA_BYTES) {
 			throw new SharedArtifactError(
-				`Artifact video is too large: ${path} is ${megabytes(stat.size)} (max ${megabytes(MAX_SHARED_ARTIFACT_VIDEO_BYTES)} per clip). Shorten it, drop the resolution, or re-encode at a lower bitrate.`,
+				`Artifact media file is too large: ${path} is ${megabytes(stat.size)} (max ${megabytes(MAX_SHARED_ARTIFACT_MEDIA_BYTES)} per clip). Shorten it, or re-encode it at a lower bitrate or resolution.`,
 			);
 		}
-		if (!isVideo && stat.size > MAX_SHARED_ARTIFACT_ASSET_BYTES) {
+		if (!isMedia && stat.size > MAX_SHARED_ARTIFACT_ASSET_BYTES) {
 			throw new SharedArtifactError(`Artifact asset is too large: ${path} is ${megabytes(stat.size)} (max ${megabytes(MAX_SHARED_ARTIFACT_ASSET_BYTES)})`);
 		}
 		if (seenNames.has(name)) throw new SharedArtifactError(`Duplicate artifact asset name: ${name}`);
 		seenNames.add(name);
 		totalAssetBytes += stat.size;
-		if (isVideo) totalVideoBytes += stat.size;
+		if (isMedia) totalMediaBytes += stat.size;
 		return { path, name, ext, stat };
 	});
-	if (totalVideoBytes > MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES) {
+	if (totalMediaBytes > MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES) {
 		throw new SharedArtifactError(
-			`Artifact videos total ${megabytes(totalVideoBytes)} (max ${megabytes(MAX_SHARED_ARTIFACT_VIDEO_TOTAL_BYTES)} combined). Publish fewer clips, or keep one format instead of both MP4 and WebM.`,
+			`Artifact video and audio total ${megabytes(totalMediaBytes)} (max ${megabytes(MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES)} combined). Publish fewer clips, or keep one format per clip instead of several.`,
 		);
 	}
 	if (totalAssetBytes > MAX_TOTAL_ASSET_BYTES) {
 		throw new SharedArtifactError(`Artifact assets total ${megabytes(totalAssetBytes)} (max ${megabytes(MAX_TOTAL_ASSET_BYTES)} combined)`);
+	}
+
+	const source = readFileSync(htmlPath, "utf8");
+	if (!isText) {
+		const unplayable = unplayableMediaReferences(source, seenNames);
+		if (unplayable.length) {
+			throw new SharedArtifactError(`The report references media that would not play in the artifact:\n  - ${unplayable.join("\n  - ")}`);
+		}
 	}
 
 	const id = crypto.randomUUID();
@@ -171,7 +184,6 @@ export function saveSharedArtifact(
 		mkdirSync(dir, { recursive: true });
 		const baseTitle = htmlName.replace(/\.html$/i, "");
 		const resolvedTitle = title?.trim() || baseTitle;
-		const source = readFileSync(htmlPath, "utf8");
 		const html = injectArtifactThemeContract(isText ? textArtifactHtml(source, sourceExt, resolvedTitle) : source);
 		writeFileSync(storedPath, html, "utf8");
 		const assets: SharedArtifactAsset[] = validatedAssets.map(({ path, name, ext, stat }) => {

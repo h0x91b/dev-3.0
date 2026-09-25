@@ -545,6 +545,8 @@ const common = {
 	"artifactViewer.saveImage": "Guardar imagen",
 	"artifactViewer.imageSaved": "Imagen guardada en Descargas",
 	"artifactViewer.imageSaveFailed": "No se pudo guardar la imagen",
+	"artifactViewer.fileSaved": "Archivo guardado en Descargas",
+	"artifactViewer.fileSaveFailed": "No se pudo guardar el archivo",
 	"artifactViewer.draftKept": "Tienes una respuesta sin enviar en la versión {version}.",
 	"artifactViewer.draftBack": "Volver a la versión {version}",
 	"artifactViewer.draftDismiss": "Ocultar el aviso",
