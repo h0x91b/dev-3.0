@@ -90,6 +90,9 @@ async function freeType(): Promise<FreeType> {
 		};
 		library = ft;
 		return ft;
+	}).catch((error) => {
+		libraryPromise = undefined;
+		throw error;
 	});
 	return libraryPromise;
 }
@@ -117,6 +120,9 @@ export function prepareTerminalFontRasterizer(stack: string): Promise<void> {
 				underlinePosition: ft.module.getValue(regular.ptr + fields.underline_position, "i16"),
 				underlineThickness: ft.module.getValue(regular.ptr + fields.underline_thickness, "i16"),
 			});
+			for (const glyph of glyphOrder.keys()) glyph.canvas.width = glyph.canvas.height = 0;
+			glyphOrder.clear();
+			glyphBytes = 0;
 			styles.clear();
 		} catch (error) {
 			regular.destroy();
@@ -183,11 +189,11 @@ function rasterize(style: FontStyle, codepoint: number, colour: string): Glyph |
 	module.setValue(native.matrix + 12, 65536, "i32");
 	native.transform(face.ptr, native.matrix, 0);
 	const loadError = native.load(face.ptr, index, FT.LOAD_NO_HINTING);
-	if (loadError) throw new Error(`FreeType glyph load failed (${loadError})`);
+	if (loadError) return null;
 	const slot = module.getValue(face.ptr + ft.offsets.FT_FaceRec.glyph, "i32");
 	if (style.bold && style.family.bold === style.family.regular) native.embolden(slot);
 	const renderError = native.render(slot, FT.RENDER_MODE_NORMAL);
-	if (renderError) throw new Error(`FreeType glyph render failed (${renderError})`);
+	if (renderError) return null;
 	const fields = ft.offsets.FT_GlyphSlotRec;
 	const bitmap = slot + fields.bitmap;
 	const offsets = ft.offsets.FT_Bitmap;
@@ -312,10 +318,9 @@ export function installNativeTerminalText(renderer: object): NativeTextHandle {
 		if (!decoration) return y;
 		const metrics = target.metrics;
 		const top = activeRow * metrics.height;
-		let pixelRow: number;
-		if (Math.abs(y - top - metrics.baseline - 2) < 1e-7) pixelRow = decoration.underlineRow;
-		else if (Math.abs(y - top - metrics.height / 2) < 1e-7) pixelRow = Math.floor(decoration.underlineRow / 2);
-		else return y;
+		// Classify by the baseline, not the vendor's incidental decoration offsets.
+		const pixelRow = y >= top + metrics.baseline
+			? decoration.underlineRow : Math.floor(decoration.underlineRow / 2);
 		return top + (pixelRow + decoration.underlineThickness / 2) / target.devicePixelRatio;
 	}
 	ctx.moveTo = function nativeMoveTo(x, y) { originalMove.call(this, x, linePosition(y)); };

@@ -1,6 +1,6 @@
 /**
- * Give the terminal cell the size native Ghostty gives it: the height the font was
- * designed to be set at, and a width quantized on the device pixel grid.
+ * Use FreeType metrics for loaded bundled fonts before the browser fallback below.
+ * Both paths quantize cell width on the device-pixel grid.
  *
  * ghostty-web derives the cell from the INK box of a capital "M":
  * `Math.ceil(actualBoundingBoxAscent + actualBoundingBoxDescent) + 2`. "M" has no

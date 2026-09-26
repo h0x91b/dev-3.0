@@ -20,6 +20,25 @@ const images = new WeakMap<HTMLCanvasElement, ImageData>();
 const contexts = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>();
 const sheet = document.createElement("style");
 const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
+const nativeErrors = vi.hoisted(() => ({ load: 0, render: 0 }));
+
+vi.mock("@zkl2333/freetype-wasm", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@zkl2333/freetype-wasm")>();
+	return {
+		...actual,
+		default: async (options: Parameters<typeof actual.default>[0]) => {
+			const ft = await actual.default(options);
+			const wrap = ft.module.cwrap.bind(ft.module);
+			ft.module.cwrap = (name: string, ...args: unknown[]) => {
+				const fn = wrap(name, ...args);
+				if (name === "FT_Load_Glyph") return (...values: number[]) => nativeErrors.load || fn(...values);
+				if (name === "FT_Render_Glyph") return (...values: number[]) => nativeErrors.render || fn(...values);
+				return fn;
+			};
+			return ft;
+		},
+	};
+});
 
 beforeAll(async () => {
 	vi.stubGlobal("ImageData", class {
@@ -105,7 +124,7 @@ describe("native terminal rasterization", () => {
 		expect(decomposed.placement).toEqual(composed.placement);
 	});
 
-	it("uses font-derived, one-device-pixel underlines and strikethroughs through the real adapter chain", () => {
+	it.each([0, -2, 0.375])("keeps font-derived decorations when vendor coordinates shift by %s CSS pixels", (offset) => {
 		const renderer = new CanvasRenderer(document.createElement("canvas"), {
 			fontFamily: FONT, fontSize: 16, devicePixelRatio: 1.25, cursorBlink: false,
 		});
@@ -117,6 +136,16 @@ describe("native terminal rasterization", () => {
 		ctx.lineTo = (x, y) => { end = [x * 1.25, y * 1.25]; };
 		ctx.stroke = () => { strokes.push([...start, ...end, ctx.lineWidth * 1.25]); };
 		const metrics = installCellLineBox(renderer);
+		const target = renderer as unknown as AtlasRenderer;
+		const vendorCell = target.renderCellText;
+		target.renderCellText = function (cell, col, row) {
+			const move = ctx.moveTo;
+			const line = ctx.lineTo;
+			ctx.moveTo = (x, y) => move.call(ctx, x, y + offset);
+			ctx.lineTo = (x, y) => line.call(ctx, x, y + offset);
+			try { vendorCell.call(this, cell, col, row); }
+			finally { ctx.moveTo = move; ctx.lineTo = line; }
+		};
 		const native = installNativeTerminalText(renderer);
 		const fit = installGlyphCellFit(renderer);
 		const atlas = installGlyphAtlas(renderer as unknown as AtlasRenderer);
@@ -129,5 +158,65 @@ describe("native terminal rasterization", () => {
 		} finally {
 			atlas.dispose(); fit.dispose(); native.dispose(); metrics.dispose(); renderer.dispose();
 		}
+	});
+
+	it.each(["load", "render"] as const)("paints browser fallback after a FreeType %s error and continues the frame", (operation) => {
+		const renderer = new CanvasRenderer(document.createElement("canvas"), {
+			fontFamily: FONT, fontSize: 16, devicePixelRatio: 1.25, cursorBlink: false,
+		});
+		const ctx = renderer.getCanvas().getContext("2d")!;
+		const fallback = vi.fn();
+		const painted: ImageData[] = [];
+		ctx.fillText = fallback;
+		ctx.drawImage = ((source: HTMLCanvasElement) => { painted.push(images.get(source)!); }) as typeof ctx.drawImage;
+		const metrics = installCellLineBox(renderer);
+		const native = installNativeTerminalText(renderer);
+		try {
+			nativeErrors[operation] = 6;
+			(renderer as unknown as AtlasRenderer).renderCellText(cell("X"), 0, 0);
+			nativeErrors[operation] = 0;
+			(renderer as unknown as AtlasRenderer).renderCellText(cell("H"), 1, 0);
+			expect(fallback.mock.calls.map(([text]) => text)).toEqual(["X"]);
+			expect(painted.map(image => [image.width, image.height])).toEqual([[10, 15]]);
+		} finally {
+			nativeErrors[operation] = 0;
+			native.dispose(); metrics.dispose(); renderer.dispose();
+		}
+	});
+
+	it("retries font preparation after a transient WASM fetch failure", async () => {
+		vi.resetModules();
+		const rasterizer = await import("../terminal-font-rasterizer");
+		const request = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("Offline"));
+		try {
+			await expect(rasterizer.prepareTerminalFontRasterizer(FONT)).rejects.toThrow("Offline");
+			await rasterizer.prepareTerminalFontRasterizer(FONT);
+			expect(rasterizer.nativeTerminalCellMetrics(FONT, 16, 1.25)).toEqual({
+				width: 9.6, height: 21.6, baseline: 16.8,
+			});
+		} finally { request.mockRestore(); }
+	});
+
+	it("releases invalidated glyph canvases when another font loads without changing subsequent text", async () => {
+		vi.resetModules();
+		const rasterizer = await import("../terminal-font-rasterizer");
+		await rasterizer.prepareTerminalFontRasterizer(FONT);
+		const ctx = document.createElement("canvas").getContext("2d")!;
+		ctx.font = `16px ${FONT}`;
+		ctx.fillStyle = "#cdd6f4";
+		const sources: HTMLCanvasElement[] = [];
+		ctx.drawImage = ((source: HTMLCanvasElement) => { sources.push(source); }) as typeof ctx.drawImage;
+		rasterizer.drawNativeTerminalText(ctx, "H", 0, 16.8, 1.25);
+		const original = sources[0];
+		const bitmap = images.get(original);
+		const extra = document.createElement("style");
+		extra.textContent = '@font-face { font-family: "Second fixture"; src: url("/native-regular.woff2"); }';
+		document.head.append(extra);
+		try {
+			await rasterizer.prepareTerminalFontRasterizer('"Second fixture"');
+			expect([original.width, original.height]).toEqual([0, 0]);
+			rasterizer.drawNativeTerminalText(ctx, "H", 0, 16.8, 1.25);
+			expect(images.get(sources[1])).toEqual(bitmap);
+		} finally { extra.remove(); }
 	});
 });
