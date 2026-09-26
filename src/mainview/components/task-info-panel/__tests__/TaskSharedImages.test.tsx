@@ -69,4 +69,21 @@ describe("TaskSharedImages", () => {
 		expect(detail.index).toBeUndefined();
 		expect(detail.images).toHaveLength(2);
 	});
+
+	it("counts clips from sharedVideos, lights up for an unread one, and opens one merged oldest-first history", async () => {
+		const clip: SharedImage = { ...sharedImage("clip"), mime: "video/mp4", name: "clip.mp4", createdAt: 2, isUnread: true };
+		const late = { ...sharedImage("late"), createdAt: 3 };
+		const task = { id: "task-1", sharedImages: [sharedImage("a"), late], sharedVideos: [clip] } as Task;
+		const spy = vi.fn();
+		window.addEventListener("dev3:openImageViewer", spy);
+		renderBtn(task);
+		const btn = screen.getByTestId("shared-images-badge");
+		expect(btn).toHaveTextContent("Media");
+		expect(btn).toHaveTextContent("3");
+		expect(btn.className).toContain("text-success");
+		await userEvent.click(btn);
+		window.removeEventListener("dev3:openImageViewer", spy);
+		const images = (spy.mock.calls[0][0] as CustomEvent).detail.images as SharedImage[];
+		expect(images.map((i) => i.id)).toEqual(["a", "clip", "late"]);
+	});
 });

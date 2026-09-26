@@ -860,6 +860,7 @@ async function readImageBase64(params: { path: string }): Promise<{ dataUrl: str
 		const mimeMap: Record<string, string> = {
 			png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
 			gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+			mp4: "video/mp4", webm: "video/webm",
 		};
 		const mime = mimeMap[ext] ?? "image/png";
 		return { dataUrl: `data:${mime};base64,${base64}` };

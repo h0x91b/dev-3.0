@@ -356,3 +356,106 @@ describe("TaskImageViewer comment mode", () => {
 		expect(await screen.findByTestId("image-review-composer")).toHaveTextContent("x 47%–53%, y 47%–53%");
 	});
 });
+
+describe("TaskImageViewer with a shared video", () => {
+	function vid(id: string, name: string): SharedImage {
+		return { ...img(id, name), storedPath: `/wt/shared-images/${id}.mp4`, mime: "video/mp4" };
+	}
+	const MIXED = [img("a", "one.png"), vid("v", "demo.mp4"), img("c", "three.png")];
+	let createObjectURL: ReturnType<typeof vi.spyOn>;
+	let revokeObjectURL: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockClear();
+		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockImplementation(async ({ path }: { path: string }) => ({
+			dataUrl: path.endsWith(".mp4") ? "data:video/mp4;base64,AAAA" : "data:image/png;base64,AAAA",
+		}));
+		createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:clip");
+		revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+	});
+	afterEach(() => {
+		createObjectURL.mockRestore();
+		revokeObjectURL.mockRestore();
+	});
+
+	function renderMixed(initialIndex: number, extra: Record<string, unknown> = {}) {
+		return render(
+			<I18nProvider>
+				<TaskImageViewer images={MIXED} initialIndex={initialIndex} onClose={vi.fn()} {...extra} />
+			</I18nProvider>,
+		);
+	}
+
+	it("plays the clip in the same stage with controls and no autoplay", async () => {
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
+		expect(video).toHaveAttribute("src", "blob:clip");
+		expect(video.controls).toBe(true);
+		expect(video.autoplay).toBe(false);
+		expect(video).toHaveAttribute("preload", "metadata");
+		expect(screen.queryByTestId("viewer-main-image")).toBeNull();
+		// A region on a moving picture means nothing: the comment toggle is gone for a clip.
+		expect(screen.queryByTestId("image-viewer-comment")).toBeNull();
+		expect(screen.getByRole("dialog", { name: "Shared media" })).toBeInTheDocument();
+		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+	});
+
+	it("never reads a clip's bytes for the rail, only when it is on stage", async () => {
+		renderMixed(2);
+		await waitFor(() => {
+			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/a.png" });
+			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/c.png" });
+		});
+		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(screen.getByTestId("viewer-thumb-video")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "demo.mp4" }));
+		await screen.findByTestId("viewer-main-video");
+		expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+	});
+
+	it("switches back to a picture when stepping off the clip", async () => {
+		renderMixed(1);
+		await screen.findByTestId("viewer-main-video");
+		fireEvent.keyDown(window, { key: "ArrowRight" });
+		await waitFor(() => expect(screen.getByTestId("viewer-main-image")).toHaveAttribute("alt", "three.png"));
+		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+	});
+
+	it("leaves arrow keys to a focused player instead of changing the item", async () => {
+		renderMixed(1);
+		const video = await screen.findByTestId("viewer-main-video");
+		fireEvent.keyDown(video, { key: "ArrowRight" });
+		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+	});
+
+	it("toggles play and pause with Space", async () => {
+		renderMixed(1);
+		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
+		const play = vi.spyOn(video, "play").mockResolvedValue(undefined);
+		fireEvent.keyDown(window, { key: " " });
+		expect(play).toHaveBeenCalledTimes(1);
+	});
+
+	it("explains an undecodable clip instead of showing a blank player", async () => {
+		renderMixed(1);
+		const video = await screen.findByTestId("viewer-main-video");
+		fireEvent.error(video);
+		expect(await screen.findByTestId("viewer-media-error")).toHaveTextContent(/doesn't support its format or codec/);
+	});
+
+	it("downloads the clip under its own name and frees the blob on close", async () => {
+		const names: string[] = [];
+		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+			names.push(this.download);
+		});
+		const view = renderMixed(1);
+		await screen.findByTestId("viewer-main-video");
+		expect(screen.getByTestId("image-viewer-download")).toHaveAccessibleName("Download video");
+		await userEvent.click(screen.getByTestId("image-viewer-download"));
+		expect(names).toEqual(["demo.mp4"]);
+		view.unmount();
+		expect(revokeObjectURL).toHaveBeenCalledWith("blob:clip");
+		click.mockRestore();
+	});
+});

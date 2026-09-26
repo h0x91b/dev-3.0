@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleShowImage } from "../commands/show-image";
+import { handleShowImage, handleShowVideo } from "../commands/show-image";
 import type { CliContext } from "../context";
 import type { CliResponse } from "../../shared/types";
 
@@ -25,6 +25,10 @@ const PNG = join(DIR, "shot.png");
 writeFileSync(PNG, "PNGDATA");
 const PNG2 = join(DIR, "shot2.png");
 writeFileSync(PNG2, "PNGDATA2");
+const MP4 = join(DIR, "demo.mp4");
+writeFileSync(MP4, "MP4DATA");
+const WEBM = join(DIR, "qa.webm");
+writeFileSync(WEBM, "WEBMDATA");
 const TXT = join(DIR, "notes.txt");
 writeFileSync(TXT, "hi");
 
@@ -143,5 +147,49 @@ describe("show-image", () => {
 	it("requires a task in context", async () => {
 		await expect(handleShowImage([PNG], SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("show-video", () => {
+	function stderrText(): string {
+		return stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+	}
+
+	it("sends clips with their captions to ui.show-video", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 2, taskId: CTX.taskId }));
+		await handleShowVideo([MP4, "--caption", "the bug", WEBM], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-video", {
+			taskId: CTX.taskId,
+			images: [{ path: MP4, caption: "the bug" }, { path: WEBM }],
+			projectId: CTX.projectId,
+		});
+		expect(stdoutOutput).toContain("Shared 2 videos");
+	});
+
+	it("rejects an image and names the supported containers", async () => {
+		await expect(handleShowVideo([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain('Unsupported video type "png"');
+		expect(stderrText()).toContain("mp4, webm");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects a clip over the cap before contacting the app", async () => {
+		const big = join(DIR, "big.mp4");
+		writeFileSync(big, "");
+		truncateSync(big, 25 * 1024 * 1024 + 1);
+		await expect(handleShowVideo([big], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("Video too large");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("points show-image users at show-video for a clip", async () => {
+		await expect(handleShowImage([MP4], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("dev3 show-video");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("names its own command in the orphan-caption error", async () => {
+		await expect(handleShowVideo(["--caption", "x"], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("dev3 show-video demo.mp4");
 	});
 });

@@ -6,13 +6,13 @@ import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, taskSharedMedia, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
-import { SharedImageError, saveSharedImage } from "./shared-images";
+import { SharedImageError, saveSharedImage, saveSharedVideo } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
@@ -901,6 +901,76 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 
 	const { task: updated } = await labelOps.changeTaskLabels(boardPorts, project, task.id, { mode, labelIds });
 	return updated;
+}
+
+
+/** `ui.show-image` / `ui.show-video`: copy files into the task's shared-media history and surface the viewer. */
+async function showSharedMedia(params: Record<string, unknown>, kind: "image" | "video") {
+	const { project, task } = await resolveTaskFromParams(params);
+	if ((await loadSettings()).focusMode) setFocusMode(true);
+	// Preferred shape: images: [{ path, caption? }] — one note per image.
+	// Back-compat: paths: string[] + a single caption applied to all.
+	const items: { path: string; caption?: string }[] = [];
+	if (Array.isArray(params.images)) {
+		for (const raw of params.images as unknown[]) {
+			if (!raw || typeof raw !== "object") continue;
+			const rec = raw as { path?: unknown; caption?: unknown };
+			if (typeof rec.path !== "string" || rec.path.length === 0) continue;
+			const caption = typeof rec.caption === "string" && rec.caption.trim() ? rec.caption.trim() : undefined;
+			items.push({ path: rec.path, caption });
+		}
+	} else {
+		const rawPaths = Array.isArray(params.paths) ? (params.paths as unknown[]) : [];
+		const caption = typeof params.caption === "string" && params.caption.trim() ? params.caption.trim() : undefined;
+		for (const p of rawPaths) {
+			if (typeof p === "string" && p.length > 0) items.push({ path: p, caption });
+		}
+	}
+	if (items.length === 0) throw new Error(`At least one ${kind} path is required`);
+
+	// Copy every file into the worktree first — fail fast (usage error) if any
+	// path is invalid, so the agent gets a clear signal and nothing half-lands.
+	let incoming: SharedImage[];
+	try {
+		const save = kind === "video" ? saveSharedVideo : saveSharedImage;
+		incoming = items.map((it) => save(project.path, it.path, it.caption));
+	} catch (err) {
+		if (err instanceof SharedImageError) throw err;
+		throw new Error(`Failed to store ${kind}: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	// Append inside the file lock. The history is uncapped — the stored files
+	// live in the worktree and die with it.
+	// Clips get their own additive field: older versions read every sharedImages entry's bytes.
+	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
+		const updates: Partial<Task> = kind === "video"
+			? { sharedVideos: [...(current.sharedVideos ?? []), ...incoming] }
+			: { sharedImages: [...(current.sharedImages ?? []), ...incoming] };
+		return { updates, result: undefined };
+	});
+
+	// Persist to state everywhere (badge + history) regardless of focus mode.
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+
+	const payload = {
+		taskId: task.id,
+		projectId: project.id,
+		images: taskSharedMedia(updated),
+		newCount: incoming.length,
+		newKind: kind,
+		taskSeq: task.seq,
+		taskTitle: getTaskTitle(task),
+		projectName: project.name,
+	};
+	if (isNotificationSuppressed()) {
+		pushCliShowImage(payload);
+		return { delivered: true, queued: true, stored: incoming.length, taskId: task.id };
+	}
+
+	const push = getPushMessage();
+	if (!push) return { delivered: false, stored: incoming.length, taskId: task.id };
+	push("cliShowImage", payload);
+	return { delivered: true, stored: incoming.length, taskId: task.id };
 }
 
 const handlers: Record<string, Handler> = {
@@ -2218,67 +2288,9 @@ const handlers: Record<string, Handler> = {
 
 	// UI control: surface images (screenshots, renders, QA captures) an agent wants
 	// the human to look at, bound to the task and kept as a clickable history.
-	"ui.show-image": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
-		if ((await loadSettings()).focusMode) setFocusMode(true);
-		// Preferred shape: images: [{ path, caption? }] — one note per image.
-		// Back-compat: paths: string[] + a single caption applied to all.
-		const items: { path: string; caption?: string }[] = [];
-		if (Array.isArray(params.images)) {
-			for (const raw of params.images as unknown[]) {
-				if (!raw || typeof raw !== "object") continue;
-				const rec = raw as { path?: unknown; caption?: unknown };
-				if (typeof rec.path !== "string" || rec.path.length === 0) continue;
-				const caption = typeof rec.caption === "string" && rec.caption.trim() ? rec.caption.trim() : undefined;
-				items.push({ path: rec.path, caption });
-			}
-		} else {
-			const rawPaths = Array.isArray(params.paths) ? (params.paths as unknown[]) : [];
-			const caption = typeof params.caption === "string" && params.caption.trim() ? params.caption.trim() : undefined;
-			for (const p of rawPaths) {
-				if (typeof p === "string" && p.length > 0) items.push({ path: p, caption });
-			}
-		}
-		if (items.length === 0) throw new Error("At least one image path is required");
-
-		// Copy every file into the worktree first — fail fast (usage error) if any
-		// path is invalid, so the agent gets a clear signal and nothing half-lands.
-		let incoming: SharedImage[];
-		try {
-			incoming = items.map((it) => saveSharedImage(project.path, it.path, it.caption));
-		} catch (err) {
-			if (err instanceof SharedImageError) throw err;
-			throw new Error(`Failed to store image: ${err instanceof Error ? err.message : String(err)}`);
-		}
-
-		// Append inside the file lock. The history is uncapped — the stored files
-		// live in the worktree and die with it.
-		const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
-			return { updates: { sharedImages: [...(current.sharedImages ?? []), ...incoming] }, result: undefined };
-		});
-
-		// Persist to state everywhere (badge + history) regardless of focus mode.
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-
-		const payload = {
-			taskId: task.id,
-			projectId: project.id,
-			images: updated.sharedImages ?? [],
-			newCount: incoming.length,
-			taskSeq: task.seq,
-			taskTitle: getTaskTitle(task),
-			projectName: project.name,
-		};
-		if (isNotificationSuppressed()) {
-			pushCliShowImage(payload);
-			return { delivered: true, queued: true, stored: incoming.length, taskId: task.id };
-		}
-
-		const push = getPushMessage();
-		if (!push) return { delivered: false, stored: incoming.length, taskId: task.id };
-		push("cliShowImage", payload);
-		return { delivered: true, stored: incoming.length, taskId: task.id };
-	},
+	"ui.show-image": (params) => showSharedMedia(params, "image"),
+	// Same history and viewer for MP4/WebM clips (`dev3 show-video`).
+	"ui.show-video": (params) => showSharedMedia(params, "video"),
 
 	"ui.show-artifact": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);

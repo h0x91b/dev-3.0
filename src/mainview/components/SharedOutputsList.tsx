@@ -1,4 +1,4 @@
-import type { SharedArtifact, SharedImage, Task } from "../../shared/types";
+import { isSharedVideo, taskSharedMedia, type SharedArtifact, type SharedImage, type Task } from "../../shared/types";
 import { latestArtifactVersion } from "../../shared/artifact-versions";
 import { useT, type TFunction } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
@@ -34,23 +34,32 @@ function artifactMeta(artifact: SharedArtifact, t: TFunction): string {
 const SECTION_HEADING = "flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-fg-2";
 const CARD = "rounded-xl border border-edge bg-elevated text-left transition-colors hover:bg-elevated-hover hover:border-accent/50 group";
 
+const VIDEO_TILE = "flex h-full w-full items-center justify-center bg-black/80 text-lg text-white";
+
+function SharedImageThumb({ path, t }: { path: string; t: TFunction }) {
+	const { dataUrl, error } = useImageDataUrl(path);
+	return dataUrl
+		? <img src={dataUrl} alt="" className="img-edge h-full w-full rounded object-cover object-top" />
+		: <span className={`flex h-full w-full items-center justify-center text-nano ${error ? "text-danger" : "text-fg-muted"}`}>
+			{t(error ? "images.loadFailed" : "images.loading")}
+		</span>;
+}
+
 function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () => void; t: TFunction }) {
-	const { dataUrl, error } = useImageDataUrl(image.storedPath);
 	return (
 		<button
 			type="button"
 			className={`${CARD} w-[10rem] p-2`}
 			data-testid="shared-image-link"
-			aria-label={t("infoPanel.openSharedImage", { name: image.name })}
+			aria-label={t(isSharedVideo(image) ? "infoPanel.openSharedVideo" : "infoPanel.openSharedImage", { name: image.name })}
 			title={image.caption ? `${image.name} — ${image.caption}` : image.name}
 			onClick={onOpen}
 		>
 			<span className="block h-[5.5rem] w-full overflow-hidden rounded bg-base">
-				{dataUrl
-					? <img src={dataUrl} alt="" className="img-edge h-full w-full rounded object-cover object-top" />
-					: <span className={`flex h-full w-full items-center justify-center text-nano ${error ? "text-danger" : "text-fg-muted"}`}>
-						{t(error ? "images.loadFailed" : "images.loading")}
-					</span>}
+				{isSharedVideo(image)
+					// A clip's bytes load in the viewer, never for a card.
+					? <span data-testid="shared-video-card" title={t("imageViewer.video")} className={VIDEO_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf04b"}</span>
+					: <SharedImageThumb path={image.storedPath} t={t} />}
 			</span>
 			<span className="mt-1.5 block truncate font-mono text-micro text-fg-2 group-hover:text-fg">{image.name}</span>
 			{image.caption && <span className="mt-0.5 line-clamp-2 text-micro leading-snug text-fg-muted">{image.caption}</span>}
@@ -73,7 +82,7 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
  */
 export default function SharedOutputsList({ task, projectId }: SharedOutputsListProps) {
 	const t = useT();
-	const images: SharedImage[] = task.sharedImages ?? [];
+	const images: SharedImage[] = taskSharedMedia(task);
 	const artifacts: SharedArtifact[] = task.sharedArtifacts ?? [];
 	if (images.length === 0 && artifacts.length === 0) return null;
 
@@ -118,7 +127,7 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 				<section aria-labelledby="shared-images-heading">
 					<h3 id="shared-images-heading" className={SECTION_HEADING}>
 						<ImagesIcon className="h-3.5 w-3.5 text-accent" />
-						{t("infoPanel.imagesLabel")}
+						{t(images.some(isSharedVideo) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}
 						<span className="tabular-nums text-accent">{images.length}</span>
 					</h3>
 					<div className="mt-2 flex flex-wrap items-stretch gap-2">

@@ -1,4 +1,4 @@
-import type { Task } from "../../../shared/types";
+import { isSharedVideo, taskSharedMedia, type Task } from "../../../shared/types";
 import { useT } from "../../i18n";
 import Tooltip from "../Tooltip";
 import { ImagesIcon } from "../TaskIcons";
@@ -22,18 +22,20 @@ interface TaskSharedImagesProps {
  */
 export default function TaskSharedImages({ task, projectId, compact = false, touch = false }: TaskSharedImagesProps) {
 	const t = useT();
-	const count = task.sharedImages?.length ?? 0;
+	const media = taskSharedMedia(task);
+	const count = media.length;
 	if (count === 0) return null;
 
-	const isUnread = task.sharedImages?.some((image) => image.isUnread) ?? false;
-	const baseLabel = t.plural("infoPanel.imagesBadge", count);
+	const isUnread = media.some((item) => item.isUnread);
+	const hasVideos = media.some(isSharedVideo);
+	const baseLabel = t.plural(hasVideos ? "infoPanel.mediaBadge" : "infoPanel.imagesBadge", count);
 	const label = isUnread ? `${baseLabel}. ${t("infoPanel.sharedItemsUnread")}` : baseLabel;
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedImages")}>
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-					detail: { taskId: task.id, projectId, images: task.sharedImages },
+					detail: { taskId: task.id, projectId, images: media },
 				}))}
 				className={`task-anim flex items-center gap-1 rounded-lg transition-colors flex-shrink-0 border ${touch ? "min-h-11 px-3" : "px-2 py-1"} ${isUnread
 					? "text-success bg-success/15 border-success/40 hover:bg-success/25"
@@ -43,7 +45,7 @@ export default function TaskSharedImages({ task, projectId, compact = false, tou
 				data-testid="shared-images-badge"
 			>
 				<ImagesIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
-				{!compact && <span className="text-micro font-semibold">{t("infoPanel.imagesLabel")}</span>}
+				{!compact && <span className="text-micro font-semibold">{t(hasVideos ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>}
 				<span className={`text-micro font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>

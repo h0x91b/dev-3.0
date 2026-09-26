@@ -1857,11 +1857,12 @@ function App() {
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
 	useEffect(() => {
 		function onCliShowImage(e: Event) {
-			const { taskId, projectId, images, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, images, newCount, newKind, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				images: SharedImage[];
 				newCount: number;
+				newKind?: "image" | "video";
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
@@ -1869,7 +1870,8 @@ function App() {
 			if (!taskId || !images?.length) return;
 
 			// Attention badge (the reducer self-suppresses it when already viewing the task).
-			dispatch({ type: "addBell", taskId, reason: t.plural("showImage.attention", newCount ?? 1) });
+			const noun = newKind === "video" ? "showVideo" : "showImage";
+			dispatch({ type: "addBell", taskId, reason: t.plural(`${noun}.attention`, newCount ?? 1) });
 
 			const viewingThisTask =
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
@@ -1886,7 +1888,7 @@ function App() {
 			// Elsewhere: don't steal focus automatically — a clickable toast both
 			// navigates to the owning task and opens the viewer (honoring open-mode).
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
-			toast.info(t.plural("showImage.toast", newCount ?? 1), {
+			toast.info(t.plural(`${noun}.toast`, newCount ?? 1), {
 				context,
 				onClick: () => {
 					openTaskFromNotification(taskId, projectId);

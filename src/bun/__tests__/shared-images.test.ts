@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,7 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import { SharedImageError, imageExt, isSupportedImage, saveSharedImage, sharedImagesDir } from "../shared-images";
+import { SharedImageError, imageExt, isSupportedImage, saveSharedImage, saveSharedVideo, sharedImagesDir } from "../shared-images";
 
 const SRC_DIR = mkdtempSync(join(tmpdir(), "dev3-shared-src-"));
 
@@ -78,6 +78,71 @@ describe("saveSharedImage", () => {
 	it("rejects an unsupported type", () => {
 		const src = join(SRC_DIR, "notes.txt");
 		writeFileSync(src, "hi");
+		expect(() => saveSharedImage("/my/project", src)).toThrow(/Unsupported image type/);
+	});
+});
+
+const MP4_HEAD = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(16)]);
+const WEBM_HEAD = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(16)]);
+
+describe("saveSharedVideo", () => {
+	beforeEach(() => {
+		rmSync(sharedImagesDir("/my/project"), { recursive: true, force: true });
+	});
+
+	it("copies an MP4 into the same store as images, marked by a video mime", () => {
+		const src = join(SRC_DIR, "demo.mp4");
+		writeFileSync(src, MP4_HEAD);
+		const rec = saveSharedVideo("/my/project", src, " watch the spinner ");
+
+		expect(rec.storedPath.startsWith(`${TEST_HOME}/worktrees/my-project/shared-images/`)).toBe(true);
+		expect(rec.storedPath.endsWith(".mp4")).toBe(true);
+		expect(rec.mime).toBe("video/mp4");
+		expect(rec.caption).toBe("watch the spinner");
+		expect(rec.isUnread).toBe(true);
+		expect(readFileSync(rec.storedPath).equals(MP4_HEAD)).toBe(true);
+	});
+
+	it("accepts a WebM by its EBML signature", () => {
+		const src = join(SRC_DIR, "qa.webm");
+		writeFileSync(src, WEBM_HEAD);
+		expect(saveSharedVideo("/my/project", src).mime).toBe("video/webm");
+	});
+
+	it("rejects a renamed file whose container signature is missing", () => {
+		const src = join(SRC_DIR, "fake.mp4");
+		writeFileSync(src, "definitely not a movie");
+		expect(() => saveSharedVideo("/my/project", src)).toThrow(/Not a real MP4 file/);
+		const webm = join(SRC_DIR, "fake.webm");
+		writeFileSync(webm, MP4_HEAD);
+		expect(() => saveSharedVideo("/my/project", webm)).toThrow(/Not a real WEBM file/);
+	});
+
+	it("rejects other containers and images", () => {
+		for (const name of ["clip.mov", "clip.mkv", "shot.png"]) {
+			const src = join(SRC_DIR, name);
+			writeFileSync(src, MP4_HEAD);
+			expect(() => saveSharedVideo("/my/project", src)).toThrow(/Unsupported video type/);
+		}
+	});
+
+	it("rejects a clip over the 25 MB cap and names the fix", () => {
+		const src = join(SRC_DIR, "long.mp4");
+		writeFileSync(src, MP4_HEAD);
+		truncateSync(src, 25 * 1024 * 1024 + 1);
+		expect(() => saveSharedVideo("/my/project", src)).toThrow(/Video too large .*max 25 MB.*Trim or re-encode/);
+	});
+
+	it("keeps the path protections of show-image", () => {
+		expect(() => saveSharedVideo("/my/project", "rel/a.mp4")).toThrow(SharedImageError);
+		expect(() => saveSharedVideo("/my/project", "/a/../b.mp4")).toThrow(SharedImageError);
+		expect(() => saveSharedVideo("/my/project", join(SRC_DIR, "missing.mp4"))).toThrow(/File not found/);
+		expect(() => saveSharedVideo("/my/project", SRC_DIR)).toThrow(/Not a file/);
+	});
+
+	it("does not let show-image take a video", () => {
+		const src = join(SRC_DIR, "sneaky.mp4");
+		writeFileSync(src, MP4_HEAD);
 		expect(() => saveSharedImage("/my/project", src)).toThrow(/Unsupported image type/);
 	});
 });

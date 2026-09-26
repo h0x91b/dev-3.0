@@ -28,7 +28,7 @@ import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { handleDevServerLogSink } from "./commands/dev-server-log-sink";
-import { handleShowImage } from "./commands/show-image";
+import { handleShowImage, handleShowVideo } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
 import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
@@ -103,6 +103,7 @@ Commands:
   dev3 message --list [--json] [--task <id>]  Pending scheduled messages (id, due in local + UTC, sender)
   dev3 message --cancel <id> [--task <id>]  Cancel one pending scheduled message
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
+  dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...]  Play MP4/WebM clips (max 25 MB each) in the same viewer as show-image; never autoplays
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image, video and audio file under it
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
@@ -427,6 +428,8 @@ async function main(): Promise<void> {
 				// path), so hand the raw tokens straight to the handler rather than
 				// through the order-losing `parseArgs`.
 				return await handleShowImage(rawArgs.slice(1), socketPath, context);
+			case "show-video":
+				return await handleShowVideo(rawArgs.slice(1), socketPath, context);
 			case "show-artifact":
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "artifact-template":
