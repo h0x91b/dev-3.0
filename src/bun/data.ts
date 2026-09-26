@@ -632,7 +632,14 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 		// Backfill fields for tasks created before they existed
 		let backfilledPriority = false;
 		let backfilledRelations = false;
+		let healedHibernated = false;
 		for (const task of tasks) {
+			// Older builds left `hibernated` on completed/cancelled tasks, which froze
+			// them in that column: no drag, no reopen. The flag means nothing there.
+			if (task.hibernated === true && (task.status === "completed" || task.status === "cancelled")) {
+				task.hibernated = false;
+				healedHibernated = true;
+			}
 			if ((task as any).description === undefined) {
 				task.description = task.title;
 			}
@@ -691,9 +698,10 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 
 		// Persist content-only backfills together so one mutator read causes one write.
 		// Pure cached reads never rewrite the file.
-		if (options?.persistMigrations && (backfilledPriority || backfilledRelations)) {
+		if (options?.persistMigrations && (backfilledPriority || backfilledRelations || healedHibernated)) {
 			if (backfilledPriority) log.info("Backfilled priority for tasks", { projectId: project.id });
 			if (backfilledRelations) log.info("Backfilled relations for tasks", { projectId: project.id });
+			if (healedHibernated) log.info("Cleared stale hibernated flag on finished tasks", { projectId: project.id });
 			await rawSaveTasks(project, tasks);
 		}
 

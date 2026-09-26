@@ -402,3 +402,19 @@ describe("native teardown ordering", () => {
 		expect(pty.destroyNativeTaskSession).not.toHaveBeenCalled();
 	});
 });
+
+describe("persistTerminalTask", () => {
+	it("drops the hibernated flag so a finished task can be moved out again", async () => {
+		const frozen = task({ status: "in-progress", hibernated: true });
+		await executeLifecycleEffect(
+			{ type: "persistTerminalTask", status: "completed", onError: "abort" } as LifecycleEffect,
+			context(frozen),
+		);
+
+		expect(data.updateTask).toHaveBeenCalledWith(
+			expect.anything(),
+			TASK_ID,
+			expect.objectContaining({ status: "completed", hibernated: false }),
+		);
+	});
+});

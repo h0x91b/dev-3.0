@@ -340,8 +340,9 @@ function moveTransition(
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: terminalStatus }),
 		);
+		const facts = state.facts.hibernated === true ? { ...state.facts, hibernated: false } : state.facts;
 		return {
-			next: { ...state, column: target, runtime },
+			next: { ...state, column: target, runtime, facts },
 			effects,
 		};
 	}

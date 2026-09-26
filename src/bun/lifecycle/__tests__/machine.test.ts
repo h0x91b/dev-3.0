@@ -1210,6 +1210,7 @@ describe("hibernation", () => {
 		});
 
 		expect(result.next.column.status).toBe("completed");
+		expect(result.next.facts.hibernated).toBe(false);
 		expect(result.effects.map((e) => e.type)).toContain("removeWorktree");
 	});
 

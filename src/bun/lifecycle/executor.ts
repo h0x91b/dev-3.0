@@ -1050,6 +1050,9 @@ export async function executeLifecycleEffect(
 				...(ctx.project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
 				runtimeState: runtimeState({ phase: "idle" }),
+				// A finished task has nothing left to freeze; a leftover flag would
+				// lock it in its terminal column forever.
+				hibernated: false,
 				...clearedPreparationFields(),
 			};
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
