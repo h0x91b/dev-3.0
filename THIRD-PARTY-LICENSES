@@ -117,3 +117,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+================================================================================
+FreeType terminal rasterizer
+https://github.com/zkl2333/freetype-wasm
+Wrapper: MIT. FreeType: FreeType License. Brotli: MIT. zlib: zlib License.
+================================================================================
+
+Portions of this software are copyright © The FreeType Project
+(www.freetype.org). All rights reserved.
+
+This software is based in part on the work of the FreeType Team.
+The full wrapper, FreeType, Brotli, and zlib license notices are included in
+src/mainview/public/licenses/freetype.txt and shipped as /licenses/freetype.txt
+in both desktop and browser builds.

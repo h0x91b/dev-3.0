@@ -12,6 +12,7 @@
         "@headless-tree/react": "^1.6.3",
         "@lobehub/icons": "5.8.0",
         "@streamdown/mermaid": "1.0.2",
+        "@zkl2333/freetype-wasm": "2.14.3",
         "bidi-js": "^1.0.3",
         "electrobun": "1.18.1",
         "fuzzysort": "^3.1.0",
@@ -679,6 +680,8 @@
     "@vue/reactivity": ["@vue/reactivity@3.5.31", "", { "dependencies": { "@vue/shared": "3.5.31" } }, "sha512-DtKXxk9E/KuVvt8VxWu+6Luc9I9ETNcqR1T1oW1gf02nXaZ1kuAx58oVu7uX9XxJR0iJCro6fqBLw9oSBELo5g=="],
 
     "@vue/shared": ["@vue/shared@3.5.31", "", {}, "sha512-nBxuiuS9Lj5bPkPbWogPUnjxxWpkRniX7e5UBQDWl6Fsf4roq9wwV+cR7ezQ4zXswNvPIlsdj1slcLB7XCsRAw=="],
+
+    "@zkl2333/freetype-wasm": ["@zkl2333/freetype-wasm@2.14.3", "", {}, "sha512-A7fgJM0s+yh8NCQ9CAk4pbV+SpJp0DC3tirNPebL60ssc5D0awftWcR6zdD6teZUQgG2J8pk3AiqVXyHmElxDg=="],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

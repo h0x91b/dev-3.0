@@ -21,6 +21,9 @@
  * left on the vendor's own path.
  */
 
+import { isNativeTerminalTextInstalled } from "./terminal-font-rasterizer";
+import { isTerminalBoxGlyph } from "./terminal-box-drawing";
+
 /** The cell fields the fit reads; everything else is forwarded to the vendor. */
 interface FitCell {
 	codepoint: number;
@@ -162,7 +165,9 @@ export function installGlyphCellFit(renderer: object): GlyphCellFit {
 		) {
 			// Wide cells and multi-codepoint graphemes are none of these glyphs, and
 			// fitting one would distort it.
-			const kind = cell && cell.grapheme_len === 0 && cell.width === 1 ? fitKindFor(cell.codepoint) : null;
+			const kind = cell && cell.grapheme_len === 0 && cell.width === 1
+				&& !(isTerminalBoxGlyph(cell.codepoint) && isNativeTerminalTextInstalled(this))
+				? fitKindFor(cell.codepoint) : null;
 			if (!kind) {
 				original.call(this, cell, col, row);
 				return;

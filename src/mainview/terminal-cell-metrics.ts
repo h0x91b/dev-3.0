@@ -1,6 +1,6 @@
 /**
- * Give the terminal cell the size native Ghostty gives it: the height the font was
- * designed to be set at, and a width quantized on the device pixel grid.
+ * Use FreeType metrics for loaded bundled fonts before the browser fallback below.
+ * Both paths quantize cell width on the device-pixel grid.
  *
  * ghostty-web derives the cell from the INK box of a capital "M":
  * `Math.ceil(actualBoundingBoxAscent + actualBoundingBoxDescent) + 2`. "M" has no
@@ -31,6 +31,8 @@
  * all 400 measured pairs, in both engines, at both DPRs, with the `scale` constants
  * untouched. See `decisions/2026/09/08/cell-width-on-the-device-pixel-grid.md`.
  */
+
+import { nativeTerminalCellMetrics } from "./terminal-font-rasterizer";
 
 interface CellMetrics {
 	width: number;
@@ -122,6 +124,8 @@ export function installCellLineBox(renderer: object): CellLineBox {
 		target[ORIGINAL_MEASURE_FONT] = original;
 		target.measureFont = function lineBoxMeasureFont(this: MeasurableRenderer): CellMetrics {
 			const vendor = original.call(this);
+			const native = nativeTerminalCellMetrics(this.fontFamily ?? "", this.fontSize ?? 0, this.devicePixelRatio ?? 1);
+			if (native) return native;
 			if (measuringCtx === undefined) measuringCtx = document.createElement("canvas").getContext("2d");
 			if (!measuringCtx) return vendor;
 			measuringCtx.font = `${this.fontSize}px ${this.fontFamily}`;

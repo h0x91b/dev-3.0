@@ -204,13 +204,9 @@ function oppositeThemeDiffBgReplacement(
 	return null;
 }
 
-// Emulated dim foreground. ghostty renders SGR dim as 50% alpha, which is too
-// faint to read on dark and washes out on white; full intensity (dropping dim)
-// makes muted text — placeholder/ghost suggestions, select-prompt descriptions
-// and hints — look like typed input. We substitute an explicit muted gray:
-// readable, yet clearly dimmer than the default fg. Dark is a Tokyo-Night-ish
-// slate (lum ~0.47), light a neutral mid gray.
-const DARK_DIM_FG = ["38", "2", "112", "120", "150"];
+// Dark dim preserves half the linear-light intensity of the default Mocha
+// foreground, matching native terminals. Light mode retains its contrast guard.
+const DARK_DIM_FG = ["38", "2", "150", "157", "179"];
 const LIGHT_DIM_FG = ["38", "2", "130", "130", "130"];
 
 function dimFgReplacement(mode: ThemeMode): string[] {
