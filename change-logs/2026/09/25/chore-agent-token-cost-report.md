@@ -1,0 +1,1 @@
+Add `bun run measure:agent-token-cost`, a local report of what dev3 task sessions cost per billing type (cache reads, cache writes, output), which static sources dev3 injects into every request, which idle wake-ups force a full cache re-write, and what an earlier auto-compaction would save.
