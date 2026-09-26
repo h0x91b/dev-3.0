@@ -1,5 +1,7 @@
 # Theme-adaptive ANSI color rewrite in the PTY stream
 
+Superseded in part on 2026-09-26 by `decisions/2026/09/26/native-terminal-font-rasterization.md`: dark default-foreground dim now uses half the Mocha foreground's linear-light intensity (`150,157,179`). The light-theme guard and stream-state rules remain.
+
 ## Context
 
 In the light theme, Claude Code output was unreadable: removed diff lines, file paths, and spinners washed out on the white background. Captured SGR codes via `tmux capture-pane -e`: pale 256-color indexes (`38;5;183`, `38;5;226`, `38;5;51`, `38;5;114`) and `SGR 2` (dim) on `37` (white). The mirror problem appeared in the dark theme with Codex: it emits GitHub-light syntax truecolors (`38;2;51;51;51`, `38;2;24;54;145`, `38;2;167;29;93`) regardless of the terminal background — the terminal answers Codex's OSC 11 background query correctly (verified), Codex simply does not adapt.

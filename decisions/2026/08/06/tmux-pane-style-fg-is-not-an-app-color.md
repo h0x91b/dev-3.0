@@ -1,5 +1,7 @@
 # 210 — The tmux pane-style foreground is not an app-chosen color
 
+Superseded in part on 2026-09-26 by `decisions/2026/09/26/native-terminal-font-rasterization.md`: the dark dim colour is now `150,157,179`, matching native terminal intensity. Pane-style recognition and restoration are unchanged.
+
 ## Context
 
 `src/mainview/utils/ansi-theme-adapt.ts` emulates SGR dim as a muted gray, because ghostty-web

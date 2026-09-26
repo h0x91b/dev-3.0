@@ -32,6 +32,8 @@
  * untouched. See `decisions/2026/09/08/cell-width-on-the-device-pixel-grid.md`.
  */
 
+import { nativeTerminalCellMetrics } from "./terminal-font-rasterizer";
+
 interface CellMetrics {
 	width: number;
 	height: number;
@@ -122,6 +124,8 @@ export function installCellLineBox(renderer: object): CellLineBox {
 		target[ORIGINAL_MEASURE_FONT] = original;
 		target.measureFont = function lineBoxMeasureFont(this: MeasurableRenderer): CellMetrics {
 			const vendor = original.call(this);
+			const native = nativeTerminalCellMetrics(this.fontFamily ?? "", this.fontSize ?? 0, this.devicePixelRatio ?? 1);
+			if (native) return native;
 			if (measuringCtx === undefined) measuringCtx = document.createElement("canvas").getContext("2d");
 			if (!measuringCtx) return vendor;
 			measuringCtx.font = `${this.fontSize}px ${this.fontFamily}`;

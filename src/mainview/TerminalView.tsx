@@ -37,6 +37,7 @@ import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { installCellLineBox, type CellLineBox } from "./terminal-cell-metrics";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { installGlyphAtlas, type GlyphAtlasHandle } from "./terminal-glyph-atlas";
+import { installNativeTerminalText, prepareTerminalFontRasterizer } from "./terminal-font-rasterizer";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer, WHEEL_DRAIN_INTERVAL_MS } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
@@ -353,6 +354,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	/** Keeps block, box-drawing and powerline glyphs on the cell background's box. */
 	const glyphFitRef = useRef<GlyphCellFit | null>(null);
 	const glyphAtlasRef = useRef<GlyphAtlasHandle | null>(null);
+	const nativeTextRef = useRef<{ dispose(): void } | null>(null);
 	// Native backend only. The watermark is what a reconnect resumes from, so it
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
@@ -738,7 +740,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = terminalFontStack();
-		document.fonts.load(`${effectiveTerminalFontSize()}px ${TERMINAL_FONT}`).then(() => {
+		Promise.all([
+			document.fonts.load(`${effectiveTerminalFontSize()}px ${TERMINAL_FONT}`),
+			prepareTerminalFontRasterizer(TERMINAL_FONT),
+		]).then(() => {
 			debugLog("terminal", "[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {
@@ -803,6 +808,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// the vendor's cell ignores the font's line metrics entirely, so every
 				// font came out ~17px tall at size 16 (issue #1668).
 				cellLineBoxRef.current = installCellLineBox(term.renderer);
+				nativeTextRef.current = installNativeTerminalText(term.renderer);
 				// Powerline prompts and block-drawn bars are only flush if the glyph
 				// shares the background's cell box; the vendor's own metrics do not.
 				glyphFitRef.current = installGlyphCellFit(term.renderer);
@@ -2117,6 +2123,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			glyphAtlasRef.current = null;
 			glyphFitRef.current?.dispose();
 			glyphFitRef.current = null;
+			nativeTextRef.current?.dispose();
+			nativeTextRef.current = null;
 			cellLineBoxRef.current?.dispose();
 			cellLineBoxRef.current = null;
 			layoutObserver?.disconnect();
@@ -2433,7 +2441,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					fitAddonRef.current?.fit();
 				} catch { /* disposed */ }
 			};
-			document.fonts.load(`${size}px ${stack}`).then(apply).catch(apply);
+			Promise.all([
+				document.fonts.load(`${size}px ${stack}`),
+				prepareTerminalFontRasterizer(stack),
+			]).then(apply).catch(apply);
 		}
 		window.addEventListener(TERMINAL_FONT_CHANGED_EVENT, onFontChanged);
 		return () => window.removeEventListener(TERMINAL_FONT_CHANGED_EVENT, onFontChanged);

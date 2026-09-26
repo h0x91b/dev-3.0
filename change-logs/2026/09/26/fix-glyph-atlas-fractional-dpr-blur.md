@@ -1,3 +1,3 @@
-Short: Sharp terminal text at fractional zoom
+Short: Native-weight, sharper terminal text
 
-Terminal text is sharp again at fractional display scales — 125%, 150% and 175% on Windows, and the matching browser zooms in dev3 remote. The glyph cache sized its slots in CSS pixels, so every cell was blitted a quarter of a pixel off the device grid and resampled; slots are now whole device pixels and the row's remaining fraction is rasterised into the glyph instead of being smeared across it. Scales whose row grid cannot be placed exactly, such as 110% and 130%, now skip the cache and render directly rather than settle for an approximation.
+Bundled terminal fonts now use FreeType rasterization instead of browser-specific hinting, removing the heavier, fuzzier appearance beside native terminals. Glyph caches copy on the physical-pixel grid, and cell spacing, underlines, light/heavy box strokes, and dark dim text use native-style metrics and intensity. At 16px on Windows with 125% scaling, the full comparison sample matches WezTerm within one RGB level per channel at every pixel; system fonts and complex shaped clusters retain browser rendering.

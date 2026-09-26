@@ -67,6 +67,7 @@
 
 import type { GhosttyCell } from "ghostty-web";
 import { isCellFittedGlyph } from "./terminal-glyph-cell-fit";
+import { drawNativeTerminalText } from "./terminal-font-rasterizer";
 
 /** Cell flag bits, read out of ghostty-web 0.4.0's `CellFlags`. */
 const FLAG_BOLD = 1;
@@ -587,7 +588,9 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 			// own fillText would have put it — the fraction survives in the raster
 			// instead of being resampled into it.
 			const penY = phase * geom.slotH + geom.padY + phase / geom.phases + sig.baseline * sig.dpr;
-			page.ctx.fillText(text, penX / sig.dpr, penY / sig.dpr);
+			if (!drawNativeTerminalText(page.ctx as CanvasRenderingContext2D, text, penX / sig.dpr, penY / sig.dpr, sig.dpr)) {
+				page.ctx.fillText(text, penX / sig.dpr, penY / sig.dpr);
+			}
 		}
 		page.used += 1;
 		page.slots.set(key, slot);

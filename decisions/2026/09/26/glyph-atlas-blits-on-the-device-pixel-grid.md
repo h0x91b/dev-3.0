@@ -1,5 +1,7 @@
 # Copy cached terminal glyphs on the device-pixel grid
 
+Superseded in part on 2026-09-26 by `decisions/2026/09/26/native-terminal-font-rasterization.md`: bundled fonts now use native rasterization and integer physical row metrics. Pixel-aligned atlas copies remain; the phase machinery still serves browser-rendered fonts.
+
 ## Context
 
 The remote terminal looked blurred beside Windows WezTerm. In the running Windows Firefox app, the same font and text were sharper when bypassing `src/mainview/terminal-glyph-atlas.ts`; its CSS-sized padding became 3.75 physical pixels at DPR 1.25, causing `drawImage` to resample already-antialiased glyphs.

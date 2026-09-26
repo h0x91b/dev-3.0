@@ -66,7 +66,7 @@ describe("brightenDarkRgb", () => {
 	});
 });
 
-const DARK_DIM = "38;2;112;120;150";
+const DARK_DIM = "38;2;150;157;179";
 const LIGHT_DIM = "38;2;130;130;130";
 
 describe("createAnsiThemeFilter — dim handling (both themes)", () => {
