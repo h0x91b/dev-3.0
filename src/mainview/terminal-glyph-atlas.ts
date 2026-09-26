@@ -22,6 +22,18 @@
  * canvas, then every later occurrence is a `drawImage` — no shaping, no fill
  * colour change. Strips are paged so memory tracks what the screen actually uses.
  *
+ * **Sharpness rule: every rectangle `drawImage` sees is whole device pixels.** A
+ * blit is only a copy when source and destination are both pixel-aligned and the
+ * same size; a fraction anywhere turns it into a bilinear resample of ink that was
+ * already antialiased, and the terminal goes soft. The slot geometry is therefore
+ * computed in device pixels (`slotGeometry`), not in CSS pixels multiplied by the
+ * ratio at blit time — which is what shipped, and why the blur only appeared at
+ * fractional ratios: at ratio 1.25 a 3 px pad is 3.75 device pixels, so EVERY cell
+ * blitted a quarter-pixel off. The row grid stays fractional by nature (21 CSS px
+ * at 1.25 steps 26.25), and that remainder is kept in the raster as a sub-pixel
+ * phase rather than rounded away — see `MAX_SUBPIXEL_PHASES`. At a whole-pixel
+ * ratio there is one phase and the strips are byte-for-byte what they always were.
+ *
  * **Coverage is all-or-nothing, which is why the cap is 256 and not 32.** Half a
  * screen from the atlas and half from `fillText` is worse than either alone —
  * WebKit pays for the switching. On a stable 256-colour screen, measured:
@@ -106,11 +118,59 @@ export const CHURN_NEW_STYLES_LIMIT = 32;
 /** How long a disabled atlas stays out before it re-tests the screen. */
 export const CHURN_COOLDOWN_CELLS = 300_000;
 /**
- * Slack around the cell so a descender or an overhanging glyph is not clipped.
- * The vendor draws all backgrounds before any text, so text spilling into a
- * neighbour's box is intended, and the slack is transparent everywhere else.
+ * Slack around the cell so a descender or an overhanging glyph is not clipped,
+ * in CSS pixels. The vendor draws all backgrounds before any text, so text
+ * spilling into a neighbour's box is intended, and the slack is transparent
+ * everywhere else. Ceiled onto the device grid before it is used — see
+ * `slotGeometry`.
  */
 export const GLYPH_PADDING_PX = 3;
+
+/**
+ * Vertical sub-pixel positions a glyph may be rasterised at.
+ *
+ * A blit is only sharp when source and destination are both whole device pixels,
+ * but the row grid is not: a cell 21 CSS px tall at ratio 1.25 steps 26.25 device
+ * pixels, so row 1 wants its baseline a quarter of a pixel below the whole-pixel
+ * grid. Rather than round that away, the glyph is rasterised once per phase and
+ * the row picks the variant whose ink already carries its offset — the position is
+ * kept, the resampling is not.
+ *
+ * Four is the ceiling because a step of `n + k/4` has exactly four phases, which
+ * covers ratios 1, 1.25, 1.5, 1.75 and 2. Phases are only ever EXACT: a step whose
+ * denominator is larger has no faithful phase set within the bound, and the atlas
+ * stands down for that signature rather than quantize into the nearest quarter.
+ * Approximating is a position error the cache would hold forever and no
+ * measurement would reliably catch — a 110% zoom happened to land on zero
+ * differing pixels while 130% did not, from the same rounding.
+ */
+export const MAX_SUBPIXEL_PHASES = 4;
+
+/** Slack for binary fractions that do not land exactly (`8.8 * 1.25` is not 11). */
+const GRID_EPSILON = 1e-6;
+
+function isOnDeviceGrid(devicePx: number): boolean {
+	return Math.abs(devicePx - Math.round(devicePx)) < GRID_EPSILON;
+}
+
+/**
+ * How many distinct sub-pixel positions a grid of this step actually visits, or
+ * ZERO when no exact answer fits within `MAX_SUBPIXEL_PHASES`.
+ *
+ * `frac(n * step)` repeats with the denominator of `step`'s fractional part, so a
+ * step of 26.25 visits four positions and 31.5 visits two — allocating four rows
+ * for the latter would double the strip for two phases nobody asks for. A step
+ * that is not a quarter (a browser zoom of 1.1 or 1.3) needs a denominator of ten,
+ * which is unbounded memory to hold and a silent position error to skip; zero is
+ * the caller's signal to leave those cells to the vendor.
+ */
+export function subpixelPhaseCount(stepDevicePx: number): number {
+	if (!Number.isFinite(stepDevicePx)) return 0;
+	for (let phases = 1; phases <= MAX_SUBPIXEL_PHASES; phases++) {
+		if (isOnDeviceGrid(stepDevicePx * phases)) return phases;
+	}
+	return 0;
+}
 
 /**
  * Marks the hidden host that strip canvases live in. Attribute rather than an
@@ -276,6 +336,106 @@ function signatureMatches(sig: Signature, renderer: AtlasRenderer): boolean {
 }
 
 /**
+ * The strip's layout, in WHOLE DEVICE PIXELS.
+ *
+ * Every number the atlas hands to `drawImage` comes from here, and every one of
+ * them is an integer. The slot used to be sized in CSS pixels and multiplied by the
+ * ratio at blit time, so at ratio 1.25 a 3 px pad became 3.75 device pixels and
+ * both the source rect and its destination landed mid-pixel. The blit then resampled an already-antialiased bitmap — a
+ * second round of averaging over a glyph that had none to spare, which reads as
+ * the whole terminal being slightly out of focus.
+ */
+interface SlotGeometry {
+	/** Horizontal slack, whole device px. */
+	padX: number;
+	/** Vertical slack, whole device px. */
+	padY: number;
+	/** Slot stride across the strip, whole device px. */
+	slotW: number;
+	/** Slot stride down the strip — one row per phase, whole device px. */
+	slotH: number;
+	/**
+	 * The same slot, back in the CSS pixels the vendor's transform expects.
+	 * Precomputed because it is constant per signature and `drawImage` runs once per
+	 * cell; the round trip through the ratio can land a few femtopixels off a whole
+	 * device pixel, which is orders of magnitude below the rasteriser's own
+	 * quantisation and identical for every cell, so nothing shimmers.
+	 */
+	slotWCss: number;
+	slotHCss: number;
+	/**
+	 * Rasterised sub-pixel variants; 1 whenever the row grid is already whole, and
+	 * 0 when this row grid has no exact phase set the atlas may hold — the signal
+	 * to leave the signature to the vendor entirely.
+	 */
+	phases: number;
+	/** Column stride in device px, and whether it is a whole number of them. */
+	cellWDev: number;
+	cellWOnGrid: boolean;
+	/** Row stride in device px. Fractional is normal and is what `phases` answers. */
+	cellHDev: number;
+}
+
+export function slotGeometry(sig: Signature): SlotGeometry {
+	const { dpr } = sig;
+	// Ceiled, not rounded: the pad is slack against clipping, and rounding 3 × 1.25
+	// down to 3 would spend the fix on a re-clipped descender.
+	const padX = Math.ceil(GLYPH_PADDING_PX * dpr - GRID_EPSILON);
+	const padY = Math.ceil(GLYPH_PADDING_PX * dpr - GRID_EPSILON);
+	const cellWDev = sig.cellWidth * dpr;
+	const cellHDev = sig.cellHeight * dpr;
+	const slotW = Math.ceil(cellWDev - GRID_EPSILON) + padX * 2;
+	const slotH = Math.ceil(cellHDev - GRID_EPSILON) + padY * 2;
+	return {
+		padX, padY, slotW, slotH,
+		slotWCss: slotW / dpr,
+		slotHCss: slotH / dpr,
+		phases: subpixelPhaseCount(cellHDev),
+		cellWDev,
+		cellWOnGrid: isOnDeviceGrid(cellWDev),
+		cellHDev,
+	};
+}
+
+/**
+ * Where row `row` puts its slot, and which phase carries the rest of the offset.
+ *
+ * `top` is the whole device pixel the slot's own top-left lands on; `phase`
+ * indexes the variant whose ink is already pushed down by the remainder. Their sum
+ * reproduces the position the vendor's `fillText` would have used exactly —
+ * `phases` is only ever the step's true denominator, never an approximation.
+ *
+ * Packed into one number — `top * MAX_SUBPIXEL_PHASES + phase` — so the hot path
+ * never allocates, whatever order rows arrive in. `phase` is always below the cap
+ * and rows are non-negative, so nothing is lost.
+ */
+export function packRowPlacement(row: number, geom: SlotGeometry): number {
+	const ideal = row * geom.cellHDev;
+	if (geom.phases === 1) return Math.round(ideal) * MAX_SUBPIXEL_PHASES;
+	let top = Math.floor(ideal + GRID_EPSILON);
+	let phase = Math.round((ideal - top) * geom.phases);
+	// The remainder rounded up to a whole pixel: that IS the next pixel, phase zero.
+	if (phase >= geom.phases) { top += 1; phase = 0; }
+	return top * MAX_SUBPIXEL_PHASES + phase;
+}
+
+export const packedTop = (packed: number): number => Math.floor(packed / MAX_SUBPIXEL_PHASES);
+export const packedPhase = (packed: number): number => packed - packedTop(packed) * MAX_SUBPIXEL_PHASES;
+
+/** Readable form of the same placement. For tests and callers off the hot path. */
+export function rowPlacement(row: number, geom: SlotGeometry): { top: number; phase: number } {
+	const packed = packRowPlacement(row, geom);
+	return { top: packedTop(packed), phase: packedPhase(packed) };
+}
+
+/** Where column `col` puts its slot, in whole device pixels. */
+export function columnLeft(col: number, geom: SlotGeometry): number {
+	// Integer multiply when the cell is on the grid — `deviceGridWidth` in
+	// `terminal-cell-metrics` puts it there — so no error accumulates across a row.
+	return geom.cellWOnGrid ? col * Math.round(geom.cellWDev) : Math.round(col * geom.cellWDev);
+}
+
+/**
  * One glyph identity: the codepoint plus the two style bits that change its
  * shape. Colour is NOT in here — it selects the atlas, not the slot.
  */
@@ -354,6 +514,15 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 	const churnDetection = opts.churnDetection ?? true;
 	const styles = new Map<number, Style>();
 	let signature: Signature | null = null;
+	// Derived once per signature: recomputing it per cell would allocate 9200
+	// objects a frame, which is the cost the signature fast path exists to avoid.
+	let geometry: SlotGeometry | null = null;
+	// Row placement is identical for every cell in a row, so one scalar cache turns
+	// a row's 200 computations into one. Scalars, not an object: same reason the
+	// signature is compared field-by-field rather than rebuilt.
+	let placedRow = -1;
+	let placedTop = 0;
+	let placedPhase = 0;
 	let hits = 0;
 	let misses = 0;
 	let rasterised = 0;
@@ -368,16 +537,12 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 	let disableCount = 0;
 	let cooldownCells = 0;
 
-	/** Padded slot size, in CSS pixels. */
-	function slotSize(sig: Signature): { w: number; h: number } {
-		return { w: sig.cellWidth + GLYPH_PADDING_PX * 2, h: sig.cellHeight + GLYPH_PADDING_PX * 2 };
-	}
-
-	function newPage(sig: Signature): Page | null {
-		const { w, h } = slotSize(sig);
+	function newPage(sig: Signature, geom: SlotGeometry): Page | null {
 		const canvas = createCanvas();
-		canvas.width = Math.ceil(w * GLYPHS_PER_PAGE * sig.dpr);
-		canvas.height = Math.ceil(h * sig.dpr);
+		// Whole device pixels, so every slot boundary is one too. A strip carries one
+		// ROW per sub-pixel phase; at a whole-pixel row grid there is exactly one.
+		canvas.width = geom.slotW * GLYPHS_PER_PAGE;
+		canvas.height = geom.slotH * geom.phases;
 		// Before the first fillText, so the glyphs are rasterised with the page's
 		// own font smoothing rather than the platform default — see `atlasHost`.
 		attachPage(canvas);
@@ -385,6 +550,9 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 		// atlas would blit black boxes over the cell backgrounds.
 		const ctx = canvas.getContext("2d") as AtlasContext | null;
 		if (!ctx) { detachPage(canvas); return null; }
+		// The page is addressed in device pixels but drawn through the same CSS-pixel
+		// transform the vendor's own canvas has, so the rasteriser sees an identical
+		// font matrix and produces identical ink.
 		ctx.scale(sig.dpr, sig.dpr);
 		ctx.textBaseline = "alphabetic";
 		ctx.textAlign = "left";
@@ -394,28 +562,33 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 	}
 
 	function rasterise(
-		style: Style, sig: Signature, key: number, text: string,
+		style: Style, sig: Signature, geom: SlotGeometry, key: number, text: string,
 		colour: string, bold: boolean, italic: boolean,
 	): { page: Page; slot: number } | null {
 		let page = style.pages[style.pages.length - 1];
 		if (!page || page.used >= GLYPHS_PER_PAGE) {
 			if (style.pages.length >= MAX_PAGES_PER_STYLE) return null;
-			const fresh = newPage(sig);
+			const fresh = newPage(sig, geom);
 			if (!fresh) return null;
 			style.pages.push(fresh);
 			page = fresh;
 		}
 		const slot = page.used;
-		const { w } = slotSize(sig);
 		let font = "";
 		if (italic) font += "italic ";
 		if (bold) font += "bold ";
 		page.ctx.font = `${font}${sig.fontSize}px ${sig.fontFamily}`;
 		page.ctx.fillStyle = colour;
-		// Drawn at the cell's own baseline, offset by the padding, so blitting the
-		// padded rect at (cellX - pad, cellY - pad) lands the ink exactly where the
-		// vendor's fillText would have put it.
-		page.ctx.fillText(text, slot * w + GLYPH_PADDING_PX, GLYPH_PADDING_PX + sig.baseline);
+		const penX = slot * geom.slotW + geom.padX;
+		for (let phase = 0; phase < geom.phases; phase++) {
+			// The pen sits at the cell's own baseline, offset by the pad and by this
+			// phase's fraction of a device pixel. Blitting the slot at
+			// (columnLeft - padX, rowTop - padY) then lands the ink where the vendor's
+			// own fillText would have put it — the fraction survives in the raster
+			// instead of being resampled into it.
+			const penY = phase * geom.slotH + geom.padY + phase / geom.phases + sig.baseline * sig.dpr;
+			page.ctx.fillText(text, penX / sig.dpr, penY / sig.dpr);
+		}
 		page.used += 1;
 		page.slots.set(key, slot);
 		const placed = { page, slot };
@@ -435,6 +608,7 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 			}
 		}
 		styles.clear();
+		placedRow = -1;
 		pageCount = 0;
 		pageBytes = 0;
 		windowCells = 0;
@@ -487,15 +661,21 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 			// a flat cached raster would put the hairline seam back.
 			if (isCellFittedGlyph(codepoint)) { misses += 1; return false; }
 
-			if (!signature || !signatureMatches(signature, renderer)) {
+			if (!signature || !geometry || !signatureMatches(signature, renderer)) {
 				// Zoom, theme font or a move to another display: every bitmap was
 				// rasterised for the old metrics and would blit at the wrong size.
 				const fresh = signatureOf(renderer);
 				if (!fresh) { misses += 1; return false; }
 				reset();
 				signature = fresh;
+				geometry = slotGeometry(fresh);
 			}
 			const sig = signature;
+			const geom = geometry;
+			// No exact phase set for this row grid: approximating it would bake a
+			// permanent position error into every cached glyph, so the signature goes
+			// to the vendor whole. One integer test per cell.
+			if (geom.phases === 0) { misses += 1; return false; }
 
 			const bold = (flags & FLAG_BOLD) !== 0;
 			const italic = (flags & FLAG_ITALIC) !== 0;
@@ -533,16 +713,24 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 
 			const gKey = glyphKey(codepoint, bold, italic);
 			const placed = style.index.get(gKey)
-				?? rasterise(style, sig, gKey, String.fromCodePoint(codepoint), `rgb(${r},${g},${b})`, bold, italic);
+				?? rasterise(style, sig, geom, gKey, String.fromCodePoint(codepoint), `rgb(${r},${g},${b})`, bold, italic);
 			if (!placed) { misses += 1; return false; }
 
-			const { w, h } = slotSize(sig);
-			const dx = col * sig.cellWidth - GLYPH_PADDING_PX;
-			const dy = row * sig.cellHeight - GLYPH_PADDING_PX;
+			if (row !== placedRow) {
+				const packed = packRowPlacement(row, geom);
+				placedRow = row;
+				placedTop = packedTop(packed);
+				placedPhase = packedPhase(packed);
+			}
+			// Source and destination are the same whole number of device pixels, at
+			// whole device-pixel origins: `drawImage` copies, it does not resample. The
+			// destination is divided back out because the vendor's context carries the
+			// ratio in its transform.
 			ctx.drawImage(
 				placed.page.canvas,
-				placed.slot * w * sig.dpr, 0, w * sig.dpr, h * sig.dpr,
-				dx, dy, w, h,
+				placed.slot * geom.slotW, placedPhase * geom.slotH, geom.slotW, geom.slotH,
+				(columnLeft(col, geom) - geom.padX) / sig.dpr, (placedTop - geom.padY) / sig.dpr,
+				geom.slotWCss, geom.slotHCss,
 			);
 			hits += 1;
 			return true;

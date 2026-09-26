@@ -24,16 +24,24 @@ import {
 	CHURN_WINDOW_CELLS,
 	CHURN_COOLDOWN_CELLS,
 	ATLAS_HOST_ATTR,
+	MAX_SUBPIXEL_PHASES,
+	subpixelPhaseCount,
+	slotGeometry,
+	rowPlacement,
+	columnLeft,
 	type AtlasRenderer,
 } from "../terminal-glyph-atlas";
 import { blank, cell, graphemeCell, recordingCtx, type RecordedOp } from "../terminal-bidi/__tests__/fixtures";
 
 let ops: RecordedOp[];
+/** The one stubbed 2D context every canvas in this suite hands back. */
+let sharedCtx: Record<string, unknown>;
 let getContextSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
 	const recorder = recordingCtx();
 	ops = recorder.ops;
+	sharedCtx = recorder.ctx;
 	// happy-dom returns null from getContext, and the atlas builds its own strip
 	// canvases, so the stub has to live on the prototype for both.
 	getContextSpy = vi
@@ -662,5 +670,278 @@ describe("codepoint predicates", () => {
 		expect(isCacheableCodepoint(0x1f)).toBe(false);
 		expect(isCacheableCodepoint(0x7f)).toBe(false);
 		expect(isCacheableCodepoint(0x1d518)).toBe(false);
+	});
+});
+
+
+/**
+ * Sharpness at fractional device ratios.
+ *
+ * The atlas blits; a blit is only a COPY when both rectangles sit on whole device
+ * pixels and are the same size. Miss that by a quarter of a pixel and `drawImage`
+ * bilinearly resamples ink that is already antialiased, which is what made the
+ * whole terminal look soft on a 125% Windows display while looking perfect at 100%
+ * and 200%. The shipped geometry sized slots in CSS pixels and multiplied by the
+ * ratio at blit time, so a 3 px pad became 3.75 device pixels and EVERY cell was
+ * off-grid — the measurements below are the regression, and they are exact
+ * arithmetic, not a pixel diff.
+ */
+describe("blits land on whole device pixels", () => {
+	/** How far off a whole device pixel a number is. */
+	const offGrid = (devicePx: number) => Math.abs(devicePx - Math.round(devicePx));
+	const EPS = 1e-6;
+
+	/**
+	 * The cell the real pipeline produces: `deviceGridWidth` in
+	 * `terminal-cell-metrics` quantizes the advance on the DEVICE grid, so the
+	 * fractional CSS widths below are the honest input, not a contrived one.
+	 */
+	function metricsFor(advance: number, height: number, baseline: number, dpr: number) {
+		return { width: Math.max(1, Math.round(advance * dpr)) / dpr, height, baseline };
+	}
+
+	function atlasRenderer(dpr: number, advance = 9.6, height = 21, baseline = 17) {
+		const recorder = recordingCtx();
+		const renderer = {
+			renderCellText() {},
+			metrics: metricsFor(advance, height, baseline, dpr),
+			fontSize: 16,
+			fontFamily: "JetBrains Mono",
+			devicePixelRatio: dpr,
+			ctx: recorder.ctx,
+		} as unknown as AtlasRenderer;
+		return { renderer, ops: recorder.ops, ctx: recorder.ctx as never };
+	}
+
+	/** Paint a grid and return every blit, with its destination back in device px. */
+	function blits(dpr: number, cols = 24, rows = 12, advance = 9.6, height = 21) {
+		const { renderer, ops, ctx } = atlasRenderer(dpr, advance, height);
+		const atlas = createGlyphAtlas();
+		for (let row = 0; row < rows; row++) {
+			for (let col = 0; col < cols; col++) {
+				const took = atlas.draw(renderer, ctx, cell(String.fromCodePoint(0x41 + (col % 26))), col, row);
+				expect(took).toBe(true);
+			}
+		}
+		return ops
+			.filter((o) => o.op === "drawImage")
+			.map((o) => {
+				const [sx, sy, sw, sh, dx, dy, dw, dh] = o.args as number[];
+				// The vendor's context carries the ratio in its transform, so a
+				// destination given in CSS px is these device pixels on the canvas.
+				return { sx, sy, sw, sh, dx: dx * dpr, dy: dy * dpr, dw: dw * dpr, dh: dh * dpr };
+			});
+	}
+
+	// 1.25 is the Windows default at 125%; 1.5 and 1.75 are its other rungs. 1 and 2
+	// never showed the bug and must stay byte-identical.
+	const RATIOS = [1, 1.25, 1.5, 1.75, 2];
+
+	it.each(RATIOS)("puts every source and destination rect on the grid at ratio %s", (dpr) => {
+		const drawn = blits(dpr);
+		expect(drawn.length).toBe(24 * 12);
+
+		// Source origin, source size, destination origin and destination size — all
+		// eight numbers, for every cell on the grid.
+		const offenders = drawn.flatMap((b, i) =>
+			Object.entries(b).filter(([, value]) => offGrid(value) >= EPS).map(([name, value]) => `#${i} ${name}=${value}`));
+		expect(offenders).toEqual([]);
+	});
+
+	it.each(RATIOS)("copies rather than scales at ratio %s", (dpr) => {
+		for (const b of blits(dpr)) {
+			// Same device size on both ends: no magnification, so no interpolation.
+			// Compared to twelve decimals rather than exactly: the destination is
+			// expressed in CSS px and multiplied back by the ratio, and `29 / 1.75 *
+			// 1.75` is 29.000000000000004. That is ~1e-14 of a pixel, constant for
+			// every cell, and far below anything the rasteriser distinguishes.
+			expect(b.dw).toBeCloseTo(b.sw, 12);
+			expect(b.dh).toBeCloseTo(b.sh, 12);
+		}
+	});
+
+
+	it("keeps the column stride exactly one cell, with no drift across a wide row", () => {
+		const dpr = 1.25;
+		const drawn = blits(dpr, 200, 1);
+		const cellWDev = Math.round(9.6 * dpr); // 12 device px
+
+		for (let col = 1; col < drawn.length; col++) {
+			expect(drawn[col].dx - drawn[col - 1].dx).toBe(cellWDev);
+		}
+	});
+});
+
+describe("sub-pixel phases keep the glyph where the vendor would have put it", () => {
+	it("needs no phases when the row grid is already whole", () => {
+		// Integer ratios, and the fractional ones whose row step happens to be whole.
+		expect(subpixelPhaseCount(21)).toBe(1);
+		expect(subpixelPhaseCount(42)).toBe(1);
+		expect(subpixelPhaseCount(21 * 1.5)).toBe(2);
+		expect(subpixelPhaseCount(21 * 1.25)).toBe(4);
+		expect(subpixelPhaseCount(21 * 1.75)).toBe(4);
+	});
+
+	it("reports no phase set at all rather than approximate one", () => {
+		// A browser zoom of 110% or 130%: the row step needs a denominator of ten,
+		// and quantizing it into quarters would bake a permanent position error into
+		// every cached glyph. Zero is the atlas standing down.
+		for (const dpr of [1.1, 1.15, 1.3, 1.45]) expect(subpixelPhaseCount(21 * dpr)).toBe(0);
+	});
+
+	it("never exceeds the cap when it does answer", () => {
+		for (const dpr of [1, 1.25, 1.5, 1.75, 2, 4 / 3, 2.25]) {
+			const phases = subpixelPhaseCount(21 * dpr);
+			if (phases === 0) continue;
+			expect(phases).toBeLessThanOrEqual(MAX_SUBPIXEL_PHASES);
+			// It answered, so the answer is EXACT: the step really is a whole number
+			// of phase steps, with nothing rounded away.
+			expect((21 * dpr * phases) % 1).toBeCloseTo(0, 9);
+		}
+	});
+
+	function geometryAt(dpr: number, height = 21) {
+		const width = Math.max(1, Math.round(9.6 * dpr)) / dpr;
+		return slotGeometry({ fontSize: 16, fontFamily: "JetBrains Mono", dpr, cellWidth: width, cellHeight: height, baseline: 17 });
+	}
+
+	it.each([1, 1.25, 1.5, 1.75, 2])("reproduces the exact row position at ratio %s", (dpr) => {
+		const geom = geometryAt(dpr);
+
+		for (let row = 0; row < 64; row++) {
+			const { top, phase } = rowPlacement(row, geom);
+			expect(Number.isInteger(top)).toBe(true);
+			expect(phase).toBeGreaterThanOrEqual(0);
+			expect(phase).toBeLessThan(geom.phases);
+			// The whole pixel plus the fraction baked into the raster IS the position
+			// the vendor's own fillText would have used — exactly, because a phase set
+			// the atlas accepts is the step's true denominator.
+			expect(top + phase / geom.phases).toBeCloseTo(row * geom.cellHDev, 10);
+		}
+	});
+
+	it("stands the atlas down for a row grid it cannot place exactly", () => {
+		const recorder = recordingCtx();
+		const renderer = {
+			renderCellText() {},
+			metrics: { width: Math.round(9.6 * 1.3) / 1.3, height: 21, baseline: 17 },
+			fontSize: 16, fontFamily: "JetBrains Mono", devicePixelRatio: 1.3,
+			ctx: recorder.ctx,
+		} as unknown as AtlasRenderer;
+		const atlas = createGlyphAtlas();
+
+		expect(slotGeometry({ fontSize: 16, fontFamily: "JetBrains Mono", dpr: 1.3, cellWidth: 9.6, cellHeight: 21, baseline: 17 }).phases).toBe(0);
+		for (let row = 0; row < 8; row++) {
+			expect(atlas.draw(renderer, recorder.ctx as never, cell("A"), 0, row)).toBe(false);
+		}
+
+		// Handed back whole: nothing rasterised, nothing cached, no strip allocated.
+		expect(atlas.stats()).toMatchObject({ hits: 0, misses: 8, rasterised: 0, pages: 0, pageBytes: 0 });
+		expect(recorder.ops.filter((o) => o.op === "drawImage").length).toBe(0);
+	});
+
+
+	it("sizes the slot and its pad in whole device pixels, never smaller than the CSS slack", () => {
+		for (const dpr of [1, 1.25, 1.5, 1.75, 2]) {
+			const geom = geometryAt(dpr);
+			for (const value of [geom.padX, geom.padY, geom.slotW, geom.slotH, geom.phases]) {
+				expect(Number.isInteger(value)).toBe(true);
+			}
+			// The pad is slack against clipping: rounding it DOWN would re-clip the
+			// descender the slack exists to keep.
+			expect(geom.padX).toBeGreaterThanOrEqual(3 * dpr - 1e-9);
+			expect(geom.padY).toBeGreaterThanOrEqual(3 * dpr - 1e-9);
+			// And the slot still holds a whole cell plus both pads.
+			expect(geom.slotW).toBeGreaterThanOrEqual(geom.cellWDev + geom.padX * 2 - 1e-9);
+			expect(geom.slotH).toBeGreaterThanOrEqual(geom.cellHDev + geom.padY * 2 - 1e-9);
+		}
+	});
+
+	it("starts every column at a whole device pixel", () => {
+		for (const dpr of [1, 1.25, 1.5, 1.75, 2]) {
+			const geom = geometryAt(dpr);
+			for (let col = 0; col < 200; col++) expect(Number.isInteger(columnLeft(col, geom))).toBe(true);
+		}
+	});
+});
+
+describe("the whole-ratio fast path is untouched", () => {
+	function stripSizes(dpr: number): { width: number; height: number }[] {
+		const recorder = recordingCtx();
+		const renderer = {
+			renderCellText() {},
+			metrics: { width: Math.max(1, Math.round(9.6 * dpr)) / dpr, height: 21, baseline: 17 },
+			fontSize: 16,
+			fontFamily: "JetBrains Mono",
+			devicePixelRatio: dpr,
+			ctx: recorder.ctx,
+		} as unknown as AtlasRenderer;
+		const made: HTMLCanvasElement[] = [];
+		const atlas = createGlyphAtlas({
+			createCanvas: () => {
+				const canvas = document.createElement("canvas");
+				made.push(canvas);
+				return canvas;
+			},
+		});
+		for (const ch of "abc") atlas.draw(renderer, recorder.ctx as never, cell(ch), 0, 0);
+		return made.map((c) => ({ width: c.width, height: c.height }));
+	}
+
+	it.each([1, 2])("allocates one phase row per strip at ratio %s", (dpr) => {
+		const geom = slotGeometry({
+			fontSize: 16, fontFamily: "JetBrains Mono", dpr,
+			cellWidth: Math.max(1, Math.round(9.6 * dpr)) / dpr, cellHeight: 21, baseline: 17,
+		});
+
+		expect(geom.phases).toBe(1);
+		// One row of slots, exactly as it has always been — no extra memory paid for
+		// a ratio that never needed a phase.
+		expect(stripSizes(dpr)).toEqual([{ width: geom.slotW * GLYPHS_PER_PAGE, height: geom.slotH }]);
+	});
+
+	it("rasterises one fillText per glyph at a whole ratio, and one per phase at 1.25", () => {
+		// Every canvas in this suite shares the one stubbed context, so the strip's
+		// own fillText lands in the module-level `ops`.
+		const draw = (dpr: number, width: number) => {
+			const renderer = {
+				renderCellText() {},
+				metrics: { width, height: 21, baseline: 17 },
+				fontSize: 16, fontFamily: "JetBrains Mono", devicePixelRatio: dpr,
+				ctx: sharedCtx,
+			} as unknown as AtlasRenderer;
+			const atlas = createGlyphAtlas();
+			ops.length = 0;
+			atlas.draw(renderer, sharedCtx as never, cell("A"), 0, 0);
+			return atlas;
+		};
+
+		draw(1, 10);
+		expect(count("fillText")).toBe(1);
+
+		const fracAtlas = draw(1.25, 9.6);
+		// Four phases, so four rasters of one glyph — paid once, then blitted forever.
+		expect(count("fillText")).toBe(MAX_SUBPIXEL_PHASES);
+		// Still ONE cached glyph: the phases are rows of its slot, not extra slots.
+		expect(fracAtlas.stats()).toMatchObject({ rasterised: 1, hits: 1, misses: 0, pages: 1 });
+	});
+
+	it("keeps the page and style caps at a fractional ratio", () => {
+		const recorder = recordingCtx();
+		const renderer = {
+			renderCellText() {},
+			metrics: { width: 9.6, height: 21, baseline: 17 },
+			fontSize: 16, fontFamily: "JetBrains Mono", devicePixelRatio: 1.25,
+			ctx: recorder.ctx,
+		} as unknown as AtlasRenderer;
+		const atlas = createGlyphAtlas();
+		const capacity = GLYPHS_PER_PAGE * MAX_PAGES_PER_STYLE;
+
+		for (let i = 0; i < capacity + 5; i++) {
+			atlas.draw(renderer, recorder.ctx as never, cell("", { codepoint: 0x21 + i }), 0, 0);
+		}
+
+		// Phases multiply the strip's HEIGHT, never the number of pages it may hold.
+		expect(atlas.stats()).toMatchObject({ pages: MAX_PAGES_PER_STYLE, rasterised: capacity, misses: 5 });
 	});
 });
