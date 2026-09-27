@@ -90,6 +90,21 @@ export function claimDev3TypedPrompt(taskId: string, submitted: string, now: num
 	return true;
 }
 
+/**
+ * Take back the receipt for a text dev3 noted but never typed. Exact match only, and
+ * one receipt: containment could spend some other message's receipt instead.
+ */
+export function retractDev3TypedPrompt(taskId: string, text: string, now: number = Date.now()): boolean {
+	const normalized = normalizeSubmittedPrompt(text);
+	const claims = live(claimsByTask.get(taskId) ?? [], now);
+	let index = claims.length - 1;
+	while (index >= 0 && claims[index]?.text !== normalized) index -= 1;
+	if (index === -1) return false;
+	claims.splice(index, 1);
+	claimsByTask.set(taskId, claims);
+	return true;
+}
+
 /** How many receipts are still live for a task. Diagnostics and tests only. */
 export function typedPromptClaimCount(taskId: string, now: number = Date.now()): number {
 	return live(claimsByTask.get(taskId) ?? [], now).length;

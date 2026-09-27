@@ -17,8 +17,9 @@ vi.mock("../git", () => ({
 import { readFile, rm } from "node:fs/promises";
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, type Task } from "../../shared/types";
 import { PANE_INPUT_LIMITS, utf8Length } from "../../shared/pane-input";
-import { wrapAgentMessage } from "../../shared/agent-message-envelope";
-import { spillOversizedAgentMessage } from "../agent-message-spill";
+import { AGENT_MESSAGE_BURST_SEPARATOR, wrapAgentMessage } from "../../shared/agent-message-envelope";
+import { isDev3EnvelopeText } from "../../shared/agent-terminal-prompt";
+import { spillHeldMessageBatch, spillOversizedAgentMessage } from "../agent-message-spill";
 
 const task = { id: "t1", projectId: "p1" } as Task;
 
@@ -115,5 +116,46 @@ describe("the threshold is measured on the typed envelope, not the body", () => 
 	// fold-and-drop needs a second chunk to exist.
 	it("sits at or under the measured pty read size", () => {
 		expect(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES).toBeLessThanOrEqual(1022);
+	});
+});
+
+describe("two spills never share a file", () => {
+	it("gives two spills of the same millisecond two files, each intact", async () => {
+		const at = new Date("2026-09-27T10:00:00.000Z");
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(at);
+		try {
+			const [a, b] = await Promise.all([
+				spillOversizedAgentMessage(task, "a".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES + 1)),
+				spillOversizedAgentMessage(task, "b".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES + 1)),
+			]);
+			expect(a.spilledPath).not.toBe(b.spilledPath);
+			expect(await readFile(a.spilledPath!, "utf8")).toMatch(/^a+$/);
+			expect(await readFile(b.spilledPath!, "utf8")).toMatch(/^b+$/);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("spillHeldMessageBatch — a held backlog as one file", () => {
+	const envelopes = [901, 902, 903].map((seq) =>
+		wrapAgentMessage(`status ${seq}`, { taskId: `${seq}-id`, seq, title: `Worker ${seq}`, projectId: "p1" }, "p1", "status"),
+	);
+
+	it("writes every exact typed text, oldest first, and points at the file with an envelope", async () => {
+		const batch = await spillHeldMessageBatch(task, envelopes);
+
+		expect(batch?.path).toMatch(new RegExp(`^${taskDirRoot}/messages/burst-.*\\.md$`));
+		expect(await readFile(batch!.path, "utf8")).toBe(envelopes.join(AGENT_MESSAGE_BURST_SEPARATOR));
+		expect(isDev3EnvelopeText(batch!.pointer)).toBe(true);
+		expect(batch!.pointer).toContain(batch!.path);
+		expect(batch!.pointer).toContain("3 messages from seq:901, seq:902, seq:903");
+		expect(utf8Length(batch!.pointer)).toBeLessThanOrEqual(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES);
+	});
+
+	it("answers null instead of throwing when the file cannot be written", async () => {
+		getProject.mockRejectedValue(new Error("no such project"));
+		await expect(spillHeldMessageBatch(task, envelopes)).resolves.toBeNull();
 	});
 });

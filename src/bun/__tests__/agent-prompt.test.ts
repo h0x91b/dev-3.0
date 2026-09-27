@@ -27,6 +27,18 @@ vi.mock("../tmux", () => ({
 }));
 const pushCliAttention = vi.hoisted(() => vi.fn());
 vi.mock("../rpc-handlers/shared", () => ({ pushCliAttention }));
+/** Batch files the mocked spill has written and not yet discarded. */
+const batchFiles = vi.hoisted(() => ({ alive: new Set<string>(), written: 0 }));
+const spillHeldMessageBatch = vi.hoisted(() =>
+	vi.fn(async (_task: unknown, texts: string[]) => {
+		batchFiles.written += 1;
+		const path = batchFiles.written === 1 ? "/task/messages/burst-1.md" : `/task/messages/burst-${batchFiles.written}.md`;
+		batchFiles.alive.add(path);
+		return { path, pointer: `<dev3-ai-message>\n${texts.length} held messages: ${path}\n</dev3-ai-message>` };
+	}),
+);
+const discardHeldMessageBatch = vi.hoisted(() => vi.fn(async (path: string) => void batchFiles.alive.delete(path)));
+vi.mock("../agent-message-spill", () => ({ spillHeldMessageBatch, discardHeldMessageBatch }));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -40,6 +52,12 @@ import {
 	sendPromptToAgentPane,
 	sendPromptToPane,
 } from "../agent-prompt";
+import {
+	claimDev3TypedPrompt,
+	noteDev3TypedPrompt,
+	resetTypedPromptClaims,
+	typedPromptClaimCount,
+} from "../agent-typed-prompt-claims";
 import {
 	deferHeldAgentMessagesForTask,
 	flushHeldAgentMessagesForTask,
@@ -470,5 +488,47 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 		await runPrompt(sendPromptToAgentPane(TASK, "open a PR", [agentPane("%1")]));
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+	});
+});
+
+describe("a held backlog past one read is typed as ONE batch pointer", () => {
+	afterEach(() => {
+		resetAgentMessageHolds();
+		resetTypedPromptClaims();
+		batchFiles.alive.clear();
+		batchFiles.written = 0;
+	});
+
+	it("leaves no file and no receipt behind while the pane sits in copy mode for 10 minutes", async () => {
+		// Before the undo, each quiet window wrote a new file AND a new receipt; 64
+		// receipts is the per-task cap, so ~16 minutes evicted every older one.
+		noteDev3TypedPrompt(TASK_ID, "an older message still waiting for its submit hook");
+		// Its text is INSIDE every pointer: retracting by containment would spend it.
+		noteDev3TypedPrompt(TASK_ID, "held messages");
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: true } as never);
+		for (const text of ["a", "b", "c"].map((c) => c.repeat(600))) await holdMessageForAgentPane(TASK, text, [agentPane("%1")]);
+
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		expect(batchFiles.written).toBeGreaterThan(30);
+		expect(batchFiles.alive.size).toBe(0);
+		expect(typedPromptClaimCount(TASK_ID)).toBe(2);
+		expect(claimDev3TypedPrompt(TASK_ID, "an older message still waiting for its submit hook")).toBe(true);
+		expect(claimDev3TypedPrompt(TASK_ID, "held messages")).toBe(true);
+	});
+
+	it("types only the pointer, then one Enter, and leaves a receipt for exactly that text", async () => {
+		const texts = ["a", "b", "c"].map((c) => c.repeat(600));
+		for (const text of texts) await holdMessageForAgentPane(TASK, text, [agentPane("%1")]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+
+		const pointer = "<dev3-ai-message>\n3 held messages: /task/messages/burst-1.md\n</dev3-ai-message>";
+		expect(spillHeldMessageBatch).toHaveBeenCalledWith(TASK, texts);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(0)).toEqual([{ literal: pointer }]);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+		// Without the receipt the receiver's submit hook records the pointer as the user's prompt.
+		expect(claimDev3TypedPrompt(TASK_ID, pointer)).toBe(true);
 	});
 });

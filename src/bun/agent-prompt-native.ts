@@ -36,8 +36,8 @@ import { utf8Length } from "../shared/pane-input";
 import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
 import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
-import { agentMessageHoldKey, holdAgentMessage } from "./agent-message-hold";
-import { noteDev3TypedPrompt } from "./agent-typed-prompt-claims";
+import { agentMessageHoldKey, holdAgentMessage, type HeldMessageBatch } from "./agent-message-hold";
+import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { createLogger } from "./logger";
 import { forwardToOwner, resolvePaneOwner } from "./native-pane-owner";
 import type { NativeTaskTerminal } from "./native-task-terminal";
@@ -98,12 +98,40 @@ export async function resolveNativeAgentPane(taskId: string): Promise<string | n
  * through the same bound terminal, and a native write is never provable — so the
  * answers are only "written, unacknowledged" and "held".
  */
+/**
+ * The native counterpart of the tmux batch: one file, one pointer, one receipt. Only
+ * a process that knows the whole task can write it; an owner-routed delivery knows
+ * only the task id, so its backlog keeps one turn per read.
+ */
+function nativeBatch(terminal: NativeTaskTerminal, task: Task): (texts: string[]) => Promise<HeldMessageBatch | null> {
+	return async (texts) => {
+		const { discardHeldMessageBatch, spillHeldMessageBatch } = await import("./agent-message-spill");
+		const spilled = await spillHeldMessageBatch(task, texts);
+		if (!spilled) return null;
+		noteDev3TypedPrompt(task.id, spilled.pointer);
+		return {
+			text: spilled.pointer,
+			bytes: utf8Length(spilled.pointer),
+			path: spilled.path,
+			discard: async () => {
+				retractDev3TypedPrompt(task.id, spilled.pointer);
+				await discardHeldMessageBatch(spilled.path);
+			},
+			deliver: (separator) => {
+				terminal.write(`${separator}${spilled.pointer}`);
+				return "landed";
+			},
+		};
+	};
+}
+
 function performNativeDelivery(
 	terminal: NativeTaskTerminal,
 	taskId: string,
 	paneId: string,
 	prompt: string,
 	hold: boolean,
+	task?: Task,
 ): AgentPromptDelivery {
 	if (!hold) {
 		terminal.write(prompt);
@@ -124,6 +152,7 @@ function performNativeDelivery(
 			// The native arm folds its trailer into `prompt` before it gets here, so this
 			// is the whole cost of the message; the burst cap applies the same way.
 			bytes: utf8Length(prompt),
+			...(task ? { batch: nativeBatch(terminal, task) } : {}),
 			// The same gap a hand-off leaves: a CR written straight after the last paste
 			// is read as part of it, and the burst never gets submitted.
 			submit: () => {
@@ -234,12 +263,12 @@ export async function sendPromptToNativePane(
 
 	switch (owner.kind) {
 		case "local":
-			return performNativeDelivery(terminal, task.id, paneId, prompt, hold);
+			return performNativeDelivery(terminal, task.id, paneId, prompt, hold, task);
 
 		case "vacant": {
 			// Nobody is typing — take the lease and deliver here.
 			if ((await terminal.claimHostWriter()) === "writer") {
-				return performNativeDelivery(terminal, task.id, paneId, prompt, hold);
+				return performNativeDelivery(terminal, task.id, paneId, prompt, hold, task);
 			}
 			log.info("Writer lease was taken while claiming it; not delivering", context);
 			return notDelivered("read-only", "another process took the pane's writer lease while claiming it");

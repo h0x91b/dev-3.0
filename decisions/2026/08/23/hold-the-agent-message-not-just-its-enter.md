@@ -1,5 +1,7 @@
 # Hold the whole agent message, not just its Enter
 
+> Superseded in part on 2026-09-27 by `decisions/2026/09/27/batch-held-backlog-and-clock-human-typing.md`: the per-hold `humanHeld` flag is replaced by a per-task last-keystroke clock; the 60 s window and "no ceiling" rule are unchanged.
+
 ## Context
 
 [`hold-the-enter-behind-dev3-message`](../21/hold-the-enter-behind-dev3-message.md) held the Enter of a

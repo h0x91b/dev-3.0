@@ -1,5 +1,7 @@
 # Spill oversized agent messages to a file
 
+> Superseded in part on 2026-09-27 by `decisions/2026/09/27/batch-held-backlog-and-clock-human-typing.md`: spill files are now `message-<stamp>-<suffix>.md`, created exclusively, so two spills in one millisecond no longer overwrite each other.
+
 > Amended on 2026-09-03 by
 > [`decisions/2026/09/03/spill-at-the-pty-chunk-boundary.md`](../../09/03/spill-at-the-pty-chunk-boundary.md):
 > the spill seam and the file layout below still stand, but the threshold is no longer 4 000 bytes

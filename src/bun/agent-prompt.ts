@@ -16,7 +16,9 @@ import {
 	holdAgentMessage,
 	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
+	type HeldMessageBatch,
 } from "./agent-message-hold";
+import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
 import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
@@ -278,13 +280,40 @@ async function reportHeldMessage(task: Task, event: HeldAgentMessageReport): Pro
 	const reason =
 		event.kind === "stranded"
 			? `A peer message is typed in the agent's input box but not sent. Press Enter there to send it${event.waiting > 0 ? `; ${event.waiting} more wait until you do` : ""}.`
-			: `${event.messages} held peer message(s) were not delivered: ${event.why}.`;
+			: `${event.messages} held peer message(s) were not delivered: ${event.why}.${event.paths ? ` They are saved in ${event.paths.join(", ")}.` : ""}`;
 	try {
 		const { pushCliAttention } = await import("./rpc-handlers/shared");
 		pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
 	} catch (err) {
 		log.warn("could not raise the held-message badge", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
+}
+
+/**
+ * Write a held backlog to one file and hand the hold the pointer to type instead. The
+ * receipt is left before anything is typed, like every dev3-typed prompt's, or the
+ * receiver's submit hook would record the pointer as the user's own prompt.
+ */
+async function batchHeldMessages(task: Task, paneId: string, holdKey: string, texts: string[]): Promise<HeldMessageBatch | null> {
+	const { discardHeldMessageBatch, spillHeldMessageBatch } = await import("./agent-message-spill");
+	const spilled = await spillHeldMessageBatch(task, texts);
+	if (!spilled) return null;
+	noteDev3TypedPrompt(task.id, spilled.pointer);
+	return {
+		text: spilled.pointer,
+		bytes: utf8Length(spilled.pointer),
+		path: spilled.path,
+		discard: async () => {
+			retractDev3TypedPrompt(task.id, spilled.pointer);
+			await discardHeldMessageBatch(spilled.path);
+		},
+		deliver: async (separator) => {
+			const typed = await typeHeldText(task, paneId, holdKey, `${separator}${spilled.pointer}`);
+			const result = heldDeliveryResult(typed);
+			if (result === "failed") log.warn("held message batch pointer did not land", { taskId: task.id.slice(0, 8), paneId, status: typed.status });
+			return result;
+		},
+	};
 }
 
 /**
@@ -310,6 +339,7 @@ function holdAgentMessageForPane(
 			text: prompt,
 			alive: () => paneStillThere(task, paneId, holdKey),
 			report: (event) => void reportHeldMessage(task, event),
+			batch: (texts) => batchHeldMessages(task, paneId, holdKey, texts),
 			deliver: async (separator) => {
 				const text = await typeHeldText(task, paneId, holdKey, `${separator}${prompt}`);
 				const result = heldDeliveryResult(text);

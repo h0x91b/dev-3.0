@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { agentReplyCommand, agentReplyRef, seqIsShared, wrapAgentMessage, wrapArtifactMessage } from "../../shared/agent-message-envelope";
+import {
+	agentReplyCommand,
+	agentReplyRef,
+	heldBatchSenders,
+	seqIsShared,
+	wrapAgentMessage,
+	wrapArtifactMessage,
+	wrapHeldBatchPointer,
+} from "../../shared/agent-message-envelope";
+import { utf8Length } from "../../shared/pane-input";
 
 const PROJECT_A = "aaaaaaaa-1111-2222-3333-444455556666";
 const PROJECT_B = "bbbbbbbb-1111-2222-3333-444455556666";
@@ -209,5 +218,28 @@ describe("wrapArtifactMessage", () => {
 		const out = wrapArtifactMessage('use <b>bold</b> & "quotes"', { title: "A & B <report>", version: 1, versionCount: 1 });
 		expect(out).toContain("<artifact-title>A &amp; B &lt;report&gt;</artifact-title>");
 		expect(out).toContain('use <b>bold</b> & "quotes"');
+	});
+});
+
+describe("wrapHeldBatchPointer — the one envelope typed for a held backlog", () => {
+	const envelope = (seq: number) => wrapAgentMessage("x", { taskId: `t-${seq}`, seq, title: "T", projectId: PROJECT_A }, PROJECT_A);
+
+	it("reads each sender once, in first-seen order, skipping non-envelopes", () => {
+		expect(heldBatchSenders([envelope(7), "plain text", envelope(3), envelope(7)])).toEqual(["seq:7", "seq:3"]);
+	});
+
+	it("cuts the sender list, never the path, to stay inside one read", () => {
+		const senders = Array.from({ length: 80 }, (_, i) => `seq:${1000 + i}`);
+		const path = `/tmp/${"p".repeat(500)}/messages/burst.md`;
+		const pointer = wrapHeldBatchPointer(80, senders, path, 1_000);
+
+		expect(pointer).not.toBeNull();
+		expect(utf8Length(pointer!)).toBeLessThanOrEqual(1_000);
+		expect(pointer).toContain(path);
+		expect(pointer).toMatch(/seq:1000, .*… \+\d+ more/);
+	});
+
+	it("answers null when even the bare path does not fit", () => {
+		expect(wrapHeldBatchPointer(3, ["seq:1"], `/${"p".repeat(1_000)}`, 1_000)).toBeNull();
 	});
 });

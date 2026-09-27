@@ -10,6 +10,8 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_MS,
 } from "../../shared/agent-message-hold-timing";
 import {
+	AGENT_MESSAGE_BATCH_MAX_BYTES,
+	AGENT_MESSAGE_BATCH_MAX_MESSAGES,
 	agentMessageHoldKey,
 	deferHeldAgentMessagesForTask,
 	flushHeldAgentMessagesForTask,
@@ -18,7 +20,9 @@ import {
 	releaseStrandedAgentMessagesOnSubmission,
 	resetAgentMessageHolds,
 	type HeldAgentMessage,
+	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
+	type HeldMessageBatch,
 } from "../agent-message-hold";
 
 /** Most cases here are about timing, not matching, so their messages carry no text. */
@@ -591,5 +595,307 @@ describe("a stranded turn is never submitted by dev3", () => {
 		strandOneTurn(order, { alive: () => Promise.reject(new Error("tmux timed out")) });
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 5);
 		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+});
+
+describe("a backlog past one read goes out as ONE batch turn", () => {
+	/** A held message with a real text, recording whether it was ever typed on its own. */
+	function envelope(n: number, bytes = 650, typed: string[] = []) {
+		return {
+			text: `message ${n}`,
+			bytes,
+			deliver: vi.fn<(separator: string) => HeldDeliveryResult>(() => (typed.push(`message ${n}`), "landed")),
+			submit: vi.fn<() => HeldDeliveryResult>(() => "landed"),
+		};
+	}
+
+	/** An adapter batch that records every call and types a pointer naming how many it carries. */
+	function batcher(result: (texts: string[]) => HeldDeliveryResult = () => "landed") {
+		const calls: string[][] = [];
+		const typed: string[] = [];
+		const batch = vi.fn(async (texts: string[]): Promise<HeldMessageBatch> => {
+			calls.push(texts);
+			const text = `pointer to ${texts.length} (${calls.length})`;
+			return { text, bytes: 250, path: `/task/messages/burst-${calls.length}.md`, deliver: () => {
+				const outcome = result(texts);
+				if (outcome === "landed") typed.push(text);
+				return outcome;
+			} };
+		});
+		return { batch, calls, typed };
+	}
+
+	it("sends 33 held messages as one pointer and one Enter, one human window after the keystroke", async () => {
+		// The Seq 22 incident: 33 envelopes of ~650 bytes behind one keystroke took ~33 min.
+		const { batch, calls, typed } = batcher();
+		const singles: string[] = [];
+		const items = Array.from({ length: 33 }, (_, i) => ({ ...envelope(i + 1, 650, singles), batch }));
+		for (const item of items) holdAgentMessage(KEY, item, {});
+		deferHeldAgentMessagesForTask("task-1");
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
+
+		expect(calls).toEqual([items.map((item) => item.text)]);
+		expect(typed).toEqual(["pointer to 33 (1)"]);
+		expect(singles).toEqual([]);
+		expect(items.reduce((n, item) => n + item.submit.mock.calls.length, 0)).toBe(1);
+		expect(pendingAgentMessageHoldCount()).toBe(0);
+	});
+
+	it("types a burst that fits one read exactly as before, never as a batch", async () => {
+		const { batch } = batcher();
+		const typed: string[] = [];
+		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, 300, typed), batch }, {});
+
+		await vi.runAllTimersAsync();
+
+		expect(batch).not.toHaveBeenCalled();
+		expect(typed).toEqual(["message 1", "message 2", "message 3"]);
+	});
+
+	it("caps one batch at the message bound and sends the rest as the next turn", async () => {
+		const { batch, calls } = batcher();
+		const total = AGENT_MESSAGE_BATCH_MAX_MESSAGES + 10;
+		for (let n = 1; n <= total; n += 1) holdAgentMessage(KEY, { ...envelope(n), batch }, {});
+
+		await vi.runAllTimersAsync();
+
+		expect(calls.map((texts) => texts.length)).toEqual([AGENT_MESSAGE_BATCH_MAX_MESSAGES, 10]);
+		expect(calls[1]?.[0]).toBe(`message ${AGENT_MESSAGE_BATCH_MAX_MESSAGES + 1}`);
+	});
+
+	it("caps one batch at the byte bound", async () => {
+		const { batch, calls } = batcher();
+		const typed: string[] = [];
+		const big = AGENT_MESSAGE_BATCH_MAX_BYTES / 2 - 1;
+		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, big, typed), batch }, {});
+
+		await vi.runAllTimersAsync();
+
+		// Two fit under the bound; the third goes out on its own as it always did.
+		expect(calls).toEqual([["message 1", "message 2"]]);
+		expect(typed).toEqual(["message 3"]);
+	});
+
+	it("falls back to one turn per read when the batch cannot be written, losing nothing", async () => {
+		const typed: string[] = [];
+		const batch = vi.fn(async () => null);
+		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, 600, typed), batch }, {});
+
+		await vi.runAllTimersAsync();
+
+		expect(typed).toEqual(["message 1", "message 2", "message 3"]);
+	});
+
+	it("falls back the same way when the batch throws", async () => {
+		const typed: string[] = [];
+		const batch = vi.fn(async (): Promise<HeldMessageBatch> => {
+			throw new Error("disk full");
+		});
+		for (const n of [1, 2]) holdAgentMessage(KEY, { ...envelope(n, 600, typed), batch }, {});
+
+		await vi.runAllTimersAsync();
+
+		expect(typed).toEqual(["message 1", "message 2"]);
+	});
+
+	it("puts the ORIGINAL messages back when the pane refused the pointer, and batches them again", async () => {
+		let mode = true;
+		const { batch, calls, typed } = batcher(() => (mode ? "deferred" : "landed"));
+		const singles: string[] = [];
+		const items = [1, 2, 3].map((n) => ({ ...envelope(n, 600, singles), batch }));
+		for (const item of items) holdAgentMessage(KEY, item, {});
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+		mode = false;
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+
+		expect(calls).toEqual([items.map((i) => i.text), items.map((i) => i.text)]);
+		expect(typed).toEqual(["pointer to 3 (2)"]);
+		expect(singles).toEqual([]);
+		expect(items[2]?.submit).toHaveBeenCalledTimes(1);
+	});
+
+	it("strands on the POINTER: only a submission containing the pointer releases the turn", async () => {
+		const { batch } = batcher();
+		const items = [1, 2, 3].map((n) => ({ ...envelope(n, 600), batch, submit: vi.fn<() => HeldDeliveryResult>(() => "deferred") }));
+		for (const item of items) holdAgentMessage(KEY, item, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		const later = { ...envelope(4, 100), batch };
+		holdAgentMessage(KEY, later, {});
+
+		expect(releaseStrandedAgentMessagesOnSubmission("task-1", "message 2")).toBe(0);
+		expect(releaseStrandedAgentMessagesOnSubmission("task-1", "pointer to 3 (1)")).toBe(1);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(later.deliver).toHaveBeenCalledTimes(1);
+	});
+
+	it("names the batch file when a stranded batch's pane is gone", async () => {
+		const { batch } = batcher();
+		const reports: HeldAgentMessageReport[] = [];
+		const items = [1, 2, 3].map((n) => ({
+			...envelope(n, 600),
+			batch,
+			submit: vi.fn<() => HeldDeliveryResult>(() => "deferred"),
+			alive: () => false,
+			report: (event: HeldAgentMessageReport) => void reports.push(event),
+		}));
+		for (const item of items) holdAgentMessage(KEY, item, {});
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 2);
+
+		expect(reports[reports.length - 1]).toEqual({ kind: "dropped", messages: 3, why: "the agent pane is gone", paths: ["/task/messages/burst-1.md"] });
+	});
+
+	it("names the batch file when the pointer landed nowhere", async () => {
+		const { batch } = batcher(() => "failed");
+		const reports: HeldAgentMessageReport[] = [];
+		for (const n of [1, 2, 3]) {
+			holdAgentMessage(KEY, { ...envelope(n, 600), batch, report: (event) => void reports.push(event) }, {});
+		}
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+
+		expect(reports).toEqual([
+			{ kind: "dropped", messages: 3, why: "no text reached the agent pane", paths: ["/task/messages/burst-1.md"] },
+		]);
+	});
+});
+
+describe("a pane left in copy mode leaves no trail of batch files", () => {
+	it("undoes every refused batch across 10 minutes, then delivers one", async () => {
+		let mode = true;
+		const written = new Set<string>();
+		let seq = 0;
+		const discards: string[] = [];
+		const batch = vi.fn(async (): Promise<HeldMessageBatch> => {
+			const path = `/task/messages/burst-${(seq += 1)}.md`;
+			written.add(path);
+			return {
+				text: `pointer ${seq}`,
+				bytes: 250,
+				path,
+				deliver: () => (mode ? "deferred" : "landed"),
+				discard: () => {
+					written.delete(path);
+					discards.push(path);
+				},
+			};
+		});
+		const items = [1, 2, 3, 4, 5].map((n) => ({
+			text: `message ${n}`,
+			bytes: 650,
+			deliver: vi.fn<() => HeldDeliveryResult>(() => "landed"),
+			submit: vi.fn<() => HeldDeliveryResult>(() => "landed"),
+			batch,
+		}));
+		for (const item of items) holdAgentMessage(KEY, item, {});
+
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(batch.mock.calls.length).toBeGreaterThan(30);
+		expect(written.size).toBe(0);
+		expect(discards).toHaveLength(batch.mock.calls.length);
+
+		mode = false;
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		// Exactly one file survives: the one whose pointer was typed.
+		expect(written.size).toBe(1);
+		expect(items.reduce((n, item) => n + item.submit.mock.calls.length, 0)).toBe(1);
+		for (const item of items) expect(item.deliver).not.toHaveBeenCalled();
+	});
+
+	it("keeps the file when the pointer failed rather than being refused, so its path can be reported", async () => {
+		const discard = vi.fn();
+		const batch = vi.fn(async (): Promise<HeldMessageBatch> => ({
+			text: "pointer",
+			bytes: 250,
+			path: "/task/messages/burst-1.md",
+			deliver: () => "failed",
+			discard,
+		}));
+		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { text: `m${n}`, bytes: 600, deliver: () => "landed", submit: () => "landed", batch }, {});
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+
+		expect(discard).not.toHaveBeenCalled();
+	});
+});
+
+describe("the user's typing is one clock per task, not a flag a hold carries", () => {
+	/** A 600-byte message: two never share a turn, so each release leaves a continuation. */
+	function turn(name: string, order: string[], onDeliver?: () => void) {
+		return {
+			deliver: vi.fn<(separator: string) => HeldDeliveryResult>(() => {
+				order.push(`${name}@${Date.now()}`);
+				onDeliver?.();
+				return "landed";
+			}),
+			bytes: 600,
+			submit: vi.fn<() => HeldDeliveryResult>(() => "landed"),
+		};
+	}
+
+	it("one old keystroke no longer stretches every later turn to the human window", async () => {
+		// The sticky flag made each of 33 turns wait 60 s; only the first may.
+		const order: string[] = [];
+		const start = Date.now();
+		for (const name of ["a", "b", "c"]) holdAgentMessage(KEY, turn(name, order), {});
+		deferHeldAgentMessagesForTask("task-1");
+
+		await vi.runAllTimersAsync();
+
+		const at = order.map((entry) => Number(entry.split("@")[1]) - start);
+		expect(at).toEqual([
+			AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+			AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS + AGENT_MESSAGE_HOLD_IDLE_MS,
+			AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS + AGENT_MESSAGE_HOLD_IDLE_MS * 2,
+		]);
+	});
+
+	it("a keystroke that lands WHILE a release is typing still holds back what it leaves", async () => {
+		// The release has taken its hold out of the map, so no hold exists to flag.
+		const order: string[] = [];
+		const start = Date.now();
+		holdAgentMessage(KEY, turn("a", order, () => deferHeldAgentMessagesForTask("task-1")), {});
+		holdAgentMessage(KEY, turn("b", order), {});
+
+		await vi.runAllTimersAsync();
+
+		expect(order.map((entry) => Number(entry.split("@")[1]) - start)).toEqual([
+			AGENT_MESSAGE_HOLD_IDLE_MS,
+			AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+		]);
+	});
+
+	it("the user's own Enter ends his window: what is left goes back to the quiet window", async () => {
+		const order: string[] = [];
+		for (const name of ["a", "b"]) holdAgentMessage(KEY, turn(name, order), {});
+		deferHeldAgentMessagesForTask("task-1");
+		await vi.advanceTimersByTimeAsync(5_000);
+		const flushedAt = Date.now();
+		flushHeldAgentMessagesForTask("task-1");
+
+		await vi.runAllTimersAsync();
+
+		expect(order.map((entry) => Number(entry.split("@")[1]) - flushedAt)).toEqual([0, AGENT_MESSAGE_HOLD_IDLE_MS]);
+	});
+
+	it("a message arriving mid-window waits only what is left of it, not a fresh full one", async () => {
+		const first = message();
+		holdAgentMessage(KEY, first, {});
+		deferHeldAgentMessagesForTask("task-1");
+		await vi.advanceTimersByTimeAsync(30_000);
+
+		expect(holdAgentMessage(KEY, message(), {})).toBe(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS - 30_000);
+	});
+
+	it("keeps each task's clock to itself", async () => {
+		const stranger = message();
+		deferHeldAgentMessagesForTask("task-1");
+		holdAgentMessage(agentMessageHoldKey("tmux", "task-2", "%1"), stranger, {});
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(stranger.submit).toHaveBeenCalledTimes(1);
 	});
 });

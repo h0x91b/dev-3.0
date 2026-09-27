@@ -16,10 +16,19 @@
  *    senders' reports (issue #1608).
  *  - The newest registration wins the submit closure, because it carries the freshest
  *    pane pin; the ceiling deadline stays with the FIRST undelivered message.
- *  - A MESSAGE-driven hold keeps the ceiling; a HUMAN-driven one has none, and its quiet
+ *  - A MESSAGE-driven wait keeps the ceiling; the user's typing has none, and its quiet
  *    window is four times longer, because a pause to think is part of writing a line. A
  *    stream of senders cannot hold a receiver hostage, but the user's own typing
- *    outranks every deadline — his hold ends with his Enter or with a long silence.
+ *    outranks every deadline — his wait ends with his Enter or with a long silence.
+ *  - That typing is ONE clock per task (the last keystroke), not a flag on a hold. A
+ *    keystroke that lands while a release is typing still counts, and one old keystroke
+ *    can never follow a backlog through every later turn (the ~30-minute delay of
+ *    `decisions/2026/09/27/batch-held-backlog-and-clock-human-typing.md`).
+ *  - A backlog that does not fit one terminal read goes out as ONE turn: up to
+ *    {@link AGENT_MESSAGE_BATCH_MAX_MESSAGES} messages (and
+ *    {@link AGENT_MESSAGE_BATCH_MAX_BYTES}) are written to a file, oldest first, and
+ *    one short envelope pointing at it is typed. A burst that fits is typed as-is; a
+ *    batch that cannot be written falls back to one turn per read.
  *  - The user's own plain Enter releases the hold at once: he submitted his line, so
  *    the input box is no longer his and he should watch the message arrive.
  *  - No Enter is sent when no text landed — an Enter into an unknown input box would
@@ -65,7 +74,29 @@ export type HeldDeliveryResult = "landed" | "deferred" | "failed";
 /** What the hold tells whoever is watching the pane, so a stuck or lost message is never silent. */
 export type HeldAgentMessageReport =
 	| { kind: "stranded"; waiting: number }
-	| { kind: "dropped"; messages: number; why: string };
+	/** `paths`: batch files that still hold the undelivered messages, so they stay readable. */
+	| { kind: "dropped"; messages: number; why: string; paths?: string[] };
+
+/** At most this many messages go into one batch file; the rest wait for the next turn. */
+export const AGENT_MESSAGE_BATCH_MAX_MESSAGES = 50;
+
+/** …and at most this many bytes, so one turn never hands the agent an unbounded file. */
+export const AGENT_MESSAGE_BATCH_MAX_BYTES = 256 * 1024;
+
+/** A backlog already written to a file: the pointer to type, and how to type it. */
+export interface HeldMessageBatch {
+	/** The pointer envelope exactly as typed — what a submission must contain to release it. */
+	text: string;
+	bytes: number;
+	path: string;
+	deliver: (separator: string) => HeldDeliveryResult | Promise<HeldDeliveryResult>;
+	/**
+	 * Undo the batch when its pointer was refused before anything was typed: delete the
+	 * file and take back the receipt. The originals are batched afresh next time, so a
+	 * pane left in copy mode must not leave a file and a receipt behind every window.
+	 */
+	discard?: () => void | Promise<void>;
+}
 
 /** One message waiting for a pane: how to type it, how big it is, and how to submit the burst. */
 export interface HeldAgentMessage {
@@ -103,32 +134,65 @@ export interface HeldAgentMessage {
 	alive?: () => boolean | Promise<boolean>;
 	/** Where stranding and drops are reported; the newest registration wins, like `submit`. */
 	report?: (event: HeldAgentMessageReport) => void;
+	/**
+	 * Writes these texts (oldest first) to one file and returns the pointer to type in
+	 * their place, or `null` to keep typing them one by one. Absent means no batching.
+	 * The newest registration wins, like `submit`.
+	 */
+	batch?: (texts: string[]) => Promise<HeldMessageBatch | null>;
+}
+
+/**
+ * One typing step. A batch pointer is one step that stands for `originals`: those are
+ * what goes back in the queue when the pointer was never typed.
+ */
+type HeldDelivery = Pick<HeldAgentMessage, "deliver" | "bytes" | "text"> & {
+	originals?: HeldDelivery[];
+	path?: string;
+	discard?: HeldMessageBatch["discard"];
+};
+
+/** How many messages a step stands for. */
+function messageCount(deliveries: readonly HeldDelivery[]): number {
+	return deliveries.reduce((n, d) => n + (d.originals?.length ?? 1), 0);
+}
+
+/** The messages back in their own form, a batch pointer unfolded into what it stood for. */
+function unfold(deliveries: readonly HeldDelivery[]): HeldDelivery[] {
+	return deliveries.flatMap((d) => d.originals ?? [d]);
+}
+
+function batchPaths(deliveries: readonly HeldDelivery[]): string[] | undefined {
+	const paths = deliveries.flatMap((d) => (d.path ? [d.path] : []));
+	return paths.length > 0 ? paths : undefined;
 }
 
 interface Hold {
 	timer: ReturnType<typeof setTimeout> | null;
 	/** When the first still-undelivered message landed — the ceiling is measured from it. */
 	firstAt: number;
-	/** Set by the first human keystroke that pushed this hold back; the ceiling then stops applying. */
-	humanHeld: boolean;
 	/** Every message waiting for this pane, in arrival order, with the bytes each types. */
-	deliveries: Pick<HeldAgentMessage, "deliver" | "bytes" | "text">[];
+	deliveries: HeldDelivery[];
 	/** Typed once after them all; the newest registration wins, like `submit`. */
 	epilogue: HeldAgentMessage["epilogue"];
 	submit: HeldAgentMessage["submit"];
 	alive: HeldAgentMessage["alive"];
 	report: HeldAgentMessage["report"];
+	batch: HeldAgentMessage["batch"];
 	context: Record<string, string>;
 	/**
-	 * Texts that landed in the pane with no Enter after them. Non-null means the turn is
-	 * stranded: nothing is typed and nothing is submitted until a matching submission.
+	 * Steps whose text landed in the pane with no Enter after them. Non-null means the turn
+	 * is stranded: nothing is typed and nothing is submitted until a matching submission.
 	 */
-	stranded: string[] | null;
+	stranded: HeldDelivery[] | null;
 	/** The last release found the pane in copy mode; retry on the quiet window, not the ceiling. */
 	modeDeferred: boolean;
 }
 
 const holds = new Map<string, Hold>();
+
+/** When the user last typed into each task's terminals — see the module rules. */
+const lastHumanInputAt = new Map<string, number>();
 
 /** The pane a message is held for. Two backends can name the same pane id. */
 export function agentMessageHoldKey(backend: "tmux" | "native", taskId: string, paneId: string): string {
@@ -139,13 +203,24 @@ function taskOfKey(key: string): string | undefined {
 	return key.split(":")[1];
 }
 
-function delayFor(hold: Hold, now: number): number {
-	// A human at the keyboard gets his own, much longer window every time, with no
-	// deadline behind it — see both constants' own comments.
-	if (hold.humanHeld) return AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS;
+/** What is left of the user's own quiet window after his last keystroke in this task. */
+function humanWaitMs(key: string, now: number): number {
+	const task = taskOfKey(key) ?? "";
+	const at = lastHumanInputAt.get(task);
+	if (at === undefined) return 0;
+	const wait = at + AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS - now;
+	if (wait > 0) return wait;
+	lastHumanInputAt.delete(task);
+	return 0;
+}
+
+function delayFor(key: string, hold: Hold, now: number): number {
 	// A spent ceiling would turn a scrolled-up pane into a zero-delay retry loop.
-	if (hold.modeDeferred) return AGENT_MESSAGE_HOLD_IDLE_MS;
-	return Math.max(0, Math.min(AGENT_MESSAGE_HOLD_IDLE_MS, hold.firstAt + AGENT_MESSAGE_HOLD_CEILING_MS - now));
+	const quiet = hold.modeDeferred
+		? AGENT_MESSAGE_HOLD_IDLE_MS
+		: Math.max(0, Math.min(AGENT_MESSAGE_HOLD_IDLE_MS, hold.firstAt + AGENT_MESSAGE_HOLD_CEILING_MS - now));
+	// The user's typing outranks the ceiling: his window has no deadline behind it.
+	return Math.max(quiet, humanWaitMs(key, now));
 }
 
 function rearm(key: string, hold: Hold, now: number): number {
@@ -154,7 +229,7 @@ function rearm(key: string, hold: Hold, now: number): number {
 		hold.timer = setTimeout(() => void probe(key, hold), AGENT_MESSAGE_HOLD_IDLE_MS);
 		return AGENT_MESSAGE_HOLD_IDLE_MS;
 	}
-	const delay = delayFor(hold, now);
+	const delay = delayFor(key, hold, now);
 	hold.timer = setTimeout(() => void release(key, hold), delay);
 	return delay;
 }
@@ -187,7 +262,12 @@ async function probe(key: string, hold: Hold): Promise<void> {
 		...hold.context,
 		waiting: String(hold.deliveries.length),
 	});
-	report(hold, { kind: "dropped", messages: hold.stranded.length + hold.deliveries.length, why: "the agent pane is gone" });
+	report(hold, {
+		kind: "dropped",
+		messages: messageCount(hold.stranded) + messageCount(hold.deliveries),
+		why: "the agent pane is gone",
+		paths: batchPaths([...hold.stranded, ...hold.deliveries]),
+	});
 }
 
 /**
@@ -201,12 +281,12 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 	const hold: Hold = existing ?? {
 		timer: null,
 		firstAt: now,
-		humanHeld: false,
 		deliveries: [],
 		epilogue: message.epilogue,
 		submit: message.submit,
 		alive: message.alive,
 		report: message.report,
+		batch: message.batch,
 		context,
 		stranded: null,
 		modeDeferred: false,
@@ -216,6 +296,7 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 	hold.submit = message.submit;
 	hold.alive = message.alive;
 	hold.report = message.report;
+	hold.batch = message.batch;
 	hold.context = context;
 	holds.set(key, hold);
 	const delay = rearm(key, hold, now);
@@ -224,14 +305,17 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		delayMs: String(delay),
 		heldForMs: String(now - hold.firstAt),
 		waiting: String(hold.deliveries.length),
-		humanHeld: String(hold.humanHeld),
+		humanHeld: String(humanWaitMs(key, now) > 0),
 	});
 	return delay;
 }
 
 /**
- * A human typed into one of this task's terminals — push every message held for that
- * task back by a full idle window, and drop the ceiling for it.
+ * A human typed into one of this task's terminals — restart the task's typing clock and
+ * push every message held for it back to a full human window, with no ceiling.
+ *
+ * The clock is kept even when nothing is held: a keystroke that lands while a release is
+ * typing must still delay whatever that release leaves behind.
  *
  * Task-wide, not per-pane, on purpose: a tmux client types into whichever pane is
  * active, so the keystrokes carry no pane of their own.
@@ -239,12 +323,12 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
  * Returns how many holds were pushed back.
  */
 export function deferHeldAgentMessagesForTask(taskId: string): number {
-	if (holds.size === 0) return 0;
 	const now = Date.now();
+	lastHumanInputAt.set(taskId, now);
+	if (holds.size === 0) return 0;
 	let deferred = 0;
 	for (const [key, hold] of holds) {
 		if (taskOfKey(key) !== taskId || hold.stranded) continue;
-		hold.humanHeld = true;
 		const delay = rearm(key, hold, now);
 		deferred += 1;
 		log.info("agent message deferred by human typing", {
@@ -262,6 +346,8 @@ export function deferHeldAgentMessagesForTask(taskId: string): number {
  * were released.
  */
 export function flushHeldAgentMessagesForTask(taskId: string): number {
+	// His line is submitted, so the box is free: nothing may keep waiting for his typing.
+	lastHumanInputAt.delete(taskId);
 	if (holds.size === 0) return 0;
 	let flushed = 0;
 	for (const [key, hold] of [...holds]) {
@@ -286,7 +372,7 @@ export function releaseStrandedAgentMessagesOnSubmission(taskId: string, submitt
 	let released = 0;
 	for (const [key, hold] of holds) {
 		if (taskOfKey(key) !== taskId || !hold.stranded) continue;
-		if (!hold.stranded.every((text) => submissionMatchesTypedText(submitted, text))) continue;
+		if (!hold.stranded.every((step) => submissionMatchesTypedText(submitted, step.text))) continue;
 		released += 1;
 		log.info("stranded agent message turn released by a matching submission", {
 			...hold.context,
@@ -294,7 +380,6 @@ export function releaseStrandedAgentMessagesOnSubmission(taskId: string, submitt
 		});
 		hold.stranded = null;
 		hold.modeDeferred = false;
-		hold.humanHeld = false;
 		hold.firstAt = Date.now();
 		if (hold.deliveries.length === 0) {
 			if (hold.timer) clearTimeout(hold.timer);
@@ -317,7 +402,7 @@ const SEPARATOR_BYTES = utf8Length(AGENT_MESSAGE_BURST_SEPARATOR);
  * read hands it: three 600-byte envelopes released together are 1 800 bytes of one
  * stream, and its first chunk is exactly the piece that gets dropped (issue #1608).
  */
-function burstFitCount(deliveries: Hold["deliveries"]): number {
+function burstFitCount(deliveries: readonly HeldDelivery[]): number {
 	let typed = 0;
 	for (const [index, delivery] of deliveries.entries()) {
 		const cost = delivery.bytes + (index === 0 ? 0 : SEPARATOR_BYTES);
@@ -335,14 +420,13 @@ function burstFitCount(deliveries: Hold["deliveries"]): number {
 function requeue(
 	key: string,
 	from: Hold,
-	deliveries: Hold["deliveries"],
+	deliveries: HeldDelivery[],
 	carry: Pick<Hold, "stranded" | "modeDeferred">,
 ): void {
 	const now = Date.now();
 	const fresh = holds.get(key);
 	if (fresh) {
 		fresh.deliveries.unshift(...deliveries);
-		fresh.humanHeld ||= from.humanHeld;
 		fresh.stranded = carry.stranded;
 		fresh.modeDeferred ||= carry.modeDeferred;
 		rearm(key, fresh, now);
@@ -353,11 +437,61 @@ function requeue(
 	rearm(key, next, now);
 }
 
+/** How many leading `deliveries` one batch file may carry: the message and the byte bound. */
+function batchFitCount(deliveries: readonly HeldDelivery[]): number {
+	let bytes = 0;
+	let count = 0;
+	for (const delivery of deliveries) {
+		if (count === AGENT_MESSAGE_BATCH_MAX_MESSAGES) break;
+		if (count > 0 && bytes + delivery.bytes > AGENT_MESSAGE_BATCH_MAX_BYTES) break;
+		bytes += delivery.bytes;
+		count += 1;
+	}
+	return count;
+}
+
 /**
- * Type the messages this hold gathered that fit one pty read, in arrival order, then
- * submit them as one turn. Whatever did not fit stays held and lands in the next quiet
- * window as its own turn. A message that arrives while this is running starts a fresh
- * hold — the pane is mid-delivery, so joining it could interleave two pastes.
+ * Split what this release types from what waits for the next one. A burst that fits one
+ * read is typed as-is. A larger backlog becomes ONE batch pointer when the adapter can
+ * write it, and the old one-turn-per-read path when it cannot.
+ */
+async function planRelease(hold: Hold): Promise<{ going: HeldDelivery[]; waiting: HeldDelivery[] }> {
+	const fits = burstFitCount(hold.deliveries);
+	const perRead = { going: hold.deliveries.slice(0, fits), waiting: hold.deliveries.slice(fits) };
+	if (fits === hold.deliveries.length || !hold.batch) return perRead;
+
+	const count = batchFitCount(hold.deliveries);
+	if (count <= fits) return perRead;
+	const originals = hold.deliveries.slice(0, count);
+	let batch: HeldMessageBatch | null = null;
+	try {
+		batch = await hold.batch(originals.map((d) => d.text));
+	} catch (err) {
+		log.warn("held agent message batch failed", { ...hold.context, error: String(err) });
+	}
+	if (!batch) return perRead;
+	log.info("held agent messages go out as one batch file", {
+		...hold.context,
+		messages: String(count),
+		path: batch.path,
+		waiting: String(hold.deliveries.length - count),
+	});
+	const pointer: HeldDelivery = {
+		deliver: batch.deliver,
+		bytes: batch.bytes,
+		text: batch.text,
+		originals,
+		path: batch.path,
+		discard: batch.discard,
+	};
+	return { going: [pointer], waiting: hold.deliveries.slice(count) };
+}
+
+/**
+ * Type the messages this release carries, in arrival order, then submit them as one
+ * turn. Whatever did not fit stays held and lands in the next quiet window as its own
+ * turn. A message that arrives while this is running starts a fresh hold — the pane is
+ * mid-delivery, so joining it could interleave two pastes.
  */
 async function release(key: string, hold: Hold): Promise<void> {
 	// A newer hold may already own this pane; only the current one may release.
@@ -365,11 +499,9 @@ async function release(key: string, hold: Hold): Promise<void> {
 	holds.delete(key);
 	if (hold.timer) clearTimeout(hold.timer);
 
-	const fits = burstFitCount(hold.deliveries);
-	const going = hold.deliveries.slice(0, fits);
-	const waiting = hold.deliveries.slice(fits);
+	const { going, waiting } = await planRelease(hold);
 	let typed = 0;
-	const landedTexts: string[] = [];
+	const landedSteps: HeldDelivery[] = [];
 	let deferredAt = -1;
 	for (const [index, delivery] of going.entries()) {
 		// The first message opens the turn; every later one needs a visible boundary,
@@ -380,28 +512,31 @@ async function release(key: string, hold: Hold): Promise<void> {
 				deferredAt = index;
 				break;
 			}
-			if (result === "landed") landedTexts.push(delivery.text);
+			if (result === "landed") landedSteps.push(delivery);
 		} catch (err) {
 			log.warn("held agent message text failed", { ...hold.context, error: String(err) });
 		}
 		typed += delivery.bytes + (index === 0 ? 0 : SEPARATOR_BYTES);
 	}
-	const landed = landedTexts.length > 0;
+	const landed = landedSteps.length > 0;
 
 	if (deferredAt >= 0) {
-		const rest = [...going.slice(deferredAt), ...waiting];
+		// A pointer that never reached the box goes back as the messages it stood for;
+		// the next release writes them again.
+		const rest = [...unfold(going.slice(deferredAt)), ...waiting];
 		if (landed) {
-			strand(key, hold, landedTexts, rest, "the pane went into copy mode mid-turn");
+			strand(key, hold, landedSteps, rest, "the pane went into copy mode mid-turn");
 			return;
 		}
 		// Nothing is in the box yet, so the whole turn simply waits for the pane.
 		if (!hold.modeDeferred) log.info("held agent message deferred: the pane is in copy mode", hold.context);
+		await discardUntyped(hold, going.slice(deferredAt));
 		requeue(key, hold, rest, { stranded: null, modeDeferred: true });
 		return;
 	}
 	if (!landed) {
 		log.warn("held agent message landed nowhere; sending no Enter", hold.context);
-		report(hold, { kind: "dropped", messages: going.length, why: "no text reached the agent pane" });
+		report(hold, { kind: "dropped", messages: messageCount(going), why: "no text reached the agent pane", paths: batchPaths(going) });
 		if (waiting.length > 0) requeue(key, hold, waiting, { stranded: null, modeDeferred: false });
 		return;
 	}
@@ -422,14 +557,14 @@ async function release(key: string, hold: Hold): Promise<void> {
 		log.warn("held agent message submit failed", { ...hold.context, error: String(err) });
 	}
 	if (submitted === "deferred") {
-		strand(key, hold, landedTexts, waiting, "the pane went into copy mode before the Enter");
+		strand(key, hold, landedSteps, waiting, "the pane went into copy mode before the Enter");
 		return;
 	}
 	if (waiting.length > 0) {
 		log.info("held agent message burst split to stay inside one terminal read", {
 			...hold.context,
 			typedBytes: String(typed),
-			sent: String(going.length),
+			sent: String(messageCount(going)),
 			waiting: String(waiting.length),
 		});
 		// Its own turn, its own Enter, after another quiet window: the same closures the
@@ -438,14 +573,26 @@ async function release(key: string, hold: Hold): Promise<void> {
 	}
 }
 
+/** Undo every batch among `steps`, which the pane refused before one byte of them was typed. */
+async function discardUntyped(hold: Hold, steps: readonly HeldDelivery[]): Promise<void> {
+	for (const step of steps) {
+		if (!step.discard) continue;
+		try {
+			await step.discard();
+		} catch (err) {
+			log.warn("held message batch could not be discarded", { ...hold.context, path: step.path ?? "", error: String(err) });
+		}
+	}
+}
+
 /** Text is in the box and dev3 may not press Enter on it: park the turn and say so. */
-function strand(key: string, hold: Hold, landedTexts: string[], rest: Hold["deliveries"], why: string): void {
+function strand(key: string, hold: Hold, landedSteps: HeldDelivery[], rest: HeldDelivery[], why: string): void {
 	log.warn("held agent message turn stranded: text landed, dev3 will not press Enter", {
 		...hold.context,
 		why,
 		waiting: String(rest.length),
 	});
-	requeue(key, hold, rest, { stranded: landedTexts, modeDeferred: true });
+	requeue(key, hold, rest, { stranded: landedSteps, modeDeferred: true });
 	report(hold, { kind: "stranded", waiting: rest.length });
 }
 
@@ -462,8 +609,9 @@ export function pendingAgentMessageHoldCount(): number {
 	return holds.size;
 }
 
-/** Drop every held message without delivering it (tests). */
+/** Drop every held message and the typing clocks without delivering anything (tests). */
 export function resetAgentMessageHolds(): void {
 	for (const hold of holds.values()) if (hold.timer) clearTimeout(hold.timer);
 	holds.clear();
+	lastHumanInputAt.clear();
 }

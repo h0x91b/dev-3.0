@@ -1,5 +1,7 @@
 # Nothing longer than one pty read is ever typed into an agent pane
 
+> Superseded in part on 2026-09-27 by `decisions/2026/09/27/batch-held-backlog-and-clock-human-typing.md`: a backlog past one read now goes out as one batch-file pointer; one turn per read remains only as the fallback.
+
 ## Context
 
 Issue #1608: a `dev3 message` between two tasks arrives with its BEGINNING missing.

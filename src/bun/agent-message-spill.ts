@@ -9,9 +9,15 @@
  * read it.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, type AgentMessageSource, type Task } from "../shared/types";
-import { wrapAgentMessage } from "../shared/agent-message-envelope";
+import {
+	AGENT_MESSAGE_BURST_SEPARATOR,
+	heldBatchSenders,
+	wrapAgentMessage,
+	wrapHeldBatchPointer,
+} from "../shared/agent-message-envelope";
 import { utf8Length } from "../shared/pane-input";
 import * as data from "./data";
 import { taskDir } from "./git";
@@ -33,11 +39,19 @@ export interface AgentMessageEnvelope {
 }
 
 /**
- * Sibling of the git worktree, never inside it — a dump under `<worktree>/` would
- * show up untracked in `git status`. Dies with the task directory on cleanup.
+ * Write `content` to a fresh file under the task's `messages/`, a sibling of the git
+ * worktree (a dump inside it would show up in `git status`), dying with the task
+ * directory on cleanup. The name carries a random suffix and the file is created
+ * exclusively: two spills in the same millisecond used to overwrite each other.
  */
-function messageSpillPath(taskRoot: string, stamp: string): string {
-	return `${taskRoot}/messages/message-${stamp}.md`;
+async function writeTaskMessageFile(task: Task, kind: "message" | "burst", content: string): Promise<string> {
+	const project = await data.getProject(task.projectId);
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const dir = `${taskDir(project, task)}/messages`;
+	const path = `${dir}/${kind}-${stamp}-${randomUUID().slice(0, 8)}.md`;
+	await mkdir(dir, { recursive: true });
+	await writeFile(path, content, { encoding: "utf8", flag: "wx" });
+	return path;
 }
 
 /** The pointer the agent receives in place of a body that cannot be typed whole. */
@@ -73,11 +87,48 @@ export async function spillOversizedAgentMessage(
 	if (typedBytes(task, text, envelope) <= AGENT_MESSAGE_SPILL_THRESHOLD_BYTES) return { text, spilledPath: null };
 
 	const bytes = utf8Length(text);
-	const project = await data.getProject(task.projectId);
-	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const path = messageSpillPath(taskDir(project, task), stamp);
-	await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
-	await writeFile(path, text, "utf8");
+	const path = await writeTaskMessageFile(task, "message", text);
 	log.info("Agent message spilled to file", { taskId: task.id.slice(0, 8), bytes, path });
 	return { text: spillPointerText(path, bytes), spilledPath: path };
+}
+
+/** A held backlog written to one file, and the single envelope typed in its place. */
+export interface SpilledHeldBatch {
+	path: string;
+	pointer: string;
+}
+
+/**
+ * Write a held backlog — each message's exact typed text, oldest first — to one file
+ * and build the one envelope that points at it. `null` means "type them one by one as
+ * before": the write failed (nobody is listening at release time, so it must not
+ * throw) or not even a bare pointer fits one read.
+ */
+export async function spillHeldMessageBatch(task: Task, texts: readonly string[]): Promise<SpilledHeldBatch | null> {
+	const context = { taskId: task.id.slice(0, 8), messages: String(texts.length) };
+	let path: string;
+	try {
+		path = await writeTaskMessageFile(task, "burst", texts.join(AGENT_MESSAGE_BURST_SEPARATOR));
+	} catch (err) {
+		log.warn("held message batch could not be written; typing the messages one by one", { ...context, error: String(err) });
+		return null;
+	}
+	const senders = heldBatchSenders(texts);
+	const pointer = wrapHeldBatchPointer(texts.length, senders, path, AGENT_MESSAGE_SPILL_THRESHOLD_BYTES);
+	if (!pointer) {
+		log.warn("held message batch pointer does not fit one terminal read; typing the messages one by one", { ...context, path });
+		return null;
+	}
+	log.info("held messages batched into one file", { ...context, path, fromSeq: senders.join(",") });
+	return { path, pointer };
+}
+
+/** Delete a batch file whose pointer was never typed. Already gone counts as done. */
+export async function discardHeldMessageBatch(path: string): Promise<void> {
+	try {
+		await unlink(path);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+	}
+	log.info("held message batch discarded: its pointer was never typed", { path });
 }

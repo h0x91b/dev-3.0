@@ -152,6 +152,44 @@ export function seqIsShared(task: { id: string; seq: number }, boardTasks: Array
 	return boardTasks.some((t) => t.seq === task.seq && t.id !== task.id);
 }
 
+const FROM_TASK_RE = /<from-task>([^<]+)<\/from-task>/;
+
+/** The sender address of each envelope, first-seen order, duplicates dropped; non-envelopes add nothing. */
+export function heldBatchSenders(texts: readonly string[]): string[] {
+	const senders: string[] = [];
+	for (const text of texts) {
+		const ref = FROM_TASK_RE.exec(text)?.[1];
+		if (ref && !senders.includes(ref)) senders.push(ref);
+	}
+	return senders;
+}
+
+/**
+ * The one envelope typed in place of a held backlog that no longer fits one terminal
+ * read. It must itself fit that read, so the sender list is cut down (`… +N more`)
+ * before the path ever is; `null` when even the bare path does not fit — the caller
+ * then falls back to typing the messages one turn at a time.
+ */
+export function wrapHeldBatchPointer(count: number, senders: readonly string[], path: string, maxBytes: number): string | null {
+	const build = (shown: readonly string[]): string => {
+		const hidden = senders.length - shown.length;
+		const from = shown.length === 0 ? "" : ` from ${shown.join(", ")}${hidden > 0 ? `, … +${hidden} more` : ""}`;
+		return [
+			"<dev3-ai-message>",
+			`<subject>${count} held messages in one file</subject>`,
+			"<message>",
+			`${count} messages${from} arrived while this pane was busy. They are in one file, oldest first; each keeps its own sender and reply command. Read it in full and act on each: ${path}`,
+			"</message>",
+			"</dev3-ai-message>",
+		].join("\n");
+	};
+	for (let shown = senders.length; shown >= 0; shown -= 1) {
+		const pointer = build(senders.slice(0, shown));
+		if (new TextEncoder().encode(pointer).length <= maxBytes) return pointer;
+	}
+	return null;
+}
+
 /** Minimal escaping for the single-line metadata tags (the body stays verbatim). */
 function escapeXmlText(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
