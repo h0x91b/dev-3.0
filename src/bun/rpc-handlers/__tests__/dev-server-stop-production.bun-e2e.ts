@@ -34,6 +34,7 @@
  * Run: bun run test:dev-server-stop-e2e   [--cycles N]
  */
 
+import { spawnSync as nodeSpawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -123,6 +124,8 @@ async function run(): Promise<void> {
 	mkdirSync(home, { recursive: true });
 	mkdirSync(join(worktree, ".dev3"), { recursive: true });
 	mkdirSync(projectPath, { recursive: true });
+	// A git project's launchers refuse a folder without `.git` (task-workspace-guard).
+	nodeSpawnSync("git", ["init", "-q", worktree], { stdio: "ignore" });
 
 	// A real project config, read by the real resolver.
 	writeFileSync(

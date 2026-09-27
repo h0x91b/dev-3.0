@@ -26,6 +26,9 @@ const TEST_SOCKET = `dev3-e2e-${process.pid}`;
 const TASK_ID = `e2e-${Date.now()}-0000-0000-000000000000`;
 const PROJECT_ID = `proj-e2e-${Date.now()}`;
 const WORK_DIR = mkdtempSync(join(tmpdir(), "dev3-e2e-"));
+// A git project's launchers refuse a folder without `.git` (task-workspace-guard):
+// the fixture must look like a real worktree, not just an empty temp dir.
+nodeSpawnSync("git", ["init", "-q", WORK_DIR], { stdio: "ignore" });
 
 // ── Set up shared state with mocked data module ─────────────────────
 

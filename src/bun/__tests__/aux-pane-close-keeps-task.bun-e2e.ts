@@ -27,6 +27,7 @@
  * Run: bun src/bun/__tests__/aux-pane-close-keeps-task.bun-e2e.ts
  */
 
+import { spawnSync as nodeSpawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -51,6 +52,8 @@ const worktreePath = join(root, "worktree");
 mkdirSync(home, { recursive: true });
 mkdirSync(projectPath, { recursive: true });
 mkdirSync(worktreePath, { recursive: true });
+// A git project's launchers refuse a folder without `.git` (task-workspace-guard).
+nodeSpawnSync("git", ["init", "-q", worktreePath], { stdio: "ignore" });
 process.env.DEV3_HOME = home;
 process.env.DEV3_NATIVE_SESSIONS_DIR = join(root, "sessions");
 process.env.DEV3_NATIVE_MULTIPANE_DIR = join(root, "multipane");
