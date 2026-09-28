@@ -22,7 +22,7 @@ describe("buildCmdScript with the agent delivery fence", () => {
 	it.skipIf(process.platform === "win32")("opens the fence before the agent and closes it before any notice or shell", () => {
 		const lines = script({ keepShell: true, shellPath: "/bin/zsh", agentFence: FENCE });
 		const start = lines.findIndex((l) => l.includes("Starting: codex --yolo"));
-		const open = lines.findIndex((l) => l.includes(`"open:$__DEV3_FLAUNCH"`));
+		const open = lines.findIndex((l) => l.includes("#{==:#{@dev3_agent_input},}"));
 		const exit = lines.indexOf("__EC=$?");
 		const close = lines.findIndex((l) => l.includes("__dev3_own_close \"$__EC\""));
 		const untrap = lines.lastIndexOf("trap - INT QUIT TSTP");
@@ -38,6 +38,15 @@ describe("buildCmdScript with the agent delivery fence", () => {
 		// The binary is the committed absolute one, and every call names the pane's own server.
 		expect(lines).toContain("__DEV3_FTMUX='/opt/dev3/tmux'");
 		expect(lines.join("\n")).toContain('"$__DEV3_FTMUX" -S "${TMUX%%,*}"');
+	});
+
+	// N4-R1: re-running the script must not reopen its launch, so the open is conditional on
+	// an EMPTY fence and trusted only with this attempt's own opener nonce read back.
+	it("opens only an unfenced pane, and only trusts a read-back of its own opener nonce", () => {
+		const body = script({ keepShell: true, shellPath: "/bin/sh", agentFence: FENCE }).join("\n");
+		expect(body).toContain(`if-shell -t "$TMUX_PANE" -F '#{==:#{@dev3_agent_input},}'`);
+		expect(body).toContain('[ "$__dev3_ov" = "dev3-agent-fence:open:$__DEV3_FLAUNCH $__dev3_on" ]');
+		expect(body).not.toMatch(/__dev3_tmux set-option -p -t "\$TMUX_PANE" @dev3_agent_input "open:/);
 	});
 
 	it("adds nothing without keepShell: that pane closes with its agent", () => {

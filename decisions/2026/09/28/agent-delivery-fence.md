@@ -36,6 +36,11 @@ Every result below was measured on tmux 3.6a in disposable fixtures. The report 
 
 It is read in the same sighting as the pane, pinned into `PaneIncarnation.agentFence`, and compared inside the one guard. A closed fence is the retryable reason `agent-exited` (`src/shared/pane-input.ts`, `src/bun/pane-input.ts`, `pane-input-tmux.ts`, `tmux/client.ts`).
 
+**The open.** It is a compare-and-set too (N4-R1). The wrapper opens only a pane with **no** fence, stores a per-attempt opener nonce in the same list, and trusts only a read-back of both.
+- Re-running a generated script in the same pane therefore never reopens its launch: a closed fence stays closed, and every pin of the first run stays refused.
+- An `open:<x>` that a dead earlier attempt left in the pane is closed at once (`closed:<x>:255`); a malformed value is left as it is.
+- In every one of those cases the run proceeds unfenced and is refused, and says so.
+
 **The close.** `agentFenceCloseLines`, in `src/bun/agent-fence-wrapper.ts`, spliced by `buildCmdScript`:
 1. The wrapper ignores INT, QUIT and TSTP, and switches the tty raw.
 2. It closes the fence by compare-and-set, in one tmux command list that also stores a nonce and queues its sentinel.

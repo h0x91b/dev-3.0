@@ -43,8 +43,7 @@ export function agentFenceOpenLines(opts: AgentFenceWrapperOptions): string[] {
 		`__DEV3_FINDEX=${q(opts.fenceDir)}`,
 		`__dev3_tmux() { [ -n "\${TMUX:-}" ] && [ -n "\${TMUX_PANE:-}" ] && "$__DEV3_FTMUX" -S "\${TMUX%%,*}" "$@" 2>/dev/null; }`,
 		`__DEV3_FENCED=0`,
-		`__dev3_tmux set-option -p -t "$TMUX_PANE" @dev3_agent_input "open:$__DEV3_FLAUNCH" && __DEV3_FENCED=1`,
-		`[ "$__DEV3_FENCED" = 1 ] || printf '\\033[2mdev3: delivery fence unavailable for this pane\\033[0m\\n'`,
+		...OPEN_BODY.split("\n"),
 	];
 }
 
@@ -62,6 +61,30 @@ function assertOptions(opts: AgentFenceWrapperOptions): void {
 	if (!isAgentFenceLaunchId(opts.launchId)) throw new Error(`unsafe agent fence launch id: ${opts.launchId}`);
 	if (!/^[0-9a-f-]{8,64}$/.test(opts.taskId)) throw new Error(`unsafe task id: ${opts.taskId}`);
 }
+
+// N4-R1: open only a pane that has no fence yet, as a compare-and-set that also stores a
+// per-attempt opener nonce, and trust only a read-back of BOTH. Re-running this script in
+// the same pane must not reopen its launch: a closed fence stays closed, so every pin of
+// the first run is still refused. An `open:<x>` some earlier, now-dead attempt left behind
+// in this very pane is closed on the spot — it cannot be the program reading the pane now.
+const OPEN_BODY = String.raw`__dev3_on=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+__dev3_ov=$(__dev3_tmux if-shell -t "$TMUX_PANE" -F '#{==:#{@dev3_agent_input},}' \
+  "set-option -p -t $TMUX_PANE @dev3_agent_input open:$__DEV3_FLAUNCH ; set-option -p -t $TMUX_PANE @dev3_fence_opener $__dev3_on" \; \
+  display-message -p -t "$TMUX_PANE" "dev3-agent-fence:#{@dev3_agent_input} #{@dev3_fence_opener}")
+case "$__dev3_on" in [0-9a-f]*) ;; *) __dev3_ov="";; esac
+if [ -n "$__dev3_on" ] && [ "$__dev3_ov" = "dev3-agent-fence:open:$__DEV3_FLAUNCH $__dev3_on" ]; then
+  __DEV3_FENCED=1
+elif [ -z "$__dev3_ov" ]; then
+  printf '\033[2mdev3: delivery fence unavailable for this pane\033[0m\n'
+else
+  __dev3_ofv=${"$"}{__dev3_ov#dev3-agent-fence:}; __dev3_ofv=${"$"}{__dev3_ofv%% *}
+  case "$__dev3_ofv" in
+    open:*) printf '%s' "$__dev3_ofv" | grep -Eq '^open:[A-Za-z0-9-]{1,64}$' &&
+      __dev3_tmux if-shell -t "$TMUX_PANE" -F "#{==:#{@dev3_agent_input},$__dev3_ofv}" \
+        "set-option -p -t $TMUX_PANE @dev3_agent_input closed:${"$"}{__dev3_ofv#open:}:255" >/dev/null ;;
+  esac
+  printf '\033[1;33mdev3: this pane already had an agent launched by dev3. dev3 will not deliver messages to this run; start the agent from dev3 to receive them.\033[0m\n'
+fi`;
 
 // ` 037 d e v 3 - f e n c e :` as octal tokens; a sentinel is that + 16 bytes + ` 037`.
 const FENCE_CLOSE_BODY = String.raw`trap '' INT QUIT TSTP
