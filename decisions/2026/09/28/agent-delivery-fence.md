@@ -55,7 +55,8 @@ It is read in the same sighting as the pane, pinned into `PaneIncarnation.agentF
 **Held messages** (`agent-message-hold.ts`, `agent-prompt.ts`). A step refused with `agent-exited` returns `exited`:
 - nothing more is typed into that pane;
 - text that landed before the exit is saved and never retyped (I3), so the turn is not stranded;
-- the rest moves only to the pane that replaced the agent in the **same** `sessionState` entry (R-D3), in front of anything already held there;
+- the rest moves only to the pane that replaced **that agent** (R-D3), in front of anything already held there;
+- a replacement is matched by **identity, never by position**: same agent, config, family, account and conversation id, on a pane id the task did not have when the message arrived, live, and exactly one of them. Positions shift when the registry drops a closed pane's entry, and identical siblings exist. With no conversation id yet, or with two candidates, the messages wait and are saved at the bound (`findReplacementPane`);
 - with no replacement, the rest waits for 10 minutes and is then saved and dropped.
 
 **Every drop saves its texts first** (I5), through `saveUndeliveredAgentMessages`. A write that fails is retried every quiet window and reported as lost only past the bound (S-1). A direct prompt whose Enter met a closed fence keeps a copy of its text too (W-1).
@@ -72,6 +73,8 @@ These are stated limits; none of them is solved here.
 - **A blocked pane is reported delivered.** While a wrapper waits for an app close, tmux accepts dev3 input, so callers record `delivered`. The input really reaches only the raced-input file. The late-close badge informs the user; it changes no verdict.
 - **Mixed versions.** A pre-fence dev3 running side by side ignores the option on the normal path.
 - **No shell until a close.** A pane whose wrapper never gets closed (no app ever runs, or an app acks without a sentinel) has no shell until the user closes it. Nothing typed there is executed.
+- **Save retries live in memory.** Messages whose file could not be written are lost if the app restarts during the 10-minute retry, like every held message (the hold is in-memory by design).
+- **A narrow reordering.** Messages relocated into a pane whose own hold is mid-release can land behind that release's leftovers. That is out of order, not lost.
 - **Legacy wrappers.** Panes launched before this change stay unfenced until relaunch or resume.
 - **Native backend and Windows** have no fence.
 - **An agent that leaves the tty raw.** Its shell inherits that raw tty, as it did before this change; under dash no command then runs at all.

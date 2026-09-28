@@ -323,6 +323,60 @@ async function batchHeldMessages(task: Task, paneId: string, holdKey: string, te
 	};
 }
 
+/**
+ * Who a held message was for: the pane entry it arrived for, and every pane id the task had
+ * at that moment. Indices are useless here — the registry drops entries of closed panes.
+ */
+export interface HeldMessageLineage {
+	agentId: string;
+	configId: string | null;
+	agentFamily: string | null;
+	accountId: string | null;
+	/** The agent's own conversation id: a resumed agent keeps it, a new sibling does not. */
+	sessionId: string;
+	/** Pane ids present at arrival: none of them can be the replacement. */
+	siblings: readonly string[];
+}
+
+/** The lineage of the entry `paneId` belongs to, or undefined when it cannot be told apart safely. */
+export function heldMessageLineage(panes: readonly PaneSessionEntry[] | undefined, paneId: string): HeldMessageLineage | undefined {
+	const entry = (panes ?? []).find((p) => p.paneId === paneId);
+	if (!entry?.agentId || !entry.sessionId) return undefined;
+	return {
+		agentId: entry.agentId,
+		configId: entry.configId ?? null,
+		agentFamily: entry.agentFamily ?? null,
+		accountId: entry.accountId ?? null,
+		sessionId: entry.sessionId,
+		siblings: (panes ?? []).flatMap((p) => (p.paneId ? [p.paneId] : [])),
+	};
+}
+
+/**
+ * The pane that replaced a held message's exited agent: an entry with the SAME agent,
+ * config, family, account and conversation, on a pane id the task did not have when the
+ * message arrived, and live. Exactly one, or null — an ambiguous or unknown identity waits
+ * (and is saved at the bound) rather than typing into another agent.
+ */
+export function findReplacementPane(
+	lineage: HeldMessageLineage,
+	panes: readonly PaneSessionEntry[] | undefined,
+	livePaneIds: readonly string[],
+): string | null {
+	const candidates = (panes ?? []).filter(
+		(p) =>
+			!!p.paneId &&
+			!lineage.siblings.includes(p.paneId) &&
+			livePaneIds.includes(p.paneId) &&
+			p.agentId === lineage.agentId &&
+			(p.configId ?? null) === lineage.configId &&
+			(p.agentFamily ?? null) === lineage.agentFamily &&
+			(p.accountId ?? null) === lineage.accountId &&
+			p.sessionId === lineage.sessionId,
+	);
+	return candidates.length === 1 ? (candidates[0]!.paneId ?? null) : null;
+}
+
 /** The task as it is on disk now, or null. Loaded lazily: the data layer is app-side plumbing. */
 async function freshTask(task: Task): Promise<Task | null> {
 	try {
@@ -334,17 +388,17 @@ async function freshTask(task: Task): Promise<Task | null> {
 }
 
 /**
- * One held `dev3 message` aimed at `paneId`, with every closure the hold needs. `lineage` is
- * the index of the task's pane entry that pane belongs to: when that agent exits, the
- * messages may follow only the pane that replaced it in the SAME entry — never whatever
- * agent pane the routing heuristics would pick (a bug hunter, a review agent).
+ * One held `dev3 message` aimed at `paneId`, with every closure the hold needs. `lineage` names
+ * the agent it arrived for: when that agent exits, the messages may follow only the pane that
+ * replaced it ({@link findReplacementPane}) — never whatever agent pane the routing heuristics
+ * would pick (a bug hunter, a review agent, an identical sibling).
  */
 function buildHeldMessage(
 	task: Task,
 	paneId: string,
 	prompt: string,
 	epilogue: AgentPromptEpilogue | undefined,
-	lineage: number | undefined,
+	lineage: HeldMessageLineage | undefined,
 ): { key: string; context: Record<string, string>; message: HeldAgentMessage } {
 	const context = { taskId: task.id.slice(0, 8), paneId };
 	const holdKey = agentMessageHoldKey("tmux", task.id, paneId);
@@ -359,15 +413,17 @@ function buildHeldMessage(
 			: {
 				relocate: async () => {
 					const fresh = await freshTask(task);
-					const next = fresh?.sessionState?.panes?.[lineage]?.paneId;
-					if (!fresh || !next || next === paneId) return null;
+					if (!fresh) return null;
 					const { tmuxSession, socket } = tmuxRouting(fresh);
-					if (!(await listLivePaneIds(tmuxSession, socket)).includes(next)) return null;
-					const target = buildHeldMessage(fresh, next, "", epilogue, lineage);
+					const next = findReplacementPane(lineage, fresh.sessionState?.panes, await listLivePaneIds(tmuxSession, socket));
+					if (!next || next === paneId) return null;
+					// From here on the replacement is the pane these messages arrived for.
+					const moved = { ...lineage, siblings: (fresh.sessionState?.panes ?? []).flatMap((p) => (p.paneId ? [p.paneId] : [])) };
+					const target = buildHeldMessage(fresh, next, "", epilogue, moved);
 					return {
 						key: target.key,
 						context: target.context,
-						rebuild: (text: string) => buildHeldMessage(fresh, next, text, epilogue, lineage).message,
+						rebuild: (text: string) => buildHeldMessage(fresh, next, text, epilogue, moved).message,
 					};
 				},
 			}),
@@ -427,7 +483,7 @@ function holdAgentMessageForPane(
 	paneId: string,
 	prompt: string,
 	epilogue?: AgentPromptEpilogue,
-	lineage?: number,
+	lineage?: HeldMessageLineage,
 ): AgentPromptDelivery {
 	const { key, context, message } = buildHeldMessage(task, paneId, prompt, epilogue, lineage);
 	return agentPromptHeld(holdAgentMessage(key, message, context));
@@ -517,8 +573,7 @@ export async function holdMessageForAgentPane(
 			detail: `no agent pane could be resolved in ${tmuxSession}`,
 		};
 	}
-	const lineage = (agentPanes ?? []).findIndex((entry) => entry.paneId === targetPane);
-	return holdAgentMessageForPane(task, targetPane, prompt, epilogue, lineage >= 0 ? lineage : undefined);
+	return holdAgentMessageForPane(task, targetPane, prompt, epilogue, heldMessageLineage(agentPanes, targetPane));
 }
 
 /**
