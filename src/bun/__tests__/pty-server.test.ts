@@ -71,6 +71,7 @@ import {
 	setOnOsc52Copy,
 	_resetTmuxBinaryLoggedForTests,
 	noteHumanTerminalInput,
+	applyTmuxTheme,
 } from "../pty-server";
 import { readFileSync } from "node:fs";
 import {
@@ -1419,5 +1420,32 @@ describe("noteHumanTerminalInput", () => {
 		for (const write of writes) {
 			expect(write[1]).toContain("noteHumanTerminalInput(session, ws, data)");
 		}
+	});
+});
+
+// Every dev3 instance shares the tmux server, so the dimming choice lives there:
+// only an explicit toggle may set it, and it must land before the re-source that
+// derives the pane styles from it.
+describe("applyTmuxTheme pane dimming", () => {
+	const tmuxArgs = () => mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((a) => Array.isArray(a));
+	const dimSet = (args: string[]) => args.includes("set-option") && args.includes("@dev3_pane_dimming");
+
+	it("sets the server-wide choice on an explicit toggle, before sourcing", async () => {
+		mockSpawn.mockClear();
+		await applyTmuxTheme("dark", { paneDimming: false });
+		const calls = tmuxArgs();
+		const setIdx = calls.findIndex(dimSet);
+		const sourceIdx = calls.findIndex((a) => a.includes("source-file"));
+		expect(setIdx).toBeGreaterThanOrEqual(0);
+		expect(calls[setIdx]).toEqual(expect.arrayContaining(["-L", "dev3", "set-option", "-g", "@dev3_pane_dimming", "off"]));
+		expect(sourceIdx).toBeGreaterThan(setIdx);
+	});
+
+	it("leaves the server-wide choice alone on a plain theme apply", async () => {
+		mockSpawn.mockClear();
+		await applyTmuxTheme("dark");
+		const calls = tmuxArgs();
+		expect(calls.some((a) => a.includes("source-file"))).toBe(true);
+		expect(calls.some(dimSet)).toBe(false);
 	});
 });

@@ -2169,7 +2169,9 @@ describe("handlers.saveGlobalSettings", () => {
 
 			await handlers.saveGlobalSettings({ updateChannel: "stable", terminalShell: "sh" } as GlobalSettings);
 
-			expect(pty.applyTmuxTheme).toHaveBeenCalledWith("light");
+			// No `paneDimming`: a shell change must not override the server-wide
+			// dimming choice another dev3 instance may have made since.
+			expect(pty.applyTmuxTheme).toHaveBeenCalledWith("light", {});
 		},
 	);
 
@@ -2181,15 +2183,22 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(pty.applyTmuxTheme).not.toHaveBeenCalled();
 	});
 
-	// Pane dimming lives in the tmux config, so switching it has to reach the live
-	// server the same way a shell change does — otherwise the toggle only takes
-	// effect after an app restart.
-	it.skipIf(process.platform === "win32")("re-sources tmux when pane dimming is switched off", async () => {
+	// The toggle is an explicit override of the server-wide choice: it has to
+	// reach the live server at once, whichever instance the user clicked in.
+	it.skipIf(process.platform === "win32")("overrides the server-wide choice when pane dimming is switched off", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as GlobalSettings);
 
 		await handlers.saveGlobalSettings({ updateChannel: "stable", dimInactivePanes: false } as GlobalSettings);
 
-		expect(pty.applyTmuxTheme).toHaveBeenCalled();
+		expect(pty.applyTmuxTheme).toHaveBeenCalledWith(expect.any(String), { paneDimming: false });
+	});
+
+	it.skipIf(process.platform === "win32")("overrides the server-wide choice when pane dimming is switched back on", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", dimInactivePanes: false } as GlobalSettings);
+
+		await handlers.saveGlobalSettings({ updateChannel: "stable", dimInactivePanes: true } as GlobalSettings);
+
+		expect(pty.applyTmuxTheme).toHaveBeenCalledWith(expect.any(String), { paneDimming: true });
 	});
 
 	it.skipIf(process.platform === "win32")("leaves tmux alone when pane dimming stays at its default", async () => {

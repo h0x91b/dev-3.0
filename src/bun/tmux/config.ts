@@ -60,7 +60,7 @@ export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
 export const TMUX_LAST_AGENT_PANE_OPTION = "@dev3_last_agent_pane";
 
 /**
- * The themed config for one theme and one dimming preference. The preference is
+ * The themed config for one theme and one default dimming choice. The choice is
  * part of the NAME: every dev3 process on the machine writes these shared files
  * at import, and a name that ignored it let another process's default overwrite
  * the file this app later sources into the shared server.
@@ -263,22 +263,30 @@ set -g status-left ""
 `;
 
 /**
+ * Server-global user option holding the dim-inactive-panes choice (`on`/`off`).
+ * It lives in the tmux server, not in the config text, because every dev3
+ * instance on the machine shares that server: the last explicit toggle — from
+ * any instance — must win, and re-sourcing a config must never undo it.
+ */
+export const TMUX_PANE_DIMMING_OPTION = "@dev3_pane_dimming";
+
+/**
  * How much an unfocused pane differs from the focused one.
  *
  * Catppuccin's own config darkens every inactive pane so the focused split is
- * obvious; the user can switch that off (`dimInactivePanes`), and then every
- * pane keeps the theme's normal background and foreground. Both states emit the
- * lines: these configs are re-sourced into a LIVE tmux server, where a merely
- * omitted line leaves the previous value in effect.
+ * obvious; the user can switch that off (`dimInactivePanes`). The config only
+ * seeds the server option when it is unset (`-o`), with this process's saved
+ * choice, then derives both styles from the option. Always emitted: a line
+ * merely omitted on re-source would leave the plugin's dimmed value in effect.
  */
-function paneDimConfig(dimInactivePanes: boolean): string {
-	const bg = dimInactivePanes ? "#{@thm_mantle}" : "#{@thm_bg}";
-	const fg = dimInactivePanes ? "#{@thm_overlay_1}" : "#{@thm_fg}";
+function paneDimConfig(defaultDimmed: boolean): string {
+	const off = `#{==:#{${TMUX_PANE_DIMMING_OPTION}},off}`;
 	return [
 		"",
 		"# Inactive pane contrast (Settings → Terminal → Dim inactive panes)",
-		`set -gF window-style "bg=${bg},fg=${fg}"`,
-		`set -gF pane-border-style "fg=#{@thm_surface_1},bg=${bg}"`,
+		`set -goq ${TMUX_PANE_DIMMING_OPTION} ${defaultDimmed ? "on" : "off"}`,
+		`set -gF window-style "#{?${off},bg=#{@thm_bg}#,fg=#{@thm_fg},bg=#{@thm_mantle}#,fg=#{@thm_overlay_1}}"`,
+		`set -gF pane-border-style "fg=#{@thm_surface_1},bg=#{?${off},#{@thm_bg},#{@thm_mantle}}"`,
 		"",
 	].join("\n");
 }

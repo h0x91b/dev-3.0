@@ -43,6 +43,7 @@ import {
 	projectTerminalSessionName,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
+	TMUX_PANE_DIMMING_OPTION,
 	parseWindowLayout,
 	PANE_ID_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
@@ -62,7 +63,12 @@ const log = createLogger("pty");
  * Sources the corresponding config file, which re-sets all theme variables
  * and re-applies every setting that depends on them.
  */
-export async function applyTmuxTheme(theme: "dark" | "light"): Promise<void> {
+/**
+ * `paneDimming` is an explicit toggle: it overrides the server-wide choice
+ * before the config is re-sourced. Without it the server keeps whatever the last
+ * toggle — from this or another dev3 instance — set.
+ */
+export async function applyTmuxTheme(theme: "dark" | "light", opts: { paneDimming?: boolean } = {}): Promise<void> {
 	const configPath = setActiveTmuxTheme(theme);
 	// Source the themed config on every known socket (typically just "dev3")
 	const sockets = new Set<string>();
@@ -74,8 +80,11 @@ export async function applyTmuxTheme(theme: "dark" | "light"): Promise<void> {
 	await Promise.all(
 		Array.from(sockets).map(async (socket) => {
 			try {
+				if (opts.paneDimming !== undefined) {
+					await tmux.setGlobalOption(TMUX_PANE_DIMMING_OPTION, opts.paneDimming ? "on" : "off", { socket, bestEffort: true });
+				}
 				await tmux.sourceFile(configPath, { socket, bestEffort: true });
-				log.info("tmux theme applied", { theme, socket, configPath });
+				log.info("tmux theme applied", { theme, socket, configPath, paneDimming: opts.paneDimming });
 			} catch (err) {
 				log.warn("Failed to apply tmux theme", { theme, socket, error: String(err) });
 			}

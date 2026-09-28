@@ -249,13 +249,15 @@ function getShellAvailability(): ShellAvailability {
  */
 async function applyTmuxConfigChange(
 	theme: "dark" | "light",
-	options: { refreshShell: boolean; dimInactivePanes: boolean },
+	options: { refreshShell: boolean; dimInactivePanes: boolean; dimChanged: boolean },
 ): Promise<void> {
 	try {
 		if (options.refreshShell) process.env.SHELL = getUserShell();
 		setTmuxPaneDimming(options.dimInactivePanes);
 		writeTmuxConfigs();
-		await pty.applyTmuxTheme(theme);
+		// Only a real toggle overrides the server-wide choice; a shell change must
+		// not undo a dimming choice another dev3 instance made since.
+		await pty.applyTmuxTheme(theme, options.dimChanged ? { paneDimming: options.dimInactivePanes } : {});
 	} catch (err) {
 		log.warn("Failed to push the settings change into tmux (non-fatal)", { error: String(err) });
 	}
@@ -330,6 +332,7 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		await applyTmuxConfigChange(next.resolvedTheme ?? getCurrentUiTheme(), {
 			refreshShell: shellChanged,
 			dimInactivePanes: next.dimInactivePanes !== false,
+			dimChanged,
 		});
 	}
 	getPushMessage()?.("globalSettingsUpdated", next);

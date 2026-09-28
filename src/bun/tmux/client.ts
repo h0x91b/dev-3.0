@@ -755,6 +755,11 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["set-option", "-t", target, option, value], opts);
 	}
 
+	/** `set-option -g <option> <value>` — a server-global (session) option. */
+	setGlobalOption(option: string, value: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-option", "-g", option, value], opts);
+	}
+
 	/** `set-option -p -t <paneId> <option> <value>` — a pane-scoped (user) option. */
 	setPaneOption(paneId: string, option: string, value: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["set-option", "-p", "-t", paneId, option, value], opts);
