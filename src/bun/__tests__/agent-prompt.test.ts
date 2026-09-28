@@ -107,7 +107,7 @@ beforeEach(() => {
 	vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }] as never);
 	vi.mocked(tmux.showOption).mockResolvedValue(""); // no last-focused agent recorded
 	vi.mocked(tmux.setPaneOption).mockResolvedValue(undefined);
-	vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN } as never);
+	vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "" } as never);
 	vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: true } as never);
 });
 
@@ -133,6 +133,7 @@ describe("sendPromptToAgentPane — delivery", () => {
 			pane: "%1",
 			session: SESSION,
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		});
 	});
 
@@ -253,6 +254,7 @@ describe("sendPromptToPane — concrete pane target", () => {
 			kind: "dead",
 			sessionName: SESSION,
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		} as never);
 		await expect(runPrompt(sendPromptToPane(TASK, "%42", "hello"))).resolves.toMatchObject({
 			status: "not-started",
@@ -267,6 +269,7 @@ describe("sendPromptToPane — concrete pane target", () => {
 			kind: "present",
 			sessionName: "dev3-someone-else",
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		} as never);
 
 		await expect(runPrompt(sendPromptToPane(TASK, "%1", "hello"))).resolves.toMatchObject({
@@ -453,7 +456,7 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 	it("drops a stranded turn when the pane id now belongs to another tmux server generation", async () => {
 		pushCliAttention.mockClear();
 		await strandCheckCi();
-		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: "srv-token-2" } as never);
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: "srv-token-2", agentFence: "" } as never);
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
 		await expect(runPrompt(sendPromptToAgentPane(TASK, "commit your work", [agentPane("%1")]))).resolves.toMatchObject({

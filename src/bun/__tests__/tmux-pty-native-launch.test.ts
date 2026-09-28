@@ -643,3 +643,63 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		);
 	});
 });
+
+describe("agent delivery fence — armed on exactly the script that runs the agent", () => {
+	const fenced = () =>
+		vi.mocked(sharedPure.buildCmdScript).mock.calls.filter((call) => call[2]?.agentFence !== undefined);
+
+	beforeEach(() => {
+		vi.mocked(sharedPure.buildCmdScript).mockClear();
+		vi.mocked(tmux.binaryPath).mockReturnValue("/usr/bin/tmux");
+	});
+
+	it("fences run.sh of a plain tmux launch with the committed binary and a fresh launch id", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		const calls = fenced();
+		expect(calls).toHaveLength(1);
+		const fence = calls[0]?.[2]?.agentFence;
+		expect(fence).toMatchObject({ tmuxBinary: "/usr/bin/tmux", taskId: TASK_ID });
+		expect(fence?.launchId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(fence?.fenceDir).toMatch(/\/agent-fence$/);
+		expect(fence?.racedDir).toMatch(/\/messages$/);
+		expect(calls[0]?.[2]?.keepShell).toBe(true);
+	});
+
+	it("never fences a native task", async () => {
+		await launchTaskPty(makeProject(), makeTask({ terminalBackend: "native" }), WORKTREE);
+		expect(fenced()).toHaveLength(0);
+	});
+
+	it("never bakes a PATH tmux or the dev3 shim into a wrapper", async () => {
+		vi.mocked(tmux.binaryPath).mockReturnValue("tmux");
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(fenced()).toHaveLength(0);
+	});
+
+	it("fences only the agent's cmd script under a setup wrapper, never run.sh around it", async () => {
+		await launchTaskPty(makeProject({ setupScript: "echo setup" }), makeTask(), WORKTREE, { runSetup: true } as never);
+		const calls = fenced();
+		expect(calls).toHaveLength(1);
+		expect(String(calls[0]?.[0])).not.toContain("startup");
+	});
+
+	it("fences only original-cmd when the agent runs behind the missing-binary retry wrapper", async () => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValueOnce({
+			command: "claude",
+			extraEnv: {},
+			agent: { baseCommand: "claude" },
+		} as never);
+		vi.mocked(sharedPure.resolveBinaryPath).mockReturnValue({ resolvedPath: null } as never);
+		try {
+			await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		} finally {
+			vi.mocked(sharedPure.resolveBinaryPath).mockReturnValue({ resolvedPath: "/usr/local/bin/claude" } as never);
+		}
+		const calls = fenced();
+		expect(calls).toHaveLength(1);
+		expect(sharedPure.buildAgentRetryWrapper).toHaveBeenCalled();
+		const all = vi.mocked(sharedPure.buildCmdScript).mock.calls;
+		const runCall = all[all.length - 1];
+		expect(runCall?.[2]?.agentFence).toBeUndefined();
+	});
+});

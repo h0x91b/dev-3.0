@@ -8057,7 +8057,7 @@ describe("handlers.rebaseTaskViaAgent", () => {
 				stdout: args.includes("display-message")
 					? `${active}\n`
 					: args.includes("list-panes")
-						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\t\tdev3-task-1` : p)).join("\n") + "\n"
 						: args.includes("if-shell")
 							? "dev3-pane-input-sent\n"
 							: "",
@@ -8164,7 +8164,7 @@ describe("handlers.commitTaskViaAgent", () => {
 				stdout: args.includes("display-message")
 					? `${active}\n`
 					: args.includes("list-panes")
-						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\t\tdev3-task-1` : p)).join("\n") + "\n"
 						: args.includes("if-shell")
 							? "dev3-pane-input-sent\n"
 							: "",
@@ -9928,12 +9928,12 @@ describe("handlers.spawnBugHuntersInTask", () => {
 				opened.push(pane);
 				return reply(pane);
 			}
-			// The pane sighting: pane id, dead flag, server token, session name.
+			// The pane sighting: pane id, dead flag, server token, agent fence (none), session name.
 			if (args.includes("list-panes") && args.some((arg) => arg.includes("@dev3_server_token"))) {
 				if (opts.listPanesFails) return reply("", 1);
 				const rows = opened
 					.filter((pane) => !killed.includes(pane) && !(opts.unlistedPanes ?? []).includes(pane))
-					.map((pane) => `${pane}\t0\t${HUNTER_TOKEN}\t${HUNTER_SESSION}`);
+					.map((pane) => `${pane}\t0\t${HUNTER_TOKEN}\t\t${HUNTER_SESSION}`);
 				return reply(rows.join("\n"));
 			}
 			const guardIndex = args.indexOf("if-shell");
@@ -14545,7 +14545,7 @@ describe("handlers.createPullRequest", () => {
 				stdout: args.includes("display-message")
 					? `${active}\n`
 					: args.includes("list-panes")
-						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\t\tdev3-task-1` : p)).join("\n") + "\n"
 						: args.includes("if-shell")
 							? "dev3-pane-input-sent\n"
 							: "",

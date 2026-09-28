@@ -35,6 +35,7 @@ const INCARNATION: PaneIncarnation = {
 	paneId: PANE,
 	sessionName: SESSION,
 	serverToken: SERVER_TOKEN,
+	agentFence: "",
 };
 
 function program(stages: PaneInputStage[], overrides: Partial<PaneInputProgram> = {}): PaneInputProgram {
@@ -153,6 +154,7 @@ describe("one stage is one guarded command", () => {
 		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0]).toMatchObject({
 			pane: PANE,
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 			session: SESSION,
 			socket: SOCKET,
 			chunks: [{ literal: "hello" }],
@@ -227,6 +229,41 @@ describe("a false guard means nothing was sent", () => {
 			uncertainStep: null,
 			reason: "incarnation-changed",
 		});
+	});
+});
+
+describe("an agent that exited between the pin and the write", () => {
+	const FENCED = { ...INCARNATION, agentFence: "open:L1" };
+
+	// The text went in while the agent was alive; its Enter found the fence closed. The shell
+	// the wrapper hands over to must never receive that Enter.
+	it("stops at the Enter as agent-exited, keeping the text as the accepted prefix", async () => {
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: false, liveFence: "closed:L1:143" });
+		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1), { incarnation: FENCED }), SOCKET, execution());
+		expect(outcome).toMatchObject({ status: "partial", acceptedThrough: 1, uncertainStep: null, reason: "agent-exited" });
+		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[1]?.[0].agentFence).toBe("open:L1");
+	});
+
+	it("reports a first stage refused by a closed fence as retryable agent-exited", async () => {
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false, liveFence: "closed:L1:0" });
+		const outcome = await executeTmuxPaneInput(program(TEXT, { incarnation: FENCED }), SOCKET, execution());
+		expect(outcome).toMatchObject({ status: "not-started", reason: "agent-exited", retryableAsNewDelivery: true });
+	});
+
+	// A fence that disappeared, or one dev3 did not write, is no agent it launched either.
+	it.each(["", "garbage"])("treats a live fence of %j as agent-exited, failing closed", async (live) => {
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false, liveFence: live });
+		const outcome = await executeTmuxPaneInput(program(TEXT, { incarnation: FENCED }), SOCKET, execution());
+		expect(outcome).toMatchObject({ status: "not-started", reason: "agent-exited" });
+	});
+
+	// Another launch in the same %id is a new incarnation, not this agent's exit.
+	it("reports a different open launch as incarnation-changed", async () => {
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false, liveFence: "open:L2" });
+		const outcome = await executeTmuxPaneInput(program(TEXT, { incarnation: FENCED }), SOCKET, execution());
+		expect(outcome).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
 	});
 });
 

@@ -12,6 +12,8 @@
  * one tail field per format, by construction.
  */
 
+import { AGENT_FENCE_OPTION } from "../../shared/agent-fence";
+
 export const TMUX_FORMAT_SEPARATOR = "\t";
 
 type FieldKind = "string" | "number" | "flag" | "tail";
@@ -156,7 +158,14 @@ export const PANE_SIGHTING_FORMAT = tmuxFormat()
 	.string("paneId", "pane_id")
 	.flag("dead", "pane_dead")
 	.string("serverToken", "@dev3_server_token")
+	.string("agentFence", AGENT_FENCE_OPTION)
 	.tail("sessionName", "session_name")
+	.build();
+
+/** Every pane's agent fence on the server — the close-request sweep's view (tail: free text). */
+export const AGENT_FENCE_FORMAT = tmuxFormat()
+	.string("paneId", "pane_id")
+	.tail("agentFence", AGENT_FENCE_OPTION)
 	.build();
 
 /** Pane id + the command the pane was started with — viewer-pane discovery. */

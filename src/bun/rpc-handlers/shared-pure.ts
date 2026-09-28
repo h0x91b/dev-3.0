@@ -12,6 +12,7 @@ import {
 	launchDialect,
 	posixEscapeForDoubleQuotes,
 } from "../../shared/platform-launch";
+import { type AgentFenceWrapperOptions, agentFenceCloseLines, agentFenceOpenLines } from "../agent-fence-wrapper";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
@@ -102,9 +103,20 @@ export function generatedScriptName(base: string): string {
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,
-	options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string; shellPath?: string },
+	options?: {
+		paneTitle?: string;
+		keepShell?: boolean;
+		onExitCommand?: string;
+		shellPath?: string;
+		/**
+		 * Fence dev3's input to the agent this wrapper runs: after it exits, nothing of dev3 may
+		 * reach the fallback shell. POSIX + keepShell only; see `agent-fence-wrapper.ts`.
+		 */
+		agentFence?: AgentFenceWrapperOptions;
+	},
 ): string {
 	const d = launchDialect();
+	const fence = options?.agentFence && options.keepShell && d.id === "posix-shell" ? options.agentFence : undefined;
 	const exportLines = env && Object.keys(env).length > 0 ? d.envLines(env) : [];
 	const safePaneTitle = options?.paneTitle?.replace(/'/g, "") ?? "";
 	const titleLine = safePaneTitle ? d.paneTitle(safePaneTitle) : "";
@@ -118,8 +130,10 @@ export function buildCmdScript(
 		...d.header(),
 		...(titleLine ? [titleLine] : []),
 		...exportLines,
+		...(fence ? agentFenceOpenLines(fence) : []),
 		...d.announceAndRun(`Starting: ${tmuxCmd}`, tmuxCmd),
 		d.captureExitCode("__EC"),
+		...(fence ? agentFenceCloseLines("__EC") : []),
 	];
 	if (options?.keepShell) {
 		const okNotice = d.print(

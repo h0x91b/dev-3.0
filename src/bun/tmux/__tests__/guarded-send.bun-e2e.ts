@@ -97,7 +97,7 @@ async function waitUntilReady(pane: string, name: "mine" | "other"): Promise<boo
 	const marker = `READY-${name}-${process.pid}`;
 	for (let attempt = 0; attempt < 40; attempt += 1) {
 		await client
-			.sendKeysGuarded({ pane, serverToken, session: name === "mine" ? MINE : OTHER, chunks: [{ literal: marker }], socket: SOCKET })
+			.sendKeysGuarded({ pane, serverToken, agentFence: "", session: name === "mine" ? MINE : OTHER, chunks: [{ literal: marker }], socket: SOCKET })
 			.catch(() => undefined);
 		await settle(100);
 		if (received(name).includes(marker)) return true;
@@ -120,6 +120,7 @@ async function deliversExactBytes(): Promise<void> {
 	const { sent } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: text }, { keys: ["Left", "Left"] }],
 		socket: SOCKET,
@@ -136,6 +137,7 @@ async function sendsNothingAfterAMove(): Promise<void> {
 	const { sent, inMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -152,6 +154,7 @@ async function sendsNothingForAnotherServer(): Promise<void> {
 	const { sent } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken: `${serverToken}-other`,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -169,6 +172,7 @@ async function sendsNothingForAnUnknownPane(): Promise<void> {
 	const { sent } = await client.sendKeysGuarded({
 		pane: "%999",
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -197,6 +201,7 @@ async function guardRefusesAMoveAfterPreflight(): Promise<void> {
 	const { sent } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -237,6 +242,7 @@ async function guardRefusesADeathAfterPreflight(): Promise<void> {
 	const { sent, inMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -275,6 +281,7 @@ async function refusesARecycledPaneIdAfterARestart(): Promise<void> {
 	const { sent } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken: tokenA,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "MUST-NOT-ARRIVE" }],
 		socket: SOCKET,
@@ -307,6 +314,7 @@ async function refusesAPaneSittingInCopyMode(): Promise<void> {
 	const { sent, inMode: reportedInMode } = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "COPY-MODE-PROBE" }],
 		socket: SOCKET,
@@ -315,6 +323,7 @@ async function refusesAPaneSittingInCopyMode(): Promise<void> {
 	const foreign = await client.sendKeysGuarded({
 		pane: minePane,
 		serverToken: `${serverToken}-other`,
+		agentFence: "",
 		session: MINE,
 		chunks: [{ literal: "COPY-MODE-PROBE" }],
 		socket: SOCKET,
@@ -336,6 +345,7 @@ async function throwsForARealTmuxFailure(): Promise<void> {
 		await client.sendKeysGuarded({
 			pane: minePane,
 			serverToken,
+			agentFence: "",
 			session: MINE,
 			chunks: [{ literal: "x" }],
 			socket: `${SOCKET}-no-such-server`,
@@ -344,6 +354,53 @@ async function throwsForARealTmuxFailure(): Promise<void> {
 		threw = err;
 	}
 	check(isTmuxError(threw), `a dead socket throws a TmuxError (${threw === null ? "nothing thrown" : "threw"})`);
+}
+
+/** The agent fence rides in the same guard: only the pinned value passes, and a refusal names the live one. */
+async function guardsTheAgentFence(): Promise<void> {
+	const send = (agentFence: string, literal: string, token = serverToken) =>
+		client.sendKeysGuarded({ pane: minePane, serverToken: token, agentFence, session: MINE, chunks: [{ literal }], socket: SOCKET });
+	await client.setPaneOption(minePane, "@dev3_agent_input", "open:L1", { socket: SOCKET });
+	const open = await send("open:L1", "FENCE-OPEN-OK");
+	const legacyPin = await send("", "FENCE-LEGACY-PIN");
+	const otherLaunch = await send("open:L0", "FENCE-OTHER-LAUNCH");
+	await client.setPaneOption(minePane, "@dev3_agent_input", "closed:L1:143", { socket: SOCKET });
+	const closed = await send("open:L1", "FENCE-CLOSED");
+	const foreign = await send("open:L1", "FENCE-FOREIGN", `${serverToken}-other`);
+	await settle();
+	const landed = received("mine");
+	console.log(`  MEASURED - open=${JSON.stringify(open)} legacyPin=${JSON.stringify(legacyPin)} closed=${JSON.stringify(closed)} foreign=${JSON.stringify(foreign)}`);
+	check(open.sent && landed.includes("FENCE-OPEN-OK"), "a matching open fence delivers");
+	check(!legacyPin.sent && legacyPin.liveFence === "open:L1", "a legacy pin on a fenced pane is refused and names the live fence");
+	check(!otherLaunch.sent && otherLaunch.liveFence === "open:L1", "a pin of another launch is refused");
+	check(!closed.sent && closed.liveFence === "closed:L1:143", "a closed fence refuses and reports closed:L1:143");
+	check(!foreign.sent && foreign.liveFence === undefined, "a foreign server reports no fence at all");
+	for (const marker of ["FENCE-LEGACY-PIN", "FENCE-OTHER-LAUNCH", "FENCE-CLOSED", "FENCE-FOREIGN"]) {
+		check(!landed.includes(marker), `nothing refused reached the program (${marker})`);
+	}
+}
+
+/** The app's close: one compare-and-set, one sentinel per launch however many instances try. */
+async function closesTheFenceOnceWithOneSentinel(): Promise<void> {
+	await client.setPaneOption(minePane, "@dev3_agent_input", "open:L2", { socket: SOCKET });
+	const first = await client.closeAgentFence({ pane: minePane, launchId: "L2", exitCode: 143, socket: SOCKET });
+	const second = await client.closeAgentFence({ pane: minePane, launchId: "L2", exitCode: 143, socket: SOCKET });
+	const wrong = await client.closeAgentFence({ pane: minePane, launchId: "L3", exitCode: 0, socket: SOCKET });
+	const missing = await client.closeAgentFence({ pane: "%999", launchId: "L2", exitCode: 0, socket: SOCKET });
+	await settle();
+	const landed = received("mine");
+	const sentinels = landed.split("\x1fdev3-fence:").length - 1;
+	const fences = await client.listAgentFences({ socket: SOCKET });
+	console.log(`  MEASURED - first=${JSON.stringify(first)} second=${JSON.stringify(second)} wrong=${JSON.stringify(wrong)} missing=${missing.kind} sentinels=${sentinels}`);
+	check(first.kind === "closed", "the first close flips open:L2 to closed");
+	check(second.kind === "closed" && first.kind === "closed" && second.nonce === first.nonce, "a second close reads back the SAME nonce");
+	check(sentinels === 1, `exactly one sentinel reached the pane (${sentinels})`);
+	check(first.kind === "closed" && landed.includes(`\x1fdev3-fence:${first.nonce}\x1f`), "the sentinel carries the stored nonce");
+	check(wrong.kind === "not-this-launch" && wrong.fence === "closed:L2:143", "another launch id closes nothing and reads the value back");
+	// tmux does not abort the list on an unknown target; what matters is that nothing closed.
+	check(missing.kind !== "closed", `a pane that does not exist is never reported closed (${missing.kind})`);
+	check(!received("other").includes("dev3-fence:"), "no sentinel landed in any other pane");
+	check(fences.some((row) => row.paneId === minePane && row.agentFence === "closed:L2:143"), "listAgentFences sees the closed fence");
 }
 
 async function main(): Promise<void> {
@@ -357,6 +414,8 @@ async function main(): Promise<void> {
 		guardRefusesADeathAfterPreflight,
 		refusesARecycledPaneIdAfterARestart,
 		refusesAPaneSittingInCopyMode,
+		guardsTheAgentFence,
+		closesTheFenceOnceWithOneSentinel,
 		throwsForARealTmuxFailure,
 	];
 	for (const one of cases) {

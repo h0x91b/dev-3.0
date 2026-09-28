@@ -262,9 +262,14 @@ const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-lim
 // check re-runs the same selection later, and both are idempotent.
 {
 	const { resolveTmuxBinaryAtStartup } = await import("./rpc-handlers/settings-config");
-	resolveTmuxBinaryAtStartup().catch((err) => {
-		log.warn("Startup tmux binary resolution failed (non-fatal)", { err: String(err) });
-	});
+	resolveTmuxBinaryAtStartup()
+		.catch((err) => {
+			log.warn("Startup tmux binary resolution failed (non-fatal)", { err: String(err) });
+			return undefined;
+		})
+		// Close requests from wrappers that could not close their own agent fence.
+		.then(async (binary) => (await import("./agent-fence-report")).startAgentFenceAfterBinary(binary))
+		.catch((err) => log.warn("Agent fence sweeper failed to start (non-fatal)", { err: String(err) }));
 }
 
 // ── Wire push messages (browser clients only — no Electrobun webview here) ──
