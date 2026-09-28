@@ -53,6 +53,10 @@ export interface CodexPaneChoice { sessionId: string; codexHome: string }
  * Choose the conversation of every Codex pane in `panes` (indices into it),
  * from one snapshot, and claim the choices on the task before anything launches.
  * Throws the refusal reason when any pane cannot be chosen safely.
+ *
+ * Only for relaunching EVERY pane passed: all are treated as not live. A caller
+ * recovering some panes while others run must call `selectCodexConversations`
+ * itself, marking each running or unknown pane `live: true`.
  */
 export async function chooseTaskCodexConversations(
 	project: Project,

@@ -207,7 +207,11 @@ export interface CodexPaneSnapshot {
 	sessionId: string | null;
 	/** Managed account id; `null` = a non-managed home; `undefined` = never recorded. */
 	accountId?: string | null;
-	/** Still present, or unknown. Only a pane proven gone is not live. */
+	/**
+	 * Whether the pane may still be running Codex. The CALLER decides: true when the
+	 * pane exists or its state is unknown; false only for a pane proven gone or one
+	 * this call is relaunching. A live other pane disables scanned candidates.
+	 */
 	live: boolean;
 	/** Whether this call chooses for the pane. Others still shape the choice. */
 	resumeNow: boolean;

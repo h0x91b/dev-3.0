@@ -96,6 +96,15 @@ export const PANE_INJECTED_ENV_SAMPLE = [
 ] as const;
 
 /**
+ * Vars that point an agent CLI at a store OUTSIDE $HOME. An agent pane exports
+ * them with the developer's real account dirs, and an absolute path ignores the
+ * sandbox HOME below, so a suite reaching store discovery would read the real
+ * store (it did: Seq 2021, 2026-09-28). `test-isolation.test.ts` fails when
+ * source starts reading another `*_HOME` / `*_CONFIG_DIR` / `*_CONFIG_HOME`.
+ */
+export const AGENT_STORE_ENV = ["CODEX_HOME", "CLAUDE_CONFIG_DIR", "COPILOT_HOME", "GH_CONFIG_DIR"] as const;
+
+/**
  * Move every implicit user/global path used by a test process into a sandbox.
  * The worktree hash prevents parallel worktrees from sharing resources; the
  * suite and PID also isolate concurrently repeated runs in one worktree.
@@ -122,6 +131,7 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 			delete process.env[key];
 		}
 	}
+	for (const key of AGENT_STORE_ENV) delete process.env[key];
 
 	// DEV3_HOME is SCRUBBED above and deliberately not set again: the data root is
 	// derived from HOME by `resolveDev3Home`, so the sandbox HOME below already

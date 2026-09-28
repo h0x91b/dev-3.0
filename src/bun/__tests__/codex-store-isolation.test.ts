@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 describe("Codex store isolation in tests", () => {
-	it("the backend test setup removed an inherited CODEX_HOME before this file loaded", () => {
+	it("test isolation removed an inherited CODEX_HOME before this file loaded", () => {
 		expect(inheritedAtLoad).toBeUndefined();
 	});
 

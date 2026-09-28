@@ -10721,7 +10721,7 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 		restoreResolve();
 		vi.mocked(chooseTaskCodexConversations).mockReset().mockResolvedValue(new Map());
 	});
-	const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+	const sessionId = "00000000-0000-4000-8000-0000c0de2704";
 	const home = "/tmp/account-b";
 	const chose = (...entries: Array<[number, string, string]>) =>
 		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map(entries.map(([i, id, codexHome]) => [i, { sessionId: id, codexHome }])));
@@ -10749,7 +10749,7 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 
 	it("keeps both panes' chosen ids and accounts across repeated resumes", async () => {
 		const { task, project } = arrange();
-		const secondId = "019f50b3-6415-7dc3-8ad5-b60f0818f705";
+		const secondId = "00000000-0000-4000-8000-0000c0de2705";
 		await data.updateTask(project, task.id, { sessionState: { panes: [task.sessionState!.panes[0], { ...task.sessionState!.panes[0], sessionId: secondId, paneId: "%5" }] } });
 		chose([0, sessionId, home], [1, secondId, "/tmp/account-c"]);
 		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : "account-c");
@@ -10770,7 +10770,7 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 
 	it("resumes a newly chosen id on an extra pane, not the snapshot's null", async () => {
 		const { task, project } = arrange();
-		const chosen = "019f50b3-6415-7dc3-8ad5-b60f0818f706";
+		const chosen = "00000000-0000-4000-8000-0000c0de2706";
 		await data.updateTask(project, task.id, { sessionState: { panes: [task.sessionState!.panes[0], { ...task.sessionState!.panes[0], sessionId: null, paneId: "%5" }] } });
 		chose([0, sessionId, home], [1, chosen, home]);
 		await handlers.resumeTask({ taskId: task.id });
@@ -10810,7 +10810,7 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		restoreResolve();
 		vi.mocked(chooseTaskCodexConversations).mockReset().mockResolvedValue(new Map());
 	});
-	const sessionId = "01a09480-c8fc-7021-b4d1-73d850b67083";
+	const sessionId = "00000000-0000-4000-8000-0000c0de1083";
 	const home = "/tmp/account-original";
 	const stalePane = { agentCmd: "codex", agentFamily: "codex" as const, agentId: "builtin-codex", configId: "codex-default", sessionId, paneId: "%5" };
 
@@ -10871,7 +10871,7 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 // The tasks that already lost their record before the capture fix: nothing will
 // report their conversation again, so wake looks it up in the worktree's stores.
 describe("wake of a Codex task whose pane record was lost", () => {
-	const sessionId = "01a09480-c8fc-7021-b4d1-73d850b67083";
+	const sessionId = "00000000-0000-4000-8000-0000c0de1083";
 	const home = "/tmp/account-original";
 	const codexAgent = { id: "builtin-codex", baseCommand: "codex", agentFamily: "codex", configurations: [] } as any;
 	let restore: Array<() => void> = [];
@@ -10959,7 +10959,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 	});
 
 	it("leaves a task that still has pane records to its recorded ids", async () => {
-		const recorded = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+		const recorded = "00000000-0000-4000-8000-0000c0de2704";
 		const { task } = arrange({ sessionState: { panes: [{ agentCmd: "codex", agentFamily: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId: recorded }] } });
 		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: recorded, codexHome: home }]]));
 		await handlers.resumeTask({ taskId: task.id });
@@ -11000,7 +11000,7 @@ describe("resumeTask main pane account pairing", () => {
 			await launchTaskPty(project, task, task.worktreePath!, task.agentId, task.configId);
 			const saved = await data.getTask(project, task.id);
 			expect(saved.sessionState?.panes[0].accountId).toBe("account-b");
-			const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+			const sessionId = "00000000-0000-4000-8000-0000c0de2704";
 			await data.updateTask(project, task.id, { sessionState: { panes: [{ ...saved.sessionState!.panes[0], sessionId }] } });
 			await handlers.resumeTask({ taskId: task.id });
 			expect(resolve).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ accountId: "account-b", sessionId, resume: true }));
@@ -11018,7 +11018,7 @@ describe("resumeTask main pane account pairing", () => {
 		{ taskAccountId: undefined, paneAccountId: undefined, expectedAccountId: undefined },
 	])("preserves the saved conversation account across repeated recovery: $paneAccountId / $taskAccountId", async ({ taskAccountId, paneAccountId, expectedAccountId }) => {
 		const project = makeProject();
-		const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+		const sessionId = "00000000-0000-4000-8000-0000c0de2704";
 		const task = makeTask({
 			accountId: taskAccountId,
 			sessionState: { panes: [{
@@ -11231,7 +11231,7 @@ describe("launchTaskPty", () => {
 			stderr: new Uint8Array(),
 		});
 		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
-			command: "codex resume 019f50b3-6415-7dc3-8ad5-b60f0818f704 --model gpt-test",
+			command: "codex resume 00000000-0000-4000-8000-0000c0de2704 --model gpt-test",
 			extraEnv: {},
 			agent: { baseCommand: "codex" },
 			config: {},
@@ -11242,7 +11242,7 @@ describe("launchTaskPty", () => {
 			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default", false, true);
 
 			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
-			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust resume 019f50b3-6415-7dc3-8ad5-b60f0818f704 --model gpt-test");
+			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust resume 00000000-0000-4000-8000-0000c0de2704 --model gpt-test");
 		} finally {
 			writeSpy.mockRestore();
 		}

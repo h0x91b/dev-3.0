@@ -38,10 +38,6 @@
 	},
 };
 
-// An agent's shell points these at the developer's REAL agent stores. Absolute
-// paths ignore a temp $HOME, so a test reaching store discovery would read them.
-for (const name of ["CODEX_HOME", "CLAUDE_CONFIG_DIR"]) delete process.env[name];
-
 // Stub process.env if needed
 if (typeof process === "undefined") {
 	(globalThis as any).process = { env: { HOME: "/tmp" } };

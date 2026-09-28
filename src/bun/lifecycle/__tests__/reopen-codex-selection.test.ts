@@ -82,7 +82,7 @@ import { pushCliAttention } from "../../rpc-handlers/shared";
 import { executeLifecycleEffect } from "../executor";
 
 const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
-const SESSION = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+const SESSION = "00000000-0000-4000-8000-0000c0de2704";
 
 const project = { id: "proj-1", name: "Project", path: "/repo", setupScript: "", devScript: "", cleanupScript: "rm -rf everything", defaultBaseBranch: "main", clonePaths: [], createdAt: "2026-07-01T00:00:00.000Z" } as unknown as Project;
 

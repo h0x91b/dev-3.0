@@ -39,8 +39,8 @@ vi.mock("../agent-accounts", () => ({ codexAccountIdForHome: vi.fn((home: string
 import { chooseTaskCodexConversations, configuredCodexHomes, isCodexPane } from "../codex-task-selection";
 
 let WT: string;
-const ID = "01a09480-c8fc-7021-b4d1-73d850b67083";
-const OTHER = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+const ID = "00000000-0000-4000-8000-0000c0de1083";
+const OTHER = "00000000-0000-4000-8000-0000c0de2704";
 let home: string;
 let savedHome: string | undefined;
 let savedCodexHome: string | undefined;

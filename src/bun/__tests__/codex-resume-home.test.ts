@@ -9,8 +9,8 @@ const fsGuard = vi.hoisted((): FsRootGuard => ({ roots: null, violations: [] }))
 vi.mock("node:fs/promises", async (actual) => guardFsPromises(await actual<Record<string, unknown>>(), fsGuard));
 import { codexScanBound, isInteractiveCodexConversation, resolveCodexResumeHome, selectCodexConversations, type CodexPaneSnapshot, type CodexSelectionInput } from "../codex-resume-home";
 
-const ID = "01a09480-c8fc-7021-b4d1-73d850b67083";
-const OTHER = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
+const ID = "00000000-0000-4000-8000-0000c0de1083";
+const OTHER = "00000000-0000-4000-8000-0000c0de2704";
 let home: string;
 const account = (id: string) => join(home, ".dev3.0", "agent-accounts", "codex", id);
 
@@ -155,7 +155,7 @@ describe("resolveCodexResumeHome", () => {
 
 describe("selectCodexConversations", () => {
 	const WT = "/Users/me/.dev3.0/worktrees/proj/5a354452/worktree";
-	const THIRD = "01a0cd81-4aeb-7cf3-ab4a-d793d9e74ead";
+	const THIRD = "00000000-0000-4000-8000-0000c0de3ead";
 	const RUN_START = Date.parse("2026-09-12T07:00:00.000Z");
 	let clock = RUN_START / 1000 + 3600;
 

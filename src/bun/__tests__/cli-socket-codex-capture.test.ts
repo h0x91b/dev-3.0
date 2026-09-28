@@ -109,9 +109,9 @@ function rollout(sessionId: string, payload: Record<string, unknown> = {}): void
 	writeFileSync(join(dir, `rollout-2026-09-28T08-00-00-${sessionId}.jsonl`), `${JSON.stringify({ type: "session_meta", payload: { id: sessionId, cwd: "/tmp/wt", source: "cli", ...payload } })}\n`);
 }
 
-const MAIN = "01a09480-c8fc-7021-b4d1-73d850b67001";
-const STEADY = "01a09480-c8fc-7021-b4d1-73d850b67002";
-const CONV_X = "01a09480-c8fc-7021-b4d1-73d850b67003";
+const MAIN = "00000000-0000-4000-8000-0000c0de1001";
+const STEADY = "00000000-0000-4000-8000-0000c0de1002";
+const CONV_X = "00000000-0000-4000-8000-0000c0de1003";
 
 function agentHook(params: Record<string, unknown>): CliRequest {
 	return { id: "req-1", method: "task.agentHook", params };
@@ -148,25 +148,25 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		seed([makeTask({
 			sessionState: { panes: [codexPane("%1", null), { ...codexPane("%2", null), accountId: "account-b" }] },
 		})]);
-		rollout("019f50b3-6415-7dc3-8ad5-b60f0818f704");
+		rollout("00000000-0000-4000-8000-0000c0de2704");
 
 		const resp = await handleRequest(agentHook({
 			projectId: "proj-1",
 			taskId: "task-1",
 			event: "SessionStart",
-			sessionId: "019f50b3-6415-7dc3-8ad5-b60f0818f704",
+			sessionId: "00000000-0000-4000-8000-0000c0de2704",
 			paneId: "%2",
 		}));
 		expect(resp.ok).toBe(true);
 
 		const panes = readPanes();
 		expect(panes[0]?.sessionId).toBeNull();
-		expect(panes[1]?.sessionId).toBe("019f50b3-6415-7dc3-8ad5-b60f0818f704");
+		expect(panes[1]?.sessionId).toBe("00000000-0000-4000-8000-0000c0de2704");
 		expect(panes[1]?.accountId).toBe("account-b");
 
 		// The persisted id drives a targeted resume, exactly as resumeTask does.
 		expect(buildResumeCommand("codex", panes[1]!.sessionId ?? undefined))
-			.toBe("codex resume 019f50b3-6415-7dc3-8ad5-b60f0818f704");
+			.toBe("codex resume 00000000-0000-4000-8000-0000c0de2704");
 	});
 
 	it("adopts the lone null-paneId (main) pane when no stored paneId matches", async () => {
@@ -231,15 +231,15 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			taskId: "task-1",
 			harness: "omp",
 			event: "SessionStart",
-			sessionId: "01a0a1da-8ddd-77c7-b725-058fe11b33ba",
+			sessionId: "00000000-0000-4000-8000-0000c0de4bba",
 			paneId: "%3",
 		}));
 		expect(resp.ok).toBe(true);
 
 		const [pane] = readPanes();
-		expect(pane?.sessionId).toBe("01a0a1da-8ddd-77c7-b725-058fe11b33ba");
+		expect(pane?.sessionId).toBe("00000000-0000-4000-8000-0000c0de4bba");
 		expect(buildResumeCommand("omp", pane!.sessionId ?? undefined))
-			.toBe("omp --resume 01a0a1da-8ddd-77c7-b725-058fe11b33ba");
+			.toBe("omp --resume 00000000-0000-4000-8000-0000c0de4bba");
 	});
 
 	it("places a Codex id without a paneId on a task's only pane (native session without a pane suffix)", async () => {
@@ -325,16 +325,16 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		const { buildResumeCommand } = await import("../agents");
 
 		seed([makeTask({ agentId: "builtin-codex", configId: "codex-default", sessionState: { panes: [] } })]);
-		rollout("01a09480-c8fc-7021-b4d1-73d850b67083");
+		rollout("00000000-0000-4000-8000-0000c0de1083");
 
-		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "01a09480-c8fc-7021-b4d1-73d850b67083", paneId: "%6" }));
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: "00000000-0000-4000-8000-0000c0de1083", paneId: "%6" }));
 
 		const panes = readPanes();
 		expect(panes).toHaveLength(1);
-		expect(panes[0]).toMatchObject({ paneId: "%6", sessionId: "01a09480-c8fc-7021-b4d1-73d850b67083", agentId: "builtin-codex", configId: "codex-default", agentCmd: "codex" });
+		expect(panes[0]).toMatchObject({ paneId: "%6", sessionId: "00000000-0000-4000-8000-0000c0de1083", agentId: "builtin-codex", configId: "codex-default", agentCmd: "codex" });
 		// No account is guessed: resume finds the store that holds the conversation.
 		expect(panes[0]?.accountId).toBeUndefined();
-		expect(buildResumeCommand(panes[0]!.agentCmd, panes[0]!.sessionId ?? undefined)).toBe("codex resume 01a09480-c8fc-7021-b4d1-73d850b67083");
+		expect(buildResumeCommand(panes[0]!.agentCmd, panes[0]!.sessionId ?? undefined)).toBe("codex resume 00000000-0000-4000-8000-0000c0de1083");
 	});
 
 	it.each([

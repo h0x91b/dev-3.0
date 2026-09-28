@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { createServer } from "node:net";
 import { testScopedPath, testSocketPath } from "../../../test-scoped-path";
 import {
+	AGENT_STORE_ENV,
 	DEV3_ENV_PREFIX,
 	MAX_UNIX_SOCKET_PATH_BYTES,
 	PANE_INJECTED_ENV_SAMPLE,
@@ -123,6 +124,30 @@ describe("test process isolation", () => {
 		});
 	});
 
+	it("scrubs every agent-store redirect, which an absolute path would carry past the sandbox HOME", () => {
+		withRestoredEnv(() => {
+			for (const key of AGENT_STORE_ENV) process.env[key] = `/Users/real/${key}`;
+			const root = configureTestIsolation("guard", "/repo/worktrees/guard-agent-stores");
+			try {
+				for (const key of AGENT_STORE_ENV) expect(process.env[key]).toBeUndefined();
+			} finally {
+				cleanupTestIsolation(root);
+			}
+		});
+	});
+
+	it("leaves this worker carrying no agent-store redirect", () => {
+		for (const key of AGENT_STORE_ENV) expect(process.env[key]).toBeUndefined();
+	});
+
+	it("knows every store-redirecting var the source reads", () => {
+		// DEV3_* is dropped by prefix and XDG_* is re-pointed into the run root above.
+		const covered = (name: string) => (AGENT_STORE_ENV as readonly string[]).includes(name) || name.startsWith(DEV3_ENV_PREFIX) || name.startsWith("XDG_");
+		expect(storeRedirectVarsIn("const home = process.env.FOO_CONFIG_DIR ?? env.BAR_HOME;")).toEqual(["BAR_HOME", "FOO_CONFIG_DIR"]);
+		expect(sourceFiles(resolve(__dirname, "../..")).flatMap((file) => storeRedirectVarsIn(readFileSync(file, "utf8"))).filter((name) => !covered(name)))
+			.toEqual([]);
+	});
+
 	it("refuses to start when the data root still escapes to the real home", () => {
 		// The outcome check rather than the mechanism: if a later change lets some
 		// override through, the run dies here instead of writing to the live board.
@@ -131,6 +156,21 @@ describe("test process isolation", () => {
 		);
 	});
 });
+
+/** Env vars shaped like a store redirect that `text` reads, sorted and unique. */
+function storeRedirectVarsIn(text: string): string[] {
+	const found = text.matchAll(/(?:process\.env|\benv)(?:\.|\[")([A-Z0-9_]+(?:_HOME|_CONFIG_DIR|_CONFIG_HOME))\b/g);
+	return [...new Set([...found].map((match) => match[1]))].sort();
+}
+
+/** Every non-test TypeScript file under `dir`. */
+function sourceFiles(dir: string): string[] {
+	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) return entry.name === "__tests__" || entry.name === "node_modules" ? [] : sourceFiles(path);
+		return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+	});
+}
 
 /** Run `body` with the process environment restored afterwards, whatever it did. */
 function withRestoredEnv(body: () => void): void {
