@@ -1,11 +1,12 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { createCaptureStore, createStackCapture } from "./capture";
 import { createFreezeMonitor } from "./monitor";
-import type { FreezeMessage, FreezeWorkerOptions } from "./protocol";
+import { wantsPtyOutput, type FreezeMessage, type FreezeWorkerOptions, type PtyOutputRequest } from "./protocol";
 
 const options = workerData as FreezeWorkerOptions;
 const startedAt = Date.now();
-const store = createCaptureStore(options.directory, `freeze-${startedAt}-${options.hostPid}`);
+const session = `freeze-${startedAt}-${options.hostPid}`;
+const store = createCaptureStore(options.directory, session);
 const monitor = createFreezeMonitor(startedAt);
 const stacks = createStackCapture(options.hostPid, store.save);
 let lastSnapshotAt = startedAt;
@@ -26,6 +27,10 @@ parentPort?.on("message", (message: FreezeMessage) => {
 		clearTimeout(discovery);
 		log({ event: "stopped", ...monitor.snapshot(Date.now()) });
 		parentPort?.close();
+		return;
+	}
+	if (message.kind === "pty-output") {
+		log({ event: "pty-output", at: Date.now(), number: message.number, ok: message.ok, clients: message.clients, bytes: message.bytes });
 		return;
 	}
 	monitor.receive(message, Date.now());
@@ -50,6 +55,11 @@ const timer = setInterval(() => {
 	if (outcome.capture && !capturing) {
 		capturing = true;
 		log({ event: "suspected-stall", ...outcome.capture });
+		// The host writes the terminal output itself: that is where the PTY rings live.
+		if (wantsPtyOutput(outcome.capture.reasons)) {
+			const request: PtyOutputRequest = { event: "capture-pty-output", session, number: outcome.capture.captures, reasons: outcome.capture.reasons };
+			parentPort?.postMessage(request);
+		}
 		void stacks.capture(outcome.capture.captures).then(
 			(results) => log({ event: "samples", at: Date.now(), results }),
 			() => log({ event: "capture-failed", at: Date.now() }),

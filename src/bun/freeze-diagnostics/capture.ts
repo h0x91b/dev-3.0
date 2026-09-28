@@ -27,7 +27,7 @@ export function rendererPids(log: string, hostPid: number): Array<{ pid: number;
 export function createCaptureStore(directory: string, session: string) {
 	mkdirSync(directory, { recursive: true, mode: 0o700 });
 	// Only this collector's files are eligible; ordinary app logs and user files stay out.
-	const files = readdirSync(directory).filter((name) => /^freeze-\d+-\d+\.((?:previous\.)?jsonl|\d+-(host|renderer-\d+)\.txt)$/.test(name));
+	const files = readdirSync(directory).filter((name) => /^freeze-\d+-\d+\.((?:previous\.)?jsonl|\d+-(host|renderer-\d+)\.txt|\d+-pty\.json)$/.test(name));
 	const sessions = [...new Set(files.map((name) => name.split(".")[0]!))].sort().reverse();
 	for (const name of files) {
 		if (sessions.indexOf(name.split(".")[0]!) >= 4) {

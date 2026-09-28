@@ -29,7 +29,7 @@ export function createFreezeMonitor(startedAt: number) {
 	function receive(message: FreezeMessage, at: number) {
 		if (message.kind === "host") { lastHostAt = at; return; }
 		if (message.kind === "display") { event(at, `display-${message.reason}`); return; }
-		if (message.kind === "stop") return;
+		if (message.kind === "stop" || message.kind === "pty-output") return;
 		const id = message.windowId;
 		if (message.kind === "window" && message.event === "closed") {
 			windows.delete(id);

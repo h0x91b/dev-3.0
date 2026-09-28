@@ -56,6 +56,7 @@ import { encodeResizeSequence } from "../../shared/resize-protocol";
 import { bindNativeTaskPane } from "../native-task-terminal";
 import { startNativeTaskPanes } from "../native-task-panes";
 import { tmux } from "../tmux";
+import { ptyOutputRecorder } from "../freeze-diagnostics/pty-output";
 
 // The PTY server's WebSocket handlers are the unit under test; `Bun.serve` is a
 // stub in this suite, so intercept the config it is handed at module load.
@@ -360,6 +361,27 @@ describe("attaching a native viewer", () => {
 		const seqs = desktop.frames.map((f) => (f.header as { seq: number }).seq);
 		expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
 		expect(desktop.watermark).toBe(browser.watermark);
+	});
+});
+
+describe("freeze capture recording", () => {
+	afterEach(() => ptyOutputRecorder.setEnabled(false));
+
+	it("records the attach replay and every framed live message a native viewer was sent", async () => {
+		ptyOutputRecorder.setEnabled(true);
+		shell.emit("before attach\r\n");
+		await delay(FLUSH_MS);
+		const desktop = connect();
+		shell.emit("live\r\n");
+		await delay(FLUSH_MS);
+
+		const [record] = ptyOutputRecorder.snapshot();
+		expect(desktop.raw.length).toBeGreaterThan(1);
+		expect(record!.chunks.map((chunk) => chunk.text)).toEqual(desktop.raw);
+		expect(record!.sessionKey).toBe(TASK_ID);
+
+		disconnect(desktop);
+		expect(ptyOutputRecorder.snapshot()).toEqual([]);
 	});
 });
 

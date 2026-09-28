@@ -665,9 +665,9 @@ const settings = {
 
 	"settings.freezeDiagnostics": "Registrar bloqueos de la app (macOS)",
 	"settings.freezeDiagnosticsDesc":
-		"Cuando la app deja de responder, escribe en un archivo local lo que ocurría: qué ventanas seguían vivas, qué hacían el host y la interfaz, y una muestra de pila de tres segundos. Desactivado por defecto. Al activarlo empieza a registrar de inmediato y al desactivarlo se detiene de inmediato, sin reiniciar en ningún caso.",
+		"Cuando la app deja de responder, escribe en un archivo local lo que ocurría: qué ventanas seguían vivas, qué hacían el host y la interfaz, una muestra de pila de tres segundos y, si una ventana deja de responder, la última salida enviada a sus terminales. Desactivado por defecto. Al activarlo empieza a registrar de inmediato y al desactivarlo se detiene de inmediato, sin reiniciar en ningún caso.",
 	"settings.freezeDiagnosticsCaveat":
-		"Todo se queda en esta máquina y no se envía a ningún sitio. Como mucho tres muestras por ejecución, con cinco minutos entre ellas, y se conservan las cinco sesiones más recientes: los archivos ya escritos permanecen hasta que esa rotación los descarte. Las pilas nativas pueden contener rutas de archivos, así que revísalas antes de compartir alguna.",
+		"Todo se queda en esta máquina y no se envía a ningún sitio. Como mucho tres muestras por ejecución, con cinco minutos entre ellas, y se conservan las cinco sesiones más recientes: los archivos ya escritos permanecen hasta que esa rotación los descarte. La salida de terminal contiene todo lo que mostraron tus terminales y las pilas nativas pueden contener rutas de archivos, así que revísalas antes de compartir alguna.",
 	"settings.freezeDiagnosticsPath": "Archivos: {directory}",
 	"settings.freezeDiagnosticsUnsupported":
 		"Solo se puede registrar en macOS: esta app se ejecuta en otro sistema, así que aquí el interruptor no hace nada.",

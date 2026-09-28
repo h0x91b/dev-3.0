@@ -8,14 +8,19 @@ import {
 	applyFreezeDiagnosticsSetting,
 	configureFreezeDiagnostics,
 	freezeBeat,
+	freezeDiagnosticsDirectory,
 	freezeDiagnosticsRunning,
 	freezeDiagnosticsSupported,
+	pinPtyOutputIfStale,
 	recordFreezeDiagnostic,
 	stopFreezeDiagnostics,
+	writePtyOutput,
 } from "../freeze-diagnostics";
-import type { FreezeBeat } from "../freeze-diagnostics/protocol";
+import { wantsPtyOutput, type FreezeBeat, type PtyOutputRequest } from "../freeze-diagnostics/protocol";
+import { createPtyOutputRecorder, PTY_OUTPUT_PIN_AFTER_MS, ptyOutputRecorder } from "../freeze-diagnostics/pty-output";
 
-vi.mock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn() }), getLogPath: () => "/unused" }));
+const logRoot = vi.hoisted(() => ({ path: "/unused" }));
+vi.mock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn() }), getLogPath: () => logRoot.path }));
 const beat: FreezeBeat = { clientId: "page-a", visible: true, sinceLastBeatMs: 2_000, hiddenSinceLastBeat: false, terminals: 1, frameErrorPanes: 0 };
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -183,5 +188,161 @@ describe("opt-in local freeze diagnostics", () => {
 		}
 		expect(readdirSync(dir).filter((name) => name.endsWith("jsonl"))).toHaveLength(5);
 		expect(readFileSync(join(dir, "keep.log"), "utf8")).toBe("user content");
+	});
+
+	it("rotates terminal-output dumps with the rest of their session", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-pty-rotate-"));
+		directories.push(dir);
+		for (let i = 1; i <= 6; i++) {
+			createCaptureStore(dir, `freeze-${i}-10`).log({ event: "started" });
+			writeFileSync(join(dir, `freeze-${i}-10.1-pty.json`), "{}");
+		}
+		expect(readdirSync(dir).filter((name) => name.endsWith("-pty.json")).sort()).toEqual(
+			[2, 3, 4, 5, 6].map((i) => `freeze-${i}-10.1-pty.json`),
+		);
+	});
+});
+
+describe("recent terminal output for a stuck renderer", () => {
+	const request: PtyOutputRequest = { event: "capture-pty-output", session: "freeze-1-10", number: 2, reasons: ["window-1-heartbeat-missing"] };
+	afterEach(() => {
+		stopFreezeDiagnostics();
+		ptyOutputRecorder.setEnabled(false);
+		logRoot.path = "/unused";
+	});
+
+	it("keeps nothing unless freeze capture turned it on, and drops everything when it turns off", () => {
+		const recorder = createPtyOutputRecorder();
+		const client = {};
+		recorder.record(client, "task", "secret output");
+		expect(recorder.snapshot()).toEqual([]);
+		recorder.setEnabled(true);
+		recorder.record(client, "task", "kept");
+		expect(recorder.snapshot()).toHaveLength(1);
+		recorder.setEnabled(false);
+		expect(recorder.snapshot()).toEqual([]);
+	});
+
+	it("bounds each client to the newest output and counts what it dropped", () => {
+		const recorder = createPtyOutputRecorder({ ringChars: 10, maxClients: 4 });
+		recorder.setEnabled(true);
+		const client = {};
+		for (const [at, text] of [[1, "aaaa"], [2, "bbbb"], [3, "cccc"]] as const) recorder.record(client, "task", text, at);
+		const [record] = recorder.snapshot();
+		expect(record!.chunks).toEqual([{ at: 2, text: "bbbb" }, { at: 3, text: "cccc" }]);
+		expect(record).toMatchObject({ sentChars: 12, droppedChars: 4, firstAt: 1, lastAt: 3 });
+		// One chunk bigger than the whole ring keeps its tail, and says so.
+		recorder.record(client, "task", "0123456789XYZ", 4);
+		expect(recorder.snapshot()[0]!.chunks).toEqual([{ at: 4, text: "3456789XYZ" }]);
+		expect(recorder.snapshot()[0]!.droppedChars).toBe(4 + 3 + 8);
+	});
+
+	it("bounds the number of clients by dropping the one written longest ago, and forgets a closed one", () => {
+		const recorder = createPtyOutputRecorder({ ringChars: 10, maxClients: 2 });
+		recorder.setEnabled(true);
+		const [a, b, c] = [{}, {}, {}];
+		recorder.record(a, "a", "x", 1);
+		recorder.record(b, "b", "x", 2);
+		recorder.record(a, "a", "y", 3);
+		recorder.record(c, "c", "x", 4);
+		expect(recorder.snapshot().map((r) => r.sessionKey)).toEqual(["c", "a"]);
+		recorder.forget(c);
+		expect(recorder.snapshot().map((r) => r.sessionKey)).toEqual(["a"]);
+	});
+
+	it("pins the ring when a window's heartbeat goes stale, so later output cannot evict it", () => {
+		const recorder = createPtyOutputRecorder({ ringChars: 8, maxClients: 4 });
+		recorder.setEnabled(true);
+		const client = {};
+		recorder.record(client, "task", "trigger", 1);
+		recorder.pin(10);
+		for (let at = 11; at < 20; at++) recorder.record(client, "task", "later", at);
+		recorder.pin(30);
+		const [record] = recorder.snapshot();
+		expect(record!.pinned).toEqual({ at: 10, chunks: [{ at: 1, text: "trigger" }] });
+		expect(record!.chunks.map((chunk) => chunk.text).join("")).not.toContain("trigger");
+		recorder.unpin();
+		expect(recorder.snapshot()[0]!.pinned).toBeNull();
+	});
+
+	it("pins only after a desktop window has gone two hidden beats without one", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-pin-"));
+		directories.push(dir);
+		const workerPath = join(dir, "worker.mjs");
+		writeFileSync(workerPath, "import { parentPort } from 'node:worker_threads';\nparentPort?.on('message', () => {});\n");
+		configureFreezeDiagnostics({ workerPath, version: "test", build: "test" });
+		applyFreezeDiagnosticsSetting(true, "darwin");
+		expect(ptyOutputRecorder.isEnabled()).toBe(true);
+		const client = {};
+		ptyOutputRecorder.record(client, "task", "trigger", 1_000);
+		recordFreezeDiagnostic({ kind: "beat", windowId: 1, beat }, 1_000);
+		pinPtyOutputIfStale(1_000 + PTY_OUTPUT_PIN_AFTER_MS - 1);
+		expect(ptyOutputRecorder.snapshot()[0]!.pinned).toBeNull();
+		pinPtyOutputIfStale(1_000 + PTY_OUTPUT_PIN_AFTER_MS);
+		expect(ptyOutputRecorder.snapshot()[0]!.pinned?.chunks).toEqual([{ at: 1_000, text: "trigger" }]);
+		// A fresh beat ends the episode.
+		recordFreezeDiagnostic({ kind: "beat", windowId: 1, beat }, 8_000);
+		pinPtyOutputIfStale(8_000);
+		expect(ptyOutputRecorder.snapshot()[0]!.pinned).toBeNull();
+		// Turning the switch off drops the recorded output with the collector.
+		applyFreezeDiagnosticsSetting(false, "darwin");
+		expect(ptyOutputRecorder.isEnabled()).toBe(false);
+		expect(ptyOutputRecorder.snapshot()).toEqual([]);
+	});
+
+	it("writes a private dump named after the capture, newest clients first within a size cap", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-pty-dump-"));
+		directories.push(dir);
+		ptyOutputRecorder.setEnabled(true);
+		ptyOutputRecorder.record({}, "11111111-aaaa-bbbb-cccc-dddddddddddd", "\x1b[31mold\x1b[0m", 1);
+		ptyOutputRecorder.record({}, "22222222-aaaa-bbbb-cccc-dddddddddddd", "new", 2);
+		expect(writePtyOutput(request, { directory: dir, at: 5 })).toMatchObject({ ok: true, clients: 2 });
+		const file = join(dir, "freeze-1-10.2-pty.json");
+		expect(statSync(file).mode & 0o777).toBe(0o600);
+		const dump = JSON.parse(readFileSync(file, "utf8"));
+		expect(dump).toMatchObject({ event: "pty-output", capturedAt: 5, reasons: ["window-1-heartbeat-missing"] });
+		expect(dump.clients.map((c: { taskId: string }) => c.taskId)).toEqual(["22222222", "11111111"]);
+		expect(dump.clients[1].chunks).toEqual([{ at: 1, text: "\x1b[31mold\x1b[0m" }]);
+		// Over the cap, the least recently written clients go first.
+		expect(writePtyOutput(request, { directory: dir, maxBytes: 400 })).toMatchObject({ ok: true, clients: 1 });
+		expect(JSON.parse(readFileSync(file, "utf8")).clients.map((c: { taskId: string }) => c.taskId)).toEqual(["22222222"]);
+	});
+
+	it("refuses a dump name that is not one of the collector's own files", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-pty-name-"));
+		directories.push(dir);
+		ptyOutputRecorder.setEnabled(true);
+		ptyOutputRecorder.record({}, "task", "x");
+		expect(writePtyOutput({ ...request, session: "../escape" }, { directory: dir }).ok).toBe(false);
+		expect(readdirSync(dir)).toEqual([]);
+	});
+
+	it("asks for terminal output only when a renderer stopped beating", () => {
+		expect(wantsPtyOutput(["window-1-heartbeat-missing"])).toBe(true);
+		expect(wantsPtyOutput(["host-heartbeat-missing", "window-3-heartbeat-missing"])).toBe(true);
+		expect(wantsPtyOutput(["window-1-animation-frame-missing"])).toBe(false);
+		expect(wantsPtyOutput(["host-heartbeat-missing"])).toBe(false);
+	});
+
+	it("answers the worker's request by writing the dump and reporting the result back", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-freeze-pty-roundtrip-"));
+		directories.push(root);
+		logRoot.path = root;
+		const workerPath = join(root, "worker.mjs");
+		writeFileSync(workerPath, [
+			"import { parentPort, workerData } from 'node:worker_threads';",
+			"import { mkdirSync, writeFileSync } from 'node:fs';",
+			"mkdirSync(workerData.directory, { recursive: true });",
+			"parentPort.on('message', (m) => { if (m.kind === 'pty-output') writeFileSync(workerData.directory + '/reply.json', JSON.stringify(m)); });",
+			`parentPort.postMessage(${JSON.stringify(request)});`,
+		].join("\n"));
+		configureFreezeDiagnostics({ workerPath, version: "test", build: "test" });
+		applyFreezeDiagnosticsSetting(true, "darwin");
+		ptyOutputRecorder.record({}, "33333333-aaaa-bbbb-cccc-dddddddddddd", "stuck here");
+		const replyPath = join(freezeDiagnosticsDirectory(), "reply.json");
+		await vi.waitFor(() => expect(readdirSync(freezeDiagnosticsDirectory())).toContain("reply.json"), { timeout: 5_000 });
+		expect(JSON.parse(readFileSync(replyPath, "utf8"))).toMatchObject({ kind: "pty-output", number: 2, ok: true, clients: 1 });
+		const dump = JSON.parse(readFileSync(join(freezeDiagnosticsDirectory(), "freeze-1-10.2-pty.json"), "utf8"));
+		expect(dump.clients[0].chunks[0].text).toBe("stuck here");
 	});
 });

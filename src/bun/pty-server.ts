@@ -32,6 +32,7 @@ import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask } from "./
 import { scanHumanTerminalInput } from "../shared/human-terminal-input";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
+import { ptyOutputRecorder } from "./freeze-diagnostics/pty-output";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
@@ -1194,9 +1195,15 @@ function sessionShell(session: PtySession): { write(data: string): void; resize(
 	return term ?? null;
 }
 
+/** Everything a viewer is sent goes through here or the broadcast in `flushPendingData`. */
+function sendText(client: any, text: string): void {
+	client.sendText(text);
+	ptyOutputRecorder.record(client, client.sessionId ?? "", text);
+}
+
 function sendToClient(client: any, text: string): void {
 	try {
-		client.sendText(text);
+		sendText(client, text);
 	} catch {
 		// dead client — dropped on its close event
 	}
@@ -1725,7 +1732,7 @@ function flushPendingData(session: PtySession): void {
 		noteQueued(session.registryKey, 0);
 		noteFlush(session.registryKey, data.length, session.clients.size);
 		for (const client of session.clients) {
-			try { client.sendText(data); } catch { /* dead client */ }
+			try { sendText(client, data); } catch { /* dead client */ }
 		}
 		return;
 	}
@@ -1739,7 +1746,7 @@ function flushPendingData(session: PtySession): void {
 	const framed = outputMessage(seq, data);
 	noteFlush(session.registryKey, framed.length, session.clients.size);
 	for (const client of session.clients) {
-		try { client.sendText(framed); } catch { /* dead client */ }
+		try { sendText(client, framed); } catch { /* dead client */ }
 	}
 }
 
@@ -2324,6 +2331,7 @@ const ptyServer = Bun.serve({
 		},
 		close(ws) {
 			try {
+				ptyOutputRecorder.forget(ws);
 				const sessionId = (ws as any).sessionId as string | undefined;
 				if (!sessionId) return;
 

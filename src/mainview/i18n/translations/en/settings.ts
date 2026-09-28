@@ -664,9 +664,9 @@ const settings = {
 
 	"settings.freezeDiagnostics": "Record app freezes (macOS)",
 	"settings.freezeDiagnosticsDesc":
-		"When the app stops responding, write what happened to a local file: which windows were alive, what the host and the renderer were doing, plus a three-second stack sample. Off by default. Turning it on starts recording right away, and turning it off stops it right away — no restart either way.",
+		"When the app stops responding, write what happened to a local file: which windows were alive, what the host and the renderer were doing, a three-second stack sample and, if a window stopped responding, the latest output sent to its terminals. Off by default. Turning it on starts recording right away, and turning it off stops it right away — no restart either way.",
 	"settings.freezeDiagnosticsCaveat":
-		"Everything stays on this machine and nothing is sent anywhere. At most three samples per run, five minutes apart, and the five newest sessions are kept — files already written stay until that rotation drops them. Native stacks can contain file paths, so look before you share one.",
+		"Everything stays on this machine and nothing is sent anywhere. At most three samples per run, five minutes apart, and the five newest sessions are kept — files already written stay until that rotation drops them. Terminal output holds whatever your terminals showed, and native stacks can contain file paths, so look before you share one.",
 	"settings.freezeDiagnosticsPath": "Files: {directory}",
 	"settings.freezeDiagnosticsUnsupported":
 		"Only macOS can be recorded — this app is running on another system, so the switch does nothing here.",

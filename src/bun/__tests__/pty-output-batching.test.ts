@@ -35,6 +35,7 @@ vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 import { spawn, spawnSync } from "../spawn";
 import { throughputSnapshot } from "../pty-throughput";
+import { ptyOutputRecorder } from "../freeze-diagnostics/pty-output";
 import {
 	PTY_BACKPRESSURE_HIGH_WATER_BYTES,
 	PTY_BACKPRESSURE_LOW_WATER_BYTES,
@@ -311,5 +312,34 @@ describe("pressure changing mid-session", () => {
 		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
 		expect(client.sent.join("")).toBe("queued|next|");
+	});
+});
+
+describe("freeze capture recording", () => {
+	afterEach(() => ptyOutputRecorder.setEnabled(false));
+
+	it("keeps no terminal output while freeze capture is off", () => {
+		startSession("task-freeze-off-1");
+		emit("private output");
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
+		expect(ptyOutputRecorder.snapshot()).toEqual([]);
+	});
+
+	it("records exactly the frames a viewer was sent, in order, and forgets the viewer on close", () => {
+		ptyOutputRecorder.setEnabled(true);
+		const client = startSession("task-freeze-rec-1");
+		for (let i = 0; i < 20; i++) {
+			emit(`chunk${i}|`);
+			vi.advanceTimersByTime(5);
+		}
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
+
+		const [record] = ptyOutputRecorder.snapshot();
+		expect(client.sent.length).toBeGreaterThan(1);
+		expect(record!.chunks.map((chunk) => chunk.text)).toEqual(client.sent);
+		expect(record!.sessionKey).toBe("task-freeze-rec-1");
+
+		wsHandlers.close(client);
+		expect(ptyOutputRecorder.snapshot()).toEqual([]);
 	});
 });
