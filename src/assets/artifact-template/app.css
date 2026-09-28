@@ -63,7 +63,9 @@
     .muted { color: rgb(var(--dev3-text-secondary)); }
     /* A gold chip, not gold text: on white the metal only survives as a fill. */
     .eyebrow {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1.2;
       margin-bottom: 5px;
       padding: 3px 8px;
       border-radius: 6px;
@@ -81,7 +83,7 @@
        height at every text size instead of each computing its own. */
     .actions { align-items: stretch; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .actions > * { flex: 0 0 auto; }
-    .actions button, .actions .status { white-space: nowrap; }
+    .actions button, .actions .status, .actions .pill { white-space: nowrap; }
     .section-nav {
       position: sticky;
       z-index: var(--dev3-z-nav);
@@ -124,6 +126,7 @@
       align-items: center;
       gap: 7px;
       padding: 7px 10px;
+      line-height: 1.2;
       border: 1px solid rgb(var(--dev3-success) / .25);
       border-radius: 999px;
       background: rgb(var(--dev3-success) / .08);
@@ -760,7 +763,9 @@
     .evidence-table .wrap { text-align: left; line-height: 1.45; }
     .evidence-table tr.regime td { border-top: 2px solid rgb(var(--dev3-accent) / .55); }
     .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-gold) / .5); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
-    .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; }
+    /* Centred on both axes with a tight line box: a pill stretched by a flex row
+       (`.actions`, a section head) otherwise pins its text to the top edge. */
+    .pill { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; line-height: 1.2; text-align: center; }
     .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
     .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
     .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }
