@@ -460,7 +460,7 @@ async function codexLaunchRuntime(): Promise<CodexLaunchRuntime> {
 
 export interface CommandOptions {
 	/** When true, resume the previous session instead of starting a new one.
-	 *  Supported agents: Claude (--continue), Codex (resume --last),
+	 *  Supported agents: Claude (--continue), Codex (resume <id>; never --last),
 	 *  Gemini (--resume latest), Cursor Agent (--continue). */
 	resume?: boolean;
 	/** Specific session ID to resume or pre-assign. When resuming, agents that

@@ -21,6 +21,7 @@ let stderr = "";
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
 let originalTmuxPane: string | undefined;
+let originalNativePane: string | undefined;
 
 beforeEach(() => {
 	stdout = "";
@@ -28,6 +29,8 @@ beforeEach(() => {
 	// Tests may run inside tmux (TMUX_PANE set); clear it so cases control it explicitly.
 	originalTmuxPane = process.env.TMUX_PANE;
 	delete process.env.TMUX_PANE;
+	originalNativePane = process.env.DEV3_PANE_ID;
+	delete process.env.DEV3_PANE_ID;
 	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
 		stdout += String(chunk);
 		return true;
@@ -44,6 +47,8 @@ afterEach(() => {
 	stderrSpy.mockRestore();
 	if (originalTmuxPane === undefined) delete process.env.TMUX_PANE;
 	else process.env.TMUX_PANE = originalTmuxPane;
+	if (originalNativePane === undefined) delete process.env.DEV3_PANE_ID;
+	else process.env.DEV3_PANE_ID = originalNativePane;
 });
 
 describe("handleCodexHook", () => {
@@ -118,6 +123,25 @@ describe("handleCodexHook", () => {
 			paneId: "%42",
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		expect(stdout).toBe("{}");
+	});
+
+	it("forwards a native pane's id from $DEV3_PANE_ID when there is no $TMUX_PANE (#1847)", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		process.env.DEV3_PANE_ID = "pane-1";
+
+		await handleCodexHook(JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-9", paneId: "pane-1" });
+	});
+
+	it("prefers $TMUX_PANE when both are set", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		process.env.TMUX_PANE = "%42";
+		process.env.DEV3_PANE_ID = "pane-1";
+
+		await handleCodexHook(JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "%42" });
 	});
 
 	it("carries the submitted prompt and its turn id on UserPromptSubmit", async () => {

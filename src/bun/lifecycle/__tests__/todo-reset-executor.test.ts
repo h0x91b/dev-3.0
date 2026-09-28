@@ -196,6 +196,20 @@ describe("persistResetTask — the one compare-and-set write (S2, T11, T12)", ()
 		storeWith(liveTask({ status: "completed" }));
 		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere/);
 	});
+
+	it("writes the Codex scan floor in the same compare-and-set, raising an older one", async () => {
+		const store = storeWith(liveTask({ codexScanFloorAt: "2026-01-01T00:00:00.000Z" }));
+		const before = Date.now();
+		await executeLifecycleEffect(persist(), ctx(liveTask()));
+		expect(Date.parse(store.get().codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
+		expect(vi.mocked(data.updateTaskWith)).toHaveBeenCalledTimes(1);
+	});
+
+	it("writes no floor when the compare-and-set misses", async () => {
+		const store = storeWith(liveTask({ lifecycleStartedAt: "2026-09-25T12:00:00.000Z" }));
+		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere/);
+		expect(store.get().codexScanFloorAt).toBeUndefined();
+	});
 });
 
 describe("resetWorktree — owned branches only, noted first (S1, S4, S7)", () => {
@@ -240,6 +254,15 @@ describe("episode end voids pending reset approvals", () => {
 		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "cancelled" }));
 		await executeLifecycleEffect({ type: "persistTerminalTask", status: "cancelled", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
 		expect(voidAgentRequest).toHaveBeenCalledWith("reset", TASK_ID);
+	});
+
+	it("persistTerminalTask writes the Codex scan floor with the terminal status", async () => {
+		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "completed" }));
+		const before = Date.now();
+		await executeLifecycleEffect({ type: "persistTerminalTask", status: "completed", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
+		const updates = vi.mocked(data.updateTask).mock.calls[0]![2];
+		expect(updates).toMatchObject({ status: "completed" });
+		expect(Date.parse(updates.codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
 	});
 });
 

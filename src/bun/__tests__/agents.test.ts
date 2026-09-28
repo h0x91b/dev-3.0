@@ -138,16 +138,25 @@ describe("resolveAgentCommand — resume", () => {
 	});
 
 	// ---- Codex ----
-	it("Codex: uses 'codex resume --last' subcommand when resume=true", async () => {
+	it("Codex: resumes the given conversation with the 'codex resume <id>' subcommand", async () => {
 		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
+			{ resume: true, sessionId: "sid-1" },
 		);
 
-		expect(cmd).toMatch(/^codex resume --last/);
+		expect(cmd).toMatch(/^codex resume sid-1/);
 		expect(cmd).not.toContain("Some task");
+	});
+
+	it("Codex: refuses to resume without a conversation id instead of using --last (#1847)", async () => {
+		await expect(resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ resume: true },
+		)).rejects.toThrow(/never resumes Codex with --last/);
 	});
 
 	it("Codex: ignores unsupported generic config flags during resume", async () => {
@@ -160,10 +169,10 @@ describe("resolveAgentCommand — resume", () => {
 				maxBudgetUsd: 10,
 			}),
 			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
+			{ resume: true, sessionId: "sid-1" },
 		);
 
-		expect(cmd).toMatch(/^codex resume --last/);
+		expect(cmd).toMatch(/^codex resume sid-1/);
 		expect(cmd).toContain("--model gpt-5");
 		expect(cmd).not.toContain("--permission-mode");
 		expect(cmd).not.toContain("--effort");
@@ -251,10 +260,10 @@ describe("resolveAgentCommand — resume", () => {
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
+			{ resume: true, sessionId: "sid-1" },
 		);
 
-		expect(cmd).toMatch(/^codex resume --last/);
+		expect(cmd).toMatch(/^codex resume sid-1/);
 		expect(cmd).toContain("-c 'developer_instructions=");
 	});
 
@@ -837,8 +846,8 @@ describe("buildResumeCommand", () => {
 		expect(buildResumeCommand("codex", "sid-2")).toBe("codex resume sid-2");
 	});
 
-	it("Codex: resume --last without sessionId", () => {
-		expect(buildResumeCommand("codex")).toBe("codex resume --last");
+	it("Codex: no resume command without sessionId (never --last)", () => {
+		expect(buildResumeCommand("codex")).toBeNull();
 	});
 
 	it("Gemini: --resume <id> with sessionId", () => {

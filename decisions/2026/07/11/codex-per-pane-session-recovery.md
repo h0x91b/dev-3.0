@@ -1,5 +1,7 @@
 # 125 — Codex per-pane session recovery via lifecycle hook; Gemini pre-assign
 
+Superseded on 2026-09-28 by `decisions/2026/09/28/codex-conversation-selection.md`: an uncaptured Codex id no longer degrades to `resume --last`; capture also works on native panes.
+
 ## Context
 
 Automatic session recovery (decision-era PR #431) does *targeted* resume — pin a

@@ -47,7 +47,9 @@ import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import * as agents from "./agents";
 import { agentKey } from "../shared/agent-adapters/families";
-import { placePaneSession, type SessionPane } from "./pane-session-capture";
+import { placePaneSession, placeUnaddressedPaneSession, type SessionPane } from "./pane-session-capture";
+import { isInteractiveCodexConversation } from "./codex-resume-home";
+import { configuredCodexHomes } from "./codex-task-selection";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
@@ -830,12 +832,13 @@ function getApprovalResumeStatus(
 async function paneSessionAlreadyRecorded(
 	project: Project,
 	taskId: string,
-	paneId: string,
+	paneId: string | null,
 	sessionId: string,
 ): Promise<boolean> {
 	try {
 		const task = await data.getTask(project, taskId);
-		const pane = task.sessionState?.panes?.find((p) => p.paneId === paneId);
+		const panes = task.sessionState?.panes ?? [];
+		const pane = paneId ? panes.find((p) => p.paneId === paneId) : panes.length === 1 ? panes[0] : undefined;
 		return pane?.sessionId === sessionId;
 	} catch {
 		return false;
@@ -865,7 +868,7 @@ async function paneSessionAlreadyRecorded(
 async function capturePaneSession(
 	project: Project,
 	taskId: string,
-	paneId: string,
+	paneId: string | null,
 	sessionId: string,
 	harness: PromptSubmitHarness,
 ): Promise<void> {
@@ -873,9 +876,15 @@ async function capturePaneSession(
 		if (await paneSessionAlreadyRecorded(project, taskId, paneId, sessionId)) return;
 		// Resolved outside the file lock: the agent registry has its own files.
 		const cached = await data.getTask(project, taskId);
+		// A `codex exec` or subagent in the pane fires the same hooks; only the
+		// user's own conversation, once its rollout exists, may become the pane's.
+		if (harness === "codex" && !(await isInteractiveCodexConversation(sessionId, await taskCodexHomes(project, cached)))) return;
 		const mainEntry = cached.sessionState?.panes?.length ? null : await ownAgentPaneEntry(cached, harness);
 		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
-			const nextPanes = placePaneSession(current.sessionState?.panes ?? [], paneId, sessionId, mainEntry);
+			const panes = current.sessionState?.panes ?? [];
+			const nextPanes = paneId
+				? placePaneSession(panes, paneId, sessionId, mainEntry)
+				: placeUnaddressedPaneSession(panes, sessionId, mainEntry);
 			if (!nextPanes) return { updates: {}, result: { changed: false } };
 			return { updates: { sessionState: { panes: nextPanes } }, result: { changed: true } };
 		});
@@ -885,6 +894,17 @@ async function capturePaneSession(
 		}
 	} catch (err) {
 		log.warn("Failed to capture agent pane session id (non-fatal)", { error: String(err) });
+	}
+}
+
+/** The Codex stores the task's own agent may write to, besides the managed accounts. */
+async function taskCodexHomes(project: Project, task: Task): Promise<string[]> {
+	if (!task.worktreePath) return [];
+	const agent = task.agentId ? (await agents.getAllAgents()).find((entry) => entry.id === task.agentId) : undefined;
+	try {
+		return await configuredCodexHomes(project, task, agent, task.configId);
+	} catch {
+		return [];
 	}
 }
 
@@ -1942,8 +1962,10 @@ const handlers: Record<string, Handler> = {
 		}
 
 		// Record the session id for this pane (targeted per-pane recovery).
+		// A Codex hook without a pane id (a native session with no pane suffix) is
+		// still placed when the task has only one pane; other harnesses need the id.
 		const paneId = typeof params.paneId === "string" ? params.paneId : null;
-		if (sessionId && paneId) {
+		if (sessionId && (paneId || harness === "codex")) {
 			await capturePaneSession(project, task.id, paneId, sessionId, harness);
 		}
 

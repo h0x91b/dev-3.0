@@ -2572,6 +2572,12 @@ export interface Task {
 	 */
 	lifecycleStartedAt?: string;
 	/**
+	 * When the last run in this worktree ended (reset, completion, "start fresh").
+	 * A Codex conversation found by scanning must start after it. Only ever
+	 * raised; older app versions ignore it.
+	 */
+	codexScanFloorAt?: string | null;
+	/**
 	 * Legacy manual position inside a column. Nothing reads or writes it any more —
 	 * in-column order is derived from priority + the activity clock (see
 	 * sortTasks.ts). Declared only so older values already sitting in `tasks.json`

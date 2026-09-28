@@ -1,5 +1,7 @@
 # Locate the Codex resume home by session ID
 
+Superseded on 2026-09-28 by `decisions/2026/09/28/codex-conversation-selection.md`: a pane without a saved ID now resumes the newest task-owned conversation, and a recorded account mismatch refuses.
+
 ## Context
 
 Preserving accounts on new launches does not repair existing tasks whose session IDs were saved without account metadata. The user requested discovery across all local account stores so those conversations can be restored directly.

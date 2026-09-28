@@ -1,14 +1,13 @@
 import { existsSync, realpathSync } from "node:fs";
 import { assertTaskWorkspacePresent, worktreeAccessState } from "../task-workspace-guard";
-import { resolve } from "node:path";
-import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { codexAccountIdForHome } from "../agent-accounts";
-import { findLatestCodexConversation, resolveCodexResumeHome } from "../codex-resume-home";
+import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { agentKey } from "../../shared/agent-adapters/families";
 import { evaluateCodexModelSupport } from "../../shared/agent-model-cli-requirements";
@@ -944,7 +943,15 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
-	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; accountId?: string | null; codexHome?: string },
+	opts?: {
+		sessionId?: string;
+		skipSessionPersist?: boolean;
+		branchName?: string;
+		accountId?: string | null;
+		codexHome?: string;
+		/** Open the pane with this line instead of the agent, keeping the stored panes untouched. */
+		agentRefusal?: string;
+	},
 ): Promise<void> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath);
@@ -1014,7 +1021,12 @@ export async function launchTaskPty(
 			cmdOptions.sessionId = freshSessionId;
 		}
 
-		if (agentId) {
+		if (opts?.agentRefusal) {
+			// A refusal is a normal launch that runs no agent: throwing here would
+			// fail the preparation and let its cleanup remove the worktree.
+			tmuxCmd = launchDialect().print(opts.agentRefusal);
+			extraEnv = {};
+		} else if (agentId) {
 			log.info("Resolving command for agent", { agentId, configId });
 			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, Object.keys(cmdOptions).length ? cmdOptions : undefined);
 			tmuxCmd = resolved.command;
@@ -1045,7 +1057,7 @@ export async function launchTaskPty(
 
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
-		if (!skipSessionPersist) {
+		if (!skipSessionPersist && !opts?.agentRefusal) {
 			const effectiveSessionId = resume ? sessionId
 				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null);
 			// This write replaces pane[0] wholesale, so an origin store the resolver
@@ -2174,20 +2186,12 @@ async function sessionStateOrLostCodexPane(project: Project | null, task: Task):
 	}
 }
 
-/** Where resume looks for a Codex conversation, besides the managed account stores. */
-async function configuredCodexHomes(project: Project, task: Task, agent: CodingAgent | undefined, configId: string | null | undefined): Promise<string[]> {
-	const config = agent ? agents.findConfig(agent, configId) : undefined;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, task.worktreePath!, { foreignCode: task.foreignCode });
-	return [config?.envVars?.CODEX_HOME, projectEnv.CODEX_HOME, process.env.CODEX_HOME]
-		.filter((value): value is string => !!value)
-		.map((value) => resolve(task.worktreePath!, value));
-}
-
 /**
  * A Codex task whose pane record was lost (pane-exit reconciliation emptied it)
- * still has its conversation on disk. Rebuild the main pane around the newest
- * interactive conversation of this worktree; the account comes later, from the
- * store that holds it. Null when the task is not Codex or nothing was found.
+ * may still have its conversation on disk. Rebuild the main pane around the one
+ * the selection engine would resume; when the choice is unclear the pane keeps
+ * no id, so resuming it shows why instead of guessing. Null when the task is not
+ * Codex or nothing of this task was found.
  */
 async function lostCodexMainPane(project: Project, task: Task): Promise<PaneSessionEntry | null> {
 	if (!task.worktreePath || !task.agentId) return null;
@@ -2196,19 +2200,27 @@ async function lostCodexMainPane(project: Project, task: Task): Promise<PaneSess
 	const config = agents.findConfig(agent, task.configId);
 	const baseCommand = config?.baseCommandOverride || agent.baseCommand;
 	if (agentKey(baseCommand, agent.agentFamily) !== "codex") return null;
-	const sessionId = await findLatestCodexConversation(task.worktreePath, await configuredCodexHomes(project, task, agent, task.configId));
+	const pane: PaneSessionEntry = {
+		agentCmd: baseCommand,
+		sessionId: null,
+		agentId: task.agentId,
+		configId: task.configId ?? null,
+		...(agent.agentFamily ? { agentFamily: agent.agentFamily } : {}),
+	};
+	let sessionId: string | null = null;
+	try {
+		sessionId = (await chooseTaskCodexConversations(project, task, [pane], "explicit-resume", { persist: false })).get(0)?.sessionId ?? null;
+	} catch (err) {
+		// Something of this task exists but cannot be chosen: offer the resume so it explains itself.
+		if (!/No Codex conversation of this task/.test(String(err))) return pane;
+		return null;
+	}
 	if (!sessionId) return null;
 	log.warn("Codex task has no pane record — resuming the newest conversation of its worktree", {
 		taskId: task.id.slice(0, 8),
 		sessionId,
 	});
-	return {
-		agentCmd: baseCommand,
-		sessionId,
-		agentId: task.agentId,
-		configId: task.configId ?? null,
-		...(agent.agentFamily ? { agentFamily: agent.agentFamily } : {}),
-	};
+	return { ...pane, sessionId };
 }
 
 async function resumeTask(params: { taskId: string }): Promise<string> {
@@ -2222,25 +2234,22 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
 	const stored = task.sessionState?.panes ?? [];
 	const lost = stored.length ? null : await lostCodexMainPane(resolvedProject, task);
-	const panes = lost ? [lost] : stored;
+	const panes = lost ? [lost] : [...stored];
 	if (!panes.length) {
 		throw new Error(`Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
 	if (lost) task.sessionState = { panes };
+	// Every Codex pane is chosen from one snapshot and claimed before anything
+	// launches; a pane that cannot be chosen safely refuses the whole resume.
+	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: true, onDisk: stored });
 	const codexHomes = new Map<number, string>();
-	const codexPanes = panes.map((pane, index) => ({ pane, index }))
-		.filter(({ pane }) => agentKey(pane.agentCmd, pane.agentFamily ?? undefined) === "codex");
-	if (codexPanes.some(({ pane }) => !pane.sessionId)) {
-		throw new Error("Cannot resume Codex: a pane has no saved conversation ID. Select its existing conversation in Codex before trying again.");
+	for (const [index, choice] of codexChoices) {
+		panes[index] = { ...panes[index], sessionId: choice.sessionId };
+		codexHomes.set(index, choice.codexHome);
 	}
-	if (codexPanes.length) {
-		const allAgents = await agents.getAllAgents();
-		for (const { pane, index } of codexPanes) {
-			const agent = allAgents.find((entry) => entry.id === pane.agentId);
-			const homes = await configuredCodexHomes(resolvedProject, task, agent, pane.configId);
-			codexHomes.set(index, await resolveCodexResumeHome(pane.sessionId!, homes));
-		}
-	}
+	// launchTaskPty rewrites pane[0] and copies the rest from here, so it must
+	// carry the claimed ids, not the snapshot's.
+	if (codexChoices.size) task.sessionState = { panes };
 	await wakeIfHibernated(project, task);
 
 	// Destroy any dead session in memory
@@ -2365,8 +2374,9 @@ async function restartTask(params: { taskId: string }): Promise<string> {
 	const agentId = mainPane?.agentId ?? task.agentId;
 	const configId = mainPane?.configId ?? task.configId;
 
-	// Clear old session state — a new one will be generated by launchTaskPty
-	await data.updateTask(project, task.id, { sessionState: null });
+	// Clear old session state — a new one will be generated by launchTaskPty.
+	// The abandoned conversation stays on disk; the floor keeps a scan off it.
+	await data.updateTask(project, task.id, { sessionState: null, codexScanFloorAt: new Date().toISOString() });
 
 	const resolvedProject = project.kind === "virtual"
 		? project

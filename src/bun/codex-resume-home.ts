@@ -1,5 +1,5 @@
 import { lstat, open, readdir, realpath, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
 import { agentAccountStoreRoot } from "./agent-store-roots";
 
@@ -81,22 +81,21 @@ async function rolloutFiles(root: string): Promise<string[]> {
 
 const CWD_PROBE_BYTES = 8 * 1024;
 
+interface InteractiveHeader { id: string; startMs: number }
+
 /** The session header when it opens a user's own interactive conversation in `cwd`. */
-async function interactiveHeaderIn(file: string, cwdNeedle: string, cwd: string): Promise<string | null> {
+async function interactiveHeaderIn(file: string, cwdNeedle: string, cwd: string): Promise<InteractiveHeader | null> {
 	let handle;
 	try {
 		handle = await open(file, "r");
 		const probe = Buffer.alloc(CWD_PROBE_BYTES);
 		const { bytesRead: probed } = await handle.read(probe, 0, CWD_PROBE_BYTES, 0);
 		if (!probe.subarray(0, probed).includes(cwdNeedle)) return null;
-		const buffer = Buffer.alloc(HEADER_LIMIT);
-		const { bytesRead } = await handle.read(buffer, 0, HEADER_LIMIT, 0);
-		const newline = buffer.subarray(0, bytesRead).indexOf(10);
-		if (newline < 0) return null;
-		const payload = JSON.parse(buffer.subarray(0, newline).toString("utf8"))?.payload;
+		const payload = await sessionPayload(handle);
 		// `cli` is the TUI a person talks to; exec runs, IDE threads and subagents are not.
-		if (payload?.cwd !== cwd || payload?.source !== "cli" || payload?.thread_source === "subagent") return null;
-		return typeof payload.id === "string" && SESSION_ID.test(payload.id) ? payload.id : null;
+		if (payload?.cwd !== cwd || !isInteractive(payload)) return null;
+		if (typeof payload.id !== "string" || !SESSION_ID.test(payload.id)) return null;
+		return { id: payload.id, startMs: Date.parse(String(payload.timestamp)) };
 	} catch {
 		return null;
 	} finally {
@@ -104,36 +103,28 @@ async function interactiveHeaderIn(file: string, cwdNeedle: string, cwd: string)
 	}
 }
 
-/**
- * The most recently used interactive Codex conversation started in `cwd`, across
- * every account store — for a task whose pane record was lost. Only a lookup:
- * the caller still resolves (and verifies) the store with resolveCodexResumeHome.
- */
-export async function findLatestCodexConversation(cwd: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string | null> {
-	const candidates: Array<{ file: string; mtimeMs: number }> = [];
-	for (const accountHome of await codexHomes(additionalHomes, home)) {
-		const root = await optionalRoot(join(accountHome, "sessions"));
-		if (!root) continue;
-		for (const file of await rolloutFiles(root)) {
-			try { candidates.push({ file, mtimeMs: (await stat(file)).mtimeMs }); }
-			catch { /* vanished while scanning */ }
-		}
-	}
-	candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-	const needle = `"cwd":${JSON.stringify(cwd)}`;
-	for (const { file } of candidates) {
-		const id = await interactiveHeaderIn(file, needle, cwd);
-		if (id) return id;
-	}
-	return null;
+type SessionPayload = { id?: unknown; cwd?: unknown; source?: unknown; thread_source?: unknown; timestamp?: unknown };
+
+async function sessionPayload(handle: Awaited<ReturnType<typeof open>>): Promise<SessionPayload | null> {
+	const buffer = Buffer.alloc(HEADER_LIMIT);
+	const { bytesRead } = await handle.read(buffer, 0, HEADER_LIMIT, 0);
+	const newline = buffer.subarray(0, bytesRead).indexOf(10);
+	if (newline < 0) return null;
+	const header = JSON.parse(buffer.subarray(0, newline).toString("utf8"));
+	return header?.type === "session_meta" ? header.payload ?? null : null;
 }
 
+function isInteractive(payload: SessionPayload): boolean {
+	return payload.source === "cli" && payload.thread_source !== "subagent";
+}
+
+interface LocatedConversation { home: string; file: string }
+
 /** Locate the exact saved conversation without choosing a different session. */
-export async function resolveCodexResumeHome(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string> {
+async function locateCodexConversation(sessionId: string, homes: Set<string>): Promise<LocatedConversation> {
 	if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Codex conversation ID: expected a UUID. Check the saved session ID before resuming.");
-	const homes = await codexHomes(additionalHomes, home);
 	const verifiedFiles = new Set<string>();
-	const matches: Array<{ home: string; archived: boolean }> = [];
+	const matches: Array<{ home: string; file: string; archived: boolean }> = [];
 	for (const accountHome of homes) {
 		const seenFiles = new Set<string>();
 		for (const store of ["sessions", "archived_sessions"]) {
@@ -159,7 +150,7 @@ export async function resolveCodexResumeHome(sessionId: string, additionalHomes:
 					if (!verifiedFiles.has(canonical)) await verifyHeader(canonical, sessionId);
 					verifiedFiles.add(canonical);
 					seenFiles.add(canonical);
-					matches.push({ home: accountHome, archived: store === "archived_sessions" });
+					matches.push({ home: accountHome, file: canonical, archived: store === "archived_sessions" });
 				}
 			}
 		}
@@ -171,7 +162,171 @@ export async function resolveCodexResumeHome(sessionId: string, additionalHomes:
 		throw new Error(`Codex conversation ${sessionId} has multiple active session files in one store. Resolve the duplicate files before resuming; no conversation was selected.`);
 	}
 	const active = matches.find((match) => !match.archived);
-	if (active) return active.home;
+	if (active) return { home: active.home, file: active.file };
 	if (matches.length) throw new Error(`Codex conversation ${sessionId} is archived. Unarchive that exact conversation in Codex before resuming.`);
 	throw new Error(`Codex conversation ${sessionId} was not found in the available account stores. Restore its saved session file or reconnect its original store before resuming.`);
+}
+
+/** Locate the exact saved conversation without choosing a different session. */
+export async function resolveCodexResumeHome(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<string> {
+	if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Codex conversation ID: expected a UUID. Check the saved session ID before resuming.");
+	return (await locateCodexConversation(sessionId, await codexHomes(additionalHomes, home))).home;
+}
+
+/**
+ * Whether a hook-reported id is a user's own interactive conversation that is
+ * already on disk. Codex creates the rollout lazily, so "not yet" is false and a
+ * later hook of the same session binds it.
+ */
+export async function isInteractiveCodexConversation(sessionId: string, additionalHomes: string[] = [], home = resolveUserHome()): Promise<boolean> {
+	// Checked before any store is touched: a malformed id can match nothing.
+	if (!SESSION_ID.test(sessionId)) return false;
+	let located: LocatedConversation;
+	try { located = await locateCodexConversation(sessionId, await codexHomes(additionalHomes, home)); }
+	catch { return false; }
+	let handle;
+	try {
+		handle = await open(located.file, "r");
+		const payload = await sessionPayload(handle);
+		return !!payload && payload.id === sessionId && isInteractive(payload);
+	} catch {
+		return false;
+	} finally {
+		await handle?.close();
+	}
+}
+
+/**
+ * Why each caller asks. `explicit-resume` honours a saved id exactly;
+ * `automatic-recovery` takes the newest eligible conversation (the user's
+ * ruling); `reopen` never guesses. See decisions/2026/09/28/codex-conversation-selection.md.
+ */
+export type CodexSelectionIntent = "explicit-resume" | "automatic-recovery" | "reopen";
+
+export interface CodexPaneSnapshot {
+	sessionId: string | null;
+	/** Managed account id; `null` = a non-managed home; `undefined` = never recorded. */
+	accountId?: string | null;
+	/** Still present, or unknown. Only a pane proven gone is not live. */
+	live: boolean;
+	/** Whether this call chooses for the pane. Others still shape the choice. */
+	resumeNow: boolean;
+}
+
+export interface CodexSelectionInput {
+	intent: CodexSelectionIntent;
+	/** The task's managed git worktree, or null when conversations may not be scanned at all. */
+	scanWorktree: string | null;
+	/** Every Codex pane recorded for the task, from one snapshot. */
+	panes: CodexPaneSnapshot[];
+	runBoundary: { lifecycleStartedAt: string | null | undefined; worktreeBirthMs: number | null; floorAt: string | null | undefined };
+	additionalHomes: string[];
+	home?: string;
+}
+
+export type CodexPaneSelection =
+	| { kind: "selected"; sessionId: string; codexHome: string; via: "stored" | "latest-owned" }
+	| { kind: "none" | "ambiguous" | "account-mismatch"; reason: string }
+	| { kind: "not-requested" };
+
+/**
+ * The earliest start a scanned conversation may have to belong to this run.
+ * The earlier of the status clock and the folder's birth, because either can
+ * come after a legitimate start; a restart floor can only raise it. Null means
+ * no usable bound, so nothing may be scanned.
+ */
+export function codexScanBound(boundary: CodexSelectionInput["runBoundary"]): number | null {
+	const present = [Date.parse(boundary.lifecycleStartedAt ?? ""), boundary.worktreeBirthMs ?? Number.NaN]
+		.filter((value) => Number.isFinite(value) && value > 0);
+	if (!present.length) return null;
+	const floor = Date.parse(boundary.floorAt ?? "");
+	return Math.max(Math.min(...present), Number.isFinite(floor) ? floor : Number.NEGATIVE_INFINITY);
+}
+
+interface Candidate { sessionId: string; home: string; mtimeMs: number; scanned: boolean }
+
+async function scannedCandidates(worktree: string, bound: number, homes: Set<string>, boundIds: Set<string>): Promise<Candidate[]> {
+	const found: Candidate[] = [];
+	const needle = `"cwd":${JSON.stringify(worktree)}`;
+	for (const accountHome of homes) {
+		const root = await optionalRoot(join(accountHome, "sessions"));
+		if (!root) continue;
+		for (const file of await rolloutFiles(root)) {
+			const header = await interactiveHeaderIn(file, needle, worktree);
+			if (!header || boundIds.has(header.id) || !(header.startMs >= bound)) continue;
+			try { found.push({ sessionId: header.id, home: accountHome, mtimeMs: (await stat(file)).mtimeMs, scanned: true }); }
+			catch { /* vanished while scanning */ }
+		}
+	}
+	return found;
+}
+
+/**
+ * Pick the Codex conversation for each pane of one task, never another task's:
+ * a scanned conversation must start in this task's managed worktree, inside the
+ * current run, and belong to no pane. Refuses instead of guessing when two panes
+ * could claim it or another Codex pane is live. Saved-id errors throw unchanged.
+ */
+export async function selectCodexConversations(input: CodexSelectionInput): Promise<CodexPaneSelection[]> {
+	const home = input.home ?? resolveUserHome();
+	const homes = await codexHomes(input.additionalHomes, home);
+	const accountsRoot = await optionalRoot(agentAccountStoreRoot(home, "codex"));
+	const isManaged = (store: string) => !!accountsRoot && dirname(store) === accountsRoot;
+	const allowed = (accountId: string | null | undefined) => (store: string) =>
+		accountId === undefined ? true : accountId === null ? !isManaged(store) : isManaged(store) && basename(store) === accountId;
+
+	const boundIds = new Set(input.panes.flatMap((pane) => (pane.sessionId ? [pane.sessionId] : [])));
+	const bound = input.scanWorktree ? codexScanBound(input.runBoundary) : null;
+	const scanned = input.scanWorktree && bound !== null ? await scannedCandidates(input.scanWorktree, bound, homes, boundIds) : [];
+
+	const stored = await Promise.all(input.panes.map(async (pane) => {
+		if (!pane.sessionId) return null;
+		// Only the panes being chosen for may fail loudly; another pane's broken id
+		// just means it cannot outrank a scanned candidate.
+		const located = pane.resumeNow
+			? await locateCodexConversation(pane.sessionId, homes)
+			: await locateCodexConversation(pane.sessionId, homes).catch(() => null);
+		if (!located) return null;
+		return { sessionId: pane.sessionId, home: located.home, mtimeMs: (await stat(located.file)).mtimeMs, scanned: false } satisfies Candidate;
+	}));
+
+	const newest = (list: Candidate[]) => list.reduce<Candidate | null>((best, next) => (!best || next.mtimeMs > best.mtimeMs ? next : best), null);
+	// What each pane would take under the newest-wins rule; the claim count keeps
+	// two panes from both resuming one unbound conversation.
+	const claims = input.panes.map((pane, index) => newest([
+		...(stored[index] ? [stored[index]!] : []),
+		...scanned.filter((candidate) => allowed(pane.accountId)(candidate.home)),
+	]));
+	const claimCount = (sessionId: string) => claims.filter((claim) => claim?.sessionId === sessionId).length;
+
+	return input.panes.map((pane, index): CodexPaneSelection => {
+		if (!pane.resumeNow) return { kind: "not-requested" };
+		const own = stored[index];
+		if (own) {
+			if (!allowed(pane.accountId)(own.home)) {
+				return { kind: "account-mismatch", reason: `Codex conversation ${own.sessionId} is stored under a different account than this pane records. Resume it from that account, or select this pane's conversation in Codex.` };
+			}
+			if (input.intent !== "automatic-recovery") return { kind: "selected", sessionId: own.sessionId, codexHome: own.home, via: "stored" };
+		} else if (input.intent === "reopen") {
+			return { kind: "none", reason: "The previous Codex conversation of this task is not recorded, so it was not reopened. Run `codex resume <id>` in the task's terminal to continue it." };
+		}
+
+		const eligible = scanned.filter((candidate) => allowed(pane.accountId)(candidate.home));
+		const winner = newest([...(own ? [own] : []), ...eligible]);
+		if (!winner) {
+			return { kind: "none", reason: "No Codex conversation of this task's worktree was found for this pane. Run `codex resume <id>` in the task's terminal to continue a specific one." };
+		}
+		if (!winner.scanned) return { kind: "selected", sessionId: winner.sessionId, codexHome: winner.home, via: "stored" };
+
+		const otherLive = input.panes.some((other, i) => i !== index && other.live);
+		const stores = new Set(eligible.map((candidate) => candidate.home));
+		const contested = claimCount(winner.sessionId) > 1;
+		if (otherLive || contested || stores.size > 1) {
+			const why = otherLive ? "another Codex pane of this task is still open"
+				: contested ? "more than one pane of this task could own it"
+				: "matching conversations exist under more than one account";
+			return { kind: "ambiguous", reason: `Codex conversation ${winner.sessionId} is the newest in this worktree${own ? ` (newer than this pane's ${own.sessionId})` : ""}, but ${why}. Nothing was resumed; run \`codex resume <id>\` in the pane to choose.` };
+		}
+		return { kind: "selected", sessionId: winner.sessionId, codexHome: winner.home, via: "latest-owned" };
+	});
 }

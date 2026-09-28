@@ -77,6 +77,8 @@ function modelFor(base: string): string | undefined {
 	return "sonnet";
 }
 
+const THROWS = "<THROWS>";
+
 interface Case {
 	name: string;
 	base: string;
@@ -135,7 +137,8 @@ const EXPECTED: Record<string, string> = {
 	"claude/appendPrompt": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug\n\nExtra: Fix bug'",
 	"codex/fresh": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/fresh-empty": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR>",
-	"codex/resume-nosid": "codex resume --last --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR>",
+	// Codex is never resumed without an id: `--last` is not task-scoped (#1847).
+	"codex/resume-nosid": THROWS,
 	"codex/resume-sid": "codex resume 11111111-1111-1111-1111-111111111111 --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR>",
 	"codex/preassign-sid": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/skipSysPrompt": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -- 'Fix the login bug'",
@@ -244,6 +247,10 @@ describe("resolveAgentCommand — golden matrix (structural, byte-identical)", (
 	});
 
 	it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+		if (EXPECTED[c.name] === THROWS) {
+			await expect(resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options)).rejects.toThrow(/never resumes Codex with --last/);
+			return;
+		}
 		const out = await resolveAgentCommand(agent(c.base), c.config, c.ctx ?? CTX, c.options);
 		expect(redact(out)).toBe(EXPECTED[c.name]);
 	});
@@ -265,7 +272,7 @@ describe("buildResumeCommand — golden", () => {
 	it.each([
 		["claude", undefined, "claude --continue"],
 		["claude", "sid-x", "claude --resume sid-x"],
-		["codex", undefined, "codex resume --last"],
+		["codex", undefined, null],
 		["codex", "sid-x", "codex resume sid-x"],
 		["gemini", undefined, "gemini --resume latest"],
 		["gemini", "sid-x", "gemini --resume sid-x"],

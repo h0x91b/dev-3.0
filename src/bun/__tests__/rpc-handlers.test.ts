@@ -4,7 +4,7 @@ import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shar
 import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import * as agentAccounts from "../agent-accounts";
-import { findLatestCodexConversation, resolveCodexResumeHome } from "../codex-resume-home";
+import { chooseTaskCodexConversations } from "../codex-task-selection";
 import {
 	activatePane,
 	closePane,
@@ -222,7 +222,7 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
-vi.mock("../codex-resume-home", () => ({ resolveCodexResumeHome: vi.fn(), findLatestCodexConversation: vi.fn(async () => null) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
 
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
@@ -10690,7 +10690,25 @@ describe("resumeTask session-id healing", () => {
 	});
 });
 
-describe("resumeTask exact Codex session home", () => {
+describe("restartTask (start fresh) floors the Codex scan", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("writes codexScanFloorAt in the same update that clears the session state", async () => {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId: null }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const before = Date.now();
+		await handlers.restartTask({ taskId: task.id });
+		const clear = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState === null)?.[2];
+		expect(Date.parse(clear?.codexScanFloorAt ?? "")).toBeGreaterThanOrEqual(before);
+		expect(clear?.lifecycleStartedAt).toBeUndefined();
+	});
+});
+
+describe("resumeTask resumes the Codex conversations the selection engine chose", () => {
 	let restoreResolve: () => void;
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -10699,9 +10717,14 @@ describe("resumeTask exact Codex session home", () => {
 		resolve.mockResolvedValue({ command: "codex", extraEnv: {}, agentFamily: "codex" } as any);
 		restoreResolve = () => resolve.mockImplementation(original!);
 	});
-	afterEach(() => restoreResolve());
+	afterEach(() => {
+		restoreResolve();
+		vi.mocked(chooseTaskCodexConversations).mockReset().mockResolvedValue(new Map());
+	});
 	const sessionId = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
 	const home = "/tmp/account-b";
+	const chose = (...entries: Array<[number, string, string]>) =>
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map(entries.map(([i, id, codexHome]) => [i, { sessionId: id, codexHome }])));
 	function arrange() {
 		const project = makeProject();
 		const task = makeTask({ sessionState: { panes: [{ agentCmd: "codex", agentFamily: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId }] } });
@@ -10711,25 +10734,24 @@ describe("resumeTask exact Codex session home", () => {
 		vi.mocked(pty.hasSession).mockReturnValue(false);
 		return { project, task };
 	}
-	afterEach(() => vi.mocked(resolveCodexResumeHome).mockReset());
 
-	it("recovers an old unpaired ID under its discovered home and saves the pairing", async () => {
+	it("asks for explicit-resume over the stored panes and launches under the chosen home", async () => {
 		const { project, task } = arrange();
 		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : undefined);
-		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		chose([0, sessionId, home]);
 		try {
 			await handlers.resumeTask({ taskId: task.id });
-			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
+			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: true }));
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
 		} finally { accountSpy.mockRestore(); }
 	});
 
-	it("keeps both exact session/account pairs when extra panes are resumed again", async () => {
+	it("keeps both panes' chosen ids and accounts across repeated resumes", async () => {
 		const { task, project } = arrange();
 		const secondId = "019f50b3-6415-7dc3-8ad5-b60f0818f705";
 		await data.updateTask(project, task.id, { sessionState: { panes: [task.sessionState!.panes[0], { ...task.sessionState!.panes[0], sessionId: secondId, paneId: "%5" }] } });
-		vi.mocked(resolveCodexResumeHome).mockImplementation(async (id) => id === sessionId ? home : "/tmp/account-c");
+		chose([0, sessionId, home], [1, secondId, "/tmp/account-c"]);
 		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : "account-c");
 		try {
 			for (let attempt = 0; attempt < 2; attempt++) {
@@ -10746,38 +10768,25 @@ describe("resumeTask exact Codex session home", () => {
 		} finally { accountSpy.mockRestore(); }
 	});
 
-	it("searches relative custom homes from the task working directory", async () => {
-		const { task } = arrange();
-		const getAgents = vi.mocked(agents.getAllAgents);
-		const findConfig = vi.mocked(agents.findConfig);
-		const oldAgents = getAgents.getMockImplementation();
-		const oldConfig = findConfig.getMockImplementation();
-		getAgents.mockResolvedValue([{ id: "builtin-codex" }] as any);
-		findConfig.mockReturnValue({ id: "codex-default", name: "Codex", envVars: { CODEX_HOME: "custom-codex" } });
-		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
-		try {
-			await handlers.resumeTask({ taskId: task.id });
-			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.arrayContaining([`${task.worktreePath}/custom-codex`]));
-		} finally {
-			getAgents.mockImplementation(oldAgents!);
-			findConfig.mockImplementation(oldConfig!);
-		}
-	});
-
-	it("does not substitute latest when a Codex pane has no saved ID", async () => {
+	it("resumes a newly chosen id on an extra pane, not the snapshot's null", async () => {
 		const { task, project } = arrange();
-		await data.updateTask(project, task.id, { sessionState: { panes: [{ ...task.sessionState!.panes[0], sessionId: null }] } });
-		vi.mocked(data.updateTask).mockClear();
-		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no saved conversation ID");
-		expect(resolveCodexResumeHome).not.toHaveBeenCalled();
-		expect(pty.createSession).not.toHaveBeenCalled();
-		expect(data.updateTask).not.toHaveBeenCalled();
+		const chosen = "019f50b3-6415-7dc3-8ad5-b60f0818f706";
+		await data.updateTask(project, task.id, { sessionState: { panes: [task.sessionState!.panes[0], { ...task.sessionState!.panes[0], sessionId: null, paneId: "%5" }] } });
+		chose([0, sessionId, home], [1, chosen, home]);
+		await handlers.resumeTask({ taskId: task.id });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ sessionId: chosen }));
+		expect((await data.getTask(project, task.id)).sessionState!.panes[1]).toMatchObject({ sessionId: chosen });
 	});
 
-	it.each(["No saved Codex session", "Multiple Codex homes contain session"])("fails before teardown or metadata changes: %s", async (message) => {
+	it.each([
+		"Cannot resume Codex: No Codex conversation of this task's worktree was found for this pane.",
+		"Cannot resume Codex: Codex conversation x is the newest in this worktree, but another Codex pane of this task is still open.",
+		"Codex conversation x exists in multiple account stores.",
+	])("refuses before teardown, launch or metadata changes: %s", async (message) => {
 		const { task } = arrange();
 		vi.mocked(pty.hasSession).mockReturnValue(true);
-		vi.mocked(resolveCodexResumeHome).mockRejectedValue(new Error(message));
+		vi.mocked(chooseTaskCodexConversations).mockRejectedValue(new Error(message));
+		vi.mocked(data.updateTask).mockClear();
 		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow(message);
 		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
 		expect(pty.createSession).not.toHaveBeenCalled();
@@ -10799,7 +10808,7 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 	afterEach(() => {
 		restoreResolve();
-		vi.mocked(resolveCodexResumeHome).mockReset();
+		vi.mocked(chooseTaskCodexConversations).mockReset().mockResolvedValue(new Map());
 	});
 	const sessionId = "01a09480-c8fc-7021-b4d1-73d850b67083";
 	const home = "/tmp/account-original";
@@ -10832,10 +10841,9 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%6", sessionId })]);
 
 		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-original" : undefined);
-		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId, codexHome: home }]]));
 		try {
 			await handlers.resumeTask({ taskId: task.id });
-			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-original" });
 		} finally { accountSpy.mockRestore(); }
@@ -10845,7 +10853,7 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		const { project, task } = arrange([]);
 		const main = { agentCmd: "codex", sessionId: null, agentId: "builtin-codex", configId: "codex-default", agentFamily: "codex" as const };
 		await data.updateTask(project, task.id, { sessionState: { panes: placePaneSession([], "%6", sessionId, main)! } });
-		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId, codexHome: home }]]));
 		await handlers.resumeTask({ taskId: task.id });
 		expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 	});
@@ -10878,14 +10886,12 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		override(agents.resolveCommandForAgent, async () => ({ command: "codex", extraEnv: {}, agentFamily: "codex" }) as any);
 		override(agents.getAllAgents, async () => [codexAgent]);
 		override(agents.findConfig, () => ({ id: "codex-default", name: "Codex" }) as any);
-		vi.mocked(findLatestCodexConversation).mockResolvedValue(sessionId);
-		vi.mocked(resolveCodexResumeHome).mockResolvedValue(home);
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId, codexHome: home }]]));
 	});
 	afterEach(() => {
 		restore.forEach((undo) => undo());
 		restore = [];
-		vi.mocked(findLatestCodexConversation).mockReset().mockResolvedValue(null);
-		vi.mocked(resolveCodexResumeHome).mockReset();
+		vi.mocked(chooseTaskCodexConversations).mockReset().mockResolvedValue(new Map());
 		vi.mocked(pty.tmuxSessionExists).mockReset().mockResolvedValue(true);
 	});
 	function arrange(overrides: Partial<Task> = {}) {
@@ -10908,7 +10914,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		const { project, task } = arrange();
 		const result = await openTerminal(task.id);
 		expect(result).toMatchObject({ recoverable: true, hibernated: true, sessionState: { panes: [expect.objectContaining({ sessionId, agentId: "builtin-codex" })] } });
-		expect(findLatestCodexConversation).toHaveBeenCalledWith("/tmp/wt-lost", expect.any(Array));
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ worktreePath: "/tmp/wt-lost" }), [expect.objectContaining({ sessionId: null })], "explicit-resume", { persist: false });
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
 	});
 
@@ -10917,7 +10923,6 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-original" : undefined);
 		try {
 			await handlers.resumeTask({ taskId: task.id });
-			expect(resolveCodexResumeHome).toHaveBeenCalledWith(sessionId, expect.any(Array));
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([expect.objectContaining({ sessionId, accountId: "account-original" })]);
 		} finally { accountSpy.mockRestore(); }
@@ -10932,7 +10937,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 
 	it("keeps the old behaviour when no conversation of this worktree exists", async () => {
 		const { task } = arrange();
-		vi.mocked(findLatestCodexConversation).mockResolvedValue(null);
+		vi.mocked(chooseTaskCodexConversations).mockRejectedValue(new Error("Cannot resume Codex: No Codex conversation of this task's worktree was found for this pane."));
 		expect(await openTerminal(task.id)).toEqual({ recoverable: true, hibernated: true, sessionState: { panes: [] } });
 		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
 	});
@@ -10941,15 +10946,25 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		const { task } = arrange({ agentId: "builtin-claude" });
 		override(agents.getAllAgents, async () => [{ id: "builtin-claude", baseCommand: "claude", configurations: [] } as any]);
 		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
-		expect(findLatestCodexConversation).not.toHaveBeenCalled();
+		expect(chooseTaskCodexConversations).not.toHaveBeenCalled();
+	});
+
+	it("offers Resume for an unclear choice, and the resume then says why instead of guessing", async () => {
+		const { task } = arrange();
+		const why = "Cannot resume Codex: Codex conversation x is the newest in this worktree, but matching conversations exist under more than one account.";
+		vi.mocked(chooseTaskCodexConversations).mockRejectedValue(new Error(why));
+		expect(await openTerminal(task.id)).toMatchObject({ recoverable: true, sessionState: { panes: [expect.objectContaining({ sessionId: null })] } });
+		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow(why);
+		expect(pty.createSession).not.toHaveBeenCalled();
 	});
 
 	it("leaves a task that still has pane records to its recorded ids", async () => {
 		const recorded = "019f50b3-6415-7dc3-8ad5-b60f0818f704";
 		const { task } = arrange({ sessionState: { panes: [{ agentCmd: "codex", agentFamily: "codex", agentId: "builtin-codex", configId: "codex-default", sessionId: recorded }] } });
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: recorded, codexHome: home }]]));
 		await handlers.resumeTask({ taskId: task.id });
-		expect(findLatestCodexConversation).not.toHaveBeenCalled();
-		expect(resolveCodexResumeHome).toHaveBeenCalledWith(recorded, expect.any(Array));
+		expect(chooseTaskCodexConversations).toHaveBeenCalledTimes(1);
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.anything(), [expect.objectContaining({ sessionId: recorded })], "explicit-resume", expect.objectContaining({ persist: true }));
 	});
 });
 
@@ -11216,7 +11231,7 @@ describe("launchTaskPty", () => {
 			stderr: new Uint8Array(),
 		});
 		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
-			command: "codex resume --last --model gpt-test",
+			command: "codex resume 019f50b3-6415-7dc3-8ad5-b60f0818f704 --model gpt-test",
 			extraEnv: {},
 			agent: { baseCommand: "codex" },
 			config: {},
@@ -11227,7 +11242,7 @@ describe("launchTaskPty", () => {
 			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default", false, true);
 
 			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
-			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust resume --last --model gpt-test");
+			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust resume 019f50b3-6415-7dc3-8ad5-b60f0818f704 --model gpt-test");
 		} finally {
 			writeSpy.mockRestore();
 		}

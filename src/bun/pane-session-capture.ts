@@ -30,3 +30,17 @@ export function placePaneSession(
 	}
 	return panes.map((pane, i) => (i === idx ? { ...pane, paneId, sessionId } : pane));
 }
+
+/**
+ * Where a session id belongs when the hook could name no pane: only a task with
+ * at most one pane entry can say. Null when nothing changes or it is ambiguous.
+ */
+export function placeUnaddressedPaneSession(
+	panes: SessionPane[],
+	sessionId: string,
+	mainEntry: SessionPane | null,
+): SessionPane[] | null {
+	if (!panes.length) return mainEntry ? [{ ...mainEntry, sessionId }] : null;
+	if (panes.length !== 1 || panes[0].sessionId === sessionId) return null;
+	return [{ ...panes[0], sessionId }];
+}

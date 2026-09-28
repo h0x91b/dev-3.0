@@ -92,9 +92,8 @@ export async function handleCodexHook(
 		// targeted recovery — essential when several Codex sessions (e.g. multiple
 		// bug hunters) share one worktree. Codex has no launch-time --session-id, so
 		// this post-hoc capture is the only way to resume the exact session per pane.
-		const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
-			? process.env.TMUX_PANE
-			: undefined;
+		// Native panes export DEV3_PANE_ID instead; without it their session was never recorded (#1847).
+		const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim() || undefined;
 		try {
 			const response = await sendRequest(socketPath, "task.agentHook", {
 				taskId: context.taskId,

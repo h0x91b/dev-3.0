@@ -10,6 +10,11 @@ vi.mock("../task-workspace-guard", async (importOriginal) => ({
 	assertTaskWorkspacePresent: vi.fn((_project: unknown, path: string | null | undefined) => path ?? ""),
 	worktreeAccessState: vi.fn(() => "present"),
 }));
+// Pane placement is tested here; the Codex store guard has its own fixture suites
+// and must never scan this machine's real stores from a suite without a temp HOME.
+vi.mock("../codex-resume-home", () => ({ isInteractiveCodexConversation: vi.fn(async () => true) }));
+vi.mock("../codex-task-selection", () => ({ configuredCodexHomes: vi.fn(async () => []), chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
 	loadVirtualProjects: vi.fn(() => Promise.resolve([])),

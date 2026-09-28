@@ -26,6 +26,7 @@ import {
 import { voidAgentRequest } from "../agent-requests";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
+import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
 import * as git from "../git";
@@ -296,6 +297,32 @@ function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
 		: task;
 }
 
+/**
+ * A reopened Codex task resumes only the conversation its main pane recorded.
+ * Without one it opens the pane with a refusal line and a badge instead of the
+ * agent — never throwing, because a failed preparation removes the worktree.
+ */
+async function reopenCodexLaunch(project: Project, task: Task, worktreePath: string, launch: PreparationLaunch): Promise<{ sessionId?: string; codexHome?: string; agentRefusal?: string }> {
+	const recorded = task.sessionState?.panes?.[0];
+	// No agent on the launch means the project default, exactly as launchTaskPty resolves it.
+	const settings = loadSettingsSync();
+	const main = recorded ?? {
+		agentCmd: "",
+		sessionId: null,
+		agentId: launch.agentId ?? settings.defaultAgentId ?? null,
+		configId: launch.agentId ? launch.configId ?? null : launch.configId ?? settings.defaultConfigId ?? null,
+	};
+	try {
+		const choice = (await chooseTaskCodexConversations(project, { ...task, worktreePath }, [main], "reopen", { persist: false })).get(0);
+		return choice ? { sessionId: choice.sessionId, codexHome: choice.codexHome } : {};
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		log.warn("Reopen did not start Codex", { taskId: task.id.slice(0, 8), reason });
+		pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
+		return { agentRefusal: reason };
+	}
+}
+
 function derivedPreparationPath(project: Project, task: Task): string {
 	if (project.kind === "virtual") {
 		return task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
@@ -386,17 +413,19 @@ async function prepareTask(
 			await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorkDir", () => (
 				mkdir(workDir, { recursive: true })
 			));
-			await preparationStep(task, effect.runId, "launching-pty", "launchTaskPty", () => (
-				launchTaskPty(
+			await preparationStep(task, effect.runId, "launching-pty", "launchTaskPty", async () => {
+				const reopen = effect.isReopen ? await reopenCodexLaunch(project, task, workDir, launch) : {};
+				await launchTaskPty(
 					project,
 					taskWithLaunchDescription(task, effect.isReopen),
 					workDir,
 					launch.agentId,
 					launch.configId,
 					true,
-					effect.isReopen,
-				)
-			));
+					effect.isReopen && !reopen.agentRefusal,
+					reopen,
+				);
+			});
 			return { worktreePath: workDir, branchName: null };
 		}
 
@@ -445,16 +474,19 @@ async function prepareTask(
 			effect.runId,
 			"launching-pty",
 			"launchTaskPty",
-			() => launchTaskPty(
-				resolved,
-				taskWithLaunchDescription(task, effect.isReopen),
-				worktree.worktreePath,
-				launch.agentId,
-				launch.configId,
-				true,
-				effect.isReopen,
-				{ branchName: worktree.branchName },
-			),
+			async () => {
+				const reopen = effect.isReopen ? await reopenCodexLaunch(resolved, task, worktree.worktreePath, launch) : {};
+				await launchTaskPty(
+					resolved,
+					taskWithLaunchDescription(task, effect.isReopen),
+					worktree.worktreePath,
+					launch.agentId,
+					launch.configId,
+					true,
+					effect.isReopen && !reopen.agentRefusal,
+					{ branchName: worktree.branchName, ...reopen },
+				);
+			},
 		);
 		return worktree;
 	}, reportStage);
@@ -1133,7 +1165,7 @@ export async function executeLifecycleEffect(
 					&& current.status !== "cancelled"
 					&& taskResetConsentMatches(current, effect.consent);
 				return sameRun
-					? { updates: resetTaskUpdates(), result: true }
+					? { updates: { ...resetTaskUpdates(), codexScanFloorAt: new Date().toISOString() }, result: true }
 					: { updates: {}, result: false };
 			});
 			if (!applied.result) {
@@ -1227,6 +1259,8 @@ export async function executeLifecycleEffect(
 				// lock it in its terminal column forever.
 				hibernated: false,
 				...clearedPreparationFields(),
+				// This run's conversations must not be picked up by a later scan.
+				codexScanFloorAt: new Date().toISOString(),
 			};
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);

@@ -129,15 +129,17 @@ export const codexAdapter: AgentAdapter = {
 			if (prompt) args.push("--", shellEscape(prompt));
 		}
 
-		// `codex resume [--last | <id>] [args]`
+		// `codex resume <id> [args]`. Never `--last`: it is not scoped to the task
+		// and has resumed another task's conversation (#1847).
 		if (resume) {
-			return [baseCmd, "resume", options?.sessionId ?? "--last", ...args];
+			if (!options?.sessionId) throw new Error("Codex resume needs a conversation ID; dev3 never resumes Codex with --last.");
+			return [baseCmd, "resume", options.sessionId, ...args];
 		}
 		return [baseCmd, ...args];
 	},
 
 	buildResumeCommand(baseCmd, sessionId) {
-		return sessionId ? `${baseCmd} resume ${sessionId}` : `${baseCmd} resume --last`;
+		return sessionId ? `${baseCmd} resume ${sessionId}` : null;
 	},
 
 	hooksSpec() {

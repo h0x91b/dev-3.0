@@ -251,7 +251,7 @@ describe("buildResumeCommand", () => {
 	it.each([
 		[claudeAdapter, "claude", undefined, "claude --continue"],
 		[claudeAdapter, "claude", "sid", "claude --resume sid"],
-		[codexAdapter, "codex", undefined, "codex resume --last"],
+		[codexAdapter, "codex", undefined, null],
 		[codexAdapter, "codex", "sid", "codex resume sid"],
 		[geminiAdapter, "gemini", undefined, "gemini --resume latest"],
 		[geminiAdapter, "gemini", "sid", "gemini --resume sid"],
