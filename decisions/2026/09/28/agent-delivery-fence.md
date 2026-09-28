@@ -52,6 +52,16 @@ It is read in the same sighting as the pane, pinned into `PaneIncarnation.agentF
 - tmux tasks only, and only with the committed absolute tmux binary;
 - never through a `PATH` tmux or the `~/.dev3.0/bin` shim.
 
+**Held messages** (`agent-message-hold.ts`, `agent-prompt.ts`). A step refused with `agent-exited` returns `exited`:
+- nothing more is typed into that pane;
+- text that landed before the exit is saved and never retyped (I3), so the turn is not stranded;
+- the rest moves only to the pane that replaced the agent in the **same** `sessionState` entry (R-D3), in front of anything already held there;
+- with no replacement, the rest waits for 10 minutes and is then saved and dropped.
+
+**Every drop saves its texts first** (I5), through `saveUndeliveredAgentMessages`. A write that fails is retried every quiet window and reported as lost only past the bound (S-1). A direct prompt whose Enter met a closed fence keeps a copy of its text too (W-1).
+
+**The blocked wrapper backs off** after ~6 s of silence and wakes every 3 s. Measured: ~15 external processes per second became ~1.5 (P3).
+
 **Hand-started agents** (user decision D4, 2026-09-28): an agent the user starts by hand in the fallback shell gets no dev3 input until a managed restart.
 
 ## 4. Risks
@@ -64,6 +74,7 @@ These are stated limits; none of them is solved here.
 - **No shell until a close.** A pane whose wrapper never gets closed (no app ever runs, or an app acks without a sentinel) has no shell until the user closes it. Nothing typed there is executed.
 - **Legacy wrappers.** Panes launched before this change stay unfenced until relaunch or resume.
 - **Native backend and Windows** have no fence.
+- **An agent that leaves the tty raw.** Its shell inherits that raw tty, as it did before this change; under dash no command then runs at all.
 
 ## 5. Alternatives considered
 

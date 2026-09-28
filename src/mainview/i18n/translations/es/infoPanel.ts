@@ -73,6 +73,7 @@ const infoPanel = {
 	"infoPanel.createPRAgentStarted": "Creación del PR delegada al agente — mira la terminal",
 	"infoPanel.createPRAgentNoPane": "No se encontró terminal del agente para delegar la creación del PR",
 	"infoPanel.agentInputOccupied": "Un mensaje de otro agente espera sin enviar en el cuadro de entrada del agente. Pulsa Enter allí y vuelve a intentarlo",
+	"infoPanel.agentExited": "El agente de esta tarea ha terminado. dev3 no escribe nada en la shell que dejó hasta que dev3 vuelva a iniciar el agente",
 	"infoPanel.createPRAgentUnconfirmed": "Creación del PR enviada al agente, pero no se pudo confirmar la entrega — mira la terminal",
 	"infoPanel.createPRDisabledNoCommits": "No hay commits para crear PR",
 	"infoPanel.createPRDisabledUncommitted": "No hay commits para crear un PR — primero haz commit de los cambios sin commit",

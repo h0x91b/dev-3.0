@@ -38,7 +38,18 @@ const spillHeldMessageBatch = vi.hoisted(() =>
 	}),
 );
 const discardHeldMessageBatch = vi.hoisted(() => vi.fn(async (path: string) => void batchFiles.alive.delete(path)));
-vi.mock("../agent-message-spill", () => ({ spillHeldMessageBatch, discardHeldMessageBatch }));
+/** Every drop saves its texts first; this records what was saved. */
+const saveUndeliveredAgentMessages = vi.hoisted(() =>
+	vi.fn(async (_task: unknown, _texts: string[], _why: string) => "/task/messages/undelivered-1.md"),
+);
+vi.mock("../agent-message-spill", () => ({ spillHeldMessageBatch, discardHeldMessageBatch, saveUndeliveredAgentMessages }));
+
+vi.mock("../agent-fence", () => ({ agentFenceCloseRequested: vi.fn(async () => false) }));
+const freshTask = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("../data", () => ({
+	getProject: vi.fn(async () => ({ id: "project-1" })),
+	getTask: vi.fn(async () => freshTask.current),
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -413,6 +424,9 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
+		// Dropped, but never discarded: the badge names the file the text was saved to.
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("/task/messages/undelivered-1.md") }));
+		expect(saveUndeliveredAgentMessages).toHaveBeenLastCalledWith(expect.anything(), ["check CI"], "the agent pane is gone");
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 	});
 
@@ -533,5 +547,57 @@ describe("a held backlog past one read is typed as ONE batch pointer", () => {
 		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
 		// Without the receipt the receiver's submit hook records the pointer as the user's prompt.
 		expect(claimDev3TypedPrompt(TASK_ID, pointer)).toBe(true);
+	});
+});
+
+describe("an agent that exited behind a pin", () => {
+	// The agent in %1 exits; dev3 relaunched it in %4, in the SAME pane entry. %7 is another
+	// live agent of the task (a bug hunter, say): the messages must never follow it.
+	it("moves a held message to the pane that replaced its agent in the same entry, never another agent", async () => {
+		vi.mocked(tmux.observePane)
+			.mockResolvedValueOnce({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never)
+			.mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "" } as never);
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: false, inMode: false, liveFence: "closed:L1:143" })
+			.mockResolvedValue({ sent: true, inMode: false });
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%7" }] as never);
+		vi.mocked(tmux.showOption).mockResolvedValue("%1");
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1"), agentPane("%7")]);
+
+		freshTask.current = { ...TASK, projectId: "project-1", sessionState: { panes: [agentPane("%4"), agentPane("%7")] } };
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%4" }, { paneId: "%7" }] as never);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+
+		const panes = vi.mocked(tmux.sendKeysGuarded).mock.calls.map((call) => call[0].pane);
+		expect(panes).toEqual(["%1", "%4", "%4"]);
+		expect(saveUndeliveredAgentMessages).not.toHaveBeenCalled();
+	});
+
+	it("keeps waiting, not guessing, when the entry has no replacement yet", async () => {
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never);
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false, liveFence: "closed:L1:143" });
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%7" }] as never);
+		freshTask.current = { ...TASK, projectId: "project-1", sessionState: { panes: [agentPane("%1"), agentPane("%7")] } };
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1"), agentPane("%7")]);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		const panes = vi.mocked(tmux.sendKeysGuarded).mock.calls.map((call) => call[0].pane);
+		expect(new Set(panes)).toEqual(new Set(["%1"]));
+		expect(saveUndeliveredAgentMessages).not.toHaveBeenCalled();
+	});
+
+	// The text went in while the agent lived; its Enter met the closed fence. The caller
+	// hears `partial`; the whole prompt is kept in a file and the user is told where.
+	it("keeps a copy of a direct prompt whose Enter found the agent gone", async () => {
+		pushCliAttention.mockClear();
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never);
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: false, liveFence: "closed:L1:0" });
+		const outcome = await runPrompt(sendPromptToAgentPane(TASK, "rebase please", [agentPane("%1")]));
+		expect(outcome).toMatchObject({ status: "partial", reason: "agent-exited" });
+		await vi.waitFor(() => expect(pushCliAttention).toHaveBeenCalled());
+		expect(saveUndeliveredAgentMessages).toHaveBeenLastCalledWith(expect.anything(), ["rebase please"], expect.stringContaining("exited"));
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("/task/messages/undelivered-1.md") }));
 	});
 });

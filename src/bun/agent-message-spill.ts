@@ -44,7 +44,7 @@ export interface AgentMessageEnvelope {
  * directory on cleanup. The name carries a random suffix and the file is created
  * exclusively: two spills in the same millisecond used to overwrite each other.
  */
-async function writeTaskMessageFile(task: Task, kind: "message" | "burst", content: string): Promise<string> {
+async function writeTaskMessageFile(task: Task, kind: "message" | "burst" | "undelivered", content: string): Promise<string> {
 	const project = await data.getProject(task.projectId);
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const dir = `${taskDir(project, task)}/messages`;
@@ -131,4 +131,21 @@ export async function discardHeldMessageBatch(path: string): Promise<void> {
 		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
 	}
 	log.info("held message batch discarded: its pointer was never typed", { path });
+}
+
+/**
+ * Write messages dev3 gave up delivering to one file next to the task, so a drop never
+ * discards text. `null` when it could not be written: the caller keeps them and retries,
+ * because nobody is listening at release time to hear a throw.
+ */
+export async function saveUndeliveredAgentMessages(task: Task, texts: readonly string[], why: string): Promise<string | null> {
+	const header = `dev3 could not deliver ${texts.length} message(s) to this task's agent: ${why}.`;
+	try {
+		const path = await writeTaskMessageFile(task, "undelivered", [header, ...texts].join(AGENT_MESSAGE_BURST_SEPARATOR));
+		log.info("undelivered agent messages saved", { taskId: task.id.slice(0, 8), messages: String(texts.length), path });
+		return path;
+	} catch (err) {
+		log.warn("undelivered agent messages could not be saved", { taskId: task.id.slice(0, 8), error: String(err) });
+		return null;
+	}
 }

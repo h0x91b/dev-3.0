@@ -73,6 +73,7 @@ const infoPanel = {
 	"infoPanel.createPRAgentStarted": "Handed PR creation to the agent — watch the terminal",
 	"infoPanel.createPRAgentNoPane": "No agent terminal found to hand PR creation to",
 	"infoPanel.agentInputOccupied": "A peer message is waiting unsent in the agent's input box. Press Enter there, then try again",
+	"infoPanel.agentExited": "The agent in this task has exited. dev3 types nothing into the shell it left behind until dev3 starts the agent again",
 	"infoPanel.createPRAgentUnconfirmed": "Sent PR creation to the agent, but delivery could not be confirmed — check the terminal",
 	"infoPanel.createPRDisabledNoCommits": "No commits to create PR for",
 	"infoPanel.createPRDisabledUncommitted": "No commits for a PR — commit the uncommitted changes first",

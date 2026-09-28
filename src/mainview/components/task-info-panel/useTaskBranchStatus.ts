@@ -53,9 +53,12 @@ function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): str
 /**
  * A hand-off refused because a peer message sits unsent in the agent's input box is
  * not a missing terminal: dev3 held back so the user's draft is not submitted with it.
+ * Nor is an agent that exited: its pane is there, but dev3 never types into its shell.
  */
 function undeliveredMessageKey(delivery: AgentPromptDelivery, noPaneKey: TranslationKey): TranslationKey {
-	return delivery.reason === "input-occupied" ? "infoPanel.agentInputOccupied" : noPaneKey;
+	if (delivery.reason === "input-occupied") return "infoPanel.agentInputOccupied";
+	if (delivery.reason === "agent-exited") return "infoPanel.agentExited";
+	return noPaneKey;
 }
 
 export function useTaskBranchStatus({

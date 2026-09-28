@@ -132,6 +132,7 @@ if [ "$__DEV3_FENCED" = 1 ]; then
       mv "$__dev3_t" "$__DEV3_FINDEX/$__DEV3_FLAUNCH.close"; } 2>/dev/null
   }
   __dev3_read_ack() {
+    [ -e "$__DEV3_FINDEX/$__DEV3_FLAUNCH.closed-ack" ] || return 1
     __dev3_a=$(cat "$__DEV3_FINDEX/$__DEV3_FLAUNCH.closed-ack" 2>/dev/null) || return 1
     __dev3_id=${"$"}{__dev3_a%% *}; __dev3_rest=${"$"}{__dev3_a#* }; __dev3_v=${"$"}{__dev3_rest%% *}; __dev3_an=${"$"}{__dev3_rest#* }
     [ "$__dev3_id" = "$__DEV3_FLAUNCH" ] || return 1
@@ -146,12 +147,20 @@ if [ "$__DEV3_FENCED" = 1 ]; then
     else printf 'dev3: could not ask the app either (%s unwritable). Anything typed here is saved, never run.\n' "$__DEV3_FINDEX"; fi
     printf 'dev3: to get a shell now, close this pane and open a new one.\n'
   fi
-  __dev3_i=0; __dev3_said=0
+  __dev3_i=0; __dev3_said=0; __dev3_idle=0; __dev3_slow=0; __dev3_every=15
   while [ "$__DEV3_FBARRIER" = 0 ]; do
     __dev3_read
     __dev3_read_ack
     __dev3_i=$((__dev3_i + 1))
-    if [ -z "$__DEV3_FWANT" ] && [ $((__dev3_i % 15)) = 0 ]; then
+    # A pane left blocked for hours must not fork ~15 processes a second: after ~6 s of
+    # silence wake every 3 s instead of every 0.3 s, and go back on any byte or a close.
+    if [ "$__DEV3_FLAST" = 0 ]; then __dev3_idle=$((__dev3_idle + 1)); else __dev3_idle=0; fi
+    if [ "$__dev3_slow" = 0 ] && [ -z "$__DEV3_FWANT" ] && [ "$__dev3_idle" -ge 20 ] && [ -n "$__DEV3_FTTY" ]; then
+      stty time 30 2>/dev/null; __dev3_slow=1; __dev3_every=2
+    elif [ "$__dev3_slow" = 1 ] && { [ "$__dev3_idle" = 0 ] || [ -n "$__DEV3_FWANT" ]; }; then
+      stty time 3 2>/dev/null; __dev3_slow=0; __dev3_every=15
+    fi
+    if [ -z "$__DEV3_FWANT" ] && [ $((__dev3_i % __dev3_every)) = 0 ]; then
       __dev3_own_close "$__EXITVAR__" || { [ -e "$__DEV3_FINDEX/$__DEV3_FLAUNCH.close" ] || __dev3_request "$__EXITVAR__"; }
     fi
     if [ -n "$__DEV3_FWANT" ] && [ "$__dev3_said" = 0 ] && [ "$__dev3_i" -gt 20 ]; then
