@@ -76,8 +76,7 @@ export {
 	PANE_CWD_FORMAT,
 	TMUX_AGENT_PANE_OPTION,
 	TMUX_LAST_AGENT_PANE_OPTION,
-	TMUX_CONF_DARK_PATH,
-	TMUX_CONF_LIGHT_PATH,
+	tmuxConfigPath,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
 } from "./config";

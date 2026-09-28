@@ -52,7 +52,7 @@ import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
 import { _resetUserShellCacheForTests } from "../shell-env";
-import { TmuxMissingCwdError, TmuxSpawnError, TMUX_CONF_DARK_PATH } from "../tmux";
+import { TmuxMissingCwdError, TmuxSpawnError, tmuxConfigPath } from "../tmux";
 import {
 	cwdExists,
 	createSession,
@@ -232,7 +232,7 @@ describe("pty-server", () => {
 			expect(tmuxCall![0]).toContain("-L");
 			expect(tmuxCall![0]).toContain("my-socket");
 			expect(tmuxCall![0]).toContain("-f");
-			expect(tmuxCall![0]).toContain(TMUX_CONF_DARK_PATH);
+			expect(tmuxCall![0]).toContain(tmuxConfigPath("dark", true));
 		});
 
 		it("uses the user shell when tmuxCommand is empty", () => {
@@ -1018,7 +1018,7 @@ describe("pty-server", () => {
 			expect(sourceCall).toBeDefined();
 			expect(sourceCall![0]).toContain("-L");
 			expect(sourceCall![0]).toContain("conf-socket");
-			expect(sourceCall![0]).toContain(TMUX_CONF_DARK_PATH);
+			expect(sourceCall![0]).toContain(tmuxConfigPath("dark", true));
 
 			vi.useRealTimers();
 		});

@@ -7,16 +7,15 @@ vi.mock("../../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import {
-	TMUX_CONF_DARK_PATH,
-	TMUX_CONF_LIGHT_PATH,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
 	buildThemeConfig,
 	PANE_CWD_FORMAT,
 	setTmuxPaneDimming,
+	tmuxConfigPath,
 	tmuxClientCwd,
 	writeTmuxConfigs,
 } from "../config";
@@ -24,16 +23,26 @@ import { DEV3_HOME } from "../../paths";
 
 describe("tmux config paths", () => {
 	it("uses the isolated test root for the themed configs", () => {
-		expect(TMUX_CONF_DARK_PATH).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark.conf`);
-		expect(TMUX_CONF_LIGHT_PATH).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-light.conf`);
+		expect(tmuxConfigPath("dark", true)).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark-dimmed.conf`);
+		expect(tmuxConfigPath("light", false)).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-light-undimmed.conf`);
 	});
 
 	it("defaults to the dark config and switches with the theme", () => {
-		expect(activeTmuxConfigPath()).toBe(TMUX_CONF_DARK_PATH);
-		expect(setActiveTmuxTheme("light")).toBe(TMUX_CONF_LIGHT_PATH);
-		expect(activeTmuxConfigPath()).toBe(TMUX_CONF_LIGHT_PATH);
-		expect(setActiveTmuxTheme("dark")).toBe(TMUX_CONF_DARK_PATH);
-		expect(activeTmuxConfigPath()).toBe(TMUX_CONF_DARK_PATH);
+		expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("dark", true));
+		expect(setActiveTmuxTheme("light")).toBe(tmuxConfigPath("light", true));
+		expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("light", true));
+		expect(setActiveTmuxTheme("dark")).toBe(tmuxConfigPath("dark", true));
+		expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("dark", true));
+	});
+
+	it("follows the dimming preference, so another process's default cannot share its file", () => {
+		try {
+			setTmuxPaneDimming(false);
+			expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("dark", false));
+			expect(tmuxConfigPath("dark", false)).not.toBe(tmuxConfigPath("dark", true));
+		} finally {
+			setTmuxPaneDimming(true);
+		}
 	});
 
 	it("tmuxClientCwd points at the immortal DEV3_HOME (decision 103)", () => {
@@ -136,18 +145,28 @@ describe("buildThemeConfig", () => {
 	// The preference is pushed in rather than read from settings.ts: this module
 	// writes its configs at import time, and importing the settings loader made
 	// every suite that mocks `../settings` fail to collect.
-	it("writes the pushed-in dimming preference to both themed configs", () => {
+	it("writes both dimming variants for both themes, whatever this process prefers", () => {
+		for (const preference of [false, true]) {
+			setTmuxPaneDimming(preference);
+			writeTmuxConfigs();
+			for (const theme of ["dark", "light"] as const) {
+				expect(readFileSync(tmuxConfigPath(theme, false), "utf-8")).toContain('set -gF window-style "bg=#{@thm_bg},fg=#{@thm_fg}"');
+				expect(readFileSync(tmuxConfigPath(theme, true), "utf-8")).toContain('set -gF window-style "bg=#{@thm_mantle},fg=#{@thm_overlay_1}"');
+			}
+		}
+	});
+
+	// The regression: a second dev3 process imports this module with the default
+	// (dimmed) preference and rewrites the shared files. The file THIS process
+	// sources must still carry its own preference.
+	it("keeps an undimmed process's config intact when another process writes the dimmed default", () => {
 		try {
 			setTmuxPaneDimming(false);
 			writeTmuxConfigs();
-			for (const path of [TMUX_CONF_DARK_PATH, TMUX_CONF_LIGHT_PATH]) {
-				expect(readFileSync(path, "utf-8")).toContain('set -gF window-style "bg=#{@thm_bg},fg=#{@thm_fg}"');
-			}
-			setTmuxPaneDimming(true);
-			writeTmuxConfigs();
-			for (const path of [TMUX_CONF_DARK_PATH, TMUX_CONF_LIGHT_PATH]) {
-				expect(readFileSync(path, "utf-8")).toContain('set -gF window-style "bg=#{@thm_mantle},fg=#{@thm_overlay_1}"');
-			}
+			const mine = activeTmuxConfigPath();
+			writeFileSync(tmuxConfigPath("dark", true), buildThemeConfig("mocha", true));
+			expect(readFileSync(mine, "utf-8")).toContain('set -gF window-style "bg=#{@thm_bg},fg=#{@thm_fg}"');
+			expect(readFileSync(mine, "utf-8")).not.toContain("@thm_overlay_1");
 		} finally {
 			setTmuxPaneDimming(true);
 			writeTmuxConfigs();

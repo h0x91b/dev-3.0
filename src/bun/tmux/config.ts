@@ -59,20 +59,36 @@ export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
  */
 export const TMUX_LAST_AGENT_PANE_OPTION = "@dev3_last_agent_pane";
 
-export const TMUX_CONF_DARK_PATH = dev3TempPath("dev3-tmux-dark.conf");
-export const TMUX_CONF_LIGHT_PATH = dev3TempPath("dev3-tmux-light.conf");
+/**
+ * The themed config for one theme and one dimming preference. The preference is
+ * part of the NAME: every dev3 process on the machine writes these shared files
+ * at import, and a name that ignored it let another process's default overwrite
+ * the file this app later sources into the shared server.
+ */
+export function tmuxConfigPath(theme: "dark" | "light", dimmed: boolean): string {
+	return dev3TempPath(`dev3-tmux-${theme}-${dimmed ? "dimmed" : "undimmed"}.conf`);
+}
 
-/** Path currently loaded — switched by setActiveTmuxTheme() on theme change. */
-let activeConfigPath = TMUX_CONF_DARK_PATH;
+let activeTheme: "dark" | "light" = "dark";
 
+/**
+ * The `dimInactivePanes` preference, pushed in by the host at startup and on
+ * every settings save. Held here rather than read from `settings.ts`: this
+ * module writes its configs at import time, and importing the settings loader
+ * for that would drag the whole settings graph into every module that touches
+ * tmux.
+ */
+let dimInactivePanes = true;
+
+/** The config this process sources: its active theme and its own preference. */
 export function activeTmuxConfigPath(): string {
-	return activeConfigPath;
+	return tmuxConfigPath(activeTheme, dimInactivePanes);
 }
 
 /** Switch the active themed config and return its path. */
 export function setActiveTmuxTheme(theme: "dark" | "light"): string {
-	activeConfigPath = theme === "light" ? TMUX_CONF_LIGHT_PATH : TMUX_CONF_DARK_PATH;
-	return activeConfigPath;
+	activeTheme = theme;
+	return activeTmuxConfigPath();
 }
 
 // Shared functional settings (not theme-related)
@@ -283,28 +299,21 @@ export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = t
 	].join("\n");
 }
 
-/**
- * The `dimInactivePanes` preference, pushed in by the host at startup and on
- * every settings save. Held here rather than read from `settings.ts`: this
- * module writes its configs at import time, and importing the settings loader
- * for that would drag the whole settings graph into every module that touches
- * tmux.
- */
-let dimInactivePanes = true;
-
 export function setTmuxPaneDimming(enabled: boolean): void {
 	dimInactivePanes = enabled;
 }
 
 /**
- * Rewrite both themed configs. Called at startup, and again when a setting the
- * config embeds changes: the shell (baked into `default-shell`) and whether
- * inactive panes are dimmed.
+ * Rewrite every themed config — both themes, both dimming variants. Called at
+ * startup, and again when a setting the config embeds changes: the shell (baked
+ * into `default-shell`) and whether inactive panes are dimmed.
  */
 export function writeTmuxConfigs(): void {
 	writeShellInit();
-	writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha", dimInactivePanes));
-	writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte", dimInactivePanes));
+	for (const dimmed of [true, false]) {
+		writeFileSync(tmuxConfigPath("dark", dimmed), buildThemeConfig("mocha", dimmed));
+		writeFileSync(tmuxConfigPath("light", dimmed), buildThemeConfig("latte", dimmed));
+	}
 }
 
 // Write Catppuccin plugin files + both themed configs + shell init at startup
