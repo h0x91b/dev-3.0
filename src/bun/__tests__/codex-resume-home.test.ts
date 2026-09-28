@@ -413,6 +413,12 @@ describe("selectCodexConversations", () => {
 			expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), minutes(-500), new Date(minutes(60)).toISOString()) })).toEqual(["none"]);
 		});
 
+		it.each(["reset", "completion", "restart"])("after a %s with folder times restored, a session of the next run is still taken", async () => {
+			conversation(account("a"), ID, {}, 20);
+			conversation(account("a"), OTHER, {}, 75);
+			expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), minutes(-500), new Date(minutes(60)).toISOString()) })).toEqual([OTHER]);
+		});
+
 		it.each(["reset", "completion", "restart"])("after a %s, a new session of the next run is taken", async () => {
 			conversation(account("a"), ID, {}, 20);
 			conversation(account("a"), OTHER, {}, 75);

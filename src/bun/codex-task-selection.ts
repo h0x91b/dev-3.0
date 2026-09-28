@@ -54,18 +54,21 @@ export interface CodexPaneChoice { sessionId: string; codexHome: string }
  * from one snapshot, and claim the choices on the task before anything launches.
  * Throws the refusal reason when any pane cannot be chosen safely.
  *
- * Only for relaunching EVERY pane passed: all are treated as not live. A caller
- * recovering some panes while others run must call `selectCodexConversations`
- * itself, marking each running or unknown pane `live: true`.
+ * Only for relaunching EVERY pane passed: all are treated as not live. So it
+ * refuses `automatic-recovery`, which may run beside live panes: that caller uses
+ * `selectCodexConversations` with each running or unknown pane `live: true`.
  */
 export async function chooseTaskCodexConversations(
 	project: Project,
 	task: Task,
 	panes: PaneSessionEntry[],
-	intent: CodexSelectionIntent,
+	intent: Exclude<CodexSelectionIntent, "automatic-recovery">,
 	/** `onDisk`: the panes stored now, when `panes` was rebuilt (a lost pane record). */
 	options: { persist: boolean; onDisk?: PaneSessionEntry[] },
 ): Promise<Map<number, CodexPaneChoice>> {
+	if ((intent as CodexSelectionIntent) === "automatic-recovery") {
+		throw new Error("chooseTaskCodexConversations treats every pane as relaunched; automatic recovery must call selectCodexConversations with real pane liveness.");
+	}
 	const allAgents = await agents.getAllAgents();
 	const codexIndices = panes.flatMap((pane, index) => (isCodexPane(pane, allAgents) ? [index] : []));
 	const choices = new Map<number, CodexPaneChoice>();

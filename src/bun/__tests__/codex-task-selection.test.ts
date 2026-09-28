@@ -134,6 +134,12 @@ describe("chooseTaskCodexConversations", () => {
 		expect((await chooseTaskCodexConversations(project, t, t.sessionState!.panes, "explicit-resume", { persist: true })).size).toBe(0);
 	});
 
+	it("refuses automatic recovery, which needs real pane liveness the wrapper does not have", async () => {
+		conversation(join(home, ".codex"), ID);
+		const t = task([codexPane()]);
+		await expect(chooseTaskCodexConversations(project, t, t.sessionState!.panes, "automatic-recovery" as never, { persist: false })).rejects.toThrow(/real pane liveness/);
+	});
+
 	it("uses the restart floor written on the task", async () => {
 		conversation(join(home, ".codex"), ID);
 		const t = task([codexPane()], { codexScanFloorAt: "2026-09-12T07:45:00.000Z" });
