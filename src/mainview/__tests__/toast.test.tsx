@@ -538,6 +538,43 @@ describe("toast service", () => {
 		expect(onTaskOverflow).toHaveBeenCalledWith(expect.objectContaining({ message: "Oldest", taskId: "task-1" }));
 	});
 
+	it("keeps only the newest agent toast and never bells the one it replaced", () => {
+		const onTaskOverflow = vi.fn();
+		render(<ToastHost onTaskOverflow={onTaskOverflow} />);
+		act(() => {
+			toast.agent("First agent message", { durationMs: 60_000, taskId: "task-1" });
+			toast.agent("Second agent message", { durationMs: 60_000, taskId: "task-2" });
+		});
+		expect(screen.getAllByRole("alert")).toHaveLength(1);
+		expect(screen.queryByText("First agent message")).not.toBeInTheDocument();
+		expect(screen.getByText("Second agent message")).toBeInTheDocument();
+		expect(onTaskOverflow).not.toHaveBeenCalled();
+	});
+
+	it("leaves the other four slots to non-agent toasts", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.agent("Agent message", { durationMs: 60_000 });
+			toast.success("Saved", { durationMs: 60_000 });
+			toast.error("Failed", { durationMs: 60_000 });
+			toast.warning("Careful", { durationMs: 60_000 });
+			toast.info("Heads up", { durationMs: 60_000 });
+		});
+		expect(screen.getAllByRole("alert")).toHaveLength(5);
+		expect(screen.getByText("Agent message")).toBeInTheDocument();
+	});
+
+	it("does not bell an agent toast pushed out by capacity", () => {
+		const onTaskOverflow = vi.fn();
+		render(<ToastHost onTaskOverflow={onTaskOverflow} />);
+		act(() => {
+			toast.agent("Agent message", { durationMs: 60_000, taskId: "task-1" });
+			for (let i = 0; i < 5; i++) toast.info(`Info ${i}`, { durationMs: 60_000 });
+		});
+		expect(screen.queryByText("Agent message")).not.toBeInTheDocument();
+		expect(onTaskOverflow).not.toHaveBeenCalled();
+	});
+
 	it("offers no Clear all while a single toast owns its own dismiss button", () => {
 		render(<ToastHost />);
 		act(() => toast.info("Alone", { durationMs: 60_000 }));

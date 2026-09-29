@@ -111,10 +111,24 @@ const pendingEntries: ToastEntry[] = [];
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
 const MAX_VISIBLE_TOASTS = 5;
+/** Agent-to-agent chatter keeps one slot; a newer message replaces the older one. */
+const MAX_VISIBLE_AGENT_TOASTS = 1;
 /** Queue bound for entries raised while suppressed or before a host subscribed. */
 const MAX_PENDING_ENTRIES = 5;
 const NARROW_MAX_VISIBLE_TOASTS = 1;
 const NARROW_VIEWPORT_PX = 768;
+
+/** Agent messages stay in the agent-traffic log, so a dropped one never earns a bell. */
+function bellsOnOverflow(entry: ToastEntry): boolean {
+	return !!entry.taskId && entry.variant !== "agent";
+}
+
+/** Oldest agent toasts that must go so the incoming one fits its per-variant cap. */
+function supersededAgentToasts(previous: RenderedToast[], incoming: ToastEntry): RenderedToast[] {
+	if (incoming.variant !== "agent") return [];
+	const agents = previous.filter((view) => view.entry.variant === "agent");
+	return agents.slice(0, Math.max(0, agents.length - MAX_VISIBLE_AGENT_TOASTS + 1));
+}
 
 function deliver(entry: ToastEntry): void {
 	listeners.forEach((l) => l(entry));
@@ -373,7 +387,7 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 		evicted.forEach(({ entry }) => clearRuntime(entry.id));
 		publish(previous.slice(evictedCount));
 		for (const { entry } of evicted) {
-			if (entry.taskId) overflowHandlerRef.current?.(entry);
+			if (bellsOnOverflow(entry)) overflowHandlerRef.current?.(entry);
 		}
 	}, [maxVisibleToasts]);
 
@@ -398,7 +412,9 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 			const area = entry.source ? tRef.current(`toast.source.${entry.source}` as TranslationKey) : undefined;
 			const resolvedContext = joinContext(resolved?.context ?? area, entry.contextDetail);
 
-			const previous = toastsRef.current;
+			const superseded = supersededAgentToasts(toastsRef.current, entry);
+			superseded.forEach(({ entry: supersededEntry }) => clearRuntime(supersededEntry.id));
+			const previous = toastsRef.current.filter((view) => !superseded.includes(view));
 			const capacity = maxVisibleToastsRef.current;
 			const evictedCount = Math.max(0, previous.length - capacity + 1);
 			const evicted = previous.slice(0, evictedCount);
@@ -417,7 +433,7 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 			publish(next);
 
 			for (const { entry: evictedEntry } of evicted) {
-				if (evictedEntry.taskId) overflowHandlerRef.current?.(evictedEntry);
+				if (bellsOnOverflow(evictedEntry)) overflowHandlerRef.current?.(evictedEntry);
 			}
 			startRuntime(entry.id);
 		};
