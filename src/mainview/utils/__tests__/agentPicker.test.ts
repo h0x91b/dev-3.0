@@ -76,6 +76,7 @@ describe("getModelGroupLabel", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-5[1m]" })).toBe("Opus 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.1-sol" })).toBe("GPT-6.1 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-terra" })).toBe("GPT-5.6 Terra");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-luna" })).toBe("GPT-5.6 Luna");

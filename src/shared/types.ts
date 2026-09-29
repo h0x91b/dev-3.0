@@ -965,6 +965,13 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				["low", "high", "xhigh", "max", "ultra"],
 				["medium", "low", "high", "xhigh", "max", "ultra"],
 			),
+			...createCodexReasoningPresets(
+				"gpt-6.1-sol",
+				"GPT-6.1 Sol",
+				"codex-6.1-sol",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
 			// --- GPT-6 Sol (frontier coding and agentic workflows) ---
 			...createCodexReasoningPresets(
 				"gpt-6-sol",

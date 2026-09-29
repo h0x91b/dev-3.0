@@ -29,6 +29,7 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"claude-sonnet-5": "Sonnet 5",
 	"claude-opus-4-7[1m]": "Opus 4.7",
 	// Codex
+	"gpt-6.1-sol": "GPT-6.1 Sol",
 	"gpt-6-sol": "GPT-6 Sol",
 	"gpt-6-astra": "GPT-6 Astra",
 	"gpt-6-luna": "GPT-6 Luna",

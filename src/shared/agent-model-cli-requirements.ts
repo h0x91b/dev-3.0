@@ -51,6 +51,7 @@ export function isCliVersionAtLeast(version: CliVersion | null, threshold: CliVe
  */
 export const CODEX_MODEL_MIN_CLI_VERSION: Readonly<Record<string, string | null>> = {
 	"gpt-6-astra": "0.153.1",
+	"gpt-6.1-sol": null,
 	"gpt-6-sol": null,
 	"gpt-6-luna": null,
 	"gpt-5.6-luna": null,
