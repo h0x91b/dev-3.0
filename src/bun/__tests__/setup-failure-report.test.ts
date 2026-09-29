@@ -112,6 +112,22 @@ describe("setup re-run wrapper", () => {
 	});
 });
 
+// #1854: tracing a setup script prints every value it expands, secrets
+// included. The POSIX side is executed for real in setup-tracing-secrets.test.ts.
+describe("setup wrappers on win32", () => {
+	it("never trace the setup script", async () => {
+		const { buildSetupStartupWrapper, buildSetupRerunScript } = await import("../rpc-handlers/shared-pure");
+		const scripts = withPlatform("win32", () => [
+			buildSetupStartupWrapper({ ...WRAPPER_ARGS, nativeBackend: true, launchMode: "parallel" }),
+			buildSetupRerunScript({ setupPath: WRAPPER_ARGS.setupPath, shellPath: WRAPPER_ARGS.shellPath, setupExitPath: WRAPPER_ARGS.setupExitPath }),
+		]);
+		for (const script of scripts) {
+			expect(script).toContain("/tmp/dev3-T-setup.sh");
+			expect(script).not.toContain("Set-PSDebug");
+		}
+	});
+});
+
 // ---- The watcher ----
 
 describe("watchSetupFailure", () => {

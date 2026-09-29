@@ -133,10 +133,6 @@ describe("Windows PowerShell dialect", () => {
 		);
 	});
 
-	it("traces a script with Set-PSDebug instead of sh -x", () => {
-		expect(d.runScript("C:\\tmp\\setup.ps1", { shellPath: PS, trace: true })).toContain("Set-PSDebug -Trace 1");
-	});
-
 	it("emulates exec by exiting with the child's code", () => {
 		expect(d.execReplacing(d.interactiveShellCommand(PS))).toBe(
 			`& '${PS}' -NoLogo -NoProfile -NoExit; exit $LASTEXITCODE`,

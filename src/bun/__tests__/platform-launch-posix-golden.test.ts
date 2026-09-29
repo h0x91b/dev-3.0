@@ -88,7 +88,7 @@ const AGENT_RETRY_WRAPPER = [
 
 const STARTUP_WRAPPER_NATIVE = [
 	"#!/bin/bash",
-	"'/bin/zsh' -x '/tmp/dev3-T-setup.sh'",
+	"'/bin/zsh' '/tmp/dev3-T-setup.sh'",
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
@@ -102,7 +102,7 @@ const STARTUP_WRAPPER_NATIVE = [
 const STARTUP_WRAPPER_TMUX_PARALLEL = [
 	"#!/bin/bash",
 	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
-	"'/bin/zsh' -x '/tmp/dev3-T-setup.sh'",
+	"'/bin/zsh' '/tmp/dev3-T-setup.sh'",
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
@@ -117,7 +117,7 @@ const STARTUP_WRAPPER_TMUX_PARALLEL = [
 
 const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"#!/bin/bash",
-	"'/bin/zsh' -x '/tmp/dev3-T-setup.sh'",
+	"'/bin/zsh' '/tmp/dev3-T-setup.sh'",
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
@@ -245,9 +245,8 @@ describe("POSIX launch primitives", () => {
 		]);
 	});
 
-	it("renders the script runner with and without tracing", () => {
+	it("renders the script runner", () => {
 		expect(buildScriptRunnerCommand("/tmp/s.sh", { shellPath: SHELL })).toBe("'/bin/zsh' '/tmp/s.sh'");
-		expect(buildScriptRunnerCommand("/tmp/s.sh", { shellPath: SHELL, trace: true })).toBe("'/bin/zsh' -x '/tmp/s.sh'");
 	});
 
 	it("renders the shell-portable read-key snippet", () => {

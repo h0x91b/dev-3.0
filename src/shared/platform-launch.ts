@@ -41,8 +41,6 @@ export interface LaunchPrintOptions {
 export interface LaunchScriptOptions {
 	/** POSIX only: the login shell that interprets the script. */
 	shellPath?: string;
-	/** Echo every executed line (`sh -x` / `Set-PSDebug -Trace 1`). */
-	trace?: boolean;
 }
 
 export interface LaunchSpecOptions {
@@ -110,9 +108,9 @@ export interface LaunchDialect {
 	/**
 	 * Start / stop echoing every executed line INSIDE a script (`set -x`).
 	 *
-	 * Distinct from {@link LaunchScriptOptions.trace}, which traces a whole script
-	 * from the outside: the dev-server wrapper traces only the user's own command,
-	 * so its env exports do not scroll past before the dev server starts.
+	 * There is deliberately no way to trace a whole script from the outside:
+	 * `<shell> -x` traces the shell's startup files too, printing every credential
+	 * they export (#1854). The dev-server wrapper traces only the user's command.
 	 */
 	traceOn(): string;
 	traceOff(): string;
@@ -303,10 +301,7 @@ const posixDialect: LaunchDialect = {
 		"fi",
 	],
 	runScript: (scriptPath, options) => {
-		const parts = [posixShellQuote(getLaunchShellPath(options?.shellPath))];
-		if (options?.trace) parts.push("-x");
-		parts.push(posixShellQuote(scriptPath));
-		return parts.join(" ");
+		return `${posixShellQuote(getLaunchShellPath(options?.shellPath))} ${posixShellQuote(scriptPath)}`;
 	},
 	execReplacing: (command) => `exec ${command}`,
 	interactiveShell: (shellPath) => getLaunchShellPath(shellPath),
@@ -489,9 +484,6 @@ const windowsDialect: LaunchDialect = {
 	],
 	runScript: (scriptPath, options) => {
 		const shell = powerShellQuote(powerShellPath(options?.shellPath));
-		if (options?.trace) {
-			return `& ${shell} -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Set-PSDebug -Trace 1; & ${powerShellQuote(scriptPath)}"`;
-		}
 		return `& ${shell} ${POWERSHELL_SCRIPT_ARGS.join(" ")} ${powerShellQuote(scriptPath)}`;
 	},
 	// PowerShell has no `exec`: run the command, then leave with its code so the

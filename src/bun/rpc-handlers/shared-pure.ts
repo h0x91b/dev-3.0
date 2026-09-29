@@ -43,7 +43,7 @@ export function getScriptShellPath(shellPath?: string): string {
 
 export function buildScriptRunnerCommand(
 	scriptPath: string,
-	options?: { shellPath?: string; trace?: boolean },
+	options?: { shellPath?: string },
 ): string {
 	return launchDialect().runScript(scriptPath, options);
 }
@@ -269,7 +269,7 @@ export function buildSetupStartupWrapper(opts: {
 	// not a `dev3` call — the CLI on PATH belongs to whichever instance launched
 	// last, and its socket may address a different app entirely.
 	const runSetup = [
-		d.runScript(opts.setupPath, { shellPath: opts.shellPath, trace: true }),
+		d.runScript(opts.setupPath, { shellPath: opts.shellPath }),
 		d.captureExitCode("S"),
 		...d.branchOnFailure("S", {
 			fail: indentLines(2, [
@@ -317,7 +317,7 @@ export function buildSetupRerunScript(opts: {
 	const d = launchDialect();
 	return [
 		...d.header(),
-		d.runScript(opts.setupPath, { shellPath: opts.shellPath, trace: true }),
+		d.runScript(opts.setupPath, { shellPath: opts.shellPath }),
 		d.captureExitCode("S"),
 		...d.branchOnFailure("S", {
 			fail: indentLines(2, [
