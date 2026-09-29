@@ -1,4 +1,4 @@
-import type { TaskPRBadgeInfo } from "../../shared/types";
+import type { TaskPRBadgeInfo, TaskPullRequestRecord } from "../../shared/types";
 import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 import { useT, type TranslationKey } from "../i18n";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
@@ -24,6 +24,8 @@ interface TaskPrBadgesProps {
 	taskId: string;
 	/** Makes the popover's unresolved-comments row a deep link into the diff. */
 	onShowUnresolved?: () => void;
+	/** Finished PRs listed in the popover under the current one. */
+	earlierPullRequests?: TaskPullRequestRecord[];
 	/**
 	 * Narrow hosts (the ~200px Active Tasks row) drop the merge verdict's word
 	 * and keep its glyph: the word is 77px of a 200px line, which is what forced
@@ -47,7 +49,7 @@ interface TaskPrBadgesProps {
  * already folds failing/blocking checks into one verdict, and the popover keeps
  * the per-check breakdown for detail.
  */
-export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolved, compact = false }: TaskPrBadgesProps) {
+export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolved, earlierPullRequests, compact = false }: TaskPrBadgesProps) {
 	const t = useT();
 	const mergeability = summarizeMergeability(prInfo.mergeState);
 	const reviewMeta = prInfo.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
@@ -61,7 +63,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 
 	return (
 		<>
-			<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved}>
+			<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
 				<button
 					type="button"
 					onClick={(e) => {
@@ -77,7 +79,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 			</TaskPrStatusPopover>
 
 			{mergeability.state !== "unknown" && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved}>
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
 					<button
 						type="button"
 						onClick={(e) => {
@@ -95,7 +97,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 			)}
 
 			{reviewMeta && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved}>
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
 					<button
 						type="button"
 						onClick={(e) => {
@@ -128,7 +130,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 			)}
 
 			{unresolvedCount > 0 && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved}>
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
 					<button
 						type="button"
 						onClick={(e) => {

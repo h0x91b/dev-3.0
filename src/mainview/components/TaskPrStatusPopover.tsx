@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
-import type { PRCheckInfo, TaskPRBadgeInfo } from "../../shared/types";
+import type { PRCheckInfo, TaskPRBadgeInfo, TaskPullRequestRecord } from "../../shared/types";
 import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -17,7 +17,18 @@ interface TaskPrStatusPopoverProps {
 	/** When provided, the "N unresolved comments" row becomes a deep link that
 	 * opens the diff review at the first unresolved GitHub thread. */
 	onShowUnresolved?: () => void;
+	/** Finished PRs a follow-up replaced, newest first (`earlierPullRequests`). */
+	earlierPullRequests?: TaskPullRequestRecord[];
 	children: ReactElement;
+}
+
+function prStateMeta(state: string | null | undefined, t: ReturnType<typeof useT>): { label: string; className: string } | null {
+	switch (state?.toUpperCase()) {
+		case "OPEN": return { label: t("task.prStatusOpen"), className: "text-fg-3" };
+		case "MERGED": return { label: t("task.prStatusMerged"), className: "text-success" };
+		case "CLOSED": return { label: t("task.prStatusClosed"), className: "text-danger" };
+		default: return null;
+	}
 }
 
 type CheckState = "failure" | "pending" | "success" | "unknown";
@@ -146,7 +157,7 @@ function anchorRect(element: HTMLElement): RectLike {
 	};
 }
 
-export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowUnresolved, children }: TaskPrStatusPopoverProps) {
+export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowUnresolved, earlierPullRequests, children }: TaskPrStatusPopoverProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [open, setOpen] = useState(false);
@@ -299,14 +310,8 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 			? "text-danger"
 			: "text-fg-3";
 	const mergeReasons = mergeability.state === "not_mergeable" ? mergeReasonDetails(prInfo, mergeability, t) : [];
-	const prState = prInfo.mergeState?.state?.toUpperCase();
-	const prStateMeta = prState === "OPEN"
-		? { label: t("task.prStatusOpen"), className: "text-fg-3" }
-		: prState === "MERGED"
-			? { label: t("task.prStatusMerged"), className: "text-success" }
-			: prState === "CLOSED"
-				? { label: t("task.prStatusClosed"), className: "text-danger" }
-				: null;
+	const currentStateMeta = prStateMeta(prInfo.mergeState?.state, t);
+	const earlier = earlierPullRequests ?? [];
 
 	// Shared body between the desktop hover popover and the mobile bottom sheet.
 	// `sheet` relaxes the density: no header row (the sheet has its own title),
@@ -364,10 +369,10 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 			<div className="mt-3">
 				<div className="mb-1.5 font-medium text-fg-2">{t("task.prMergeStatus")}</div>
 				<dl className="space-y-1">
-					{prStateMeta && (
+					{currentStateMeta && (
 						<div className="flex items-center justify-between gap-3">
 							<dt className="text-fg-3">{t("task.prStatusLabel")}</dt>
-							<dd className={`font-medium ${prStateMeta.className}`}>{prStateMeta.label}</dd>
+							<dd className={`font-medium ${currentStateMeta.className}`}>{currentStateMeta.label}</dd>
 						</div>
 					)}
 					<div className="flex items-center justify-between gap-3">
@@ -430,6 +435,32 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 					</ul>
 				)}
 			</div>
+
+			{earlier.length > 0 && (
+				<div className="mt-3" data-testid="pr-popover-earlier">
+					<div className="mb-1.5 font-medium text-fg-2">{t("task.prEarlier")}</div>
+					<ul className="space-y-1">
+						{earlier.map((pr) => {
+							const stateMeta = prStateMeta(pr.state, t);
+							return (
+								<li key={pr.number}>
+									<a
+										href={pr.url}
+										target="_blank"
+										rel="noreferrer"
+										className={`flex min-w-0 items-center gap-2 rounded hover:bg-elevated-hover focus:ring-1 focus:ring-accent ${sheet ? "px-1 py-2" : "px-1 py-1"}`}
+										aria-label={t("task.openPR", { number: String(pr.number) })}
+									>
+										<span className="flex-shrink-0 font-mono font-medium text-fg-2">{t("task.prNumber", { number: String(pr.number) })}</span>
+										<span className="min-w-0 flex-1 truncate text-fg-3" title={pr.title ?? undefined}>{pr.title}</span>
+										{stateMeta && <span className={`flex-shrink-0 ${stateMeta.className}`}>{stateMeta.label}</span>}
+									</a>
+								</li>
+							);
+						})}
+					</ul>
+				</div>
+			)}
 
 			<button
 				type="button"

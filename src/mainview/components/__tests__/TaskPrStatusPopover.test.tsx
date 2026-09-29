@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { TaskPRBadgeInfo } from "../../../shared/types";
+import type { TaskPRBadgeInfo, TaskPullRequestRecord } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 
@@ -20,7 +20,7 @@ function makePrInfo(overrides: Partial<TaskPRBadgeInfo> = {}): TaskPRBadgeInfo {
 	};
 }
 
-function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBadgeInfo } = {}) {
+function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBadgeInfo; earlierPullRequests?: TaskPullRequestRecord[] } = {}) {
 	render(
 		<I18nProvider>
 			<TaskPrStatusPopover
@@ -28,6 +28,7 @@ function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBa
 				projectId="p1"
 				taskId="t1"
 				onShowUnresolved={props.onShowUnresolved}
+				earlierPullRequests={props.earlierPullRequests}
 			>
 				<button type="button">PR #42</button>
 			</TaskPrStatusPopover>
@@ -61,5 +62,34 @@ describe("TaskPrStatusPopover — unresolved comments row", () => {
 		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
 		await screen.findByTestId("pr-status-popover");
 		expect(screen.queryByTestId("pr-popover-unresolved")).not.toBeInTheDocument();
+	});
+});
+
+describe("TaskPrStatusPopover — earlier pull requests", () => {
+	it("lists the finished PRs a follow-up replaced, each linking out", async () => {
+		renderPopover({
+			earlierPullRequests: [
+				{ number: 40, url: "https://github.com/acme/widget/pull/40", title: "First try", state: "CLOSED", firstSeenAt: "" },
+				{ number: 38, url: "https://github.com/acme/widget/pull/38", title: "Initial change", state: "MERGED", firstSeenAt: "" },
+			],
+		});
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const section = await screen.findByTestId("pr-popover-earlier");
+
+		expect(within(section).getByText("Earlier pull requests")).toBeInTheDocument();
+		const links = within(section).getAllByRole("link");
+		expect(links.map((link) => link.getAttribute("href"))).toEqual([
+			"https://github.com/acme/widget/pull/40",
+			"https://github.com/acme/widget/pull/38",
+		]);
+		expect(within(links[0]).getByText("Closed")).toBeInTheDocument();
+		expect(within(links[1]).getByText("Merged")).toBeInTheDocument();
+	});
+
+	it("shows no section for a task that only ever had one PR", async () => {
+		renderPopover({ earlierPullRequests: [] });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		await screen.findByTestId("pr-status-popover");
+		expect(screen.queryByTestId("pr-popover-earlier")).not.toBeInTheDocument();
 	});
 });

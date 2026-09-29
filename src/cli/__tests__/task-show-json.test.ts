@@ -80,8 +80,25 @@ describe("task show --json", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
 			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "id",
 			"labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prUrl", "priority",
-			"projectId", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
+			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
+		]);
+	});
+
+	it("lists every PR the task had, newest first, beside the current prNumber", () => {
+		const json = buildTaskShowJson({
+			...TASK,
+			prNumber: 12,
+			prUrl: "https://github.com/o/r/pull/12",
+			pullRequests: [
+				{ number: 9, url: "https://github.com/o/r/pull/9", title: "First", state: "MERGED", firstSeenAt: "2026-09-28T00:00:00Z" },
+				{ number: 12, url: "https://github.com/o/r/pull/12", state: "OPEN", firstSeenAt: "2026-09-29T00:00:00Z" },
+			],
+		});
+		expect(json.prNumber).toBe(12);
+		expect(json.pullRequests).toEqual([
+			{ number: 12, url: "https://github.com/o/r/pull/12", title: null, state: "OPEN" },
+			{ number: 9, url: "https://github.com/o/r/pull/9", title: "First", state: "MERGED" },
 		]);
 	});
 
@@ -113,5 +130,32 @@ describe("task show --json", () => {
 		).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(stderrSpy.mock.calls.map((c) => String(c[0])).join("")).toContain("dev3 task show seq:12 --json");
+	});
+});
+
+describe("task show (human)", () => {
+	it("names every PR on one line and marks the current one", async () => {
+		mockSend.mockResolvedValue({
+			id: "x",
+			ok: true,
+			data: {
+				...TASK,
+				prNumber: 12,
+				prUrl: "https://github.com/o/r/pull/12",
+				pullRequests: [
+					{ number: 9, url: "https://github.com/o/r/pull/9", state: "MERGED", firstSeenAt: "2026-09-28T00:00:00Z" },
+					{ number: 12, url: "https://github.com/o/r/pull/12", state: "OPEN", firstSeenAt: "2026-09-29T00:00:00Z" },
+				],
+			},
+		} as CliResponse);
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdout).toMatch(/Pull requests:\s+#12 open \(current\), #9 merged/);
+	});
+
+	it("prints no PR line for a task without one", async () => {
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdout).not.toContain("Pull requests:");
 	});
 });

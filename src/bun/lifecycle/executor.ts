@@ -29,6 +29,7 @@ import { clonePaths } from "../cow-clone";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
+import { recordPullRequestSighting } from "../../shared/task-pull-requests";
 import * as git from "../git";
 import { DEV3_HOME, OPS_DIR } from "../paths";
 import * as portPool from "../port-pool";
@@ -158,6 +159,7 @@ function resetTaskUpdates(): Partial<Task> {
 		prNumber: null,
 		prUrl: null,
 		prStatusCache: null,
+		pullRequests: null,
 		mergeCompletionPrompt: null,
 		preparationError: null,
 		setupFailedExitCode: null,
@@ -1354,10 +1356,21 @@ export async function executeLifecycleEffect(
 			} | undefined;
 			if (!payload) return {};
 			if (payload.prNumber !== undefined || payload.prUrl !== undefined || payload.cache !== undefined) {
+				const prNumber = payload.prNumber ?? payload.cache?.number;
+				const prUrl = payload.prUrl ?? payload.cache?.url;
+				const pullRequests = prNumber != null && prUrl
+					? recordPullRequestSighting(ctx.task, {
+						number: prNumber,
+						url: prUrl,
+						state: payload.cache?.mergeState?.state ?? null,
+						title: payload.cache?.prTitle ?? null,
+					}, new Date().toISOString())
+					: null;
 				ctx.task = await data.updateTask(ctx.project, ctx.task.id, {
 					...(payload.prNumber !== undefined ? { prNumber: payload.prNumber } : {}),
 					...(payload.prUrl !== undefined ? { prUrl: payload.prUrl } : {}),
 					...(payload.cache !== undefined ? { prStatusCache: payload.cache } : {}),
+					...(pullRequests ? { pullRequests } : {}),
 				});
 				ctx.stateTask = ctx.task;
 			}

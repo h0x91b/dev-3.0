@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
@@ -387,6 +387,32 @@ describe("TaskDetailModal", () => {
 		it("omits the section when the task produced neither", () => {
 			renderModal(makeTodoTask({ status: "completed" }));
 			expect(screen.queryByTestId("shared-outputs-list")).toBeNull();
+		});
+	});
+	describe("archived pull requests", () => {
+		it("links every PR the task had, newest first", () => {
+			renderModal(makeTodoTask({
+				status: "completed",
+				prNumber: 12,
+				prUrl: "https://github.com/o/r/pull/12",
+				pullRequests: [
+					{ number: 9, url: "https://github.com/o/r/pull/9", state: "MERGED", firstSeenAt: "2026-09-28T00:00:00Z" },
+					{ number: 12, url: "https://github.com/o/r/pull/12", state: "MERGED", firstSeenAt: "2026-09-29T00:00:00Z" },
+				],
+			}));
+			const links = within(screen.getByTestId("task-detail-pull-requests")).getAllByRole("link");
+			expect(links.map((link) => link.textContent)).toEqual(["#12", "#9"]);
+			expect(links[1]).toHaveAttribute("href", "https://github.com/o/r/pull/9");
+		});
+
+		it("falls back to the legacy PR fields of a task no ledger was written for", () => {
+			renderModal(makeTodoTask({ status: "completed", prNumber: 7, prUrl: "https://github.com/o/r/pull/7" }));
+			expect(within(screen.getByTestId("task-detail-pull-requests")).getByRole("link")).toHaveTextContent("#7");
+		});
+
+		it("omits the row for a task that never had a PR", () => {
+			renderModal(makeTodoTask({ status: "completed" }));
+			expect(screen.queryByTestId("task-detail-pull-requests")).toBeNull();
 		});
 	});
 });

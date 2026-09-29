@@ -1,5 +1,6 @@
 import type { Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
+import { earlierPullRequests } from "../../shared/task-pull-requests";
 
 /**
  * Token-DSL task search & filter engine.
@@ -236,25 +237,29 @@ function matchesFreeText(task: Task, freeText: string, prNumber?: number | null)
 
 	if (task.id.toLowerCase().startsWith(q)) return true;
 
-	// Live PR data when the surface has it, else the task's sticky PR fields.
-	const prNumberValue = prNumber ?? task.prNumber ?? null;
+	// Live PR data when the surface has it, else the task's sticky PR fields; the
+	// finished PRs a follow-up replaced stay findable too.
+	const currentPrNumber = prNumber ?? task.prNumber ?? null;
+	const prs: Array<{ number: number; url: string | null }> = [
+		...(currentPrNumber != null ? [{ number: currentPrNumber, url: task.prUrl ?? null }] : []),
+		...earlierPullRequests(task),
+	];
 
 	const queryPrUrl = prUrlIdentity(q);
 	if (queryPrUrl) {
-		const taskPrUrl = task.prUrl ? prUrlIdentity(task.prUrl) : null;
-		if (taskPrUrl) return taskPrUrl === queryPrUrl;
-		// Repo unknown for this task: fall back to the number the link carries.
-		return prNumberValue != null && String(prNumberValue) === queryPrUrl.split("/").pop();
+		return prs.some((pr) => {
+			const taskPrUrl = pr.url ? prUrlIdentity(pr.url) : null;
+			if (taskPrUrl) return taskPrUrl === queryPrUrl;
+			// Repo unknown for this PR: fall back to the number the link carries.
+			return String(pr.number) === queryPrUrl.split("/").pop();
+		});
 	}
 
-	if (prNumberValue != null) {
-		const prStr = String(prNumberValue);
-		if (prStr.startsWith(qNormalized)) return true;
-		const bare = qNormalized.replace(/^(?:pull|pr)[\s#/-]*/, "");
-		if (bare && prStr.startsWith(bare)) return true;
-	}
-
-	return false;
+	const bare = qNormalized.replace(/^(?:pull|pr)[\s#/-]*/, "");
+	return prs.some((pr) => {
+		const prStr = String(pr.number);
+		return prStr.startsWith(qNormalized) || (bare !== "" && prStr.startsWith(bare));
+	});
 }
 
 /**

@@ -4,6 +4,7 @@ import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNot
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
+import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
 import { DESTRUCTIVE_APPROVAL_TARGET, isAgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -160,6 +161,14 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
 	if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
+	const pullRequests = allPullRequests(task);
+	if (pullRequests.length > 0) {
+		fields.push(["Pull requests:", pullRequests.map((pr) => {
+			const state = pr.state ? ` ${pr.state.toLowerCase()}` : "";
+			const current = pr.number === task.prNumber ? " (current)" : "";
+			return `#${pr.number}${state}${current}`;
+		}).join(", ")]);
+	}
 
 	if (task.labelIds && task.labelIds.length > 0) {
 		fields.push(["Labels:", task.labelIds.map((id) => id.slice(0, 8)).join(", ")]);

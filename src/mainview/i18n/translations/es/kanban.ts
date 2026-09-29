@@ -206,6 +206,7 @@ const kanban = {
 	"task.prMergeReasonChangesRequested": "Un revisor solicitó cambios",
 	"task.prMergeReasonFailedChecks": "Comprobaciones fallidas: {checks}",
 	"task.prMergeReasonPendingChecks": "Comprobaciones en ejecución: {checks}",
+	"task.prEarlier": "Pull requests anteriores",
 	"task.prRefresh": "Actualizar estado del PR",
 	"task.prRefreshing": "Actualizando estado del PR…",
 	"task.prRefreshFailed": "No se pudo actualizar el estado del PR: {error}",

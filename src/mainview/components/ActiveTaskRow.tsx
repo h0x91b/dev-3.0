@@ -1,6 +1,7 @@
 import { useState, type Dispatch } from "react";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
+import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, useLocale } from "../i18n";
@@ -343,7 +344,7 @@ export default function ActiveTaskRow({
 					    merge verdict goes glyph-only here: its word is 77px of a 200px
 					    line, and it survives in the tooltip, the name and the popover. */}
 					{prInfo && (
-						<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} compact />
+						<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} earlierPullRequests={earlierPullRequests(task)} compact />
 					)}
 					{assignedLabels.length > 0 && (
 						<div className="flex flex-wrap gap-0.5 min-w-0">

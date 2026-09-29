@@ -8,6 +8,7 @@ import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedVideo, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
+import { earlierPullRequests } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -1181,7 +1182,7 @@ function TaskInfoPanel({
 							{metadataPrInfo && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
-									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
+									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)}>
 										<button
 											type="button"
 											onClick={() => metadataPrInfo.url && window.open(metadataPrInfo.url, "_blank")}

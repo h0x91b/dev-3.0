@@ -3,6 +3,7 @@ import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { allPullRequests } from "../../shared/task-pull-requests";
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
@@ -709,6 +710,7 @@ function ArchivedView({
 	const statusColors = useStatusColors();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	const pullRequests = allPullRequests(task);
 
 	// Close status menu on click outside
 	useEffect(() => {
@@ -904,6 +906,26 @@ function ArchivedView({
 									<>
 										<span className="text-fg-3">{t("infoPanel.baseBranch")}</span>
 										<span className="text-fg-2 font-mono">{task.baseBranch}</span>
+									</>
+								)}
+
+								{pullRequests.length > 0 && (
+									<>
+										<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
+										<span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1" data-testid="task-detail-pull-requests">
+											{pullRequests.map((pr) => (
+												<a
+													key={pr.number}
+													href={pr.url}
+													target="_blank"
+													rel="noreferrer"
+													className="font-mono text-accent hover:text-accent-emphasis hover:underline"
+													title={pr.title ?? undefined}
+												>
+													{t("task.prNumber", { number: String(pr.number) })}
+												</a>
+											))}
+										</span>
 									</>
 								)}
 

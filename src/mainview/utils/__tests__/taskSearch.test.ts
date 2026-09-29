@@ -175,6 +175,21 @@ describe("matchesTaskQuery — free text (substring/identifier)", () => {
 		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1488", ctx())).toBe(true);
 		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1489", ctx())).toBe(false);
 	});
+
+	it("still finds a task by a finished PR its follow-up replaced", () => {
+		const task = blankTask({
+			prNumber: 1500,
+			prUrl: "https://github.com/h0x91b/dev-3.0/pull/1500",
+			pullRequests: [
+				{ number: 1488, url: "https://github.com/h0x91b/dev-3.0/pull/1488", state: "MERGED", firstSeenAt: "2026-09-28T00:00:00Z" },
+				{ number: 1500, url: "https://github.com/h0x91b/dev-3.0/pull/1500", state: "OPEN", firstSeenAt: "2026-09-29T00:00:00Z" },
+			],
+		});
+		expect(matchesTaskQuery(task, "#1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "https://github.com/other/repo/pull/1488", ctx())).toBe(false);
+		expect(matchesTaskQuery(task, "#1500", ctx())).toBe(true);
+	});
 });
 
 describe("parseTaskQuery", () => {

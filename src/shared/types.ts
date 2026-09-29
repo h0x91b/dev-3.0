@@ -2548,6 +2548,12 @@ export interface Task {
 	prUrl?: string | null;
 	/** Last rich status fetched for the task's associated GitHub pull request. */
 	prStatusCache?: TaskPRStatusCache | null;
+	/**
+	 * Every pull request this task has had, oldest first. The current one is still
+	 * `prNumber`; the rest are finished PRs a follow-up replaced. A separate
+	 * top-level field because older app versions rewrite the PR fields above.
+	 */
+	pullRequests?: TaskPullRequestRecord[] | null;
 	groupId: string | null;
 	variantIndex: number | null;
 	/** Future-facing links to other tasks; the data layer fills [] for legacy records on load. */
@@ -4077,6 +4083,16 @@ export interface TaskPRStatusCache {
 	prTitle: string | null;
 	isDraft: boolean | null;
 	cachedAt: string;
+}
+
+/** One entry of {@link Task.pullRequests}. */
+export interface TaskPullRequestRecord {
+	number: number;
+	url: string;
+	title?: string | null;
+	/** GitHub's state when last seen (OPEN / MERGED / CLOSED); absent when never fetched. */
+	state?: string | null;
+	firstSeenAt: string;
 }
 
 /**

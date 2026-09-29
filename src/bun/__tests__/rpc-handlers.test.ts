@@ -5552,7 +5552,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 });
+		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, prState: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 });
 	});
 
 	// A project added from a local folder has no `origin`. Comparing against
@@ -6017,7 +6017,11 @@ describe("handlers.getBranchStatus", () => {
 
 		await handlers.getBranchStatus({ taskId: task.id, projectId: project.id });
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			prNumber: 42,
+			prUrl,
+			pullRequests: [{ number: 42, url: prUrl, firstSeenAt: expect.any(String) }],
+		});
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: persisted });
 	});
 
@@ -6165,7 +6169,11 @@ describe("handlers.getProjectPRs", () => {
 		const result = await handlers.getProjectPRs({ projectId: project.id });
 
 		expect(result).toEqual([{ number: 42, headRefName: task.branchName, url: prUrl }]);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			prNumber: 42,
+			prUrl,
+			pullRequests: [{ number: 42, url: prUrl, firstSeenAt: expect.any(String) }],
+		});
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: persisted });
 	});
 });
@@ -11950,7 +11958,49 @@ describe("checkOpenPRsForPromotion", () => {
 		expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(1);
 	});
 
-		describe("a merged sticky PR with follow-up work on the branch", () => {
+		it("moves a replaced merged PR into the ledger when the follow-up PR opens", async () => {
+		const { project, task } = setup({
+			prNumber: 41,
+			prUrl: "https://github.com/test/repo/pull/41",
+			prStatusCache: {
+				number: 41, url: "https://github.com/test/repo/pull/41", ciStatus: null, reviewState: null,
+				unresolvedCount: 0, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+				checks: [], prTitle: "First PR", isDraft: false, cachedAt: "2026-09-28T00:00:00.000Z",
+			},
+		});
+		vi.mocked(github.runGitHub).mockImplementation(async (_project, _worktreePath, args) => {
+			if (args.includes("list")) {
+				return {
+					ok: true,
+					stdout: JSON.stringify([{
+						number: 42, isDraft: true, url: "https://github.com/test/repo/pull/42", statusCheckRollup: [],
+						state: "OPEN", title: "Follow-up PR", headRefName: "dev3/my-feature",
+					}]),
+					stderr: "",
+					code: 0,
+				};
+			}
+			return {
+				ok: true,
+				stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } }),
+				stderr: "",
+				code: 0,
+			};
+		});
+		setPushMessage(vi.fn());
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
+			prNumber: 42,
+			pullRequests: [
+				expect.objectContaining({ number: 41, state: "MERGED", title: "First PR" }),
+				expect.objectContaining({ number: 42, state: "OPEN", title: "Follow-up PR" }),
+			],
+		}));
+	});
+
+	describe("a merged sticky PR with follow-up work on the branch", () => {
 		const reviewThreadsPage = JSON.stringify({
 			data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } },
 		});

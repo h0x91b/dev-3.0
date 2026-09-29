@@ -3,6 +3,7 @@ import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
+import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -434,7 +435,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// PR signals — the same cluster the Active Tasks sidebar renders, extracted so
 	// the two surfaces cannot drift.
 	const prBadges = prInfo ? (
-		<TaskPrBadges prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} />
+		<TaskPrBadges prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)} />
 	) : null;
 
 	function handleShowDescription(e: React.MouseEvent) {

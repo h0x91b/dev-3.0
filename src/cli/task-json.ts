@@ -1,5 +1,6 @@
 import type { Task, TaskHistoryEntry, TaskNote } from "../shared/types";
 import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually } from "../shared/types";
+import { allPullRequests } from "../shared/task-pull-requests";
 
 /**
  * `dev3 task show --json` is a public contract, so it is a projection with a
@@ -36,6 +37,8 @@ export interface TaskShowJson {
 	variantIndex: number | null;
 	prNumber: number | null;
 	prUrl: string | null;
+	/** Every PR the task has had, newest first; `prNumber` is the current one. */
+	pullRequests: Array<{ number: number; url: string; title: string | null; state: string | null }>;
 	createdAt: string;
 	updatedAt: string;
 	movedAt: string | null;
@@ -69,6 +72,9 @@ export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?:
 		variantIndex: task.variantIndex ?? null,
 		prNumber: task.prNumber ?? null,
 		prUrl: task.prUrl ?? null,
+		pullRequests: allPullRequests(task).map(({ number, url, title, state }) => ({
+			number, url, title: title ?? null, state: state ?? null,
+		})),
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		movedAt: task.movedAt ?? null,
