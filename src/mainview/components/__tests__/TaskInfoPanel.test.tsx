@@ -2752,6 +2752,32 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
 		});
 
+		it("reads a merged PR from the task's cache when GitHub gives no state", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState: null,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask({
+					prNumber: 42,
+					prUrl: "https://github.com/test/repo/pull/42",
+					prStatusCache: {
+						number: 42, url: "https://github.com/test/repo/pull/42", ciStatus: null, reviewState: null,
+						unresolvedCount: 0, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+						checks: [], prTitle: null, isDraft: false, cachedAt: "2026-09-29T00:00:00.000Z",
+					},
+				}));
+			});
+
+			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
+			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
+		});
+
 		it("shows PR badge even when ahead=0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,

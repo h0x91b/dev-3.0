@@ -6,9 +6,9 @@ import {
 	type MergeRoute,
 	type Project,
 	type Task,
-	isPullRequestFinished,
 	resolveTaskCompareBaseBranch,
 } from "../../../shared/types";
+import { isLivePullRequest } from "../../utils/taskPrBadge";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
 import { useT, type TranslationKey } from "../../i18n";
@@ -426,9 +426,10 @@ export function useTaskBranchStatus({
 	// An open PR for this branch is what the button is about: Merge means "merge
 	// that PR on GitHub", not "squash it into my local base and push". Both UIs read
 	// this one value, so the label, the confirm and the command cannot disagree.
-	const mergeRoute: MergeRoute = branchStatus?.prNumber != null && !isPullRequestFinished(branchStatus.prState)
-		? "pull-request"
-		: "local-squash";
+	const mergeRoute: MergeRoute = isLivePullRequest(branchStatus?.prNumber, [
+		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
+		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
+	]) ? "pull-request" : "local-squash";
 
 	/**
 	 * Two routes, two confirmations. Merging the PR is not destructive — GitHub
