@@ -4,6 +4,7 @@ import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
+import { isLivePullRequest } from "../../utils/taskPrBadge";
 
 interface TaskGitActionsSheetProps {
 	task: Task;
@@ -76,8 +77,11 @@ export default function TaskGitActionsSheet({
 		return null;
 	}
 
-	const hasPR = !!(branchStatus?.prNumber != null || task.prNumber != null);
 	const prNumber = branchStatus?.prNumber ?? task.prNumber ?? null;
+	const hasPR = isLivePullRequest(prNumber, [
+		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
+		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
+	]);
 	const ahead = branchStatus?.ahead ?? 0;
 	const behind = branchStatus?.behind ?? 0;
 	const rebaseNeedsAgent = !!branchStatus && behind > 0 && !branchStatus.canRebase;
@@ -150,17 +154,20 @@ export default function TaskGitActionsSheet({
 		});
 	}
 
-	if (hasPR) {
+	// A merged or closed PR keeps its "Open PR" row, and Create PR comes back
+	// beside it: the next PR is a follow-up, not a duplicate.
+	if (prNumber != null) {
 		rows.push({
 			key: "open-pr",
 			icon: <CreatePRIcon className="h-5 w-5 shrink-0 text-success" />,
-			label: prNumber != null ? t("task.openPR", { number: String(prNumber) }) : t("infoPanel.openPR"),
+			label: t("task.openPR", { number: String(prNumber) }),
 			disabled: !branchStatus?.prUrl,
 			reason: !branchStatus?.prUrl ? t("infoPanel.statusLoading") : undefined,
 			external: true,
 			run: withDismiss(() => handleOpenPR()),
 		});
-	} else if (ownBranch) {
+	}
+	if (!hasPR && ownBranch) {
 		const prDisabled = noRemote || noGitHubRemote || !branchStatus || ahead === 0;
 		const prReason = !branchStatus
 			? t("infoPanel.statusLoading")

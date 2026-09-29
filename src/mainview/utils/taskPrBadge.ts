@@ -1,6 +1,22 @@
-import type { Task, TaskPRBadgeInfo } from "../../shared/types";
+import { isPullRequestFinished, type Task, type TaskPRBadgeInfo } from "../../shared/types";
 
 export type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
+
+interface ReportedPRState {
+	number: number | null | undefined;
+	state: string | null | undefined;
+}
+
+/**
+ * Whether the PR a surface shows is still the branch's live PR. The first source
+ * that reports a state for that same number decides; no report counts as live,
+ * so an offline inspector keeps offering exactly what it offered before.
+ */
+export function isLivePullRequest(prNumber: number | null | undefined, reports: Array<ReportedPRState | null | undefined>): boolean {
+	if (prNumber == null) return false;
+	const known = reports.find((report) => report?.number === prNumber && report.state);
+	return !isPullRequestFinished(known?.state);
+}
 
 export function samePRIdentity(left: TaskPRBadgeInfo | null | undefined, right: PRIdentity): boolean {
 	return left?.number === right.number && left.url === right.url;

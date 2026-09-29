@@ -6,7 +6,7 @@ import type {
 	Task,
 	TaskPRStatusCache,
 } from "../../shared/types";
-import { taskCompletesManually } from "../../shared/types";
+import { resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
@@ -356,9 +356,10 @@ interface GitHubPullRequestSummary {
 	statusCheckRollup?: unknown;
 	reviewDecision?: unknown;
 	headRefName?: unknown;
+	headRefOid?: unknown;
 }
 
-const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title,headRefName";
+const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title,headRefName,headRefOid";
 
 interface PolledPRStatus {
 	found: boolean;
@@ -476,6 +477,23 @@ async function fetchUnresolvedReviewThreadCount(
 		log.warn("PR review-thread lookup failed (non-fatal)", { pr: prNumber, error: String(err) });
 	}
 	return null;
+}
+
+/**
+ * A merged PR proves only the head it merged. Commits made after it on the same
+ * branch are unmerged follow-up work, so the completion offer waits — the same
+ * `ahead === 0` and clean-worktree gate the merge watcher applies.
+ */
+async function mergedPrCoversHead(project: Project, task: Task, pr: GitHubPullRequestSummary): Promise<boolean> {
+	const worktreePath = task.worktreePath!;
+	if (await git.isWorktreeDirty(worktreePath)) return false;
+	const headSha = await git.getHeadSha(worktreePath);
+	if (headSha && typeof pr.headRefOid === "string" && pr.headRefOid === headSha) return true;
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
+	const projectBase = project.defaultBaseBranch || "main";
+	const ref = baseBranch === projectBase ? await git.resolveCompareRef(project.path, baseBranch) : baseBranch;
+	const status = await git.getBranchStatus(worktreePath, ref);
+	return status != null && !status.baseUnreachable && status.ahead === 0;
 }
 
 async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion: boolean): Promise<PolledPRStatus | null> {
@@ -625,7 +643,7 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 		signalKey,
 		...(signalReason ? { signalReason } : {}),
 	});
-	if (mergeState.state === "MERGED") {
+	if (mergeState.state === "MERGED" && await mergedPrCoversHead(project, task, pr)) {
 		const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 		await dispatchLifecycleFinding(project, task, {
 			type: "mergeDetected",

@@ -177,6 +177,7 @@ const defaultBranchStatus: BranchStatus = {
 	diffFileStats: [],
 	prNumber: null,
 	prUrl: null,
+	prState: null,
 	mergeCompletionFingerprint: null,
 	hasRemote: true,
 	remoteIsGitHub: true,
@@ -2730,6 +2731,27 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText("PR")).not.toBeInTheDocument();
 		});
 
+		// A finished PR is history, not the branch's live PR: its badge stays, but it
+		// must neither hide Create PR for the follow-up nor route Merge through it.
+		it.each(["MERGED", "CLOSED"])("brings Create PR back beside the badge of a %s PR", async (prState) => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.getAllByText(/PR #42/).length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
+			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
+		});
+
 		it("shows PR badge even when ahead=0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -4086,6 +4108,26 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(within(sheet).getByText("Create PR")).toBeInTheDocument();
 			expect(within(sheet).getByText("PR + auto-merge")).toBeInTheDocument();
 			expect(within(sheet).getByText("Merge")).toBeInTheDocument();
+		});
+
+		it("keeps Open PR and offers Create PR in the sheet once the PR merged", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState: "MERGED",
+			});
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const sheet = screen.getByTestId("task-actions-sheet");
+			expect(within(sheet).getByText("Open PR #42")).toBeInTheDocument();
+			expect(within(sheet).getByText("Create PR")).toBeInTheDocument();
+			expect(within(sheet).queryByText("Merge PR")).not.toBeInTheDocument();
 		});
 
 		it("triggers Create PR and dismisses the sheet", async () => {

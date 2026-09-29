@@ -12,6 +12,7 @@ import { toast } from "../../toast";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
+import { isLivePullRequest } from "../../utils/taskPrBadge";
 
 export interface TaskBranchStatusMeta {
 	/** Which task this status describes — the panel drops it once they diverge. */
@@ -417,7 +418,11 @@ export default function TaskGitActions({
 						? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
 						: t("infoPanel.push");
 
-	const hasPR = prInfo !== null;
+	const hasPR = isLivePullRequest(prInfo?.number, [
+		pushedPRStatus && { number: pushedPRStatus.number, state: pushedPRStatus.mergeState?.state },
+		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
+		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
+	]);
 	const createPRDisabled = hasPR
 		? !branchStatus?.prUrl
 		: (noRemote || noGitHubRemote || !branchStatus || branchStatus.ahead === 0 || creatingPR);

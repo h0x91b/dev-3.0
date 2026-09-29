@@ -19,6 +19,7 @@ function makeStatus(overrides?: Partial<BranchStatus>): BranchStatus {
 		diffFileStats: [],
 		prNumber: null,
 		prUrl: null,
+		prState: null,
 		mergeCompletionFingerprint: null,
 		hasRemote: true,
 		remoteIsGitHub: true,

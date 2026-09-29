@@ -217,7 +217,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
+		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, prState: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
 	}
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
@@ -280,6 +280,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// Only the identity travels on from here; the probe's title/author exist for
 	// naming a review task, not for the branch-status payload.
 	let prInfo: { number: number; url: string } | null = detected.pr;
+	let prState: string | null = prInfo ? "OPEN" : null;
 	if (!prInfo && task.prNumber != null && task.prUrl) {
 		// The sticky number outlives the branch it was opened from: rename the
 		// branch, or inherit the number from the review task this one grew out of,
@@ -289,6 +290,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		const snapshot = await github.getPullRequestSnapshot(project, task.worktreePath, task.prNumber);
 		if (!snapshot || !branchForPush || snapshot.headRefName === branchForPush) {
 			prInfo = { number: task.prNumber, url: task.prUrl };
+			prState = snapshot?.state ?? null;
 		} else {
 			log.info("Ignoring stored PR from a different branch", {
 				taskId: task.id.slice(0, 8), pr: task.prNumber, prHead: snapshot.headRefName, branch: branchForPush,
@@ -317,7 +319,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, preservedOutsideBranch, mergedByContent,
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileStats: branchDiff.fileStats,
-		prNumber, prUrl,
+		prNumber, prUrl, prState,
 		mergeCompletionFingerprint,
 		hasRemote, remoteIsGitHub, remoteAhead,
 	};

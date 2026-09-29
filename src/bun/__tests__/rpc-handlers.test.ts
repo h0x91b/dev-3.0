@@ -5790,6 +5790,7 @@ describe("handlers.getBranchStatus", () => {
 			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 			expect(result.prNumber).toBe(1300);
+			expect(result.prState).toBe("MERGED");
 			expect(result.mergedByContent).toBe(true);
 		});
 
@@ -5806,6 +5807,25 @@ describe("handlers.getBranchStatus", () => {
 			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 			expect(result.prNumber).toBe(1300);
+			expect(result.prState).toBeNull();
+		});
+
+		it("reports an open PR found for the branch as OPEN", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt", branchName: "fix/mine", prNumber: 1400, prUrl: "https://gh/pr/1400",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockClean();
+			vi.mocked(github.findOpenPullRequest).mockResolvedValueOnce({
+				pr: { number: 1400, url: "https://gh/pr/1400", title: null, author: null }, isGitHub: true,
+			});
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.prNumber).toBe(1400);
+			expect(result.prState).toBe("OPEN");
 		});
 	});
 
@@ -11832,6 +11852,7 @@ describe("checkOpenPRsForPromotion", () => {
 			mergeStateStatus: "UNKNOWN",
 			state: "MERGED",
 			title: "Merged change",
+			headRefOid: "abc123",
 		};
 		vi.mocked(github.runGitHub)
 			.mockResolvedValueOnce({ ok: true, stdout: "[]", stderr: "", code: 0 })
@@ -11899,6 +11920,7 @@ describe("checkOpenPRsForPromotion", () => {
 						mergeStateStatus: "UNKNOWN",
 						state: "MERGED",
 						title: "Merged change",
+						headRefOid: "abc123",
 					}),
 					stderr: "",
 					code: 0,
@@ -11928,7 +11950,73 @@ describe("checkOpenPRsForPromotion", () => {
 		expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(1);
 	});
 
-	it("uses the GraphQL review-thread page and persists the PR identity", async () => {
+		describe("a merged sticky PR with follow-up work on the branch", () => {
+		const reviewThreadsPage = JSON.stringify({
+			data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } },
+		});
+
+		function mockMergedStickyPr(headRefOid: string) {
+			vi.mocked(github.runGitHub).mockImplementation(async (_project, _worktreePath, args) => {
+				if (args.includes("list")) return { ok: true, stdout: "[]", stderr: "", code: 0 };
+				if (args.includes("view")) {
+					return {
+						ok: true,
+						stdout: JSON.stringify({
+							number: 42, isDraft: false, url: "https://github.com/test/repo/pull/42", statusCheckRollup: [],
+							state: "MERGED", title: "First PR", headRefName: "dev3/my-feature", headRefOid,
+						}),
+						stderr: "",
+						code: 0,
+					};
+				}
+				return { ok: true, stdout: reviewThreadsPage, stderr: "", code: 0 };
+			});
+		}
+
+		beforeEach(() => {
+			vi.mocked(git.isWorktreeDirty).mockReset().mockResolvedValue(false);
+			vi.mocked(git.getBranchStatus).mockReset();
+			vi.mocked(git.getHeadSha).mockReset().mockResolvedValue("follow-up-sha");
+		});
+
+		it("does not offer completion for commits made after the merge", async () => {
+			setup({ prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" });
+			mockMergedStickyPr("merged-sha");
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0, baseUnreachable: false });
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await checkOpenPRsForPromotion();
+
+			expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(0);
+		});
+
+		it("does not offer completion while the worktree has uncommitted changes", async () => {
+			setup({ prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" });
+			mockMergedStickyPr("follow-up-sha");
+			vi.mocked(git.isWorktreeDirty).mockResolvedValue(true);
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await checkOpenPRsForPromotion();
+
+			expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(0);
+		});
+
+		it("still offers completion once the branch has nothing of its own left", async () => {
+			setup({ prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" });
+			mockMergedStickyPr("merged-sha");
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 3, baseUnreachable: false });
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await checkOpenPRsForPromotion();
+
+			expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(1);
+		});
+	});
+
+it("uses the GraphQL review-thread page and persists the PR identity", async () => {
 		const { project, task } = setup({ status: "review-by-colleague" }, { githubAuthHost: "ghe.example.com" });
 		const prUrl = "https://ghe.example.com/test/repo/pull/42";
 		const persisted = { ...task, prNumber: 42, prUrl };
