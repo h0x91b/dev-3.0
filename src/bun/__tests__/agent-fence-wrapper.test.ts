@@ -49,6 +49,17 @@ describe("buildCmdScript with the agent delivery fence", () => {
 		expect(body).not.toMatch(/__dev3_tmux set-option -p -t "\$TMUX_PANE" @dev3_agent_input "open:/);
 	});
 
+	// R-O1: a fence already there belongs to a live parent this run is nested in; R-O2: a
+	// failed nonce must not reach tmux at all, or the fence opens with no close behind it.
+	it("never modifies an existing fence, and checks its nonce before touching tmux", () => {
+		const open = agentFenceOpenLines(FENCE).join("\n");
+		expect(open).not.toContain("closed:");
+		const nonceCheck = open.indexOf("grep -Eq '^[0-9a-f]{16}$'");
+		const cas = open.indexOf("__dev3_tmux if-shell");
+		expect(nonceCheck).toBeGreaterThan(-1);
+		expect(nonceCheck).toBeLessThan(cas);
+	});
+
 	it("adds nothing without keepShell: that pane closes with its agent", () => {
 		expect(script({ agentFence: FENCE }).join("\n")).not.toContain("__DEV3_F");
 		expect(script({ keepShell: true }).join("\n")).not.toContain("__DEV3_F");

@@ -38,8 +38,11 @@ It is read in the same sighting as the pane, pinned into `PaneIncarnation.agentF
 
 **The open.** It is a compare-and-set too (N4-R1). The wrapper opens only a pane with **no** fence, stores a per-attempt opener nonce in the same list, and trusts only a read-back of both.
 - Re-running a generated script in the same pane therefore never reopens its launch: a closed fence stays closed, and every pin of the first run stays refused.
-- An `open:<x>` that a dead earlier attempt left in the pane is closed at once (`closed:<x>:255`); a malformed value is left as it is.
-- In every one of those cases the run proceeds unfenced and is refused, and says so.
+- A non-empty fence is **never modified** by a new wrapper.
+  - An `open:<x>` found there is a live parent this run is nested in (an agent running a launch script), whose own close, sentinel and shell must stay valid.
+  - A closed or malformed value stays as it is, so the guard keeps refusing.
+  - The run proceeds unfenced and says so.
+- The opener nonce is validated **before** tmux is touched, so a failed nonce opens nothing.
 
 **The close.** `agentFenceCloseLines`, in `src/bun/agent-fence-wrapper.ts`, spliced by `buildCmdScript`:
 1. The wrapper ignores INT, QUIT and TSTP, and switches the tty raw.
@@ -80,6 +83,7 @@ These are stated limits; none of them is solved here.
 - **No shell until a close.** A pane whose wrapper never gets closed (no app ever runs, or an app acks without a sentinel) has no shell until the user closes it. Nothing typed there is executed.
 - **Save retries live in memory.** Messages whose file could not be written are lost if the app restarts during the 10-minute retry, like every held message (the hold is in-memory by design).
 - **A narrow reordering.** Messages relocated into a pane whose own hold is mid-release can land behind that release's leftovers. That is out of order, not lost.
+- **A nested foreground program.** While a program nested in a live agent reads the tty, deliveries pinned to that parent go to whoever reads it. That is the same as before the fence, for any nested program.
 - **Legacy wrappers.** Panes launched before this change stay unfenced until relaunch or resume.
 - **Native backend and Windows** have no fence.
 - **An agent that leaves the tty raw.** Its shell inherits that raw tty, as it did before this change; under dash no command then runs at all.
