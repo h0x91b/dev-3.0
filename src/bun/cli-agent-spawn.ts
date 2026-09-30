@@ -1,9 +1,9 @@
 import type { AgentLaunchRequest, LaunchVariant, Project, Task } from "../shared/types";
 import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import type { SpawnAgentResult } from "../shared/conversation-handoff-model";
-import { createAgentRequest, setAgentRequestLaunchChoice, setAgentLaunchDialog } from "./agent-requests";
+import { createAgentRequest, getAgentRequestState, setAgentRequestLaunchChoice, setAgentLaunchDialog } from "./agent-requests";
 import { listAgentAccounts } from "./agent-accounts";
-import { getAllAgents } from "./agents";
+import { applyBinaryPathOverride, getAllAgents } from "./agents";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -33,7 +33,9 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	const configId = choice.configId ?? globalConfigId ?? agent.defaultConfigId ?? agent.configurations[0]?.id ?? null;
 	if (configId && !agent.configurations.some((c) => c.id === configId)) throw new Error(`Unknown config "${configId}" for agent "${id}".`);
 	if (choice.accountId !== undefined) {
-		const family = agentKey(agent.baseCommand, agent.agentFamily);
+		const config = agent.configurations.find((c) => c.id === configId);
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+		const family = agentKey(config?.baseCommandOverride || agentWithPath.baseCommand, agentWithPath.agentFamily);
 		if (family !== "claude" && family !== "codex") throw new Error(`Agent "${id}" does not support managed accounts.`);
 		if (choice.accountId !== null && !(await listAgentAccounts())[family].accounts.some((a) => a.id === choice.accountId)) throw new Error(`Unknown ${family} account "${choice.accountId}".`);
 	}
@@ -54,9 +56,10 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 	if (requester) {
 		const push = getPushMessage();
 		if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
-		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, {
-			autoApproveAfterMs: agentLaunchAutoApproveMs(await loadSettings()),
-		});
+		const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+		// Only pendingSpawns may join a retry; a task-start approval authorizes a different action.
+		if (getAgentRequestState("launch", task.id).state === "pending") throw new Error("Another launch approval is pending for this task — answer it before adding an agent.");
+		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs });
 		setAgentRequestLaunchChoice(requestId, { variants: [choice] });
 		const request: AgentLaunchRequest = {
 			requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,

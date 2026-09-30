@@ -1179,7 +1179,7 @@ export async function executeLifecycleEffect(
 			ctx.stateTask = ctx.task;
 			// The run is over: no approval asked about it may land on the fresh card —
 			// a late "complete" would otherwise mark it Completed.
-			for (const kind of ["reset", "complete", "cancel"] as const) voidAgentRequest(kind, ctx.task.id);
+			for (const kind of ["reset", "complete", "cancel", "launch"] as const) voidAgentRequest(kind, ctx.task.id);
 			const outcome = ctx.resetBranchOutcome ?? { deleted: [], kept: [] };
 			resetBranchOutcomes.set(ctx.task.id, outcome);
 			const keptNote = keptBranchesNote(outcome);
@@ -1267,8 +1267,9 @@ export async function executeLifecycleEffect(
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
-			// The run ended: a reset approval still open for it must not apply later.
+			// Pending reset/extra-agent approvals belong to the run that just ended.
 			voidAgentRequest("reset", ctx.task.id);
+			voidAgentRequest("launch", ctx.task.id);
 			return {};
 		}
 		case "persistPreparationStage": {

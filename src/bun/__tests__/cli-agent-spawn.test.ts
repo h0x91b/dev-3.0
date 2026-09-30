@@ -1,7 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { Project, Task } from "../../shared/types";
-vi.mock("../agents", () => ({ getAllAgents: vi.fn() }));
-vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ defaultAgentId: "agent-1", defaultConfigId: "config-1", agentLaunchAutoApproveMinutes: 0 })) }));
+vi.mock("../agents", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../agents")>()),
+	getAllAgents: vi.fn(),
+}));
+vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ defaultAgentId: "agent-1", defaultConfigId: "config-1", agentLaunchAutoApproveMinutes: 0 })), loadSettingsSync: vi.fn(() => ({})) }));
 vi.mock("../data", () => ({ getTask: vi.fn() }));
 vi.mock("../agent-accounts", () => ({ listAgentAccounts: vi.fn(async () => ({ codex: { accounts: [{ id: "slot-1" }] } })) }));
 vi.mock("../rpc-handlers/settings-config", () => ({ settingsConfigHandlers: { checkAgentAvailability: vi.fn(async () => [{ agentId: "agent-1", installed: true }]) } }));
@@ -13,7 +16,8 @@ import { getTask } from "../data";
 import { tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
 import { settingsConfigHandlers } from "../rpc-handlers/settings-config";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
-import { _resetAgentRequestsForTests, resolveAgentRequest, pendingAgentLaunchDialogs } from "../agent-requests";
+import { listAgentAccounts } from "../agent-accounts";
+import { _resetAgentRequestsForTests, createAgentRequest, resolveAgentRequest, voidAgentRequest, pendingAgentLaunchDialogs } from "../agent-requests";
 const project = { id: "project-1", name: "Fixture", path: "/repo" } as Project;
 const task = { id: "task-1", projectId: project.id, seq: 1, title: "Fixture task", status: "in-progress", worktreePath: "/repo/wt", lifecycleStartedAt: "start-1" } as Task;
 const push = vi.fn();
@@ -55,6 +59,32 @@ describe("managed CLI agent spawning", () => {
 		expect(await pending).toMatchObject({ approved: true, spawn: { paneId: "%9" } });
 		expect(tmuxPtyHandlers.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ accountId: "slot-1", prompt: "Review only" }));
 	});
+	it("validates the account against the preset's effective harness", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([{ id: "agent-1", baseCommand: "claude", configurations: [{ id: "config-1", baseCommandOverride: "codex" }] }] as any);
+		vi.mocked(listAgentAccounts).mockResolvedValue({
+			claude: { accounts: [{ id: "claude-slot" }] },
+			codex: { accounts: [{ id: "slot-1" }] },
+		} as any);
+		await spawnCliAgent({ ...options(null), choice: { agentId: "agent-1", configId: "config-1", accountId: "slot-1" } });
+		expect(tmuxPtyHandlers.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ accountId: "slot-1" }));
+	});
+	it("rejects an account belonging only to the overridden harness", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([{ id: "agent-1", baseCommand: "claude", configurations: [{ id: "config-1", baseCommandOverride: "codex" }] }] as any);
+		vi.mocked(listAgentAccounts).mockResolvedValue({
+			claude: { accounts: [{ id: "claude-slot" }] },
+			codex: { accounts: [{ id: "slot-1" }] },
+		} as any);
+		await expect(spawnCliAgent({ ...options(null), choice: { agentId: "agent-1", configId: "config-1", accountId: "claude-slot" } })).rejects.toThrow("Unknown codex account");
+		expect(tmuxPtyHandlers.spawnAgentInTask).not.toHaveBeenCalled();
+	});
+	it("does not reuse a task-start approval for an extra pane", async () => {
+		const activation = createAgentRequest("launch", task.id, project.id);
+		const outcome = spawnCliAgent(options()).catch((error: unknown) => error);
+		await vi.waitFor(() => expect(settingsConfigHandlers.checkAgentAvailability).toHaveBeenCalled());
+		resolveAgentRequest(activation.requestId, { approved: true });
+		expect(await outcome).toEqual(expect.objectContaining({ message: expect.stringContaining("Another launch approval") }));
+		expect(tmuxPtyHandlers.spawnAgentInTask).not.toHaveBeenCalled();
+	});
 	it("joins retries without opening two panes for one approval", async () => {
 		const first = spawnCliAgent(options()); const second = spawnCliAgent(options());
 		await answer(true); await Promise.all([first, second]);
@@ -64,6 +94,18 @@ describe("managed CLI agent spawning", () => {
 		const pending = spawnCliAgent(options());
 		await expect(spawnCliAgent({ ...options(), prompt: "Different" })).rejects.toThrow("Another agent spawn");
 		await answer(false); await pending;
+	});
+	it("releases a stale spawn so the next run can request a different agent prompt", async () => {
+		const pending = spawnCliAgent(options());
+		await vi.waitFor(() => expect(pendingAgentLaunchDialogs()).toHaveLength(1));
+		voidAgentRequest("launch", task.id);
+		expect(await pending).toEqual({ approved: false, stale: true });
+		expect(pendingAgentLaunchDialogs()).toEqual([]);
+		push.mockClear();
+		const next = spawnCliAgent({ ...options(), prompt: "New run review" });
+		await answer(false);
+		expect(await next).toEqual({ approved: false });
+		expect(tmuxPtyHandlers.spawnAgentInTask).not.toHaveBeenCalled();
 	});
 	it("does not turn a reset task into a launch on an unapproved new run", async () => {
 		const pending = spawnCliAgent(options());

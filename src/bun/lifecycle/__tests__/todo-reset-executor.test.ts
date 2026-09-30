@@ -155,7 +155,7 @@ describe("persistResetTask — the one compare-and-set write (S2, T11, T12)", ()
 		expect(after.lifecycleStartedAt).toBeUndefined();
 		expect(after.runtimeState?.runtime).toBe("idle");
 		// S7: no approval about the ended run may land on the fresh card.
-		expect(vi.mocked(voidAgentRequest).mock.calls.map(([kind]) => kind).sort()).toEqual(["cancel", "complete", "reset"]);
+		expect(vi.mocked(voidAgentRequest).mock.calls.map(([kind]) => kind).sort()).toEqual(["cancel", "complete", "launch", "reset"]);
 	});
 
 	it("S8: drops messages queued for the stopped agent, keeps the card's own deferred start", async () => {
@@ -249,7 +249,12 @@ describe("resetWorktree — owned branches only, noted first (S1, S4, S7)", () =
 	});
 });
 
-describe("episode end voids pending reset approvals", () => {
+describe("episode end voids pending approvals", () => {
+	it.each(["completed", "cancelled"] as const)("%s voids an extra-agent launch for the ended run", async (status) => {
+		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status }));
+		await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(liveTask()));
+		expect(voidAgentRequest).toHaveBeenCalledWith("launch", TASK_ID);
+	});
 	it("persistTerminalTask voids a reset request for that task", async () => {
 		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "cancelled" }));
 		await executeLifecycleEffect({ type: "persistTerminalTask", status: "cancelled", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
