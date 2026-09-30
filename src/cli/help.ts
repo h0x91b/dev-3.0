@@ -52,6 +52,36 @@ const GLOBAL_OPTIONS = [
 
 const COMMANDS: CommandHelp[] = [
 	{
+		name: "agent",
+		summary: "Add managed agents to existing task terminals (the CLI equivalent of +Agent).",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 agent list [--json]",
+				summary: "List agent IDs and their configuration/preset IDs.",
+				details: ["Use these exact IDs with agent spawn; --json returns the full agent definitions."],
+			},
+			{
+				name: "spawn",
+				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--account <id|system>] [--prompt <text>|-] [--handoff] [--json]",
+				summary: "Add one agent pane to a running task, sharing its existing worktree.",
+				details: [
+					"--task <id>     Target task, or the current worktree's task. Supports seq:<N>.",
+					"--agent <id>    Exact agent ID from agent list; omitted = project default.",
+					"--config <id>   Exact preset ID belonging to --agent; omitted = its default.",
+					"--account <id>  Managed account ID for --agent; system = system login.",
+					"--prompt <text> Initial instructions; - reads stdin, @file reads a file.",
+					"--handoff       Also retell the target task's latest conversation.",
+					"--json          Print pane ID, backend, agent/config IDs and handoff result.",
+					"From a task worktree, asks the user to approve and pick the agent in the app.",
+					"The configured launch auto-approval policy applies; decline exits 10.",
+					"Outside a task worktree, runs directly as a user-initiated launch.",
+					"The target terminal must already be running; no task or worktree is created.",
+				],
+			},
+		],
+	},
+	{
 		name: "current",
 		summary: "Show the current project, task, status, and overview.",
 		subcommands: [],

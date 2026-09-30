@@ -1038,6 +1038,25 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 }
 
 const handlers: Record<string, Handler> = {
+	"agent.list": async () => agents.getAllAgents(),
+	"agent.spawn": async (params) => {
+		const { project, task } = await requirePaneTask(params);
+		const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId : "";
+		const requester = sourceId ? await resolveTaskAcrossProjects(sourceId) : null;
+		if (sourceId && !requester) throw new Error("Unknown requesting task — cannot attribute the launch request.");
+		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
+			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
+		}
+		if (params.prompt !== undefined && (typeof params.prompt !== "string" || !params.prompt.trim())) throw new Error("prompt must not be empty.");
+		if (params.configId && !params.agentId) throw new Error("configId requires agentId.");
+		const { spawnCliAgent } = await import("./cli-agent-spawn");
+		return spawnCliAgent({
+			project, task, requester: requester?.task ?? null,
+			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null,
+				...(params.accountId !== undefined ? { accountId: params.accountId as string | null } : {}) },
+			prompt: params.prompt as string | undefined, handoff: params.handoff === true,
+		});
+	},
 	// Cross-instance notification: another dev-3.0 instance changed data.
 	// Re-read from disk and push to local renderer only (no re-broadcast).
 	"_notify": async (params) => {

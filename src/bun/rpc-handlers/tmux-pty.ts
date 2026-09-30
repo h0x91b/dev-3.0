@@ -3257,6 +3257,7 @@ async function tmuxSearchCancel(params: { taskId: string; paneId: string }): Pro
 }
 
 async function spawnAgentInTask(params: {
+	prompt?: string;
 	taskId: string;
 	projectId: string;
 	agentId: string | null;
@@ -3290,7 +3291,7 @@ async function spawnAgentInTask(params: {
 	// spawned this from, so the pointer sat there until he pressed Enter (seq 1775).
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
-		taskDescription: handoff ? handoffPrompt(handoff) : "",
+		taskDescription: [handoff ? handoffPrompt(handoff) : "", params.prompt ?? ""].filter(Boolean).join("\n\n"),
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath: task.worktreePath,
@@ -3324,7 +3325,7 @@ async function spawnAgentInTask(params: {
 			task.title,
 			// A takeover replaces the brief: the retelling already carries the original
 			// request, so re-launching on the raw description would start the work twice.
-			handoff ? ctx.taskDescription : task.description,
+			handoff || params.prompt !== undefined ? ctx.taskDescription : task.description,
 			task.worktreePath,
 			undefined,
 			cmdOptions,
@@ -3447,7 +3448,7 @@ async function spawnAgentInTask(params: {
 	}
 
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
-	return { handoff: handoffResult };
+	return { paneId: handle.paneId, backend: handle.backend, agentId: launchedAgentId, configId: launchedConfigId, handoff: handoffResult };
 }
 
 /**

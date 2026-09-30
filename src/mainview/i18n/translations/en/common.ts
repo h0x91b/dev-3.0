@@ -34,6 +34,9 @@ const common = {
 	"app.agentResetCancel": "Keep as is",
 
 	// An agent asking to start another task (or a throwaway scratch peer)
+	"agentLaunch.titleSpawn": "Agent wants to add an agent to this task",
+	"agentLaunch.initialPrompt": "Initial instructions",
+	"agentLaunch.spawnHandoff": "The new agent will also receive this task's latest conversation.",
 	"agentLaunch.title": "Agent wants to start this task",
 	"agentLaunch.titleScratch": "Agent wants a scratch task",
 	"agentLaunch.requestedBy": "Asked by task #{seq} — {title}",

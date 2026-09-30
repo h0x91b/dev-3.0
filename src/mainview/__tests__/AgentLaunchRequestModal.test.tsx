@@ -91,6 +91,18 @@ function renderModal(request = makeRequest()) {
 }
 
 describe("AgentLaunchRequestModal", () => {
+	it("shows an extra-agent request without task priority editing or variants", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ spawn: { choice: { agentId: "builtin-claude", configId: "claude-plan", accountId: null }, prompt: "Review this task", handoff: true } }));
+		expect(await screen.findByRole("heading", { name: "Agent wants to add an agent to this task" })).toBeInTheDocument();
+		expect(screen.getByText("Review this task")).toBeInTheDocument();
+		expect(screen.queryByTestId("agent-launch-add-variant")).not.toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, { variants: [{ agentId: "builtin-claude", configId: "claude-plan", accountId: null }] });
+	});
+
 	it("names the asking task and the task to be launched", async () => {
 		renderModal();
 

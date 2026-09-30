@@ -71,6 +71,7 @@ vi.mock("../rpc", () => ({
 			respondToAgentResetRequest: vi.fn().mockResolvedValue(undefined),
 			listPendingResetRequests: vi.fn().mockResolvedValue([]),
 			getUnsavedWork: vi.fn().mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false }),
+			getPendingAgentLaunchRequests: vi.fn().mockResolvedValue([]),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
 			// The launch dialog reports itself on screen on mount so the bun side
 			// restarts its countdown; null means there is no timer to restart.
@@ -3938,6 +3939,18 @@ describe("App keyboard shortcuts", () => {
 	// Both agent dialogs are broadcast to every connected client (second window,
 	// remote browser). The first answer wins; the rest must close silently.
 	describe("agent request answered on another client", () => {
+		it("restores a pending extra-agent launch on mount", async () => {
+			vi.mocked(api.request.getPendingAgentLaunchRequests).mockResolvedValueOnce([{
+				requestId: "spawn-replay", taskId: "t1", projectId: "p1", taskTitle: "Restored agent launch",
+				targetStatus: "in-progress", scratch: false, requesterSeq: 42, requesterTitle: "Coordinator",
+				defaultPriority: "P3", canAddVariants: false, autoApproveAt: null,
+				subject: { seqLabel: "7", projectName: "Alpha", priority: "P3", labels: [], overview: null },
+				spawn: { choice: { agentId: null, configId: null }, handoff: false },
+			}]);
+			await renderApp();
+			expect(await screen.findByRole("dialog", { name: /Agent wants to add an agent/i })).toBeInTheDocument();
+		});
+
 		it("closes the completion dialog and skips this client's side effects", async () => {
 			vi.mocked(confirm).mockImplementation(((opts: { signal?: AbortSignal }) =>
 				new Promise<boolean>((resolve) => {

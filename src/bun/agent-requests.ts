@@ -1,4 +1,4 @@
-import type { AgentLaunchChoice, TaskDialogSubject } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, TaskDialogSubject } from "../shared/types";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -37,6 +37,7 @@ interface PendingAgentRequest {
 	resolve: (decision: AgentRequestDecision) => void;
 	/** Present when the caller supplied one; absent kinds are not replayable. */
 	dialog?: AgentRequestDialog;
+	launchDialog?: AgentLaunchRequest;
 	/** Auto-approval timer, when the request was created with a deadline. */
 	autoApproveTimer?: ReturnType<typeof setTimeout>;
 	/** Epoch ms the timer fires at; mirrored to the dialog for its countdown. */
@@ -243,6 +244,20 @@ export function listPendingAgentRequests(
 		out.push({ requestId: entry.requestId, taskId: entry.taskId, projectId: entry.projectId, dialog: entry.dialog });
 	}
 	return out;
+}
+
+export function setAgentLaunchDialog(request: AgentLaunchRequest): void {
+	const entry = pendingByRequestId.get(request.requestId);
+	if (entry?.kind === "launch") entry.launchDialog = request;
+}
+
+export function pendingAgentLaunchDialogs(): AgentLaunchRequest[] {
+	return [...pendingByRequestId.values()].flatMap((entry) => {
+		if (!entry.launchDialog) return [];
+		const request = { ...entry.launchDialog, autoApproveAt: entry.autoApproveAt };
+		if (request.spawn && entry.launchChoice?.variants[0]) request.spawn = { ...request.spawn, choice: entry.launchChoice.variants[0] };
+		return [request];
+	});
 }
 
 /** The pending request, or the answer that settled it recently, for one task and kind. */

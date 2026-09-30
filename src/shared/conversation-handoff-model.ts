@@ -25,6 +25,10 @@ export interface HandoffOutcome {
 }
 
 export interface SpawnAgentResult {
+	paneId: string;
+	backend: "tmux" | "native";
+	agentId: string | null;
+	configId: string | null;
 	/** Null when the spawn was an ordinary extra agent, with nothing handed over. */
 	handoff: HandoffOutcome | null;
 }

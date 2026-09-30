@@ -34,6 +34,9 @@ const common = {
 	"app.agentResetCancel": "Dejarla como está",
 
 	// Un agente pide iniciar otra tarea (o una tarea scratch desechable)
+	"agentLaunch.titleSpawn": "El agente quiere añadir un agente a esta tarea",
+	"agentLaunch.initialPrompt": "Instrucciones iniciales",
+	"agentLaunch.spawnHandoff": "El nuevo agente también recibirá la última conversación de esta tarea.",
 	"agentLaunch.title": "El agente quiere iniciar esta tarea",
 	"agentLaunch.titleScratch": "El agente pide una tarea scratch",
 	"agentLaunch.requestedBy": "Solicitado por la tarea #{seq} — {title}",

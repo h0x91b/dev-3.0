@@ -161,14 +161,24 @@ beforeEach(() => {
 });
 
 describe("spawnAgentInTask without a handoff", () => {
+	it("passes an explicit prompt as the launch prompt", async () => {
+		await tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: null, prompt: "Review only" });
+		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", null, expect.objectContaining({ taskDescription: "Review only" }), expect.anything());
+	});
+
+	it("combines handoff and explicit instructions in the launch prompt", async () => {
+		await tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: null, prompt: "Review only", handoff: true });
+		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", null, expect.objectContaining({ taskDescription: `read ${PREPARED.path} and continue\n\nReview only` }), expect.anything());
+	});
+
 	it("neither writes a retelling nor sends anything", async () => {
-		expect(await spawn()).toEqual({ handoff: null });
+		expect(await spawn()).toMatchObject({ paneId: "%42", backend: "native", handoff: null });
 		expect(mocks.prepareTaskHandoff).not.toHaveBeenCalled();
 		expect(mocks.deliverAgentPrompt).not.toHaveBeenCalled();
 	});
 
 	it("stays out of the way when the flag is explicitly off", async () => {
-		expect(await spawn(false)).toEqual({ handoff: null });
+		expect(await spawn(false)).toMatchObject({ paneId: "%42", backend: "native", handoff: null });
 		expect(mocks.prepareTaskHandoff).not.toHaveBeenCalled();
 	});
 });

@@ -34,6 +34,9 @@ const common = {
 	"app.agentResetCancel": "Оставить как есть",
 
 	// Агент просит запустить другую задачу (или одноразовый scratch)
+	"agentLaunch.titleSpawn": "Агент хочет добавить агента в эту задачу",
+	"agentLaunch.initialPrompt": "Начальные инструкции",
+	"agentLaunch.spawnHandoff": "Новый агент также получит последний разговор этой задачи.",
 	"agentLaunch.title": "Агент хочет запустить эту задачу",
 	"agentLaunch.titleScratch": "Агент просит scratch-задачу",
 	"agentLaunch.requestedBy": "Просит задача #{seq} — {title}",

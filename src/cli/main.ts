@@ -24,6 +24,7 @@ import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
 import { handlePane } from "./commands/pane";
+import { handleAgent } from "./commands/agent";
 import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
@@ -52,6 +53,9 @@ const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
 
 Commands:
+  dev3 agent list [--json]              List agent and preset IDs for managed launches
+  dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--account <id|system>] [--prompt <text>|-] [--handoff] [--json]
+                                         Add one managed agent to an existing task (asks for approval from a task worktree)
   dev3 current [--brief]                Show current project, task, status
                                          (--brief: hide the full description if you already have it in your prompt)
   dev3 task show [--task <id>] [--notes] [--history] [--json]  Full task details
@@ -453,6 +457,8 @@ async function main(): Promise<void> {
 				return await handlePeek(args, socketPath, context);
 			case "pane":
 				return await handlePane(subcommand, args, socketPath, context);
+			case "agent":
+				return await handleAgent(subcommand, args, socketPath, context);
 			case "ui":
 				return await handleUi(subcommand, args, socketPath, context);
 			default:

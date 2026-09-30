@@ -88,7 +88,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 			setGlobalSettings(gs);
 			// Nothing is interactive until settings land (the picker is a skeleton and
 			// there is no add affordance), so this can seed the list outright.
-			setVariants([defaultVariant(a, gs)]);
+			setVariants([request.spawn?.choice ?? defaultVariant(a, gs)]);
 		}).catch(() => {});
 	}, []);
 
@@ -171,7 +171,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 
 	function updateVariants(next: LaunchVariant[]) {
 		setVariants(next);
-		reportChoice({ variants: next, priority });
+		reportChoice({ variants: next, ...(request.spawn ? {} : { priority }) });
 	}
 
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
@@ -189,7 +189,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	// "Not ready" (missing agent / still loading) must not look like "in flight",
 	// which keeps full colour and gets a spinner instead.
 	const notReady = agentNotInstalled || !globalSettings;
-	const canAddVariants = request.canAddVariants && globalSettings != null;
+	const canAddVariants = !request.spawn && request.canAddVariants && globalSettings != null;
 	const pressFeedback = reducedMotion
 		? "transition-colors"
 		: "transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.96]";
@@ -197,7 +197,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	function handleLaunch() {
 		if (agentNotInstalled) return;
 		setLaunching(true);
-		onRespond(true, { variants, priority });
+		onRespond(true, { variants, ...(request.spawn ? {} : { priority }) });
 	}
 
 	// The backdrop deliberately does not dismiss: a CLI is blocked on this answer,
@@ -236,7 +236,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					</div>
 
 					<h2 id="agent-launch-title" className="text-fg text-lg font-semibold">
-						{request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
+						{request.spawn ? t("agentLaunch.titleSpawn") : request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
 					</h2>
 
 					<p className="text-fg-2 text-sm leading-relaxed">
@@ -252,12 +252,20 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						seqLabel={request.subject.seqLabel}
 						projectName={request.subject.projectName}
 						priority={priority}
-						onPriorityChange={(next) => {
+						onPriorityChange={request.spawn ? undefined : (next) => {
 							setPriority(next);
 							reportChoice({ variants, priority: next });
 						}}
 						labels={request.subject.labels}
 					/>
+
+					{request.spawn?.prompt && (
+						<div className="space-y-1">
+							<p className="text-fg-3 text-xs">{t("agentLaunch.initialPrompt")}</p>
+							<pre className="text-fg-2 text-sm whitespace-pre-wrap break-words max-h-40 overflow-y-auto">{request.spawn.prompt}</pre>
+						</div>
+					)}
+					{request.spawn?.handoff && <p className="text-fg-3 text-xs">{t("agentLaunch.spawnHandoff")}</p>}
 
 					{/* Only speaks up under real pressure, and the forecast scales with
 					    the variant count — same banner the Launch modal shows. */}
@@ -412,7 +420,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							? t("agentLaunch.launching")
 							: variants.length > 1
 								? t.plural("agentLaunch.launchVariants", variants.length)
-								: t("agentLaunch.launch")}
+								: request.spawn ? t("spawnAgent.spawn") : t("agentLaunch.launch")}
 					</button>
 				</div>
 			</div>

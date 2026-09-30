@@ -4,7 +4,7 @@ import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, r
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound, takeResetBranchOutcome } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -1239,6 +1239,7 @@ export const taskLifecycleHandlers = {
 	listPendingResetRequests,
 	respondToAgentResetRequest,
 	resetTaskToTodo,
+	getPendingAgentLaunchRequests: async () => pendingAgentLaunchDialogs(),
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,
 	markAgentRequestShown,

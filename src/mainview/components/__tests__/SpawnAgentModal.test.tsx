@@ -434,7 +434,7 @@ describe("SpawnAgentModal", () => {
 		beforeEach(() => {
 			// Earlier cases leave implementations behind (clearAllMocks keeps them):
 			// a rejecting spawn and an uninstalled agent both block the success path.
-			mockedApi.request.spawnAgentInTask.mockResolvedValue({ handoff: null });
+			mockedApi.request.spawnAgentInTask.mockResolvedValue({ paneId: "%9", backend: "tmux", agentId: null, configId: null, handoff: null });
 			mockedApi.request.checkAgentAvailability.mockResolvedValue([
 				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, resolvedPath: "/usr/local/bin/claude" },
 			]);

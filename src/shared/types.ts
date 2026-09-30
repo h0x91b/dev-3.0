@@ -3414,6 +3414,8 @@ export interface AgentCancellationRequest {
  * prompt by design.
  */
 export interface AgentLaunchRequest {
+	/** CLI +Agent request: one pane, not a task/variant launch. */
+	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean };
 	requestId: string;
 	taskId: string;
 	projectId: string;
@@ -6016,6 +6018,7 @@ export type AppRPCSchema = {
 			};
 			spawnAgentInTask: {
 				params: {
+					prompt?: string;
 					taskId: string;
 					projectId: string;
 					agentId: string | null;
@@ -6457,6 +6460,7 @@ export type AppRPCSchema = {
 			 * the variants + priority the user composed, and the blocked CLI request
 			 * launches the task with them; decline releases it with a refusal.
 			 */
+			getPendingAgentLaunchRequests: { params: {}; response: AgentLaunchRequest[] };
 			respondToAgentLaunchRequest: {
 				params: {
 					requestId: string;
