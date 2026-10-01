@@ -48,6 +48,14 @@ describe("prBadgeDisplayState", () => {
 		expect(prBadgeDisplayState(badge({ isDraft: true }), { prNumber: 7, prState: "OPEN" })).toBe("draft");
 	});
 
+	it("falls back to the task's stored cache for the same PR, draft included", () => {
+		const cache = (state: string, isDraft: boolean, number = 7) => ({ number, mergeState: { mergeable: null, status: null, state }, isDraft });
+		expect(prBadgeDisplayState(badge(), null, cache("MERGED", false))).toBe("merged");
+		expect(prBadgeDisplayState(badge(), null, cache("OPEN", true))).toBe("draft");
+		expect(prBadgeDisplayState(badge(), { prNumber: 7, prState: "CLOSED" }, cache("OPEN", false))).toBe("closed");
+		expect(prBadgeDisplayState(badge(), null, cache("MERGED", false, 6))).toBe("unknown");
+	});
+
 	it("ignores a branch status about a different PR", () => {
 		expect(prBadgeDisplayState(badge(), { prNumber: 6, prState: "MERGED" })).toBe("unknown");
 		expect(prBadgeDisplayState(badge(), null)).toBe("unknown");

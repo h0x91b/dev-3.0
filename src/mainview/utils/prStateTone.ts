@@ -1,4 +1,4 @@
-import type { BranchStatus, TaskPRBadgeInfo } from "../../shared/types";
+import type { BranchStatus, TaskPRBadgeInfo, TaskPRStatusCache } from "../../shared/types";
 import type { TranslationKey } from "../i18n";
 import { reportedPRState } from "./taskPrBadge";
 
@@ -20,18 +20,22 @@ export function prDisplayState(state: string | null | undefined, isDraft?: boole
 }
 
 /**
- * State of the PR a badge shows. The poller's own state wins; a same-number
- * branch status fills in when the badge was built without one.
+ * State of the PR a badge shows. The poller's own state wins, then a live
+ * same-number branch status, then the task's stored cache — the source the
+ * Kanban card reads, so the git bar never shows gray where the card shows merged.
  */
 export function prBadgeDisplayState(
 	prInfo: TaskPRBadgeInfo,
 	branchStatus?: Pick<BranchStatus, "prNumber" | "prState"> | null,
+	cache?: Pick<TaskPRStatusCache, "number" | "mergeState" | "isDraft"> | null,
 ): PRDisplayState {
+	const cached = cache?.number === prInfo.number ? cache : null;
 	const state = reportedPRState(prInfo.number, [
 		{ number: prInfo.number, state: prInfo.mergeState?.state },
 		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
+		cached && { number: cached.number, state: cached.mergeState?.state },
 	]);
-	return prDisplayState(state, prInfo.isDraft);
+	return prDisplayState(state, prInfo.isDraft ?? cached?.isDraft);
 }
 
 interface PRStateTone {

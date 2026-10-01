@@ -645,7 +645,7 @@ function TaskInfoPanel({
 					url: task.prUrl ?? "",
 				}
 				: null);
-	const metadataPrTone = metadataPrInfo ? prStateTone(prBadgeDisplayState(metadataPrInfo, metadataBranchStatus)) : null;
+	const metadataPrTone = metadataPrInfo ? prStateTone(prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache)) : null;
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	// Per-file stats are what the filter subtracts from. Without them there is
 	// nothing to subtract, so the raw totals stand instead of collapsing to zero.

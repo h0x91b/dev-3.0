@@ -329,7 +329,7 @@ export default function TaskGitActions({
 		})
 		: undefined;
 
-	const prTone = prInfo ? prStateTone(prBadgeDisplayState(prInfo, branchStatus)) : null;
+	const prTone = prInfo ? prStateTone(prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache)) : null;
 	const prBadge = prInfo && prTone ? (
 		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)}>
 			<button
