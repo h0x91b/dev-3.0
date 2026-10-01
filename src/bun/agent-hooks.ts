@@ -117,7 +117,9 @@ export async function setupAgentHooks(
 	// spec.kind === "codex"
 	const codexSymlink = writeCodexHooks(worktreePath);
 	if (codexSymlink) {
+		// No trust bypass either: whatever hooks sit behind the link are not dev3's.
 		log.warn("Codex hooks not written: hooks path is a symlink", { worktreePath, symlink: codexSymlink });
+		return null;
 	}
 	if (!(await getCodexHookTrustBypassCached())) {
 		// Worth a line: the definitions are in place, Codex reports them untrusted,
