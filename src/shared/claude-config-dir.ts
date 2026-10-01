@@ -6,6 +6,7 @@
  * directory the agent never reads (`decisions/2026/10/01/claude-config-dir-everywhere.md`).
  */
 import { join } from "node:path";
+import { ENV_UNSET } from "./agent-accounts";
 
 export interface ClaudeConfigLocation {
 	/** The user-level config dir: skills/, settings.json, output-styles/. */
@@ -41,6 +42,8 @@ export function launchClaudeConfigLocation(
 	processEnv: Record<string, string | undefined>,
 	home: string,
 ): ClaudeConfigLocation {
+	// The account switcher's "unset" sentinel means the launch clears the variable.
+	if (launchEnv?.CLAUDE_CONFIG_DIR === ENV_UNSET) return claudeConfigLocation({}, home);
 	const fromLaunch = launchEnv?.CLAUDE_CONFIG_DIR?.trim();
 	return claudeConfigLocation({ CLAUDE_CONFIG_DIR: fromLaunch || processEnv.CLAUDE_CONFIG_DIR }, home);
 }

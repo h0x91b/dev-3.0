@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { claudeConfigLocation, launchClaudeConfigLocation } from "../../shared/claude-config-dir";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 
 describe("claudeConfigLocation", () => {
 	it("falls back to ~/.claude and ~/.claude.json when nothing pins a dir", () => {
@@ -38,6 +39,11 @@ describe("launchClaudeConfigLocation", () => {
 	it("inherits the server's dir when the launch sets none", () => {
 		expect(launchClaudeConfigLocation({}, { CLAUDE_CONFIG_DIR: "/server" }, "/h").dir).toBe("/server");
 		expect(launchClaudeConfigLocation(undefined, {}, "/h").dir).toBe("/h/.claude");
+	});
+
+	it("reads the account switcher's unset sentinel as the default dir, not a path or the server's pin", () => {
+		const location = launchClaudeConfigLocation({ CLAUDE_CONFIG_DIR: ENV_UNSET }, { CLAUDE_CONFIG_DIR: "/server" }, "/h");
+		expect(location).toEqual({ dir: "/h/.claude", claudeJson: "/h/.claude.json", pinned: false });
 	});
 });
 
