@@ -10,7 +10,7 @@
  *      rate-limit monitor reads it from there — no API calls anywhere);
  *   2. DELEGATE to the user's original statusLine command (resolved from the
  *      normal settings precedence: worktree settings.local.json → project
- *      settings.json → ~/.claude/settings.json), so injection never destroys
+ *      settings.json → user settings.json in $CLAUDE_CONFIG_DIR or ~/.claude), so injection never destroys
  *      an existing custom statusLine;
  *   3. append a compact usage segment (% used + time-to-reset per window,
  *      yellow ≥80%, red ≥95%).
@@ -57,14 +57,19 @@ function readStatusLineCommand(settingsPath: string): OriginalStatusLine | null 
  * Resolve the statusLine the user would have had WITHOUT our `--settings`
  * injection, walking the same precedence Claude Code uses below the CLI level:
  * project settings.local.json → project settings.json → user settings.json.
+ * The user level lives in CLAUDE_CONFIG_DIR when set, exactly as Claude Code reads it.
  */
-export function resolveOriginalStatusLine(projectDir: string | null, home: string = homedir()): OriginalStatusLine | null {
+export function resolveOriginalStatusLine(
+	projectDir: string | null,
+	home: string = homedir(),
+	configDir: string | undefined = process.env.CLAUDE_CONFIG_DIR,
+): OriginalStatusLine | null {
 	const candidates: string[] = [];
 	if (projectDir) {
 		candidates.push(join(projectDir, ".claude", "settings.local.json"));
 		candidates.push(join(projectDir, ".claude", "settings.json"));
 	}
-	candidates.push(join(home, ".claude", "settings.json"));
+	candidates.push(join(configDir?.trim() || join(home, ".claude"), "settings.json"));
 	for (const path of candidates) {
 		const found = readStatusLineCommand(path);
 		if (!found) continue;

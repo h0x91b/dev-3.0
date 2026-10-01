@@ -27,49 +27,62 @@ afterEach(() => {
 
 describe("resolveOriginalStatusLine", () => {
 	it("returns null when no settings file defines a statusLine", () => {
-		expect(resolveOriginalStatusLine(projectDir, home)).toBeNull();
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
 	});
 
 	it("finds the user-level statusLine in ~/.claude/settings.json", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
-		expect(resolveOriginalStatusLine(projectDir, home)).toEqual({ command: "echo user" });
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo user" });
 	});
 
 	it("prefers project settings.local.json over project settings.json over user settings", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
 		writeSettings(projectDir, { type: "command", command: "echo project" });
-		expect(resolveOriginalStatusLine(projectDir, home)).toEqual({ command: "echo project" });
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo project" });
 
 		mkdirSync(join(projectDir, ".claude"), { recursive: true });
 		writeFileSync(
 			join(projectDir, ".claude", "settings.local.json"),
 			JSON.stringify({ statusLine: { type: "command", command: "echo local" } }),
 		);
-		expect(resolveOriginalStatusLine(projectDir, home)).toEqual({ command: "echo local" });
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo local" });
 	});
 
 	it("skips a statusLine that points back at dev3 statusline (recursion guard)", () => {
 		writeSettings(home, { type: "command", command: '"/Users/x/.dev3.0/bin/dev3" statusline' });
-		expect(resolveOriginalStatusLine(projectDir, home)).toBeNull();
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
 	});
 
 	it("skips corrupt settings files and falls through to the next level", () => {
 		mkdirSync(join(projectDir, ".claude"), { recursive: true });
 		writeFileSync(join(projectDir, ".claude", "settings.json"), "{not json");
 		writeSettings(home, { type: "command", command: "echo user" });
-		expect(resolveOriginalStatusLine(projectDir, home)).toEqual({ command: "echo user" });
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo user" });
 	});
 
 	it("ignores non-command statusLine shapes and blank commands", () => {
 		writeSettings(home, { type: "static", text: "hi" });
-		expect(resolveOriginalStatusLine(projectDir, home)).toBeNull();
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
 		writeSettings(home, { type: "command", command: "   " });
-		expect(resolveOriginalStatusLine(projectDir, home)).toBeNull();
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
+	});
+
+	it("reads user-level settings from CLAUDE_CONFIG_DIR instead of ~/.claude when it is set", () => {
+		const configDir = join(tmp, "config");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: "echo config" } }));
+		writeSettings(home, { type: "command", command: "echo user" });
+		expect(resolveOriginalStatusLine(projectDir, home, configDir)).toEqual({ command: "echo config" });
+	});
+
+	it("falls back to ~/.claude when CLAUDE_CONFIG_DIR is blank", () => {
+		writeSettings(home, { type: "command", command: "echo user" });
+		expect(resolveOriginalStatusLine(projectDir, home, "  ")).toEqual({ command: "echo user" });
 	});
 
 	it("works with a null projectDir (user settings only)", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
-		expect(resolveOriginalStatusLine(null, home)).toEqual({ command: "echo user" });
+		expect(resolveOriginalStatusLine(null, home, undefined)).toEqual({ command: "echo user" });
 	});
 });
 
