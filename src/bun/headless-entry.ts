@@ -240,8 +240,12 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 // ── dev3 skills + agent settings, same as the GUI entry ──
 // After PATH resolution, because the Codex half probes the `codex` binary.
 {
-	const { installAgentSkills } = await import("./agent-skills");
-	await installAgentSkills({ lowBattery: (await loadSettings()).lowBatteryEnabled });
+	try {
+		const { installAgentSkills } = await import("./agent-skills");
+		await installAgentSkills({ lowBattery: (await loadSettings()).lowBatteryEnabled });
+	} catch (err) {
+		console.error("[headless] dev3 skill install failed (non-fatal):", err);
+	}
 }
 
 // ── CLI socket server (required — CLI tool talks to the app over this) ──
