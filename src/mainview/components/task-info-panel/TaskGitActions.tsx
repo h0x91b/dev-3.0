@@ -13,7 +13,7 @@ import { toast } from "../../toast";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
-import { isLivePullRequest } from "../../utils/taskPrBadge";
+import { inspectorPRBadge, isLivePullRequest } from "../../utils/taskPrBadge";
 import { prBadgeDisplayState, prStateTone } from "../../utils/prStateTone";
 
 export interface TaskBranchStatusMeta {
@@ -195,21 +195,8 @@ export default function TaskGitActions({
 	}, [project.id, task.id]);
 
 	const prInfo = useMemo<TaskPRBadgeInfo | null>(
-		() => pushedPRStatus
-			?? (branchStatus?.prNumber != null
-				? {
-					number: branchStatus.prNumber,
-					url: branchStatus.prUrl ?? "",
-					ciStatus: null,
-					reviewState: null,
-				}
-				: task.prNumber != null
-					? {
-						number: task.prNumber,
-						url: task.prUrl ?? "",
-					}
-					: null),
-		[pushedPRStatus, branchStatus, task.prNumber, task.prUrl],
+		() => inspectorPRBadge(task, pushedPRStatus, branchStatus),
+		[pushedPRStatus, branchStatus, task],
 	);
 
 	useEffect(() => {
@@ -329,9 +316,10 @@ export default function TaskGitActions({
 		})
 		: undefined;
 
-	const prTone = prInfo ? prStateTone(prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache)) : null;
-	const prBadge = prInfo && prTone ? (
-		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)}>
+	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache) : null;
+	const prTone = prState ? prStateTone(prState) : null;
+	const prBadge = prInfo && prTone && prState ? (
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)} displayState={prState}>
 			<button
 				type="button"
 				onClick={(event) => {

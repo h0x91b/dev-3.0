@@ -12064,6 +12064,84 @@ describe("checkOpenPRsForPromotion", () => {
 
 			expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(1);
 		});
+
+		it("a manual refresh of the merged old head persists MERGED + UNKNOWN but offers no completion over newer work", async () => {
+			const { project, task } = setup({ status: "review-by-user", prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			vi.mocked(github.runGitHub).mockImplementation(async (_project, _worktreePath, args) => {
+				if (args.includes("list")) return { ok: true, stdout: "[]", stderr: "", code: 0 };
+				if (args.includes("view")) {
+					return {
+						ok: true,
+						stdout: JSON.stringify({
+							number: 42, isDraft: false, url: "https://github.com/test/repo/pull/42", statusCheckRollup: [],
+							mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN", autoMergeRequest: null,
+							state: "MERGED", title: "First PR", headRefName: "dev3/my-feature", headRefOid: "merged-sha",
+						}),
+						stderr: "",
+						code: 0,
+					};
+				}
+				return { ok: true, stdout: reviewThreadsPage, stderr: "", code: 0 };
+			});
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0, baseUnreachable: false });
+			const push = vi.fn();
+			setPushMessage(push);
+
+			const result = await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id });
+
+			expect(result).toEqual({ outcome: "updated" });
+			expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
+				prNumber: 42,
+				mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+				checks: [],
+			}));
+			expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(0);
+		});
+	});
+
+describe("refreshTaskPrStatus outcome", () => {
+		const prUrl = "https://github.com/test/repo/pull/42";
+
+		function prepare(overrides: Record<string, unknown> = {}) {
+			const { project, task } = setup({ status: "review-by-user", prNumber: 42, prUrl, ...overrides });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			setPushMessage(vi.fn());
+			return { project, task };
+		}
+
+		it("reports unavailable when GitHub does not answer the open-PR lookup", async () => {
+			const { project, task } = prepare();
+			vi.mocked(github.runGitHub).mockResolvedValue({ ok: false, stdout: "", stderr: "HTTP 502", code: 1 });
+			expect(await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id })).toEqual({ outcome: "unavailable" });
+		});
+
+		it("reports unavailable, not 'no PR', when the stored PR cannot be fetched", async () => {
+			const { project, task } = prepare();
+			vi.mocked(github.runGitHub).mockImplementation(async (_project, _cwd, args) => (
+				args.includes("list")
+					? { ok: true, stdout: "[]", stderr: "", code: 0 }
+					: { ok: false, stdout: "", stderr: "HTTP 502", code: 1 }
+			));
+			expect(await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id })).toEqual({ outcome: "unavailable" });
+		});
+
+		it("reports not-found when the stored PR belongs to another branch", async () => {
+			const { project, task } = prepare();
+			vi.mocked(github.runGitHub).mockImplementation(async (_project, _cwd, args) => (
+				args.includes("list")
+					? { ok: true, stdout: "[]", stderr: "", code: 0 }
+					: { ok: true, stdout: JSON.stringify({ number: 42, url: prUrl, state: "MERGED", headRefName: "someone/else" }), stderr: "", code: 0 }
+			));
+			expect(await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id })).toEqual({ outcome: "not-found" });
+		});
+
+		it("reports skipped for a finished task", async () => {
+			const { project, task } = prepare({ status: "completed" });
+			expect(await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id })).toEqual({ outcome: "skipped" });
+		});
 	});
 
 it("uses the GraphQL review-thread page and persists the PR identity", async () => {

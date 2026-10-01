@@ -4092,6 +4092,16 @@ export interface TaskPRStatusCache {
 	cachedAt: string;
 }
 
+/**
+ * What an on-demand PR refresh achieved: `updated` pushed fresh GitHub data,
+ * `unavailable` means GitHub did not answer (the last known status stays),
+ * `not-found` means GitHub reports no PR for this branch, `skipped` means the
+ * task is not watched (finished, virtual, or no worktree).
+ */
+export interface RefreshTaskPrStatusResult {
+	outcome: "updated" | "unavailable" | "not-found" | "skipped";
+}
+
 /** One entry of {@link Task.pullRequests}. */
 export interface TaskPullRequestRecord {
 	number: number;
@@ -5551,7 +5561,7 @@ export type AppRPCSchema = {
 			};
 			refreshTaskPrStatus: {
 				params: { taskId: string; projectId: string };
-				response: void;
+				response: RefreshTaskPrStatusResult;
 			};
 			getTaskDiff: {
 				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string; count?: number };

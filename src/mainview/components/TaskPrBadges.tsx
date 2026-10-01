@@ -56,7 +56,10 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 	const reviewMeta = prInfo.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const unresolvedCount = prInfo.unresolvedCount ?? 0;
 	const ok = mergeability.state === "mergeable";
-	const prTone = prStateTone(prBadgeDisplayState(prInfo));
+	const prState = prBadgeDisplayState(prInfo);
+	const prTone = prStateTone(prState);
+	// A merged or closed PR has no merge verdict left; GitHub may still echo a stale one.
+	const showMergeBadge = mergeability.state !== "unknown" && prState !== "merged" && prState !== "closed";
 	const prLabel = t("task.openPR", { number: String(prInfo.number) });
 	const mergeLabel = ok
 		? t("task.mergeBadge.mergeable")
@@ -66,7 +69,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 
 	return (
 		<>
-			<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
+			<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests} displayState={prState}>
 				<button
 					type="button"
 					onClick={(e) => {
@@ -81,8 +84,8 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 				</button>
 			</TaskPrStatusPopover>
 
-			{mergeability.state !== "unknown" && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
+			{showMergeBadge && (
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests} displayState={prState}>
 					<button
 						type="button"
 						onClick={(e) => {
@@ -100,7 +103,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 			)}
 
 			{reviewMeta && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests} displayState={prState}>
 					<button
 						type="button"
 						onClick={(e) => {
@@ -133,7 +136,7 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 			)}
 
 			{unresolvedCount > 0 && (
-				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests}>
+				<TaskPrStatusPopover prInfo={prInfo} projectId={projectId} taskId={taskId} onShowUnresolved={onShowUnresolved} earlierPullRequests={earlierPullRequests} displayState={prState}>
 					<button
 						type="button"
 						onClick={(e) => {

@@ -15,6 +15,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { prBadgeDisplayState, prStateTone } from "../utils/prStateTone";
+import { inspectorPRBadge } from "../utils/taskPrBadge";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -633,19 +634,9 @@ function TaskInfoPanel({
 			? metadataBranchState
 			: null;
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
-	const metadataPrInfo: TaskPRBadgeInfo | null = branchMeta?.prStatus
-		?? (metadataBranchStatus?.prNumber != null
-			? {
-				number: metadataBranchStatus.prNumber,
-				url: metadataBranchStatus.prUrl ?? "",
-			}
-			: task.prNumber != null
-				? {
-					number: task.prNumber,
-					url: task.prUrl ?? "",
-				}
-				: null);
-	const metadataPrTone = metadataPrInfo ? prStateTone(prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache)) : null;
+	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
+	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache) : undefined;
+	const metadataPrTone = metadataPrState ? prStateTone(metadataPrState) : null;
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	// Per-file stats are what the filter subtracts from. Without them there is
 	// nothing to subtract, so the raw totals stand instead of collapsing to zero.
@@ -1184,7 +1175,7 @@ function TaskInfoPanel({
 							{metadataPrInfo && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
-									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)}>
+									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)} displayState={metadataPrState}>
 										<button
 											type="button"
 											onClick={() => metadataPrInfo.url && window.open(metadataPrInfo.url, "_blank")}

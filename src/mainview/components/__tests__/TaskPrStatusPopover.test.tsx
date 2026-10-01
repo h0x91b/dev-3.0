@@ -3,6 +3,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { TaskPRBadgeInfo, TaskPullRequestRecord } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
+import { api } from "../../rpc";
+import type { PRDisplayState } from "../../utils/prStateTone";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 
 vi.mock("../../rpc", () => ({
@@ -20,7 +22,7 @@ function makePrInfo(overrides: Partial<TaskPRBadgeInfo> = {}): TaskPRBadgeInfo {
 	};
 }
 
-function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBadgeInfo; earlierPullRequests?: TaskPullRequestRecord[] } = {}) {
+function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBadgeInfo; earlierPullRequests?: TaskPullRequestRecord[]; displayState?: PRDisplayState } = {}) {
 	render(
 		<I18nProvider>
 			<TaskPrStatusPopover
@@ -29,6 +31,7 @@ function renderPopover(props: { onShowUnresolved?: () => void; prInfo?: TaskPRBa
 				taskId="t1"
 				onShowUnresolved={props.onShowUnresolved}
 				earlierPullRequests={props.earlierPullRequests}
+				displayState={props.displayState}
 			>
 				<button type="button">PR #42</button>
 			</TaskPrStatusPopover>
@@ -130,5 +133,85 @@ describe("TaskPrStatusPopover — PR state colours", () => {
 		const section = await screen.findByTestId("pr-popover-earlier");
 		expect(within(section).getByText("Closed")).toHaveClass("text-danger");
 		expect(within(section).getByText("Merged")).toHaveClass("text-pr-merged");
+	});
+});
+
+describe("TaskPrStatusPopover — lifecycle vs mergeability", () => {
+	const unknown = (state: string) => ({ mergeable: "UNKNOWN", status: "UNKNOWN", state });
+
+	async function openPopover(props: Parameters<typeof renderPopover>[0]) {
+		renderPopover(props);
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		return screen.findByTestId("pr-status-popover");
+	}
+
+	it("merged + UNKNOWN reads as merged, with no Unknown auto-merge or mergeability rows", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: unknown("MERGED"), autoMergeEnabled: null, checks: [] }) });
+		expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Merged");
+		expect(within(popover).getByTestId("pr-popover-finished-note")).toHaveTextContent("Merged — auto-merge and mergeability no longer apply.");
+		expect(within(popover).queryByText("Auto-merge")).not.toBeInTheDocument();
+		expect(within(popover).queryByText("Mergeable")).not.toBeInTheDocument();
+		expect(within(popover).queryByText("Unknown")).not.toBeInTheDocument();
+		expect(within(popover).getByText("No checks reported")).toBeInTheDocument();
+	});
+
+	it("closed + UNKNOWN reads as closed, and a stale CONFLICTING verdict raises no conflict row", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: { mergeable: "CONFLICTING", status: "UNKNOWN", state: "CLOSED" } }) });
+		expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Closed");
+		expect(within(popover).getByTestId("pr-popover-finished-note")).toHaveTextContent("Closed without merging");
+		expect(within(popover).queryByText("Mergeable")).not.toBeInTheDocument();
+		expect(within(popover).queryByText(/merge conflict/i)).not.toBeInTheDocument();
+	});
+
+	it("open + UNKNOWN says GitHub is still checking instead of a bare Unknown", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: unknown("OPEN"), autoMergeEnabled: false }) });
+		expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Open");
+		expect(within(popover).getByText("Mergeable").nextElementSibling).toHaveTextContent("GitHub is still checking");
+		expect(within(popover).getByText("Auto-merge").nextElementSibling).toHaveTextContent("Not set");
+		expect(within(popover).queryByTestId("pr-popover-finished-note")).not.toBeInTheDocument();
+	});
+
+	it("a PR nothing has polled yet says so instead of Unknown / No checks", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: null, checks: [] }) });
+		expect(within(popover).queryByText("Unknown")).not.toBeInTheDocument();
+		expect(within(popover).queryByText("No checks reported")).not.toBeInTheDocument();
+		expect(within(popover).getAllByText("Not loaded from GitHub yet.")).toHaveLength(2);
+	});
+
+	it("takes the lifecycle the badge resolved when prInfo itself carries none", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: null }), displayState: "merged" });
+		expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Merged");
+		expect(within(popover).queryByTestId("pr-popover-not-loaded")).not.toBeInTheDocument();
+	});
+
+	it("never invents checks for a merged PR", async () => {
+		const popover = await openPopover({ prInfo: makePrInfo({ mergeState: unknown("MERGED"), checks: [] }) });
+		expect(within(popover).queryByTestId("pr-check-list")).not.toBeInTheDocument();
+	});
+});
+
+describe("TaskPrStatusPopover — refresh outcome", () => {
+	it.each([
+		["unavailable", "GitHub didn't answer — showing the last known status."],
+		["not-found", "GitHub reports no pull request for this branch."],
+	] as const)("a %s refresh says so inside the popover and keeps the last known status", async (outcome, message) => {
+		vi.mocked(api.request.refreshTaskPrStatus).mockResolvedValueOnce({ outcome });
+		renderPopover({ prInfo: makePrInfo({ mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" } }) });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		await userEvent.click(within(popover).getByRole("button", { name: "Refresh PR status" }));
+
+		expect(await within(popover).findByTestId("pr-popover-refresh-notice")).toHaveTextContent(message);
+		expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Merged");
+	});
+
+	it("an updated refresh shows no notice", async () => {
+		vi.mocked(api.request.refreshTaskPrStatus).mockResolvedValueOnce({ outcome: "updated" });
+		renderPopover({ prInfo: makePrInfo({ mergeState: { mergeable: "MERGEABLE", status: "CLEAN", state: "OPEN" } }) });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		await userEvent.click(within(popover).getByRole("button", { name: "Refresh PR status" }));
+		await vi.waitFor(() => expect(api.request.refreshTaskPrStatus).toHaveBeenCalled());
+		expect(within(popover).queryByTestId("pr-popover-refresh-notice")).not.toBeInTheDocument();
 	});
 });

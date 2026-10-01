@@ -21,7 +21,7 @@ vi.mock("../../rpc", () => ({
 			restartDevServer: vi.fn(),
 			getDevServerStatus: vi.fn(),
 			getBranchStatus: vi.fn(),
-			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
+			refreshTaskPrStatus: vi.fn().mockResolvedValue({ outcome: "updated" }),
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
 			setTaskManualCompletion: vi.fn(),
@@ -2829,6 +2829,39 @@ describe("TaskInfoPanel", () => {
 			for (const node of screen.getAllByText(/PR #42/)) {
 				expect(node.closest("button")!.className).toContain("text-pr-merged");
 			}
+		});
+
+		it("opens the git-bar PR popover on the stored merged status, not Unknown, when no push arrived", async () => {
+			mockedApi.request.refreshTaskPrStatus.mockResolvedValue({ outcome: "unavailable" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState: "MERGED",
+			});
+
+			await act(async () => {
+				renderPanel(makeTask({
+					prNumber: 42,
+					prUrl: "https://github.com/test/repo/pull/42",
+					prStatusCache: {
+						number: 42, url: "https://github.com/test/repo/pull/42", ciStatus: "success", reviewState: null,
+						unresolvedCount: 0, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+						checks: [{ name: "build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
+						prTitle: "Merged change", isDraft: false, cachedAt: "2026-10-01T00:00:00.000Z",
+					},
+				}));
+			});
+
+			await userEvent.hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Merged");
+			expect(within(popover).getByTestId("pr-popover-finished-note")).toBeInTheDocument();
+			expect(within(popover).queryByText("Unknown")).not.toBeInTheDocument();
+			expect(within(popover).getByText("build")).toBeInTheDocument();
+			mockedApi.request.refreshTaskPrStatus.mockResolvedValue({ outcome: "updated" });
 		});
 
 		it("reads a merged PR from the task's cache when GitHub gives no state", async () => {

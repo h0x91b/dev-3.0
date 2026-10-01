@@ -77,6 +77,29 @@ export function mergeTaskPRBadge(
 	};
 }
 
+/**
+ * The PR an inspector shows: a live push wins; otherwise the PR the branch check
+ * (or sticky task fields) names, carrying the stored status of that same PR.
+ * Without the stored half, a merged PR read as "Unknown / no checks" until a
+ * push arrived — which a failed refresh never delivers.
+ */
+export function inspectorPRBadge(
+	task: Task,
+	pushed: TaskPRBadgeInfo | null | undefined,
+	branchStatus?: { prNumber: number | null; prUrl: string | null } | null,
+): TaskPRBadgeInfo | null {
+	if (pushed) return pushed;
+	const identity = branchStatus?.prNumber != null
+		? { number: branchStatus.prNumber, url: branchStatus.prUrl ?? "" }
+		: task.prNumber != null
+			? { number: task.prNumber, url: task.prUrl ?? "" }
+			: undefined;
+	if (!identity) return null;
+	const cache = task.prStatusCache;
+	if (!identity.url && cache?.number === identity.number && cache.url) identity.url = cache.url;
+	return taskPRBadgeFromStoredData(task, identity);
+}
+
 export function hydrateTaskPRMap(
 	tasks: Task[],
 	previous = new Map<string, TaskPRBadgeInfo>(),

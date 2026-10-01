@@ -1914,8 +1914,8 @@ describe("TaskCard", () => {
 
 		it("refreshes cached PR status after hover without hiding the cached data", async () => {
 			let resolveRefresh!: () => void;
-			mockedApi.request.refreshTaskPrStatus.mockImplementation(() => new Promise<void>((resolve) => {
-				resolveRefresh = resolve;
+			mockedApi.request.refreshTaskPrStatus.mockImplementation(() => new Promise((resolve) => {
+				resolveRefresh = () => resolve({ outcome: "updated" });
 			}));
 			renderCard(reviewTask(), {
 				prInfo: {
