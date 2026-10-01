@@ -1,5 +1,7 @@
 # 001: Auto-register worktree paths as trusted in ~/.claude.json
 
+> Superseded on 2026-10-01 by `decisions/2026/10/01/claude-config-dir-everywhere.md`: trust is written to `$CLAUDE_CONFIG_DIR/.claude.json` when the launch pins one, `~/.claude.json` only otherwise.
+
 **Date:** 2026-02-23
 **Status:** Implemented
 

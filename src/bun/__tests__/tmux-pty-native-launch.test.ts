@@ -129,6 +129,8 @@ vi.mock("../agents", () => ({
 	supportsPreAssignedSessionId: vi.fn(() => false),
 	getAllAgents: vi.fn(async () => []),
 	ensureClaudeTrust: vi.fn(async () => undefined),
+	ensureClaudeConfigDir: vi.fn(),
+	isClaudeCommand: vi.fn(() => false),
 	ensureCodexTrust: vi.fn(async () => undefined),
 	ensureGeminiTrust: vi.fn(async () => undefined),
 	getCodexVersionCached: vi.fn(() => null),

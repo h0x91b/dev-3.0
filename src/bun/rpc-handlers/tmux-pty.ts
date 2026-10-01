@@ -781,6 +781,8 @@ async function persistInitialAgentPaneId(
 
 /**
  * Register worktree trust for the resolved agent's CLI before spawning it.
+ * `launchEnv` is the env the agent will be launched with, so Claude trust and the
+ * dev3 skills land in the config dir its `CLAUDE_CONFIG_DIR` names, if any.
  * Claude trust (with MCP pre-approval) is always ensured; Codex/Gemini trust
  * only for their respective CLIs. Codex trust also re-patches ~/.codex/config.toml
  * — stripping the legacy `[profiles.dev3-*]` tables / top-level `profile = "..."`
@@ -800,7 +802,14 @@ async function ensureAgentTrust(
 	accountId?: string | null,
 	foreignCode?: boolean,
 	family?: AgentFamily,
+	launchEnv?: Record<string, string>,
 ): Promise<void> {
+	// dev3's own skills and settings, not a grant to the branch - so foreign code gets them too.
+	try {
+		if (agents.isClaudeCommand(resolvedBaseCmd, family)) agents.ensureClaudeConfigDir(launchEnv);
+	} catch (err) {
+		log.warn("ensure Claude config dir failed (non-fatal)", { worktreePath, error: String(err) });
+	}
 	// A worktree standing on someone else's branch gets nothing pre-granted: its
 	// committed `.claude/settings.json` hooks and `.mcp.json` servers must face the
 	// agent's own approval prompts, which is precisely what those prompts are for.
@@ -815,7 +824,7 @@ async function ensureAgentTrust(
 	// pre-approval) for every agent — then any agent-native trust (codex/gemini).
 	for (const kind of getAgentAdapter(resolvedBaseCmd, family).trustKinds) {
 		try {
-			if (kind === "claude") await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
+			if (kind === "claude") await agents.ensureClaudeTrust(worktreePath, projectPath, accountId, launchEnv);
 			else if (kind === "codex") await agents.ensureCodexTrust(worktreePath);
 			else if (kind === "gemini") await agents.ensureGeminiTrust(worktreePath);
 			else if (kind === "copilot") await agents.ensureCopilotTrust(worktreePath, projectPath);
@@ -1160,7 +1169,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily, env);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
@@ -1377,19 +1386,19 @@ export async function launchColumnAgent(
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
 	}
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode, resolvedAgentFamily);
-	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
-		permissionMode: resolvedPermissionMode,
-		family: resolvedAgentFamily,
-	});
-
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...(await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode })),
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode, resolvedAgentFamily, env);
+	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		permissionMode: resolvedPermissionMode,
+		family: resolvedAgentFamily,
+	});
+
 	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName("col-agent"));
 	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env, {
 		paneTitle: options.paneTitle,
@@ -2318,7 +2327,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined, resumeAgentFamily) ?? pane.agentCmd;
 					}
 					if (codexHome) extraEnv.CODEX_HOME = codexHome;
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily);
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily, extraEnv);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 						family: resumeAgentFamily,
@@ -3341,7 +3350,13 @@ async function spawnAgentInTask(params: {
 	// Register trust / re-patch the agent's config before spawning. The primary
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode, resolvedAgentFamily);
+	const env: Record<string, string> = {
+		...AGENT_ENV_DEFAULTS,
+		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
+		...buildAgentEnv(extraEnv, task.id),
+		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
+	};
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		family: resolvedAgentFamily,
@@ -3351,13 +3366,6 @@ async function spawnAgentInTask(params: {
 		family: resolvedAgentFamily,
 		launchModel: resolvedLaunchModel,
 	});
-
-	const env: Record<string, string> = {
-		...AGENT_ENV_DEFAULTS,
-		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
-		...buildAgentEnv(extraEnv, task.id),
-		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
-	};
 
 	const existingPorts = portPool.getPortAssignments(task.id);
 	if (existingPorts.length > 0) {
@@ -3573,18 +3581,18 @@ async function spawnSingleBugHunterPane(opts: {
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode, resolvedAgentFamily);
-	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
-		family: resolvedAgentFamily,
-	});
-
 	const env: Record<string, string> = {
 		...AGENT_ENV_DEFAULTS,
 		...(await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath, { foreignCode: opts.task.foreignCode })),
 		...buildAgentEnv(extraEnv, opts.task.id),
 		...ensureArtifactTemplateEnv(opts.project, opts.task, opts.worktreePath),
 	};
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode, resolvedAgentFamily, env);
+	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		family: resolvedAgentFamily,
+	});
+
 	const existingPorts = portPool.getPortAssignments(opts.task.id);
 	if (existingPorts.length > 0) {
 		Object.assign(env, portPool.buildPortEnv(existingPorts));

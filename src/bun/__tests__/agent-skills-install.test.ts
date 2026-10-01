@@ -10,6 +10,8 @@ describe("installAgentSkills", () => {
 		tempHome = mkdtempSync(join(tmpdir(), "dev3-agent-skills-"));
 		vi.resetModules();
 		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", undefined);
+		// The developer running the suite may pin their own config dir; never write into it.
+		vi.stubEnv("CLAUDE_CONFIG_DIR", undefined);
 	});
 
 	afterEach(() => {
@@ -152,6 +154,34 @@ describe("installAgentSkills", () => {
 		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", flag);
 		await installAgentSkills();
 		expect(paths.map((path) => readFileSync(join(tempHome, path), "utf-8"))).toEqual(before);
+	});
+
+	it("installs Claude skills and settings into CLAUDE_CONFIG_DIR, not ~/.claude, when it is set", async () => {
+		const pinned = join(tempHome, "pinned-claude");
+		vi.stubEnv("CLAUDE_CONFIG_DIR", pinned);
+		const { installAgentSkills, MANAGED_SKILL_FILES } = await loadModule();
+		await installAgentSkills();
+
+		for (const rel of MANAGED_SKILL_FILES.filter((f) => f.startsWith(".claude/"))) {
+			expect(existsSync(join(pinned, rel.slice(".claude/".length)))).toBe(true);
+		}
+		expect(existsSync(join(pinned, "skills/dev3/PROTOCOL.md"))).toBe(true);
+		const settings = JSON.parse(readFileSync(join(pinned, "settings.json"), "utf-8"));
+		expect(settings.permissions.allow.some((rule: string) => rule.includes("dev3"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude"))).toBe(false);
+		// Other agents' dirs are unaffected by a Claude-only variable.
+		expect(existsSync(join(tempHome, ".codex/skills/dev3/SKILL.md"))).toBe(true);
+	});
+
+	it("leaves a settings.json that does not parse untouched", async () => {
+		const dir = join(tempHome, "pinned-claude");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "settings.json"), "{ broken", "utf-8");
+		const { installClaudeConfigDir } = await loadModule();
+		installClaudeConfigDir(dir, tempHome);
+
+		expect(readFileSync(join(dir, "settings.json"), "utf-8")).toBe("{ broken");
+		expect(existsSync(join(dir, "skills/dev3/SKILL.md"))).toBe(true);
 	});
 
 	it("can defer Codex config patching until the shell PATH is resolved", async () => {

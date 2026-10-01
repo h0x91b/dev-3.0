@@ -23,6 +23,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { claudeConfigLocation } from "../../shared/claude-config-dir";
 import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
 import { formatStatusLineSegment, parseClaudeStatusLinePayload } from "../../shared/rate-limits";
 
@@ -69,7 +70,7 @@ export function resolveOriginalStatusLine(
 		candidates.push(join(projectDir, ".claude", "settings.local.json"));
 		candidates.push(join(projectDir, ".claude", "settings.json"));
 	}
-	candidates.push(join(configDir?.trim() || join(home, ".claude"), "settings.json"));
+	candidates.push(join(claudeConfigLocation({ CLAUDE_CONFIG_DIR: configDir }, home).dir, "settings.json"));
 	for (const path of candidates) {
 		const found = readStatusLineCommand(path);
 		if (!found) continue;

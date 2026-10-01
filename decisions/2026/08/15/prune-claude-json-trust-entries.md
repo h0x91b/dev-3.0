@@ -1,5 +1,7 @@
 # Prune dev3 trust entries from `~/.claude.json`
 
+> Superseded on 2026-10-01 by `decisions/2026/10/01/claude-config-dir-everywhere.md`: the sweep also covers the `.claude.json` of every dir a launch pinned through `CLAUDE_CONFIG_DIR`.
+
 ## Context
 
 `ensureClaudeTrust` (`src/bun/agents.ts`) writes one `projects["<worktree path>"]` entry per task launch so Claude Code skips its trust dialog — into `~/.claude.json` and into the active managed account's own `.claude.json`. Nothing ever removed them.

@@ -226,6 +226,7 @@ vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(
 
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
+	ensureClaudeConfigDir: vi.fn(),
 	ensureCodexTrust: vi.fn(),
 	ensureGeminiTrust: vi.fn(),
 	getCodexVersionCached: vi.fn(() => null),
@@ -9728,8 +9729,9 @@ describe("handlers.spawnAgentInTask", () => {
 
 		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
 
-		// 3rd arg is the per-launch accountId (undefined here → registry default).
-		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path, undefined);
+		// 3rd arg is the per-launch accountId (undefined here → registry default);
+		// 4th is the launch env, which decides the Claude config dir the trust lands in.
+		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path, undefined, expect.any(Object));
 	});
 
 	// The tmux pane registry is what recovery reconciles against live tmux panes,

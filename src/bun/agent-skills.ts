@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { createLogger } from "./logger";
 import { ensureCodexConfigFile } from "./codex-config";
 import {
@@ -10,6 +10,7 @@ import {
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../shared/agent-skill-content";
 import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
 import { applyLowBattery } from "./low-battery";
+import { claudeConfigLocation } from "../shared/claude-config-dir";
 
 // Re-exported for backward-compat: agents.ts and other callers import the
 // composed skill bodies from here. The section constants that compose them now
@@ -151,9 +152,6 @@ Run these two commands to learn about available CLI commands and your current ta
 Then set \`in-progress\` and begin working.
 `;
 }
-
-/** Claude Code skill directory (supports !`command` injection). */
-const CLAUDE_SKILL_DIR = ".claude/skills/dev3";
 
 /** Codex skill directory (hook-aware, but no command injection support). */
 const CODEX_SKILL_DIR = ".codex/skills/dev3";
@@ -1220,9 +1218,6 @@ export function getGenericSkillContent(): string {
 	return buildGenericSkillContent();
 }
 
-/** Claude Code project-config skill directory. */
-const CLAUDE_PROJECT_CONFIG_DIR = ".claude/skills/dev3-project-config";
-
 /** Generic agent project-config skill directories. */
 const GENERIC_PROJECT_CONFIG_DIRS = [
 	".cursor/skills/dev3-project-config",
@@ -1232,9 +1227,6 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".config/opencode/skills/dev3-project-config",
 	".omp/agent/skills/dev3-project-config",
 ];
-
-/** Claude Code tmux skill directory. */
-const CLAUDE_TMUX_DIR = ".claude/skills/dev3-tmux";
 
 /** Generic agent tmux skill directories. */
 const GENERIC_TMUX_DIRS = [
@@ -1247,7 +1239,6 @@ const GENERIC_TMUX_DIRS = [
 ];
 
 const BUG_HUNTER_SKILL_DIRS = [
-	".claude/skills/dev3-bug-hunter",
 	".cursor/skills/dev3-bug-hunter",
 	".agents/skills/dev3-bug-hunter",
 	".codex/skills/dev3-bug-hunter",
@@ -1257,7 +1248,6 @@ const BUG_HUNTER_SKILL_DIRS = [
 ];
 
 const ASK_DEV3_SKILL_DIRS = [
-	".claude/skills/ask-dev3",
 	".cursor/skills/ask-dev3",
 	".agents/skills/ask-dev3",
 	".codex/skills/ask-dev3",
@@ -1267,7 +1257,6 @@ const ASK_DEV3_SKILL_DIRS = [
 ];
 
 const COORDINATOR_SKILL_DIRS = [
-	".claude/skills/dev3-coordinator",
 	".cursor/skills/dev3-coordinator",
 	".agents/skills/dev3-coordinator",
 	".codex/skills/dev3-coordinator",
@@ -1277,7 +1266,6 @@ const COORDINATOR_SKILL_DIRS = [
 ];
 
 const SHARE_ARTIFACT_SKILL_DIRS = [
-	".claude/skills/dev3-share-artifact",
 	".cursor/skills/dev3-share-artifact",
 	".agents/skills/dev3-share-artifact",
 	".codex/skills/dev3-share-artifact",
@@ -1286,19 +1274,45 @@ const SHARE_ARTIFACT_SKILL_DIRS = [
 	".omp/agent/skills/dev3-share-artifact",
 ];
 
+/** Claude Code skills by name, installed under `<claude config dir>/skills/`. */
+const CLAUDE_SKILL_NAMES = [
+	"dev3",
+	"dev3-project-config",
+	"dev3-tmux",
+	"dev3-bug-hunter",
+	"ask-dev3",
+	"dev3-share-artifact",
+	"dev3-coordinator",
+] as const;
+
+/**
+ * Files per Claude skill. dev3's own SKILL.md is short (the protocol lives in the
+ * system prompt); PROTOCOL.md carries the full body for sessions started outside
+ * the dev3 launcher.
+ */
+function claudeSkillFiles(): Record<(typeof CLAUDE_SKILL_NAMES)[number], Record<string, string>> {
+	return {
+		dev3: { "SKILL.md": getClaudeSkillContent(), "PROTOCOL.md": CLAUDE_SKILL_BODY },
+		"dev3-project-config": { "SKILL.md": CLAUDE_PROJECT_CONFIG_SKILL },
+		"dev3-tmux": { "SKILL.md": CLAUDE_TMUX_SKILL },
+		"dev3-bug-hunter": { "SKILL.md": BUG_HUNTER_SKILL_CONTENT },
+		"ask-dev3": { "SKILL.md": ASK_DEV3_SKILL_CONTENT },
+		"dev3-share-artifact": { "SKILL.md": SHARE_ARTIFACT_SKILL_CONTENT },
+		"dev3-coordinator": { "SKILL.md": COORDINATOR_SKILL_CONTENT },
+	};
+}
+
 /**
  * Every managed skill file this installer writes, relative to the home directory.
  * `dev3 install-skills` prints this list, so it must stay derived from the dirs
  * above rather than re-listed by hand.
  */
 export const MANAGED_SKILL_FILES = [
-	CLAUDE_SKILL_DIR,
+	...CLAUDE_SKILL_NAMES.map((name) => `.claude/skills/${name}`),
 	CODEX_SKILL_DIR,
 	OMP_SKILL_DIR,
 	...GENERIC_SKILL_DIRS,
-	CLAUDE_PROJECT_CONFIG_DIR,
 	...GENERIC_PROJECT_CONFIG_DIRS,
-	CLAUDE_TMUX_DIR,
 	...GENERIC_TMUX_DIRS,
 	...BUG_HUNTER_SKILL_DIRS,
 	...ASK_DEV3_SKILL_DIRS,
@@ -1528,22 +1542,23 @@ export function applyClaudeSettings(settings: Record<string, unknown>, socketsPa
 }
 
 /**
- * Read, patch, and write ~/.claude/settings.json so the dev3 CLI is auto-approved
- * and the dev3 socket directory is allow-listed in the Claude Code sandbox.
- * Non-fatal on any error. Note: the seatbelt profile is compiled when `claude`
- * starts, so a freshly-launched Claude Code session is required for a new
- * allowUnixSockets entry to take effect (resume/--continue does not rebuild it).
+ * Read, patch, and write `<claude config dir>/settings.json` so the dev3 CLI is
+ * auto-approved and the dev3 socket directory is allow-listed in the Claude Code
+ * sandbox. Non-fatal on any error. A file that exists but does not parse is left
+ * alone: it is the user's, and rewriting it would drop everything in it. Note: the
+ * seatbelt profile is compiled when `claude` starts, so a freshly-launched session
+ * is required for a new allowUnixSockets entry to take effect.
  */
-function ensureClaudeSettings(home: string): void {
-	const settingsPath = `${home}/.claude/settings.json`;
-	const socketsPath = `${home}/.dev3.0/sockets`;
+function ensureClaudeSettings(settingsPath: string, socketsPath: string): void {
 	try {
 		let settings: Record<string, unknown> = {};
-		try {
-			const raw = readFileSync(settingsPath, "utf-8");
-			settings = JSON.parse(raw) as Record<string, unknown>;
-		} catch {
-			// File doesn't exist or is invalid — start fresh
+		if (existsSync(settingsPath)) {
+			try {
+				settings = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+			} catch {
+				log.warn("Claude settings.json does not parse, leaving it alone", { path: settingsPath });
+				return;
+			}
 		}
 
 		if (!applyClaudeSettings(settings, socketsPath)) {
@@ -1560,6 +1575,37 @@ function ensureClaudeSettings(home: string): void {
 			error: String(err),
 		});
 	}
+}
+
+/** Write only when the bytes differ - this runs on every Claude launch into a pinned dir. */
+function writeIfChanged(path: string, content: string): boolean {
+	try {
+		if (readFileSync(path, "utf-8") === content) return false;
+	} catch {
+		// missing - write below
+	}
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, content, "utf-8");
+	return true;
+}
+
+/**
+ * Install dev3's Claude skills and settings into one Claude Code config dir:
+ * ~/.claude by default, or whatever `CLAUDE_CONFIG_DIR` names for a launch.
+ * Idempotent and non-fatal per file.
+ */
+export function installClaudeConfigDir(configDir: string, home: string = homedir()): void {
+	for (const [name, files] of Object.entries(claudeSkillFiles())) {
+		for (const [file, content] of Object.entries(files)) {
+			const path = join(configDir, "skills", name, file);
+			try {
+				if (writeIfChanged(path, content)) log.info("Claude skill installed", { path });
+			} catch (err) {
+				log.warn("Failed to install Claude skill (non-fatal)", { path, error: String(err) });
+			}
+		}
+	}
+	ensureClaudeSettings(join(configDir, "settings.json"), `${home}/.dev3.0/sockets`);
 }
 
 function cleanupLegacyGeminiSkillDuplicates(home: string): void {
@@ -1626,22 +1672,7 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	// Installation-wide experiment: managed accounts also discover the shared .agents skill.
 	const compact = process.env.DEV3_COMPACT_AGENT_SKILLS === "1";
 
-	// Install Claude-specific skill (with command injection). SKILL.md is short
-	// (the protocol lives in the system prompt); PROTOCOL.md carries the full
-	// body as a fallback for sessions started outside the dev3 launcher.
-	const claudeSkillDir = `${home}/${CLAUDE_SKILL_DIR}`;
-	const claudeSkillFile = `${claudeSkillDir}/SKILL.md`;
-	try {
-		mkdirSync(claudeSkillDir, { recursive: true });
-		writeFileSync(claudeSkillFile, getClaudeSkillContent(), "utf-8");
-		writeFileSync(`${claudeSkillDir}/PROTOCOL.md`, CLAUDE_SKILL_BODY, "utf-8");
-		log.info("Claude skill installed", { path: claudeSkillFile });
-	} catch (err) {
-		log.warn("Failed to install Claude skill (non-fatal)", {
-			path: claudeSkillFile,
-			error: String(err),
-		});
-	}
+	installClaudeConfigDir(claudeConfigLocation(process.env, home).dir, home);
 
 	// Install Codex-specific skill (hook-aware + shell note)
 	const codexSkillDir = `${home}/${CODEX_SKILL_DIR}`;
@@ -1690,20 +1721,6 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 		}
 	}
 
-	// Install Claude-specific project-config skill
-	const claudeProjectConfigDir = `${home}/${CLAUDE_PROJECT_CONFIG_DIR}`;
-	const claudeProjectConfigFile = `${claudeProjectConfigDir}/SKILL.md`;
-	try {
-		mkdirSync(claudeProjectConfigDir, { recursive: true });
-		writeFileSync(claudeProjectConfigFile, CLAUDE_PROJECT_CONFIG_SKILL, "utf-8");
-		log.info("Claude project-config skill installed", { path: claudeProjectConfigFile });
-	} catch (err) {
-		log.warn("Failed to install Claude project-config skill (non-fatal)", {
-			path: claudeProjectConfigFile,
-			error: String(err),
-		});
-	}
-
 	// Install generic project-config skill for all other agents
 	for (const dir of GENERIC_PROJECT_CONFIG_DIRS) {
 		const skillDir = `${home}/${dir}`;
@@ -1718,20 +1735,6 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 				error: String(err),
 			});
 		}
-	}
-
-	// Install Claude-specific tmux skill
-	const claudeTmuxDir = `${home}/${CLAUDE_TMUX_DIR}`;
-	const claudeTmuxFile = `${claudeTmuxDir}/SKILL.md`;
-	try {
-		mkdirSync(claudeTmuxDir, { recursive: true });
-		writeFileSync(claudeTmuxFile, CLAUDE_TMUX_SKILL, "utf-8");
-		log.info("Claude tmux skill installed", { path: claudeTmuxFile });
-	} catch (err) {
-		log.warn("Failed to install Claude tmux skill (non-fatal)", {
-			path: claudeTmuxFile,
-			error: String(err),
-		});
 	}
 
 	// Install generic tmux skill for all other agents
@@ -1817,7 +1820,6 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	cleanupLegacyGeminiSkillDuplicates(home);
 	installOpenAiMetadata(home);
 	installAgentsMd(options.lowBattery === true, compact);
-	ensureClaudeSettings(home);
 	if (options.configureCodex !== false) {
 		await ensureCodexConfigFile(home);
 	}

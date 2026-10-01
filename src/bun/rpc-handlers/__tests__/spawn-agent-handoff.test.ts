@@ -59,6 +59,8 @@ vi.mock("../../agents", () => ({
 	resolveCommandForAgent: mocks.resolveCommandForAgent,
 	resolveCommandForProject: vi.fn(),
 	ensureClaudeTrust: vi.fn(),
+	ensureClaudeConfigDir: vi.fn(),
+	isClaudeCommand: vi.fn(() => false),
 	ensureCodexTrust: vi.fn(),
 	ensureGeminiTrust: vi.fn(),
 	supportsPreAssignedSessionId: vi.fn(() => false),

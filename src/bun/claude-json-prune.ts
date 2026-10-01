@@ -1,6 +1,7 @@
 /**
  * Claude Code's half of the worktree-trust pruning in `worktree-trust.ts` —
- * `~/.claude.json`, plus the same file inside every managed Claude account dir.
+ * `~/.claude.json`, plus the same file inside every managed Claude account dir
+ * and every dir a launch pinned through `CLAUDE_CONFIG_DIR`.
  *
  * `ensureClaudeTrust` writes a `projects["<worktree path>"]` entry per task launch
  * so Claude Code skips its trust dialog. Nothing removed them: on one machine
@@ -17,6 +18,7 @@ import type { Stats } from "node:fs";
 import { join } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
 import { listClaudeAccountDirs } from "./agent-accounts";
+import { listPinnedClaudeConfigDirs } from "./claude-config-dirs";
 import { createLogger } from "./logger";
 
 const log = createLogger("claude-json-prune");
@@ -31,7 +33,7 @@ export interface PruneFileResult {
 }
 
 export interface PruneOptions {
-	/** `.claude.json` files to sweep. Defaults to ~/.claude.json + every managed account's. */
+	/** `.claude.json` files to sweep. Defaults to ~/.claude.json + every managed account's and pinned dir's. */
 	files?: string[];
 	/** Directory-existence probe (injected in tests). */
 	exists?: (path: string) => boolean;
@@ -44,7 +46,8 @@ const MAX_ATTEMPTS = 3;
 type SelectDeadKeys = (keys: string[]) => string[];
 
 function defaultFiles(): string[] {
-	return [join(resolveUserHome(), ".claude.json"), ...listClaudeAccountDirs().map((dir) => join(dir, ".claude.json"))];
+	const dirs = [...listClaudeAccountDirs(), ...listPinnedClaudeConfigDirs()];
+	return [join(resolveUserHome(), ".claude.json"), ...[...new Set(dirs)].map((dir) => join(dir, ".claude.json"))];
 }
 
 /**
