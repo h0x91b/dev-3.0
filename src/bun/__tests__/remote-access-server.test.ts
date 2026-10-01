@@ -539,6 +539,8 @@ describe("resolveListenHost", () => {
 		expect(listenHostError("localhost")).toBeNull();
 		expect(listenHostError("example.com")).toContain("IPv4");
 		expect(listenHostError("1.2.3")).toContain("IPv4");
+		expect(listenHostError("0.0.0.0")).toBeNull();
+		expect(listenHostError("010.0.0.1")).toContain("IPv4");
 	});
 });
 
