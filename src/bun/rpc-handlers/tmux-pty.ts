@@ -2327,7 +2327,12 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined, resumeAgentFamily) ?? pane.agentCmd;
 					}
 					if (codexHome) extraEnv.CODEX_HOME = codexHome;
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily, extraEnv);
+					// The pane inherits the session's project env, so trust follows its CLAUDE_CONFIG_DIR too.
+					const paneEnv = {
+						...(await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode })),
+						...extraEnv,
+					};
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily, paneEnv);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 						family: resumeAgentFamily,
