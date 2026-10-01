@@ -90,7 +90,7 @@ let capturing = false;
 
 /**
  * While the settings recorder is capturing a combo, no app shortcut may fire —
- * otherwise rebinding ⌘K would open the palette instead of recording ⌘K. Both
+ * otherwise rebinding ⇧⌘K would open the palette instead of recording ⇧⌘K. Both
  * listeners sit on `window` in the capture phase and the dispatcher registered
  * first, so `stopPropagation` from the recorder is too late; this flag is the
  * only reliable gate.

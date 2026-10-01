@@ -1,5 +1,7 @@
 # 072 — Cmd+Shift+P action palette as a DOM mirror of the native menu
 
+> Partly superseded on 2026-10-01 by `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`: only the key changed — the navigation palette is now ⇧⌘K; plain ⌘K is left to the terminal.
+
 ## Context
 
 PR #685 shipped the Cmd+K navigation palette and locked a future direction: a sibling Cmd+Shift+P **action** palette. We needed to add it without (a) building a second command runner, (b) duplicating the palette UI, or (c) letting destructive actions become a fuzzy-Enter away.

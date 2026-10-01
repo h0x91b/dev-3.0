@@ -65,7 +65,7 @@ import { APP_SHORTCUTS, shortcutKeysFor, shortcutKeysForMode } from "../keymap";
 
 // Single source of truth for the ⇧⌘/ combo shown on the header help button.
 const HELP_MODE_SHORTCUT = APP_SHORTCUTS.find((s) => s.id === "help-mode");
-// The ⌘K palette advertised inside the project switcher — same registry entry
+// The ⇧⌘K palette advertised inside the project switcher — same registry entry
 // the key handler fires on, so the printed combo cannot drift from the binding.
 const GO_TO_PROJECT_SHORTCUT = APP_SHORTCUTS.find((s) => s.id === "go-to-project");
 
@@ -556,7 +556,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	}, [availableProjects, navigate]);
 	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
 	// ⌘N stays keyed to BOARD order, so the badge keeps matching the shortcut once
-	// spaces regroup the rows (same split as the ⌘K palette's shortcutIndexById).
+	// spaces regroup the rows (same split as the ⇧⌘K palette's shortcutIndexById).
 	const switcherShortcutById: Record<string, string> = {};
 	availableProjects.forEach((p, idx) => {
 		if (isBuiltinOpsProject(p)) {
@@ -572,7 +572,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const switcherGroups = groupProjectsForSwitcher(availableProjects, spacesFile, currentProjectId);
 
 	// ---- The switcher's search ----
-	// Same matcher and same haystack as the ⌘K palette (name first, then the
+	// Same matcher and same haystack as the ⇧⌘K palette (name first, then the
 	// project's space names), so typing the same letters in either place picks the
 	// same project. Filter only — never re-rank: the rows keep their space grouping,
 	// which is the whole grammar of this menu.
@@ -891,7 +891,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 									// scrolled-away rows to show through above it.
 									<div role="menu" className="absolute left-0 top-full mt-1.5 w-96 max-md:fixed max-md:inset-x-3 max-md:top-14 max-md:mt-0 max-md:w-auto bg-overlay border border-edge rounded-xl shadow-2xl z-50 pb-1 max-h-80 overflow-y-auto">
 										{/* Search, pinned to the top of the scroller: past a dozen projects
-										    the eye stopped finding the row, and the ⌘K palette next to it is
+										    the eye stopped finding the row, and the ⇧⌘K palette next to it is
 										    how the same job is done without opening this menu at all. */}
 										<div className="sticky top-0 z-10 mb-1 px-2 pt-2 pb-1.5 flex items-center gap-1.5 bg-overlay border-b border-edge">
 											<div className="relative flex-1 min-w-0">

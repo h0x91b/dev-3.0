@@ -117,7 +117,7 @@ const mod = (code: string, ...extra: Binding["mods"]): Binding => ({ code, mods:
 
 export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// ── Navigation ──
-	{ id: "go-to-project", primary: [mod("KeyK")], descKey: "keymap.shortcut.goToProject", category: "navigation" },
+	{ id: "go-to-project", primary: [mod("KeyK", "Shift")], descKey: "keymap.shortcut.goToProject", category: "navigation" },
 	// The alias is the app's one guaranteed key: every action is also a command, so
 	// as long as the palette opens, nothing is unreachable. ⇧⌘P alone could not
 	// carry that — Firefox opens a private window on it, and it is dead while a

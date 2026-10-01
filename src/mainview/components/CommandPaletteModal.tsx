@@ -12,7 +12,7 @@ interface CommandPaletteModalProps {
 }
 
 /**
- * Cmd/Ctrl+Shift+P action palette — the action counterpart to the Cmd+K
+ * Cmd/Ctrl+Shift+P action palette — the action counterpart to the Cmd+Shift+K
  * navigation palette. Fuzzy-filter commands by label; Enter runs the highlighted
  * one via the shared `handleMenuAction` dispatcher (see App `runCommand`). Only
  * commands runnable in the current route context are listed.

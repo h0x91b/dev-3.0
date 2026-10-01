@@ -1,5 +1,7 @@
 # 074 — Palette entries in the View menu carry no native accelerator
 
+> Partly superseded on 2026-10-01 by `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`: only the key changed — the navigation palette is now ⇧⌘K; plain ⌘K is left to the terminal.
+
 ## Context
 
 The Cmd+K project quick-switch and Cmd+Shift+P command palette shipped as

@@ -48,7 +48,7 @@ interface PaletteShellProps<T> {
 /**
  * Shared command-palette overlay: portal, click-outside, fuzzy-filtered list,
  * keyboard navigation (↑/↓ wrap, Enter commits, Esc closes), and matched-char
- * highlighting. Both the Cmd+K navigation palette (ProjectQuickSwitchModal) and
+ * highlighting. Both the Cmd+Shift+K navigation palette (ProjectQuickSwitchModal) and
  * the Cmd+Shift+P action palette (CommandPaletteModal) render on top of it.
  */
 export function PaletteShell<T>({

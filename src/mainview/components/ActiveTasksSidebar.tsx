@@ -201,7 +201,7 @@ function ActiveTasksSidebar({
 
 	// null = the current project is in no space → the button disables and a
 	// stored "space" scope falls back to project below. With a space on the route
-	// the pool is that one space; without one (arrived from the dashboard, ⌘K, a
+	// the pool is that one space; without one (arrived from the dashboard, ⇧⌘K, a
 	// deep link) it stays the union of the project's spaces.
 	const siblingIds = useMemo(
 		() => (project ? spaceScopeProjectIds(spaces, project.id, spaceId ?? null) : null),

@@ -585,15 +585,13 @@ Two-task source line, non-severity `agent` violet, click-through to the receiver
 
 ## 2026-06-18 — Action palette (⇧⌘P): two-surfaces-one-shell; DOM mirror of the native menu
 
-- **Rule:** Navigation (⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands via the existing `handleMenuAction` router (a mirror, not a second command runner); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
+- **Rule:** Navigation (⇧⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands via the existing `handleMenuAction` router (a mirror, not a second command runner); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
 - **Why:** VSCode's chord convention; routing through `handleMenuAction` also fixed several previously-inert native menu items. Decision 072.
 - **Status:** Observed. Evidence: `CommandPaletteModal.tsx`, `commands.ts`, `PaletteShell.tsx`.
 
-## 2026-06-18 — Command palette (⌘K) introduced as a new surface
+## 2026-06-18 — Navigation palette introduced (key moved to ⇧⌘K on 2026-10-01)
 
-- **Rule:** ⌘K is the type-to-find navigation surface (keyboard-only, zero visible chrome — no toolbar-creep); short UI entities must reuse `utils/fuzzyMatch.ts` as the single matcher (BM25 stays for long transcripts only); ⌘K = navigation, ⇧⌘P = actions, kept separate.
-- **Why:** `Cmd+T` rejected — universal "new tab" and intercepted by the live terminal; ⌘K is the Slack/Linear/Notion convention. Distinct from the Option+Tab switcher (MRU over *active* tasks vs type-search over all entities).
-- **Status:** Observed. Evidence: `ProjectQuickSwitchModal.tsx`, `utils/fuzzyMatch.ts`.
+- **Rule:** type-to-find navigation surface, keyboard-only, zero chrome; short UI entities reuse `utils/fuzzyMatch.ts`. Distinct from the Option+Tab switcher. Now owned by bible §Command palette.
 
 ## 2026-06-15 — Option+Tab task switcher is a transient HUD overlay, NOT a command palette
 
@@ -708,3 +706,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-09-01 — The space is a level of the trail, not a remembered mode
 - **Rule:** A space on the route renders as a plain-link crumb between home and the chip (`dev-3.0 / AI / Nanochat`), icon-only below `md`; the tail always carries the switcher — bible §Breadcrumbs.
 - **Why:** `decisions/2026/09/01/space-rides-into-a-task-by-reducer-inheritance.md`. Status: observed, `GlobalHeader.tsx`.
+
+## 2026-10-01 — Go to Project moves from ⌘K to ⇧⌘K; Find coordinator joins ⇧⌘P
+- **Rule:** the navigation palette is ⇧⌘K (Ctrl+Shift+K off-macOS); plain ⌘K stays free for the terminal (clear, tracked as its own task). Coordinators are found via the ⇧⌘P `Find coordinator…` picker on `PaletteShell`.
+- **Why:** terminal users expect ⌘K to clear; ⇧⌘K keeps the K mnemonic with the fewest conflicts found (Firefox Win/Linux Web Console caveat). Rejected ⌘P, ⌘E. User-approved. Evidence: `keymap.ts`, `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`.

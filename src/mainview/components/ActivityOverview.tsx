@@ -987,7 +987,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					</div>
 				</div>
 				{/* Search over projects AND their space names — the same rule as the
-				    ⌘K palette. Only meaningful once spaces group the list. */}
+				    ⇧⌘K palette. Only meaningful once spaces group the list. */}
 				{allSpaceGroups !== null && (
 					<div className="flex items-center gap-2">
 					{/* The filter sits with the search field, not in the header beside

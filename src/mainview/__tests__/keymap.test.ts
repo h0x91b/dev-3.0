@@ -104,8 +104,8 @@ describe("keymap registry", () => {
 
 	it("shortcutKeysFor picks the platform-appropriate combo", () => {
 		const spec = APP_SHORTCUTS.find((s) => s.id === "go-to-project")!;
-		expect(shortcutKeysFor(spec, true)).toBe("⌘K");
-		expect(shortcutKeysFor(spec, false)).toBe("Ctrl+K");
+		expect(shortcutKeysFor(spec, true)).toBe("⇧⌘K");
+		expect(shortcutKeysFor(spec, false)).toBe("Ctrl+Shift+K");
 	});
 
 	it("documents both route-history shortcut aliases", () => {
@@ -187,11 +187,16 @@ describe("transport-aware keymap", () => {
 
 describe("matchesShortcut", () => {
 	it("matches the platform modifier exactly, not either one", () => {
-		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", desktopMac)).toBe(true);
-		// ⌃K is kill-to-end-of-line in the shell — it must reach the terminal.
-		expect(matchesShortcut(key("KeyK", { ctrl: true }), "go-to-project", desktopMac)).toBe(false);
+		expect(matchesShortcut(key("KeyK", { meta: true, shift: true }), "go-to-project", desktopMac)).toBe(true);
+		expect(matchesShortcut(key("KeyK", { ctrl: true, shift: true }), "go-to-project", desktopMac)).toBe(false);
 		// On Linux the same registry entry means Ctrl.
-		expect(matchesShortcut(key("KeyK", { ctrl: true }), "go-to-project", { ...desktopMac, mac: false })).toBe(true);
+		expect(matchesShortcut(key("KeyK", { ctrl: true, shift: true }), "go-to-project", { ...desktopMac, mac: false })).toBe(true);
+	});
+
+	it("leaves plain ⌘K / Ctrl+K free for the terminal", () => {
+		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", desktopMac)).toBe(false);
+		// ⌃K is kill-to-end-of-line in the shell — it must reach the terminal.
+		expect(matchesShortcut(key("KeyK", { ctrl: true }), "go-to-project", { ...desktopMac, mac: false })).toBe(false);
 	});
 
 	it("keeps a combo and its Shift sibling apart", () => {
@@ -388,12 +393,14 @@ describe("Ctrl belongs to the shell", () => {
 	});
 
 	it("app-level Ctrl shortcuts stand down while a terminal has focus", () => {
-		for (const [id, code] of [["go-to-project", "KeyK"], ["add-project", "KeyP"], ["back", "BracketLeft"]] as const) {
+		for (const [id, code] of [["settings", "Comma"], ["add-project", "KeyP"], ["back", "BracketLeft"]] as const) {
 			expect(matchesShortcut(key(code, { ctrl: true }), id, desktopLinux)).toBe(true);
 			expect(matchesShortcut(key(code, { ctrl: true }), id, { ...desktopLinux, terminal: true })).toBe(false);
 		}
 		// ⌘ carries no shell meaning, so macOS keeps firing them in the terminal.
-		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", { ...desktopMac, terminal: true })).toBe(true);
+		expect(matchesShortcut(key("KeyK", { meta: true, shift: true }), "go-to-project", { ...desktopMac, terminal: true })).toBe(true);
+		// Ctrl+Shift is not a control character, so the palette also opens from a Linux terminal.
+		expect(matchesShortcut(key("KeyK", { ctrl: true, shift: true }), "go-to-project", { ...desktopLinux, terminal: true })).toBe(true);
 	});
 
 	it("the command palette stays reachable from inside a terminal, on both platforms", () => {

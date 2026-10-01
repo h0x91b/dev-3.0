@@ -502,7 +502,7 @@ describe("App keyboard shortcuts", () => {
 		it("still claims the same keys with Ctrl off macOS", async () => {
 			fakePlatform("linux");
 			await renderApp();
-			const event = new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true, cancelable: true });
+			const event = new KeyboardEvent("keydown", { key: "p", code: "KeyP", ctrlKey: true, bubbles: true, cancelable: true });
 			act(() => window.dispatchEvent(event));
 			expect(event.defaultPrevented).toBe(true);
 		});

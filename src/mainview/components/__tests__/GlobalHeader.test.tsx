@@ -514,7 +514,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		it("stays flat when no space holds a visible project", async () => {
 			const menu = await openSwitcher();
 			expect(within(menu).queryByText("Home")).not.toBeInTheDocument();
-			// The search row's ⌘K button is not a project row — count the rows only.
+			// The search row's ⇧⌘K button is not a project row — count the rows only.
 			expect(within(menu).getAllByTestId("switcher-row")).toHaveLength(3);
 		});
 	});
@@ -594,7 +594,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2" });
 		});
 
-		it("hands off to the ⌘K palette and closes the menu", async () => {
+		it("hands off to the ⇧⌘K palette and closes the menu", async () => {
 			const onPalette = vi.fn();
 			window.addEventListener("menu:open-project-switch", onPalette);
 			const { user } = await openSwitcher();

@@ -806,7 +806,7 @@ function App() {
 	}, [state.route]);
 
 	// Single chokepoint for committing a navigation. Records a project "jump"
-	// for the Cmd+K recency list whenever the destination route lands on a
+	// for the Cmd+Shift+K recency list whenever the destination route lands on a
 	// project, so every entry point (Dashboard click, Cmd+1..9, Cmd+Shift+1..9,
 	// the palette, the `g`-prefix go-to, terminal toggles, future ones…) is
 	// covered automatically — they all funnel through here.
@@ -821,7 +821,7 @@ function App() {
 	const navigate = useCallback(
 		(route: Route) => {
 			// One guard for every entry point into a sensitive project (card, Cmd+1..9,
-			// Cmd+K, palette, deep link, notification click, hint overlay). Checked
+			// Cmd+Shift+K, palette, deep link, notification click, hint overlay). Checked
 			// before the dirty-form guard: a refused route must not prompt to save.
 			if (isRouteLocked(route)) {
 				toast.info(t("streamer.projectLocked"), { projectId: projectIdForRoute(route) ?? undefined });
@@ -886,7 +886,7 @@ function App() {
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
 	// does: in a task view with split open-mode, land in the target's task view
 	// (no task selected); otherwise land on its Kanban board. Shared by the
-	// Cmd+1..9 index shortcuts and the Cmd+K quick-switch palette.
+	// Cmd+1..9 index shortcuts and the Cmd+Shift+K quick-switch palette.
 	const navigateToProject = useCallback(
 		(projectId: string) => {
 			const route = state.route;
@@ -1079,7 +1079,7 @@ function App() {
 		return map;
 	}, [state.projects]);
 
-	// Quick-switch (Cmd+K) data, recomputed each time the palette opens so the
+	// Quick-switch (Cmd+Shift+K) data, recomputed each time the palette opens so the
 	// recency ordering reflects the latest jumps. Rows are MRU-first (then board
 	// order); the ⌘N badge stays keyed to the stable board index.
 	const quickSwitch = useMemo(() => {
@@ -1172,7 +1172,7 @@ function App() {
 		const onNewTask = () => openCreateTaskModal();
 		const onAddProject = () => openAddProject();
 		// The View-menu palette items open (not toggle) the palettes — the
-		// Cmd+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
+		// Cmd+Shift+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
 		const onProjectSwitch = () => setShowProjectSwitch(true);
 		const onCommandPalette = () => setShowCommandPalette(true);
 		const onCoordinatorFinder = () => setShowCoordinatorFinder(true);

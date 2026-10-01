@@ -30,7 +30,7 @@ type SwitchTarget =
 	| { kind: "space"; id: string; space: Space };
 
 /**
- * Cmd/Ctrl+K project quick-switch palette (navigation). Type to fuzzy-filter
+ * Cmd/Ctrl+Shift+K project quick-switch palette (navigation). Type to fuzzy-filter
  * projects by name; Enter jumps to the highlighted match (the top one by
  * default). With an empty query, rows are ordered most-recently-jumped first
  * (then board order). The ⌘N badge mirrors the Cmd+1..9 index shortcuts, which

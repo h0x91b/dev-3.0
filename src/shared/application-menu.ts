@@ -669,12 +669,12 @@ function viewMenu(): ApplicationMenuItemConfig {
 	return {
 		label: "View",
 		submenu: [
-			// Keyboard-summoned palettes (App.tsx owns the real shortcuts: Cmd+K /
+			// Keyboard-summoned palettes (App.tsx owns the real shortcuts: Cmd+Shift+K /
 			// Cmd+Shift+P toggle). Electrobun menu accelerators only support single
 			// characters, not chords like Shift+P (decision 044), and the palettes
 			// toggle — so we add no native accelerator and show the chord in the
 			// label instead. Clicking opens the palette via menuRouter.
-			item({ label: "Go to Project… (⌘K)", action: MENU_ACTIONS.openProjectSwitch }),
+			item({ label: "Go to Project… (⇧⌘K)", action: MENU_ACTIONS.openProjectSwitch }),
 			item({ label: "Command Palette… (⇧⌘P)", action: MENU_ACTIONS.openCommandPalette }),
 			SEP,
 			item({ label: "Show Dashboard", action: MENU_ACTIONS.viewDashboard }),

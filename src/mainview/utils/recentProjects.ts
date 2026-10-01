@@ -1,4 +1,4 @@
-// MRU (most-recently-used) cache of project jumps, backing the Cmd/Ctrl+K
+// MRU (most-recently-used) cache of project jumps, backing the Cmd/Ctrl+Shift+K
 // quick-switch palette's "recent first" ordering. A jump = any navigation that
 // lands on a project, recorded centrally at App's `commitNavigation` — so the
 // palette, Cmd+1..9 / Cmd+Shift+1..9, the `g`-prefix go-to, a Dashboard card
