@@ -645,6 +645,20 @@ describe("writeClaudeHooks", () => {
 		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 	});
 
+	it("keeps defaultMode and the permission out of the committed settings.json", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		const shared = JSON.stringify({ permissions: { allow: ["Read(*)"] } });
+		writeFileSync(join(claudeDir, "settings.json"), shared);
+
+		writeClaudeHooks(tmp, { permissionMode: "acceptEdits" });
+
+		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8")).toBe(shared);
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.permissions.defaultMode).toBe("acceptEdits");
+		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+	});
+
 	it("adds permission to settings.local.json when both files exist", () => {
 		const claudeDir = join(tmp, ".claude");
 		mkdirSync(claudeDir, { recursive: true });
