@@ -29,7 +29,8 @@ Three ways in, printed on every start:
 | ③ | **SSH port-forward** | Most private — nothing is publicly exposed: `ssh -L <port>:localhost:<port> user@<server>` |
 
 Pass `--no-tunnel` to skip the public tunnel entirely (LAN + SSH only). Add `--host 127.0.0.1`
-as well and the server accepts connections from this machine only: no LAN, no public URL.
+as well and the server accepts connections from this machine only: no LAN, no public URL, and the
+banner prints the URL without a QR, since no phone could open it.
 
 ## Background lifecycle (for SSH boxes)
 

@@ -38,6 +38,16 @@ function getLocalIps(): string[] {
 	return out;
 }
 
+/**
+ * A loopback bind puts `localhost` in the access URL, which no phone can open,
+ * so the QR is noise. A tunnel URL stays scannable even on a loopback bind.
+ */
+function isQrScannable(url: string): boolean {
+	if (!isLoopbackListen()) return true;
+	const host = new URL(url).hostname;
+	return host !== "localhost" && !host.startsWith("127.");
+}
+
 // ── Public API ────────────────────────────────────────────────────
 
 interface BannerOptions {
@@ -58,14 +68,16 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 
 	// Terminal-rendered QR. `small: true` halves the vertical size by using
 	// half-blocks (▀/▄) — stays readable by phone cameras.
-	const qrAscii = await QRCode.toString(accessUrl, { type: "terminal", small: true });
+	const qrAscii = isQrScannable(accessUrl)
+		? await QRCode.toString(accessUrl, { type: "terminal", small: true })
+		: null;
 
 	console.log("");
 	console.log("╔════════════════════════════════════════════════════════════════╗");
 	console.log("║  dev3 remote — headless mode                                   ║");
 	console.log("╚════════════════════════════════════════════════════════════════╝");
 	console.log("");
-	console.log(qrAscii);
+	if (qrAscii) console.log(qrAscii);
 	console.log("  URL (includes one-time QR token, regenerated every 60s):");
 	console.log(`  ${accessUrl}`);
 	if (staticCode) {
@@ -98,10 +110,13 @@ export function startQrAutoRefresh(urlFactory: () => Promise<string>): void {
 		}
 		try {
 			const fresh = await urlFactory();
-			const qrAscii = await QRCode.toString(fresh, { type: "terminal", small: true });
 			console.log("");
-			console.log("── QR refreshed ──────────────────────────────────────────────");
-			console.log(qrAscii);
+			if (isQrScannable(fresh)) {
+				console.log("── QR refreshed ──────────────────────────────────────────────");
+				console.log(await QRCode.toString(fresh, { type: "terminal", small: true }));
+			} else {
+				console.log("── Access URL refreshed ──────────────────────────────────────");
+			}
 			console.log(`  URL: ${fresh}`);
 			console.log("");
 		} catch (err) {
