@@ -208,6 +208,10 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "open-command-palette":
 			window.dispatchEvent(new CustomEvent("menu:open-command-palette"));
 			return;
+		// Palette-only: a cross-project picker, so it needs no current project.
+		case "find-coordinator":
+			window.dispatchEvent(new CustomEvent("menu:open-coordinator-finder"));
+			return;
 
 		// ── Project: navigation ──
 		case "project-settings": {
@@ -476,7 +480,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview", "feature-flags",
 	"terminal-perf-overlay",
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",
-	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
+	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette", "find-coordinator",
 	// Project
 	"project-settings", "project-import-conversations", "project-pull-main", "project-create-pr",
 	"project-dev-server-start", "project-dev-server-stop", "project-dev-server-restart", "project-dev-server-status",

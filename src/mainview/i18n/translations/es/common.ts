@@ -373,6 +373,15 @@ const common = {
 	"projectSwitch.placeholder": "Escribe el nombre de un proyecto…",
 	"projectSwitch.noResults": "No hay proyectos coincidentes",
 	"projectSwitch.hint": "↑↓ mover · ⏎ abrir · esc cancelar",
+	"coordinatorFinder.title": "Buscar coordinador",
+	"coordinatorFinder.placeholder": "Escribe un coordinador, proyecto o #número…",
+	"coordinatorFinder.noResults": "Ningún coordinador coincide",
+	"coordinatorFinder.empty": "No hay coordinadores activos. Elige el tipo Coordinador al crear una tarea.",
+	"coordinatorFinder.loading": "Cargando coordinadores…",
+	"coordinatorFinder.state.current": "Actual",
+	"coordinatorFinder.state.disconnected": "Desconectado",
+	"coordinatorFinder.state.hibernated": "Hibernado",
+	"coordinatorFinder.state.hidden": "Oculto",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Ejecutar un comando",
@@ -391,6 +400,7 @@ const common = {
 	"command.addProject": "Añadir proyecto",
 	"command.importConversations": "Importar conversaciones de otros agentes",
 	"command.viewDashboard": "Ir al panel",
+	"command.findCoordinator": "Buscar coordinador…",
 	"command.viewKanban": "Ir al tablero",
 	"command.viewChangelog": "Abrir changelog",
 	"command.openSettings": "Abrir ajustes",

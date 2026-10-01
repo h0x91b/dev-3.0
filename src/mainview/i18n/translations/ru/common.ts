@@ -396,6 +396,15 @@ const common = {
 	"projectSwitch.placeholder": "Введите название проекта…",
 	"projectSwitch.noResults": "Нет подходящих проектов",
 	"projectSwitch.hint": "↑↓ выбор · ⏎ открыть · esc отмена",
+	"coordinatorFinder.title": "Найти координатора",
+	"coordinatorFinder.placeholder": "Координатор, проект или #номер…",
+	"coordinatorFinder.noResults": "Нет подходящих координаторов",
+	"coordinatorFinder.empty": "Активных координаторов нет. Выберите тип «Координатор» при создании задачи.",
+	"coordinatorFinder.loading": "Загружаем координаторов…",
+	"coordinatorFinder.state.current": "Текущий",
+	"coordinatorFinder.state.disconnected": "Отключён",
+	"coordinatorFinder.state.hibernated": "Заморожен",
+	"coordinatorFinder.state.hidden": "Скрыт",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Выполнить команду",
@@ -414,6 +423,7 @@ const common = {
 	"command.addProject": "Добавить проект",
 	"command.importConversations": "Импортировать разговоры из других агентов",
 	"command.viewDashboard": "Перейти на дашборд",
+	"command.findCoordinator": "Найти координатора…",
 	"command.viewKanban": "Перейти на доску",
 	"command.viewChangelog": "Открыть changelog",
 	"command.openSettings": "Открыть настройки",

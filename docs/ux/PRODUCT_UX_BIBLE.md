@@ -106,7 +106,7 @@ Only in `project-settings` (`global | project | worktree | automations`). Budget
 
 ### Command palette (Cmd/Ctrl+K nav · Cmd/Ctrl+Shift+P actions) — `Observed`
 
-A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShell`). **Cmd+K** = navigation: fuzzy-jump to a project, Enter navigates (complements `Cmd+1..9` and the breadcrumb dropdown). **Cmd+Shift+P** = actions: fuzzy-match a command label, Enter runs it via `handleMenuAction` — a DOM mirror of the native menu, not a second command runner; only context-applicable commands show. Both fuzzy via `utils/fuzzyMatch.ts`. Destructive (delete/cancel/complete) and modal/inline flows (rename, overview, note, spawn, duplicate) are excluded from the quick palette by policy. See Surface model below.
+A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShell`). **Cmd+K** = navigation: fuzzy-jump to a project, Enter navigates (complements `Cmd+1..9` and the breadcrumb dropdown). **Cmd+Shift+P** = actions: fuzzy-match a command label, Enter runs it via `handleMenuAction` — a DOM mirror of the native menu, not a second command runner; only context-applicable commands show. Both fuzzy via `utils/fuzzyMatch.ts`. A command may open a scoped picker on the same shell: `Find coordinator…` lists active coordinators (by `taskType`, all projects, state-labelled); Enter only navigates. See Surface model below.
 
 ## 5. Surface model — `Observed` unless noted
 

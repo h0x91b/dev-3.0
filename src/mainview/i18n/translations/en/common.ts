@@ -372,6 +372,15 @@ const common = {
 	"projectSwitch.placeholder": "Type a project name…",
 	"projectSwitch.noResults": "No matching projects",
 	"projectSwitch.hint": "↑↓ move · ⏎ open · esc cancel",
+	"coordinatorFinder.title": "Find coordinator",
+	"coordinatorFinder.placeholder": "Type a coordinator, project or #number…",
+	"coordinatorFinder.noResults": "No coordinator matches",
+	"coordinatorFinder.empty": "No active coordinators. Pick the Coordinator type when you create a task.",
+	"coordinatorFinder.loading": "Loading coordinators…",
+	"coordinatorFinder.state.current": "Current",
+	"coordinatorFinder.state.disconnected": "Disconnected",
+	"coordinatorFinder.state.hibernated": "Hibernated",
+	"coordinatorFinder.state.hidden": "Hidden",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Run a command",
@@ -390,6 +399,7 @@ const common = {
 	"command.addProject": "Add project",
 	"command.importConversations": "Import conversations from other agents",
 	"command.viewDashboard": "Go to dashboard",
+	"command.findCoordinator": "Find coordinator…",
 	"command.viewKanban": "Go to board",
 	"command.viewChangelog": "Open changelog",
 	"command.openSettings": "Open settings",

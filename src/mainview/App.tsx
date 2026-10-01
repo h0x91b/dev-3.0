@@ -87,6 +87,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
 import TaskArtifactViewer from "./components/TaskArtifactViewer";
@@ -426,6 +427,7 @@ function App() {
 	// Cmd/Ctrl+O picker when no app is chosen yet (or the chosen one is gone).
 	const [openInPicker, setOpenInPicker] = useState<{ path: string; taskId?: string } | null>(null);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
+	const [showCoordinatorFinder, setShowCoordinatorFinder] = useState(false);
 	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
 	const [hintMode, setHintMode] = useState(false);
 	// Help mode — the "Explain this screen" overlay (bible §5.4). Entered via
@@ -1173,6 +1175,7 @@ function App() {
 		// Cmd+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
 		const onProjectSwitch = () => setShowProjectSwitch(true);
 		const onCommandPalette = () => setShowCommandPalette(true);
+		const onCoordinatorFinder = () => setShowCoordinatorFinder(true);
 		const onImportConversations = (e: Event) => {
 			const projectId = (e as CustomEvent<{ projectId: string }>).detail?.projectId;
 			const project = state.projects.find((p) => p.id === projectId);
@@ -1183,12 +1186,14 @@ function App() {
 		window.addEventListener("menu:open-add-project", onAddProject);
 		window.addEventListener("menu:open-project-switch", onProjectSwitch);
 		window.addEventListener("menu:open-command-palette", onCommandPalette);
+		window.addEventListener("menu:open-coordinator-finder", onCoordinatorFinder);
 		return () => {
 			window.removeEventListener("menu:import-conversations", onImportConversations);
 			window.removeEventListener("menu:open-new-task", onNewTask);
 			window.removeEventListener("menu:open-add-project", onAddProject);
 			window.removeEventListener("menu:open-project-switch", onProjectSwitch);
 			window.removeEventListener("menu:open-command-palette", onCommandPalette);
+			window.removeEventListener("menu:open-coordinator-finder", onCoordinatorFinder);
 		};
 	}, [openCreateTaskModal, openAddProject, enqueueImportOffer, state.projects]);
 
@@ -3097,6 +3102,18 @@ function App() {
 					}}
 					onRun={runCommand}
 					onClose={() => setShowCommandPalette(false)}
+				/>
+			)}
+			{showCoordinatorFinder && (
+				<CoordinatorFinderModal
+					projectById={switcherProjectById}
+					currentTaskId={routeTaskId(state.route)}
+					mru={state.taskMru}
+					onSelect={(task) => {
+						setShowCoordinatorFinder(false);
+						navigate(taskOpenRoute(task.id, task.projectId, getTaskOpenMode(), false));
+					}}
+					onClose={() => setShowCoordinatorFinder(false)}
 				/>
 			)}
 			{showAddProjectModal && (

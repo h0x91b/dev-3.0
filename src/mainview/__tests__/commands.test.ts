@@ -73,4 +73,9 @@ describe("availableCommands", () => {
 		// Only that one command is dropped vs desktop.
 		expect(remote.length).toBe(desktop.length - 1);
 	});
+
+	it("offers Find coordinator everywhere, with no project open", () => {
+		const ids = availableCommands({ hasProject: false, hasTask: false }).map((c) => c.id);
+		expect(ids).toContain("find-coordinator");
+	});
 });
