@@ -24,7 +24,10 @@ export function cliBuildPlan(platform: NodeJS.Platform): CliBuildPlan {
 	return { outfile, shellSteps: ["scripts/stage-bundled-tmux.sh", "scripts/sign-cli-binaries.sh"] };
 }
 
-export const HANDOFF_WORKER_ENTRY = "src/bun/workers/conversation-handoff-worker.ts";
+export const WORKER_ENTRIES = [
+	"src/bun/workers/conversation-handoff-worker.ts",
+	"src/bun/workers/clonefile-worker.ts",
+];
 
 function runOrExit(command: string[], label: string): void {
 	const result = Bun.spawnSync(command, {
@@ -60,12 +63,14 @@ function main(): void {
 		console.log("[build-cli] no shell available: dist/tmux stays empty, CLI signing skipped");
 	}
 
-	// Worker threads cannot import from the repository in a packaged app, so the
-	// handoff parser ships as one self-contained bundle (copied as `workers`).
-	runOrExit(
-		[process.execPath, "build", HANDOFF_WORKER_ENTRY, "--target", "bun", "--outdir", "dist/workers"],
-		"handoff worker bundle",
-	);
+	// Worker threads cannot import from the repository in a packaged app, so each
+	// worker ships as one self-contained bundle (copied as `workers`).
+	for (const entry of WORKER_ENTRIES) {
+		runOrExit(
+			[process.execPath, "build", entry, "--target", "bun", "--outdir", "dist/workers"],
+			`worker bundle ${entry}`,
+		);
+	}
 
 	runOrExit([process.execPath, "scripts/build-native.ts"], "native build");
 	console.log(`[build-cli] built ${plan.outfile}`);

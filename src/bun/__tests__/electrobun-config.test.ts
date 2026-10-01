@@ -35,6 +35,15 @@ describe("electrobun bundled resources", () => {
 		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("conversation-handoff-worker.ts");
 	});
 
+	it("ships the clonefile worker to the path both host entries load", () => {
+		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
+		expect(buildCli).toContain('"src/bun/workers/clonefile-worker.ts"');
+		for (const entry of ["../index.ts", "../headless-entry.ts"]) {
+			expect(readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf-8")).toContain('"workers", "clonefile-worker.js"');
+		}
+		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("clonefile-worker.ts");
+	});
+
 	// The copy map is an allow-list, so a public asset absent from it is served as
 	// the SPA index.html instead of itself. That shipped twice: the favicons, then
 	// sw.js + manifest.webmanifest, which silently killed Web Push in every

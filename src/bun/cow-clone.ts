@@ -4,12 +4,13 @@
  * macOS cascade: clonefile(2) via FFI → cp -cR → cp -R
  * Linux cascade: cp -R --reflink=always → cp -R
  *
- * All paths are cloned in parallel.
+ * Paths run in parallel, bounded by MAX_CONCURRENT_CLONES across all tasks.
  */
 
 import { existsSync } from "node:fs";
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Worker } from "node:worker_threads";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 
@@ -165,27 +166,88 @@ function describeFailure(cmd: string, outcome: RunOutcome): string {
 	return detail ? `${detail} (${cmd} exited ${outcome.code})` : `${cmd} exited ${outcome.code}`;
 }
 
+export interface ClonefileJob {
+	src: string;
+	dst: string;
+}
+
+export type ClonefileReply = { ok: true } | { ok: false; error: string };
+
+let clonefileWorkerPath: string | null = null;
+let warnedMissingWorker = false;
+
 /**
- * Try clonefile(2) syscall via Bun FFI.
- * Returns true on success, false on failure.
+ * Point clonefile(2) at the bundled worker. The syscall clones a whole tree in one
+ * blocking call, so on the host thread it froze every RPC and terminal for as long
+ * as the tree took. Unset or missing, the cascade starts at `cp -cR` instead.
  */
-async function tryClonefile(src: string, dst: string): Promise<boolean> {
-	try {
-		const { dlopen, FFIType } = await import("bun:ffi");
-		const lib = dlopen("libSystem.B.dylib", {
-			clonefile: {
-				args: [FFIType.cstring, FFIType.cstring, FFIType.u32],
-				returns: FFIType.i32,
-			},
+export function configureClonefileWorker(path: string | null): void {
+	clonefileWorkerPath = path;
+	warnedMissingWorker = false;
+}
+
+/**
+ * Resolves only on the worker's `exit`, never on its message alone: a fallback that
+ * starts while the thread may still be inside clonefile would write into the same
+ * destination. No timeout for the same reason — a syscall cannot be interrupted.
+ */
+function runClonefileWorker(path: string, job: ClonefileJob): Promise<ClonefileReply> {
+	return new Promise((resolve) => {
+		let reply: ClonefileReply | null = null;
+		let worker: Worker;
+		try {
+			worker = new Worker(path, { workerData: job });
+		} catch (error) {
+			resolve({ ok: false, error: `clonefile worker did not start: ${String(error)}` });
+			return;
+		}
+		worker.on("message", (message: ClonefileReply) => {
+			reply ??= message;
 		});
-		const srcBuf = Buffer.from(src + "\0", "utf-8");
-		const dstBuf = Buffer.from(dst + "\0", "utf-8");
-		const result = lib.symbols.clonefile(srcBuf, dstBuf, 0);
-		lib.close();
-		return result === 0;
-	} catch (err) {
-		log.debug("clonefile FFI failed", { error: String(err) });
+		worker.on("error", (error) => {
+			reply ??= { ok: false, error: `clonefile worker failed: ${String(error)}` };
+		});
+		worker.on("exit", (code) => {
+			resolve(reply ?? { ok: false, error: `clonefile worker exited with code ${code}` });
+		});
+	});
+}
+
+/** clonefile(2) off the host thread; false means "fall through to cp -cR". */
+async function tryClonefile(src: string, dst: string): Promise<boolean> {
+	const path = clonefileWorkerPath;
+	if (!path || !existsSync(path)) {
+		if (path && !warnedMissingWorker) {
+			warnedMissingWorker = true;
+			log.warn("clonefile worker missing; cloning with cp -cR", { path });
+		}
 		return false;
+	}
+	const reply = await runClonefileWorker(path, { src, dst });
+	if (!reply.ok) log.debug("clonefile failed, falling back", { error: reply.error });
+	return reply.ok;
+}
+
+/**
+ * Clone work across every preparing task shares these slots: several monorepo
+ * tasks started together would otherwise all hit the same disk at once.
+ */
+export const MAX_CONCURRENT_CLONES = 2;
+let activeClones = 0;
+const cloneQueue: Array<() => void> = [];
+
+async function withCloneSlot<T>(fn: () => Promise<T>): Promise<T> {
+	if (activeClones >= MAX_CONCURRENT_CLONES) {
+		await new Promise<void>((resolve) => cloneQueue.push(resolve));
+	} else {
+		activeClones++;
+	}
+	try {
+		return await fn();
+	} finally {
+		const next = cloneQueue.shift();
+		if (next) next();
+		else activeClones--;
 	}
 }
 
@@ -210,6 +272,10 @@ async function cloneSingle(
 		};
 	}
 
+	return withCloneSlot(() => copyIntoPlace(src, dst, relativePath, start));
+}
+
+async function copyIntoPlace(src: string, dst: string, relativePath: string, start: number): Promise<CloneResult> {
 	// Prepare destination
 	await ensureParent(dst);
 	await removePath(dst);
@@ -226,12 +292,13 @@ async function cloneSingle(
 	}
 
 	if (isMacOS()) {
-		// 1. Try clonefile(2) — atomic whole-tree clone
+		// 1. Try clonefile(2) — atomic whole-tree clone, in a worker thread
 		if (await tryClonefile(src, dst)) {
 			const ms = Math.round(performance.now() - start);
 			log.info("Cloned via clonefile(2)", { path: relativePath, ms });
 			return { path: relativePath, method: "clonefile", durationMs: ms };
 		}
+		await removePath(dst);
 
 		// 2. Try cp -cR (per-file APFS clone)
 		const apfs = await run(["cp", "-cR", src, dst]);
@@ -394,7 +461,7 @@ export async function detectClonePaths(projectPath: string): Promise<string[]> {
 
 /**
  * Clone multiple paths from sourceRoot to destRoot using CoW when available.
- * All paths are processed in parallel.
+ * Paths are processed in parallel, bounded by MAX_CONCURRENT_CLONES.
  */
 export async function clonePaths(
 	sourceRoot: string,
