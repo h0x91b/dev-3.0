@@ -549,7 +549,8 @@ describe("loopback bind narrows the advertised addresses", () => {
 
 	it("offers only loopback in the interface picker", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
-		expect(getLocalInterfaces()).toEqual([{ name: "loopback", address: "127.0.0.1", internal: true }]);
+		expect(getLocalInterfaces()).toEqual([{ name: "loopback", address: "localhost", internal: true }]);
+		expect(getLocalInterfaces().map((i) => i.address)).toContain(resolveAccessHost());
 	});
 
 	it("builds the default access URL on localhost, not a LAN address", async () => {

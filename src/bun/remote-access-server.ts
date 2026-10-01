@@ -1011,8 +1011,9 @@ function getLocalIp(): string {
 export function getLocalInterfaces(): RemoteNetInterface[] {
 	const out: RemoteNetInterface[] = [];
 	const listenHost = resolveListenHost();
+	// Same spelling getLocalIp() advertises, so the picker's selected value is one of its options.
 	if (isLoopbackListen(listenHost)) {
-		return [{ name: "loopback", address: "127.0.0.1", internal: true }];
+		return [{ name: "loopback", address: "localhost", internal: true }];
 	}
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
@@ -1022,7 +1023,7 @@ export function getLocalInterfaces(): RemoteNetInterface[] {
 			}
 		}
 	}
-	// Offer loopback last — needed for the SSH-forward path — unless the server
+	// Offer loopback last (the SSH-forward path needs it), unless the server
 	// is bound to one specific address, which loopback does not reach.
 	if (listenHost === "0.0.0.0") out.push({ name: "loopback", address: "127.0.0.1", internal: true });
 	return out;
