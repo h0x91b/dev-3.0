@@ -8,7 +8,7 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(async () => ({ id: "project-1", autoReviewEnabled: false })),
 }));
 vi.mock("../../shared/agent-hooks", () => ({
-	writeClaudeHooks: vi.fn(() => false),
+	writeClaudeHooks: vi.fn(() => ({ written: false, skippedSymlink: null })),
 }));
 
 import { findConfig, getAllAgents } from "../agents";
@@ -34,7 +34,7 @@ beforeEach(() => {
 	vi.mocked(getAllAgents).mockResolvedValue([CLAUDE_AGENT]);
 	vi.mocked(findConfig).mockReturnValue(undefined);
 	vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: false } as Project);
-	vi.mocked(writeClaudeHooks).mockReturnValue(false);
+	vi.mocked(writeClaudeHooks).mockReturnValue({ written: false, skippedSymlink: null });
 });
 
 afterEach(() => vi.clearAllMocks());

@@ -36,9 +36,12 @@ export async function handleInstallHooks(): Promise<void> {
 	const claudeSettingsPath = join(worktreePath, ".claude", "settings.local.json");
 	const codexHooksPath = join(worktreePath, ".codex", "hooks.json");
 
-	writeClaudeHooks(worktreePath);
-	writeCodexHooks(worktreePath);
+	const claudeSymlink = writeClaudeHooks(worktreePath).skippedSymlink;
+	const codexSymlink = writeCodexHooks(worktreePath);
 	const ompExtensionPath = writeOmpStatusExtension();
+	for (const link of [claudeSymlink, codexSymlink]) {
+		if (link) process.stderr.write(`Warning: ${link} is a symlink; dev3 does not write through it, so the hooks under it were not installed.\n`);
+	}
 
 	process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
 	process.stdout.write(`  SessionStart (startup/clear/compact) → recent task notes as context\n`);

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 import { type HookCliDialect, hookCliDialect } from "./dev3-cli-path";
+import { symlinkOnWritePath } from "./symlink-write-guard";
 
 /** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
 const DEFAULT_DIALECT = hookCliDialect();
@@ -706,21 +707,6 @@ export function ensureDevPermission(
 }
 
 /**
- * Resolve which .claude/settings file to write the dev3 permission to:
- * 1. settings.local.json exists → use it
- * 2. settings.json exists → use it
- * 3. neither → create settings.local.json
- */
-function resolvePermissionSettingsPath(claudeDir: string): string {
-	const localPath = join(claudeDir, "settings.local.json");
-	const sharedPath = join(claudeDir, "settings.json");
-
-	if (existsSync(localPath)) return localPath;
-	if (existsSync(sharedPath)) return sharedPath;
-	return localPath;
-}
-
-/**
  * Read a settings file, tolerating what editors and other tools leave behind: a
  * missing file, a UTF-8 byte-order mark, or content that parses but is not an
  * object. Unreadable content yields `{}`, which the callers then overwrite.
@@ -734,12 +720,21 @@ function readSettingsFile(path: string): Record<string, unknown> {
 	}
 }
 
+/** What `writeClaudeHooks` did. `skippedSymlink` names the link that blocked the write. */
+export interface ClaudeHooksWriteResult {
+	written: boolean;
+	skippedSymlink: string | null;
+}
+
 /**
- * Read .claude/settings.local.json, merge dev3 hooks, write back.
- * Also ensures Bash(dev3:*) permission in the appropriate settings file.
- * Creates the .claude/ directory if it doesn't exist.
+ * Read .claude/settings.local.json, merge dev3 hooks, the dev3 Bash permission
+ * and the permission mode, and write it back. Creates .claude/ if missing.
  *
- * Returns whether anything was actually written. Callers that re-assert the
+ * Everything dev3 adds goes to settings.local.json, never a committed
+ * settings.json, and nothing is written when the path crosses a symlink: a repo
+ * that links its settings into a shared kit would otherwise have the kit edited.
+ *
+ * `written` reports whether anything changed on disk. Callers that re-assert the
  * hooks periodically (see `agent-hooks-refresh.ts`) lean on the no-write path:
  * Claude Code holds this file open, so rewriting identical bytes would churn its
  * mtime on every prompt for nothing.
@@ -747,38 +742,21 @@ function readSettingsFile(path: string): Record<string, unknown> {
 export function writeClaudeHooks(
 	worktreePath: string,
 	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
-): boolean {
+): ClaudeHooksWriteResult {
 	const claudeDir = join(worktreePath, ".claude");
-	mkdirSync(claudeDir, { recursive: true });
-
 	const hooksPath = join(claudeDir, "settings.local.json");
-	const permPath = resolvePermissionSettingsPath(claudeDir);
-	const sameFile = permPath === hooksPath;
+	const skippedSymlink = symlinkOnWritePath(worktreePath, hooksPath);
+	if (skippedSymlink) return { written: false, skippedSymlink };
 
-	// Read the hooks target (always settings.local.json)
-	const hooksSettings = readSettingsFile(hooksPath);
+	mkdirSync(claudeDir, { recursive: true });
+	const previous = readSettingsFile(hooksPath);
 
-	let updatedHooks = mergeClaudeHooks(hooksSettings, options);
-
-	// defaultMode always lives in settings.local.json (local scope, gitignored)
-	// so it never leaks into a committed settings.json. "default" is Claude's
-	// baseline — writing it would be a no-op, so we skip it.
+	let updated = ensureDevPermission(mergeClaudeHooks(previous, options));
+	// "default" is Claude's baseline, so writing it would be a no-op.
 	if (options?.permissionMode && options.permissionMode !== "default") {
-		updatedHooks = ensureDefaultMode(updatedHooks, options.permissionMode);
+		updated = ensureDefaultMode(updated, options.permissionMode);
 	}
-
-	if (sameFile) {
-		// Permission goes into the same file — apply on top of merged hooks
-		updatedHooks = ensureDevPermission(updatedHooks);
-		return writeIfChanged(hooksPath, updatedHooks, hooksSettings);
-	}
-
-	// Hooks and permission go to different files
-	const hooksWritten = writeIfChanged(hooksPath, updatedHooks, hooksSettings);
-
-	const permSettings = readSettingsFile(permPath);
-	const permWritten = writeIfChanged(permPath, ensureDevPermission(permSettings), permSettings);
-	return hooksWritten || permWritten;
+	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
 }
 
 /**
@@ -801,18 +779,21 @@ function writeIfChanged(
 /**
  * Read the generated worktree-local .codex/hooks.json, merge dev3 hooks, and
  * write it back. The file is gitignored and disappears with the worktree.
+ * Returns the symlink that blocked the write, or null.
  */
-export function writeCodexHooks(worktreePath: string): void {
+export function writeCodexHooks(worktreePath: string): string | null {
 	const codexDir = join(worktreePath, ".codex");
-	mkdirSync(codexDir, { recursive: true });
-
 	const hooksPath = join(codexDir, "hooks.json");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, hooksPath);
+	if (skippedSymlink) return skippedSymlink;
+	mkdirSync(codexDir, { recursive: true });
 
 	// This is generated, gitignored worktree state. Corruption is replaced rather
 	// than blocking every future Codex launch in this task.
 	const settings = readSettingsFile(hooksPath);
 
 	const updated = mergeCodexHooks(settings);
-	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
+	if (JSON.stringify(updated) === JSON.stringify(settings)) return null;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
+	return null;
 }

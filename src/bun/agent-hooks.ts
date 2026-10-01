@@ -74,7 +74,15 @@ export async function setupAgentHooks(
 	}
 
 	if (spec.kind === "claude") {
-		writeClaudeHooks(worktreePath, { stopTarget: spec.stopTarget, permissionMode: spec.permissionMode });
+		const { skippedSymlink } = writeClaudeHooks(worktreePath, {
+			stopTarget: spec.stopTarget,
+			permissionMode: spec.permissionMode,
+		});
+		if (skippedSymlink) {
+			// The board stops following this task, so say why.
+			log.warn("Claude hooks not written: settings path is a symlink", { worktreePath, symlink: skippedSymlink });
+			return null;
+		}
 		log.info("Claude hooks installed", {
 			worktreePath,
 			permissionMode: spec.permissionMode,
@@ -107,7 +115,10 @@ export async function setupAgentHooks(
 	}
 
 	// spec.kind === "codex"
-	writeCodexHooks(worktreePath);
+	const codexSymlink = writeCodexHooks(worktreePath);
+	if (codexSymlink) {
+		log.warn("Codex hooks not written: hooks path is a symlink", { worktreePath, symlink: codexSymlink });
+	}
 	if (!(await getCodexHookTrustBypassCached())) {
 		// Worth a line: the definitions are in place, Codex reports them untrusted,
 		// and an untrusted hook is skipped in silence — so the board simply stops

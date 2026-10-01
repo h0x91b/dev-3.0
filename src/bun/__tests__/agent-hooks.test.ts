@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -631,26 +631,18 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
 
-	it("adds permission to settings.json when settings.local.json does not exist", () => {
+	it("never writes the committed settings.json, even when it is the only settings file", () => {
 		const claudeDir = join(tmp, ".claude");
 		mkdirSync(claudeDir, { recursive: true });
-		writeFileSync(
-			join(claudeDir, "settings.json"),
-			JSON.stringify({ permissions: { allow: ["Read(*)"] } }),
-		);
+		const shared = JSON.stringify({ permissions: { allow: ["Read(*)"] } });
+		writeFileSync(join(claudeDir, "settings.json"), shared);
 
 		writeClaudeHooks(tmp);
 
-		// Permission goes to settings.json (existing file)
-		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toContain("Read(*)");
-		expect(shared.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-
-		// Hooks go to settings.local.json (always)
+		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8")).toBe(shared);
 		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
 		expect(local.hooks).toBeDefined();
-		// settings.local.json should NOT have the permission (it went to settings.json)
-		expect(local.permissions).toBeUndefined();
+		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 	});
 
 	it("adds permission to settings.local.json when both files exist", () => {
@@ -810,24 +802,6 @@ describe("writeClaudeHooks", () => {
 			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
 		);
 		expect(content.permissions?.defaultMode).toBeUndefined();
-	});
-
-	it("keeps defaultMode in settings.local.json even when permission goes to settings.json", () => {
-		const claudeDir = join(tmp, ".claude");
-		mkdirSync(claudeDir, { recursive: true });
-		// Only settings.json exists → dev3 permission lands there, not in local.
-		writeFileSync(
-			join(claudeDir, "settings.json"),
-			JSON.stringify({ permissions: { allow: ["Read(*)"] } }),
-		);
-
-		writeClaudeHooks(tmp, { permissionMode: "acceptEdits" });
-
-		// defaultMode must be local-scoped (gitignored), never the committed file.
-		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(local.permissions.defaultMode).toBe("acceptEdits");
-		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
-		expect(shared.permissions.defaultMode).toBeUndefined();
 	});
 
 	it("preserves an existing defaultMode-bearing file's other keys", () => {
@@ -1269,6 +1243,64 @@ describe("ensureDevPermission / ensureDefaultMode with malformed settings", () =
 	});
 });
 
+describe("worktree config writes refuse to follow a symlink", () => {
+	let tmp: string;
+	let kit: string;
+	const KIT_CONTENT = JSON.stringify({ permissions: { allow: ["Read(*)"] } });
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-hooks-symlink-"));
+		kit = mkdtempSync(join(tmpdir(), "dev3-hooks-kit-"));
+		writeFileSync(join(kit, "settings.json"), KIT_CONTENT);
+	});
+
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+		rmSync(kit, { recursive: true, force: true });
+	});
+
+	it("leaves a symlinked settings.json alone and writes settings.local.json", () => {
+		mkdirSync(join(tmp, ".claude"));
+		symlinkSync(join(kit, "settings.json"), join(tmp, ".claude", "settings.json"));
+
+		const result = writeClaudeHooks(tmp, { permissionMode: "auto" });
+
+		expect(result).toEqual({ written: true, skippedSymlink: null });
+		expect(readFileSync(join(kit, "settings.json"), "utf-8")).toBe(KIT_CONTENT);
+		const local = JSON.parse(readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"));
+		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+	});
+
+	it("skips a symlinked settings.local.json and reports the link", () => {
+		mkdirSync(join(tmp, ".claude"));
+		const link = join(tmp, ".claude", "settings.local.json");
+		symlinkSync(join(kit, "settings.json"), link);
+
+		expect(writeClaudeHooks(tmp)).toEqual({ written: false, skippedSymlink: link });
+		expect(readFileSync(join(kit, "settings.json"), "utf-8")).toBe(KIT_CONTENT);
+	});
+
+	it("skips when the .claude directory itself is a symlink", () => {
+		symlinkSync(kit, join(tmp, ".claude"));
+
+		expect(writeClaudeHooks(tmp)).toEqual({ written: false, skippedSymlink: join(tmp, ".claude") });
+		expect(existsSync(join(kit, "settings.local.json"))).toBe(false);
+	});
+
+	it("skips a dangling .claude symlink instead of throwing", () => {
+		symlinkSync(join(kit, "missing"), join(tmp, ".claude"));
+
+		expect(writeClaudeHooks(tmp).skippedSymlink).toBe(join(tmp, ".claude"));
+	});
+
+	it("skips a symlinked .codex directory for Codex hooks", () => {
+		symlinkSync(kit, join(tmp, ".codex"));
+
+		expect(writeCodexHooks(tmp)).toBe(join(tmp, ".codex"));
+		expect(existsSync(join(kit, "hooks.json"))).toBe(false);
+	});
+});
+
 describe("writeClaudeHooks with a hostile file on disk", () => {
 	let tmp: string;
 
@@ -1333,8 +1365,8 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 
 		writeClaudeHooks(tmp);
 
-		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toEqual(dev3BashPermissions());
+		expect(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).toBe("null");
+		expect(read().permissions.allow).toEqual(dev3BashPermissions());
 		expect(read().hooks?.Stop).toHaveLength(2);
 	});
 });
@@ -1355,8 +1387,8 @@ describe("writeClaudeHooks write suppression", () => {
 	const settingsPath = () => join(tmp, ".claude", "settings.local.json");
 
 	it("reports a write on the first install and none on the second", () => {
-		expect(writeClaudeHooks(tmp)).toBe(true);
-		expect(writeClaudeHooks(tmp)).toBe(false);
+		expect(writeClaudeHooks(tmp).written).toBe(true);
+		expect(writeClaudeHooks(tmp).written).toBe(false);
 	});
 
 	it("leaves the file untouched when nothing changed", () => {
@@ -1372,29 +1404,23 @@ describe("writeClaudeHooks write suppression", () => {
 		writeClaudeHooks(tmp);
 		writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ["Bash(gh:*)"] } }));
 
-		expect(writeClaudeHooks(tmp)).toBe(true);
+		expect(writeClaudeHooks(tmp).written).toBe(true);
 		expect(JSON.parse(readFileSync(settingsPath(), "utf-8")).hooks?.Stop).toHaveLength(2);
 	});
 
 	it("writes again when the stop target changes", () => {
 		writeClaudeHooks(tmp, { stopTarget: "review-by-user" });
-		expect(writeClaudeHooks(tmp, { stopTarget: "review-by-ai" })).toBe(true);
+		expect(writeClaudeHooks(tmp, { stopTarget: "review-by-ai" }).written).toBe(true);
 	});
 
-	// With only a shared settings.json present, the permission lands there and the
-	// hooks create settings.local.json. From the second run on, the local file
-	// exists and owns the permission too, so that run still writes — the third is
-	// the first quiet one.
-	it("settles after the shared settings.json hands the permission over to the local one", () => {
+	it("settles on the second run when a shared settings.json is present", () => {
 		mkdirSync(join(tmp, ".claude"), { recursive: true });
-		writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ permissions: { allow: [] } }));
+		const shared = JSON.stringify({ permissions: { allow: [] } });
+		writeFileSync(join(tmp, ".claude", "settings.json"), shared);
 
-		expect(writeClaudeHooks(tmp)).toBe(true);
-		expect(writeClaudeHooks(tmp)).toBe(true);
-		expect(writeClaudeHooks(tmp)).toBe(false);
-
-		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toEqual(dev3BashPermissions());
+		expect(writeClaudeHooks(tmp).written).toBe(true);
+		expect(writeClaudeHooks(tmp).written).toBe(false);
+		expect(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).toBe(shared);
 	});
 });
 

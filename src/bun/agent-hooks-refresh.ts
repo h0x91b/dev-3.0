@@ -54,10 +54,10 @@ export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 		if (spec?.kind !== "claude") return;
 
 		const project = await getProject(task.projectId);
-		const changed = writeClaudeHooks(task.worktreePath, {
+		const { written } = writeClaudeHooks(task.worktreePath, {
 			stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		});
-		if (changed) {
+		if (written) {
 			log.info("Claude hooks were missing before a prompt and got reinstalled", {
 				taskId: task.id,
 				worktreePath: task.worktreePath,

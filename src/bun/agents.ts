@@ -42,6 +42,7 @@ import type { TemplateContext } from "../shared/agent-adapters/template";
 // still import them from here.
 export { shellEscape, quoteIfUnsafe } from "../shared/agent-adapters/shell";
 import { commandToken } from "../shared/agent-adapters/shell";
+import { symlinkOnWritePath } from "../shared/symlink-write-guard";
 export { interpolateTemplate } from "../shared/agent-adapters/template";
 export type { TemplateContext } from "../shared/agent-adapters/template";
 
@@ -1289,6 +1290,11 @@ function ensureClaudeMcpApproved(worktreePath: string, projectPath?: string): vo
 	if (!existsSync(mcpJsonPath)) return;
 
 	const localSettingsPath = join(worktreePath, ".claude", "settings.local.json");
+	const symlink = symlinkOnWritePath(worktreePath, localSettingsPath);
+	if (symlink) {
+		log.warn("MCP servers not pre-approved: settings path is a symlink", { worktreePath, symlink });
+		return;
+	}
 	const projectSources: Array<string | undefined> = projectPath
 		? [join(projectPath, ".claude", "settings.json"), join(projectPath, ".claude", "settings.local.json")]
 		: [];
