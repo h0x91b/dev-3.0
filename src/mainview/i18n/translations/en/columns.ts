@@ -79,6 +79,7 @@ const columns = {
 	"filter.flag.attention": "Needs attention",
 	"filter.flag.port": "Has running port",
 	"filter.flag.hidden": "Hidden from sidebar",
+	"filter.flag.hibernated": "Hibernated or disconnected",
 	"labels.moreLabels": "+{count} more",
 
 	// Notes

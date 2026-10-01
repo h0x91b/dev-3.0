@@ -344,6 +344,8 @@ const common = {
 	"sidebar.hiddenAttentionCount_one": "{count} tarea oculta te necesita",
 	"sidebar.hiddenAttentionCount_other": "{count} tareas ocultas te necesitan",
 	"sidebar.hiddenTaskCount_other": "{count} tareas ocultas",
+	"sidebar.hibernatedTaskCount_one": "{count} tarea hibernada o desconectada",
+	"sidebar.hibernatedTaskCount_other": "{count} tareas hibernadas o desconectadas",
 	"sidebar.noSearchResults": "No se encontraron tareas",
 	"sidebar.searchPlaceholder": "Buscar tareas...",
 	"sidebar.searchAriaLabel": "Buscar tareas",

@@ -54,6 +54,7 @@ function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
 		spaceNames: [],
 		hasPort: false,
 		isHidden: false,
+		isHibernated: false,
 		isAttention: false,
 		prNumber: null,
 		...overrides,
@@ -249,6 +250,13 @@ describe("matchesTaskQuery — facets", () => {
 		expect(matchesTaskQuery(makeTask(), "status:done", statusCtx)).toBe(false);
 		const parkedCtx = ctx({ statusValues: ["On Hold", "review-by-user", "Your Review"] });
 		expect(matchesTaskQuery(makeTask(), 'status:"on hold"', parkedCtx)).toBe(true);
+	});
+
+	it("is:hibernated matches only a hibernated task, never a hidden one", () => {
+		expect(matchesTaskQuery(makeTask(), "is:hibernated", ctx({ isHibernated: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "is:hibernated", ctx({ isHibernated: false }))).toBe(false);
+		expect(matchesTaskQuery(makeTask(), "is:hibernated", ctx({ isHidden: true }))).toBe(false);
+		expect(matchesTaskQuery(makeTask(), "is:hidden", ctx({ isHibernated: true }))).toBe(false);
 	});
 
 	it("is:hidden matches only a task hidden from the sidebar", () => {

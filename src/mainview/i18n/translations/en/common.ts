@@ -343,6 +343,8 @@ const common = {
 	"sidebar.hiddenAttentionCount_one": "{count} hidden task needs you",
 	"sidebar.hiddenAttentionCount_other": "{count} hidden tasks need you",
 	"sidebar.hiddenTaskCount_other": "{count} hidden tasks",
+	"sidebar.hibernatedTaskCount_one": "{count} hibernated or disconnected task",
+	"sidebar.hibernatedTaskCount_other": "{count} hibernated or disconnected tasks",
 	"sidebar.noSearchResults": "No tasks match your search",
 	"sidebar.searchPlaceholder": "Search tasks...",
 	"sidebar.searchAriaLabel": "Search tasks",

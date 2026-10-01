@@ -1,3 +1,5 @@
+> Partly superseded on 2026-10-01 by `decisions/2026/10/01/active-tasks-hide-hibernated.md`: hibernated and disconnected tasks no longer keep their row; they leave the list by default behind the same reveal eye.
+
 # Hide tasks from the Active Tasks sidebar
 
 ## Context

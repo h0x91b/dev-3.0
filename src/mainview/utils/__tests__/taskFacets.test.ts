@@ -143,7 +143,7 @@ describe("buildFilterGroups", () => {
 		{ facet: "priority", value: "P3", label: "P3 — Low" },
 		{ facet: "priority", value: "P4", label: "P4 — Lowest" },
 	];
-	const candidates = { priorityCandidates, statusCandidates, flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar" } };
+	const candidates = { priorityCandidates, statusCandidates, flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar", hibernated: "Hibernated" } };
 
 	function resolverFor(): FacetResolver {
 		const labelsById: Record<string, Label[]> = {
@@ -191,6 +191,16 @@ describe("buildFilterGroups", () => {
 		expect(groups.find((g) => g.id === "status")?.options.map((o) => o.value)).toEqual(["in-progress"]);
 	});
 
+	it("offers is:hibernated only while a hibernated task is in the pool", () => {
+		const flagsOf = (tasks: Task[]) => buildFilterGroups(tasks, resolverFor(), candidates)
+			.find((g) => g.id === "flags")?.options.map((o) => `${o.facet}:${o.value}`) ?? [];
+		expect(flagsOf([makeTask({ id: "awake", status: "in-progress" })])).not.toContain("is:hibernated");
+		expect(flagsOf([makeTask({ id: "sleep", status: "in-progress", hibernated: true })])).toEqual(["is:hibernated"]);
+		const dead = makeTask({ id: "dead", status: "in-progress", worktreePath: "/tmp/wt", runtimeState: { runtime: "idle", updatedAt: 0 } });
+		expect(flagsOf([dead])).toEqual(["is:hibernated"]);
+		expect(taskQueryContext(dead, resolverFor()).isHibernated).toBe(true);
+	});
+
 	it("returns no groups for an empty task list", () => {
 		expect(buildFilterGroups([], resolverFor(), candidates)).toEqual([]);
 	});
@@ -208,7 +218,7 @@ describe("buildFilterGroups — SPACES group", () => {
 	const spaceCandidates = {
 		priorityCandidates: [{ facet: "priority" as const, value: "P2", label: "P2 — Normal" }],
 		statusCandidates: [{ facet: "status" as const, value: "in-progress", label: "Agent is Working" }],
-		flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar" },
+		flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar", hibernated: "Hibernated" },
 	};
 
 	it("lists every space present in the pool, alphabetically, after STATUS", () => {

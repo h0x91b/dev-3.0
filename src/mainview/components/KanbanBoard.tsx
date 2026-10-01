@@ -383,6 +383,7 @@ function KanbanBoard({
 				port: t("filter.flag.port"),
 				home: t("spaces.homeGroup"),
 				hidden: t("filter.flag.hidden"),
+				hibernated: t("filter.flag.hibernated"),
 			},
 		}),
 		[tasks, resolver, priorityCandidates, statusCandidates, t],

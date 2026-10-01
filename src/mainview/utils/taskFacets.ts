@@ -1,4 +1,5 @@
 import type { CodingAgent, Label, Task, TaskStatus } from "../../shared/types";
+import { isTaskDisconnected } from "../../shared/types";
 import type { FacetKey, TaskQueryContext } from "./taskSearch";
 import { getTaskAgentMeta } from "./taskAgentMeta";
 
@@ -36,6 +37,11 @@ const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "r
  * queue. Single source of truth for the sidebar attention scope and the
  * `is:attention` facet. Per-task bells remain visual notifications only.
  */
+/** Hibernated or disconnected: no live session to jump to (`is:hibernated`). */
+export function isTaskNotRunning(task: Task): boolean {
+	return task.hibernated === true || isTaskDisconnected(task);
+}
+
 export function isAttentionTask(task: Task): boolean {
 	return ATTENTION_STATUSES.includes(task.status);
 }
@@ -79,6 +85,7 @@ export function taskQueryContext(task: Task, resolver: FacetResolver): TaskQuery
 		hasPort: resolver.hasPortFor(task),
 		isAttention: resolver.isAttentionFor(task),
 		isHidden: task.hidden === true,
+		isHibernated: isTaskNotRunning(task),
 		spaceNames: resolver.spaceNamesFor ? resolver.spaceNamesFor(task) : null,
 		prNumber: resolver.prNumberFor?.(task) ?? null,
 	};
@@ -89,7 +96,7 @@ export interface FilterFunnelCandidates {
 	priorityCandidates: FilterFunnelOption[];
 	/** Full ordered status vocabulary (built-in statuses + custom columns). */
 	statusCandidates: FilterFunnelOption[];
-	flagLabels: { attention: string; port: string; home: string; hidden: string };
+	flagLabels: { attention: string; port: string; home: string; hidden: string; hibernated: string };
 }
 
 /**
@@ -113,6 +120,7 @@ export function buildFilterGroups(
 	let anyPort = false;
 	let anyHome = false;
 	let anyHidden = false;
+	let anyHibernated = false;
 
 	for (const task of tasks) {
 		for (const label of resolver.labelsFor(task)) {
@@ -144,6 +152,7 @@ export function buildFilterGroups(
 		if (resolver.isAttentionFor(task)) anyAttention = true;
 		if (resolver.hasPortFor(task)) anyPort = true;
 		if (task.hidden) anyHidden = true;
+		if (isTaskNotRunning(task)) anyHibernated = true;
 	}
 
 	const priorityOptions = priorityCandidates.filter((c) => presentPriority.has(c.value.toLowerCase()));
@@ -161,6 +170,7 @@ export function buildFilterGroups(
 	// Offered from the pool BEFORE sidebar visibility filtering, so the token is
 	// reachable while the very tasks it selects are out of the list.
 	if (anyHidden) flagOptions.push({ facet: "is", value: "hidden", label: flagLabels.hidden });
+	if (anyHibernated) flagOptions.push({ facet: "is", value: "hibernated", label: flagLabels.hibernated });
 
 	const groups: FilterFunnelGroup[] = [
 		{ id: "priority", options: priorityOptions },

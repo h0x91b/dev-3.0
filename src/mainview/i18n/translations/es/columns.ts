@@ -79,6 +79,7 @@ const columns = {
 	"filter.flag.attention": "Requiere atención",
 	"filter.flag.port": "Con puerto activo",
 	"filter.flag.hidden": "Oculta de la barra lateral",
+	"filter.flag.hibernated": "Hibernada o desconectada",
 	"labels.moreLabels": "+{count} más",
 
 	// Notes
