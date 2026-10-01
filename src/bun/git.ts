@@ -1,6 +1,7 @@
 import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
@@ -1050,7 +1051,9 @@ async function reclaimStaleWorktreeDir(project: Project, wtPath: string): Promis
 	log.warn("Reclaiming leftover worktree directory", { wtPath, projectPath: project.path });
 	await run(["git", "worktree", "remove", "--force", wtPath], project.path);
 	if (existsSync(wtPath)) {
-		rmSync(wtPath, { recursive: true, force: true });
+		// Async on purpose: a leftover monorepo tree takes seconds, and the sync form
+		// froze every RPC for all of them (decisions/2026/10/01/clonefile-off-the-host-thread.md).
+		await rm(wtPath, { recursive: true, force: true });
 	}
 	await run(["git", "worktree", "prune"], project.path);
 }
@@ -3117,7 +3120,7 @@ export async function removeWorktree(
 					stderr: removeResult.stderr,
 				});
 				if (isManagedTaskWorktreePath(project, targetPath)) {
-					rmSync(targetPath, { recursive: true, force: true });
+					await rm(targetPath, { recursive: true, force: true });
 				}
 				await run(["git", "worktree", "prune"], project.path);
 			} else {

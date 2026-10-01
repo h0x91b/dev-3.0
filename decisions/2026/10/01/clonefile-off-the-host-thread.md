@@ -9,6 +9,8 @@ Disposable fixture, 60 000 files: the clone took ~560 ms and the host event loop
 ## Decision
 `tryClonefile` posts `{ src, dst }` to `src/bun/workers/clonefile-worker.ts` (bundled to `dist/workers` by `scripts/build-cli.ts`, configured by `index.ts` and `headless-entry.ts` via `configureClonefileWorker`). The host resolves only on the worker's `exit`, never on its message, so the `cp -cR` fallback can never write into a destination the thread may still be cloning into; there is no timeout because a syscall cannot be interrupted. A missing worker bundle skips straight to `cp -cR`. Clone work across all preparing tasks shares `MAX_CONCURRENT_CLONES = 2` slots.
 
+The two fallback deletes in `git.ts` (`reclaimStaleWorktreeDir`, and `removeWorktree` when git no longer knows the worktree) use `fs.promises.rm` instead of `rmSync`: on a 60 000-file tree both take ~2.5 s, but `rmSync` stopped the host the whole time while the async form left it at 7–15 ms. What is deleted and the ownership checks before it are unchanged.
+
 ## Risks
 A clone that hangs in the kernel holds its slot forever; before, it hung the whole app. The limit of 2 is a judgement, not a measurement. Windows and Linux paths are unchanged and were not exercised.
 
