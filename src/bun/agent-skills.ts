@@ -62,6 +62,10 @@ The full protocol is already in your system prompt (the "dev3 — Task Lifecycle
 \\\`\\\`\\\`
 !\`${dialect.cli} current --brief\`
 \\\`\\\`\\\`
+
+## Recent notes on this task
+
+!\`${dialect.cli} note recent${captureStderr}\`
 `;
 }
 
@@ -81,6 +85,8 @@ user-invocable: true
 If your context already includes the full "dev3 — Task Lifecycle Protocol" from your launch, follow that protocol, including its agent-specific status rules. No additional skill read or startup command is needed just to load the same instructions again.
 
 Otherwise, read PROTOCOL.md in this skill's directory before working in a dev3 managed worktree. That file is the complete fallback, including startup instructions, and remains available whenever you need to inspect the full reference. Run \`${dialect.cli} --help\` when you need the CLI reference.
+
+To recover this task's context, run \`${dialect.cli} note recent\`: the 5 newest task notes, size-bounded, with the commands to read the rest.
 `;
 }
 
@@ -101,6 +107,8 @@ Run these two commands to learn about available CLI commands and your current ta
 - \`${dialect.cli} current\` — see your current project, task, and status
 
 Then begin working. Do not move the task status on session start; the injected \`SessionStart\` hook already owns that transition.
+
+On a fresh startup that hook also hands you this task's 5 newest notes. After \`/clear\`, a resume, or whenever you need them again, run \`${dialect.cli} note recent\` yourself — nothing re-injects them.
 `;
 }
 

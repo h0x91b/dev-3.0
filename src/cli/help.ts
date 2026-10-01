@@ -211,6 +211,11 @@ const COMMANDS: CommandHelp[] = [
 				summary: "Show one note's full body (8-char prefix works).",
 			},
 			{
+				name: "recent",
+				usage: "dev3 note recent [--task <id>]",
+				summary: "The 5 newest notes, previews capped at 6000 chars total — the block new sessions get.",
+			},
+			{
 				name: "delete",
 				usage: "dev3 note delete <id> [--task <id>]",
 				summary: "Delete a note (8-char prefix works).",

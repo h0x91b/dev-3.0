@@ -37,6 +37,7 @@ import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleOmpHook } from "./commands/omp-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
@@ -63,6 +64,7 @@ Commands:
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
   dev3 note show <id> [--task <task>]   Show one note's full body (8-char prefix works)
+  dev3 note recent [--task <task>]      The 5 newest notes, size-bounded (what new sessions get)
   dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
   dev3 review list [--unresolved] [--json] [--task <id>]  The user's review comments on your diff and artifacts
   dev3 review resolve <id> [--reply "..."] [--task <id>]  Close a comment you handled (8-char prefix works)
@@ -221,6 +223,10 @@ async function main(): Promise<void> {
 	if (command === "current") {
 		return await handleCurrent(socketPath, { brief: Boolean(args.flags.brief) });
 	}
+	if (command === "note" && subcommand === "recent") {
+		// Runs as a `/dev3` skill injection, so it answers offline too (exit 0).
+		return await handleNoteRecent(args, socketPath || context?.socketPath || null, context);
+	}
 	if (command === "install-hooks") {
 		return await handleInstallHooks();
 	}
@@ -254,6 +260,15 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter for the generated omp status extension. Same
 		// contract as the Codex one: silent, and successful whatever happens.
 		return await handleOmpHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "claude-session-start") {
+		// Internal: Claude Code's SessionStart, answered with this task's recent
+		// notes as additionalContext. Always quiet and successful.
+		return await handleClaudeSessionStart(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

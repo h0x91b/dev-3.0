@@ -41,12 +41,13 @@ export async function handleInstallHooks(): Promise<void> {
 	const ompExtensionPath = writeOmpStatusExtension();
 
 	process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
+	process.stdout.write(`  SessionStart (startup/clear/compact) → recent task notes as context\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
 	process.stdout.write(`  PreToolUse → in-progress\n`);
 	process.stdout.write(`  PermissionRequest → user-questions\n`);
 	process.stdout.write(`  Stop → review-by-user\n`);
 	process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
-	process.stdout.write(`  SessionStart → in-progress\n`);
+	process.stdout.write(`  SessionStart → in-progress; on startup also recent task notes as context\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
 	process.stdout.write(`  PreToolUse/PostToolUse → in-progress\n`);
 	process.stdout.write(`  PermissionRequest → user-questions\n`);

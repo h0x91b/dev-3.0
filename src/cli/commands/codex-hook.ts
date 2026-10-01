@@ -6,6 +6,7 @@ import {
 } from "../../shared/agent-hooks";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
+import { loadRecentNotesBlock, sessionStartContextOutput } from "./recent-notes";
 
 interface CodexHookPayload {
 	event: AgentStatusHookEvent;
@@ -18,6 +19,8 @@ interface CodexHookPayload {
 	prompt?: string;
 	/** Codex's own per-turn identity — how a redelivered hook is recognised. */
 	turnId?: string;
+	/** `SessionStart` only: startup, resume, clear, compact or fork. */
+	source?: string;
 }
 
 function questionFingerprint(title: string): string {
@@ -43,6 +46,7 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			session_id?: unknown;
 			prompt?: unknown;
 			turn_id?: unknown;
+			source?: unknown;
 		};
 		if (typeof parsed.hook_event_name !== "string") return null;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(parsed.hook_event_name as AgentStatusHookEvent)) {
@@ -67,6 +71,7 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			...(typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}),
 			...(typeof parsed.prompt === "string" && parsed.prompt.trim() ? { prompt: parsed.prompt } : {}),
 			...(typeof parsed.turn_id === "string" ? { turnId: parsed.turn_id } : {}),
+			...(typeof parsed.source === "string" ? { source: parsed.source } : {}),
 		};
 	} catch {
 		return null;
@@ -84,6 +89,11 @@ export async function handleCodexHook(
 	context: CliContext | null,
 ): Promise<void> {
 	const payload = parsePayload(rawInput);
+	// Only a brand-new conversation lacks the notes; a resumed rollout already
+	// carries the block it was given at its own startup.
+	const recentNotes = payload?.event === "SessionStart" && payload.source === "startup"
+		? loadRecentNotesBlock(socketPath, context?.taskId, context?.projectId)
+		: null;
 
 	if (payload && socketPath && context?.taskId) {
 		// The hook runs inside the Codex pane, so $TMUX_PANE identifies which pane
@@ -120,5 +130,6 @@ export async function handleCodexHook(
 		}
 	}
 
-	process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+	const notes = recentNotes ? await recentNotes : null;
+	process.stdout.write(notes?.kind === "block" ? sessionStartContextOutput(notes.block) : CODEX_STOP_HOOK_SUCCESS_JSON);
 }

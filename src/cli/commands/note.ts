@@ -173,7 +173,7 @@ export async function handleNote(
 		default:
 			exitUsage(
 				`Unknown subcommand: note ${subcommand || "(none)"}` +
-				"\nAvailable: note add, note list, note show, note delete",
+				"\nAvailable: note add, note list, note show, note recent, note delete",
 			);
 	}
 }

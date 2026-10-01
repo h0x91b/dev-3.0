@@ -43,6 +43,17 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(2);
 	});
 
+	it("SessionStart only injects recent notes, on fresh conversations, and never moves status", () => {
+		const hooks = buildClaudeHooks();
+		expect(hooks.SessionStart).toHaveLength(1);
+		const group = hooks.SessionStart[0];
+		expect(group.matcher).toBe("startup|clear|compact");
+		expect(group.hooks).toEqual([
+			{ type: "command", command: `${DEV3_CLI} hook claude-session-start`, timeout: 5 },
+		]);
+		expect(group.hooks[0].command).not.toContain("task move");
+	});
+
 	it("UserPromptSubmit hook moves to in-progress with --if-status-not guard", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
@@ -201,7 +212,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
@@ -711,6 +722,7 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 		expect(Object.keys(hooks)).toEqual([
+			"SessionStart",
 			"UserPromptSubmit",
 			"PreToolUse",
 			"PostToolUse",
@@ -1102,6 +1114,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 	const hookEvents = (result: unknown) =>
 		Object.keys((result as { hooks: Record<string, unknown> }).hooks);
 	const DEV3_EVENTS = [
+		"SessionStart",
 		"UserPromptSubmit",
 		"PreToolUse",
 		"PostToolUse",

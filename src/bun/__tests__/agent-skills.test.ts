@@ -297,6 +297,21 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 		expect(skill).not.toContain("dev3 current`\n");
 	});
 
+	it("injects the task's recent notes automatically on every /dev3 load", () => {
+		const skill = getClaudeSkillContent();
+		expect(skill).toContain("## Recent notes on this task");
+		expect(skill).toContain("!`~/.dev3.0/bin/dev3 note recent 2>&1`");
+	});
+
+	it("Codex skills only INSTRUCT running `note recent` — there is no injection to do it for them", () => {
+		const full = buildCodexSkillContent(hookCliDialect({ platform: "darwin" }));
+		const compact = buildCodexSkillContent(hookCliDialect({ platform: "darwin" }), true);
+		for (const content of [full, compact]) {
+			expect(content).toContain("run `~/.dev3.0/bin/dev3 note recent`");
+			expect(content).not.toContain("!`");
+		}
+	});
+
 	it("codex and generic skill files keep the full body (their only reliable channel)", () => {
 		// Codex scratch tasks and Gemini/Cursor/OpenCode sessions get no
 		// system-prompt injection — SKILL.md is load-bearing for them.

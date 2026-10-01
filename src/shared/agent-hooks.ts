@@ -322,6 +322,14 @@ export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
  */
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
 /**
+ * Answers Claude Code's `SessionStart` with the task's recent notes. Its own
+ * entry and no status move: Claude's board status is driven by the prompt and
+ * tool hooks, and a fresh session that only opened is not working yet.
+ */
+export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
+/** `resume` is left out: the resumed transcript already holds the block it was given. */
+export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
+/**
  * The lifecycle events dev3 turns into board status moves. Codex emits these
  * names verbatim; Copilot's adapter maps its own camelCase names onto them and
  * the omp status extension translates its events the same way
@@ -496,6 +504,16 @@ export function buildClaudeHooks(
 	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
 
 	return {
+		SessionStart: [
+			{
+				matcher: CLAUDE_SESSION_START_MATCHER,
+				hooks: [{
+					type: "command",
+					command: `${dialect.cli} ${CLAUDE_SESSION_START_HOOK_SUBCOMMAND}`,
+					timeout: 5,
+				}],
+			},
+		],
 		UserPromptSubmit: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
 			{
