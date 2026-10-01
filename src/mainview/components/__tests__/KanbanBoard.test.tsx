@@ -204,7 +204,7 @@ describe("column ordering", () => {
 		});
 		const result = await renderBoardWith({ tasks: [task] });
 		try {
-			const badge = screen.getByLabelText("Open PR #42");
+			const badge = screen.getByLabelText("Open PR #42 — Open");
 			expect(badge).toBeInTheDocument();
 			await userEvent.hover(badge);
 			const popover = await screen.findByTestId("pr-status-popover");

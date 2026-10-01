@@ -14,6 +14,7 @@ import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 import { isLivePullRequest } from "../../utils/taskPrBadge";
+import { prBadgeDisplayState, prStateTone } from "../../utils/prStateTone";
 
 export interface TaskBranchStatusMeta {
 	/** Which task this status describes — the panel drops it once they diverge. */
@@ -328,7 +329,8 @@ export default function TaskGitActions({
 		})
 		: undefined;
 
-	const prBadge = prInfo ? (
+	const prTone = prInfo ? prStateTone(prBadgeDisplayState(prInfo, branchStatus)) : null;
+	const prBadge = prInfo && prTone ? (
 		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)}>
 			<button
 				type="button"
@@ -338,10 +340,11 @@ export default function TaskGitActions({
 						window.open(prInfo.url, "_blank");
 					}
 				}}
-				className="inline-flex items-center gap-1 text-dense font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+				className={`inline-flex items-center gap-1 text-dense font-mono font-semibold px-1.5 py-0.5 rounded transition-colors flex-shrink-0 ${prTone.chip}`}
 			>
 				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 				{t("task.prBadge", { number: String(prInfo.number) })}
+				{prTone.labelKey && <span className="sr-only">{` — ${t(prTone.labelKey)}`}</span>}
 				{(prInfo.unresolvedCount ?? 0) > 0 && (
 					<span className="inline-flex items-center gap-0.5 text-warning-strong" aria-label={t.plural("task.prUnresolvedComments", prInfo.unresolvedCount ?? 0)}>
 						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>

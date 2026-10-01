@@ -5,6 +5,7 @@ import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/p
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
+import { prDisplayState, prStateTone, type PRDisplayState } from "../utils/prStateTone";
 import { computeAnchoredPosition, type RectLike } from "../utils/popoverPosition";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -22,13 +23,9 @@ interface TaskPrStatusPopoverProps {
 	children: ReactElement;
 }
 
-function prStateMeta(state: string | null | undefined, t: ReturnType<typeof useT>): { label: string; className: string } | null {
-	switch (state?.toUpperCase()) {
-		case "OPEN": return { label: t("task.prStatusOpen"), className: "text-fg-3" };
-		case "MERGED": return { label: t("task.prStatusMerged"), className: "text-success" };
-		case "CLOSED": return { label: t("task.prStatusClosed"), className: "text-danger" };
-		default: return null;
-	}
+function prStateMeta(state: PRDisplayState, t: ReturnType<typeof useT>): { label: string; className: string } | null {
+	const tone = prStateTone(state);
+	return tone.labelKey ? { label: t(tone.labelKey), className: tone.text } : null;
 }
 
 type CheckState = "failure" | "pending" | "success" | "unknown";
@@ -310,7 +307,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 			? "text-danger"
 			: "text-fg-3";
 	const mergeReasons = mergeability.state === "not_mergeable" ? mergeReasonDetails(prInfo, mergeability, t) : [];
-	const currentStateMeta = prStateMeta(prInfo.mergeState?.state, t);
+	const currentStateMeta = prStateMeta(prDisplayState(prInfo.mergeState?.state, prInfo.isDraft), t);
 	const earlier = earlierPullRequests ?? [];
 
 	// Shared body between the desktop hover popover and the mobile bottom sheet.
@@ -324,13 +321,13 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 						<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
 						{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
 					</div>
-					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning-strong">{t("task.prDraft")}</span>}
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-fg-3/10 px-1.5 py-0.5 font-medium text-fg-2">{t("task.prDraft")}</span>}
 				</div>
 			)}
 			{sheet && (prInfo.prTitle || prInfo.isDraft) && (
 				<div className="flex items-start justify-between gap-3">
 					{prInfo.prTitle && <div className="min-w-0 break-words text-fg-3">{prInfo.prTitle}</div>}
-					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning-strong">{t("task.prDraft")}</span>}
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-fg-3/10 px-1.5 py-0.5 font-medium text-fg-2">{t("task.prDraft")}</span>}
 				</div>
 			)}
 
@@ -441,7 +438,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 					<div className="mb-1.5 font-medium text-fg-2">{t("task.prEarlier")}</div>
 					<ul className="space-y-1">
 						{earlier.map((pr) => {
-							const stateMeta = prStateMeta(pr.state, t);
+							const stateMeta = prStateMeta(prDisplayState(pr.state), t);
 							return (
 								<li key={pr.number}>
 									<a

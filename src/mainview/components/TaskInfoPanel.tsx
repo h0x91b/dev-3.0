@@ -14,6 +14,7 @@ import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
+import { prBadgeDisplayState, prStateTone } from "../utils/prStateTone";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -644,6 +645,7 @@ function TaskInfoPanel({
 					url: task.prUrl ?? "",
 				}
 				: null);
+	const metadataPrTone = metadataPrInfo ? prStateTone(prBadgeDisplayState(metadataPrInfo, metadataBranchStatus)) : null;
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	// Per-file stats are what the filter subtracts from. Without them there is
 	// nothing to subtract, so the raw totals stand instead of collapsing to zero.
@@ -1186,9 +1188,10 @@ function TaskInfoPanel({
 										<button
 											type="button"
 											onClick={() => metadataPrInfo.url && window.open(metadataPrInfo.url, "_blank")}
-											className="inline-flex items-center gap-1.5 text-success font-mono font-semibold hover:underline text-left"
+											className={`inline-flex items-center gap-1.5 font-mono font-semibold hover:underline text-left ${metadataPrTone?.text ?? "text-fg-3"}`}
 										>
 											<span>{t("task.prBadge", { number: String(metadataPrInfo.number) })}</span>
+											{metadataPrTone?.labelKey && <span className="sr-only">{` — ${t(metadataPrTone.labelKey)}`}</span>}
 											{(metadataPrInfo.unresolvedCount ?? 0) > 0 && (
 												<span className="inline-flex items-center gap-0.5 text-warning-strong no-underline" aria-label={t.plural("task.prUnresolvedComments", metadataPrInfo.unresolvedCount ?? 0)}>
 													<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>

@@ -2,6 +2,7 @@ import type { TaskPRBadgeInfo, TaskPullRequestRecord } from "../../shared/types"
 import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 import { useT, type TranslationKey } from "../i18n";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
+import { prBadgeDisplayState, prStateTone } from "../utils/prStateTone";
 
 const MERGE_BADGE_REASON: Record<PRMergeabilityReason, TranslationKey> = {
 	conflict: "task.mergeBadge.conflict",
@@ -55,6 +56,8 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 	const reviewMeta = prInfo.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const unresolvedCount = prInfo.unresolvedCount ?? 0;
 	const ok = mergeability.state === "mergeable";
+	const prTone = prStateTone(prBadgeDisplayState(prInfo));
+	const prLabel = t("task.openPR", { number: String(prInfo.number) });
 	const mergeLabel = ok
 		? t("task.mergeBadge.mergeable")
 		: mergeability.reason
@@ -70,8 +73,8 @@ export default function TaskPrBadges({ prInfo, projectId, taskId, onShowUnresolv
 						e.stopPropagation();
 						window.open(prInfo.url, "_blank");
 					}}
-					className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-mono text-dense font-semibold leading-none text-success transition-colors hover:bg-success/20"
-					aria-label={t("task.openPR", { number: String(prInfo.number) })}
+					className={`inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-dense font-semibold leading-none transition-colors ${prTone.chip}`}
+					aria-label={prTone.labelKey ? `${prLabel} — ${t(prTone.labelKey)}` : prLabel}
 				>
 					<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 					<span className="leading-none">{t("task.prNumber", { number: String(prInfo.number) })}</span>

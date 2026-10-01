@@ -27,6 +27,7 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
+import { prDisplayState, prStateTone } from "../utils/prStateTone";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -913,18 +914,22 @@ function ArchivedView({
 									<>
 										<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
 										<span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1" data-testid="task-detail-pull-requests">
-											{pullRequests.map((pr) => (
-												<a
-													key={pr.number}
-													href={pr.url}
-													target="_blank"
-													rel="noreferrer"
-													className="font-mono text-accent hover:text-accent-emphasis hover:underline"
-													title={pr.title ?? undefined}
-												>
-													{t("task.prNumber", { number: String(pr.number) })}
-												</a>
-											))}
+											{pullRequests.map((pr) => {
+												const tone = prStateTone(prDisplayState(pr.state));
+												return (
+													<a
+														key={pr.number}
+														href={pr.url}
+														target="_blank"
+														rel="noreferrer"
+														className={`inline-flex items-baseline gap-1 font-mono hover:underline ${tone.labelKey ? tone.text : "text-accent hover:text-accent-emphasis"}`}
+														title={pr.title ?? undefined}
+													>
+														{t("task.prNumber", { number: String(pr.number) })}
+														{tone.labelKey && <span className="font-sans text-dense text-fg-3">{t(tone.labelKey)}</span>}
+													</a>
+												);
+											})}
 										</span>
 									</>
 								)}

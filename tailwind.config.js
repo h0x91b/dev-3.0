@@ -96,6 +96,7 @@ export default {
 				},
 				"warning-strong": "rgb(var(--warning-strong) / <alpha-value>)",
 				agent: "rgb(var(--agent) / <alpha-value>)",
+				"pr-merged": "rgb(var(--pr-merged) / <alpha-value>)",
 				favorite: "rgb(var(--favorite) / <alpha-value>)",
 				awake: {
 					DEFAULT: "rgb(var(--awake) / <alpha-value>)",

@@ -216,6 +216,9 @@ html {
 	/* Agent-to-agent traffic: violet, the only hue no state token owns, so
 	   "one agent wrote to another" never reads as status/error/success. */
 	--agent: 178 152 253;
+	/* Merged pull request: GitHub's merged purple. Its own role, not --agent —
+	   one hue, one meaning. ≥ 5.3:1 on a pr-merged/10 chip over overlay. */
+	--pr-merged: 188 140 255;
 	/* Traffic wires: 16 categorical hues, one per connection, so two wires in
 	   the same corridor never read as one. Equal OKLCH lightness (0.74) and equal
 	   share (94%) of each hue's own maximum chroma — no wire looks louder than its neighbour. */
@@ -363,6 +366,8 @@ html {
 	--warning-fill-hover: 82 67 7;
 	/* Agent-to-agent traffic — deepened so violet ink carries on tinted paper. */
 	--agent: 109 40 217;
+	/* Merged pull request — deepened for light paper, ≥ 5.2:1 on its /10 chip. */
+	--pr-merged: 111 66 193;
 	/* Traffic wires: 16 categorical hues, one per connection, so two wires in
 	   the same corridor never read as one. Equal OKLCH lightness (0.58) and equal
 	   share (94%) of each hue's own maximum chroma — darkened for light paper. */

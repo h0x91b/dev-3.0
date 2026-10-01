@@ -2752,6 +2752,51 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
 		});
 
+		it.each([
+			["MERGED", "text-pr-merged", "Merged"],
+			["CLOSED", "text-danger", "Closed"],
+			["OPEN", "text-success", "Open"],
+		])("tints every PR #42 badge by the branch's %s state and names it", async (prState, cls, label) => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const badges = screen.getAllByText(/PR #42/).map((node) => node.closest("button")!);
+			expect(badges.length).toBeGreaterThanOrEqual(1);
+			for (const badge of badges) {
+				expect(badge.className).toContain(cls);
+				expect(badge).toHaveTextContent(`PR #42 — ${label}`);
+			}
+		});
+
+		it("keeps the PR #42 badge neutral while nothing reports its state", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				prState: null,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			for (const node of screen.getAllByText(/PR #42/)) {
+				expect(node.closest("button")!.className).not.toMatch(/success|pr-merged|danger/);
+			}
+		});
+
 		it("reads a merged PR from the task's cache when GitHub gives no state", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,

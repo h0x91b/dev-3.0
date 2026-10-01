@@ -14,8 +14,12 @@ interface ReportedPRState {
  */
 export function isLivePullRequest(prNumber: number | null | undefined, reports: Array<ReportedPRState | null | undefined>): boolean {
 	if (prNumber == null) return false;
-	const known = reports.find((report) => report?.number === prNumber && report.state);
-	return !isPullRequestFinished(known?.state);
+	return !isPullRequestFinished(reportedPRState(prNumber, reports));
+}
+
+/** GitHub's state for that PR number from the first source that reports one; null when none does. */
+export function reportedPRState(prNumber: number, reports: Array<ReportedPRState | null | undefined>): string | null {
+	return reports.find((report) => report?.number === prNumber && report.state)?.state ?? null;
 }
 
 export function samePRIdentity(left: TaskPRBadgeInfo | null | undefined, right: PRIdentity): boolean {

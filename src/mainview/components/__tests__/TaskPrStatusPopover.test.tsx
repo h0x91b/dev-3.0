@@ -93,3 +93,42 @@ describe("TaskPrStatusPopover — earlier pull requests", () => {
 		expect(screen.queryByTestId("pr-popover-earlier")).not.toBeInTheDocument();
 	});
 });
+
+describe("TaskPrStatusPopover — PR state colours", () => {
+	async function statusValue(prInfo: TaskPRBadgeInfo) {
+		renderPopover({ prInfo });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		return within(popover).queryByText("PR status")?.nextElementSibling ?? null;
+	}
+	const state = (value: string) => ({ mergeable: null, status: null, state: value });
+
+	it.each([
+		["MERGED", false, "Merged", "text-pr-merged"],
+		["CLOSED", false, "Closed", "text-danger"],
+		["OPEN", false, "Open", "text-success"],
+		["OPEN", true, "Draft", "text-fg-3"],
+		["MERGED", true, "Merged", "text-pr-merged"],
+	] as const)("%s (draft=%s) shows %s in %s", async (value, isDraft, label, cls) => {
+		const dd = await statusValue(makePrInfo({ mergeState: state(value), isDraft }));
+		expect(dd).toHaveTextContent(label);
+		expect(dd).toHaveClass(cls);
+	});
+
+	it("omits the status row when GitHub has not reported a state", async () => {
+		expect(await statusValue(makePrInfo({ mergeState: null, isDraft: true }))).toBeNull();
+	});
+
+	it("tints earlier PRs by their own state, merged purple and closed red", async () => {
+		renderPopover({
+			earlierPullRequests: [
+				{ number: 40, url: "https://github.com/acme/widget/pull/40", title: "First", state: "CLOSED", firstSeenAt: "" },
+				{ number: 38, url: "https://github.com/acme/widget/pull/38", title: "Second", state: "MERGED", firstSeenAt: "" },
+			],
+		});
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const section = await screen.findByTestId("pr-popover-earlier");
+		expect(within(section).getByText("Closed")).toHaveClass("text-danger");
+		expect(within(section).getByText("Merged")).toHaveClass("text-pr-merged");
+	});
+});

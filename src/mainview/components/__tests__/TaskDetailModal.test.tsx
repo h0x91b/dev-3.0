@@ -401,8 +401,24 @@ describe("TaskDetailModal", () => {
 				],
 			}));
 			const links = within(screen.getByTestId("task-detail-pull-requests")).getAllByRole("link");
-			expect(links.map((link) => link.textContent)).toEqual(["#12", "#9"]);
+			expect(links.map((link) => link.textContent)).toEqual(["#12Merged", "#9Merged"]);
 			expect(links[1]).toHaveAttribute("href", "https://github.com/o/r/pull/9");
+			expect(links[1]).toHaveClass("text-pr-merged");
+		});
+
+		it("names and tints each PR by its own state, leaving an unseen one a plain link", () => {
+			renderModal(makeTodoTask({
+				status: "completed",
+				pullRequests: [
+					{ number: 3, url: "https://github.com/o/r/pull/3", state: "CLOSED", firstSeenAt: "2026-09-27T00:00:00Z" },
+					{ number: 4, url: "https://github.com/o/r/pull/4", state: null, firstSeenAt: "2026-09-28T00:00:00Z" },
+				],
+			}));
+			const [unseen, closed] = within(screen.getByTestId("task-detail-pull-requests")).getAllByRole("link");
+			expect(closed).toHaveTextContent("#3Closed");
+			expect(closed).toHaveClass("text-danger");
+			expect(unseen).toHaveTextContent(/^#4$/);
+			expect(unseen).toHaveClass("text-accent");
 		});
 
 		it("falls back to the legacy PR fields of a task no ledger was written for", () => {
