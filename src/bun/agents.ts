@@ -378,7 +378,7 @@ export async function saveAllAgents(agents: CodingAgent[]): Promise<void> {
  * Claude-based agents. Since the working directory is guaranteed to be inside
  * a dev-3.0 managed worktree, we inline the full skill body directly into the
  * system prompt instead of asking the agent to invoke `/dev3` first. The skill
- * file in `~/.claude/skills/dev3/SKILL.md` remains for manual `/dev3` use, but
+ * file in `<claude config dir>/skills/dev3/SKILL.md` remains for manual `/dev3` use, but
  * is no longer required for the rules to take effect.
  */
 export const DEV3_SYSTEM_PROMPT = CLAUDE_SKILL_BODY;

@@ -1461,7 +1461,8 @@ export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect())
  * The dev3 exception dev3 declares for Claude Code's auto-mode classifier.
  *
  * The classifier is a second gate that runs after the permission rules, and it
- * reads its `autoMode` config ONLY from `~/.claude/settings.json`, managed
+ * reads its `autoMode` config ONLY from the user `settings.json` (`~/.claude` or
+ * `$CLAUDE_CONFIG_DIR`), managed
  * settings, or `--settings` — never from a repo's `.claude/settings*.json`, so a
  * checked-in file cannot grant itself exceptions. A worktree-scoped rule
  * therefore cannot clear it, and without this entry `dev3 task move --status
@@ -1672,7 +1673,12 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	// Installation-wide experiment: managed accounts also discover the shared .agents skill.
 	const compact = process.env.DEV3_COMPACT_AGENT_SKILLS === "1";
 
-	installClaudeConfigDir(claudeConfigLocation(process.env, home).dir, home);
+	// ~/.claude always: managed accounts symlink its skills and settings, and an
+	// unpinned launch reads it. A pin on the server's own env is what launches inherit.
+	const defaultClaudeDir = claudeConfigLocation({}, home).dir;
+	installClaudeConfigDir(defaultClaudeDir, home);
+	const serverClaude = claudeConfigLocation(process.env, home);
+	if (serverClaude.pinned && serverClaude.dir !== defaultClaudeDir) installClaudeConfigDir(serverClaude.dir, home);
 
 	// Install Codex-specific skill (hook-aware + shell note)
 	const codexSkillDir = `${home}/${CODEX_SKILL_DIR}`;

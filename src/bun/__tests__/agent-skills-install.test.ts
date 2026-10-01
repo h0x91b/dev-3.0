@@ -156,7 +156,7 @@ describe("installAgentSkills", () => {
 		expect(paths.map((path) => readFileSync(join(tempHome, path), "utf-8"))).toEqual(before);
 	});
 
-	it("installs Claude skills and settings into CLAUDE_CONFIG_DIR, not ~/.claude, when it is set", async () => {
+	it("installs Claude skills and settings into CLAUDE_CONFIG_DIR as well as ~/.claude when it is set", async () => {
 		const pinned = join(tempHome, "pinned-claude");
 		vi.stubEnv("CLAUDE_CONFIG_DIR", pinned);
 		const { installAgentSkills, MANAGED_SKILL_FILES } = await loadModule();
@@ -168,7 +168,8 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(pinned, "skills/dev3/PROTOCOL.md"))).toBe(true);
 		const settings = JSON.parse(readFileSync(join(pinned, "settings.json"), "utf-8"));
 		expect(settings.permissions.allow.some((rule: string) => rule.includes("dev3"))).toBe(true);
-		expect(existsSync(join(tempHome, ".claude"))).toBe(false);
+		// ~/.claude stays current too: managed accounts symlink it, unpinned launches read it.
+		expect(existsSync(join(tempHome, ".claude/skills/dev3/SKILL.md"))).toBe(true);
 		// Other agents' dirs are unaffected by a Claude-only variable.
 		expect(existsSync(join(tempHome, ".codex/skills/dev3/SKILL.md"))).toBe(true);
 	});
