@@ -90,7 +90,7 @@ describe("buildExecStartArgs", () => {
 
 	it("rejects a --host that is not an IPv4 address or localhost", () => {
 		expect(() => buildExecStartArgs(args({ host: "example.com" }))).toThrow("__exit__");
-		expect(stderrText()).toContain("--host must be an IPv4 address");
+		expect(stderrText()).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
 	});
 
 	it("rejects an invalid port", () => {

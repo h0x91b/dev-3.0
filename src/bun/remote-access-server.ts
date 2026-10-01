@@ -986,11 +986,8 @@ export function pushToBrowserClients(name: string, payload: any): void {
 // ── Access URL helpers ──────────────────────────────────────────────
 
 function getLocalIp(): string {
-	const listenHost = resolveListenHost();
-	// A loopback bind is unreachable on any LAN address; a specific address is
-	// the only one that answers.
-	if (isLoopbackListen(listenHost)) return "localhost";
-	if (listenHost !== "0.0.0.0") return listenHost;
+	// A loopback bind is unreachable on any LAN address.
+	if (isLoopbackListen()) return "localhost";
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
 		for (const iface of (interfaces[name] ?? [])) {
@@ -1010,22 +1007,20 @@ function getLocalIp(): string {
  */
 export function getLocalInterfaces(): RemoteNetInterface[] {
 	const out: RemoteNetInterface[] = [];
-	const listenHost = resolveListenHost();
 	// Same spelling getLocalIp() advertises, so the picker's selected value is one of its options.
-	if (isLoopbackListen(listenHost)) {
+	if (isLoopbackListen()) {
 		return [{ name: "loopback", address: "localhost", internal: true }];
 	}
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
 		for (const iface of (interfaces[name] ?? [])) {
-			if (iface.family === "IPv4" && !iface.internal && (listenHost === "0.0.0.0" || iface.address === listenHost)) {
+			if (iface.family === "IPv4" && !iface.internal) {
 				out.push({ name, address: iface.address, internal: false });
 			}
 		}
 	}
-	// Offer loopback last (the SSH-forward path needs it), unless the server
-	// is bound to one specific address, which loopback does not reach.
-	if (listenHost === "0.0.0.0") out.push({ name: "loopback", address: "127.0.0.1", internal: true });
+	// Always offer loopback last — needed for the SSH-forward path.
+	out.push({ name: "loopback", address: "127.0.0.1", internal: true });
 	return out;
 }
 

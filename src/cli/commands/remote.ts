@@ -105,7 +105,7 @@ Flags (start):
       devices can scan the QR). Pass 127.0.0.1 (or localhost) to accept
       connections from this machine only: a local browser, an SSH -L forward
       and the tunnel still work, the LAN does not. Combine with --no-tunnel
-      for a fully local server. IPv4 addresses only.
+      for a fully local server. Accepts 127.0.0.1, localhost or 0.0.0.0.
 
   --views-dir <path>
       Override the directory served as static assets (defaults to the

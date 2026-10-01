@@ -3,13 +3,15 @@
  * DEV3_REMOTE_HOST). Pure, so the CLI and the server share one rule.
  */
 
-/** Why `value` cannot be a listen host, or null when it can. Shared with the CLI's `--host`.
- *  A leading zero is refused: URL parsers read `010` as octal. */
+/** The bind addresses `--host` accepts: every interface, or this machine only.
+ *  A specific LAN address is refused: the tunnel dials `localhost`, which it would not reach. */
+export const LISTEN_HOSTS = ["0.0.0.0", "127.0.0.1", "localhost"] as const;
+
+/** Why `value` cannot be a listen host, or null when it can. Shared with the CLI's `--host`. */
 export function listenHostError(value: string): string | null {
-	if (value === "localhost") return null;
-	const parts = value.split(".");
-	const ipv4 = parts.length === 4 && parts.every((p) => /^(0|[1-9]\d{0,2})$/.test(p) && Number(p) <= 255);
-	return ipv4 ? null : `must be an IPv4 address or "localhost" (got "${value}")`;
+	return (LISTEN_HOSTS as readonly string[]).includes(value)
+		? null
+		: `must be 127.0.0.1, localhost or 0.0.0.0 (got "${value}")`;
 }
 
 /**

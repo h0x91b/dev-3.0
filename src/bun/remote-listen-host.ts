@@ -15,9 +15,8 @@ const log = createLogger("remote-listen-host");
  *
  * Set it to `127.0.0.1` (or `localhost`) to keep the server off the network
  * entirely - same-machine browsers, an SSH `-L` forward and the tunnel (which
- * dials `localhost`) still reach it. Only IPv4 literals are accepted: the
- * tunnel and the access URLs are built around IPv4, and an unparseable value
- * falls back to `0.0.0.0` with a warning, like an invalid port does.
+ * dials `localhost`) still reach it. Any other value falls back to `0.0.0.0`
+ * with a warning, like an invalid port does.
  */
 export function resolveListenHost(): string {
 	const raw = process.env.DEV3_REMOTE_HOST?.trim();
@@ -29,5 +28,5 @@ export function resolveListenHost(): string {
 
 /** True when the server only accepts connections from this machine. */
 export function isLoopbackListen(host: string = resolveListenHost()): boolean {
-	return host.startsWith("127.");
+	return host === "127.0.0.1";
 }

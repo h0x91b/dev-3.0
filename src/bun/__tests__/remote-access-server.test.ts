@@ -507,7 +507,7 @@ describe("resolveListenHost", () => {
 		expect(resolveListenHost()).toBe("0.0.0.0");
 	});
 
-	it("honours an IPv4 literal and maps localhost to 127.0.0.1", () => {
+	it("honours loopback and maps localhost to 127.0.0.1", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
 		expect(resolveListenHost()).toBe("127.0.0.1");
 		vi.stubEnv("DEV3_REMOTE_HOST", "localhost");
@@ -517,11 +517,11 @@ describe("resolveListenHost", () => {
 	it("falls back to 0.0.0.0 on a value it cannot bind", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "::1");
 		expect(resolveListenHost()).toBe("0.0.0.0");
-		vi.stubEnv("DEV3_REMOTE_HOST", "300.1.1.1");
+		vi.stubEnv("DEV3_REMOTE_HOST", "192.168.1.5");
 		expect(resolveListenHost()).toBe("0.0.0.0");
 	});
 
-	it("treats only 127.x as loopback", () => {
+	it("treats only 127.0.0.1 as loopback", () => {
 		expect(isLoopbackListen("127.0.0.1")).toBe(true);
 		expect(isLoopbackListen("0.0.0.0")).toBe(false);
 		expect(isLoopbackListen("192.168.1.5")).toBe(false);
@@ -534,13 +534,14 @@ describe("resolveListenHost", () => {
 		expect(isScannableAccessUrl("https://x.trycloudflare.com/?token=t")).toBe(true);
 	});
 
-	it("listenHostError accepts IPv4 and localhost, rejects the rest", () => {
-		expect(listenHostError("10.0.0.1")).toBeNull();
+	it("listenHostError accepts loopback or every interface, nothing else", () => {
+		expect(listenHostError("127.0.0.1")).toBeNull();
 		expect(listenHostError("localhost")).toBeNull();
-		expect(listenHostError("example.com")).toContain("IPv4");
-		expect(listenHostError("1.2.3")).toContain("IPv4");
 		expect(listenHostError("0.0.0.0")).toBeNull();
-		expect(listenHostError("010.0.0.1")).toContain("IPv4");
+		// A specific LAN address would strand the tunnel, which dials localhost.
+		expect(listenHostError("192.168.1.5")).toContain("127.0.0.1, localhost or 0.0.0.0");
+		expect(listenHostError("127.0.0.2")).not.toBeNull();
+		expect(listenHostError("example.com")).not.toBeNull();
 	});
 });
 
