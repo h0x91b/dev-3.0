@@ -43,19 +43,27 @@ export async function handleInstallHooks(): Promise<void> {
 		if (link) process.stderr.write(`Warning: ${link} is a symlink; dev3 does not write through it, so the hooks under it were not installed.\n`);
 	}
 
-	process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
-	process.stdout.write(`  SessionStart (startup/clear/compact) → recent task notes as context\n`);
-	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
-	process.stdout.write(`  PreToolUse → in-progress\n`);
-	process.stdout.write(`  PermissionRequest → user-questions\n`);
-	process.stdout.write(`  Stop → review-by-user\n`);
-	process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
-	process.stdout.write(`  SessionStart → in-progress; on startup also recent task notes as context\n`);
-	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
-	process.stdout.write(`  PreToolUse/PostToolUse → in-progress\n`);
-	process.stdout.write(`  PermissionRequest → user-questions\n`);
-	process.stdout.write(`  Stop → review-by-ai or review-by-user\n`);
-	process.stdout.write(`  Trust: registered automatically when dev3 launches Codex\n`);
+	if (claudeSymlink) {
+		process.stdout.write(`Skipped Claude Code hooks → ${claudeSettingsPath} (symlink)\n`);
+	} else {
+		process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
+		process.stdout.write(`  SessionStart (startup/clear/compact) → recent task notes as context\n`);
+		process.stdout.write(`  UserPromptSubmit → in-progress\n`);
+		process.stdout.write(`  PreToolUse → in-progress\n`);
+		process.stdout.write(`  PermissionRequest → user-questions\n`);
+		process.stdout.write(`  Stop → review-by-user\n`);
+	}
+	if (codexSymlink) {
+		process.stdout.write(`Skipped Codex hooks → ${codexHooksPath} (symlink)\n`);
+	} else {
+		process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
+		process.stdout.write(`  SessionStart → in-progress; on startup also recent task notes as context\n`);
+		process.stdout.write(`  UserPromptSubmit → in-progress\n`);
+		process.stdout.write(`  PreToolUse/PostToolUse → in-progress\n`);
+		process.stdout.write(`  PermissionRequest → user-questions\n`);
+		process.stdout.write(`  Stop → review-by-ai or review-by-user\n`);
+		process.stdout.write(`  Trust: registered automatically when dev3 launches Codex\n`);
+	}
 	process.stdout.write(`Installed omp status extension → ${ompExtensionPath}\n`);
 	process.stdout.write(`  Loaded with --hook on every dev3 omp launch; session/prompt/tool → in-progress,\n`);
 	process.stdout.write(`  approval wait → user-questions, agent stop → review-by-ai or review-by-user\n`);
