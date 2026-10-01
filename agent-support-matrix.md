@@ -52,6 +52,7 @@ Last updated: 2026-09-20
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Automatic via the status extension, `user-questions` included (`tool_approval_requested`) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) |
 | **Graceful exit before teardown** (`exitProgram`) — runs only where launch readiness can be PROVED, see below | Ctrl-C, `/exit`, Enter — command verified against 2.1.273; SessionEnd hooks run | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command verified against gemini-cli 0.46.0 | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/exit`, Enter — command not validated | — (no quit command observed) |
+| **Recent task notes at session start** (5 newest, ≤6000 chars, `dev3 note recent`) | Automatic — `SessionStart` hook on `startup`/`clear`/`compact` + `!` injection on every `/dev3` load | — | Automatic on `startup` only (existing `SessionStart` hook answers `additionalContext`); after `/clear` or resume the skill only *instructs* `dev3 note recent` | — | — | — (follow-up: its `sessionStart` already returns `additionalContext`) | — |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes |
 
 ### Graceful exit — two separate conditions, and the row above answers only one
@@ -79,6 +80,7 @@ Injected into `.claude/settings.local.json`.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
+| `SessionStart` (`startup\|clear\|compact`) | none | `dev3 hook claude-session-start` answers with the task's 5 newest notes as `hookSpecificOutput.additionalContext` (bounded, see `src/shared/recent-notes-context.ts`). `resume`/`fork` are skipped: that transcript already holds a block. Quiet and exit 0 when offline or there are no notes |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working. A **second** entry on the same event, `dev3 hook claude-prompt`, reads the payload's `prompt` and `prompt_id` and reports the submission for Agent traffic; the status-move entry above is untouched, so recording can never cost a task its board position |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
 | `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |
@@ -94,7 +96,7 @@ Generated in each task's `.codex/hooks.json` and **declared in `~/.codex/config.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
-| `SessionStart` | → `in-progress` | Marks startup/resume turns as active |
+| `SessionStart` | → `in-progress` | Marks startup/resume turns as active. On `source: startup` the same handler also answers `hookSpecificOutput.additionalContext` with the task's 5 newest notes; every other source and event still gets `{}` |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working |
 | `PreToolUse` | → `in-progress` | Agent is about to use Bash, apply a patch, or call an MCP tool |
 | `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
