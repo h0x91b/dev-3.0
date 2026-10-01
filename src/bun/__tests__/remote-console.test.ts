@@ -53,6 +53,11 @@ describe("headless banner QR", () => {
 		expect(text).toContain(`<QR ${TUNNEL_URL}>`);
 	});
 
+	it("skips the QR on the default bind when no LAN address yields a localhost URL", async () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "");
+		expect(await banner(LOCAL_URL)).not.toContain("<QR");
+	});
+
 	it("refreshes only the URL on a loopback bind", async () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
 		vi.useFakeTimers();

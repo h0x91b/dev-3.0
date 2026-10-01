@@ -10,3 +10,13 @@ export function listenHostError(value: string): string | null {
 	const ipv4 = parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 	return ipv4 ? null : `must be an IPv4 address or "localhost" (got "${value}")`;
 }
+
+/**
+ * Whether a phone could open `url`, so a QR of it is worth printing. A loopback
+ * bind (or a machine with no LAN address) yields a `localhost` access URL; a
+ * tunnel URL stays scannable whatever the bind.
+ */
+export function isScannableAccessUrl(url: string): boolean {
+	const host = new URL(url).hostname;
+	return host !== "localhost" && !host.startsWith("127.");
+}

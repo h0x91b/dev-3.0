@@ -19,7 +19,7 @@ import {
 	readRemoteState,
 	releaseStartLock,
 } from "../../bun/remote-state";
-import { listenHostError } from "../../shared/remote-listen-host";
+import { listenHostError, isScannableAccessUrl } from "../../shared/remote-listen-host";
 
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
@@ -819,7 +819,7 @@ export async function printAccessForState(
 	}
 
 	process.stdout.write(`${opts.header}\n\n`);
-	if (opts.withQr) {
+	if (opts.withQr && isScannableAccessUrl(info.url)) {
 		try {
 			const qr = await QRCode.toString(info.url, { type: "terminal", small: true });
 			process.stdout.write(qr + "\n");

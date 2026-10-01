@@ -30,7 +30,8 @@ Three ways in, printed on every start:
 
 Pass `--no-tunnel` to skip the public tunnel entirely (LAN + SSH only). Add `--host 127.0.0.1`
 as well and the server accepts connections from this machine only: no LAN, no public URL, and the
-banner prints the URL without a QR, since no phone could open it.
+banner and `dev3 remote url` print the URL without a QR, since no phone could open it (a tunnel URL
+keeps its QR).
 
 ## Background lifecycle (for SSH boxes)
 

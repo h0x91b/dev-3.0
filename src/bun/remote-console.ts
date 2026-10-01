@@ -15,6 +15,7 @@ import { networkInterfaces } from "node:os";
 import { createLogger } from "./logger";
 import { tunnelManager } from "./cloudflare-tunnel";
 import { isLoopbackListen } from "./remote-listen-host";
+import { isScannableAccessUrl } from "../shared/remote-listen-host";
 
 const log = createLogger("remote-console");
 
@@ -38,16 +39,6 @@ function getLocalIps(): string[] {
 	return out;
 }
 
-/**
- * A loopback bind puts `localhost` in the access URL, which no phone can open,
- * so the QR is noise. A tunnel URL stays scannable even on a loopback bind.
- */
-function isQrScannable(url: string): boolean {
-	if (!isLoopbackListen()) return true;
-	const host = new URL(url).hostname;
-	return host !== "localhost" && !host.startsWith("127.");
-}
-
 // ── Public API ────────────────────────────────────────────────────
 
 interface BannerOptions {
@@ -68,7 +59,7 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 
 	// Terminal-rendered QR. `small: true` halves the vertical size by using
 	// half-blocks (▀/▄) — stays readable by phone cameras.
-	const qrAscii = isQrScannable(accessUrl)
+	const qrAscii = isScannableAccessUrl(accessUrl)
 		? await QRCode.toString(accessUrl, { type: "terminal", small: true })
 		: null;
 
@@ -111,7 +102,7 @@ export function startQrAutoRefresh(urlFactory: () => Promise<string>): void {
 		try {
 			const fresh = await urlFactory();
 			console.log("");
-			if (isQrScannable(fresh)) {
+			if (isScannableAccessUrl(fresh)) {
 				console.log("── QR refreshed ──────────────────────────────────────────────");
 				console.log(await QRCode.toString(fresh, { type: "terminal", small: true }));
 			} else {

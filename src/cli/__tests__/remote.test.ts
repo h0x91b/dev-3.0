@@ -399,6 +399,19 @@ describe("dev3 remote url", () => {
 		expect(out).toContain("http://192.168.1.5:41234/?token=abc");
 	});
 
+	it("prints the URL without a QR when the server only answers on localhost", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "http://localhost:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null },
+		});
+		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).not.toContain("QR-ASCII");
+		expect(out).toContain("http://localhost:41234/?token=abc");
+	});
+
 	// The bookmarkable link is the whole answer to "do I really retype 30
 	// characters on my phone every time" — if it stops being printed, the feature
 	// is unreachable for anyone not opening the desktop modal.

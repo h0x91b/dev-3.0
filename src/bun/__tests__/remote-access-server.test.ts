@@ -495,7 +495,7 @@ describe("isRemoteAccessActive", () => {
 // ================================================================
 
 import { resolveListenHost, isLoopbackListen } from "../remote-listen-host";
-import { listenHostError } from "../../shared/remote-listen-host";
+import { listenHostError, isScannableAccessUrl } from "../../shared/remote-listen-host";
 
 describe("resolveListenHost", () => {
 	afterEach(() => {
@@ -525,6 +525,13 @@ describe("resolveListenHost", () => {
 		expect(isLoopbackListen("127.0.0.1")).toBe(true);
 		expect(isLoopbackListen("0.0.0.0")).toBe(false);
 		expect(isLoopbackListen("192.168.1.5")).toBe(false);
+	});
+
+	it("isScannableAccessUrl rejects loopback URLs and keeps LAN and tunnel ones", () => {
+		expect(isScannableAccessUrl("http://localhost:8090/?token=t")).toBe(false);
+		expect(isScannableAccessUrl("http://127.0.0.1:8090/?token=t")).toBe(false);
+		expect(isScannableAccessUrl("http://192.168.1.5:8090/?token=t")).toBe(true);
+		expect(isScannableAccessUrl("https://x.trycloudflare.com/?token=t")).toBe(true);
 	});
 
 	it("listenHostError accepts IPv4 and localhost, rejects the rest", () => {
