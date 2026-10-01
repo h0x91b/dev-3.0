@@ -26,13 +26,12 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		}
 		return;
 	}
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--account <id|system>] [--prompt <text>|-] [--handoff] [--json]");
-	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "account", "prompt", "handoff", "json"]);
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]");
+	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
 	if (args.flags.config && !args.flags.agent) return exitUsage("--config requires --agent (see dev3 agent list).");
-	if (args.flags.account && !args.flags.agent) return exitUsage("--account requires --agent.");
 	let prompt = singleTextInput(args, "prompt");
 	if (prompt === "-") prompt = await readStdin();
 	if (prompt !== undefined && !prompt.trim()) return exitUsage("--prompt must not be empty.");
@@ -43,7 +42,6 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		...(context?.taskId ? { sourceTaskId: context.taskId } : {}),
 		agentId: args.flags.agent ?? null,
 		configId: args.flags.config ?? null,
-		...(args.flags.account ? { accountId: args.flags.account === "system" ? null : args.flags.account } : {}),
 		...(prompt !== undefined ? { prompt } : {}),
 		handoff: "handoff" in args.flags,
 	};

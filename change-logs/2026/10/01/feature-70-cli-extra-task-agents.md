@@ -1,0 +1,3 @@
+Short: Add task agents from CLI
+
+Coordinators can now use `dev3 agent spawn` to add a managed agent to an existing task, just like +Agent in the UI. Choose an agent and model-and-effort preset, supply initial instructions or hand over the latest conversation, and receive the new pane ID; account overrides are reserved for the human approval picker, with the chosen harness's default account used otherwise and existing preset routing unchanged. `dev3 agent list` exposes agent and preset IDs for scripts; pending approvals close when the target run ends without reusing unrelated task-start approvals.

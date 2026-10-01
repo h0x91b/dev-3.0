@@ -611,6 +611,15 @@ describe("pane.* — the CLI's own pane surface", () => {
 	});
 });
 
+describe("agent.spawn account boundary", () => {
+	it.each(["account-b", "", null])("rejects a socket-supplied account override %j", async (accountId) => {
+		const resp = await handleRequest(makeRequest("agent.spawn", {
+			taskId: "test-task", agentId: "builtin-codex", configId: "codex-default", accountId,
+		}));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("Account selection is not supported") });
+	});
+});
+
 describe("handleRequest dispatch", () => {
 	it("returns error for unknown method", async () => {
 		const resp = await handleRequest(makeRequest("unknown.method"));

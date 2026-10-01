@@ -15,7 +15,7 @@ interface SpawnOptions {
 	project: Project;
 	task: Task;
 	requester: Task | null;
-	choice: LaunchVariant;
+	choice: Pick<LaunchVariant, "agentId" | "configId">;
 	prompt?: string;
 	handoff: boolean;
 }
@@ -52,7 +52,8 @@ function assertRunning(task: Task): void {
 async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 	const { project, task, requester, prompt, handoff } = opts;
 	assertRunning(task);
-	let choice = await validateChoice(opts.choice);
+	// Account overrides belong to the human approval response, never the caller.
+	let choice = await validateChoice({ agentId: opts.choice.agentId, configId: opts.choice.configId });
 	if (requester) {
 		const push = getPushMessage();
 		if (!push) throw new Error("No app window is connected — cannot ask the user for approval");

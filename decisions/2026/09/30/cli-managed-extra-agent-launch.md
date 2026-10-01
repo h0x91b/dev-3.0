@@ -10,11 +10,11 @@ The +Agent action already launches a managed agent in an existing task terminal,
 
 ## Decision
 
-Expose `dev3 agent list` and `dev3 agent spawn`, using exact agent/config IDs and the existing managed spawn handler. Task-worktree callers go through the existing launch approval policy; the picker labels this as an extra-agent request and offers neither task priority editing nor variants. `cli-agent-spawn.ts` joins the entire pending operation to prevent one approval opening multiple panes, and rechecks the target run before spawning; the socket dispatcher imports it only when needed.
+Expose `dev3 agent list` and `dev3 agent spawn`, using exact agent/config IDs for model-and-effort presets and the existing managed spawn handler. CLI and socket requests cannot supply an account override: the chosen harness's default account applies unless the human changes it in the approval dialog; new-task launch commands remain unchanged. Task-worktree callers use the existing approval policy and picker, without priority editing or variants. `cli-agent-spawn.ts` joins the whole operation to prevent duplicate panes and rechecks the target run; the socket dispatcher imports it only when needed.
 
 ## Risks
 
-Extra agents share the task's branch and worktree, so coordinators must partition work explicitly through the initial prompt. Messages still target a task rather than an individual extra pane; the CLI returns the pane ID for observation, not a new messaging address. A timed-out CLI can leave an approval pending, so its error warns against blind retries.
+Extra agents share the branch and worktree, so coordinators must partition work through the initial prompt; messages target tasks, not extra panes. A timed-out CLI can leave approval pending, so its error warns against blind retries. Blocking account overrides is not a billing sandbox: custom preset credentials, provider routing and model-role bindings still take precedence under the existing launch resolver.
 
 ## Alternatives Considered
 

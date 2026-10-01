@@ -1040,11 +1040,12 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 const handlers: Record<string, Handler> = {
 	"agent.list": async () => agents.getAllAgents(),
 	"agent.spawn": async (params) => {
+		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
 		const { project, task } = await requirePaneTask(params);
 		const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId : "";
 		const requester = sourceId ? await resolveTaskAcrossProjects(sourceId) : null;
 		if (sourceId && !requester) throw new Error("Unknown requesting task — cannot attribute the launch request.");
-		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
+		for (const key of ["agentId", "configId", "prompt"]) {
 			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
 		}
 		if (params.prompt !== undefined && (typeof params.prompt !== "string" || !params.prompt.trim())) throw new Error("prompt must not be empty.");
@@ -1052,8 +1053,7 @@ const handlers: Record<string, Handler> = {
 		const { spawnCliAgent } = await import("./cli-agent-spawn");
 		return spawnCliAgent({
 			project, task, requester: requester?.task ?? null,
-			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null,
-				...(params.accountId !== undefined ? { accountId: params.accountId as string | null } : {}) },
+			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
 			prompt: params.prompt as string | undefined, handoff: params.handoff === true,
 		});
 	},

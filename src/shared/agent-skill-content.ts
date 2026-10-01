@@ -280,7 +280,7 @@ You may ask the user to set another task running; you never launch anything your
 
 It **inherits your priority** unless it has its own; only the user may change that band. Approval returns its \`seq\` and reply command. Its first prompt already names you, treats its description as the brief, and asks for file reports sent back as paths. Add standing instructions with \`--handoff-file <path>\`. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. The configured launch auto-approval applies (switchable off); retries join the pending request without restarting its clock.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "instructions"\`. Shares its worktree, asks approval, returns the pane ID. \`agent list\` gives IDs for \`--agent\` / \`--config\`; \`--handoff\` retells its conversation. Use \`--prompt @file\` for a long brief: messages target the task, not an extra pane. Request one launch at a time.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "instructions"\`. Shares worktree; asks approval; returns pane ID. \`agent list\` gives \`--agent\` / \`--config\` IDs for model/effort presets; account defaults, user may change it. \`--handoff\` retells conversation; \`--prompt @file\` reads a brief. Messages target tasks, not panes. One launch at a time.
 
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; from a worktree it arrives labeled as agent traffic carrying the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 

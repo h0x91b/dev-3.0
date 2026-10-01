@@ -63,13 +63,14 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "spawn",
-				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--account <id|system>] [--prompt <text>|-] [--handoff] [--json]",
+				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]",
 				summary: "Add one agent pane to a running task, sharing its existing worktree.",
 				details: [
 					"--task <id>     Target task, or the current worktree's task. Supports seq:<N>.",
-					"--agent <id>    Exact agent ID from agent list; omitted = project default.",
-					"--config <id>   Exact preset ID belonging to --agent; omitted = its default.",
-					"--account <id>  Managed account ID for --agent; system = system login.",
+					"--agent <id>    Exact agent ID from agent list; omitted = global default.",
+					"--config <id>   Model/effort preset belonging to --agent; omitted = its default.",
+					"Uses the chosen harness's default account; only the user can select another in the approval dialog.",
+					"Preset-defined credentials and provider routing still apply.",
 					"--prompt <text> Initial instructions; - reads stdin, @file reads a file.",
 					"--handoff       Also retell the target task's latest conversation.",
 					"--json          Print pane ID, backend, agent/config IDs and handoff result.",

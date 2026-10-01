@@ -20,9 +20,16 @@ describe("agent spawn", () => {
 		await spawn();
 		expect(sendRequest).toHaveBeenLastCalledWith("/tmp/agent.sock", "agent.spawn", { taskId: context.taskId, projectId: context.projectId, sourceTaskId: context.taskId, agentId: null, configId: null, handoff: false }, { timeoutMs: 600000 });
 	});
-	it("passes the selected agent, preset, account, handoff and stdin prompt", async () => {
-		await spawn({ task: "seq:8", agent: "builtin-codex", config: "codex-default", account: "system", prompt: "-", handoff: "true" });
-		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.spawn", expect.objectContaining({ taskId: "seq:8", agentId: "builtin-codex", configId: "codex-default", accountId: null, prompt: "instructions from stdin", handoff: true }), expect.anything());
+	it("passes the selected model/effort preset, handoff and stdin prompt without an account override", async () => {
+		await spawn({ task: "seq:8", agent: "builtin-codex", config: "codex-default", prompt: "-", handoff: "true" });
+		expect(sendRequest).toHaveBeenLastCalledWith("/tmp/agent.sock", "agent.spawn", {
+			taskId: "seq:8", projectId: context.projectId, sourceTaskId: context.taskId,
+			agentId: "builtin-codex", configId: "codex-default", prompt: "instructions from stdin", handoff: true,
+		}, { timeoutMs: 600000 });
+	});
+	it.each(["slot", "system"])("rejects --account %s even with a valid agent and preset", async (account) => {
+		await expect(spawn({ agent: "builtin-codex", config: "codex-default", account })).rejects.toThrow("EXIT_3");
+		expect(sendRequest).not.toHaveBeenCalled();
 	});
 	it("prints a machine-readable pane identity", async () => {
 		await spawn({ json: "true" });

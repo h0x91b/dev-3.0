@@ -44,6 +44,13 @@ describe("renderHelp — group listing", () => {
 });
 
 describe("renderHelp — subcommand detail", () => {
+	it("documents model/effort preset selection without an account flag", () => {
+		const out = renderHelp("agent", "spawn")!;
+		expect(out).toContain("--config <id>   Model/effort preset");
+		expect(out).toContain("default account");
+		expect(out).not.toContain("--account");
+	});
+
 	it("renders the targeted subcommand's usage and details", () => {
 		const out = renderHelp("task", "create")!;
 		expect(out).toContain("dev3 task create — Create a task in To Do, or ask the user to start a scratch peer agent.");
