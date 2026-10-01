@@ -237,6 +237,13 @@ if (shellEnv.ghConfigDir) {
 const { loadSettings } = await import("./settings");
 applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
+// ── dev3 skills + agent settings, same as the GUI entry ──
+// After PATH resolution, because the Codex half probes the `codex` binary.
+{
+	const { installAgentSkills } = await import("./agent-skills");
+	await installAgentSkills({ lowBattery: (await loadSettings()).lowBatteryEnabled });
+}
+
 // ── CLI socket server (required — CLI tool talks to the app over this) ──
 // Unlike the GUI entry, headless mode has no other control surface: `dev3 remote
 // status/url/stop` reach this process only over this transport.
