@@ -155,18 +155,11 @@ Environment=DEV3_TELEMETRY=off
 KillMode=process
 ```
 
-then `systemctl --user start dev3-remote`. Why both lines:
-
-- **`KillMode=process`.** Agent terminals live in a tmux server the dev3 process starts, so they
-  sit in the service's cgroup. systemd's default `KillMode=control-group` kills everything in that
-  cgroup when the unit stops, so without this line every restart, including a manual
-  `systemctl --user restart` after an update, kills every running agent. With it, only the dev3
-  process is stopped and the agents carry on.
-- **`Environment=DEV3_TELEMETRY=off`.** The unit `install-service` writes does not carry your
-  shell's environment.
-
-Edit the drop-in, not the unit itself: `install-service` rewrites the unit on every run, and the
-drop-in survives that.
+then `systemctl --user start dev3-remote`. `KillMode=process` keeps running agents alive when the
+service restarts; it is safe here only because this setup runs `--no-tunnel` (why:
+[Keep agents alive across restarts](remote-access.md#run-it-as-a-service-linux)).
+`Environment=DEV3_TELEMETRY=off` is needed because the unit does not carry your shell's
+environment. Edit the drop-in, not the unit: `install-service` rewrites the unit on every run.
 
 WSL may stop the whole distro, systemd services included, shortly after its last terminal closes,
 which takes dev3 and every agent with it; and nothing starts the distro when Windows boots. If
