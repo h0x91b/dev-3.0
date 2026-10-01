@@ -90,8 +90,11 @@ entirely.
 Hybrid keeps the heavy part off it. dev3 puts task worktrees under `~/.dev3.0/worktrees/`, which
 is on ext4 whatever the project path is, so dependency installs, builds and tests inside a task run
 at native speed. What still crosses the bridge is the main checkout and its `.git` directory: git
-operations in a task read the shared object store over 9p, and work done directly in the main
-checkout is as slow as before.
+operations in a task read the shared object store over 9p, and each worktree's index and admin data
+live in the main repo's `.git/worktrees/`, so they cross it too. Work done directly in the main
+checkout is as slow as before. Do not run `git worktree prune` (or anything that triggers it) from
+a Windows git client on that repo: it cannot resolve the `/home/...` worktree paths, treats them as
+gone and deletes their admin data, which breaks every task worktree.
 
 ### Install
 
@@ -101,8 +104,9 @@ from Windows.
 
 ```sh
 sudo apt-get update && sudo apt-get install -y tmux git
+case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=x64;; esac   # Windows on ARM runs an arm64 distro
 curl -fsSL -o /tmp/dev3.tar.gz \
-  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-x64.tar.gz"
+  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-$A.tar.gz"
 mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 echo 'export PATH=$HOME/.dev3:$PATH' >> ~/.bashrc && export PATH=$HOME/.dev3:$PATH
 ```
@@ -135,10 +139,13 @@ server on the same port does not start; under systemd it fails, restarts, fails 
 journal shows `Is port 8090 in use?` on every attempt.
 
 ```sh
-dev3 remote install-service --no-tunnel --host 127.0.0.1 --port 8090
+dev3 remote install-service --no-start --no-tunnel --host 127.0.0.1 --port 8090
 sudo loginctl enable-linger $USER   # start with the distro, not with your first shell
 systemctl --user edit dev3-remote.service
 ```
+
+`--no-start` matters: without it the service starts right away, before the drop-in below exists,
+and runs with telemetry on until you restart it.
 
 Put this in the drop-in that `systemctl --user edit` opens:
 
@@ -148,7 +155,7 @@ Environment=DEV3_TELEMETRY=off
 KillMode=process
 ```
 
-then `systemctl --user restart dev3-remote`. Why both lines:
+then `systemctl --user start dev3-remote`. Why both lines:
 
 - **`KillMode=process`.** Agent terminals live in a tmux server the dev3 process starts, so they
   sit in the service's cgroup. systemd's default `KillMode=control-group` kills everything in that
@@ -160,6 +167,11 @@ then `systemctl --user restart dev3-remote`. Why both lines:
 
 Edit the drop-in, not the unit itself: `install-service` rewrites the unit on every run, and the
 drop-in survives that.
+
+WSL may stop the whole distro, systemd services included, shortly after its last terminal closes,
+which takes dev3 and every agent with it; and nothing starts the distro when Windows boots. If
+that happens on your machine, keep a WSL terminal open while agents run, or look at the idle
+settings in Microsoft's `.wslconfig` documentation for your WSL version.
 
 ### Claude Code: one login per project
 
@@ -178,8 +190,9 @@ Two things break this:
   use managed accounts, not both.
 - **`CLAUDE_PROJECT_DIR` inside a task is the worktree**, not the project's main checkout. A
   settings file that references `$CLAUDE_PROJECT_DIR/.claude/...` (hooks, a status line) points
-  into the worktree in a task and finds nothing there. Write
-  `${CLAUDE_CONFIG_DIR:-$CLAUDE_PROJECT_DIR/.claude}/...` instead.
+  into the worktree in a task, which has only what git tracks. When the pinned dir is the
+  project's own `.claude`, `${CLAUDE_CONFIG_DIR:-$CLAUDE_PROJECT_DIR/.claude}/...` reaches the
+  untracked files too; with any other pin, keep such files tracked or use an absolute path.
 
 ## Linux
 
