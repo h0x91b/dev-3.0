@@ -14,6 +14,7 @@ import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import { createLogger } from "./logger";
 import { tunnelManager } from "./cloudflare-tunnel";
+import { isLoopbackListen } from "./remote-listen-host";
 
 const log = createLogger("remote-console");
 
@@ -157,7 +158,11 @@ function printConnectionTips(opts: TipsOptions): void {
 		console.log("");
 	}
 
-	if (ips.length > 0) {
+	if (isLoopbackListen()) {
+		console.log("    ② This machine only - the server is bound to 127.0.0.1 (--host).");
+		console.log(`       Open http://localhost:${port}/ here; LAN devices cannot connect.`);
+		console.log("");
+	} else if (ips.length > 0) {
 		console.log("    ② Same LAN — scan the QR from a device on your network.");
 		console.log(`       LAN IPs: ${ips.join(", ")}`);
 		console.log("");

@@ -28,7 +28,8 @@ Three ways in, printed on every start:
 | ② | **LAN** | Scan the QR from any device on the same network |
 | ③ | **SSH port-forward** | Most private — nothing is publicly exposed: `ssh -L <port>:localhost:<port> user@<server>` |
 
-Pass `--no-tunnel` to skip the public tunnel entirely (LAN + SSH only).
+Pass `--no-tunnel` to skip the public tunnel entirely (LAN + SSH only). Add `--host 127.0.0.1`
+as well and the server accepts connections from this machine only: no LAN, no public URL.
 
 ## Background lifecycle (for SSH boxes)
 
@@ -108,6 +109,7 @@ Under systemd the log goes to the journal: `journalctl --user -u dev3-remote.ser
 |---|---|
 | `--port <n>` | Bind a fixed TCP port instead of a random one (ideal for `docker -p 3000:3000` or a preconfigured `ssh -L`) |
 | `--no-tunnel` | No Cloudflare tunnel — LAN + SSH forward only |
+| `--host <addr>` | Listen address, default `0.0.0.0`. `127.0.0.1` (or `localhost`) keeps the server off the LAN; a local browser, `ssh -L` and the tunnel still reach it. IPv4 only. Env: `DEV3_REMOTE_HOST` |
 | `--expose-ports=3000,5173` | Also publish your dev-server ports through their own quick tunnels (one URL per port). Retries for 60 s until each port is actually listening |
 | `--no-detach` | Stay in the foreground; Ctrl-C stops it |
 | `--views-dir <path>` | Serve static assets from a different directory |

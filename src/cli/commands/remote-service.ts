@@ -5,6 +5,7 @@ import { exitError, exitUsage } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { remoteStaticCodeError } from "../../shared/remote-static-code";
 import { STATIC_CODE_PUBLIC_TUNNEL_WARNING, shouldWarnAboutPublicTunnel } from "../remote-static-code-notice";
+import { listenHostError } from "../../shared/remote-listen-host";
 
 /**
  * `dev3 remote install-service` / `uninstall-service` — manage a **systemd
@@ -69,6 +70,13 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 		}
 		out.push("--port", String(n));
 	}
+	if (args.flags.host !== undefined) {
+		if (args.flags.host === "true") exitUsage(`--host requires a value: --host <addr>`);
+		const host = args.flags.host.trim();
+		const problem = listenHostError(host);
+		if (problem) exitUsage(`--host ${problem}`);
+		out.push("--host", host);
+	}
 	if (args.flags["no-tunnel"] === "true") out.push("--no-tunnel");
 	if (args.flags["expose-ports"] && args.flags["expose-ports"] !== "true") {
 		out.push(`--expose-ports=${args.flags["expose-ports"]}`);
@@ -129,7 +137,7 @@ export function renderUnitFile(binPath: string, execArgs: string[]): string {
 }
 
 export async function installRemoteService(args: ParsedArgs): Promise<void> {
-	rejectUnknownFlags(args, ["port", "no-tunnel", "expose-ports", "static-code", "no-start", "help", "h"]);
+	rejectUnknownFlags(args, ["port", "host", "no-tunnel", "expose-ports", "static-code", "no-start", "help", "h"]);
 
 	if (process.platform !== "linux") {
 		exitError(

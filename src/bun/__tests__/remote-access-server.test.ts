@@ -489,3 +489,65 @@ describe("isRemoteAccessActive", () => {
 		expect(isRemoteAccessActive()).toBe(false);
 	});
 });
+
+// ================================================================
+// DEV3_REMOTE_HOST (listen address)
+// ================================================================
+
+import { resolveListenHost, isLoopbackListen } from "../remote-listen-host";
+import { listenHostError } from "../../shared/remote-listen-host";
+
+describe("resolveListenHost", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("defaults to 0.0.0.0 when unset, keeping the historical bind", () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "");
+		expect(resolveListenHost()).toBe("0.0.0.0");
+	});
+
+	it("honours an IPv4 literal and maps localhost to 127.0.0.1", () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
+		expect(resolveListenHost()).toBe("127.0.0.1");
+		vi.stubEnv("DEV3_REMOTE_HOST", "localhost");
+		expect(resolveListenHost()).toBe("127.0.0.1");
+	});
+
+	it("falls back to 0.0.0.0 on a value it cannot bind", () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "::1");
+		expect(resolveListenHost()).toBe("0.0.0.0");
+		vi.stubEnv("DEV3_REMOTE_HOST", "300.1.1.1");
+		expect(resolveListenHost()).toBe("0.0.0.0");
+	});
+
+	it("treats only 127.x as loopback", () => {
+		expect(isLoopbackListen("127.0.0.1")).toBe(true);
+		expect(isLoopbackListen("0.0.0.0")).toBe(false);
+		expect(isLoopbackListen("192.168.1.5")).toBe(false);
+	});
+
+	it("listenHostError accepts IPv4 and localhost, rejects the rest", () => {
+		expect(listenHostError("10.0.0.1")).toBeNull();
+		expect(listenHostError("localhost")).toBeNull();
+		expect(listenHostError("example.com")).toContain("IPv4");
+		expect(listenHostError("1.2.3")).toContain("IPv4");
+	});
+});
+
+describe("loopback bind narrows the advertised addresses", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("offers only loopback in the interface picker", () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
+		expect(getLocalInterfaces()).toEqual([{ name: "loopback", address: "127.0.0.1", internal: true }]);
+	});
+
+	it("builds the default access URL on localhost, not a LAN address", async () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
+		expect(resolveAccessHost()).toBe("localhost");
+		expect(await getAccessUrl()).toContain("http://localhost:");
+	});
+});

@@ -83,6 +83,16 @@ describe("buildExecStartArgs", () => {
 		expect(out).not.toContain("--detach");
 	});
 
+	it("passes --host through to the unit", () => {
+		const out = buildExecStartArgs(args({ host: "127.0.0.1", "no-tunnel": "true" }));
+		expect(out).toEqual(["remote", "start", "--no-detach", "--host", "127.0.0.1", "--no-tunnel"]);
+	});
+
+	it("rejects a --host that is not an IPv4 address or localhost", () => {
+		expect(() => buildExecStartArgs(args({ host: "example.com" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("--host must be an IPv4 address");
+	});
+
 	it("rejects an invalid port", () => {
 		expect(() => buildExecStartArgs(args({ port: "abc" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("--port must be an integer");

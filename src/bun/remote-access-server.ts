@@ -29,6 +29,7 @@ import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
 import { telemetryBootstrapScript } from "./analytics-identity";
 import { buildSignInLink } from "../shared/remote-sign-in-link";
+import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
 
 const log = createLogger("remote-access");
 
@@ -663,7 +664,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 	const requestedPort = resolveListenPort();
 	const server = Bun.serve<WsData>({
-		hostname: "0.0.0.0",
+		hostname: resolveListenHost(), // 0.0.0.0 unless pinned via DEV3_REMOTE_HOST
 		port: requestedPort, // 0 = random, otherwise pinned via DEV3_REMOTE_PORT
 		async fetch(req, server) {
 			const url = new URL(req.url);
@@ -985,6 +986,11 @@ export function pushToBrowserClients(name: string, payload: any): void {
 // ── Access URL helpers ──────────────────────────────────────────────
 
 function getLocalIp(): string {
+	const listenHost = resolveListenHost();
+	// A loopback bind is unreachable on any LAN address; a specific address is
+	// the only one that answers.
+	if (isLoopbackListen(listenHost)) return "localhost";
+	if (listenHost !== "0.0.0.0") return listenHost;
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
 		for (const iface of (interfaces[name] ?? [])) {
@@ -1004,16 +1010,21 @@ function getLocalIp(): string {
  */
 export function getLocalInterfaces(): RemoteNetInterface[] {
 	const out: RemoteNetInterface[] = [];
+	const listenHost = resolveListenHost();
+	if (isLoopbackListen(listenHost)) {
+		return [{ name: "loopback", address: "127.0.0.1", internal: true }];
+	}
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
 		for (const iface of (interfaces[name] ?? [])) {
-			if (iface.family === "IPv4" && !iface.internal) {
+			if (iface.family === "IPv4" && !iface.internal && (listenHost === "0.0.0.0" || iface.address === listenHost)) {
 				out.push({ name, address: iface.address, internal: false });
 			}
 		}
 	}
-	// Always offer loopback last — needed for the SSH-forward path.
-	out.push({ name: "loopback", address: "127.0.0.1", internal: true });
+	// Offer loopback last — needed for the SSH-forward path — unless the server
+	// is bound to one specific address, which loopback does not reach.
+	if (listenHost === "0.0.0.0") out.push({ name: "loopback", address: "127.0.0.1", internal: true });
 	return out;
 }
 
