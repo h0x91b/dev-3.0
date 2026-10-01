@@ -5,6 +5,7 @@ in the [README quick start](../README.md#quick-start) — this page is the full 
 
 - [macOS desktop app](#macos--desktop-app)
 - [Windows — zip download](#windows--zip-download)
+- [Windows via WSL, with the UI in a Windows browser](#windows-via-wsl-with-the-ui-in-a-windows-browser)
 - [Linux](#linux)
 - [tmux on Linux — the version matters](#tmux-on-linux--the-version-matters)
 - [Cloud VM caveats](#cloud-vm-caveats)
@@ -67,6 +68,118 @@ marked "Latest" — canary builds are not tested releases.
 
 Every Windows zip, on either channel, is the exact tree CI extracted and launched on a Windows
 runner before publishing — that is the only guarantee on offer, and it is not the same as "tested".
+
+## Windows via WSL, with the UI in a Windows browser
+
+The alternative to the zip: run the Linux `dev3` engine inside WSL2, where agents get real tmux
+terminals and a Linux toolchain, and open the UI in a browser on Windows. Nothing runs on the
+Windows side except the browser.
+
+### Pick a topology
+
+| | Projects live on | Worktrees and engine on | Use it when |
+|---|---|---|---|
+| **Full WSL** | the WSL ext4 filesystem (`~/src/...`) | ext4 | The repo is backed by a remote anyway. Fastest by a wide margin |
+| **Hybrid** | a Windows drive (`/mnt/c/...`, `/mnt/e/...`) | ext4 | The project tree has to stay on the Windows drive (Windows tools own it, or it must survive a distro reset) |
+
+Every file access under `/mnt/<drive>` crosses the 9p bridge between WSL and Windows, and that is
+slow for anything that touches many small files: on one machine `bun install` in a project on
+`/mnt/e` took about six minutes, and the test suite never finished. Full WSL avoids the bridge
+entirely.
+
+Hybrid keeps the heavy part off it. dev3 puts task worktrees under `~/.dev3.0/worktrees/`, which
+is on ext4 whatever the project path is, so dependency installs, builds and tests inside a task run
+at native speed. What still crosses the bridge is the main checkout and its `.git` directory: git
+operations in a task read the shared object store over 9p, and work done directly in the main
+checkout is as slow as before.
+
+### Install
+
+Inside the WSL distro (Ubuntu shown). WSL2 with systemd is assumed; recent Ubuntu images enable it
+by default, otherwise set `systemd=true` under `[boot]` in `/etc/wsl.conf` and run `wsl --shutdown`
+from Windows.
+
+```sh
+sudo apt-get update && sudo apt-get install -y tmux git
+curl -fsSL -o /tmp/dev3.tar.gz \
+  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-x64.tar.gz"
+mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
+echo 'export PATH=$HOME/.dev3:$PATH' >> ~/.bashrc && export PATH=$HOME/.dev3:$PATH
+```
+
+Check `tmux -V` against [tmux on Linux](#tmux-on-linux--the-version-matters). `cloudflared` is not
+needed: the browser is on the same machine, so the public tunnel stays off.
+
+### First run, in the foreground
+
+```sh
+DEV3_TELEMETRY=off dev3 remote --no-detach --no-tunnel --host 127.0.0.1 --port 8090
+```
+
+- `DEV3_TELEMETRY=off` turns telemetry off from the first start. Leave it out if you are happy to
+  send it; the in-app toggle works either way.
+- `--no-tunnel` skips the Cloudflare quick tunnel.
+- `--host 127.0.0.1` keeps the server off the network. The default bind is `0.0.0.0`, and under
+  WSL's mirrored networking mode that puts the sign-in page on your LAN.
+- `--port 8090` gives a stable address to bookmark.
+
+Open the printed URL in a Windows browser: `http://localhost:8090/...`. WSL forwards connections
+to `localhost` on Windows into the distro (WSL's default `localhostForwarding`; do not disable it
+in `.wslconfig`). `http://localhost` counts as a secure context in browsers, so notifications and
+clipboard access work without HTTPS or a certificate.
+
+### Run it as a service
+
+Once the foreground run works, stop it with Ctrl-C **before** installing the service. A second
+server on the same port does not start; under systemd it fails, restarts, fails again, and the
+journal shows `Is port 8090 in use?` on every attempt.
+
+```sh
+dev3 remote install-service --no-tunnel --host 127.0.0.1 --port 8090
+sudo loginctl enable-linger $USER   # start with the distro, not with your first shell
+systemctl --user edit dev3-remote.service
+```
+
+Put this in the drop-in that `systemctl --user edit` opens:
+
+```ini
+[Service]
+Environment=DEV3_TELEMETRY=off
+KillMode=process
+```
+
+then `systemctl --user restart dev3-remote`. Why both lines:
+
+- **`KillMode=process`.** Agent terminals live in a tmux server the dev3 process starts, so they
+  sit in the service's cgroup. systemd's default `KillMode=control-group` kills everything in that
+  cgroup when the unit stops, so without this line every restart, including a manual
+  `systemctl --user restart` after an update, kills every running agent. With it, only the dev3
+  process is stopped and the agents carry on.
+- **`Environment=DEV3_TELEMETRY=off`.** The unit `install-service` writes does not carry your
+  shell's environment.
+
+Edit the drop-in, not the unit itself: `install-service` rewrites the unit on every run, and the
+drop-in survives that.
+
+### Claude Code: one login per project
+
+To run each project under its own Claude Code config dir (and so its own account), pin it in the
+project's `.dev3/config.local.json`, which stays out of git:
+
+```json
+{ "env": { "CLAUDE_CONFIG_DIR": "/mnt/e/Projects/acme/.claude" } }
+```
+
+Two things break this:
+
+- **A dev3 managed account.** Once any account exists in dev3's account switcher, dev3 sets
+  `CLAUDE_CONFIG_DIR` for every Claude session it launches, to the active account's dir, or unsets
+  it when the system login is selected. Either way the project's pin is lost. Pin per project, or
+  use managed accounts, not both.
+- **`CLAUDE_PROJECT_DIR` inside a task is the worktree**, not the project's main checkout. A
+  settings file that references `$CLAUDE_PROJECT_DIR/.claude/...` (hooks, a status line) points
+  into the worktree in a task and finds nothing there. Write
+  `${CLAUDE_CONFIG_DIR:-$CLAUDE_PROJECT_DIR/.claude}/...` instead.
 
 ## Linux
 
