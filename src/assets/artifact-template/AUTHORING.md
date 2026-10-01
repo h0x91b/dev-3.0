@@ -1,6 +1,6 @@
 # dev3 artifact starter
 
-Use this template for text-only reports too: headings, paragraphs and lists are enough. Remove the demo charts, KPIs and unused sections; keep the shell and branding below. Publishing a `.md` or `.txt` file directly uses the text viewer, not this template or its CSS.
+Use this shell for prose-only reports too. Direct `.md`/`.txt` publishing bypasses its CSS.
 
 The layout is fixed; do not list or explore the directory before starting:
 
@@ -61,7 +61,7 @@ Keep `data-dev3-artifact-template="v1"` on `<html>`, the dev3 icon and a `DEV3 A
 
 ## Before you publish — no browser pass by default
 
-Publish straight away. The shell already owns themes, text size, narrow-screen table stacking and print, so opening a browser, taking screenshots, or sweeping phone and desktop widths is **not** part of making or revising an ordinary report. This is the rule for artifacts; a general "check every rendered surface in a browser" rule is about product UI and does not apply here.
+Publish straight away. The shell already owns themes, text size, narrow-screen table stacking and print, so opening a browser, taking screenshots, or sweeping phone and desktop widths is **not** part of making or revising an ordinary report. Product UI browser checks do not apply to ordinary reports.
 
 What stays is seconds of work, no browser: `node --check report.js` (or `bun build report.js > /dev/null`) on every script you wrote, since one syntax error blanks the report; every `id` that `report.js` looks up exists in `index.html`; `show-artifact` exits 0.
 
