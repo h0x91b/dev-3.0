@@ -662,6 +662,8 @@ const COMMANDS: CommandHelp[] = [
 		details: [
 			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, raster, MP4/WebM video and MP3/M4A/WAV/OGG audio file under it.",
 			"<notes.md | .txt>     Publish Markdown or plain text as-is; the app renders it into the viewer (raw HTML shows as text, no --assets).",
+			"                      Text files do not use the dev3 artifact template CSS. For template-styled reports, including prose-only briefs,",
+			"                      copy $DEV3_ARTIFACT_TEMPLATE_DIR (or run dev3 artifact-template), read AUTHORING.md, then publish the edited directory.",
 			"--assets <paths...>   Name local CSS, classic JS, raster, video and audio assets by hand; all following paths belong to the artifact until the next flag.",
 			"                      A bundled video or audio file is capped at 16 MB, and all of them together at 48 MB; poster images count as ordinary rasters.",
 			"                      A player or link to a local media file that is not bundled or not a supported format stops the publish, naming the fix.",

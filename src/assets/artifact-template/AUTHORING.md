@@ -1,5 +1,7 @@
 # dev3 artifact starter
 
+Use this template for text-only reports too: headings, paragraphs and lists are enough. Remove the demo charts, KPIs and unused sections; keep the shell and branding below. Publishing a `.md` or `.txt` file directly uses the text viewer, not this template or its CSS.
+
 The layout is fixed; do not list or explore the directory before starting:
 
 - `AUTHORING.md` — this card. Enough for an ordinary report; read it once.

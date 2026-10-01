@@ -27,7 +27,7 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
-import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -62,6 +62,16 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
+	it("distinguishes template-styled prose from raw text artifacts in every harness", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), OMP_SKILL_BODY, getGenericSkillContent()]) {
+			expect(skill).toContain("including text-only summaries and daily briefs");
+			expect(skill).toContain("**Template styling requested → copy the starter and publish its directory.**");
+			expect(skill).toContain("Markdown/plain-text publishing does not use the template CSS");
+			expect(skill).toContain("ask which requirement takes priority before publishing");
+			expect(skill).toContain('data-dev3-artifact-template="v1"');
+		}
+	});
+
 	it("exempts in-task bug hunters from mutating the originating task", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## In-task Bug Hunter isolation");
