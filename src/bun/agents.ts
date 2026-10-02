@@ -1284,8 +1284,10 @@ async function writeClaudeTrustEntry(claudeJsonPath: string, resolvedPath: strin
  *      trust dialog bypass.
  *   3. Merge into the worktree's existing `.claude/settings.local.json`
  *      (if any) and write back.
+ *
+ * Exported for unit testing.
  */
-function ensureClaudeMcpApproved(worktreePath: string, projectPath?: string): void {
+export function ensureClaudeMcpApproved(worktreePath: string, projectPath?: string): void {
 	const mcpJsonPath = join(worktreePath, ".mcp.json");
 	if (!existsSync(mcpJsonPath)) return;
 

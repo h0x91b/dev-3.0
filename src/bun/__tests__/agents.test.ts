@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, findConfig, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, ensureClaudeMcpApproved, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, findConfig, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -1416,6 +1416,37 @@ describe("mergeMcpApproval", () => {
 			{ enabledMcpjsonServers: ["a", 42, null, "b"] as unknown[] },
 		]);
 		expect(result.enabledMcpjsonServers).toEqual(["a", "b"]);
+	});
+});
+
+describe("ensureClaudeMcpApproved", () => {
+	let tmp: string;
+	let worktree: string;
+	let outside: string;
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-mcp-approve-"));
+		worktree = join(tmp, "worktree");
+		outside = join(tmp, "kit");
+		mkdirSync(worktree);
+		mkdirSync(outside);
+		writeFileSync(join(worktree, ".mcp.json"), "{}");
+	});
+
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("pre-approves MCP servers in the worktree settings.local.json", () => {
+		ensureClaudeMcpApproved(worktree);
+		const written = JSON.parse(readFileSync(join(worktree, ".claude", "settings.local.json"), "utf-8"));
+		expect(written.enableAllProjectMcpServers).toBe(true);
+	});
+
+	it("writes nothing when .claude links outside the worktree", () => {
+		symlinkSync(outside, join(worktree, ".claude"));
+		ensureClaudeMcpApproved(worktree);
+		expect(existsSync(join(outside, "settings.local.json"))).toBe(false);
 	});
 });
 
