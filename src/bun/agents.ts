@@ -1218,7 +1218,7 @@ export async function ensureClaudeTrust(
 	try {
 		// Resolve symlinks so the path matches what claude sees
 		const resolved = await realpath(dirPath);
-		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir());
+		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir(), dirPath);
 
 		await writeClaudeTrustEntry(location.claudeJson, resolved);
 		if (location.pinned && !listClaudeAccountDirs().includes(location.dir)) {
@@ -1253,11 +1253,12 @@ export async function ensureClaudeTrust(
  * Give a launch's pinned Claude config dir (`CLAUDE_CONFIG_DIR` from project or
  * agent-config env) the dev3 skills and settings that startup installs into
  * ~/.claude. The default dir and managed account dirs are already covered at
- * startup, so they are skipped. Never throws.
+ * startup, so they are skipped. `cwd` is the agent's working dir, which a relative
+ * pin resolves against. Never throws.
  */
-export function ensureClaudeConfigDir(launchEnv?: Record<string, string>): void {
+export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefined, cwd: string): void {
 	try {
-		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir());
+		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir(), cwd);
 		if (!location.pinned || listClaudeAccountDirs().includes(location.dir)) return;
 		installClaudeConfigDir(location.dir);
 	} catch (err) {

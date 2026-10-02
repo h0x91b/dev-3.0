@@ -806,7 +806,7 @@ async function ensureAgentTrust(
 ): Promise<void> {
 	// dev3's own skills and settings, not a grant to the branch - so foreign code gets them too.
 	try {
-		if (agents.isClaudeCommand(resolvedBaseCmd, family)) agents.ensureClaudeConfigDir(launchEnv);
+		if (agents.isClaudeCommand(resolvedBaseCmd, family)) agents.ensureClaudeConfigDir(launchEnv, worktreePath);
 	} catch (err) {
 		log.warn("ensure Claude config dir failed (non-fatal)", { worktreePath, error: String(err) });
 	}

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { createLogger } from "./logger";
 import { ensureCodexConfigFile } from "./codex-config";
 import {
@@ -1677,8 +1677,11 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 	// unpinned launch reads it. A pin on the server's own env is what launches inherit.
 	const defaultClaudeDir = claudeConfigLocation({}, home).dir;
 	installClaudeConfigDir(defaultClaudeDir, home);
+	// A relative pin names a different dir per worktree, so only launches can provision it.
 	const serverClaude = claudeConfigLocation(process.env, home);
-	if (serverClaude.pinned && serverClaude.dir !== defaultClaudeDir) installClaudeConfigDir(serverClaude.dir, home);
+	if (serverClaude.pinned && isAbsolute(serverClaude.dir) && serverClaude.dir !== defaultClaudeDir) {
+		installClaudeConfigDir(serverClaude.dir, home);
+	}
 
 	// Install Codex-specific skill (hook-aware + shell note)
 	const codexSkillDir = `${home}/${CODEX_SKILL_DIR}`;

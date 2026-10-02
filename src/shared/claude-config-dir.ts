@@ -5,7 +5,7 @@
  * Anything dev3 writes for Claude must follow the same rule, or it lands in a
  * directory the agent never reads (`decisions/2026/10/01/claude-config-dir-everywhere.md`).
  */
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { ENV_UNSET } from "./agent-accounts";
 
 export interface ClaudeConfigLocation {
@@ -17,17 +17,25 @@ export interface ClaudeConfigLocation {
 	pinned: boolean;
 }
 
-/** `~` expanded and trailing slashes dropped, so one dir has one spelling (registry, prune). */
-function normalizeDir(raw: string | undefined, home: string): string | null {
+/**
+ * `~` expanded and trailing slashes dropped, so one dir has one spelling (registry, prune).
+ * A relative value is resolved against `cwd` - the agent's cwd, which is what Claude uses.
+ */
+function normalizeDir(raw: string | undefined, home: string, cwd?: string): string | null {
 	const trimmed = raw?.trim();
 	if (!trimmed) return null;
-	const expanded = trimmed === "~" || trimmed.startsWith("~/") ? home + trimmed.slice(1) : trimmed;
+	let expanded = trimmed === "~" || trimmed.startsWith("~/") ? home + trimmed.slice(1) : trimmed;
+	if (cwd && !isAbsolute(expanded)) expanded = resolve(cwd, expanded);
 	return expanded.length > 1 ? expanded.replace(/\/+$/, "") : expanded;
 }
 
-/** Resolve the config location from the env the agent will actually see. */
-export function claudeConfigLocation(env: Record<string, string | undefined>, home: string): ClaudeConfigLocation {
-	const pinnedDir = normalizeDir(env.CLAUDE_CONFIG_DIR, home);
+/** Resolve the config location from the env the agent will actually see, running in `cwd`. */
+export function claudeConfigLocation(
+	env: Record<string, string | undefined>,
+	home: string,
+	cwd?: string,
+): ClaudeConfigLocation {
+	const pinnedDir = normalizeDir(env.CLAUDE_CONFIG_DIR, home, cwd);
 	if (pinnedDir) return { dir: pinnedDir, claudeJson: join(pinnedDir, ".claude.json"), pinned: true };
 	return { dir: join(home, ".claude"), claudeJson: join(home, ".claude.json"), pinned: false };
 }
@@ -41,9 +49,10 @@ export function launchClaudeConfigLocation(
 	launchEnv: Record<string, string | undefined> | undefined,
 	processEnv: Record<string, string | undefined>,
 	home: string,
+	cwd?: string,
 ): ClaudeConfigLocation {
 	// The account switcher's "unset" sentinel means the launch clears the variable.
 	if (launchEnv?.CLAUDE_CONFIG_DIR === ENV_UNSET) return claudeConfigLocation({}, home);
 	const fromLaunch = launchEnv?.CLAUDE_CONFIG_DIR?.trim();
-	return claudeConfigLocation({ CLAUDE_CONFIG_DIR: fromLaunch || processEnv.CLAUDE_CONFIG_DIR }, home);
+	return claudeConfigLocation({ CLAUDE_CONFIG_DIR: fromLaunch || processEnv.CLAUDE_CONFIG_DIR }, home, cwd);
 }

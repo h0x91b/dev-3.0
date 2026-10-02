@@ -174,6 +174,15 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".codex/skills/dev3/SKILL.md"))).toBe(true);
 	});
 
+	it("leaves a relative CLAUDE_CONFIG_DIR on the server env to launches, which know the worktree", async () => {
+		vi.stubEnv("CLAUDE_CONFIG_DIR", "relative-claude");
+		const { installAgentSkills } = await loadModule();
+		await installAgentSkills();
+
+		expect(existsSync(join(process.cwd(), "relative-claude"))).toBe(false);
+		expect(existsSync(join(tempHome, ".claude/skills/dev3/SKILL.md"))).toBe(true);
+	});
+
 	it("leaves a settings.json that does not parse untouched", async () => {
 		const dir = join(tempHome, "pinned-claude");
 		mkdirSync(dir, { recursive: true });

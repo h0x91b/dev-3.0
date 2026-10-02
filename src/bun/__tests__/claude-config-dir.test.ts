@@ -26,6 +26,11 @@ describe("claudeConfigLocation", () => {
 		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "~/proj/.claude/" }, "/home/u").dir).toBe("/home/u/proj/.claude");
 	});
 
+	it("resolves a relative value against the agent's cwd, not the server's", () => {
+		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: ".claude-cfg/" }, "/home/u", "/wt/task").dir).toBe("/wt/task/.claude-cfg");
+		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "/abs/cfg" }, "/home/u", "/wt/task").dir).toBe("/abs/cfg");
+	});
+
 	it("treats a blank value as unset", () => {
 		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "  " }, "/home/u").pinned).toBe(false);
 	});
@@ -93,6 +98,17 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(remember).toHaveBeenCalledWith(pinned);
 	});
 
+	it("puts a relative pin's trust and skills inside the worktree the agent runs in", async () => {
+		const { ensureClaudeTrust, ensureClaudeConfigDir } = await import("../agents");
+		await ensureClaudeTrust(worktree, undefined, undefined, { CLAUDE_CONFIG_DIR: "cfg" });
+		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: "cfg" }, worktree);
+
+		const data = JSON.parse(readFileSync(join(worktree, "cfg/.claude.json"), "utf-8"));
+		expect(data.projects[realpathSync(worktree)].hasTrustDialogAccepted).toBe(true);
+		expect(existsSync(join(worktree, "cfg/skills/dev3/SKILL.md"))).toBe(true);
+		expect(remember).toHaveBeenCalledWith(join(worktree, "cfg"));
+	});
+
 	it("keeps using ~/.claude.json when nothing pins a dir", async () => {
 		const { ensureClaudeTrust } = await import("../agents");
 		await ensureClaudeTrust(worktree, undefined, undefined, {});
@@ -104,8 +120,8 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 	it("installs the dev3 skills into a pinned dir at launch, and leaves the default dir to startup", async () => {
 		const pinned = join(home, "pinned");
 		const { ensureClaudeConfigDir } = await import("../agents");
-		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: pinned });
-		ensureClaudeConfigDir({});
+		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: pinned }, worktree);
+		ensureClaudeConfigDir({}, worktree);
 
 		expect(existsSync(join(pinned, "skills/dev3-project-config/SKILL.md"))).toBe(true);
 		expect(existsSync(join(pinned, "settings.json"))).toBe(true);
