@@ -77,7 +77,10 @@ const kanban = {
 	"createTask.taskTypeReview": "Revisión de PR",
 	"createTask.taskTypeStandardHint": "Sin prompt incorporado — la descripción es solo tuya.",
 	"createTask.taskTypeCoordinatorHint": "Pone un brief de coordinador sobre tu texto: gestionas otras tareas y nunca tocas el código.",
-	"createTask.taskTypeReviewNeedsBranch": "Elige una rama primero — una revisión de PR necesita algo que revisar.",
+	"createTask.prLinkLabel": "Pull request",
+	"createTask.prLinkLoad": "Cargar PR",
+	"createTask.prLinkHint": "Pega el enlace de un pull request de GitHub — su rama se usará para la revisión. ¿Revisas una rama sin PR? Elígela en «Usar rama existente».",
+	"createTask.prLinkInvalid": "Eso no es un enlace a un pull request — debe terminar en /pull/ y un número.",
 	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",
 
 	// TaskCard

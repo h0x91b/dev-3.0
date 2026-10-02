@@ -111,6 +111,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
 	const projectBranchRequestRef = useRef(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const prLinkInputRef = useRef<HTMLInputElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
 	const labelAnchorRef = useRef<HTMLButtonElement>(null);
@@ -244,7 +245,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				el.selectionStart = nextText.length;
 				el.selectionEnd = nextText.length;
 				el.scrollTop = el.scrollHeight;
-				el.focus();
+				// A branchless review's next step is the PR link, not more description.
+				(next === "pr-review" && prLinkInputRef.current ? prLinkInputRef.current : el).focus();
 			});
 			return nextText;
 		});
@@ -257,24 +259,41 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const detectedPr = parsePrUrl(description);
 	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !isVirtual;
 
+	// PR review without a branch has nothing to check out yet: the inline PR
+	// link field asks for one, and every non-draft save waits for it.
+	const reviewNeedsPr = taskType === "pr-review" && !selectedBranch && !isVirtual;
+
+	/** Resolve a PR link into its head branch and turn the form into a review. Returns an error, or null. */
+	async function resolvePrIntoReview(url: string): Promise<string | null> {
+		let result: Awaited<ReturnType<typeof api.request.resolvePrUrl>>;
+		try {
+			result = await api.request.resolvePrUrl({ projectId: project.id, url });
+		} catch (err) {
+			return String(err);
+		}
+		if (!result.ok || !result.branch) return result.error || t("createTask.prResolveFailedShort");
+		const prompt = await ensurePresetPrompt("pr-review");
+		const wasReview = taskType === "pr-review";
+		// The URL was the paste, not the task text: drop it from the user's own part
+		// and keep (or add) the review preamble above what remains.
+		setDescription((current) => {
+			const userText = wasReview ? withoutPresetPrompt(current, prompt) : current;
+			const cleaned = userText.replace(url, "").replace(/\n{3,}/g, "\n\n").trim();
+			return withPresetPrompt(cleaned, prompt);
+		});
+		setTaskType("pr-review");
+		setSelectedBranch(result.branch);
+		setBranchTouched(true);
+		setDismissedPrUrl(null);
+		return null;
+	}
+
 	async function applyPrFromBanner() {
 		if (!detectedPr || prApplying) return;
 		setPrApplying(true);
 		try {
-			const result = await api.request.resolvePrUrl({ projectId: project.id, url: detectedPr.url });
-			if (result.ok && result.branch) {
-				// Strip the URL out of the description, then fold the remaining text
-				// into the review prompt — the URL was the paste, not the task text.
-				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
-				setDescription(withPresetPrompt(cleaned, await ensurePresetPrompt("pr-review")));
-				setTaskType("pr-review");
-				setSelectedBranch(result.branch);
-				setDismissedPrUrl(null);
-			} else {
-				toast.error(t("createTask.prResolveFailed", { error: result.error || "" }), { projectId: project.id });
-			}
-		} catch (err) {
-			toast.error(t("createTask.prResolveFailed", { error: String(err) }), { projectId: project.id });
+			const error = await resolvePrIntoReview(detectedPr.url);
+			if (error) toast.error(t("createTask.prResolveFailed", { error }), { projectId: project.id });
 		} finally {
 			setPrApplying(false);
 		}
@@ -501,6 +520,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		if (mode === "draft" && !(isDraftEdit ? true : hasAnyInput)) return;
 		if (mode === "run" && !onCreateAndRun) return;
 		if (mode === "scratch" && !onCreateAndRun) return;
+		if (reviewNeedsPr && mode !== "draft" && mode !== "scratch") {
+			prLinkInputRef.current?.focus();
+			return;
+		}
 
 		// Virtual ops have no git branch — commit directly with no branch choice.
 		if (isVirtual) {
@@ -793,8 +816,15 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 					value={taskType}
 					onChange={handleTaskTypeChange}
 					reviewAvailable={!isVirtual}
-					reviewEnabled={!isVirtual && !!selectedBranch}
 				/>
+
+				{reviewNeedsPr && (
+					<PrReviewLinkField
+						inputRef={prLinkInputRef}
+						initialUrl={detectedPr?.url ?? ""}
+						onResolve={resolvePrIntoReview}
+					/>
+				)}
 
 				{/* Memory notice at the moment the launch decision is made. Informs
 				    only — it never gates or disables Create. */}
@@ -923,10 +953,6 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						onSelectBranch={(branch) => {
 							setSelectedBranch(branch);
 							setBranchTouched(true);
-							// PR review has nothing to review without a branch.
-							if (!branch && taskType === "pr-review") {
-								void handleTaskTypeChange("standard");
-							}
 						}}
 						isPrReview={taskType === "pr-review"}
 						onPrResolved={() => void handleTaskTypeChange("pr-review")}
@@ -1006,7 +1032,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									<button
 										data-tour-anchor="create-task.run"
 										onClick={handleCreateAndRun}
-										disabled={!description.trim() || creating}
+										disabled={!description.trim() || creating || reviewNeedsPr}
 										className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 									>
 										<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
@@ -1017,7 +1043,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								)}
 								<button
 									onClick={handleCreate}
-									disabled={!description.trim() || creating}
+									disabled={!description.trim() || creating || reviewNeedsPr}
 									className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{creating ? t("createTask.creating") : t("createTask.create")}
@@ -1114,8 +1140,6 @@ interface TaskTypePickerProps {
 	onChange: (next: TaskTypeChoice) => void;
 	/** False on virtual projects: there is no branch to review, ever. */
 	reviewAvailable: boolean;
-	/** False until a branch is picked: reviewable in principle, not yet. */
-	reviewEnabled: boolean;
 }
 
 /**
@@ -1123,10 +1147,9 @@ interface TaskTypePickerProps {
  * task cannot be both a coordinator and a PR review — and "Standard" makes the
  * default state visible instead of implied by two switches being off.
  */
-function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: TaskTypePickerProps) {
+function TaskTypePicker({ value, onChange, reviewAvailable }: TaskTypePickerProps) {
 	const t = useT();
 	const options = PRESET_TASK_TYPES.filter((type) => type !== "pr-review" || reviewAvailable);
-	const isEnabled = (type: TaskTypeChoice) => type !== "pr-review" || reviewEnabled;
 	const labelKey = {
 		standard: "createTask.taskTypeStandard",
 		coordinator: "createTask.taskTypeCoordinator",
@@ -1148,24 +1171,21 @@ function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: Tas
 				role="radiogroup"
 				aria-label={t("createTask.taskType")}
 				className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5"
-				onKeyDown={(event) => handleRadioGroupKeys(event, options.filter(isEnabled), value, onChange)}
+				onKeyDown={(event) => handleRadioGroupKeys(event, options, value, onChange)}
 			>
 				{options.map((type) => {
 					const active = type === value;
-					const enabled = isEnabled(type);
 					return (
 						<button
 							key={type}
 							type="button"
 							role="radio"
 							aria-checked={active}
-							aria-disabled={!enabled || undefined}
-							disabled={!enabled}
 							data-testid={`task-type-${type}`}
 							onClick={() => onChange(type)}
-							title={enabled ? t(hintKey[type]) : t("createTask.taskTypeReviewNeedsBranch")}
-							className={`px-3 py-1 text-xs font-semibold rounded-md transition-[background-color,color,transform] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
-								active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg enabled:hover:bg-elevated"
+							title={t(hintKey[type])}
+							className={`px-3 py-1 text-xs font-semibold rounded-md transition-[background-color,color,transform] active:scale-[0.96] ${
+								active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg hover:bg-elevated"
 							}`}
 						>
 							{t(labelKey[type])}
@@ -1175,7 +1195,90 @@ function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: Tas
 			</div>
 			</div>
 			<p className="text-xs text-fg-3">
-				{value === "pr-review" && !reviewEnabled ? t("createTask.taskTypeReviewNeedsBranch") : t(hintKey[value])}
+				{t(hintKey[value])}
+			</p>
+		</div>
+	);
+}
+
+interface PrReviewLinkFieldProps {
+	inputRef: React.RefObject<HTMLInputElement | null>;
+	/** A PR link already sitting in the description, so it is not pasted twice. */
+	initialUrl: string;
+	onResolve: (url: string) => Promise<string | null>;
+}
+
+/**
+ * Where a PR review gets its code. Shown only while the review has no branch —
+ * once the link resolves, the branch picker below carries the checked-out branch.
+ */
+function PrReviewLinkField({ inputRef, initialUrl, onResolve }: PrReviewLinkFieldProps) {
+	const t = useT();
+	const [url, setUrl] = useState(initialUrl);
+	const [resolving, setResolving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const pr = parsePrUrl(url);
+
+	async function resolve(value: string) {
+		const match = parsePrUrl(value);
+		if (!match || resolving) return;
+		setResolving(true);
+		setError(null);
+		const failure = await onResolve(match.url);
+		setResolving(false);
+		if (failure) setError(failure);
+	}
+
+	return (
+		<div className="space-y-1.5" data-testid="pr-review-link">
+			<label htmlFor="pr-review-link-input" className="block text-fg-2 text-sm font-medium">
+				{t("createTask.prLinkLabel")}
+			</label>
+			<div className="flex gap-2">
+				<input
+					id="pr-review-link-input"
+					ref={inputRef}
+					type="url"
+					inputMode="url"
+					autoComplete="off"
+					spellCheck={false}
+					value={url}
+					onChange={(e) => { setUrl(e.target.value); setError(null); }}
+					// A pasted link is the whole intent — resolve it without a second click.
+					onPaste={(e) => {
+						const pasted = e.clipboardData.getData("text").trim();
+						if (parsePrUrl(pasted)) {
+							e.preventDefault();
+							setUrl(pasted);
+							void resolve(pasted);
+						}
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+							e.preventDefault();
+							void resolve(url);
+						}
+					}}
+					placeholder="https://github.com/owner/repo/pull/123"
+					aria-invalid={!!error || undefined}
+					aria-describedby="pr-review-link-hint"
+					className="flex-1 min-w-0 px-3 py-2 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
+				/>
+				<button
+					type="button"
+					onClick={() => void resolve(url)}
+					disabled={!pr || resolving}
+					className="px-3 py-2 bg-accent/15 border border-accent/40 rounded-xl text-accent text-xs font-medium hover:bg-accent/25 transition-[background-color,transform] active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+				>
+					{resolving ? t("createTask.prResolving") : t("createTask.prLinkLoad")}
+				</button>
+			</div>
+			<p id="pr-review-link-hint" className={`text-xs ${error ? "text-danger" : "text-fg-3"}`} role={error ? "alert" : undefined}>
+				{error
+					? t("createTask.prResolveFailed", { error })
+					: url.trim() && !pr
+						? t("createTask.prLinkInvalid")
+						: t("createTask.prLinkHint")}
 			</p>
 		</div>
 	);

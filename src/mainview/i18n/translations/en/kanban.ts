@@ -78,7 +78,10 @@ const kanban = {
 	"createTask.taskTypeReview": "PR review",
 	"createTask.taskTypeStandardHint": "No built-in prompt — the description is yours alone.",
 	"createTask.taskTypeCoordinatorHint": "Puts a coordinator brief above your text: manage other tasks, never touch code yourself.",
-	"createTask.taskTypeReviewNeedsBranch": "Pick a branch first — a PR review needs something to review.",
+	"createTask.prLinkLabel": "Pull request",
+	"createTask.prLinkLoad": "Load PR",
+	"createTask.prLinkHint": "Paste a GitHub pull request link — its branch gets checked out for the review. Reviewing a plain branch? Pick it under “Use existing branch”.",
+	"createTask.prLinkInvalid": "That isn't a pull request link — it should end in /pull/ and a number.",
 	"createTask.reviewModeHint": "Pre-fills description with a code review prompt",
 
 	// TaskCard

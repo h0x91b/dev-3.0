@@ -79,7 +79,10 @@ const kanban = {
 	"createTask.taskTypeReview": "PR ревью",
 	"createTask.taskTypeStandardHint": "Без встроенного промпта — описание только твоё.",
 	"createTask.taskTypeCoordinatorHint": "Ставит над твоим текстом бриф координатора: управляешь другими задачами, сам код не трогаешь.",
-	"createTask.taskTypeReviewNeedsBranch": "Сначала выбери ветку — ревью нечего смотреть.",
+	"createTask.prLinkLabel": "Pull request",
+	"createTask.prLinkLoad": "Загрузить PR",
+	"createTask.prLinkHint": "Вставь ссылку на pull request в GitHub — его ветка будет взята на ревью. Ревьюишь просто ветку? Выбери её в «Использовать существующую ветку».",
+	"createTask.prLinkInvalid": "Это не ссылка на pull request — она должна заканчиваться на /pull/ и номер.",
 	"createTask.reviewModeHint": "Предзаполняет описание промптом для код-ревью",
 
 	// TaskCard

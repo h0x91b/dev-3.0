@@ -1901,9 +1901,48 @@ describe("CreateTaskModal — task type presets", () => {
 		await waitFor(() => expect(description().value).toBe("Project coordinator."));
 	});
 
-	it("offers PR review only once a branch exists — a review needs something to review", async () => {
+	it("offers PR review without a branch and asks for the pull request link", async () => {
 		renderModal();
-		expect(await screen.findByTestId("task-type-pr-review")).toBeDisabled();
+		await userEvent.type(description(), "Focus on auth.");
+		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
+
+		const link = await screen.findByLabelText("Pull request");
+		await waitFor(() => expect(link).toHaveFocus());
+		// Nothing to check out yet, so a launching save must wait for the link.
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Save as draft" })).toBeEnabled();
+	});
+
+	it("resolves a pasted PR link into the branch and keeps the review preamble", async () => {
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: true, branch: "origin/feature", number: 42, title: "My PR", isFork: false, error: null,
+		});
+		renderModal();
+		await userEvent.type(description(), "Focus on auth.");
+		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
+		await userEvent.click(await screen.findByLabelText("Pull request"));
+		await userEvent.paste("https://github.com/o/r/pull/42");
+
+		await waitFor(() => expect(mockedApi.request.resolvePrUrl).toHaveBeenCalledWith({
+			projectId: "p1", url: "https://github.com/o/r/pull/42",
+		}));
+		expect(await screen.findByText("origin/feature")).toBeInTheDocument();
+		expect(screen.queryByLabelText("Pull request")).not.toBeInTheDocument();
+		expect(description().value).toContain("thorough code review");
+		expect(description().value).toMatch(/\n\n---\n\nFocus on auth\.$/);
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+	});
+
+	it("shows why a PR link failed to resolve, inline", async () => {
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: false, branch: null, number: 42, title: null, isFork: false, error: "gh is not logged in",
+		});
+		renderModal();
+		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
+		await userEvent.type(await screen.findByLabelText("Pull request"), "https://github.com/o/r/pull/42{Enter}");
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("gh is not logged in");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 	});
 
 	it("hides PR review entirely on a virtual project, where no branch can ever exist", async () => {
