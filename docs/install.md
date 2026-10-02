@@ -152,19 +152,19 @@ server on the same port does not start; under systemd it fails, restarts, fails 
 journal shows `Is port 8090 in use?` on every attempt.
 
 ```sh
-dev3 remote install-service --no-start --no-tunnel --host 127.0.0.1 --port 8090
+DEV3_TELEMETRY=off dev3 remote install-service --no-start --no-tunnel --host 127.0.0.1 --port 8090
 sudo loginctl enable-linger $USER   # start with the distro, not with your first shell
 systemctl --user edit dev3-remote.service
 ```
 
-`--no-start` matters: without it the service starts right away, before the drop-in below exists,
-and runs with telemetry on until you restart it.
+`install-service` writes `DEV3_TELEMETRY=off` from your shell into the unit and prints it under
+"Carried from this shell into the unit". `--no-start` keeps the service stopped until the drop-in
+below exists.
 
 Put this in the drop-in that `systemctl --user edit` opens:
 
 ```ini
 [Service]
-Environment=DEV3_TELEMETRY=off
 KillMode=process
 ```
 
@@ -172,8 +172,7 @@ then `systemctl --user start dev3-remote`. `KillMode=process` keeps running agen
 service restarts; it is safe here only because this setup runs `--no-tunnel` (why:
 [Keep agents alive across restarts](remote-access.md#run-it-as-a-service-linux)). It also means
 stopping the service no longer stops the agents; that section shows how to take them down too.
-`Environment=DEV3_TELEMETRY=off` is needed because the unit does not carry your shell's
-environment. Edit the drop-in, not the unit: `install-service` rewrites the unit on every run.
+Edit the drop-in, not the unit: `install-service` rewrites the unit on every run.
 
 WSL may stop the whole distro, systemd services included, shortly after its last terminal closes,
 which takes dev3 and every agent with it; and nothing starts the distro when Windows boots. If

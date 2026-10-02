@@ -118,6 +118,17 @@ Stop any foreground or backgrounded `dev3 remote` on the same port first (`dev3 
 Otherwise the unit cannot bind, and systemd restarts it in a loop, logging `Is port <n> in use?`
 each time.
 
+systemd starts the unit with an empty environment, so `install-service` writes these variables
+from your shell into the unit as `Environment=` lines and prints what it carried:
+`DEV3_TELEMETRY`, `DO_NOT_TRACK`, `DEV3_HOME`, `DEV3_LOG_LEVEL`, `DEV3_CLOUDFLARED_PROTOCOL`,
+`DEV3_CLOUDFLARED_EDGE_BIND`. To opt the service out of telemetry, install it like this:
+
+```sh
+DEV3_TELEMETRY=off dev3 remote install-service --port 3017
+```
+
+To change a carried value later, set it and run `install-service` again.
+
 **Keep agents alive across restarts (optional, `--no-tunnel` only).** Agent terminals run in a
 tmux server that dev3 starts, so they belong to the unit's cgroup, and systemd's default
 `KillMode=control-group` kills them all whenever the unit stops or restarts. A service started
@@ -126,8 +137,6 @@ with `--no-tunnel` can opt out with a drop-in (`systemctl --user edit dev3-remot
 ```ini
 [Service]
 KillMode=process
-# Optional: the unit does not inherit your shell's environment.
-Environment=DEV3_TELEMETRY=off
 ```
 
 Then `systemctl --user restart dev3-remote`. The drop-in survives a later `install-service`, which

@@ -13,7 +13,9 @@ vi.mock("node:child_process", () => ({
 
 import {
 	buildExecStartArgs,
+	collectServiceEnv,
 	renderUnitFile,
+	SERVICE_ENV_KEYS,
 	installRemoteService,
 	uninstallRemoteService,
 } from "../commands/remote-service";
@@ -31,6 +33,7 @@ const origExecPath = process.execPath;
 const origHome = process.env.HOME;
 const origUser = process.env.USER;
 const origXdg = process.env.XDG_CONFIG_HOME;
+const origServiceEnv = Object.fromEntries(SERVICE_ENV_KEYS.map((k) => [k, process.env[k]]));
 
 function setPlatform(p: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", { value: p, configurable: true });
@@ -48,6 +51,7 @@ beforeEach(() => {
 	process.env.HOME = "/home/tester";
 	process.env.USER = "tester";
 	delete process.env.XDG_CONFIG_HOME;
+	for (const k of SERVICE_ENV_KEYS) delete process.env[k];
 	vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: "/usr/bin/systemctl\n" } as never);
 });
 
@@ -61,6 +65,10 @@ afterEach(() => {
 	process.env.USER = origUser;
 	if (origXdg === undefined) delete process.env.XDG_CONFIG_HOME;
 	else process.env.XDG_CONFIG_HOME = origXdg;
+	for (const [k, v] of Object.entries(origServiceEnv)) {
+		if (v === undefined) delete process.env[k];
+		else process.env[k] = v;
+	}
 	vi.clearAllMocks();
 });
 
@@ -166,7 +174,63 @@ describe("renderUnitFile", () => {
 	});
 });
 
+describe("collectServiceEnv", () => {
+	it("keeps only allowlisted, non-empty variables", () => {
+		const env = collectServiceEnv({
+			DEV3_TELEMETRY: "off",
+			DO_NOT_TRACK: "1",
+			DEV3_LOG_LEVEL: "  ",
+			DEV3_TASK_ID: "995eea36",
+			DEV3_REMOTE_PORT: "8090",
+			DEV3_REMOTE_STATIC_CODE: "letmein1",
+		});
+		expect(env).toEqual([["DEV3_TELEMETRY", "off"], ["DO_NOT_TRACK", "1"]]);
+	});
+
+	it("rejects a value with a newline (would split the unit line)", () => {
+		expect(() => collectServiceEnv({ DEV3_HOME: "/a\nExecStartPre=/bin/evil" })).toThrow("__exit__");
+		expect(stderrText()).toContain("control character");
+	});
+});
+
+describe("renderUnitFile environment", () => {
+	it("writes Environment= lines in [Service] before ExecStart", () => {
+		const unit = renderUnitFile("/usr/local/bin/dev3", ["remote", "start"], [["DEV3_TELEMETRY", "off"]]);
+		const lines = unit.split("\n");
+		const envIdx = lines.indexOf('Environment="DEV3_TELEMETRY=off"');
+		expect(envIdx).toBeGreaterThan(lines.indexOf("[Service]"));
+		expect(envIdx).toBeLessThan(lines.findIndex((l) => l.startsWith("ExecStart=")));
+	});
+
+	it("escapes quotes, backslashes and systemd % specifiers", () => {
+		const unit = renderUnitFile("/bin/dev3", [], [["DEV3_HOME", '/srv/a b/"q"\\x%h']]);
+		expect(unit).toContain('Environment="DEV3_HOME=/srv/a b/\\"q\\"\\\\x%%h"');
+	});
+
+	it("writes no Environment= line when nothing is carried", () => {
+		expect(renderUnitFile("/bin/dev3", [])).not.toContain("Environment=");
+	});
+});
+
 describe("installRemoteService", () => {
+	it("carries DEV3_TELEMETRY from the shell into the unit and says so", async () => {
+		setPlatform("linux");
+		process.env.DEV3_TELEMETRY = "off";
+		await installRemoteService(args({ port: "3017" }));
+		const unit = String(vi.mocked(writeFileSync).mock.calls[0][1]);
+		expect(unit).toContain('Environment="DEV3_TELEMETRY=off"');
+		expect(unit).not.toContain("DEV3_TASK_ID");
+		expect(stdoutText()).toContain("Carried from this shell into the unit:");
+		expect(stdoutText()).toContain("DEV3_TELEMETRY=off");
+	});
+
+	it("says nothing was carried when no allowlisted variable is set", async () => {
+		setPlatform("linux");
+		await installRemoteService(args({ port: "3017" }));
+		expect(String(vi.mocked(writeFileSync).mock.calls[0][1])).not.toContain("Environment=");
+		expect(stdoutText()).toContain("No environment carried");
+	});
+
 	it("refuses on non-Linux platforms", async () => {
 		setPlatform("darwin");
 		await expect(installRemoteService(args())).rejects.toThrow("__exit__");
