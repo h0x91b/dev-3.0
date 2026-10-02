@@ -1,5 +1,5 @@
 import { access } from "node:fs/promises";
-import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
+import { getTaskTitle, type TmuxLayout, type TmuxWindowInfo, type TmuxPaneInfo } from "../shared/types";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import type { TerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { isResizeSequence, parseResizeSequence, smallestClientSize } from "../shared/resize-protocol";
@@ -49,6 +49,7 @@ import {
 	WINDOW_OVERVIEW_FORMAT,
 	PANE_GEOMETRY_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
+	TMUX_TASK_TITLE_OPTION,
 } from "./tmux";
 
 const log = createLogger("pty");
@@ -1082,6 +1083,33 @@ export async function readTmuxStatusGeometry(
 	}
 }
 
+/** The task title as a tmux option value: one line, and no `#[` so it cannot restyle the bar. */
+export function tmuxTaskTitleValue(title: string): string {
+	return title.replace(/\s+/g, " ").replaceAll("#[", "# [").trim();
+}
+
+/** Write the task title into the task's tmux session, when dev3 has one open. */
+export async function syncTmuxTaskTitle(taskId: string, title: string): Promise<void> {
+	const session = sessions.get(taskId);
+	if (!session || session.backend !== "tmux" || session.sessionType !== "task") return;
+	await tmux.setOption(`=${session.tmuxSessionName}:`, TMUX_TASK_TITLE_OPTION, tmuxTaskTitleValue(title), {
+		socket: session.tmuxSocket,
+		bestEffort: true,
+	});
+}
+
+/** Seed the title on attach — the session may predate dev3 knowing it (app restart, resume). */
+async function syncTmuxTaskTitleFromBoard(session: PtySession): Promise<void> {
+	try {
+		// Lazy: the board store pulls a large import graph this module must not load eagerly.
+		const data = await import("./data");
+		const task = await data.getTask(await data.getProject(session.projectId), session.taskId);
+		await syncTmuxTaskTitle(session.taskId, getTaskTitle(task));
+	} catch (err) {
+		log.debug("tmux task title sync skipped", { taskId: shortId(session.taskId), error: String(err) });
+	}
+}
+
 /**
  * Check if a tmux session exists on the given socket.
  */
@@ -2053,6 +2081,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		(async () => {
 			try {
 				await configureTmux(tmuxSessionName, session.tmuxSocket);
+				if (session.sessionType === "task") void syncTmuxTaskTitleFromBoard(session);
 				const sessionSocket = session.tmuxSocket;
 				tmux.setEnvironment(tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd, { socket: sessionSocket }).catch(() => {});
 				const envKeys = Object.keys(session.env);

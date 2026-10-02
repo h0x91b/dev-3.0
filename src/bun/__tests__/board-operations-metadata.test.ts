@@ -188,6 +188,30 @@ describe("board operations — completion policy", () => {
 	});
 });
 
+describe("board operations — terminal title", () => {
+	it("mirrors a changed title into the terminal, and only a changed one", async () => {
+		board = await createBoard({ tasks: [makeTask({ customTitle: "Same" })] });
+		const { meta, types } = await ops();
+		const ports = recordingPorts();
+
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { overview: "note" }, types.AGENT_ACTOR);
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { title: { value: "Same" }, overview: "other" }, types.AGENT_ACTOR);
+		expect(ports.syncedTerminalTitles).toEqual([]);
+
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { title: { value: "Renamed" } }, types.USER_ACTOR);
+		expect(ports.syncedTerminalTitles).toEqual(["task-1"]);
+	});
+
+	it("a refused title leaves the terminal alone", async () => {
+		board = await createBoard({ tasks: [makeTask({ customTitle: "User's", titleEditedByUser: true })] });
+		const { meta, types } = await ops();
+		const ports = recordingPorts();
+
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { title: { value: "Agent's" }, overview: "x" }, types.AGENT_ACTOR);
+		expect(ports.syncedTerminalTitles).toEqual([]);
+	});
+});
+
 describe("board operations — overviews", () => {
 	it("sets trimmed and clears to null, each door's field separately", async () => {
 		board = await createBoard();

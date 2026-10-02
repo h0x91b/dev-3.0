@@ -37,6 +37,8 @@ export interface BoardPorts {
 	 * Borrowed from the lifecycle (it runs outside the actor mailbox, as before).
 	 */
 	clearMergeNotification(taskId: string): void | Promise<void>;
+	/** Mirror a changed task title into the task's terminal (its tmux window label). */
+	syncTerminalTitle(task: Task): void;
 }
 
 export interface TaskOpResult {

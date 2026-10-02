@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dev3TempPath } from "../temp-paths";
+import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "./constants";
 
 // ── Color palettes ──────────────────────────────────────────────────
 
@@ -118,14 +119,25 @@ set -ogq @catppuccin_status_connect_separator "yes"
 set -ogqF @catppuccin_status_module_text_bg "#{@thm_surface_0}"
 `;
 
-/** Window title, or the running command when the title is only the hostname; capped at 22 cells. */
-export const WINDOW_LABEL = "#{=/22/…:#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{host_short}}},#W,#T}}";
+const PANE_TITLE_LABEL = "#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{host_short}}},#W,#T}";
+const HAS_AGENT_PANE = `#{P:#{?${TMUX_AGENT_PANE_OPTION},1,}}`;
+const TASK_TITLE = `#{${TMUX_TASK_TITLE_OPTION}}`;
+
+/**
+ * Tab label, capped at 32 cells: the dev3 task title on a window holding an agent
+ * pane, else the pane title — or the running command when that title is only the
+ * hostname (a plain shell's default).
+ */
+export const WINDOW_LABEL = `#{=/32/…:#{?#{&&:${HAS_AGENT_PANE},${TASK_TITLE}},${TASK_TITLE},${PANE_TITLE_LABEL}}}`;
 
 /** Left and right slanted caps of a tab filled with palette option `tab`. */
 function tabCaps(tab: string): [string, string] {
 	const cap = (glyph: string) => `#[fg=#{@thm_mantle},bg=#{${tab}},reverse]${glyph}#[noreverse]`;
 	return [cap("\uE0BA"), cap("\uE0BC")];
 }
+
+/** The focused pane's id (`%12`), as a slanted badge matching the tabs. */
+export const PANE_ID_BADGE = `${tabCaps("@thm_surface_1")[0]}#[fg=#{@thm_subtext_0},bg=#{@thm_surface_1}] #{pane_id} ${tabCaps("@thm_surface_1")[1]}`;
 
 const CATPPUCCIN_MAIN = `# Catppuccin tmux main config — %if blocks removed for reliability
 # Note: palette is sourced by the wrapper config before this file

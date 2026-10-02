@@ -23,16 +23,20 @@ export interface RecordedPush {
 export interface RecordingPorts extends BoardPorts {
 	pushes: RecordedPush[];
 	clearMergeNotificationCalls: string[];
+	syncedTerminalTitles: string[];
 }
 
 export function recordingPorts(): RecordingPorts {
 	const pushes: RecordedPush[] = [];
 	const clearMergeNotificationCalls: string[] = [];
+	const syncedTerminalTitles: string[] = [];
 	return {
 		pushes,
 		clearMergeNotificationCalls,
+		syncedTerminalTitles,
 		push: (name, payload) => { pushes.push({ name, payload }); },
 		clearMergeNotification: (taskId) => { clearMergeNotificationCalls.push(taskId); },
+		syncTerminalTitle: (task) => { syncedTerminalTitles.push(task.id); },
 	};
 }
 

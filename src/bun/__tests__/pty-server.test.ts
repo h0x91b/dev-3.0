@@ -72,6 +72,8 @@ import {
 	_resetTmuxBinaryLoggedForTests,
 	noteHumanTerminalInput,
 	applyTmuxTheme,
+	syncTmuxTaskTitle,
+	tmuxTaskTitleValue,
 } from "../pty-server";
 import { readFileSync } from "node:fs";
 import {
@@ -1447,5 +1449,34 @@ describe("applyTmuxTheme pane dimming", () => {
 		const calls = tmuxArgs();
 		expect(calls.some((a) => a.includes("source-file"))).toBe(true);
 		expect(calls.some(dimSet)).toBe(false);
+	});
+});
+
+describe("tmux task title", () => {
+	const titleSets = () =>
+		mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((a) => Array.isArray(a) && a.includes("@dev3_task_title"));
+
+	it("flattens the title to one line and defuses tmux style markup", () => {
+		expect(tmuxTaskTitleValue("  Fix\n the   #[fg=red]bar \t")).toBe("Fix the # [fg=red]bar");
+	});
+
+	it("writes the title into the task's own session, exactly targeted", async () => {
+		const id = "title-sync-task-0001";
+		createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
+		mockSpawn.mockClear();
+		await syncTmuxTaskTitle(id, "Move tmux window bar to top");
+		expect(titleSets()).toEqual([
+			expect.arrayContaining(["-L", "dev3", "set-option", "-t", `=${getSessionTmuxName(id)}:`, "@dev3_task_title", "Move tmux window bar to top"]),
+		]);
+		destroySession(id);
+	});
+
+	it("does nothing for a task with no open terminal or a project terminal", async () => {
+		createSession("title-sync-project-0001", "proj-1", "/tmp/test-cwd", "bash", {}, "dev3", "project");
+		mockSpawn.mockClear();
+		await syncTmuxTaskTitle("no-such-task", "x");
+		await syncTmuxTaskTitle("title-sync-project-0001", "x");
+		expect(titleSets()).toEqual([]);
+		destroySession("title-sync-project-0001");
 	});
 });

@@ -1,4 +1,5 @@
 import { getPushMessage } from "../rpc-handlers/shared-pure";
+import { getTaskTitle } from "../../shared/types";
 import type { BoardPorts } from "./types";
 
 /**
@@ -13,5 +14,8 @@ export const boardPorts: BoardPorts = {
 	clearMergeNotification: async (taskId) => {
 		const { clearMergeNotification } = await import("../lifecycle/activities");
 		clearMergeNotification(taskId);
+	},
+	syncTerminalTitle: (task) => {
+		void import("../pty-server").then((pty) => pty.syncTmuxTaskTitle(task.id, getTaskTitle(task))).catch(() => {});
 	},
 };

@@ -84,7 +84,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn(async () => undefined) }));
 vi.mock("../../board-operations/task-notes", () => ({ addNote: vi.fn(async () => undefined) }));
-vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), clearMergeNotification: vi.fn() } }));
+vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), clearMergeNotification: vi.fn(), syncTerminalTitle: vi.fn() } }));
 vi.mock("../../agent-requests", () => ({ voidAgentRequest: vi.fn(() => false) }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
 

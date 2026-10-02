@@ -18,7 +18,7 @@
  */
 export { tmux, TmuxClient, TmuxMissingCwdError } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
-export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE } from "./constants";
+export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE, TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "./constants";
 export {
 	tmuxSocketDir,
 	tmuxSocketPath,
@@ -74,7 +74,6 @@ export type { Dev3SessionKind, ParsedDev3SessionName } from "./session-names";
 export {
 	tmuxClientCwd,
 	PANE_CWD_FORMAT,
-	TMUX_AGENT_PANE_OPTION,
 	TMUX_LAST_AGENT_PANE_OPTION,
 	TMUX_PANE_DIMMING_OPTION,
 	tmuxConfigPath,

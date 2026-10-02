@@ -17,6 +17,7 @@ vi.mock("../../logger", () => ({
 
 import { buildThemeConfig } from "../config";
 import { WINDOW_LABEL } from "../themes";
+import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "../constants";
 
 function tmuxVersion(): string | null {
 	try {
@@ -87,9 +88,11 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		expect(sessionStatus("multi")).toBe("on");
 	});
 
-	it("shows nothing beside the tabs", () => {
+	it("shows only the focused pane's id beside the tabs", () => {
 		expect(tmux("show-options", "-gv", "status-left")).toBe("");
-		expect(tmux("show-options", "-gv", "status-right")).toBe("");
+		const right = tmux("show-options", "-gv", "status-right");
+		expect(right).toContain("#{pane_id}");
+		expect(right.match(/,reverse\](\uE0BA|\uE0BC)/g)).toHaveLength(2);
 	});
 
 	it("draws slanted tabs", () => {
@@ -113,8 +116,30 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		expect(tmux("display-message", "-p", "-t", "=label:", WINDOW_LABEL)).toBe(windowName);
 	});
 
-	it("keeps a real title and caps it at 22 cells", () => {
-		tmux("select-pane", "-t", "=label:", "-T", "✳ A very long agent task title");
-		expect(tmux("display-message", "-p", "-t", "=label:", WINDOW_LABEL)).toBe("✳ A very long agent ta…");
+	it("keeps a real title and caps it at 32 cells", () => {
+		tmux("select-pane", "-t", "=label:", "-T", "✳ A very long agent task title that goes on");
+		expect(tmux("display-message", "-p", "-t", "=label:", WINDOW_LABEL)).toBe("✳ A very long agent task title t…");
+	});
+
+	it("labels a window holding an agent pane with the task title", () => {
+		tmux("new-session", "-d", "-s", "agent", "sh");
+		tmux("select-pane", "-t", "=agent:", "-T", "✳ Claude Code");
+		// No title yet: the agent's own title stands.
+		tmux("set-option", "-p", "-t", "=agent:", TMUX_AGENT_PANE_OPTION, "1");
+		expect(tmux("display-message", "-p", "-t", "=agent:", WINDOW_LABEL)).toBe("✳ Claude Code");
+
+		tmux("set-option", "-t", "=agent:", TMUX_TASK_TITLE_OPTION, "Move tmux window bar to top");
+		expect(tmux("display-message", "-p", "-t", "=agent:", WINDOW_LABEL)).toBe("Move tmux window bar to top");
+
+		// Focus a shell split in the same window: still the agent's window, still the task title.
+		tmux("split-window", "-d", "-t", "=agent:", "sh");
+		tmux("select-pane", "-t", "=agent:.2");
+		expect(tmux("display-message", "-p", "-t", "=agent:", "#{@dev3_agent}")).toBe("");
+		expect(tmux("display-message", "-p", "-t", "=agent:", WINDOW_LABEL)).toBe("Move tmux window bar to top");
+
+		// Another window of the same session without an agent pane keeps its own label.
+		tmux("new-window", "-d", "-t", "=agent:", "sh");
+		const plain = tmux("display-message", "-p", "-t", "=agent:2", WINDOW_LABEL);
+		expect(plain).toBe(tmux("display-message", "-p", "-t", "=agent:2", "#{window_name}"));
 	});
 });

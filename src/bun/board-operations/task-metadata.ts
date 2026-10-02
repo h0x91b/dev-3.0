@@ -105,7 +105,9 @@ export async function updateTaskMetadata(
 	change: TaskMetadataChange,
 	actor: BoardActor,
 ): Promise<TaskOpResult> {
+	let previousTitle = "";
 	const { task, result } = await data.updateTaskWith(project, taskId, (current) => {
+		previousTitle = getTaskTitle(current);
 		const { updates, rejected } = planTitleAndDescription(current, change, actor);
 		if (change.taskType !== undefined) updates.taskType = change.taskType;
 		if (change.overview !== undefined) updates.overview = change.overview?.trim() || null;
@@ -124,6 +126,7 @@ export async function updateTaskMetadata(
 
 	if (flipsCompletion) await ports.clearMergeNotification(task.id);
 	pushTaskUpdated(ports, project, task);
+	if (getTaskTitle(task) !== previousTitle) ports.syncTerminalTitle(task);
 	if (flipsCompletion && actor.kind === "agent") {
 		ports.push("manualCompletionChanged", {
 			taskId: task.id,

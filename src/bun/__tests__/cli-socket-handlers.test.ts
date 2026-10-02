@@ -140,6 +140,7 @@ vi.mock("../board-operations/runtime", async () => {
 		boardPorts: {
 			push: (name: string, payload: unknown) => barrel.getPushMessage()?.(name, payload),
 			clearMergeNotification: (taskId: string) => barrel.clearMergeNotification(taskId),
+			syncTerminalTitle: () => {},
 		},
 	};
 });

@@ -14,7 +14,8 @@ import { DEV3_HOME } from "../paths";
 import { dev3TempPath } from "../temp-paths";
 import { SHELL_INIT_DIR, writeShellInit } from "../shell-init";
 import { getUserShell } from "../shell-env";
-import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./themes";
+import { CATPPUCCIN_PLUGIN_DIR, PANE_ID_BADGE, writeCatppuccinPlugin } from "./themes";
+import { TMUX_AGENT_PANE_OPTION } from "./constants";
 
 /**
  * Working directory for every spawned tmux CLIENT process (`new-session`,
@@ -44,13 +45,6 @@ export function tmuxClientCwd(): string {
  */
 export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{session_path}}";
 
-/**
- * Pane-scoped user option (value "1") marking a pane as an AI-agent pane. The app
- * sets it on every agent pane; the focus hook below reads it to remember which
- * agent pane the user last focused. `pane_current_command` is useless for this —
- * an agent constantly spawns children — so the marker is the reliable signal.
- */
-export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
 
 /**
  * Session-scoped user option holding the pane id of the last agent pane the user
@@ -259,12 +253,12 @@ const STATUS_BAR_BY_CLIENT_SESSION = `if -F "${MULTI_WINDOW}" "set status on" "s
 const HOOK_SESSION = "=#{hook_session_name}:";
 const STATUS_BAR_BY_HOOK_SESSION = String.raw`run -C \"if -F -t '${HOOK_SESSION}' '${MULTI_WINDOW.replaceAll("#", "##")}' 'set -t ${HOOK_SESSION} status on' 'set -t ${HOOK_SESSION} status off'\"`;
 
-// Status bar setup — window tabs only, nothing on either side
+// Status bar setup — window tabs, and the focused pane's id on the right
 const TMUX_STATUS_BAR = `
-# Status bar — window tabs only. On top so the window list sits where the
+# Status bar — window tabs, focused pane id on the right. On top so the window list sits where the
 # eye starts: a window opened by Cmd+T or an agent must not hide its task.
 set -g status-position top
-set -g status-right ""
+set -g status-right "${PANE_ID_BADGE}"
 set -g status-left ""
 
 # Show the bar only while a session has more than one window — a lone window
