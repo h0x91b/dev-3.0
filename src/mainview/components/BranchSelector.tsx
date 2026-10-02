@@ -232,7 +232,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 							setBranchQuery("");
 							setBranchDropdownOpen(false);
 						}}
-						className="text-fg-muted text-xs hover:text-fg-3 transition-colors"
+						className="text-fg-3 text-xs hover:text-fg transition-colors"
 					>
 						{t("kanban.cancel")}
 					</button>
@@ -306,7 +306,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 					<div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-overlay border border-edge rounded-xl shadow-lg">
 						{(preferRemoteBranches ? remoteBranches.length > 0 : localBranches.length > 0) && (
 							<>
-								<div className="px-3 py-1 text-dense font-semibold text-fg-muted uppercase tracking-wider">
+								<div className="px-3 py-1 text-dense font-semibold text-fg-3 uppercase tracking-wider">
 									{preferRemoteBranches ? t("createTask.branchRemote") : t("createTask.branchLocal")}
 								</div>
 								{(preferRemoteBranches ? remoteBranches : localBranches).map((b) => (
@@ -328,7 +328,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 
 						{(preferRemoteBranches ? localBranches.length > 0 : remoteBranches.length > 0) && (
 							<>
-								<div className="px-3 py-1 text-dense font-semibold text-fg-muted uppercase tracking-wider">
+								<div className="px-3 py-1 text-dense font-semibold text-fg-3 uppercase tracking-wider">
 									{preferRemoteBranches ? t("createTask.branchLocal") : t("createTask.branchRemote")}
 								</div>
 								{(preferRemoteBranches ? localBranches : remoteBranches).map((b) => (
@@ -349,7 +349,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 						)}
 
 						{filteredBranches.length === 0 && branchesLoaded && (
-							<div className="px-3 py-2 text-sm text-fg-muted">
+							<div className="px-3 py-2 text-sm text-fg-3">
 								{parseForkRef(branchQuery)
 									? t("createTask.branchForkHint")
 									: t("createTask.branchNoneFound")

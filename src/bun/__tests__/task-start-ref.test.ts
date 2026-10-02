@@ -27,7 +27,7 @@ vi.mock("../logger", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { describePrFailure, resolveTaskStartRef } from "../task-start-ref";
+import { describePrFailure, repoFromPrUrl, resolvePrUrl, resolveTaskStartRef } from "../task-start-ref";
 
 const PROJECT: Project = {
 	id: "proj-1",
@@ -175,5 +175,55 @@ describe("describePrFailure", () => {
 		const message = describePrFailure("42", "GraphQL: Could not resolve to a PullRequest");
 		expect(message).toContain("no pull request 42");
 		expect(message).toContain("Could not resolve to a PullRequest");
+	});
+});
+
+describe("resolvePrUrl failure reasons", () => {
+	const ok = (stdout: string) => ({ code: 0, ok: true, stdout, stderr: "" });
+	const fail = (stderr: string) => ({ code: 1, ok: false, stdout: "", stderr });
+
+	it("names both repositories when the link points at another one", async () => {
+		vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce(fail("GraphQL: Could not resolve to a Repository with the name 'o/r'."))
+			.mockResolvedValueOnce(ok("h0x91b/dev-3.0\n"));
+
+		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/o/r/pull/42" });
+
+		expect(result).toMatchObject({ ok: false, reason: "foreign-repo", prRepo: "o/r", projectRepo: "h0x91b/dev-3.0" });
+	});
+
+	it("blames a missing GitHub remote for a fork fetch that went nowhere", async () => {
+		vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce(ok(JSON.stringify({ number: 9, headRefName: "x", headRepositoryOwner: { login: "f" }, isCrossRepository: true })))
+			.mockResolvedValueOnce(fail("none of the git remotes configured for this repository point to a known GitHub host"));
+		vi.mocked(git.fetchFork).mockResolvedValue(false);
+
+		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/h0x91b/dev-3.0/pull/9" });
+
+		expect(result).toMatchObject({ ok: false, reason: "no-github-remote", projectRepo: null });
+	});
+
+	it("keeps not-found for a missing pull request in the project's own repo", async () => {
+		vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce(fail("GraphQL: Could not resolve to a PullRequest with the number of 999999."))
+			.mockResolvedValueOnce(ok("H0X91B/Dev-3.0"));
+
+		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/h0x91b/dev-3.0/pull/999999" });
+
+		expect(result.reason).toBe("not-found");
+	});
+
+	it("does not ask gh about the repo when gh itself is unusable", async () => {
+		vi.mocked(github.runGitHub).mockResolvedValueOnce(fail("gh: To get started with GitHub CLI, please run: gh auth login"));
+
+		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/o/r/pull/1" });
+
+		expect(result.reason).toBe("gh-auth");
+		expect(github.runGitHub).toHaveBeenCalledTimes(1);
+	});
+
+	it("reads owner/repo only from a pull-request URL", () => {
+		expect(repoFromPrUrl("https://github.com/h0x91b/dev-3.0/pull/7/files")).toBe("h0x91b/dev-3.0");
+		expect(repoFromPrUrl("1497")).toBeNull();
 	});
 });

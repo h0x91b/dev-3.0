@@ -80,6 +80,13 @@ const kanban = {
 	"createTask.prLinkLabel": "Pull request",
 	"createTask.prLinkLoad": "Cargar PR",
 	"createTask.prLinkHint": "Pega el enlace de un pull request de GitHub — su rama se usará para la revisión. ¿Revisas una rama sin PR? Elígela en «Usar rama existente».",
+	"createTask.prLinkMissing": "Pega el enlace de un pull request para empezar la revisión.",
+	"createTask.prFailGhMissing": "La CLI de GitHub (gh) no está instalada. Instálala o elige una rama en «Usar rama existente».",
+	"createTask.prFailGhAuth": "La CLI de GitHub (gh) no tiene sesión iniciada. Ejecuta gh auth login y vuelve a intentarlo.",
+	"createTask.prFailNoGithubRemote": "Este proyecto no tiene un remoto de GitHub, así que no se pueden traer sus pull requests. Elige una rama en «Usar rama existente».",
+	"createTask.prFailForeignRepo": "Este pull request está en {prRepo}, pero este proyecto es {projectRepo}. Crea la revisión desde el proyecto {prRepo}.",
+	"createTask.prFailForkFetch": "No se pudo traer la rama del fork; puede que lo hayan borrado.",
+	"createTask.prFailNotFound": "No hay ningún pull request en este enlace. Revisa el número y vuelve a intentarlo.",
 	"createTask.prLinkInvalid": "Eso no es un enlace a un pull request — debe terminar en /pull/ y un número.",
 	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",
 

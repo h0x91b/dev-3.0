@@ -105,6 +105,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const [taskType, setTaskType] = useState<TaskTypeChoice>("standard");
 	const [dismissedPrUrl, setDismissedPrUrl] = useState<string | null>(null);
 	const [prApplying, setPrApplying] = useState(false);
+	// Bumped when a save is blocked on the missing PR link, so the field explains why.
+	const [prLinkNudge, setPrLinkNudge] = useState(0);
 	const isVirtual = project.kind === "virtual";
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
@@ -269,9 +271,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		try {
 			result = await api.request.resolvePrUrl({ projectId: project.id, url });
 		} catch (err) {
-			return String(err);
+			return t("createTask.prResolveFailed", { error: String(err) });
 		}
-		if (!result.ok || !result.branch) return result.error || t("createTask.prResolveFailedShort");
+		if (!result.ok || !result.branch) return prFailureMessage(result, t);
 		const prompt = await ensurePresetPrompt("pr-review");
 		const wasReview = taskType === "pr-review";
 		// The URL was the paste, not the task text: drop it from the user's own part
@@ -293,7 +295,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setPrApplying(true);
 		try {
 			const error = await resolvePrIntoReview(detectedPr.url);
-			if (error) toast.error(t("createTask.prResolveFailed", { error }), { projectId: project.id });
+			if (error) toast.error(error, { projectId: project.id });
 		} finally {
 			setPrApplying(false);
 		}
@@ -521,6 +523,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		if (mode === "run" && !onCreateAndRun) return;
 		if (mode === "scratch" && !onCreateAndRun) return;
 		if (reviewNeedsPr && mode !== "draft" && mode !== "scratch") {
+			setPrLinkNudge((n) => n + 1);
 			prLinkInputRef.current?.focus();
 			return;
 		}
@@ -823,6 +826,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						inputRef={prLinkInputRef}
 						initialUrl={detectedPr?.url ?? ""}
 						onResolve={resolvePrIntoReview}
+						nudge={prLinkNudge}
 					/>
 				)}
 
@@ -854,7 +858,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								<button
 									type="button"
 									onClick={() => setDismissedPrUrl(detectedPr.url)}
-									className="text-fg-muted text-xs hover:text-fg-3 transition-colors"
+									className="text-fg-3 text-xs hover:text-fg transition-colors"
 								>
 									{t("createTask.prBannerKeep")}
 								</button>
@@ -1011,7 +1015,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 											</span>
 											{t("createTask.scratch")}
 										</button>
-										<span className="text-fg-muted text-micro leading-tight">
+										<span className="text-fg-3 text-micro leading-tight">
 											{t("createTask.scratchSubtitle")}
 										</span>
 									</div>
@@ -1032,7 +1036,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									<button
 										data-tour-anchor="create-task.run"
 										onClick={handleCreateAndRun}
-										disabled={!description.trim() || creating || reviewNeedsPr}
+										disabled={!description.trim() || creating}
 										className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 									>
 										<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
@@ -1043,7 +1047,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								)}
 								<button
 									onClick={handleCreate}
-									disabled={!description.trim() || creating || reviewNeedsPr}
+									disabled={!description.trim() || creating}
 									className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{creating ? t("createTask.creating") : t("createTask.create")}
@@ -1067,7 +1071,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								) : (
 									<span />
 								)}
-								<div className="text-fg-muted text-right">
+								<div className="text-fg-3 text-right">
 									{onCreateAndRun
 										? t("createTask.submitHintRun")
 										: t("createTask.submitHint")}
@@ -1206,13 +1210,37 @@ interface PrReviewLinkFieldProps {
 	/** A PR link already sitting in the description, so it is not pasted twice. */
 	initialUrl: string;
 	onResolve: (url: string) => Promise<string | null>;
+	/** Changes when a save was refused for want of a link: resolve it, or say what is missing. */
+	nudge: number;
+}
+
+type PrResolveResponse = Awaited<ReturnType<typeof api.request.resolvePrUrl>>;
+
+/** What to tell the user when a PR link does not resolve — the cause and the fix, not gh's stderr. */
+function prFailureMessage(result: PrResolveResponse, t: ReturnType<typeof useT>): string {
+	switch (result.reason) {
+		case "gh-missing":
+			return t("createTask.prFailGhMissing");
+		case "gh-auth":
+			return t("createTask.prFailGhAuth");
+		case "no-github-remote":
+			return t("createTask.prFailNoGithubRemote");
+		case "foreign-repo":
+			return t("createTask.prFailForeignRepo", { prRepo: result.prRepo ?? "", projectRepo: result.projectRepo ?? "" });
+		case "fork-fetch":
+			return t("createTask.prFailForkFetch");
+		case "not-found":
+			return t("createTask.prFailNotFound");
+		default:
+			return t("createTask.prResolveFailed", { error: result.error || "" });
+	}
 }
 
 /**
  * Where a PR review gets its code. Shown only while the review has no branch —
  * once the link resolves, the branch picker below carries the checked-out branch.
  */
-function PrReviewLinkField({ inputRef, initialUrl, onResolve }: PrReviewLinkFieldProps) {
+function PrReviewLinkField({ inputRef, initialUrl, onResolve, nudge }: PrReviewLinkFieldProps) {
 	const t = useT();
 	const [url, setUrl] = useState(initialUrl);
 	const [resolving, setResolving] = useState(false);
@@ -1220,14 +1248,26 @@ function PrReviewLinkField({ inputRef, initialUrl, onResolve }: PrReviewLinkFiel
 	const pr = parsePrUrl(url);
 
 	async function resolve(value: string) {
+		if (resolving) return;
 		const match = parsePrUrl(value);
-		if (!match || resolving) return;
+		if (!match) {
+			setError(t(value.trim() ? "createTask.prLinkInvalid" : "createTask.prLinkMissing"));
+			return;
+		}
 		setResolving(true);
 		setError(null);
 		const failure = await onResolve(match.url);
 		setResolving(false);
 		if (failure) setError(failure);
 	}
+
+	const latestResolve = useRef(resolve);
+	latestResolve.current = resolve;
+	const latestUrl = useRef(url);
+	latestUrl.current = url;
+	useEffect(() => {
+		if (nudge > 0) void latestResolve.current(latestUrl.current);
+	}, [nudge]);
 
 	return (
 		<div className="space-y-1.5" data-testid="pr-review-link">
@@ -1267,7 +1307,7 @@ function PrReviewLinkField({ inputRef, initialUrl, onResolve }: PrReviewLinkFiel
 				<button
 					type="button"
 					onClick={() => void resolve(url)}
-					disabled={!pr || resolving}
+					disabled={resolving}
 					className="px-3 py-2 bg-accent/15 border border-accent/40 rounded-xl text-accent text-xs font-medium hover:bg-accent/25 transition-[background-color,transform] active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
 				>
 					{resolving ? t("createTask.prResolving") : t("createTask.prLinkLoad")}
@@ -1275,7 +1315,7 @@ function PrReviewLinkField({ inputRef, initialUrl, onResolve }: PrReviewLinkFiel
 			</div>
 			<p id="pr-review-link-hint" className={`text-xs ${error ? "text-danger" : "text-fg-3"}`} role={error ? "alert" : undefined}>
 				{error
-					? t("createTask.prResolveFailed", { error })
+					? error
 					: url.trim() && !pr
 						? t("createTask.prLinkInvalid")
 						: t("createTask.prLinkHint")}

@@ -1,4 +1,4 @@
-import type { Project } from "../shared/types";
+import type { PrResolveFailureReason, Project } from "../shared/types";
 import { TASK_REF_UNRESOLVED_PREFIX } from "../shared/types";
 import * as github from "./github";
 import * as git from "./git";
@@ -14,6 +14,54 @@ export interface ResolvePrUrlResult {
 	title: string | null;
 	isFork: boolean;
 	error: string | null;
+	reason?: PrResolveFailureReason;
+	prRepo?: string | null;
+	projectRepo?: string | null;
+}
+
+/** `owner/repo` out of `https://<host>/<owner>/<repo>/pull/<n>`, or null for a bare number. */
+export function repoFromPrUrl(ref: string): string | null {
+	const match = ref.trim().match(/^https?:\/\/[^\s/]+\/([^\s/]+)\/([^\s/]+)\/pull\/\d+/i);
+	return match ? `${match[1]}/${match[2]}` : null;
+}
+
+/** Map what `gh`/git said onto a cause; one table for both the CLI and the UI. */
+export function classifyPrFailure(error: string): PrResolveFailureReason {
+	const text = error.toLowerCase();
+	if (text.includes("enoent") || text.includes("failed to spawn") || text.includes("no such file or directory")) return "gh-missing";
+	if (text.includes("gh auth login") || text.includes("not logged in") || text.includes("authentication")) return "gh-auth";
+	if (github.isNotAGitHubRepoError({ stderr: error })) return "no-github-remote";
+	if (text.includes("could not fetch")) return "fork-fetch";
+	return "not-found";
+}
+
+async function projectRepoName(project: Project): Promise<string | null> {
+	try {
+		const result = await github.runGitHub(project, project.path, ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], { timeoutMs: 10_000 });
+		const name = result.ok ? result.stdout.trim() : "";
+		return /^[^\s/]+\/[^\s/]+$/.test(name) ? name : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * A link to another repository fails with a GraphQL error or a fork fetch that
+ * goes nowhere — both true and both useless. Only on failure, so the happy path
+ * costs no extra `gh` call, ask which repo this project is and say it plainly.
+ */
+async function explainPrFailure(
+	project: Project,
+	url: string,
+	error: string,
+): Promise<Pick<ResolvePrUrlResult, "reason" | "prRepo" | "projectRepo">> {
+	const reason = classifyPrFailure(error);
+	const prRepo = repoFromPrUrl(url);
+	if (reason === "gh-missing" || reason === "gh-auth") return { reason, prRepo, projectRepo: null };
+	const projectRepo = await projectRepoName(project);
+	if (!projectRepo) return { reason: "no-github-remote", prRepo, projectRepo };
+	if (prRepo && prRepo.toLowerCase() !== projectRepo.toLowerCase()) return { reason: "foreign-repo", prRepo, projectRepo };
+	return { reason, prRepo, projectRepo };
 }
 
 // Resolve a GitHub pull-request URL to a locally-fetched branch ref, ready to be
@@ -35,7 +83,7 @@ export async function resolvePrUrl(params: { projectId: string; url: string }): 
 		if (!result.ok || !result.stdout) {
 			const error = result.stderr.trim() || "Failed to resolve pull request";
 			log.warn("resolvePrUrl: gh pr view failed", { url, error });
-			return { ok: false, branch: null, number: null, title: null, isFork: false, error };
+			return { ok: false, branch: null, number: null, title: null, isFork: false, error, ...await explainPrFailure(project, url, error) };
 		}
 
 		const pr = JSON.parse(result.stdout) as {
@@ -57,7 +105,8 @@ export async function resolvePrUrl(params: { projectId: string; url: string }): 
 			const fetched = await git.fetchFork(project.path, forkOwner, headRefName);
 			if (!fetched) {
 				log.warn("resolvePrUrl: fork fetch failed", { url, forkOwner, headRefName });
-				return { ok: false, branch: null, number, title, isFork: true, error: `Could not fetch ${headRefName} from fork ${forkOwner}` };
+				const error = `Could not fetch ${headRefName} from fork ${forkOwner}`;
+				return { ok: false, branch: null, number, title, isFork: true, error, ...await explainPrFailure(project, url, error) };
 			}
 			log.info("← resolvePrUrl (fork)", { number, branch: `${forkOwner}/${headRefName}` });
 			return { ok: true, branch: `${forkOwner}/${headRefName}`, number, title, isFork: true, error: null };
@@ -84,18 +133,18 @@ function unresolved(message: string): Error {
  * pull request" tells nobody whether to fix the number or run `gh auth login`.
  */
 export function describePrFailure(prRef: string, error: string): string {
-	const text = error.toLowerCase();
-	if (text.includes("enoent") || text.includes("failed to spawn") || text.includes("no such file or directory")) {
-		return "the GitHub CLI (`gh`) is not installed, so a pull request cannot be looked up. Install it, or pass --branch <ref> instead.";
+	switch (classifyPrFailure(error)) {
+		case "gh-missing":
+			return "the GitHub CLI (`gh`) is not installed, so a pull request cannot be looked up. Install it, or pass --branch <ref> instead.";
+		case "gh-auth":
+			return "the GitHub CLI (`gh`) is not authenticated. Run `gh auth login`, or pass --branch <ref> instead.";
+		case "no-github-remote":
+			return "this project has no GitHub remote, so it has no pull requests. Pass --branch <ref> instead.";
+		case "fork-fetch":
+			return `${error} — the fork may have been deleted.`;
+		default:
+			return `no pull request ${prRef} in this project (${error.trim()}).`;
 	}
-	if (text.includes("gh auth login") || text.includes("not logged in") || text.includes("authentication")) {
-		return "the GitHub CLI (`gh`) is not authenticated. Run `gh auth login`, or pass --branch <ref> instead.";
-	}
-	if (github.isNotAGitHubRepoError({ stderr: error })) {
-		return "this project has no GitHub remote, so it has no pull requests. Pass --branch <ref> instead.";
-	}
-	if (text.includes("could not fetch")) return `${error} — the fork may have been deleted.`;
-	return `no pull request ${prRef} in this project (${error.trim()}).`;
 }
 
 interface StartRefRequest {

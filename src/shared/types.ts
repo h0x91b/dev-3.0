@@ -2130,6 +2130,15 @@ export function presetPromptForTaskType(
 export const PRESET_PROMPT_SEPARATOR = "\n\n---\n\n";
 
 /** A description made of `prompt`, then the user's own text when there is any. */
+/** Why a pull-request link could not be turned into a branch. */
+export type PrResolveFailureReason =
+	| "gh-missing"
+	| "gh-auth"
+	| "no-github-remote"
+	| "foreign-repo"
+	| "fork-fetch"
+	| "not-found";
+
 export function withPresetPrompt(userText: string, prompt: string): string {
 	const own = userText.trim();
 	return own ? prompt + PRESET_PROMPT_SEPARATOR + own : prompt;
@@ -6197,6 +6206,12 @@ export type AppRPCSchema = {
 					title: string | null;
 					isFork: boolean;
 					error: string | null;
+					/** Why it failed, for a message the user can act on. Absent on success. */
+					reason?: PrResolveFailureReason;
+					/** `owner/repo` the link points at, when it is a URL. */
+					prRepo?: string | null;
+					/** `owner/repo` of this project's GitHub remote, when it has one. */
+					projectRepo?: string | null;
 				};
 			};
 			getProjectCurrentBranch: {

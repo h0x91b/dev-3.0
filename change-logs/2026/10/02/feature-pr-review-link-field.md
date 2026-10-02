@@ -1,3 +1,3 @@
 Short: PR review takes a pull request link
 
-The PR review task type in the New Task dialog is no longer greyed out until a branch is picked: choosing it opens a Pull request field where you paste a GitHub PR link, and dev3 checks out its branch for the review (a paste resolves on its own, errors show inline). Save waits for the link, while Save as draft still works.
+The PR review task type in the New Task dialog is no longer greyed out until a branch is picked: choosing it opens a Pull request field where you paste a GitHub PR link, and dev3 checks out its branch for the review (a paste resolves on its own). Save stays clickable and points at the missing link instead of silently doing nothing, a link that cannot be resolved now says why in plain words (another repository, no GitHub remote, gh not installed or signed in, deleted fork, wrong number), and the dialog's small hint text is readable in the light theme.
