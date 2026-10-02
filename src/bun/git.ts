@@ -50,11 +50,30 @@ type DiffContentSource =
 	| { kind: "ref"; ref: string }
 	| { kind: "worktree" };
 
-function withGitFilenameEncoding(cmd: string[]): string[] {
+// Global options that consume the following argv entry (`git -C <path> status`).
+const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
+
+function gitSubcommand(cmd: string[]): string | undefined {
+	for (let i = 1; i < cmd.length; i++) {
+		const arg = cmd[i];
+		if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(arg)) i++;
+		else if (!arg.startsWith("-")) return arg;
+	}
+	return undefined;
+}
+
+/**
+ * Every git argv dev3 spawns passes through here. `git status` additionally gets
+ * `--no-optional-locks`: otherwise it holds index.lock for its whole scan just to
+ * cache refreshed stat data, and a concurrent `git add`/`commit` in the same repo
+ * fails. See decisions/2026/10/02/git-status-no-optional-locks.md.
+ */
+export function withGitDefaults(cmd: string[]): string[] {
 	if (cmd[0] !== "git") {
 		return cmd;
 	}
-	return ["git", "-c", "core.quotepath=false", ...cmd.slice(1)];
+	const optionalLocks = gitSubcommand(cmd) === "status" ? ["--no-optional-locks"] : [];
+	return ["git", ...optionalLocks, "-c", "core.quotepath=false", ...cmd.slice(1)];
 }
 
 const PROCESS_CLEANUP_GRACE_MS = 1_000;
@@ -78,7 +97,7 @@ export async function run(
 	cwd: string,
 	opts?: { timeoutMs?: number; env?: Record<string, string> },
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-	const finalCmd = withGitFilenameEncoding(cmd);
+	const finalCmd = withGitDefaults(cmd);
 	log.debug("Executing git command", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
@@ -294,7 +313,7 @@ async function runGitStdinBinary(
 	cwd: string,
 	stdin: string,
 ): Promise<{ code: number; stdout: Uint8Array }> {
-	const finalCmd = withGitFilenameEncoding(cmd);
+	const finalCmd = withGitDefaults(cmd);
 	log.debug("Executing git command with stdin", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
@@ -332,8 +351,8 @@ export async function runGitPipe(
 	cwd: string,
 	opts?: { prefix?: Uint8Array },
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-	const producerFinal = withGitFilenameEncoding(producerCmd);
-	const consumerFinal = withGitFilenameEncoding(consumerCmd);
+	const producerFinal = withGitDefaults(producerCmd);
+	const consumerFinal = withGitDefaults(consumerCmd);
 	log.debug("Executing git pipeline", { cwd, producer: producerFinal, consumer: consumerFinal });
 
 	let producer: ReturnType<typeof spawn> | undefined;
