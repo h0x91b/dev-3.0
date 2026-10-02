@@ -25,16 +25,21 @@ function ansiColors(p: Palette): string[] {
 	];
 }
 
-/** SGR colours and bold only — all a zsh prompt emits. Anything else is dropped. */
-function renderAnsiLine(line: string, colors: string[]): ReactNode[] {
+/** SGR colours, bold and reverse video — all a zsh prompt emits. Anything else is dropped. */
+function renderAnsiLine(line: string, palette: Palette): ReactNode[] {
+	const colors = ansiColors(palette);
 	const out: ReactNode[] = [];
 	let fg: string | undefined;
 	let bg: string | undefined;
 	let bold = false;
+	let inverse = false;
 	let last = 0;
 	const flush = (text: string) => {
 		if (!text) return;
-		const style: CSSProperties = { color: fg, background: bg, fontWeight: bold ? 700 : undefined };
+		const style: CSSProperties = inverse
+			? { color: bg ?? palette.background, background: fg ?? palette.foreground }
+			: { color: fg, background: bg };
+		if (bold) style.fontWeight = 700;
 		out.push(<span key={out.length} style={style}>{text}</span>);
 	};
 	for (const m of line.matchAll(/\u001b\[([0-9;]*)m/g)) {
@@ -43,8 +48,10 @@ function renderAnsiLine(line: string, colors: string[]): ReactNode[] {
 		const codes = (m[1] || "0").split(";").map(Number);
 		for (let i = 0; i < codes.length; i++) {
 			const c = codes[i];
-			if (c === 0) [fg, bg, bold] = [undefined, undefined, false];
+			if (c === 0) [fg, bg, bold, inverse] = [undefined, undefined, false, false];
 			else if (c === 1) bold = true;
+			else if (c === 7) inverse = true;
+			else if (c === 27) inverse = false;
 			else if (c === 22) bold = false;
 			else if (c >= 30 && c <= 37) fg = colors[c - 30];
 			else if (c >= 90 && c <= 97) fg = colors[c - 90 + 8];
@@ -65,6 +72,11 @@ function renderAnsiLine(line: string, colors: string[]): ReactNode[] {
 }
 
 const previewCache = new Map<string, Promise<ShellPromptPreview>>();
+
+/** Previews never change within a session; tests start from an empty cache. */
+export function clearShellPromptPreviewCache(): void {
+	previewCache.clear();
+}
 
 function loadPreview(source: string): Promise<ShellPromptPreview> {
 	let cached = previewCache.get(source);
@@ -97,20 +109,23 @@ function PromptPreview({ t, source, failed }: { t: TFunction; source: string; fa
 	const preview = usePreview(source);
 	const theme = useResolvedTheme();
 	const palette = theme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
-	const lines = preview?.ok ? (failed ? preview.afterFailedCommand : preview.afterSlowCommand) : null;
+	const raw = preview?.ok ? (failed ? preview.afterFailedCommand : preview.afterSlowCommand) : null;
+	// A style's leading newline separates it from the previous command's output; alone in a preview it is just a gap.
+	const lines = raw?.slice(raw.findIndex((line) => line.replace(/\u001b\[[0-9;]*m/g, "") !== ""));
 	return (
 		<span
-			className="mt-1.5 block rounded-lg border border-edge px-2.5 py-1.5 overflow-x-auto"
-			style={{ background: palette.background, color: palette.foreground, fontFamily: terminalFontStack(), fontSize: 13 }}
+			className="mt-1.5 block rounded-lg ring-1 ring-inset ring-edge/60 px-2.5 py-1.5 overflow-x-auto"
+			// "normal" is the font's own line box — what a terminal cell uses, so box-drawing frames join up.
+			style={{ background: palette.background, color: palette.foreground, fontFamily: terminalFontStack(), fontSize: 13, lineHeight: "normal" }}
 		>
 			{lines ? (
 				lines.map((line, i) => (
-					<span key={i} className="block whitespace-pre leading-[1.2] min-h-[1.2em]">
-						{renderAnsiLine(line, ansiColors(palette))}
+					<span key={i} className="block whitespace-pre min-h-[1.2em]">
+						{renderAnsiLine(line, palette)}
 					</span>
 				))
 			) : (
-				<span className="block whitespace-pre leading-[1.2] text-fg-muted">
+				<span className="block whitespace-pre text-fg-muted">
 					{preview && !preview.ok && preview.reason === "no-zsh" ? t("settings.shellPromptNoPreview") : " "}
 				</span>
 			)}
@@ -120,7 +135,7 @@ function PromptPreview({ t, source, failed }: { t: TFunction; source: string; fa
 
 function SourceBlock({ source }: { source: string }) {
 	return (
-		<pre className="mt-2 rounded-lg bg-base border border-edge px-2.5 py-1.5 text-micro font-mono text-fg-2 whitespace-pre-wrap break-all">
+		<pre className="mt-2 rounded-lg bg-base ring-1 ring-inset ring-edge/60 px-2.5 py-1.5 text-micro font-mono text-fg-2 whitespace-pre-wrap break-all">
 			{source}
 		</pre>
 	);
@@ -220,7 +235,7 @@ export default function ShellPromptGallery({
 									<button
 										type="button"
 										onClick={() => editCopy(style.source)}
-										className="mt-2 text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
+										className="mt-2 text-sm text-fg-3 hover:text-accent px-3 py-1.5 rounded-lg ring-1 ring-inset ring-edge hover:ring-accent/30 active:scale-[0.96] transition-[color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)]"
 									>
 										{t("settings.shellPromptCustomize")}
 									</button>
@@ -266,7 +281,7 @@ export default function ShellPromptGallery({
 									type="button"
 									disabled={checking || !draft.trim() || (draft === custom && !error)}
 									onClick={apply}
-									className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-semibold hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
+									className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-semibold hover:bg-accent-fill-hover disabled:opacity-50 enabled:active:scale-[0.96] transition-[background-color,opacity,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)]"
 								>
 									{t("settings.shellPromptApply")}
 								</button>

@@ -73,11 +73,13 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
   }
 
   # Appends one angled segment; tracks the visible width alongside the markup.
+  # Text is drawn in reverse video, so it takes the terminal's own background
+  # colour: dark on the pastel fills of a dark theme, light on a light theme's.
   _dev3_seg() {
-    local bg=$1 fg=$2 text=$3
-    if [[ -n $_dev3_bg ]]; then _dev3_ps+="%F{$_dev3_bg}%K{$bg}$dev3_sep"; else _dev3_ps+="%K{$bg}"; fi
-    _dev3_ps+="%F{$fg} $text "
-    _dev3_bg=$bg
+    local color=$1 text=$2
+    [[ -n $_dev3_bg ]] && _dev3_ps+="%s%F{$_dev3_bg}%K{$color}$dev3_sep%k"
+    _dev3_ps+="%F{$color}%S $text "
+    _dev3_bg=$color
     (( _dev3_w += \${#text} + 3 ))
   }
 
@@ -86,19 +88,19 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
   _dev3_build() {
     local level=$1 rel=$dev3_path
     _dev3_ps= _dev3_bg= _dev3_w=0
-    (( level < 2 )) && [[ -n $dev3_task ]] && _dev3_seg magenta black "#$dev3_task"
-    (( level < 1 )) && [[ -n $dev3_project ]] && _dev3_seg blue black "$dev3_project"
+    (( level < 2 )) && [[ -n $dev3_task ]] && _dev3_seg magenta "#$dev3_task"
+    (( level < 1 )) && [[ -n $dev3_project ]] && _dev3_seg blue "$dev3_project"
     if (( level < 4 )) && [[ -n $rel ]]; then
       (( level >= 3 )) && [[ $rel == */* ]] && rel="…/\${rel:t}"
-      _dev3_seg 8 white "$rel"
+      _dev3_seg cyan "$rel"
     fi
     if (( level < 6 )) && [[ -n $dev3_git ]]; then
       local git=" $dev3_git"
       (( level >= 5 )) && { [[ -n $dev3_dirty ]] && git=" ±" || git=" ✓"; }
-      _dev3_seg \${\${dev3_dirty:+3}:-2} black "$dev3_icon_branch$git"
+      _dev3_seg \${\${dev3_dirty:+yellow}:-green} "$dev3_icon_branch$git"
     fi
-    (( level < 7 )) && [[ -n $dev3_dur ]] && _dev3_seg cyan black "$dev3_icon_clock $dev3_dur"
-    _dev3_ps+="%k%F{\${_dev3_bg:-8}}$dev3_sep%f"
+    (( level < 7 )) && [[ -n $dev3_dur ]] && _dev3_seg white "$dev3_icon_clock $dev3_dur"
+    _dev3_ps+="%s%F{\${_dev3_bg:-8}}$dev3_sep%f"
     (( _dev3_w += 1 ))
   }
 
@@ -197,29 +199,29 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
     [[ -z $_dev3_git ]] && _dev3_git=" ✓"
   }
 
-  # $1 bg colour, $2 fg colour (SGR numbers), $3 text
+  # $1 ANSI colour 0-7, $2 text. Reverse video, as in the zsh prompt.
   _dev3_seg() {
-    if [[ -n $_dev3_bg ]]; then _dev3_ps+="\\[\\e[$((_dev3_bg - 10));$1m\\]$_dev3_sep"; else _dev3_ps+="\\[\\e[$1m\\]"; fi
-    _dev3_ps+="\\[\\e[$2m\\] \${3//\\\\/\\\\\\\\} "
+    [[ -n $_dev3_bg ]] && _dev3_ps+="\\[\\e[27;3\${_dev3_bg};4$1m\\]$_dev3_sep\\[\\e[49m\\]"
+    _dev3_ps+="\\[\\e[3$1;7m\\] \${2//\\\\/\\\\\\\\} "
     _dev3_bg=$1
-    _dev3_w=$((_dev3_w + \${#3} + 3))
+    _dev3_w=$((_dev3_w + \${#2} + 3))
   }
 
   _dev3_build() {
     local level=$1 rel=$2 root=$3 task=\${DEV3_TASK_SEQ%%-*} git
     _dev3_ps="\\[\\e[90m\\]┌─" _dev3_bg= _dev3_w=2
-    (( level < 2 )) && [[ -n $task ]] && _dev3_seg 45 30 "#$task"
-    (( level < 1 )) && [[ -n $root ]] && _dev3_seg 44 30 "$root"
+    (( level < 2 )) && [[ -n $task ]] && _dev3_seg 5 "#$task"
+    (( level < 1 )) && [[ -n $root ]] && _dev3_seg 4 "$root"
     if (( level < 4 )) && [[ -n $rel ]]; then
       (( level >= 3 )) && [[ $rel == */* ]] && rel="…/\${rel##*/}"
-      _dev3_seg 100 37 "$rel"
+      _dev3_seg 6 "$rel"
     fi
     if (( level < 6 )) && [[ -n $_dev3_git ]]; then
       git=$_dev3_git
       if (( level >= 5 )); then (( _dev3_dirty )) && git=" ±" || git=" ✓"; fi
-      if (( _dev3_dirty )); then _dev3_seg 43 30 "$_dev3_ico_git$git"; else _dev3_seg 42 30 "$_dev3_ico_git$git"; fi
+      if (( _dev3_dirty )); then _dev3_seg 3 "$_dev3_ico_git$git"; else _dev3_seg 2 "$_dev3_ico_git$git"; fi
     fi
-    _dev3_ps+="\\[\\e[49;$(( \${_dev3_bg:-100} - 10 ))m\\]$_dev3_sep\\[\\e[0m\\]"
+    _dev3_ps+="\\[\\e[27;49;3\${_dev3_bg:-0}m\\]$_dev3_sep\\[\\e[0m\\]"
     _dev3_w=$((_dev3_w + 1))
   }
 

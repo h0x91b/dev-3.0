@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShellPromptPreview } from "../../../../shared/types";
 import { SHELL_PROMPT_STYLES } from "../../../../shared/shell-prompt-styles";
 import type { TFunction } from "../../../i18n";
-import ShellPromptGallery from "../ShellPromptGallery";
+import ShellPromptGallery, { clearShellPromptPreviewCache } from "../ShellPromptGallery";
 
 vi.mock("../../../rpc", () => ({
 	api: { request: { previewShellPrompt: vi.fn() } },
@@ -40,6 +40,7 @@ function Harness({ shell = "zsh", onSaveCustom = vi.fn() }: { shell?: string; on
 }
 
 beforeEach(() => {
+	clearShellPromptPreviewCache();
 	preview.mockReset();
 	preview.mockImplementation(async ({ source }): Promise<ShellPromptPreview> =>
 		source.includes("broken")
@@ -64,6 +65,17 @@ describe("ShellPromptGallery", () => {
 		const arrow = await screen.findByText("❯");
 		expect(arrow).toHaveStyle({ color: "#f7768e" });
 		expect(document.body.textContent).not.toContain("\u001b[");
+	});
+
+	it("draws reverse video with the terminal background as the text colour", async () => {
+		preview.mockImplementation(async (): Promise<ShellPromptPreview> => ({
+			ok: true,
+			afterSlowCommand: ["\u001b[35;7m #42 \u001b[27m"],
+			afterFailedCommand: [""],
+		}));
+		render(<Harness />);
+		const badge = (await screen.findAllByText("#42", { exact: false }))[0];
+		expect(badge).toHaveStyle({ color: "#1a1b26", background: "#bb9af7" });
 	});
 
 	it("copies a style into the custom editor and applies it only after zsh accepts it", async () => {
