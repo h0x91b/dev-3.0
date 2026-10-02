@@ -92,9 +92,10 @@ is on ext4 whatever the project path is, so dependency installs, builds and test
 at native speed. What still crosses the bridge is the main checkout and its `.git` directory: git
 operations in a task read the shared object store over 9p, and each worktree's index and admin data
 live in the main repo's `.git/worktrees/`, so they cross it too. Work done directly in the main
-checkout is as slow as before. Do not run `git worktree prune` (or anything that triggers it) from
-a Windows git client on that repo: it cannot resolve the `/home/...` worktree paths, treats them as
-gone and deletes their admin data, which breaks every task worktree.
+checkout is as slow as before. Do not run `git worktree prune` from a Windows git client on that
+repo, and keep Windows-side tools from running `git gc` there (it prunes worktrees too): Windows
+git cannot resolve the `/home/...` worktree paths, treats them as gone and deletes their admin
+data, which breaks every task worktree.
 
 ### Install
 
@@ -157,7 +158,8 @@ KillMode=process
 
 then `systemctl --user start dev3-remote`. `KillMode=process` keeps running agents alive when the
 service restarts; it is safe here only because this setup runs `--no-tunnel` (why:
-[Keep agents alive across restarts](remote-access.md#run-it-as-a-service-linux)).
+[Keep agents alive across restarts](remote-access.md#run-it-as-a-service-linux)). It also means
+stopping the service no longer stops the agents; that section shows how to take them down too.
 `Environment=DEV3_TELEMETRY=off` is needed because the unit does not carry your shell's
 environment. Edit the drop-in, not the unit: `install-service` rewrites the unit on every run.
 
@@ -172,8 +174,13 @@ To run each project under its own Claude Code config dir (and so its own account
 project's `.dev3/config.local.json`, which stays out of git:
 
 ```json
-{ "env": { "CLAUDE_CONFIG_DIR": "/mnt/e/Projects/acme/.claude" } }
+{ "env": { "CLAUDE_CONFIG_DIR": "/home/you/.claude-acme" } }
 ```
+
+Keep that dir **outside the repo**. Claude Code stores the account's login token
+(`.credentials.json`, plain text on Linux), its settings and every session transcript there, so a
+dir inside the project tree is one `git add -A` away from publishing the token, and on a Windows
+drive (`/mnt/...`) its file permissions are not enforced either.
 
 Two things break this:
 
@@ -183,9 +190,8 @@ Two things break this:
   use managed accounts, not both.
 - **`CLAUDE_PROJECT_DIR` inside a task is the worktree**, not the project's main checkout. A
   settings file that references `$CLAUDE_PROJECT_DIR/.claude/...` (hooks, a status line) points
-  into the worktree in a task, which has only what git tracks. When the pinned dir is the
-  project's own `.claude`, `${CLAUDE_CONFIG_DIR:-$CLAUDE_PROJECT_DIR/.claude}/...` reaches the
-  untracked files too; with any other pin, keep such files tracked or use an absolute path.
+  into the worktree in a task, which has only what git tracks. Keep such files tracked, or
+  reference them by absolute path.
 
 ## Linux
 

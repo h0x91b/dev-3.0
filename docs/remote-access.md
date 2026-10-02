@@ -92,7 +92,7 @@ Two caveats worth knowing:
 - **Under systemd** the unit's cgroup is torn down when the unit stops. Silent updates wait
   for running agents, but a manual restart can still interrupt them (a `--no-tunnel` service can
   opt out, see [Keep agents alive across restarts](#run-it-as-a-service-linux)). The update also
-  loses `cloudflared`, so the public URL changes - re-run `dev3 remote url`.
+  loses `cloudflared`, so the public URL changes — re-run `dev3 remote url`.
 - **There is no "updating…" screen.** A silent overnight restart looks exactly like the box
   falling over. `dev3 remote status` prints a `Last update:` line that explains it.
 
@@ -123,10 +123,15 @@ Environment=DEV3_TELEMETRY=off
 ```
 
 Then `systemctl --user restart dev3-remote`. The drop-in survives a later `install-service`, which
-rewrites the unit itself. Do not use it with the tunnel on: a restart, including a silent update,
-then leaves the old `cloudflared` running, still serving the old public URL, while the new server
-starts another one. systemd also logs the surviving processes as "left-over" on every start;
-that is expected.
+rewrites the unit itself. Do not use it with the tunnel on: a silent update exits without stopping
+`cloudflared` (under systemd it counts on the unit taking it down), so the old one keeps serving the
+old public URL while the new server starts another. systemd also logs the surviving processes as
+"left-over" on every start; that is expected.
+
+The flip side: `systemctl --user stop`, `dev3 remote stop` and `uninstall-service` now stop only
+the server, and the agents keep running. To take everything down, run
+`systemctl --user kill dev3-remote` while the unit is up: it signals every process in the unit's
+cgroup, agents included.
 
 ### WSL: the UI in a Windows browser
 
