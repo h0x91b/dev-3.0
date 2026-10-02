@@ -1,5 +1,7 @@
 # Agent-to-agent message toast carries two identities and its own hue
 
+> Superseded in part on 2026-10-02 by `decisions/2026/10/02/agent-message-toast-names-every-destination.md`: the click no longer has one target — both names are links, three labelled actions open sender, traffic and recipient, and the card itself opens traffic.
+
 ## Context
 
 `dev3 message --task seq:N` types straight into another task's agent. Until now the

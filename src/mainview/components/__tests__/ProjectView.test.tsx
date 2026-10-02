@@ -448,6 +448,52 @@ describe("ProjectView task-detail request", () => {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
+	// Opening a finished task on ANOTHER board keeps this view mounted: for one
+	// commit it still holds the previous board's tasks marked ready, and the task
+	// read as gone before its own board had even loaded.
+	it("does not call a task gone while its own board is still loading", async () => {
+		const elsewhere = { id: "t-elsewhere", projectId: "p2", status: "todo" } as Task;
+		const other = { ...project, id: "p2", name: "Other" };
+		vi.mocked(api.request.getTasks).mockResolvedValue([doneTask]);
+		const navigate = vi.fn();
+		const view = (projectId: string, tasks: Task[], taskDetailId?: string) => (
+			<I18nProvider>
+				<RouteHost
+					route={{ screen: "project", projectId, taskDetailId }}
+					element={
+						<ProjectView
+							projectId={projectId}
+							projects={[project, other]}
+							tasks={tasks}
+							dispatch={vi.fn()}
+							route={{ screen: "project", projectId, taskDetailId }}
+							navigate={navigate}
+							taskDetailId={taskDetailId}
+							bellCounts={new Map()}
+							taskPorts={new Map()}
+							taskDevServers={new Map()}
+						/>
+					}
+				/>
+			</I18nProvider>
+		);
+		const { rerender } = render(view("p1", [doneTask]));
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p1" }));
+		await act(async () => {});
+
+		let resolveOther!: (tasks: Task[]) => void;
+		vi.mocked(api.request.getTasks).mockImplementation(() => new Promise((resolve) => (resolveOther = resolve)));
+		rerender(view("p2", [doneTask], "t-elsewhere"));
+		await act(async () => {});
+		expect(toast.info).not.toHaveBeenCalled();
+
+		// In the app the snapshot dispatch and "ready" land in one batch.
+		rerender(view("p2", [elsewhere], "t-elsewhere"));
+		await act(async () => resolveOther([elsewhere]));
+		expect(toast.info).not.toHaveBeenCalled();
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("says so and drops the request when the task is gone", async () => {
 		vi.mocked(api.request.getTasks).mockResolvedValue([]);
 		const navigate = vi.fn();

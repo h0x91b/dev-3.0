@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
@@ -30,7 +30,45 @@ export interface ToastOrigin {
 	contextDetail?: string;
 }
 
-export interface ToastEntry extends ToastOrigin {
+/**
+ * A task named inside the source line that is its own way there. `lead` (the `#seq`)
+ * never truncates; `label` takes the ellipsis; `suffix` (a project name) stays whole.
+ */
+export interface ToastLink {
+	lead: string;
+	label?: string;
+	suffix?: string;
+	/** Says where the link goes, not just what it shows. */
+	ariaLabel: string;
+	onClick: () => void;
+}
+
+/** A labelled destination under the message, alongside the card's own click. */
+export interface ToastAction {
+	label: string;
+	/** Leads the label; lets a compact label (`#21`) still read as what it is. */
+	icon?: ReactNode;
+	/** Full name for screen readers and the tooltip — must contain `label`. */
+	ariaLabel?: string;
+	/** The one action whose label may truncate so the row never wraps. */
+	shrink?: boolean;
+	onClick: () => void;
+	/** The one action that carries the variant's tint; the rest stay neutral. */
+	emphasis?: boolean;
+}
+
+/** Source line built from links and plain separators, e.g. a link, " → ", a link. */
+export type ToastContextPart = string | ToastLink;
+
+interface ToastDestinations {
+	/** Replaces the plain source line with links; `context` stays the spoken summary. */
+	contextParts?: ToastContextPart[];
+	actions?: ToastAction[];
+	/** Prefix for the card's accessible name, naming where the card click goes. */
+	clickLabel?: string;
+}
+
+export interface ToastEntry extends ToastOrigin, ToastDestinations {
 	id: number;
 	message: string;
 	variant: ToastVariant;
@@ -41,7 +79,7 @@ export interface ToastEntry extends ToastOrigin {
 	context?: string;
 }
 
-export interface ToastOpts extends ToastOrigin {
+export interface ToastOpts extends ToastOrigin, ToastDestinations {
 	durationMs?: number;
 	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
 	onClick?: () => void;
@@ -146,6 +184,9 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		contextDetail: opts?.contextDetail,
 		onClick: opts?.onClick,
 		context: opts?.context,
+		contextParts: opts?.contextParts,
+		actions: opts?.actions,
+		clickLabel: opts?.clickLabel,
 	};
 	// Queue while immersive fullscreen suppresses toasts, and also while no host is
 	// subscribed yet: `ToastHost` subscribes from a passive effect, so a toast raised
@@ -641,16 +682,36 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 					{v.icon}
 				</span>
 				<div className="flex-1 min-w-0 pr-1">
-					{context && (
+					{entry.contextParts ? (
+						<ToastContextLinks
+							parts={entry.contextParts}
+							onNavigate={(link) => {
+								if (suppressIfDragged()) return;
+								link.onClick();
+								onDismiss(entry.id);
+							}}
+						/>
+					) : context && (
 						<div className="text-micro font-mono text-fg-muted truncate mb-0.5">
 							{context}
 						</div>
 					)}
 					<div
-						className={`text-fg text-sm leading-relaxed break-words ${onClick ? "group-hover:underline" : ""}`}
+						className={`text-fg text-sm leading-relaxed break-words ${onClick && !entry.actions?.length ? "group-hover:underline" : ""}`}
 					>
 						{entry.message}
 					</div>
+					{entry.actions && entry.actions.length > 0 && (
+						<ToastActions
+							actions={entry.actions}
+							tint={v}
+							onRun={(action) => {
+								if (suppressIfDragged()) return;
+								action.onClick();
+								onDismiss(entry.id);
+							}}
+						/>
+					)}
 				</div>
 				{/* Whole-card hit area for a clickable toast, laid over the content so
 				    every pixel except the dismiss button activates it. Inset by 3px so
@@ -669,7 +730,9 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 						}}
 						// The source line is part of the name: a screen-reader user must
 						// hear which task the click navigates to, not just the sentence.
-						aria-label={context ? `${context} — ${entry.message}` : entry.message}
+						aria-label={[entry.clickLabel, context ? `${context} — ${entry.message}` : entry.message]
+							.filter(Boolean)
+							.join(": ")}
 						className="absolute inset-[3px] cursor-pointer rounded-[0.625rem]"
 					/>
 				)}
@@ -682,7 +745,7 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 						onDismiss(entry.id);
 					}}
 					aria-label={dismissLabel}
-					className="relative text-fg-muted hover:text-fg transition-colors flex-shrink-0"
+					className="relative z-10 text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 				>
 					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -697,6 +760,94 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 					}}
 				/>
 			</div>
+		</div>
+	);
+}
+
+/** Pointer presses on an inner control must neither start a swipe nor paint a focus ring. */
+const innerControlPointerProps = {
+	onPointerDown: (event: React.PointerEvent) => event.stopPropagation(),
+	onMouseDown: (event: React.MouseEvent) => event.preventDefault(),
+};
+
+/**
+ * The source line as links. Raised above the card's whole-card button rather than
+ * nested in it, so each link is its own target and its click never reaches the card.
+ */
+function ToastContextLinks({ parts, onNavigate }: { parts: ToastContextPart[]; onNavigate: (link: ToastLink) => void }) {
+	// A separator travels with the link after it, so a wrap never strands a lone "→".
+	const groups: Array<{ separator?: string; link?: ToastLink; text?: string }> = [];
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i]!;
+		const next = parts[i + 1];
+		if (typeof part === "string" && next !== undefined && typeof next !== "string") {
+			groups.push({ separator: part, link: next });
+			i++;
+		} else if (typeof part === "string") groups.push({ text: part });
+		else groups.push({ link: part });
+	}
+	return (
+		<div data-toast-context className="relative z-10 mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-micro font-mono text-fg-muted">
+			{groups.map((group, index) => (
+				<span key={index} className="flex min-w-0 max-w-full items-baseline gap-1">
+					{group.separator && <span aria-hidden="true" className="flex-none">{group.separator}</span>}
+					{group.text && <span className="min-w-0 truncate">{group.text}</span>}
+					{group.link && (
+						<button
+							type="button"
+							{...innerControlPointerProps}
+							onClick={() => onNavigate(group.link!)}
+							aria-label={group.link.ariaLabel}
+							className="flex min-w-0 max-w-full items-baseline gap-1 rounded-sm text-left text-fg-3 underline decoration-fg-muted/60 underline-offset-2 transition-colors hover:text-fg hover:decoration-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/60"
+						>
+							<span className="flex-none">{group.link.lead}</span>
+							{group.link.label && <span className="min-w-0 truncate">{group.link.label}</span>}
+							{group.link.suffix && <span className="flex-none text-fg-muted">{group.link.suffix}</span>}
+						</button>
+					)}
+				</span>
+			))}
+		</div>
+	);
+}
+
+function ToastActions({
+	actions,
+	tint,
+	onRun,
+}: {
+	actions: ToastAction[];
+	tint: { text: string };
+	onRun: (action: ToastAction) => void;
+}) {
+	// One row, always: wrapping made the toast a line taller. Only a `shrink`
+	// action gives up width, by truncating its own label.
+	return (
+		<div data-toast-actions className="relative z-10 mt-2.5 flex flex-nowrap items-center gap-1.5">
+			{actions.map((action) => (
+				<button
+					key={action.label}
+					type="button"
+					{...innerControlPointerProps}
+					onClick={() => onRun(action)}
+					aria-label={action.ariaLabel}
+					title={action.ariaLabel}
+					className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/60 ${
+						action.shrink ? "min-w-0" : "flex-none"
+					} ${
+						action.emphasis
+							? `bg-agent/15 hover:bg-agent/25 ${tint.text}`
+							: "text-fg-2 shadow-[inset_0_0_0_1px_rgb(var(--border-default))] hover:bg-fg/5 hover:text-fg"
+					}`}
+				>
+					{action.icon && (
+						<span aria-hidden="true" className="flex h-3.5 w-3.5 flex-none items-center justify-center">
+							{action.icon}
+						</span>
+					)}
+					<span className="truncate">{action.label}</span>
+				</button>
+			))}
 		</div>
 	);
 }

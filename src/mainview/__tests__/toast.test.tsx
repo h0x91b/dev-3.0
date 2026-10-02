@@ -420,6 +420,124 @@ describe("toast service", () => {
 		expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
 	});
 
+	describe("source-line links and labelled actions", () => {
+		function raise(card = vi.fn(), sender = vi.fn(), traffic = vi.fn()) {
+			act(() => {
+				toast.agent("check the payload", {
+					context: "#7 Coordinator → #42 Receiver",
+					clickLabel: "Open agent traffic",
+					onClick: card,
+					contextParts: [
+						{ lead: "#7", label: "Coordinator", ariaLabel: "Open sender task #7 Coordinator", onClick: sender },
+						"→",
+						{ lead: "#42", label: "Receiver", suffix: "· Billing", ariaLabel: "Open recipient task #42", onClick: vi.fn() },
+					],
+					actions: [
+						{ label: "Sender #7", emphasis: true, onClick: sender },
+						{ label: "Agent traffic", onClick: traffic },
+					],
+					durationMs: 60_000,
+				});
+			});
+			return { card, sender, traffic };
+		}
+
+		it("runs a link or an action alone, then dismisses — the card's click never fires", async () => {
+			render(<ToastHost />);
+			const { card, sender } = raise();
+			await userEvent.click(screen.getByRole("button", { name: "Open sender task #7 Coordinator" }));
+			expect(sender).toHaveBeenCalledTimes(1);
+			expect(card).not.toHaveBeenCalled();
+			expect(screen.queryByRole("alert")).toBeNull();
+
+			const second = raise();
+			await userEvent.click(screen.getByRole("button", { name: "Agent traffic" }));
+			expect(second.traffic).toHaveBeenCalledTimes(1);
+			expect(second.card).not.toHaveBeenCalled();
+		});
+
+		it("names the card's own destination and keeps it clickable", async () => {
+			render(<ToastHost />);
+			const { card } = raise();
+			await userEvent.click(
+				screen.getByRole("button", { name: "Open agent traffic: #7 Coordinator → #42 Receiver — check the payload" }),
+			);
+			expect(card).toHaveBeenCalledTimes(1);
+		});
+
+		// Sibling buttons raised above the card's button, never nested inside it.
+		it("nests no interactive element inside another", () => {
+			render(<ToastHost />);
+			raise();
+			for (const button of document.querySelectorAll("[data-toast-card] button")) {
+				expect(button.querySelector("button")).toBeNull();
+			}
+			expect(document.querySelector("[data-toast-context]")!.className).toContain("z-10");
+			expect(document.querySelector("[data-toast-actions]")!.className).toContain("z-10");
+		});
+
+		it("keeps the number whole and lets only the title truncate", () => {
+			render(<ToastHost />);
+			raise();
+			const link = screen.getByRole("button", { name: "Open recipient task #42" });
+			const [lead, label, suffix] = Array.from(link.children);
+			expect(lead).toHaveTextContent("#42");
+			expect(lead!.className).toContain("flex-none");
+			expect(label!.className).toContain("truncate");
+			expect(suffix).toHaveTextContent("· Billing");
+			expect(link.className).toContain("underline");
+		});
+
+		// Wrapping moves "→" down with the recipient instead of leaving it on a line alone.
+		it("keeps the arrow together with the link after it", () => {
+			render(<ToastHost />);
+			raise();
+			const recipient = screen.getByRole("button", { name: "Open recipient task #42" });
+			expect(recipient.parentElement).toHaveTextContent(/^→#42/);
+		});
+
+		// Wrapping made the toast a line taller: the row never wraps, and only the
+		// action marked `shrink` gives up width (its label truncates).
+		it("keeps every action on one row, letting only the shrinkable one truncate", () => {
+			render(<ToastHost />);
+			act(() => {
+				toast.agent("m", {
+					actions: [
+						{ label: "#7", ariaLabel: "Sender #7", icon: <svg />, onClick: vi.fn() },
+						{ label: "Agent traffic", shrink: true, onClick: vi.fn() },
+						{ label: "#42", ariaLabel: "Recipient #42", onClick: vi.fn() },
+					],
+				});
+			});
+			const row = document.querySelector("[data-toast-actions]") as HTMLElement;
+			expect(row.className).toContain("flex-nowrap");
+			const [sender, traffic, recipient] = Array.from(row.querySelectorAll("button"));
+			expect(sender!.className).toContain("flex-none");
+			expect(recipient!.className).toContain("flex-none");
+			expect(traffic!.className).toContain("min-w-0");
+			expect(traffic!.querySelector(".truncate")).toHaveTextContent("Agent traffic");
+			// The compact label is still announced with its role, and the icon is decoration.
+			expect(screen.getByRole("button", { name: "Sender #7" })).toHaveAttribute("title", "Sender #7");
+			expect(sender!.querySelector("[aria-hidden=true] svg")).not.toBeNull();
+		});
+
+		it("does not start a swipe from a press on an action", () => {
+			render(<ToastHost />);
+			raise();
+			const action = screen.getByRole("button", { name: "Sender #7" });
+			swipe(action, 400);
+			expect(screen.getByRole("alert")).toBeInTheDocument();
+		});
+
+		it("pauses its timer while an action holds keyboard focus", async () => {
+			const user = userEvent.setup();
+			render(<ToastHost />);
+			raise();
+			await user.tab();
+			expect(document.querySelector("[data-toast-progress]") as HTMLElement).toHaveStyle({ animationPlayState: "paused" });
+		});
+	});
+
 	it("composes a source line with the identifier first", () => {
 		expect(taskToastContext(804, "dev-3.0", "Review PR Babysitter")).toBe("#804 · dev-3.0 · Review PR Babysitter");
 		expect(taskToastContext(undefined, "dev-3.0", "No seq")).toBeUndefined();

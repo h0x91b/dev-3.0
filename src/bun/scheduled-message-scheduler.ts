@@ -154,6 +154,9 @@ function announceAgentMessage(task: Task, message: ScheduledMessage, delivery: A
 		fromSeq: source.seq,
 		...(source.title ? { fromTitle: source.title } : {}),
 		...(source.projectId ? { fromProjectId: source.projectId } : {}),
+		fromTaskId: source.taskId,
+		...(source.variantIndex != null ? { fromVariantIndex: source.variantIndex } : {}),
+		...(task.variantIndex != null ? { toVariantIndex: task.variantIndex } : {}),
 		// The subject is the sender's own one-liner, which is exactly what a preview
 		// wants to be. The clamped head of the body is the fallback for a message
 		// that predates subjects.

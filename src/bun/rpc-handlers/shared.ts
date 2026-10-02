@@ -214,6 +214,10 @@ export interface AgentMessagePayload {
 	fromTitle?: string;
 	/** Sending task's project, gated alongside the receiver's (see {@link pushAgentMessage}). */
 	fromProjectId?: string;
+	/** Sending task — the toast's link to the sender. */
+	fromTaskId?: string;
+	fromVariantIndex?: number;
+	toVariantIndex?: number;
 	preview: string;
 }
 

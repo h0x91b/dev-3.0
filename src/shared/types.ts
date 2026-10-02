@@ -6730,6 +6730,11 @@ export type AppRPCSchema = {
 				fromTitle?: string;
 				/** Sending task's project, so the renderer can silence either side. */
 				fromProjectId?: string;
+				/** Sending task's id — the toast's way to the sender. Absent on a record queued before it existed. */
+				fromTaskId?: string;
+				/** Variant indices, so `#21-2` names the exact attempt on either side. */
+				fromVariantIndex?: number;
+				toVariantIndex?: number;
 				/** One-line, length-clamped preview of what was sent. */
 				preview: string;
 			};

@@ -12,7 +12,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { orderProjectsForDisplay, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { useAgents } from "./hooks/useAgents";
@@ -46,9 +46,10 @@ import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
-import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
+import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastLink, type ToastOrigin } from "./toast";
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
+import { AgentTrafficIcon } from "./components/HeaderIcons";
 import { noteTrafficArrival } from "./agent-traffic";
 import {
 	OPEN_AGENT_TRAFFIC_LOG_EVENT,
@@ -147,6 +148,41 @@ type RemoteAccessQRData = {
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
 	return tunnelState === "starting" || tunnelState === "connected";
+}
+
+/** One task an agent-message toast names, with what it needs to be opened and spoken. */
+interface AgentToastEnd {
+	taskId: string;
+	projectId: string;
+	/** `21`, or `21-2` for one attempt of a variant group. */
+	seq: string;
+	title?: string;
+	/** Set only when the message crossed boards. */
+	projectName?: string;
+}
+
+/** Paper plane: the end that sent the message (the toast itself is the envelope). */
+function SentIcon() {
+	return (
+		<svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+			<path d="M21 3 10.5 13.5" />
+			<path d="M21 3 14.5 21l-4-7.5L3 9.5 21 3Z" />
+		</svg>
+	);
+}
+
+/** Inbox tray: the end the message landed in. */
+function ReceivedIcon() {
+	return (
+		<svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+			<path d="M3 13h5l1.5 3h5L16 13h5" />
+			<path d="M5.5 5h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l2.5-8Z" />
+		</svg>
+	);
+}
+
+function variantSeqLabel(seq: number, variantIndex: number | undefined): string {
+	return variantIndex != null ? `${seq}-${variantIndex}` : `${seq}`;
 }
 
 /**
@@ -857,6 +893,41 @@ function App() {
 			navigate(taskOpenRoute(taskId, projectId, getTaskOpenMode(), opts?.archived === true));
 		},
 		[navigate, setTerminalImmersiveActive],
+	);
+
+	const projectsRef = useRef(state.projects);
+	projectsRef.current = state.projects;
+
+	// One end of an agent-message toast, looked up at click time: the toast can
+	// outlive the task. A task that is gone says so instead of opening an empty
+	// screen; one that left the active columns opens as its board card, which is
+	// where a finished task lives. Opening never wakes or resumes anything.
+	const openAgentToastEnd = useCallback(
+		async (end: AgentToastEnd) => {
+			const gone = () =>
+				toast.info(t("toast.agent.taskGone", { seq: end.seq }), {
+					context: [`#${end.seq}`, end.title].filter(Boolean).join(" "),
+				});
+			if (!projectsRef.current.some((p) => p.id === end.projectId)) {
+				gone();
+				return;
+			}
+			let tasks: Task[] | undefined;
+			try {
+				tasks = await api.request.getTasks({ projectId: end.projectId });
+			} catch {
+				tasks = undefined;
+			}
+			// No answer is not an answer: navigate as before rather than call it gone.
+			const task = Array.isArray(tasks) ? tasks.find((candidate) => candidate.id === end.taskId) : undefined;
+			if (Array.isArray(tasks) && !task) {
+				gone();
+				return;
+			}
+			const archived = task ? !ACTIVE_STATUSES.includes(task.status) : false;
+			openTaskFromNotification(end.taskId, end.projectId, { archived });
+		},
+		[openTaskFromNotification, t],
 	);
 
 
@@ -1756,22 +1827,25 @@ function App() {
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
 	// Its own violet variant and a two-identity source line — the only toast whose
-	// event has a sender AND a receiver. With the traffic beta on, the click opens
-	// the traffic screen, where both identities and the full text live; with it off
-	// it falls back to the RECEIVER, where the text landed and the reply gets typed.
+	// event has a sender AND a receiver. The card's own click opens the traffic
+	// screen with the beta on, else the RECEIVER; both names in the source line and
+	// the labelled actions open each end directly (decisions/2026/10/02/agent-message-toast-names-every-destination.md).
 	useEffect(() => {
 		function onAgentMessage(e: Event) {
-			const { taskId, projectId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = (e as CustomEvent)
-				.detail as {
+			const detail = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				fromProjectId?: string;
+				fromTaskId?: string;
+				fromVariantIndex?: number;
+				toVariantIndex?: number;
 				toSeq: number;
 				toTitle: string;
 				fromSeq: number;
 				fromTitle?: string;
 				preview: string;
 			};
+			const { taskId, projectId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = detail;
 			if (!taskId || !preview) return;
 			// This window is already showing the traffic screen, where the message
 			// lands in full — a toast previewing it would cover its own destination.
@@ -1779,33 +1853,98 @@ function App() {
 			if (isAgentTrafficVisible() && routeRef.current.screen === "agent-traffic") return;
 			// Either side sensitive on camera drops the whole toast: it names both.
 			if (isProjectSilencedForDisplay(projectId) || isProjectSilencedForDisplay(fromProjectId)) return;
-			const from = [`#${fromSeq}`, fromTitle].filter(Boolean).join(" ");
-			const to = [`#${toSeq}`, toTitle].filter(Boolean).join(" ");
+
+			const senderProjectId = fromProjectId ?? projectId;
+			// Name the projects only when the two ends live on different boards.
+			const crossProject = senderProjectId !== projectId;
+			const projectName = (id: string) => projectsRef.current.find((p) => p.id === id)?.name;
+			const recipient: AgentToastEnd = {
+				taskId,
+				projectId,
+				seq: variantSeqLabel(toSeq, detail.toVariantIndex),
+				title: toTitle,
+				projectName: crossProject ? projectName(projectId) : undefined,
+			};
+			const sender: AgentToastEnd | undefined = detail.fromTaskId
+				? {
+					taskId: detail.fromTaskId,
+					projectId: senderProjectId,
+					seq: variantSeqLabel(fromSeq, detail.fromVariantIndex),
+					title: fromTitle,
+					projectName: crossProject ? projectName(senderProjectId) : undefined,
+				}
+				: undefined;
+			const fromLabel = sender?.seq ?? variantSeqLabel(fromSeq, detail.fromVariantIndex);
+			const from = [`#${fromLabel}`, fromTitle].filter(Boolean).join(" ");
+			const to = [`#${recipient.seq}`, toTitle].filter(Boolean).join(" ");
+			const describe = (end: AgentToastEnd) =>
+				[`#${end.seq}`, end.title, end.projectName && `· ${end.projectName}`].filter(Boolean).join(" ");
+			const senderAria = sender && t("toast.agent.openSender", { task: describe(sender) });
+			const recipientAria = t("toast.agent.openRecipient", { task: describe(recipient) });
+			const link = (end: AgentToastEnd, ariaLabel: string): ToastLink => ({
+				lead: `#${end.seq}`,
+				label: end.title,
+				suffix: end.projectName ? `· ${end.projectName}` : undefined,
+				ariaLabel,
+				onClick: () => void openAgentToastEnd(end),
+			});
+
+			// Decided once, when the toast is raised, because the card's accessible name
+			// and the traffic action both say where a click goes. A beta switched OFF
+			// later leaves nothing to open, so the click then falls back to the receiver.
+			const trafficOffered = isAgentTrafficVisible();
+			const openTraffic = () => {
+				if (!trafficOffered || !isAgentTrafficVisible()) {
+					void openAgentToastEnd(recipient);
+					return;
+				}
+				// Already there — the shortcut toggles, but a toast has nothing to
+				// toggle back to, and navigating again would stack a second identical
+				// history entry and make Back a dead key.
+				if (routeRef.current.screen === "agent-traffic") return;
+				// All projects, never the board in view: the message the toast is
+				// about may belong to any board, and seeding the current one hides
+				// exactly the traffic the click was asking to see. The RECEIVER
+				// rides along as the screen's subject — the click is about one
+				// task, and it lands the same way clicking that card would.
+				openAgentTrafficLog("all-projects", { taskId, projectId });
+			};
+
 			toast.agent(t("toast.agentMessage", { preview }), {
 				context: `${from} → ${to}`,
+				contextParts: [
+					sender ? link(sender, senderAria!) : from,
+					"→",
+					link(recipient, recipientAria),
+				],
+				clickLabel: trafficOffered ? t("traffic.openLog") : recipientAria,
 				taskId,
-				// Read the flag at CLICK time, not here: a toast can outlive a toggle.
-				onClick: () => {
-					if (!isAgentTrafficVisible()) {
-						openTaskFromNotification(taskId, projectId);
-						return;
-					}
-					// Already there — the shortcut toggles, but a toast has nothing to
-					// toggle back to, and navigating again would stack a second identical
-					// history entry and make Back a dead key.
-					if (routeRef.current.screen === "agent-traffic") return;
-					// All projects, never the board in view: the message the toast is
-					// about may belong to any board, and seeding the current one hides
-					// exactly the traffic the click was asking to see. The RECEIVER
-					// rides along as the screen's subject — the click is about one
-					// task, and it lands the same way clicking that card would.
-					openAgentTrafficLog("all-projects", { taskId, projectId });
-				},
+				onClick: openTraffic,
+				actions: [
+					...(sender
+						? [{
+							label: `#${sender.seq}`,
+							icon: <SentIcon />,
+							ariaLabel: t("toast.agent.sender", { seq: sender.seq }),
+							emphasis: true,
+							onClick: () => void openAgentToastEnd(sender),
+						}]
+						: []),
+					...(trafficOffered
+						? [{ label: t("traffic.label"), icon: <AgentTrafficIcon className="h-3.5 w-3.5" />, shrink: true, onClick: openTraffic }]
+						: []),
+					{
+						label: `#${recipient.seq}`,
+						icon: <ReceivedIcon />,
+						ariaLabel: t("toast.agent.recipient", { seq: recipient.seq }),
+						onClick: () => void openAgentToastEnd(recipient),
+					},
+				],
 			});
 		}
 		window.addEventListener("rpc:agentMessage", onAgentMessage);
 		return () => window.removeEventListener("rpc:agentMessage", onAgentMessage);
-	}, [openTaskFromNotification, t]);
+	}, [openAgentToastEnd, t]);
 
 	useEffect(() => {
 		function onLogChanged(event: Event) {

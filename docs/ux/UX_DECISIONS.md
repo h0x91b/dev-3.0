@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-10-02 — The agent-message toast names every destination
+
+Bible §5.7: both names link to their task, plus Sender/Traffic/Recipient actions; the card still opens traffic. Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md.
+
 ## 2026-09-25 — Clips play inside the image viewer
 
 Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-video` clips (own `sharedVideos` field, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md.
@@ -42,9 +46,7 @@ Reverses "no composer" — bible §5.9, yaml `agent_traffic_screen`. Why: `decis
 
 Bounded reader beside Messages and Tasks, labelled `Live` or `Archived` — bible §5.9, yaml `agent_traffic_screen`. Why: `decisions/2026/09/12/task-conversation-in-the-traffic-inspector.md`.
 
-## 2026-09-12 — A notification into agent traffic opens all projects
-
-An agent-message toast opens the traffic screen unscoped ("All active projects"); deliberate entries still seed the board in view — bible §5.7. Why: `decisions/2026/09/12/notification-entry-to-traffic-opens-all-projects.md`.
+2026-09-12 — Toast into traffic opens all projects. Why: `decisions/2026/09/12/notification-entry-to-traffic-opens-all-projects.md`.
 
 ## 2026-09-08 — Agent traffic becomes the ninth destination, not an overlay
 
@@ -146,9 +148,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Why:** editing a secret you cannot see half-overwrites working keys and makes "clear to remove" impossible to offer, so the reveal is the edit gate; rejected alternative — send every key with the catalog and mask it client-side (a credential would cross to the renderer, including over a remote tunnel, because a screen loaded).
 - **Status:** Implemented. Evidence: `docs/ux/ux-architecture.yaml` `stored-secret-revealed-before-edit`, `src/mainview/components/global-settings/ModelCatalogSection.tsx` (`ProviderKeyField`), `src/bun/rpc-handlers/model-catalog.ts` (`modelCatalogRevealKey`).
 
-## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
-
-Two-task source line, non-severity `agent` violet, click-through to the receiver — bible §5.7. Why: `decisions/2026/08/14/agent-message-toast-two-identities.md`.
+2026-08-14 — Agent toast: two-task line, own violet. Why: `decisions/2026/08/14/agent-message-toast-two-identities.md`.
 
 ## 2026-08-14 — An agent-written log gets a capped preview, not a whole screen
 

@@ -104,6 +104,9 @@ function ProjectView({
 	// Board fetch state — drives the skeleton / retry panel instead of letting a
 	// failed or slow load render as an empty board (remote/mobile).
 	const [tasksStatus, setTasksStatus] = useState<"loading" | "ready" | "error">("loading");
+	// Which board the "ready" belongs to. Switching projects keeps this view mounted,
+	// so for one commit the status still says "ready" about the PREVIOUS board's tasks.
+	const [readyBoardKey, setReadyBoardKey] = useState<string | null>(null);
 	const [tasksReloadNonce, setTasksReloadNonce] = useState(0);
 	const rpcState = useRpcStatus();
 	const transportWasDownRef = useRef(false);
@@ -170,6 +173,7 @@ function ProjectView({
 				}
 				pushed.clear();
 				setTasksStatus("ready");
+				setReadyBoardKey(boardProjectKey);
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
 				if (cancelled) return;
@@ -239,11 +243,11 @@ function ProjectView({
 	// held it). Say so once the board has actually loaded — a silent no-op would
 	// read as "the click did nothing".
 	useEffect(() => {
-		if (!taskDetailId || tasksStatus !== "ready") return;
+		if (!taskDetailId || tasksStatus !== "ready" || readyBoardKey !== boardProjectKey) return;
 		if (tasks.some((candidate) => candidate.id === taskDetailId)) return;
 		toast.info(t("task.detailGone"));
 		closeTaskDetail();
-	}, [taskDetailId, tasksStatus, tasks, closeTaskDetail, t]);
+	}, [taskDetailId, tasksStatus, readyBoardKey, boardProjectKey, tasks, closeTaskDetail, t]);
 
 	// A project that left the space must not keep its cards on screen until the
 	// next fetch; membership decides what the board holds, not the task store.

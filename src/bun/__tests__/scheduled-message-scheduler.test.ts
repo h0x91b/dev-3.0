@@ -397,8 +397,24 @@ describe("cancel / send-now / immediate", () => {
 			fromSeq: 7,
 			fromTitle: "Coordinator",
 			fromProjectId: "proj-9",
+			fromTaskId: "other",
 			preview: "check the payload",
 		});
+	});
+
+	// The toast links both ends by id, and `#21-2` must name the exact attempt:
+	// a seq alone is ambiguous inside a variant group.
+	it("carries the sender's id and both variant indices for the toast's links", async () => {
+		const task = makeTask({ variantIndex: 3 });
+		await sendMessageImmediately(task as never, "check the payload", null, {
+			taskId: "sender-id",
+			seq: 7,
+			variantIndex: 2,
+		});
+		expect(pushFn).toHaveBeenCalledWith(
+			"agentMessage",
+			expect.objectContaining({ fromTaskId: "sender-id", fromVariantIndex: 2, toVariantIndex: 3 }),
+		);
 	});
 
 	it("stays silent for a message the human sent", async () => {
