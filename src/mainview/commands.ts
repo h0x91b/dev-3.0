@@ -111,6 +111,8 @@ export interface CommandContext {
 	 * affordances) and to avoid the "Project path does not exist" crash.
 	 */
 	isVirtual?: boolean;
+	/** The current project runs without the git workflow: no git or import commands. */
+	gitless?: boolean;
 	/**
 	 * Running in browser remote mode (`dev3 remote`). Desktop-only commands whose
 	 * effect lands on the *server host* rather than the user's machine (e.g.
@@ -146,6 +148,7 @@ export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 		) {
 			return false;
 		}
+		if (ctx.gitless && (c.category === "git" || c.category === "import")) return false;
 		if (c.scope === "task") return ctx.hasTask;
 		if (c.scope === "project") return ctx.hasProject;
 		return true;

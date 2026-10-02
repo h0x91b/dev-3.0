@@ -242,7 +242,7 @@ function activeState(status: TaskStatus, overrides: Partial<LifecycleState> = {}
 		runtime: { phase: "running" },
 		facts: {
 			hasWorktree: true,
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 		},
@@ -303,7 +303,7 @@ describe("native teardown ordering", () => {
 	it("stops the native tree before cleanup when a preparation is cancelled", async () => {
 		const preparing = activeState("in-progress", {
 			runtime: { phase: "preparing", stage: "launching-pty", runId: "run-p", origin: { status: "todo", customColumnId: null } },
-			facts: { hasWorktree: true, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true },
+			facts: { hasWorktree: true, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
 		});
 
 		const run = await runTeardown(preparing, { type: "preparationCancelled", runId: "run-p" }, nativeTask());

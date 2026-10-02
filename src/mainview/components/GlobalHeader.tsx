@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Space, Task, UpdateChangelog } from "../../shared/types";
-import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderSpaces, spacesOfProject, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
+import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, hasGitWorkflow, isBuiltinOpsProject, isSpaceSensitive, orderSpaces, spacesOfProject, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import { routeSpaceId, type Route } from "../state";
 import { useT } from "../i18n";
 import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
@@ -538,9 +538,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 	// Virtual ("Operations") boards have no git repo — the project-level git
 	// affordances (Pull) are meaningless and must be hidden.
-	const isVirtualProject = currentProjectId
-		? projects.find((p) => p.id === currentProjectId)?.kind === "virtual"
-		: false;
+	const currentProject = currentProjectId ? projects.find((p) => p.id === currentProjectId) : undefined;
+	const isVirtualProject = currentProject?.kind === "virtual";
+	// Pull belongs to the git workflow, which a project can also switch off.
+	const showGitPull = !!currentProject && hasGitWorkflow(currentProject);
 	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
 	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
 
@@ -1335,7 +1336,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
 				    Hidden for virtual ("Operations") boards, which have no git repo.
 				    Folded into the kebab bottom sheet on narrow. */}
-				{"projectId" in route && !isVirtualProject && !isNarrow && (
+				{"projectId" in route && showGitPull && !isNarrow && (
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 
@@ -1475,7 +1476,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<MemoryHeadroomIndicator navigate={navigate} />
 						{viewedOverRemote && <ConnectionQualityIndicator />}
 						<RateLimitIndicator compact={false} />
-						{currentProjectId && !isVirtualProject && (
+						{currentProjectId && showGitPull && (
 							<GitPullButton projectId={currentProjectId} compact={false} />
 						)}
 						<TmuxSessionManager navigate={navigate} />

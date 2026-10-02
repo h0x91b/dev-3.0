@@ -9,7 +9,8 @@ import {
 	type TaskConversationView,
 	type TurnLike,
 } from "../shared/task-conversation-model";
-import { taskDir, virtualWorkDir } from "./git";
+import { taskDir } from "./git";
+import { folderWorkDir } from "./task-folder";
 import { transcriptFilesForWorktree } from "./conversation-search";
 import { conversationDumpDir, parseTranscriptFile } from "./conversation-parse";
 import { createLogger } from "./logger";
@@ -54,8 +55,7 @@ interface LoadedConversation {
 
 /** Where this task's files live, whether or not it still has a worktree. */
 function taskWorkingDir(project: Project, task: Task): string {
-	if (project.kind === "virtual") return task.opsWorkDir?.trim() || virtualWorkDir(project, task);
-	return task.worktreePath ?? `${taskDir(project, task)}/worktree`;
+	return folderWorkDir(project, task) ?? task.worktreePath ?? `${taskDir(project, task)}/worktree`;
 }
 
 function statOf(path: string): { mtime: string | null; bytes: number } {

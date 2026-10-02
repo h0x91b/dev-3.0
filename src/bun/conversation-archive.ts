@@ -1,5 +1,6 @@
 import type { Project, Task } from "../shared/types";
-import { taskDir, virtualWorkDir } from "./git";
+import { taskDir } from "./git";
+import { folderWorkDir } from "./task-folder";
 import {
 	conversationDumpDir,
 	conversationDumpName,
@@ -36,7 +37,7 @@ export async function dumpTerminalTaskConversations(
 ): Promise<string[]> {
 	const workingDir = task.worktreePath
 		?? derivedWorktreePath
-		?? (project.kind === "virtual" ? task.opsWorkDir?.trim() || virtualWorkDir(project, task) : null);
+		?? folderWorkDir(project, task);
 	if (!workingDir) return [];
 
 	const written: string[] = [];

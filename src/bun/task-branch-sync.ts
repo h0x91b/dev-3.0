@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { type Project, type Task, resolveTaskCompareBaseBranch } from "../shared/types";
+import { hasGitWorkflow, type Project, type Task, resolveTaskCompareBaseBranch } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -32,7 +32,7 @@ function compareBasePin(project: Project, task: Task, liveBranch: string): { bas
  * this it stays stale until the renderer's next branch-status poll.
  */
 export async function syncTaskBranchName(project: Project, task: Task): Promise<Task> {
-	if (project.kind === "virtual") return task;
+	if (!hasGitWorkflow(project)) return task;
 	if (!task.worktreePath || !existsSync(task.worktreePath)) return task;
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);

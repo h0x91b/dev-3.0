@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
@@ -1243,7 +1243,11 @@ export async function ensureClaudeTrust(
 	}
 
 	try {
-		ensureClaudeMcpApproved(dirPath, projectPath);
+		// A task running in the project folder itself (git workflow off) must leave
+		// the user's own MCP decisions alone; only a task copy is pre-approved.
+		if (!projectPath || resolvePath(dirPath) !== resolvePath(projectPath)) {
+			ensureClaudeMcpApproved(dirPath, projectPath);
+		}
 	} catch (err) {
 		log.warn("Failed to pre-approve Claude MCP servers", { error: String(err) });
 	}

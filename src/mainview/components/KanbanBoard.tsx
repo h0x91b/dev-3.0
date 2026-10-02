@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, hasGitWorkflow, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
@@ -154,7 +154,7 @@ function KanbanBoard({
 	// persisted still gets a badge. Virtual (Operations) boards have no git repo,
 	// so they get no lookup instead of a doomed RPC every 60s.
 	const gitProjectIds = useMemo(
-		() => boardProjects.filter((p) => p.kind !== "virtual").map((p) => p.id),
+		() => boardProjects.filter(hasGitWorkflow).map((p) => p.id),
 		[boardProjects],
 	);
 	const knowsProject = useCallback((projectId: string) => projectById.has(projectId), [projectById]);

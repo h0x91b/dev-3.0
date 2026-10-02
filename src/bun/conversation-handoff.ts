@@ -28,8 +28,8 @@ export interface PreparedHandoff extends HandoffPreview {
 }
 
 /** Where a task's handoff files live: beside its dumps, in the durable container. */
-function handoffDir(worktreePath: string): string {
-	return conversationDumpDir(dirname(worktreePath));
+function handoffDir(worktreePath: string, containerDir?: string): string {
+	return conversationDumpDir(containerDir ?? dirname(worktreePath));
 }
 
 /** Long enough for a multi-GB rollout under memory pressure, short of the 2-minute RPC timeout. */
@@ -97,7 +97,12 @@ export function _resetHandoffPreviewCacheForTests(): void {
  */
 export async function prepareTaskHandoff(
 	task: Task,
-	options: { home?: string; target?: RenderTarget } = {},
+	options: {
+		home?: string;
+		target?: RenderTarget;
+		/** The task's container when its folder is not a managed worktree, so its parent is not. */
+		containerDir?: string;
+	} = {},
 ): Promise<PreparedHandoff | null> {
 	if (!task.worktreePath) return null;
 	const result = await runHandoffJob(
@@ -107,7 +112,7 @@ export async function prepareTaskHandoff(
 	if (result.kind !== "render") return null;
 
 	const { preview, text } = result;
-	const dir = handoffDir(task.worktreePath);
+	const dir = handoffDir(task.worktreePath, options.containerDir);
 	mkdirSync(dir, { recursive: true });
 	const path = `${dir}/handoff-${preview.source}-${preview.sessionId ?? "no-session"}.md`;
 	await atomicWriteFile(path, text);

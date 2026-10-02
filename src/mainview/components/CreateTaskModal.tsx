@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
+import { DEFAULT_PRIORITY, hasGitWorkflow, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -108,6 +108,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// Bumped when a save is blocked on the missing PR link, so the field explains why.
 	const [prLinkNudge, setPrLinkNudge] = useState(0);
 	const isVirtual = project.kind === "virtual";
+	// No branch, PR or review choice: the task runs in a folder, not a worktree.
+	const gitless = !hasGitWorkflow(project);
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
@@ -259,11 +261,11 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// branch → enable review mode). Hidden once a branch is chosen, a preset is
 	// already chosen, this project has no git, or the user dismissed this URL.
 	const detectedPr = parsePrUrl(description);
-	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !isVirtual;
+	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !gitless;
 
 	// PR review without a branch has nothing to check out yet: the inline PR
 	// link field asks for one, and every non-draft save waits for it.
-	const reviewNeedsPr = taskType === "pr-review" && !selectedBranch && !isVirtual;
+	const reviewNeedsPr = taskType === "pr-review" && !selectedBranch && !gitless;
 
 	/** Resolve a PR link into its head branch and turn the form into a review. Returns an error, or null. */
 	async function resolvePrIntoReview(url: string): Promise<string | null> {
@@ -316,9 +318,23 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-		// Virtual ops have no git branch — skip the branch lookup entirely.
-		if (!isVirtual) void loadProjectCurrentBranch();
-	}, [loadProjectCurrentBranch, isVirtual]);
+		// Without the git workflow there is no branch to look up.
+		if (!gitless) void loadProjectCurrentBranch();
+	}, [loadProjectCurrentBranch, gitless]);
+
+	// Every task of a gitless project shares its folder: say so when one is live.
+	useEffect(() => {
+		if (!gitless || isVirtual) return;
+		let cancelled = false;
+		api.request.getAllProjectTasks().then((all) => {
+			const mine = all.find((p) => p.projectId === project.id);
+			const shared = (mine?.tasks ?? []).some(
+				(tk) => !!tk.worktreePath && tk.status !== "completed" && tk.status !== "cancelled",
+			);
+			if (!cancelled) setOpsFolderConflict(shared);
+		}).catch(() => {});
+		return () => { cancelled = true; };
+	}, [gitless, isVirtual, project.id]);
 
 	async function handlePickOpsFolder() {
 		let folder: string | null;
@@ -528,8 +544,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 			return;
 		}
 
-		// Virtual ops have no git branch — commit directly with no branch choice.
-		if (isVirtual) {
+		// No git workflow, no branch: commit directly with no branch choice.
+		if (gitless) {
 			await commit(null, mode);
 			return;
 		}
@@ -818,7 +834,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				<TaskTypePicker
 					value={taskType}
 					onChange={handleTaskTypeChange}
-					reviewAvailable={!isVirtual}
+					reviewAvailable={!gitless}
 				/>
 
 				{reviewNeedsPr && (
@@ -947,6 +963,16 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						</div>
 						{opsFolderConflict && (
 							<p className="text-xs text-amber-500">{t("ops.create.workDirConflict")}</p>
+						)}
+					</div>
+				) : gitless ? (
+					<div className="space-y-1.5">
+						<span className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</span>
+						<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-sm truncate">
+							<span className="text-fg font-mono streamer-private" title={project.path}>{project.path}</span>
+						</div>
+						{opsFolderConflict && (
+							<p className="text-xs text-amber-500">{t("createTask.projectFolderShared")}</p>
 						)}
 					</div>
 				) : (

@@ -14,6 +14,7 @@ import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
+import * as git from "../git";
 import * as pty from "../pty-server";
 import { tmux } from "../tmux";
 import { setTmuxPaneDimming, writeTmuxConfigs } from "../tmux/config";
@@ -32,7 +33,7 @@ import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, isExecutableFile } from "../executable";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
-import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
+import { GIT_WORKFLOW_NOT_A_REPO_ERROR, gitWorkflowSwitchBlocker, hasGitWorkflow, normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
 import type { LowBatteryStatus } from "../../shared/low-battery";
 import { installAgentSkills } from "../agent-skills";
 
@@ -111,10 +112,24 @@ async function getProjectConfigFiles(params: { projectId: string }): Promise<{ h
 	};
 }
 
+async function assertGitWorkflowSwitchAllowed(project: Project, next: boolean): Promise<void> {
+	const blocker = gitWorkflowSwitchBlocker(project, await data.loadTasks(project));
+	if (blocker?.reason === "virtual") throw new Error("Operations boards have no git workflow to switch on");
+	if (blocker?.reason === "live-tasks") {
+		throw new Error(`Finish ${blocker.count} running task(s) or move them back to To Do before switching the git workflow`);
+	}
+	if (next && !(await git.isGitRepo(project.path))) {
+		throw new Error(GIT_WORKFLOW_NOT_A_REPO_ERROR);
+	}
+}
+
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
 	assertValidEnvParam(params.env);
 	const project = await data.getProject(params.projectId);
+	if (params.gitWorkflow !== undefined && params.gitWorkflow !== hasGitWorkflow(project)) {
+		await assertGitWorkflowSwitchAllowed(project, params.gitWorkflow);
+	}
 	// A save may only reach a repo file while the project reads repo files both
 	// before and after this request: a save that is itself switching them off must
 	// not write one on its way out.
@@ -133,6 +148,8 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
 		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),
+		// Absent means on, so switching back on drops the key instead of storing true.
+		...(params.gitWorkflow !== undefined ? { gitWorkflow: params.gitWorkflow ? undefined : false } : {}),
 		// A blank prompt is how the UI clears the override: dropped from the
 		// record so the global setting takes over again.
 		...(params.reviewModePrompt !== undefined

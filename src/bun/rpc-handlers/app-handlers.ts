@@ -318,7 +318,7 @@ async function listAgentSkills(params?: { projectPath?: string | null }): Promis
 	}
 }
 
-async function addProjectImpl(params: { path: string; name?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+async function addProjectImpl(params: { path: string; name?: string; gitWorkflow?: boolean }): Promise<{ ok: true; project: Project } | { ok: false; error: string; notGitRepo?: true }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
@@ -328,20 +328,28 @@ async function addProjectImpl(params: { path: string; name?: string }): Promise<
 			return { ok: false, error: "Cannot add a project inside the dev-3.0 data directory" };
 		}
 		const isRepo = await git.isGitRepo(params.path);
-		if (!isRepo) {
+		if (!isRepo && params.gitWorkflow !== false) {
 			log.warn("Not a git repo", { path: params.path });
-			return { ok: false, error: "Selected folder is not a git repository" };
+			return { ok: false, error: "Selected folder is not a git repository", notGitRepo: true };
+		}
+		if (!isRepo && !existsSync(params.path)) {
+			return { ok: false, error: `Folder does not exist: ${params.path}` };
 		}
 		// A renderer cannot name a project from its path: in remote mode the browser
 		// may be macOS while the repo lives on a Windows drive.
 		const name = params.name?.trim() || pathBasename(params.path);
 		const project = await data.addProject(params.path, name);
-		try {
-			const defaultBranch = await git.getDefaultBranch(params.path);
-			await data.updateProject(project.id, { defaultBaseBranch: defaultBranch });
-			project.defaultBaseBranch = defaultBranch;
-		} catch (err) {
-			log.warn("Could not detect default branch, keeping 'main'", { error: String(err) });
+		if (!isRepo) {
+			// A plain folder can only ever run without the git workflow.
+			Object.assign(project, await data.updateProject(project.id, { gitWorkflow: false }));
+		} else {
+			try {
+				const defaultBranch = await git.getDefaultBranch(params.path);
+				await data.updateProject(project.id, { defaultBaseBranch: defaultBranch });
+				project.defaultBaseBranch = defaultBranch;
+			} catch (err) {
+				log.warn("Could not detect default branch, keeping 'main'", { error: String(err) });
+			}
 		}
 		// The renderer keeps whatever this returns until the next getProjects, and
 		// getProjects is not polled — so a raw record left `defaultCompareRef`

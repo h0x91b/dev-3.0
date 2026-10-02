@@ -419,9 +419,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `ux-architecture.yaml` global_header.allowed.
 ## 2026-07-03 — Inline help: one registry, three layers (Tooltip / HelpSpot / help mode)
 
-- **Rule:** Help content lives in a `src/mainview/help.ts` registry (declare-as-data, like `keymap.ts`/`tips.ts`); a fast `Tooltip` primitive progressively replaces native `title=` on icon controls; a ghost (i) `HelpSpot` → rich read-only `HelpCard` is allowed only in header-bearing sections (≤1 each); dense headerless zones (inspector quickbars, task card) are covered by a screen-wide help-mode overlay (`⇧⌘/`, Help menu, palette, kebab on narrow) via `data-help-id` — never by permanent icons. Bible §5.4.
-- **Why:** Native `title=` (~227 usages) is slow and control-scoped, and per-section (i) icons everywhere would be toolbar-button-creep wearing a help hat. Rejected: (i) in every zone (creep); help-mode-only (no ambient discoverability); tooltip-migration-only (explains buttons, not sections).
-- **Status:** Observed. Evidence: bible §5.4, yaml `surfaces.inline_help`, `help.ts`, `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`.
+Folded: one `help.ts` registry, Tooltip, header-only HelpSpot, help-mode overlay for headerless zones - owned by `PRODUCT_UX_BIBLE.md` §5.4 and yaml `surfaces.inline_help`.
 
 ## 2026-07-03 — Close Pane: two-step visual pane picker (no new button; destructive gets spatial friction)
 
@@ -710,3 +708,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-10-01 — Go to Project moves from ⌘K to ⇧⌘K; Find coordinator joins ⇧⌘P
 - **Rule:** the navigation palette is ⇧⌘K (Ctrl+Shift+K off-macOS); plain ⌘K stays free for the terminal (clear, tracked as its own task). Coordinators are found via the ⇧⌘P `Find coordinator…` picker on `PaletteShell`.
 - **Why:** terminal users expect ⌘K to clear; ⇧⌘K keeps the K mnemonic with the fewest conflicts found (Firefox Win/Linux Web Console caveat). Rejected ⌘P, ⌘E. User-approved. Evidence: `keymap.ts`, `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`.
+
+## 2026-10-02 - Git workflow is a project property, switched on the Board tab
+- **Rule:** `Project.gitWorkflow=false` hides the git domain like a virtual board but keeps the real folder and its config. The switch is a Board-tab ToggleSwitch beside Privacy, refused while a task is live; a non-git folder gets an inline offer in AddProject's Local tab; no dashboard badge.
+- **Why:** project-record state like `sensitive`, not git-committed config. Rejected: a per-task toggle (columns and teardown are board-level), a third AddProject kind segment, a "No git" badge. Evidence: `ProjectSettings.tsx`, `AddProjectModal.tsx`, `decisions/2026/10/02/per-project-git-workflow-switch.md`.

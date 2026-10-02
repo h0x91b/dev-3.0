@@ -72,10 +72,11 @@ ux_architecture:
       owner: "workspace"
       owns: ["task", "custom_column", "label", "project_settings"]
       common_actions: ["add", "clone", "open_settings", "reorder", "remove", "pull_main"]
-      kind:   # observed: Project.kind discriminator
-        git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
-        virtual: "An 'Operations' board: tasks run an agent + shell in a managed temp dir (or a chosen folder), NO git worktree/branch/diff/PR; review columns hidden. Stored in a separate ~/.dev3.0/virtual-projects.json. One built-in board ships by default and hosts the Quick-shell operation (⇧⌘`)."
-      evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
+      kind:   # observed
+        git: "Repo-backed (default): each task gets a worktree + branch."
+        virtual: "'Operations' board: tasks run agent + shell in a managed temp dir (or chosen folder); no worktree, git domain + review columns hidden. Stored in virtual-projects.json. Built-in board hosts Quick-shell (⇧⌘`)."
+        git_workflow_off: "Property, not a kind: gitWorkflow=false (Board-tab toggle, refused while a task is live; or a non-git folder via the AddProject Local-tab offer). Tasks share the project folder; git domain, review columns, variants hidden; no badge."
+      evidence: ["types.ts (Project.kind, hasGitWorkflow)", "ActivityOverview.tsx", "AddProjectModal.tsx", "data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
     space:
       label: "Space"
       plural: "Spaces"

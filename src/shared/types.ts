@@ -1987,6 +1987,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	sensitive?: boolean;
 	/** Turns reading of this project's `.dev3/` config files on or off. */
 	useRepoConfig?: boolean;
+	/** Turns worktrees, branches, diffs, PRs and review columns on or off. */
+	gitWorkflow?: boolean;
 	/** Blank string clears the project override and falls back to global. */
 	reviewModePrompt?: string;
 	/** Blank string clears the project override and falls back to global. */
@@ -2086,6 +2088,42 @@ export interface Project {
 	 * every existing project keeps today's behaviour. See {@link repoConfigEnabled}.
 	 */
 	useRepoConfig?: boolean;
+	/**
+	 * `false` runs every task of this project directly in its folder: no worktree,
+	 * branch, diff, PR or review columns, no setup or cleanup script. The folder
+	 * need not be a git repository. Absent means ON. See {@link hasGitWorkflow}.
+	 */
+	gitWorkflow?: boolean;
+}
+
+/**
+ * Whether this project's tasks get the git workflow: a worktree, a branch, the
+ * diff and PR tooling, and the review columns. Off for every virtual board, and
+ * for a project whose user turned it off.
+ */
+export function hasGitWorkflow(project: Pick<Project, "kind" | "gitWorkflow">): boolean {
+	return project.kind !== "virtual" && project.gitWorkflow !== false;
+}
+
+/** The refusal `updateProjectSettings` throws when the folder cannot take the git workflow. */
+export const GIT_WORKFLOW_NOT_A_REPO_ERROR = "The project folder is not a git repository, so the git workflow cannot be switched on";
+
+/**
+ * Why the git workflow cannot be switched right now, or null when it can. A task
+ * holding a worktree or the project folder would be torn down by the other mode's
+ * rules, so the switch waits until every such task is finished or back in To Do.
+ */
+export function gitWorkflowSwitchBlocker(
+	project: Pick<Project, "kind">,
+	tasks: ReadonlyArray<Pick<Task, "status" | "worktreePath" | "preparing" | "runtimeState">>,
+): { reason: "virtual" } | { reason: "live-tasks"; count: number } | null {
+	if (project.kind === "virtual") return { reason: "virtual" };
+	const count = tasks.filter((task) => (
+		task.preparing === true
+		|| (!!task.runtimeState && task.runtimeState.runtime !== "idle")
+		|| (!!task.worktreePath && task.status !== "completed" && task.status !== "cancelled")
+	)).length;
+	return count > 0 ? { reason: "live-tasks", count } : null;
 }
 
 /**
@@ -2316,7 +2354,7 @@ export function normalizeLaneName(name: string): string {
 /** The projects a board's columns are computed from. */
 export type BoardProject = Pick<
 	Project,
-	"id" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind"
+	"id" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind" | "gitWorkflow"
 >;
 
 /**
@@ -2363,11 +2401,11 @@ function projectBoardColumns(
 	// AI Review shows by default (on when builtinColumnAgents is unset or has a review-by-ai config).
 	const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 	const occupied = opts.occupiedStatuses;
-	// Virtual ("Operations") boards have no diff/PR, so AI Review and PR Review are hidden.
-	const isVirtual = project.kind === "virtual";
+	// Without the git workflow there is no diff or PR, so AI Review and PR Review are hidden.
+	const gitless = !hasGitWorkflow(project);
 	const shouldHide = (s: TaskStatus) =>
 		!occupied?.has(s) && (
-			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
+			(gitless && (s === "review-by-ai" || s === "review-by-colleague")) ||
 			(s === "review-by-colleague" && !peerReviewEnabled) ||
 			(s === "review-by-ai" && !aiReviewEnabled)
 		);
@@ -4994,8 +5032,10 @@ export type AppRPCSchema = {
 			addProject: {
 				/** `name` is optional: the backend derives it from the path, which is the
 				 *  only side that knows how to spell a path on its own platform. */
-				params: { path: string; name?: string };
-				response: { ok: true; project: Project } | { ok: false; error: string };
+				/** `gitWorkflow: false` admits a folder that is not a git repository. */
+				params: { path: string; name?: string; gitWorkflow?: boolean };
+				/** `notGitRepo` marks the refusal that `gitWorkflow: false` would lift. */
+				response: { ok: true; project: Project } | { ok: false; error: string; notGitRepo?: true };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string };

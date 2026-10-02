@@ -102,7 +102,7 @@ function preparationFailureEffects(
 		effect({ type: "destroyTaskPty" }, "abort"),
 		effect({ type: "killDevServer" }),
 	];
-	if (!preserveWorkspace && state.facts.projectKind === "git" && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
+	if (!preserveWorkspace && state.facts.usesWorktrees && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
 		// The folder at the derived path may be a stale leftover holding work (the
 		// failure can come before createWorktree ever judged it, or from a restart):
 		// judge it first; a refusal makes the three effects below keep everything.
@@ -375,7 +375,7 @@ function moveTransition(
 				// cleanup script or the diff capture above.
 				effect({ type: "reapWorktreeProcesses", allowDerivedPath }),
 			);
-			if (state.facts.projectKind === "git") {
+			if (state.facts.usesWorktrees) {
 				effects.push(effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed));
 			}
 		}
@@ -462,7 +462,7 @@ function resetTransition(
 			// The discarded run's conversation is kept, exactly as on cancellation.
 			effect({ type: "dumpTaskConversations" }),
 			effect({ type: "reapWorktreeProcesses" }),
-			...(state.facts.projectKind === "git"
+			...(state.facts.usesWorktrees
 				? [effect({ type: "resetWorktree" }, "abort", failed)]
 				: []),
 			effect({ type: "persistResetTask", consent: event.consent }, "abort", failed),
@@ -549,7 +549,7 @@ function bootTransition(
 			effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath: true }),
 			effect({ type: "captureCompletedDiffStats", allowDerivedPath: true }),
 			effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }),
-			...(state.facts.projectKind === "git"
+			...(state.facts.usesWorktrees
 				? [effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed)]
 				: []),
 			effect({ type: "persistTerminalTask", status: terminalStatus }, "abort"),
@@ -723,7 +723,7 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					// here" — the branch is still merged, so without this the merge poller
 					// re-offers completion seconds later (issue: prompt on reopen). Only
 					// this head is silenced: work merged after the reopen prompts again.
-					...(TERMINAL_STATUSES.has(event.origin.status) && state.facts.projectKind === "git"
+					...(TERMINAL_STATUSES.has(event.origin.status) && state.facts.usesWorktrees
 						? [effect({ type: "dismissMergePromptForCurrentHead" })]
 						: []),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
@@ -955,7 +955,7 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 export type LifecycleActivity = "mergeWatch" | "prWatch";
 
 export function activitiesFor(state: LifecycleState): LifecycleActivity[] {
-	if (!state.facts.hasWorktree || state.facts.projectKind === "virtual") return [];
+	if (!state.facts.hasWorktree || !state.facts.usesWorktrees) return [];
 	const activities: LifecycleActivity[] = [];
 	if (MERGE_ELIGIBLE_STATUSES.has(state.column.status)) activities.push("mergeWatch");
 	if (

@@ -84,7 +84,7 @@ function preparing(): LifecycleState {
 	return {
 		column: { status: "in-progress", customColumnId: null },
 		runtime: { phase: "preparing", stage: "creating-worktree", runId: "r1", origin: { status: "todo", customColumnId: null } },
-		facts: { hasWorktree: false, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true },
+		facts: { hasWorktree: false, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
 	};
 }
 

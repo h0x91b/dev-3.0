@@ -149,6 +149,30 @@ describe("AddProjectModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("offers a folder that is not a git repository as a project with the git workflow off", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		mockedOpenFolderPickerMulti.mockResolvedValue(["/work/customer-x"]);
+		mockedApi.request.addProject
+			.mockResolvedValueOnce({ ok: false as const, error: "Selected folder is not a git repository", notGitRepo: true as const })
+			.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, path: "/work/customer-x", gitWorkflow: false } });
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Browse..."));
+
+		// Not a dead end: the folder waits for an answer instead of an error.
+		expect(screen.getByText("1 folder is not a git repository:")).toBeInTheDocument();
+		expect(screen.queryByText(/Selected folder is not a git repository/)).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+
+		await user.click(screen.getByText("Add with Git workflow off"));
+
+		expect(mockedApi.request.addProject).toHaveBeenLastCalledWith({ path: "/work/customer-x", gitWorkflow: false });
+		expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: expect.objectContaining({ gitWorkflow: false }) });
+		expect(onClose).toHaveBeenCalled();
+	});
+
 	it("opens folder picker and adds multiple projects at once", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();

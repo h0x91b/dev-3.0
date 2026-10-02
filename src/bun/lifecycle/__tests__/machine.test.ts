@@ -12,7 +12,7 @@ function state(
 		runtime: { phase: status === "todo" || status === "completed" || status === "cancelled" ? "idle" : "running" },
 		facts: {
 			hasWorktree: status !== "todo" && status !== "completed" && status !== "cancelled",
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 		},
@@ -69,7 +69,7 @@ describe("task lifecycle transition table", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 				mergePromptReservation: {
@@ -94,7 +94,7 @@ describe("task lifecycle transition table", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 				manualCompletion: true,
@@ -199,7 +199,7 @@ describe("task lifecycle transition table", () => {
 			},
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -454,7 +454,7 @@ describe("task lifecycle transition table", () => {
 			},
 			facts: {
 				hasWorktree: true,
-				projectKind: "virtual",
+				usesWorktrees: false,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -833,7 +833,7 @@ describe("boot runtime reconciliation", () => {
 				runtime: { phase: runtime },
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -865,7 +865,7 @@ describe("boot runtime reconciliation", () => {
 				},
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -896,7 +896,7 @@ describe("boot runtime reconciliation", () => {
 				},
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -936,7 +936,7 @@ describe("boot runtime reconciliation", () => {
 	it("ignores an attaching terminal on a hibernated, parked or worktree-less task", () => {
 		const hibernated = state("in-progress", {
 			runtime: { phase: "idle" },
-			facts: { hasWorktree: true, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
+			facts: { hasWorktree: true, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
 		});
 		expect(transition(hibernated, { type: "terminalAttached" }).effects).toEqual([]);
 
@@ -945,7 +945,7 @@ describe("boot runtime reconciliation", () => {
 
 		const noWorktree = state("in-progress", {
 			runtime: { phase: "idle" },
-			facts: { hasWorktree: false, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true },
+			facts: { hasWorktree: false, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
 		});
 		expect(transition(noWorktree, { type: "terminalAttached" }).effects).toEqual([]);
 	});
@@ -979,7 +979,7 @@ describe("boot runtime reconciliation", () => {
 			},
 			facts: {
 				hasWorktree: false,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -1053,7 +1053,7 @@ describe("draft tasks cannot be activated", () => {
 	const draft = () => state("todo", {
 		facts: {
 			hasWorktree: false,
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 			draft: true,

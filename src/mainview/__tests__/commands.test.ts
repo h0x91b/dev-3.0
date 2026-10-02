@@ -65,6 +65,17 @@ describe("availableCommands", () => {
 		expect(cmds.map((c) => c.id)).toContain("term-toggle-project-terminal");
 	});
 
+	it("hides only git and import commands when the project's git workflow is off", () => {
+		const cmds = availableCommands({ hasProject: true, hasTask: true, gitless: true });
+		const ids = cmds.map((c) => c.id);
+		expect(cmds.some((c) => c.category === "git")).toBe(false);
+		expect(cmds.some((c) => c.category === "import")).toBe(false);
+		// The folder is real, so its terminal, scripts and dev server stay.
+		expect(cmds.some((c) => c.category === "devserver")).toBe(true);
+		expect(ids).toContain("task-run-script");
+		expect(ids).toContain("term-toggle-project-terminal");
+	});
+
 	it("hides host-local 'Open in Finder' in browser remote mode", () => {
 		const desktop = availableCommands({ hasProject: true, hasTask: true });
 		expect(desktop.map((c) => c.id)).toContain("task-open-in-finder");
