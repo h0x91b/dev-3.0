@@ -3274,6 +3274,19 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("puts the panel-restore toggle at the left edge of the git row", async () => {
+			await act(async () => {
+				renderPanel(makeTask(), { isFullPage: true });
+			});
+
+			const toggle = screen.getByTestId("show-active-tasks");
+			const gitBar = document.querySelector('[data-help-id="inspector.git-bar"]')!;
+			const gitRow = gitBar.parentElement!;
+			expect(gitRow.contains(toggle)).toBe(true);
+			expect(gitRow.firstElementChild?.contains(toggle)).toBe(true);
+			expect(screen.getByTestId("branch-chip").compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+		});
+
 		it("omits the panel-restore toggle in split view", async () => {
 			await act(async () => {
 				renderPanel(makeTask());

@@ -230,7 +230,8 @@ function TaskInfoPanel({
 		shortcuts: terminalFullscreenShortcutLabel(isMac()),
 	});
 	// Counterpart of the sidebar-header panel toggle: on the fullscreen task
-	// screen (sidebar hidden) this brings the Active Tasks panel back.
+	// screen (sidebar hidden) this brings the Active Tasks panel back. Leads the
+	// git row, at the left edge where the sidebar it restores will reappear.
 	const showPanelButton = isFullPage ? (
 		<Tooltip content={t("infoPanel.showPanel")} detail={t("ttip.infoPanel.showPanel")}>
 			<button
@@ -1634,10 +1635,10 @@ function TaskInfoPanel({
 						<PanelRestoreControl entries={panelHideableEntries} />
 						<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 						<TerminalShortcutsButton taskId={task.id} />
-						{showPanelButton}
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
+						{showPanelButton}
 						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
 							{project.kind === "virtual" ? (
 								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
@@ -1711,10 +1712,10 @@ function TaskInfoPanel({
 							<PanelRestoreControl entries={panelHideableEntries} />
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<TerminalShortcutsButton taskId={task.id} />
-							{showPanelButton}
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
+							{showPanelButton}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
 								{project.kind === "virtual" ? (
 									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
