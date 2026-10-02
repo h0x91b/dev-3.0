@@ -33,6 +33,12 @@ as well and the server accepts connections from this machine only: no LAN, no pu
 banner and `dev3 remote url` print the URL without a QR, since no phone could open it (a tunnel URL
 keeps its QR).
 
+`dev3 local` is a shorthand for `dev3 remote --no-tunnel --host 127.0.0.1`. It takes every
+`dev3 remote` subcommand. `start`, `restart` and `install-service` get the two flags added; the
+others pass through unchanged. Flags you pass come after the added ones and win, so
+`dev3 local --host localhost` binds `localhost`. For example, `dev3 local install-service --port 8090`
+writes a loopback-only systemd unit.
+
 ## Background lifecycle (for SSH boxes)
 
 `dev3 remote` backgrounds the server by default, so it survives your SSH session. From any
@@ -135,7 +141,7 @@ cgroup, agents included.
 
 ### WSL: the UI in a Windows browser
 
-Run the server inside WSL2 with `--no-tunnel --host 127.0.0.1 --port <n>` and open
+Run the server inside WSL2 with `dev3 local --port <n>` and open
 `http://localhost:<n>` in a Windows browser: WSL forwards Windows `localhost` into the distro, and
 `http://localhost` is a secure context, so notifications and clipboard work without HTTPS. Full
 walkthrough, including where projects should live and per-project Claude Code logins:

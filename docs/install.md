@@ -136,6 +136,10 @@ DEV3_TELEMETRY=off dev3 remote --no-detach --no-tunnel --host 127.0.0.1 --port 8
   WSL's mirrored networking mode that puts the sign-in page on your LAN.
 - `--port 8090` gives a stable address to bookmark.
 
+`dev3 local` adds `--no-tunnel --host 127.0.0.1` for you, so
+`DEV3_TELEMETRY=off dev3 local --no-detach --port 8090` runs the same command. The same applies to
+`dev3 local install-service`.
+
 Open the printed URL in a Windows browser: `http://localhost:8090/...`. WSL forwards connections
 to `localhost` on Windows into the distro (WSL's default `localhostForwarding`; do not disable it
 in `.wslconfig`). `http://localhost` counts as a secure context in browsers, so notifications and

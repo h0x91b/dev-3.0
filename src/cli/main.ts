@@ -17,6 +17,7 @@ import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
+import { LOCAL_HELP, expandLocalAlias } from "./commands/local";
 import { handleGui } from "./commands/gui";
 import { handleConversations, handleImportCurrentSession, resolveImportTarget } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
@@ -137,6 +138,8 @@ Commands:
                                          (backgrounds by default; manage it with
                                           status / url / restart / logs / stop.
                                           See "dev3 remote --help" for full usage)
+  dev3 local [<remote subcommand>]       Same as dev3 remote --no-tunnel --host 127.0.0.1:
+                                         this machine only, no LAN, no public URL
   dev3 update [--check|--dry-run]         Install a newer dev3 (brew or CLI tarball, auto-detected).
                                          On a box running \`dev3 remote\`, the server does the restart
                                          itself and keeps its public tunnel URL and your session.
@@ -177,7 +180,15 @@ function resolveRequestedInstance(value: string): string {
 async function main(): Promise<void> {
 	// `--instance` targets the whole invocation, not one command, so it leaves
 	// argv before help routing and per-command flag validation ever see it.
-	const { rest: rawArgs, value: instanceValue } = extractInstanceFlag(process.argv.slice(2));
+	const { rest: argvRest, value: instanceValue } = extractInstanceFlag(process.argv.slice(2));
+
+	// `dev3 local` is `dev3 remote` with loopback-only defaults, so it is rewritten
+	// before help routing and the EPIPE guard ever see it.
+	if (argvRest[0] === "local" && (argvRest.includes("--help") || argvRest.includes("-h"))) {
+		process.stdout.write(LOCAL_HELP);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
+	}
+	const rawArgs = argvRest[0] === "local" ? expandLocalAlias(argvRest) : argvRest;
 
 	// Every short print-and-exit command may have its stdout closed early by a
 	// downstream consumer (`dev3 … | head`, `| grep -m1`, quitting a pager).
