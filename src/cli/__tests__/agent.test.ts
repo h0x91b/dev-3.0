@@ -35,6 +35,11 @@ describe("agent spawn", () => {
 		await spawn({ json: "true" });
 		expect(JSON.parse(output)).toMatchObject({ paneId: "%9", backend: "tmux" });
 	});
+	it("reports a launched agent whose pane id is unknown as a success", async () => {
+		vi.mocked(sendRequest).mockImplementation(async (_socket, method) => ({ id: "1", ok: true, data: method === "approval.policy" ? { autoApproveMs: 0 } : { approved: true, spawn: { paneId: "", backend: "tmux", agentId: "builtin-codex", configId: null, handoff: null } } }));
+		await spawn();
+		expect(output).toContain("pane (id unknown)");
+	});
 	it("supports an explicit task outside a worktree without a requester", async () => {
 		await spawn({ task: "seq:8", project: "project-2" }, null);
 		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.spawn", expect.not.objectContaining({ sourceTaskId: expect.anything() }), expect.anything());

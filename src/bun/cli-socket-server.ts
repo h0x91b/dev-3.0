@@ -1038,7 +1038,7 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 }
 
 const handlers: Record<string, Handler> = {
-	"agent.list": async () => agents.getAllAgents(),
+	"agent.list": async () => (await import("./cli-agent-spawn")).listCliAgents(),
 	"agent.spawn": async (params) => {
 		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
 		const { project, task } = await requirePaneTask(params);
@@ -1048,13 +1048,13 @@ const handlers: Record<string, Handler> = {
 		for (const key of ["agentId", "configId", "prompt"]) {
 			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
 		}
-		if (params.prompt !== undefined && (typeof params.prompt !== "string" || !params.prompt.trim())) throw new Error("prompt must not be empty.");
+		if (typeof params.prompt === "string" && !params.prompt.trim()) throw new Error("prompt must not be empty.");
 		if (params.configId && !params.agentId) throw new Error("configId requires agentId.");
 		const { spawnCliAgent } = await import("./cli-agent-spawn");
 		return spawnCliAgent({
 			project, task, requester: requester?.task ?? null,
 			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
-			prompt: params.prompt as string | undefined, handoff: params.handoff === true,
+			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
 		});
 	},
 	// Cross-instance notification: another dev-3.0 instance changed data.

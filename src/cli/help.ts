@@ -59,7 +59,7 @@ const COMMANDS: CommandHelp[] = [
 				name: "list",
 				usage: "dev3 agent list [--json]",
 				summary: "List agent IDs and their configuration/preset IDs.",
-				details: ["Use these exact IDs with agent spawn; --json returns the full agent definitions."],
+				details: ["Use these exact IDs with agent spawn; --json adds each preset's model and effort."],
 			},
 			{
 				name: "spawn",

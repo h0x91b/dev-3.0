@@ -20,6 +20,15 @@ interface SpawnOptions {
 	handoff: boolean;
 }
 
+/** IDs only: presets may carry credentials in envVars, and this output lands in agent transcripts. */
+export async function listCliAgents() {
+	return (await getAllAgents()).map((agent) => ({
+		id: agent.id,
+		name: agent.name,
+		configurations: agent.configurations.map(({ id, name, model, effort }) => ({ id, name, model, effort })),
+	}));
+}
+
 type SpawnOutcome = { approved: false; stale?: boolean } | { approved: true; spawn: SpawnAgentResult };
 const pendingSpawns = new Map<string, { signature: string; result: Promise<SpawnOutcome> }>();
 

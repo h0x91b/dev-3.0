@@ -54,7 +54,7 @@ Auto-detects project and task from the worktree context.
 
 Commands:
   dev3 agent list [--json]              List agent and preset IDs for managed launches
-  dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--account <id|system>] [--prompt <text>|-] [--handoff] [--json]
+  dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]
                                          Add one managed agent to an existing task (asks for approval from a task worktree)
   dev3 current [--brief]                Show current project, task, status
                                          (--brief: hide the full description if you already have it in your prompt)

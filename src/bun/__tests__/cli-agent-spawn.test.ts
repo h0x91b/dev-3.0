@@ -10,7 +10,7 @@ vi.mock("../agent-accounts", () => ({ listAgentAccounts: vi.fn(async () => ({ co
 vi.mock("../rpc-handlers/settings-config", () => ({ settingsConfigHandlers: { checkAgentAvailability: vi.fn(async () => [{ agentId: "agent-1", installed: true }]) } }));
 vi.mock("../rpc-handlers/tmux-pty", () => ({ tmuxPtyHandlers: { spawnAgentInTask: vi.fn() } }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: vi.fn() }));
-import { spawnCliAgent } from "../cli-agent-spawn";
+import { listCliAgents, spawnCliAgent } from "../cli-agent-spawn";
 import { getAllAgents } from "../agents";
 import { getTask } from "../data";
 import { tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
@@ -163,5 +163,16 @@ describe("managed CLI agent spawning", () => {
 		vi.mocked(tmuxPtyHandlers.spawnAgentInTask).mockResolvedValue({ paneId: "native-9", backend: "native", agentId: "agent-1", configId: "config-1", handoff: null });
 		expect(await spawnCliAgent(options(null))).toMatchObject({ spawn: { backend: "native" } });
 		expect(push).not.toHaveBeenCalled();
+	});
+});
+describe("listCliAgents", () => {
+	it("returns IDs and preset labels without preset env or command overrides", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([{
+			id: "agent-1", name: "Fixture", baseCommand: "codex",
+			configurations: [{ id: "config-1", name: "High", model: "gpt", effort: "high", envVars: { OPENAI_API_KEY: "sk-secret" }, baseCommandOverride: "codex --x" }],
+		}] as any);
+		const listed = await listCliAgents();
+		expect(listed).toEqual([{ id: "agent-1", name: "Fixture", configurations: [{ id: "config-1", name: "High", model: "gpt", effort: "high" }] }]);
+		expect(JSON.stringify(listed)).not.toContain("sk-secret");
 	});
 });

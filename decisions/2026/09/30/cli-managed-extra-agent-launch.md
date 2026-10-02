@@ -10,7 +10,7 @@ The +Agent action already launches a managed agent in an existing task terminal,
 
 ## Decision
 
-Expose `dev3 agent list` and `dev3 agent spawn`, using exact agent/config IDs for model-and-effort presets and the existing managed spawn handler. CLI and socket requests cannot supply an account override: the chosen harness's default account applies unless the human changes it in the approval dialog; new-task launch commands remain unchanged. Task-worktree callers use the existing approval policy and picker, without priority editing or variants. `cli-agent-spawn.ts` joins the whole operation to prevent duplicate panes and rechecks the target run; the socket dispatcher imports it only when needed.
+Expose `dev3 agent list` and `dev3 agent spawn`, using exact agent/config IDs for model-and-effort presets and the existing managed spawn handler. CLI and socket requests cannot supply an account override: the chosen harness's default account applies unless the human changes it in the approval dialog; new-task launch commands remain unchanged. Task-worktree callers use the existing approval policy and picker, without priority editing or variants. `cli-agent-spawn.ts` joins the whole operation to prevent duplicate panes and rechecks the target run; the socket dispatcher imports it only when needed. `agent list` returns only agent and preset IDs, names, model and effort: preset `envVars` can hold provider credentials, and CLI output ends up in agent transcripts.
 
 ## Risks
 

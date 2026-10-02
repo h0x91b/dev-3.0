@@ -1,4 +1,4 @@
-import type { CodingAgent } from "../../shared/types";
+import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import type { SpawnAgentResult } from "../../shared/conversation-handoff-model";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
@@ -15,7 +15,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		rejectUnknownFlags(args, ["json"]);
 		const resp = await sendRequest(socketPath, "agent.list", {});
 		if (!resp.ok) exitError(resp.error || "Failed to list agents");
-		const agents = resp.data as CodingAgent[];
+		const agents = resp.data as Array<Pick<CodingAgent, "id" | "name"> & { configurations: Pick<AgentConfiguration, "id" | "name" | "model" | "effort">[] }>;
 		if ("json" in args.flags) {
 			process.stdout.write(`${JSON.stringify(agents, null, 2)}\n`);
 		} else {
@@ -57,6 +57,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	if (!resp.ok) return exitError(resp.error || "Failed to spawn agent");
 	const result = resp.data as { approved: boolean; stale?: boolean; spawn?: SpawnAgentResult };
 	if (!result.approved) return exitError(result.stale ? "The target task's run ended before approval" : "User declined the launch request", "No agent was started.", CLI_EXIT_CODE_LAUNCH_DECLINED);
-	if (!result.spawn?.paneId) return exitError("Unexpected response to agent spawn");
-	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId} (${result.spawn.backend}).\n`);
+	// The agent is already running here; a missing pane id must not read as a failure worth retrying.
+	if (!result.spawn) return exitError("Unexpected response to agent spawn");
+	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId || "(id unknown)"} (${result.spawn.backend}).\n`);
 }

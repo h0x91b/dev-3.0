@@ -2393,12 +2393,13 @@ function App() {
 	}, []);
 
 	const respondToLaunchRequest = useCallback((
-		requestId: string,
+		request: AgentLaunchRequest,
 		approved: boolean,
 		launch?: AgentLaunchChoice,
 	) => {
+		const { requestId } = request;
 		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
-		if (approved && !launchRequests.find((r) => r.requestId === requestId)?.spawn) {
+		if (approved && !request.spawn) {
 			trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });
 			const variantCount = launch?.variants.length ?? 1;
 			if (variantCount > 1) trackEvent("task_spawned", { agent_requested: true, variant_count: variantCount });
@@ -2408,7 +2409,7 @@ function App() {
 			approved,
 			...(approved && launch ? { launch } : {}),
 		}).catch((err) => console.error("respondToAgentLaunchRequest failed:", err));
-	}, [launchRequests]);
+	}, []);
 
 	// Listen for silent update ready notification
 	useEffect(() => {
@@ -3638,7 +3639,7 @@ function App() {
 				<AgentLaunchRequestModal
 					key={launchRequests[0].requestId}
 					request={launchRequests[0]}
-					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!.requestId, approved, launch)}
+					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!, approved, launch)}
 				/>
 			)}
 			{artifactViewer && (
