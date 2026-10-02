@@ -21,10 +21,10 @@ import {
 	SplitVIcon,
 	ZoomPaneIcon,
 } from "../TmuxIcons";
-import type { TaskPaneState } from "../../../shared/task-panes";
 import { taskPaneSupports } from "../../../shared/task-panes";
 import { currentNativePaneFocus } from "../../native-pane-focus";
-import { fetchPaneState, runPaneAction, subscribePaneState } from "../../pane-state-bus";
+import { fetchPaneState, runPaneAction } from "../../pane-state-bus";
+import { useTaskPaneState } from "../../hooks/useTaskPaneState";
 import { toast } from "../../toast";
 
 interface TaskPaneControlsProps {
@@ -71,7 +71,9 @@ function swapShortcutKeys(id: string): string {
 export default function TaskPaneControls({ taskId, compact = false }: TaskPaneControlsProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const [paneState, setPaneState] = useState<TaskPaneState | null>(null);
+	// Every state arrival — this component's poll, the canvas's poll, or any action's
+	// own response — reaches us through the bus, so both surfaces move together.
+	const paneState = useTaskPaneState(taskId);
 	// An action is in flight. Set before awaiting, so the click is acknowledged on the
 	// next rendered frame and a second click cannot start a duplicate mutation.
 	const [actionBusy, setActionBusy] = useState(false);
@@ -84,10 +86,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const layoutTriggerRef = useRef<HTMLButtonElement>(null);
 	const layoutMenuRef = useRef<HTMLDivElement>(null);
 	const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	// Every state arrival — this component's poll, the canvas's poll, or any action's
-	// own response — reaches us through the bus, so both surfaces move together.
-	useEffect(() => subscribePaneState(taskId, setPaneState), [taskId]);
 
 	useEffect(() => {
 		const fetch = () => { void fetchPaneState(taskId).catch(() => {}); };

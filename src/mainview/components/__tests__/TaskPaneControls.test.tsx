@@ -348,4 +348,22 @@ describe("TaskPaneControls", () => {
 		await new Promise((r) => setTimeout(r, 20));
 		expect(screen.queryByTitle("tmux Shortcuts")).not.toBeInTheDocument();
 	});
+
+	// ── Task switch: the previous task's panes must not leak into the next ───
+
+	it("drops the previous task's pane state the moment the task switches", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
+		const view = renderControls("task-a");
+		await waitFor(() => expect(screen.getByLabelText("Close pane")).toBeInTheDocument());
+
+		// Task B's first read never resolves, so anything on screen is left over from A.
+		vi.mocked(api.request.taskPaneState).mockReturnValue(new Promise(() => {}));
+		view.rerender(
+			<I18nProvider>
+				<TaskPaneControls taskId="task-b" />
+			</I18nProvider>,
+		);
+		expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Zoom pane (toggle)")).not.toBeInTheDocument();
+	});
 });

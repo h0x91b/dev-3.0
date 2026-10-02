@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
 import { useT } from "../../i18n";
 import { TmuxHintsIcon } from "../TmuxIcons";
-import { subscribePaneState } from "../../pane-state-bus";
-import type { TaskPaneState } from "../../../shared/task-panes";
+import { useTaskPaneState } from "../../hooks/useTaskPaneState";
 
 /**
  * Opens the ⌘/ overlay's Terminal tab — the complete, searchable cheat sheet.
@@ -17,9 +15,7 @@ import type { TaskPaneState } from "../../../shared/task-panes";
  */
 export default function TerminalShortcutsButton({ taskId }: { taskId: string }) {
 	const t = useT();
-	const [paneState, setPaneState] = useState<TaskPaneState | null>(null);
-
-	useEffect(() => subscribePaneState(taskId, setPaneState), [taskId]);
+	const paneState = useTaskPaneState(taskId);
 
 	const title = paneState?.backend === "native" ? t("panes.nativeHintsTitle") : t("tmux.title");
 
