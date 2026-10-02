@@ -1049,33 +1049,37 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 		panes = [];
 	}
 
-	// Status-bar reservation: pane geometry above is the WINDOW (excludes the tmux
-	// status bar), but the rendered canvas includes it. Measure the reserved rows so
-	// the frontend overlay can line up vertically. `client_height - window_height`
-	// is the total reserved rows (robust to multi-line status); fall back to the
-	// `status` option (off → 0, numeric → that many, on → 1) when no client is
-	// attached to read a height from.
-	let statusLines = 0;
-	let statusAtTop = false;
-	try {
-		const status = await tmux.displayMessage(STATUS_GEOMETRY_FORMAT, { target: sessionName, socket });
-		if (status) {
-			statusAtTop = status.statusPosition.trim() === "top";
-			const statusOpt = status.status.trim();
-			if (statusOpt === "off") {
-				statusLines = 0;
-			} else if (status.clientHeight > status.windowHeight) {
-				statusLines = status.clientHeight - status.windowHeight;
-			} else {
-				const n = Number(statusOpt);
-				statusLines = Number.isFinite(n) && n > 0 ? n : 1;
-			}
-		}
-	} catch {
-		// Session vanished mid-read — keep the zero status reservation.
-	}
+	const { statusLines, statusAtTop } = await readTmuxStatusGeometry(sessionName, socket);
 
 	return { sessionName, exists: windows.length > 0, windows, panes, statusLines, statusAtTop };
+}
+
+/**
+ * Status-bar reservation: pane geometry is WINDOW-relative (excludes the tmux
+ * status bar), but the rendered canvas includes it. `client_height -
+ * window_height` is the total reserved rows (robust to multi-line status); fall
+ * back to the `status` option (off → 0, numeric → that many, on → 1) when no
+ * client is attached to read a height from.
+ */
+export async function readTmuxStatusGeometry(
+	sessionName: string,
+	socket: string,
+): Promise<{ statusLines: number; statusAtTop: boolean }> {
+	try {
+		const status = await tmux.displayMessage(STATUS_GEOMETRY_FORMAT, { target: sessionName, socket });
+		if (!status) return { statusLines: 0, statusAtTop: false };
+		const statusAtTop = status.statusPosition.trim() === "top";
+		const statusOpt = status.status.trim();
+		if (statusOpt === "off") return { statusLines: 0, statusAtTop };
+		if (status.clientHeight > status.windowHeight) {
+			return { statusLines: status.clientHeight - status.windowHeight, statusAtTop };
+		}
+		const n = Number(statusOpt);
+		return { statusLines: Number.isFinite(n) && n > 0 ? n : 1, statusAtTop };
+	} catch {
+		// Session vanished mid-read — keep the zero status reservation.
+		return { statusLines: 0, statusAtTop: false };
+	}
 }
 
 /**

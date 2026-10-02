@@ -52,6 +52,15 @@ describe("tmux config paths", () => {
 });
 
 describe("buildThemeConfig", () => {
+	it.each(["mocha", "latte"] as const)("puts the window bar on top after the theme sources (%s)", (flavor) => {
+		const config = buildThemeConfig(flavor);
+		const position = config.indexOf("set -g status-position top");
+		expect(position).toBeGreaterThan(-1);
+		// After every plugin `source` line, so the theme cannot move it back.
+		expect(position).toBeGreaterThan(config.lastIndexOf("source "));
+		expect(config).not.toMatch(/status-position bottom/);
+	});
+
 	it("includes synchronized output (Sync) terminal features", () => {
 		const config = buildThemeConfig("mocha");
 		expect(config).toContain("xterm-256color:Sync");

@@ -58,6 +58,7 @@ import {
 	SESSION_OVERVIEW_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
 	altClickIneligibleReason,
+	clientCellToWindowCell,
 	computeAltClickKeys,
 	findAltClickPane,
 	validAltClickPanes,
@@ -3073,9 +3074,9 @@ async function tmuxWindowNavigate(params: {
 async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row: number }): Promise<{ moved: boolean }> {
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
-	const x0 = Math.floor(params.col) - 1;
-	const y0 = Math.floor(params.row) - 1;
-	if (x0 < 0 || y0 < 0) return { moved: false };
+	const cell = clientCellToWindowCell(params.col, params.row, await pty.readTmuxStatusGeometry(tmuxSession, socket));
+	if (!cell) return { moved: false };
+	const { x0, y0 } = cell;
 
 	// Panes of the session's CURRENT window only (that's what the client shows).
 	let panes;

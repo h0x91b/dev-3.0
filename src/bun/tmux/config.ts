@@ -254,12 +254,29 @@ function defaultShellConfig(): string[] {
 	}
 }
 
+const MULTI_WINDOW = "#{>:#{session_windows},1}";
+const STATUS_BAR_BY_CLIENT_SESSION = `if -F "${MULTI_WINDOW}" "set status on" "set status off"`;
+const HOOK_SESSION = "=#{hook_session_name}:";
+const STATUS_BAR_BY_HOOK_SESSION = String.raw`run -C \"if -F -t '${HOOK_SESSION}' '${MULTI_WINDOW.replaceAll("#", "##")}' 'set -t ${HOOK_SESSION} status on' 'set -t ${HOOK_SESSION} status off'\"`;
+
 // Status bar setup — references Catppuccin status modules built by the plugin
 const TMUX_STATUS_BAR = `
-# Status bar — Catppuccin modules
+# Status bar — Catppuccin modules. On top so the window list sits where the
+# eye starts: a window opened by Cmd+T or an agent must not hide its task.
+set -g status-position top
 set -g status-right-length 100
 set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"
 set -g status-left ""
+
+# Show the bar only while a session has more than one window — a lone window
+# gets its row back. Session-scoped, re-evaluated whenever a window joins or
+# leaves a session and when a client attaches (covers sessions that predate
+# this config). window-(un)linked hooks run outside the session's context, so
+# they target it by #{hook_session_name}; ## defers the count until if-shell.
+set-hook -g window-linked "${STATUS_BAR_BY_HOOK_SESSION}"
+set-hook -g window-unlinked "${STATUS_BAR_BY_HOOK_SESSION}"
+set-hook -g client-attached '${STATUS_BAR_BY_CLIENT_SESSION}'
+set-hook -g client-session-changed '${STATUS_BAR_BY_CLIENT_SESSION}'
 `;
 
 /**
@@ -291,6 +308,11 @@ function paneDimConfig(defaultDimmed: boolean): string {
 	].join("\n");
 }
 
+/** The status-bar block of the themed config — exported for the live-tmux test. */
+export function tmuxStatusBarConfig(): string {
+	return TMUX_STATUS_BAR;
+}
+
 export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true): string {
 	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
 	return [
@@ -303,7 +325,7 @@ export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = t
 		paneDimConfig(dimInactivePanes),
 		TMUX_CONFIG_FUNCTIONAL,
 		shellEnvConfig(),
-		TMUX_STATUS_BAR,
+		tmuxStatusBarConfig(),
 	].join("\n");
 }
 

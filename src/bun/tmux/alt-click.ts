@@ -67,6 +67,21 @@ export function isShellCommand(command: string): boolean {
 }
 
 /**
+ * Map a clicked 1-based CLIENT cell to a 0-based WINDOW cell. Pane geometry is
+ * window-relative, so a status bar on top shifts every pane down by its height;
+ * a click on the status bar itself maps to null.
+ */
+export function clientCellToWindowCell(
+	col: number,
+	row: number,
+	status: { statusLines: number; statusAtTop: boolean },
+): { x0: number; y0: number } | null {
+	const x0 = Math.floor(col) - 1;
+	const y0 = Math.floor(row) - 1 - (status.statusAtTop ? status.statusLines : 0);
+	return x0 < 0 || y0 < 0 ? null : { x0, y0 };
+}
+
+/**
  * Find the pane containing the clicked window cell (0-based). Cells on pane
  * borders or the status line belong to no pane → null. When the window is
  * zoomed only the active pane is visible (full-window), so hidden panes'

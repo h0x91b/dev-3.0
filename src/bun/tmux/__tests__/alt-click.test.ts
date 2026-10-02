@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type AltClickPane,
 	altClickIneligibleReason,
+	clientCellToWindowCell,
 	computeAltClickKeys,
 	findAltClickPane,
 	isShellCommand,
@@ -26,6 +27,31 @@ function pane(over: Partial<AltClickPane> = {}): AltClickPane {
 		...over,
 	};
 }
+
+describe("clientCellToWindowCell", () => {
+	it("shifts rows up by the status bar when it sits on top", () => {
+		// Client row 2 is the first pane row under a 1-line top status bar.
+		expect(clientCellToWindowCell(5, 2, { statusLines: 1, statusAtTop: true })).toEqual({ x0: 4, y0: 0 });
+	});
+
+	it("leaves rows alone when the status bar sits at the bottom", () => {
+		expect(clientCellToWindowCell(5, 2, { statusLines: 1, statusAtTop: false })).toEqual({ x0: 4, y0: 1 });
+	});
+
+	it("maps a click on a top status bar to no window cell", () => {
+		expect(clientCellToWindowCell(5, 1, { statusLines: 1, statusAtTop: true })).toBeNull();
+		expect(clientCellToWindowCell(5, 2, { statusLines: 2, statusAtTop: true })).toBeNull();
+	});
+
+	it("hits the pane under the click, not the one a row below", () => {
+		const top = pane({ paneId: "%1", top: 0, height: 10 });
+		const bottom = pane({ paneId: "%2", top: 11, height: 10 });
+		// Client row 11 = window row 9 = last row of the top pane.
+		const cell = clientCellToWindowCell(1, 11, { statusLines: 1, statusAtTop: true });
+		expect(cell).not.toBeNull();
+		expect(findAltClickPane([top, bottom], cell!.x0, cell!.y0)?.paneId).toBe("%1");
+	});
+});
 
 describe("parseAltClickPanes", () => {
 	it("parses the tab-separated format produced by ALT_CLICK_PANE_FORMAT", () => {

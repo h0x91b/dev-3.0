@@ -82,6 +82,7 @@ export {
 	setActiveTmuxTheme,
 } from "./config";
 export {
+	clientCellToWindowCell,
 	findAltClickPane,
 	altClickIneligibleReason,
 	computeAltClickKeys,
