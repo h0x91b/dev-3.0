@@ -118,16 +118,21 @@ set -ogq @catppuccin_status_connect_separator "yes"
 set -ogqF @catppuccin_status_module_text_bg "#{@thm_surface_0}"
 `;
 
+/** Window title, or the running command when the title is only the hostname; capped at 22 cells. */
+export const WINDOW_LABEL = "#{=/22/…:#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{host_short}}},#W,#T}}";
+
+/** Left and right slanted caps of a tab filled with palette option `tab`. */
+function tabCaps(tab: string): [string, string] {
+	const cap = (glyph: string) => `#[fg=#{@thm_mantle},bg=#{${tab}},reverse]${glyph}#[noreverse]`;
+	return [cap("\uE0BA"), cap("\uE0BC")];
+}
+
 const CATPPUCCIN_MAIN = `# Catppuccin tmux main config — %if blocks removed for reliability
 # Note: palette is sourced by the wrapper config before this file
 
 # Status bar background
 set -gF @_ctp_status_bg "#{@thm_mantle}"
 set -gF status-style "bg=#{@thm_mantle},fg=#{@thm_fg}"
-
-# Status modules
-source -F "#{d:current_file}/status/application.conf"
-source -F "#{d:current_file}/status/session.conf"
 
 # Messages
 set -gF message-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre"
@@ -164,45 +169,15 @@ set -gF window-status-activity-style "bg=#{@thm_lavender},fg=#{@thm_crust}"
 set -gF window-status-bell-style "bg=#{@thm_yellow},fg=#{@thm_crust}"
 
 # Window tabs — use -g (NOT -gF!) so #I and #T stay as render-time tokens
-set -g window-status-format "#[fg=#{@thm_crust},bg=#{@thm_overlay_2}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_0}] #T "
-set -g window-status-current-format "#[fg=#{@thm_crust},bg=#{@thm_mauve}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_1}] #T "
+# Slanted tabs. Caps are reverse video: the app's contrast filter (ansi-theme-adapt)
+# would otherwise recolor a cap whose fg is close to its bg, as a cap's always is.
+set -g window-status-separator ""
+set -g window-status-format "${tabCaps("@thm_surface_1")[0]}#[fg=#{@thm_subtext_0},bg=#{@thm_surface_1}] #I ${WINDOW_LABEL} ${tabCaps("@thm_surface_1")[1]}"
+set -g window-status-current-format "${tabCaps("@thm_mauve")[0]}#[fg=#{@thm_crust},bg=#{@thm_mauve},bold] #I ${WINDOW_LABEL} #[nobold]${tabCaps("@thm_mauve")[1]}"
 
 # Mode style (copy mode highlighting)
 set -gF mode-style "bg=#{@thm_surface_0},bold"
 set -gF clock-mode-colour "#{@thm_blue}"
-`;
-
-const STATUS_MODULE_UTIL = `# vim:set ft=tmux:
-# Pre-resolve icon_bg from module color (uses #{E:} to expand the format ref)
-set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_fg" "#{E:@thm_crust}"
-set -gqF "@catppuccin_status_\${MODULE_NAME}_text_fg" "#{E:@thm_fg}"
-set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_bg" "#{E:@catppuccin_\${MODULE_NAME}_color}"
-set -gqF @_ctp_module_text_bg "#{E:@thm_surface_0}"
-
-set -gF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@catppuccin_status_left_separator}"
-set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_fg},bg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@catppuccin_\${MODULE_NAME}_icon}"
-set -agF "@catppuccin_status_\${MODULE_NAME}" "#{@catppuccin_status_middle_separator}"
-set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_text_fg},bg=#{@_ctp_module_text_bg}]"
-set -ag "@catppuccin_status_\${MODULE_NAME}" "#{E:@catppuccin_\${MODULE_NAME}_text}"
-set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@_ctp_module_text_bg}]#{@catppuccin_status_right_separator}"
-
-set -ug @_ctp_module_text_bg
-`;
-
-const STATUS_APPLICATION = `# vim:set ft=tmux:
-%hidden MODULE_NAME="application"
-set -ogq "@catppuccin_\${MODULE_NAME}_icon" " "
-set -ogqF "@catppuccin_\${MODULE_NAME}_color" "#{E:@thm_maroon}"
-set -ogq "@catppuccin_\${MODULE_NAME}_text" " #{pane_current_command}"
-source -F "#{d:current_file}/../utils/status_module.conf"
-`;
-
-const STATUS_SESSION = `# vim:set ft=tmux:
-%hidden MODULE_NAME="session"
-set -ogq "@catppuccin_\${MODULE_NAME}_icon" " "
-set -ogq "@catppuccin_\${MODULE_NAME}_color" "#{?client_prefix,#{E:@thm_red},#{E:@thm_green}}"
-set -ogq "@catppuccin_\${MODULE_NAME}_text" " #S"
-source -F "#{d:current_file}/../utils/status_module.conf"
 `;
 
 // ── Write plugin to /tmp ────────────────────────────────────────────
@@ -212,8 +187,6 @@ export const CATPPUCCIN_PLUGIN_DIR = dev3TempPath("dev3-catppuccin");
 export function writeCatppuccinPlugin(): void {
 	const dir = CATPPUCCIN_PLUGIN_DIR;
 	mkdirSync(`${dir}/themes`, { recursive: true });
-	mkdirSync(`${dir}/status`, { recursive: true });
-	mkdirSync(`${dir}/utils`, { recursive: true });
 
 	// Plugin core
 	writeFileSync(`${dir}/catppuccin_options_tmux.conf`, CATPPUCCIN_OPTIONS);
@@ -222,9 +195,4 @@ export function writeCatppuccinPlugin(): void {
 	// Palettes
 	writeFileSync(`${dir}/themes/catppuccin_mocha_tmux.conf`, CATPPUCCIN_MOCHA);
 	writeFileSync(`${dir}/themes/catppuccin_latte_tmux.conf`, CATPPUCCIN_LATTE);
-
-	// Status modules (only application + session are used)
-	writeFileSync(`${dir}/status/application.conf`, STATUS_APPLICATION);
-	writeFileSync(`${dir}/status/session.conf`, STATUS_SESSION);
-	writeFileSync(`${dir}/utils/status_module.conf`, STATUS_MODULE_UTIL);
 }

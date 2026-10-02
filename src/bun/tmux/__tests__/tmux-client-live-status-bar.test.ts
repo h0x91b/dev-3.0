@@ -1,6 +1,6 @@
 /**
- * Live-tmux check of the status-bar block of the dev3 config: the bar sits on
- * top and shows only while a session has more than one window. The hooks are
+ * Live-tmux check of the full dev3 themed config: it parses, the bar sits on
+ * top, shows only while a session has more than one window, and tabs are slanted. The hooks are
  * tmux command strings with two levels of quoting and deferred `##` formats,
  * so only a real server proves they parse and target the right session.
  * Named to match the `tmux-client-live*` exclusion — runs in `test:full`/CI.
@@ -15,7 +15,8 @@ vi.mock("../../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { tmuxStatusBarConfig } from "../config";
+import { buildThemeConfig } from "../config";
+import { WINDOW_LABEL } from "../themes";
 
 function tmuxVersion(): string | null {
 	try {
@@ -43,9 +44,10 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 	beforeAll(() => {
 		workDir = mkdtempSync(join(tmpdir(), "dev3-statusbar-live-"));
 		const conf = join(workDir, "status.conf");
-		writeFileSync(conf, `set -g base-index 1\nset -g renumber-windows on\n${tmuxStatusBarConfig()}`);
+		writeFileSync(conf, buildThemeConfig("mocha"));
 		tmux("-f", "/dev/null", "new-session", "-d", "-s", "solo", "sh");
 		tmux("source-file", conf);
+		// Session "solo" predates the config, so its bar is whatever tmux defaulted to.
 	});
 
 	afterAll(() => {
@@ -83,5 +85,36 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		tmux("move-window", "-s", "=one:2", "-t", "=multi:");
 		expect(sessionStatus("one")).toBe("off");
 		expect(sessionStatus("multi")).toBe("on");
+	});
+
+	it("shows nothing beside the tabs", () => {
+		expect(tmux("show-options", "-gv", "status-left")).toBe("");
+		expect(tmux("show-options", "-gv", "status-right")).toBe("");
+	});
+
+	it("draws slanted tabs", () => {
+		expect(tmux("show-options", "-gv", "window-status-separator")).toBe("");
+		for (const option of ["window-status-format", "window-status-current-format"]) {
+			const format = tmux("show-options", "-gv", option);
+			expect(format.startsWith("#[fg=")).toBe(true);
+			expect(format).toContain("\uE0BA");
+			expect(format).toContain("\uE0BC");
+			// Caps must be reverse video, or the renderer's contrast filter recolors them.
+			expect(format.match(/,reverse\](\uE0BA|\uE0BC)/g)).toHaveLength(2);
+		}
+	});
+
+	it("labels a plain shell tab by its command, not the hostname it puts in the title", () => {
+		tmux("new-session", "-d", "-s", "label", "sh");
+		expect(tmux("display-message", "-p", "-t", "=label:", "#{pane_title}")).toBe(
+			tmux("display-message", "-p", "-t", "=label:", "#{host}"),
+		);
+		const windowName = tmux("display-message", "-p", "-t", "=label:", "#{window_name}");
+		expect(tmux("display-message", "-p", "-t", "=label:", WINDOW_LABEL)).toBe(windowName);
+	});
+
+	it("keeps a real title and caps it at 22 cells", () => {
+		tmux("select-pane", "-t", "=label:", "-T", "✳ A very long agent task title");
+		expect(tmux("display-message", "-p", "-t", "=label:", WINDOW_LABEL)).toBe("✳ A very long agent ta…");
 	});
 });

@@ -259,13 +259,12 @@ const STATUS_BAR_BY_CLIENT_SESSION = `if -F "${MULTI_WINDOW}" "set status on" "s
 const HOOK_SESSION = "=#{hook_session_name}:";
 const STATUS_BAR_BY_HOOK_SESSION = String.raw`run -C \"if -F -t '${HOOK_SESSION}' '${MULTI_WINDOW.replaceAll("#", "##")}' 'set -t ${HOOK_SESSION} status on' 'set -t ${HOOK_SESSION} status off'\"`;
 
-// Status bar setup — references Catppuccin status modules built by the plugin
+// Status bar setup — window tabs only, nothing on either side
 const TMUX_STATUS_BAR = `
-# Status bar — Catppuccin modules. On top so the window list sits where the
+# Status bar — window tabs only. On top so the window list sits where the
 # eye starts: a window opened by Cmd+T or an agent must not hide its task.
 set -g status-position top
-set -g status-right-length 100
-set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"
+set -g status-right ""
 set -g status-left ""
 
 # Show the bar only while a session has more than one window — a lone window
@@ -308,11 +307,6 @@ function paneDimConfig(defaultDimmed: boolean): string {
 	].join("\n");
 }
 
-/** The status-bar block of the themed config — exported for the live-tmux test. */
-export function tmuxStatusBarConfig(): string {
-	return TMUX_STATUS_BAR;
-}
-
 export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true): string {
 	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
 	return [
@@ -325,7 +319,7 @@ export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = t
 		paneDimConfig(dimInactivePanes),
 		TMUX_CONFIG_FUNCTIONAL,
 		shellEnvConfig(),
-		tmuxStatusBarConfig(),
+		TMUX_STATUS_BAR,
 	].join("\n");
 }
 
