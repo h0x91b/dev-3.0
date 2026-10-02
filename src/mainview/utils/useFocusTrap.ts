@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { getOverlayLayerElements } from "./overlay-layers";
 
 /**
@@ -49,6 +49,36 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 	return tabbablePanel(container) ?? collect(container);
 }
 
+/** Mounted trap containers, and where each one hands focus back on close. */
+const liveContainers = new Set<HTMLElement>();
+const restoreTargets = new WeakMap<HTMLElement, Element | null>();
+
+/**
+ * A dialog that replaced another in the same commit captured an element inside
+ * the old, now-detached dialog. Follow the chain back to the first element still
+ * in the document — the trigger the replaced dialog would have restored to.
+ */
+function resolveRestoreTarget(target: Element | null): Element | null {
+	let el = target;
+	while (el && !el.isConnected) {
+		let node: Element | null = el;
+		while (node && !restoreTargets.has(node as HTMLElement)) node = node.parentElement;
+		if (!node) return null;
+		el = restoreTargets.get(node as HTMLElement) ?? null;
+	}
+	return el;
+}
+
+/** True when another mounted trap already holds focus — it opened in this dialog's place. */
+function focusTakenByAnotherTrap(container: HTMLElement): boolean {
+	const active = document.activeElement;
+	if (!active) return false;
+	for (const other of liveContainers) {
+		if (other !== container && other.contains(active)) return true;
+	}
+	return false;
+}
+
 /**
  * Keeps keyboard focus inside a modal/dialog while it is mounted.
  *
@@ -85,6 +115,18 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(
 	if (previouslyFocused.current === null) {
 		previouslyFocused.current = document.activeElement;
 	}
+
+	// Layout phase, so a dialog that replaces another in one commit is registered
+	// before the replaced dialog's passive cleanup decides whether to restore focus.
+	useLayoutEffect(() => {
+		const container = ref.current;
+		if (!container) return;
+		liveContainers.add(container);
+		restoreTargets.set(container, previouslyFocused.current);
+		return () => {
+			liveContainers.delete(container);
+		};
+	}, []);
 
 	useEffect(() => {
 		const container = ref.current;
@@ -148,9 +190,11 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(
 		document.addEventListener("keydown", onKeyDown, true);
 		return () => {
 			document.removeEventListener("keydown", onKeyDown, true);
-			// Return focus to where the user was before the dialog opened.
+			// Return focus to where the user was before the dialog opened — unless a
+			// dialog that replaced this one already took it.
 			if (shouldRestore.current?.() === false) return;
-			(previouslyFocused.current as HTMLElement | null)?.focus?.();
+			if (focusTakenByAnotherTrap(container)) return;
+			(resolveRestoreTarget(previouslyFocused.current) as HTMLElement | null)?.focus?.();
 		};
 	}, []);
 

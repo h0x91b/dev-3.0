@@ -124,6 +124,8 @@ const TERMINAL_PERF_KEY = "dev3-terminal-perf";
 /** Unanswered quit dialog auto-confirms after this long — sessions survive in tmux either way. */
 const QUIT_AUTO_CONFIRM_SECONDS = 10;
 
+type NavPalette = "project" | "command" | "coordinator";
+
 type RemoteAccessQRData = {
 	qrDataUrl: string;
 	accessUrl: string;
@@ -422,12 +424,14 @@ function App() {
 		setImportOfferQueue((q) => (q.some((entry) => entry.project.id === project.id) ? q : [...q, { project, autoOffer }]));
 	}, []);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
-	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
+	// The navigation palettes (⇧⌘K, ⇧⌘P, Find coordinator) share one slot: opening one
+	// replaces whichever is open, so they can never stack.
+	const [navPalette, setNavPalette] = useState<NavPalette | null>(null);
+	const closeNavPalette = useCallback((kind: NavPalette) => setNavPalette((open) => (open === kind ? null : open)), []);
+	const toggleNavPalette = useCallback((kind: NavPalette) => setNavPalette((open) => (open === kind ? null : kind)), []);
 	const { spaces: appSpaces } = useSpaces();
 	// Cmd/Ctrl+O picker when no app is chosen yet (or the chosen one is gone).
 	const [openInPicker, setOpenInPicker] = useState<{ path: string; taskId?: string } | null>(null);
-	const [showCommandPalette, setShowCommandPalette] = useState(false);
-	const [showCoordinatorFinder, setShowCoordinatorFinder] = useState(false);
 	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
 	const [hintMode, setHintMode] = useState(false);
 	// Help mode — the "Explain this screen" overlay (bible §5.4). Entered via
@@ -1095,10 +1099,10 @@ function App() {
 		// Pin the builtin Operations board first (consistent with the dashboard,
 		// header switcher, and sidebar), then recency, then board order.
 		const ordered = orderProjectsForDisplay(
-			showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects,
+			navPalette === "project" ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects,
 		);
 		return { projects: ordered, shortcutIndexById };
-	}, [state.projects, showProjectSwitch]);
+	}, [state.projects, navPalette]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
@@ -1147,12 +1151,12 @@ function App() {
 	// palette is a DOM mirror of the menu rather than a second command runner.
 	const runCommand = useCallback(
 		(actionId: string) => {
-			setShowCommandPalette(false);
+			closeNavPalette("command");
 			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
 				console.error("[App] runCommand failed", err);
 			});
 		},
-		[state, dispatch, setLocale],
+		[state, dispatch, setLocale, closeNavPalette],
 	);
 
 	// Browser-mode menu bar (`AppMenuBar`) dispatches through the same router as
@@ -1173,9 +1177,9 @@ function App() {
 		const onAddProject = () => openAddProject();
 		// The View-menu palette items open (not toggle) the palettes — the
 		// Cmd+Shift+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
-		const onProjectSwitch = () => setShowProjectSwitch(true);
-		const onCommandPalette = () => setShowCommandPalette(true);
-		const onCoordinatorFinder = () => setShowCoordinatorFinder(true);
+		const onProjectSwitch = () => setNavPalette("project");
+		const onCommandPalette = () => setNavPalette("command");
+		const onCoordinatorFinder = () => setNavPalette("coordinator");
 		const onImportConversations = (e: Event) => {
 			const projectId = (e as CustomEvent<{ projectId: string }>).detail?.projectId;
 			const project = state.projects.find((p) => p.id === projectId);
@@ -1334,14 +1338,14 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
-				setShowProjectSwitch((open) => !open);
+				toggleNavPalette("project");
 			} else if (matchesShortcut(e, "command-palette")) {
 				// The action (command) palette (VSCode convention). The navigation
 				// sibling is `go-to-project`.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
-				setShowCommandPalette((open) => !open);
+				toggleNavPalette("command");
 			} else if (matchesShortcut(e, "keyboard-shortcuts")) {
 				// Capture phase so the live terminal underneath can't swallow it. Bare
 				// `?` is intentionally NOT used — the terminal must still receive it.
@@ -3084,19 +3088,19 @@ function App() {
 					onExit={(completed) => finishTour(activeTour.id, completed)}
 				/>
 			)}
-			{showProjectSwitch && (
+			{navPalette === "project" && (
 				<ProjectQuickSwitchModal
 					projects={quickSwitch.projects}
 					shortcutIndexById={quickSwitch.shortcutIndexById}
 					onSelect={(projectId) => {
-						setShowProjectSwitch(false);
+						closeNavPalette("project");
 						navigateToProject(projectId);
 					}}
 					onSelectSpace={(spaceId) => {
-						setShowProjectSwitch(false);
+						closeNavPalette("project");
 						navigateToSpace(spaceId);
 					}}
-					onClose={() => setShowProjectSwitch(false)}
+					onClose={() => closeNavPalette("project")}
 				/>
 			)}
 			{openInPicker && (
@@ -3106,7 +3110,7 @@ function App() {
 					onClose={() => setOpenInPicker(null)}
 				/>
 			)}
-			{showCommandPalette && (
+			{navPalette === "command" && (
 				<CommandPaletteModal
 					context={{
 						hasProject: Boolean(getProjectIdForRoute(state.route)),
@@ -3115,19 +3119,19 @@ function App() {
 						remote: isRemote(),
 					}}
 					onRun={runCommand}
-					onClose={() => setShowCommandPalette(false)}
+					onClose={() => closeNavPalette("command")}
 				/>
 			)}
-			{showCoordinatorFinder && (
+			{navPalette === "coordinator" && (
 				<CoordinatorFinderModal
 					projectById={switcherProjectById}
 					currentTaskId={routeTaskId(state.route)}
 					mru={state.taskMru}
 					onSelect={(task) => {
-						setShowCoordinatorFinder(false);
+						closeNavPalette("coordinator");
 						navigate(taskOpenRoute(task.id, task.projectId, getTaskOpenMode(), false));
 					}}
-					onClose={() => setShowCoordinatorFinder(false)}
+					onClose={() => closeNavPalette("coordinator")}
 				/>
 			)}
 			{showAddProjectModal && (

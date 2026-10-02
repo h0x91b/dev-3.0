@@ -133,6 +133,56 @@ describe("useFocusTrap", () => {
 		document.body.removeChild(trigger);
 	});
 
+	describe("when one dialog replaces another in the same commit", () => {
+		function Swappable({ which }: { which: "a" | "b" | null }) {
+			if (which === null) return null;
+			return <InputDialog key={which} label={which} />;
+		}
+		function InputDialog({ label }: { label: string }) {
+			const ref = useFocusTrap<HTMLDivElement>();
+			return (
+				<div ref={ref} role="dialog" tabIndex={-1}>
+					{/* biome-ignore lint/a11y/noAutofocus: mirrors the palette input */}
+					<input aria-label={label} autoFocus />
+				</div>
+			);
+		}
+
+		it("leaves focus in the new dialog and restores the original trigger when it closes", () => {
+			const trigger = document.createElement("button");
+			document.body.appendChild(trigger);
+			trigger.focus();
+
+			const { rerender } = render(<Swappable which="a" />);
+			expect(document.activeElement).toBe(screen.getByLabelText("a"));
+
+			rerender(<Swappable which="b" />);
+			expect(document.activeElement).toBe(screen.getByLabelText("b"));
+
+			rerender(<Swappable which={null} />);
+			expect(document.activeElement).toBe(trigger);
+			trigger.remove();
+		});
+
+		it("still returns focus into an outer dialog when a nested one closes", () => {
+			function Nested({ inner }: { inner: boolean }) {
+				const ref = useFocusTrap<HTMLDivElement>();
+				return (
+					<div ref={ref} role="dialog" tabIndex={-1}>
+						<button>outer</button>
+						{inner && <InputDialog label="inner" />}
+					</div>
+				);
+			}
+			const { rerender } = render(<Nested inner={false} />);
+			screen.getByText("outer").focus();
+			rerender(<Nested inner />);
+			expect(document.activeElement).toBe(screen.getByLabelText("inner"));
+			rerender(<Nested inner={false} />);
+			expect(document.activeElement).toBe(screen.getByText("outer"));
+		});
+	});
+
 	// A portalled dropdown / popover is a sibling of the dialog on document.body,
 	// so without the overlay-layer stack the trap pulled focus straight back into
 	// the dialog and the panel's rows were unreachable by keyboard.
