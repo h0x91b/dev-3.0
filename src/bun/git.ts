@@ -2095,7 +2095,29 @@ export async function getBranchStatus(
 	return { behind, ahead, baseUnreachable: false };
 }
 
+/**
+ * True only when `git status` positively reports nothing to commit — a failed
+ * status is not "clean". Untracked files and submodules are forced on so a
+ * user's `status.showUntrackedFiles=no` cannot hide what `ls-files` would count.
+ * Callers skip worktree `git diff` on a clean answer: that diff takes index.lock
+ * to refresh stat-only changes, and `--no-optional-locks` cannot stop it.
+ */
+async function isWorktreeKnownClean(worktreePath: string): Promise<boolean> {
+	const result = await run(
+		["git", "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none"],
+		worktreePath,
+	);
+	return result.ok && result.stdout.trim().length === 0;
+}
+
 export async function getUncommittedChanges(
+	worktreePath: string,
+): Promise<{ insertions: number; deletions: number }> {
+	if (await isWorktreeKnownClean(worktreePath)) return { insertions: 0, deletions: 0 };
+	return countUncommittedChanges(worktreePath);
+}
+
+async function countUncommittedChanges(
 	worktreePath: string,
 ): Promise<{ insertions: number; deletions: number }> {
 	// Tracked file changes (staged + unstaged)
@@ -2706,12 +2728,15 @@ export async function getTaskDiff(
 	}
 
 	if (mode === "uncommitted") {
-		const [entries, untrackedEntries, summary, numstat] = await Promise.all([
-			listDiffEntries(worktreePath, ["HEAD"]),
-			listUntrackedEntries(worktreePath),
-			getUncommittedChanges(worktreePath),
-			getNumstat(worktreePath, ["HEAD"]),
-		]);
+		const clean = await isWorktreeKnownClean(worktreePath);
+		const [entries, untrackedEntries, summary, numstat] = clean
+			? [[], [], { insertions: 0, deletions: 0 }, new Map<string, DiffStat>()]
+			: await Promise.all([
+				listDiffEntries(worktreePath, ["HEAD"]),
+				listUntrackedEntries(worktreePath),
+				countUncommittedChanges(worktreePath),
+				getNumstat(worktreePath, ["HEAD"]),
+			]);
 		const allEntries = [...entries, ...untrackedEntries];
 		const filesResult = await buildTaskDiffFiles(
 			worktreePath,

@@ -339,14 +339,22 @@ describe("canRebaseCleanly", () => {
 
 describe("getUncommittedChanges", () => {
 	it("returns zero for clean working tree", async () => {
-		queueResponse(0, "");   // git diff --numstat HEAD
-		queueResponse(0, "");   // git ls-files --others
+		queueResponse(0, "");   // git status --porcelain — clean, so no diff runs
 		const result = await getUncommittedChanges("/repo");
 		expect(result.insertions).toBe(0);
 		expect(result.deletions).toBe(0);
 	});
 
+	it("falls back to counting when git status fails", async () => {
+		queueResponse(128, "", "fatal: boom");   // git status --porcelain
+		queueResponse(0, "4\t2\tapp.ts\n");      // git diff --numstat HEAD
+		queueResponse(0, "");                     // git ls-files --others
+		const result = await getUncommittedChanges("/repo");
+		expect(result).toEqual({ insertions: 4, deletions: 2 });
+	});
+
 	it("counts insertions and deletions in tracked files", async () => {
+		queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
 		queueResponse(0, "3\t1\tapp.ts\n2\t0\tutils.ts\n");
 		queueResponse(0, "");
 		const result = await getUncommittedChanges("/repo");
@@ -355,6 +363,7 @@ describe("getUncommittedChanges", () => {
 	});
 
 	it("handles binary files (- instead of numbers)", async () => {
+		queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
 		queueResponse(0, "-\t-\timage.png\n2\t1\tapp.ts\n");
 		queueResponse(0, "");
 		const result = await getUncommittedChanges("/repo");
@@ -376,6 +385,7 @@ describe("getUncommittedChanges", () => {
 
 		it("counts lines in untracked text files", async () => {
 			writeFileSync(join(tmpDir, "readme.txt"), "line1\nline2\nline3\n");
+			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
 			queueResponse(0, "");               // git diff --numstat HEAD
 			queueResponse(0, "readme.txt\n");   // git ls-files --others
 			const result = await getUncommittedChanges(tmpDir);
@@ -389,6 +399,7 @@ describe("getUncommittedChanges", () => {
 			writeFileSync(join(tmpDir, "image.png"), binaryContent);
 			// Text file — should be counted
 			writeFileSync(join(tmpDir, "app.ts"), "const x = 1;\n");
+			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
 			queueResponse(0, "");                           // git diff --numstat HEAD
 			queueResponse(0, "image.png\napp.ts\n");       // git ls-files --others
 			const result = await getUncommittedChanges(tmpDir);
@@ -401,6 +412,7 @@ describe("getUncommittedChanges", () => {
 			const largeContent = "x".repeat(1_048_577) + "\n";
 			writeFileSync(join(tmpDir, "huge.txt"), largeContent);
 			writeFileSync(join(tmpDir, "small.ts"), "ok\n");
+			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
 			queueResponse(0, "");                           // git diff --numstat HEAD
 			queueResponse(0, "huge.txt\nsmall.ts\n");      // git ls-files --others
 			const result = await getUncommittedChanges(tmpDir);
@@ -462,6 +474,7 @@ describe("getTaskDiff", () => {
 		mkdirSync(tmpDir, { recursive: true });
 		writeFileSync(join(tmpDir, "notes.txt"), "line 1\nline 2\n");
 
+		queueResponse(0, "?? notes.txt\n"); // git status --porcelain — dirty
 		queueResponse(0, "");             // listDiffEntries HEAD (no tracked changes)
 		queueResponse(0, "notes.txt\0");  // listUntrackedEntries (ls-files --others -z)
 		queueResponse(0, "");             // getUncommittedChanges numstat HEAD

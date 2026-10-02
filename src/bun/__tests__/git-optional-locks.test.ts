@@ -22,7 +22,7 @@ import { createHash } from "crypto";
 import { readFileSync, statSync, utimesSync, writeFileSync } from "fs";
 import { join } from "path";
 import { createTestRepo, cleanup, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
-import { isWorktreeDirty, run, withGitDefaults, _resetFetchState } from "../git";
+import { getTaskDiff, getUncommittedChanges, isWorktreeDirty, run, withGitDefaults, _resetFetchState } from "../git";
 
 const NOL = "--no-optional-locks";
 
@@ -118,5 +118,62 @@ describe("git status through dev3 takes no optional index lock", () => {
 		const add = await run(["git", "add", "app.ts"], repo.local);
 		expect(add.ok).toBe(false);
 		expect(add.stderr).toContain("index.lock");
+	});
+});
+
+describe("uncommitted-change reads skip git diff on a clean worktree", () => {
+	let repo: TestRepo;
+	const diffSpawns = () => spawnedCommands.filter((cmd) => cmd.includes("diff"));
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		_resetFetchState();
+		spawnedCommands.length = 0;
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("control: a plain worktree git diff rewrites the index of a stat-dirty worktree", () => {
+		makeStatOnlyDirty(repo.local);
+		const before = indexSignature(repo.local);
+		g("git diff --numstat HEAD", repo.local);
+		expect(indexSignature(repo.local)).not.toBe(before);
+	});
+
+	it("getUncommittedChanges answers zero without running git diff or touching the index", async () => {
+		makeStatOnlyDirty(repo.local);
+		const before = indexSignature(repo.local);
+
+		expect(await getUncommittedChanges(repo.local)).toEqual({ insertions: 0, deletions: 0 });
+		expect(diffSpawns()).toEqual([]);
+		expect(indexSignature(repo.local)).toBe(before);
+	});
+
+	it("getTaskDiff uncommitted mode returns the empty diff without running git diff", async () => {
+		makeStatOnlyDirty(repo.local);
+		const before = indexSignature(repo.local);
+
+		const result = await getTaskDiff(repo.local, "uncommitted", { baseBranch: "main" });
+		expect(result.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
+		expect(result.files).toEqual([]);
+		expect(diffSpawns()).toEqual([]);
+		expect(indexSignature(repo.local)).toBe(before);
+	});
+
+	it("still counts real changes once the worktree is dirty", async () => {
+		writeFileSync(join(repo.local, "app.ts"), "const a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\n");
+		writeFileSync(join(repo.local, "new.ts"), "x\ny\n");
+		expect(await getUncommittedChanges(repo.local)).toEqual({ insertions: 3, deletions: 0 });
+
+		const result = await getTaskDiff(repo.local, "uncommitted", { baseBranch: "main" });
+		expect(result.summary).toEqual({ files: 2, insertions: 3, deletions: 0 });
+	});
+
+	it("counts untracked files even when the user hides them from git status", async () => {
+		g("git config status.showUntrackedFiles no", repo.local);
+		writeFileSync(join(repo.local, "new.ts"), "x\ny\n");
+		expect(await getUncommittedChanges(repo.local)).toEqual({ insertions: 2, deletions: 0 });
 	});
 });
