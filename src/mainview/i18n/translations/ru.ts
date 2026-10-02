@@ -21,6 +21,7 @@ import diagnostics from "./ru/diagnostics";
 import nativePaneLab from "./ru/nativePaneLab";
 import panes from "./ru/panes";
 import tour from "./ru/tour";
+import fileExplorer from "./ru/fileExplorer";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -45,6 +46,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...nativePaneLab,
 	...panes,
 	...tour,
+	...fileExplorer,
 };
 
 export default ru;

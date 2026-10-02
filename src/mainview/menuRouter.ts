@@ -2,6 +2,7 @@ import { api } from "./rpc";
 import { startClosePanePicker } from "./close-pane-picker";
 import { toggleStreamerMode } from "./streamer-mode";
 import { openAgentTrafficLog } from "./agent-traffic-events";
+import { toggleFileExplorer } from "./file-explorer-prefs";
 import { toast } from "./toast";
 import { playTaskCompletionSound, taskSoundDiagnostics } from "./task-sounds";
 import { moveTaskToStatus } from "./utils/moveTaskToStatus";
@@ -434,6 +435,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "view-agent-traffic-log":
 			openAgentTrafficLog();
 			return;
+		case "view-toggle-file-explorer":
+			toggleFileExplorer();
+			return;
 		case "help-keyboard-shortcuts":
 			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));
 			return;
@@ -477,6 +481,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// The traffic log is a renderer overlay, so it works in a browser tab too — it
 	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
 	"view-agent-traffic-log",
+	"view-toggle-file-explorer",
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview", "feature-flags",
 	"terminal-perf-overlay",
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",

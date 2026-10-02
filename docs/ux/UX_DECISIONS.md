@@ -425,9 +425,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 
 ## 2026-07-03 — Close Pane: two-step visual pane picker (no new button; destructive gets spatial friction)
 
-- **Rule:** The red Close Pane control (inspector `tmux_controls` + native menu) no longer blind-kills the active pane — it arms a transient overlay over the terminal that draws one hit-box per pane from real tmux geometry (cells → %, PaneMapSheet math); hover arms a pane in `danger` red (idle = neutral `accent` marching-ants), click kills exactly it, Esc / scrim cancels, last-pane kill routes through the `confirm()` service. Narrow/touch keeps the old direct-kill (no hover). No new toolbar button.
-- **Why:** Blind-kill closed the wrong pane and gave a destructive action zero friction; a spatial two-step pick supplies the friction + `destructive` token + confirmation the rubric wants while adding zero chrome (avoids toolbar-button-creep, the #1 anti-pattern) and reusing the mini-map geometry. Rejected: a dropdown pane list (loses the on-screen spatial mapping); a persistent per-pane close affordance (control creep). Decision 101.
-- **Status:** Observed (verified in-browser). Evidence: `ClosePanePicker.tsx`, `close-pane-picker.ts`, `rpc-handlers/tmux-pty.ts` (tmuxKillPane), `TaskTmuxControls.tsx`, `menuRouter.ts`.
+Folded: rule and reasoning in `decisions/2026/07/03/close-pane-visual-picker.md`; yaml `close_pane_picker`.
 
 ## 2026-07-03 — Agent picker: Provider → Model → Mode cascade (UI-only grouping, flat `configId` stays the key)
 
@@ -710,3 +708,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-10-01 — Go to Project moves from ⌘K to ⇧⌘K; Find coordinator joins ⇧⌘P
 - **Rule:** the navigation palette is ⇧⌘K (Ctrl+Shift+K off-macOS); plain ⌘K stays free for the terminal (clear, tracked as its own task). Coordinators are found via the ⇧⌘P `Find coordinator…` picker on `PaletteShell`.
 - **Why:** terminal users expect ⌘K to clear; ⇧⌘K keeps the K mnemonic with the fewest conflicts found (Firefox Win/Linux Web Console caveat). Rejected ⌘P, ⌘E. User-approved. Evidence: `keymap.ts`, `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`.
+
+## 2026-10-02 - File explorer overlays when auto-hidden
+- **Rule:** yaml `file_explorer`; the Files button is its one visible toggle.
+- **Why:** a reveal that reflowed the terminal would refit the PTY on every hover. `decisions/2026/10/02/file-explorer-panel.md`.

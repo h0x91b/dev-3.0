@@ -98,6 +98,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "term-cheat-sheet", labelKey: "command.tmuxCheatSheet", category: "terminal", scope: "always" },
 	{ id: "help-keyboard-shortcuts", labelKey: "command.keyboardShortcuts", category: "app", scope: "always" },
 	{ id: "view-agent-traffic-log", labelKey: "command.agentTrafficLog", category: "app", scope: "project" },
+	{ id: "view-toggle-file-explorer", labelKey: "command.toggleFileExplorer", category: "app", scope: "project" },
 ];
 
 export interface CommandContext {

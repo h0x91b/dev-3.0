@@ -75,6 +75,7 @@ import AboutModal from "./components/AboutModal";
 import FeatureFlagsModal from "./components/FeatureFlagsModal";
 import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
+import { toggleFileExplorer } from "./file-explorer-prefs";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
@@ -1433,6 +1434,12 @@ function App() {
 				if (showQuitDialog) return;
 				if (state.route.screen === "agent-traffic") dispatch({ type: "goBack" });
 				else navigate({ screen: "agent-traffic", scopeProjectId: projectIdForRoute(state.route) ?? undefined });
+			} else if (matchesShortcut(e, "toggle-file-explorer")) {
+				// Capture phase so a focused terminal cannot swallow it.
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog) return;
+				toggleFileExplorer();
 			} else if (matchesShortcut(e, "help-mode")) {
 				// Help mode ("Explain this screen"): every data-help-id zone gets an (i)
 				// badge with a HelpCard. Sibling of the shortcuts reference overlay.

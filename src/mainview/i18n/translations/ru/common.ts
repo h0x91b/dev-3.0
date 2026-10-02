@@ -467,6 +467,7 @@ const common = {
 	"command.tmuxCheatSheet": "Показать шпаргалку tmux",
 	"command.keyboardShortcuts": "Горячие клавиши",
 	"command.agentTrafficLog": "Трафик агентов",
+	"command.toggleFileExplorer": "Показать или скрыть проводник",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

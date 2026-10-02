@@ -444,6 +444,7 @@ const common = {
 	"command.tmuxCheatSheet": "Show tmux cheat sheet",
 	"command.keyboardShortcuts": "Keyboard shortcuts",
 	"command.agentTrafficLog": "Agent traffic",
+	"command.toggleFileExplorer": "Toggle file explorer",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",

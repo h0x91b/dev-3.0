@@ -21,6 +21,7 @@ import diagnostics from "./es/diagnostics";
 import nativePaneLab from "./es/nativePaneLab";
 import panes from "./es/panes";
 import tour from "./es/tour";
+import fileExplorer from "./es/fileExplorer";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -45,6 +46,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...nativePaneLab,
 	...panes,
 	...tour,
+	...fileExplorer,
 };
 
 export default es;

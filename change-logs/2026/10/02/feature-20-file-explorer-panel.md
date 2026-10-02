@@ -1,0 +1,3 @@
+Short: File explorer beside the terminal
+
+A VS Code-style file explorer now sits on the left of the task terminal, listing the task's worktree, and beside the Kanban board, listing the project folder. Pin it as a resizable column or set it to auto-hide, where a thin rail slides the tree over the terminal without resizing it. Click a file to preview it, or right-click to copy its path or insert it into the agent's terminal. It needs nothing installed and works in remote browser mode. Toggle it with the Files button, ⇧⌘E (Ctrl+Shift+B on Linux and Windows), the View menu or the command palette. The yazi pane moved to the explorer's "…" menu.
