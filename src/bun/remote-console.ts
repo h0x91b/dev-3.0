@@ -165,7 +165,7 @@ function printConnectionTips(opts: TipsOptions): void {
 	}
 
 	if (isLoopbackListen()) {
-		console.log("    ② This machine only - the server is bound to 127.0.0.1 (--host).");
+		console.log("    ② This machine only — the server is bound to 127.0.0.1.");
 		console.log(`       Open http://localhost:${port}/ here; LAN devices cannot connect.`);
 		console.log("");
 	} else if (ips.length > 0) {

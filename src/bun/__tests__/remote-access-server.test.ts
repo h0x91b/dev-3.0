@@ -514,11 +514,11 @@ describe("resolveListenHost", () => {
 		expect(resolveListenHost()).toBe("127.0.0.1");
 	});
 
-	it("falls back to 0.0.0.0 on a value it cannot bind", () => {
+	it("falls back to loopback, never every interface, on a value it cannot bind", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "::1");
-		expect(resolveListenHost()).toBe("0.0.0.0");
+		expect(resolveListenHost()).toBe("127.0.0.1");
 		vi.stubEnv("DEV3_REMOTE_HOST", "192.168.1.5");
-		expect(resolveListenHost()).toBe("0.0.0.0");
+		expect(resolveListenHost()).toBe("127.0.0.1");
 	});
 
 	it("treats only 127.0.0.1 as loopback", () => {

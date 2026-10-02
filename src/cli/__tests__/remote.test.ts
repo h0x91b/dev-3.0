@@ -173,6 +173,39 @@ describe("dev3 remote --port validation", () => {
 	});
 });
 
+describe("dev3 remote --host validation", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("rejects a --host outside the three accepted values", async () => {
+		await expect(handleRemote(undefined, args({ host: "192.168.1.5" }))).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
+	});
+
+	// The detached child inherits process.env, so an unchecked typo here would
+	// reach the server, which would then bind somewhere the user never asked for.
+	it("rejects an invalid inherited DEV3_REMOTE_HOST when --host is absent", async () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.l");
+		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain('DEV3_REMOTE_HOST must be 127.0.0.1, localhost or 0.0.0.0 (got "127.0.0.l")');
+	});
+
+	it("lets a valid --host override an invalid inherited DEV3_REMOTE_HOST", async () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "bogus");
+		const savedHeadless = process.env.DEV3_HEADLESS;
+		try {
+			await handleRemote(undefined, args({ host: "127.0.0.1", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_HOST).toBe("127.0.0.1");
+		} finally {
+			if (savedHeadless === undefined) delete process.env.DEV3_HEADLESS;
+			else process.env.DEV3_HEADLESS = savedHeadless;
+		}
+	});
+});
+
 describe("dev3 remote --expose-ports validation", () => {
 	it("rejects --expose-ports without a value", async () => {
 		await expect(handleRemote(undefined, args({ "expose-ports": "true" }))).rejects.toThrow("__exit__");

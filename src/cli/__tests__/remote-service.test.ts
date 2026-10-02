@@ -88,7 +88,7 @@ describe("buildExecStartArgs", () => {
 		expect(out).toEqual(["remote", "start", "--no-detach", "--host", "127.0.0.1", "--no-tunnel"]);
 	});
 
-	it("rejects a --host that is not an IPv4 address or localhost", () => {
+	it("rejects a --host other than 127.0.0.1, localhost or 0.0.0.0", () => {
 		expect(() => buildExecStartArgs(args({ host: "example.com" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
 	});

@@ -52,6 +52,16 @@ function hasSystemctl(): boolean {
 	return r.status === 0 && typeof r.stdout === "string" && r.stdout.trim().length > 0;
 }
 
+/** The validated `--host` value, or undefined when the flag is absent. Exits on a bad value. */
+export function parseHostFlag(args: ParsedArgs): string | undefined {
+	if (args.flags.host === undefined) return undefined;
+	if (args.flags.host === "true") exitUsage(`--host requires a value: --host <addr>`);
+	const host = args.flags.host.trim();
+	const problem = listenHostError(host);
+	if (problem) exitUsage(`--host ${problem}`);
+	return host;
+}
+
 /**
  * Translate install-service flags into the `dev3 remote start …` arguments the
  * unit's ExecStart runs. Always includes --no-detach: `dev3 remote` backgrounds
@@ -70,13 +80,8 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 		}
 		out.push("--port", String(n));
 	}
-	if (args.flags.host !== undefined) {
-		if (args.flags.host === "true") exitUsage(`--host requires a value: --host <addr>`);
-		const host = args.flags.host.trim();
-		const problem = listenHostError(host);
-		if (problem) exitUsage(`--host ${problem}`);
-		out.push("--host", host);
-	}
+	const host = parseHostFlag(args);
+	if (host !== undefined) out.push("--host", host);
 	if (args.flags["no-tunnel"] === "true") out.push("--no-tunnel");
 	if (args.flags["expose-ports"] && args.flags["expose-ports"] !== "true") {
 		out.push(`--expose-ports=${args.flags["expose-ports"]}`);

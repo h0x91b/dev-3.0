@@ -6,7 +6,7 @@ import type { RemoteAccessInfo } from "../../shared/types";
 import { exitError, exitUsage, printDetail } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
-import { installRemoteService, uninstallRemoteService } from "./remote-service";
+import { installRemoteService, parseHostFlag, uninstallRemoteService } from "./remote-service";
 import { STATIC_CODE_PUBLIC_TUNNEL_WARNING, shouldWarnAboutPublicTunnel } from "../remote-static-code-notice";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
 import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../shared/remote-static-code";
@@ -190,15 +190,16 @@ function collectRemoteEnv(args: ParsedArgs): Record<string, string> {
 	if (args.flags["no-tunnel"] === "true") {
 		remoteEnv.DEV3_REMOTE_NO_TUNNEL = "1";
 	}
-	if (args.flags.host !== undefined) {
-		if (args.flags.host === "true") {
-			exitUsage(`--host requires a value: --host <addr>`);
-		}
-		const problem = listenHostError(args.flags.host.trim());
+	const host = parseHostFlag(args);
+	if (host !== undefined) {
+		remoteEnv.DEV3_REMOTE_HOST = host;
+	} else {
+		// An inherited value reaches the server too, so a typo must not slip past the CLI.
+		const inherited = process.env.DEV3_REMOTE_HOST?.trim();
+		const problem = inherited ? listenHostError(inherited) : null;
 		if (problem) {
-			exitUsage(`--host ${problem}`);
+			exitUsage(`DEV3_REMOTE_HOST ${problem}`);
 		}
-		remoteEnv.DEV3_REMOTE_HOST = args.flags.host.trim();
 	}
 	if (args.flags["views-dir"] && args.flags["views-dir"] !== "true") {
 		remoteEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
