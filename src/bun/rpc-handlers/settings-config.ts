@@ -37,6 +37,8 @@ import type { LowBatteryStatus } from "../../shared/low-battery";
 import { installAgentSkills } from "../agent-skills";
 
 import { forceSelectLowBatteryStyle, lowBatteryStatus } from "../low-battery";
+import { writeShellInit } from "../shell-init";
+import { previewShellPrompt } from "../shell-prompt-preview";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
  *  saves must not depend on the client being well-behaved. */
@@ -327,6 +329,18 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// `resolvedTheme` may be absent (nothing has called setTmuxTheme yet); the
 	// live in-memory theme is the fallback, never a hardcoded "dark" — that would
 	// flip a light-theme user's terminals on an unrelated shell change.
+	// Shell panes source the prompt style at start, so a new style only needs the
+	// init files rewritten — no tmux reload.
+	if (
+		process.platform !== "win32" &&
+		(stored.shellPrompt !== next.shellPrompt || stored.shellPromptCustom !== next.shellPromptCustom)
+	) {
+		try {
+			writeShellInit(next);
+		} catch (err) {
+			log.warn("Failed to write the shell prompt style (non-fatal)", { error: String(err) });
+		}
+	}
 	const shellChanged = stored.terminalShell !== next.terminalShell;
 	const dimChanged = (stored.dimInactivePanes !== false) !== (next.dimInactivePanes !== false);
 	if (process.platform !== "win32" && (shellChanged || dimChanged)) {
@@ -773,6 +787,7 @@ export const settingsConfigHandlers = {
 	getGlobalSettings,
 	getGitHubCliStatus,
 	getShellAvailability,
+	previewShellPrompt: (params: { source: string; columns?: number }) => previewShellPrompt(params.source, params.columns),
 	saveGlobalSettings,
 	getLowBatteryStatus,
 	selectLowBatteryStyle,

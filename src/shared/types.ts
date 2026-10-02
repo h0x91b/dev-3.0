@@ -1534,6 +1534,14 @@ export interface GlobalSettings {
 	 * backend never dimmed anything.
 	 */
 	dimInactivePanes?: boolean;
+	/**
+	 * Prompt style for zsh shell panes: a `SHELL_PROMPT_STYLES` id, `"custom"`
+	 * (zsh code in `shellPromptCustom`) or `"own"` (keep the user's `.zshrc`
+	 * prompt). Undefined ⇒ the default style. Applies to newly opened panes.
+	 */
+	shellPrompt?: string;
+	/** The user's own prompt code, used when `shellPrompt` is `"custom"`. */
+	shellPromptCustom?: string;
 	focusMode?: boolean; // when true, queue agent-initiated attention UI and viewer events until Focus Mode ends
 	/**
 	 * Track agent rate-limit windows (Claude via an injected statusLine wrapper,
@@ -1881,6 +1889,12 @@ export interface GitHubCliStatus {
 	binaryPath: string | null;
 	accounts: GitHubAccount[];
 }
+
+/** A prompt style rendered by real zsh, as ANSI lines — or why it could not be. */
+export type ShellPromptPreview =
+	| { ok: true; afterSlowCommand: string[]; afterFailedCommand: string[] }
+	| { ok: false; reason: "no-zsh" }
+	| { ok: false; reason: "invalid"; error: string };
 
 /** What the Settings screen needs to explain the `terminalShell` choice. */
 export interface ShellAvailability {
@@ -5075,6 +5089,11 @@ export type AppRPCSchema = {
 			getShellAvailability: {
 				params: void;
 				response: ShellAvailability;
+			};
+			/** Render a zsh prompt style against a demo repo; also how custom code is validated. */
+			previewShellPrompt: {
+				params: { source: string; columns?: number };
+				response: ShellPromptPreview;
 			};
 			saveGlobalSettings: {
 				params: GlobalSettings;

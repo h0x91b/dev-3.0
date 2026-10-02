@@ -335,6 +335,8 @@ describe("saveSettings", () => {
 			terminalPathOpenMode: "reveal",
 			terminalShell: "sh",
 			dimInactivePanes: false,
+			shellPrompt: "minimal",
+			shellPromptCustom: "PROMPT='> '",
 			theme: "light",
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",

@@ -9,7 +9,7 @@ import {
 } from "../../scroll-speed";
 import type { NativeTerminalAvailability, ShellAvailability, TerminalPathOpenMode } from "../../../shared/types";
 import type { ShellFlavor } from "../../../shared/posix-shell";
-import { SHELL_FALLBACK_ORDER } from "../../../shared/posix-shell";
+import { SHELL_FALLBACK_ORDER, shellFlavorOf } from "../../../shared/posix-shell";
 import type { TerminalBackendIdentity } from "../../../shared/terminal-backend-identity";
 import {
 	applyTerminalFontFamily,
@@ -27,6 +27,7 @@ import SettingsEntry from "./SettingsEntry";
 import SettingsToggle from "./SettingsToggle";
 import TerminalBackendSetting from "./TerminalBackendSetting";
 import TerminalFontGallery from "./TerminalFontGallery";
+import ShellPromptGallery from "./ShellPromptGallery";
 import SettingsSection from "./SettingsSection";
 import Select from "../Select";
 
@@ -46,10 +47,14 @@ export default function TerminalSettingsSection({
 	terminalShell,
 	shellAvailability,
 	dimInactivePanes,
+	shellPrompt,
+	shellPromptCustom,
 	onNewTaskTerminalBackendChange,
 	onTerminalPathOpenModeChange,
 	onTerminalShellChange,
 	onDimInactivePanesToggle,
+	onShellPromptChange,
+	onShellPromptCustomSave,
 }: {
 	t: TFunction;
 	scrollSpeed: number;
@@ -61,10 +66,14 @@ export default function TerminalSettingsSection({
 	terminalShell: ShellFlavor | undefined;
 	shellAvailability: ShellAvailability | null;
 	dimInactivePanes: boolean | undefined;
+	shellPrompt: string | undefined;
+	shellPromptCustom: string | undefined;
 	onNewTaskTerminalBackendChange: (backend: TerminalBackendIdentity) => void;
 	onTerminalPathOpenModeChange: (mode: TerminalPathOpenMode) => void;
 	onTerminalShellChange: (shell: ShellFlavor | undefined) => void;
 	onDimInactivePanesToggle: (enabled: boolean) => void;
+	onShellPromptChange: (choice: string) => void;
+	onShellPromptCustomSave: (source: string) => void;
 }) {
 	const resolved = shellAvailability?.resolved ?? null;
 	// Windows answers with no POSIX resolution at all — the whole choice is moot
@@ -151,6 +160,23 @@ export default function TerminalSettingsSection({
 									: t("settings.terminalShellResolved", { path: resolved.path })}
 							</p>
 						)}
+					</div>
+				</SettingsEntry>
+			)}
+
+			{showShellPicker && (
+				<SettingsEntry anchor="terminal-shell-prompt">
+					<div>
+						<p className="block text-fg text-sm font-semibold mb-2">{t("settings.shellPrompt")}</p>
+						<p className="text-fg-3 text-sm mb-3">{t("settings.shellPromptDesc")}</p>
+						<ShellPromptGallery
+							t={t}
+							value={shellPrompt}
+							custom={shellPromptCustom}
+							shell={resolved ? shellFlavorOf(resolved.path) : null}
+							onSelect={onShellPromptChange}
+							onSaveCustom={onShellPromptCustomSave}
+						/>
 					</div>
 				</SettingsEntry>
 			)}

@@ -299,6 +299,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "terminal-shell-prompt",
+		category: "terminal",
+		titleKey: "settings.shellPrompt",
+		descriptionKey: "settings.shellPromptDesc",
+		anchor: "terminal-shell-prompt",
+		globalField: "shellPrompt",
+		storage: "global",
+	},
+	{
 		id: "terminal-path-open-mode",
 		category: "terminal",
 		titleKey: "settings.terminalPathOpenMode",
@@ -593,6 +602,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	// so an older co-installed build keeps its own opt-out and announce flag.
 	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
+	// Edited inside the terminal-shell-prompt entry, which is registered by `shellPrompt`.
+	"shellPromptCustom",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 /** Runtime list used by the registry integrity test; the type check catches schema drift. */
@@ -633,6 +644,8 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"importShellEnv",
 	"terminalShell",
 	"dimInactivePanes",
+	"shellPrompt",
+	"shellPromptCustom",
 	"focusMode",
 	"agentRateLimitTracking",
 	"watchByDefault",

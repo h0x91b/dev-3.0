@@ -1,13 +1,15 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SHELL_INIT_DIR, writeShellInit } from "../shell-init";
+import { PROMPT_FILE, SHELL_INIT_DIR, writeShellInit, ZSH_PROMPT_ENGINE } from "../shell-init";
+import { parsePreviewOutput, PREVIEW_RENDER_SCRIPT } from "../shell-prompt-preview";
+import { SHELL_PROMPT_STYLES } from "../../shared/shell-prompt-styles";
 
 describe("shell init word motion", () => {
 	beforeAll(() => {
-		writeShellInit();
+		writeShellInit({});
 	});
 
 	it("binds modifier+arrow to word motion in zsh, after the user's .zshrc", () => {
@@ -62,7 +64,7 @@ function dirtyWorktree(): string {
 function promptLine(shell: "zsh" | "bash", worktree: string, cwd: string, columns: number): string {
 	const script =
 		shell === "zsh"
-			? `source ${SHELL_INIT_DIR}/.zshrc; COLUMNS=${columns}; _dev3_precmd; print -rn -- "\${(%)_dev3_line}"`
+			? `source ${SHELL_INIT_DIR}/.zshrc; COLUMNS=${columns}; _dev3_precmd; print -P -- "$PROMPT" | head -n 1`
 			: `source ${SHELL_INIT_DIR}/.bashrc; COLUMNS=${columns}; _dev3_prompt; printf '%s' "\${PS1%%\\\\n*}"`;
 	const env = {
 		PATH: process.env.PATH,
@@ -76,7 +78,7 @@ function promptLine(shell: "zsh" | "bash", worktree: string, cwd: string, column
 	const args = shell === "zsh" ? ["-f", "-c", script] : ["--noprofile", "--norc", "-c", script];
 	const out = spawnSync(shell, args, { cwd, env, encoding: "utf8" });
 	expect(out.stderr).toBe("");
-	return out.stdout.replace(SGR, "").replace(/\\\[|\\\]|\\e\[[0-9;]*m/g, "");
+	return out.stdout.replace(/\n$/, "").replace(SGR, "").replace(/\\\[|\\\]|\\e\[[0-9;]*m/g, "");
 }
 
 describe.each(["zsh", "bash"] as const)("dev3 %s prompt", (shell) => {
@@ -84,7 +86,7 @@ describe.each(["zsh", "bash"] as const)("dev3 %s prompt", (shell) => {
 	let worktree = "";
 
 	beforeAll(() => {
-		writeShellInit();
+		writeShellInit({});
 		if (available) worktree = dirtyWorktree();
 	});
 
@@ -112,4 +114,82 @@ describe.each(["zsh", "bash"] as const)("dev3 %s prompt", (shell) => {
 		expect(line).toContain("+1 ~1 ?1");
 		expect(promptLine(shell, worktree, join(worktree, "src/bun"), 38)).toMatch(/^(?!.*dev-3\.0).*#2063.*src\/bun/);
 	});
+});
+
+describe("dev3 prompt style choice", () => {
+	const zsh = hasShell("zsh");
+	const zshrc = () => readFileSync(`${SHELL_INIT_DIR}/.zshrc`, "utf8");
+	const bashrc = () => readFileSync(`${SHELL_INIT_DIR}/.bashrc`, "utf8");
+
+	afterAll(() => writeShellInit({}));
+
+	it("writes the chosen style into the prompt file the zshrc sources", () => {
+		writeShellInit({ shellPrompt: "minimal" });
+		expect(readFileSync(PROMPT_FILE, "utf8").trim()).toBe(SHELL_PROMPT_STYLES.find((s) => s.id === "minimal")!.source);
+		expect(zshrc()).toContain(`source "${PROMPT_FILE}"`);
+	});
+
+	it("writes custom code verbatim, and the default style when the custom is empty", () => {
+		writeShellInit({ shellPrompt: "custom", shellPromptCustom: "PROMPT='mine> '" });
+		expect(readFileSync(PROMPT_FILE, "utf8").trim()).toBe("PROMPT='mine> '");
+		writeShellInit({ shellPrompt: "custom", shellPromptCustom: "  " });
+		expect(readFileSync(PROMPT_FILE, "utf8").trim()).toBe(SHELL_PROMPT_STYLES[0].source);
+	});
+
+	it("leaves zsh and bash prompts alone when the user keeps their own", () => {
+		writeShellInit({ shellPrompt: "own" });
+		expect(zshrc()).not.toContain("_dev3_precmd");
+		expect(zshrc()).not.toContain("PROMPT=");
+		expect(bashrc()).not.toContain("PS1=");
+		expect(zshrc()).toContain('bindkey "^[[1;3D" backward-word');
+	});
+
+	it.skipIf(!zsh)("falls back to the default prompt when custom code does not parse", () => {
+		const worktree = dirtyWorktree();
+		writeShellInit({ shellPrompt: "custom", shellPromptCustom: "PROMPT='unterminated" });
+		const out = spawnSync("zsh", ["-f", "-c", `source ${SHELL_INIT_DIR}/.zshrc; print -r -- "$PROMPT"`], {
+			cwd: worktree,
+			env: { PATH: process.env.PATH, HOME: worktree, DEV3_WORKTREE_ROOT: worktree },
+			encoding: "utf8",
+		});
+		expect(out.stderr, out.stderr).toContain("dev3: the custom prompt failed to load");
+		expect(out.stdout).toContain("${dev3_segments}");
+	});
+
+	// Bun.spawn is stubbed under vitest, so this drives the same script through node.
+	it.skipIf(!zsh)("renders every built-in style through the preview script with real zsh", () => {
+		const worktree = dirtyWorktree();
+		const engine = join(worktree, ".git", "engine.zsh");
+		writeFileSync(engine, ZSH_PROMPT_ENGINE);
+		for (const style of SHELL_PROMPT_STYLES) {
+			const out = spawnSync("zsh", ["-f", "-c", PREVIEW_RENDER_SCRIPT], {
+				cwd: join(worktree, "src/bun"),
+				env: {
+					PATH: process.env.PATH,
+					HOME: worktree,
+					LANG: "en_US.UTF-8",
+					COLUMNS: "72",
+					DEV3_WORKTREE_ROOT: worktree,
+					DEV3_TASK_SEQ: "42",
+					DEV3_PREVIEW_ENGINE: engine,
+					DEV3_PREVIEW_STYLE: style.source,
+				},
+				encoding: "utf8",
+			});
+			expect(out.stderr, style.id).toBe("");
+			const preview = parsePreviewOutput(out.stdout, 72);
+			if (!preview.ok) throw new Error(style.id);
+			const failed = preview.afterFailedCommand.join("\n").replace(SGR, "");
+			const slow = preview.afterSlowCommand.join("\n").replace(SGR, "");
+			expect(slow.trim().length, style.id).toBeGreaterThan(0);
+			expect(failed, style.id).not.toContain("dev3_");
+		}
+	});
+
+	it.skipIf(!zsh)("every built-in style parses", () => {
+		for (const style of SHELL_PROMPT_STYLES) {
+			expect(spawnSync("zsh", ["-f", "-n", "-c", style.source]).status, style.id).toBe(0);
+		}
+	});
+
 });
