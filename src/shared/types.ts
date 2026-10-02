@@ -4481,6 +4481,24 @@ export interface TmuxPaneInfo {
 	title: string;
 }
 
+/**
+ * One tmux window of a task session, as the in-app window navigator shows it.
+ * Identity is `windowId` (`@N`, stable); `index` is tmux's display number and
+ * renumbers when a window closes. `home` marks the window holding the agent.
+ */
+export interface TmuxWindowEntry {
+	windowId: string;
+	index: number;
+	/** Display name; empty means "no meaningful name" — the UI shows "Window N". */
+	label: string;
+	active: boolean;
+	home: boolean;
+	panes: number;
+	/** Epoch seconds of the window's last output. */
+	activity: number;
+	bell: boolean;
+}
+
 export interface TmuxLayout {
 	sessionName: string;
 	exists: boolean;
@@ -6159,8 +6177,8 @@ export type AppRPCSchema = {
 				response: TmuxLayout;
 			};
 			tmuxWindowNavigate: {
-				params: { taskId: string; step?: "next" | "prev"; index?: number };
-				response: { count: number; activeIndex: number; labels: string[] };
+				params: { taskId: string; step?: "next" | "prev"; windowId?: string };
+				response: { windows: TmuxWindowEntry[] };
 			};
 			tmuxAltClickMoveCursor: {
 				params: { taskId: string; col: number; row: number };

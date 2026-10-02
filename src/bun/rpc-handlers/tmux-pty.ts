@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { assertTaskWorkspacePresent, worktreeAccessState } from "../task-workspace-guard";
-import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
+import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry, WorktreeAccessState } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -54,6 +54,8 @@ import {
 	PANE_CURRENT_COMMAND_FORMAT,
 	PANE_SWITCHER_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
+	WINDOW_PANE_FORMAT,
+	TMUX_LAST_AGENT_PANE_OPTION,
 	SEARCH_STATE_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
@@ -63,6 +65,7 @@ import {
 	findAltClickPane,
 	validAltClickPanes,
 } from "../tmux";
+import { buildWindowEntries } from "../tmux/window-nav";
 import { markAgentPane } from "../agent-prompt";
 import { noteDev3TypedPrompt } from "../agent-typed-prompt-claims";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../temp-paths";
@@ -3123,84 +3126,58 @@ async function tmuxLayout(params: { taskId: string }): Promise<TmuxLayout> {
 	return pty.getTmuxLayout(params.taskId, socket);
 }
 
-interface WindowLayoutInfo {
-	count: number;
-	activeIndex: number;
-	windowIds: string[];
-	labels: string[];
-}
-
 /**
- * Read a session's window layout: how many windows (separate workspaces in the
- * same tmux session), which one is active (by display order), each window's id,
- * and a human label per window. Drives the narrow-viewport WINDOW switcher (the
- * sibling of the pane switcher — window = outer workspace, pane = inner split).
- * Returns an empty layout when the session is gone or tmux errors.
- *
- * Label = the window name. Unlike pane_title (which tmux defaults to the
- * hostname), tmux auto-names a window after its running command, which is
- * already meaningful; the frontend localises an empty name to "Window N".
+ * Read a session's windows for the in-app window navigator (desktop rail/tabs,
+ * narrow switcher): identity, display label, which one is active, which one is
+ * the agent's home, and the background signals (last output, bell). Returns []
+ * when the session is gone or tmux errors.
  */
-async function readWindowLayout(socket: string, tmuxSession: string): Promise<WindowLayoutInfo> {
+async function readWindowEntries(socket: string, tmuxSession: string): Promise<TmuxWindowEntry[]> {
 	try {
-		const rows = await tmux.listWindows(WINDOW_SWITCHER_FORMAT, { target: tmuxSession, socket });
-		const windowIds: string[] = [];
-		const labels: string[] = [];
-		let activeIndex = 0;
-		rows.forEach((row, i) => {
-			windowIds.push(row.windowId);
-			labels.push(row.name.trim());
-			if (row.active) activeIndex = i;
-		});
-		return { count: rows.length, activeIndex, windowIds, labels };
+		const [rows, agentPanes, lastAgentPane] = await Promise.all([
+			tmux.listWindows(WINDOW_SWITCHER_FORMAT, { target: tmuxSession, socket }),
+			tmux.listPanes(WINDOW_PANE_FORMAT, { target: tmuxSession, scope: "session", socket }).catch(() => []),
+			tmux.showOption(tmuxSession, TMUX_LAST_AGENT_PANE_OPTION, { socket }).catch(() => ""),
+		]);
+		return buildWindowEntries(rows, agentPanes, lastAgentPane || null);
 	} catch {
-		return { count: 0, activeIndex: 0, windowIds: [], labels: [] };
+		return [];
 	}
 }
 
 /**
- * Window navigation for the narrow-viewport window switcher. In one round trip
- * it selects the next/prev/absolute window and returns the fresh layout for the
- * switcher UI. There is no zoom concept for windows (each window is its own
- * workspace); the pane carousel handles the one-pane-at-a-time view inside the
- * newly-active window once the frontend re-reads it.
+ * Window navigation for the window navigator. In one round trip it selects the
+ * next/prev window or a window by its stable id, then returns the fresh list.
+ * No step and no id is a plain read (the navigator's poll).
  */
 async function tmuxWindowNavigate(params: {
 	taskId: string;
 	step?: "next" | "prev";
-	index?: number;
-}): Promise<{ count: number; activeIndex: number; labels: string[] }> {
+	windowId?: string;
+}): Promise<{ windows: TmuxWindowEntry[] }> {
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 
-	let info = await readWindowLayout(socket, tmuxSession);
-	if (info.count === 0) return { count: 0, activeIndex: 0, labels: [] };
-
-	// Navigate (only meaningful with more than one window). `:+` / `:-` are the
-	// next / previous window and wrap around, mirroring the pane carousel.
-	if (info.count > 1) {
-		let navigated = false;
-		if (params.step === "next") {
-			await tmux.selectWindow(`${tmuxSession}:+`, { socket, bestEffort: true });
-			navigated = true;
-		} else if (params.step === "prev") {
-			await tmux.selectWindow(`${tmuxSession}:-`, { socket, bestEffort: true });
-			navigated = true;
-		} else if (typeof params.index === "number" && info.windowIds[params.index]) {
-			await tmux.selectWindow(info.windowIds[params.index], { socket, bestEffort: true });
-			navigated = true;
+	let windows = await readWindowEntries(socket, tmuxSession);
+	if (windows.length > 1) {
+		// `:+` / `:-` are the next / previous window and wrap around.
+		const target = params.step === "next"
+			? `${tmuxSession}:+`
+			: params.step === "prev"
+				? `${tmuxSession}:-`
+				: windows.find((w) => w.windowId === params.windowId)?.windowId;
+		if (target) {
+			await tmux.selectWindow(target, { socket, bestEffort: true });
+			windows = await readWindowEntries(socket, tmuxSession);
+			log.info("← tmuxWindowNavigate", {
+				taskId: params.taskId.slice(0, 8),
+				step: params.step ?? "id",
+				count: windows.length,
+				active: windows.findIndex((w) => w.active),
+			});
 		}
-		if (navigated) info = await readWindowLayout(socket, tmuxSession);
 	}
-
-	log.info("← tmuxWindowNavigate", {
-		taskId: params.taskId.slice(0, 8),
-		step: params.step ?? "none",
-		index: params.index ?? -1,
-		count: info.count,
-		activeIndex: info.activeIndex,
-	});
-	return { count: info.count, activeIndex: info.activeIndex, labels: info.labels };
+	return { windows };
 }
 
 /**

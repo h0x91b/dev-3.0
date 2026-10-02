@@ -196,9 +196,10 @@ describe("list/parse methods", () => {
 	});
 
 	it("listWindows and listSessions pass the format string", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "@1\t1\tmain\n" });
+		// The pane title is the free-text tail: a TAB inside it must not shift the columns.
+		const { client, spawnFn } = makeClient({ stdout: "@1\t0\t1\t2\t1700\t0\tbox\tmain\tFix\tauth\n" });
 		const windows = await client.listWindows(WINDOW_SWITCHER_FORMAT, { target: "dev3-abc" });
-		expect(windows).toEqual([{ windowId: "@1", active: true, name: "main" }]);
+		expect(windows).toEqual([{ windowId: "@1", index: 0, active: true, panes: 2, activity: 1700, bell: false, hostShort: "box", name: "main", title: "Fix\tauth" }]);
 		expect(argvOf(spawnFn)).toContain(WINDOW_SWITCHER_FORMAT.formatString);
 
 		const { client: sessions, spawnFn: sessionsSpawn } = makeClient({ stdout: "dev3-a\t1\t123\t/tmp\n" });

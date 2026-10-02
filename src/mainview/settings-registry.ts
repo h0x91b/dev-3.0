@@ -131,6 +131,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "local",
 	},
 	{
+		id: "window-nav",
+		category: "appearance",
+		titleKey: "settings.windowNav",
+		descriptionKey: "settings.windowNavDesc",
+		anchor: "window-nav",
+		storage: "local",
+	},
+	{
 		id: "streamer-mode",
 		category: "appearance",
 		titleKey: "settings.streamerMode",

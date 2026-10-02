@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useTmuxWindows } from "../hooks/useTmuxWindows";
+import { windowName } from "./TerminalWindowNav";
 
 /**
  * Narrow-viewport tmux WINDOW switcher — the sibling of {@link MobilePaneCarousel}.
@@ -16,63 +17,31 @@ import { useT } from "../i18n";
  * (which are inherently keyboard-reachable; Arrow keys work while the bar is
  * focused). Single-window sessions render no chrome at all.
  */
-const WINDOW_POLL_MS = 3000;
-
-interface WindowInfo {
-	count: number;
-	activeIndex: number;
-	labels: string[];
-}
-
 function MobileWindowCarousel({
 	taskId,
+	taskTitle,
 	onSwitch,
 	children,
 }: {
 	taskId: string;
+	/** Names the agent's home window, matching the tmux bar. */
+	taskTitle?: string;
 	onSwitch?: () => void;
 	children: ReactNode;
 }) {
 	const t = useT();
-	const [info, setInfo] = useState<WindowInfo>({ count: 0, activeIndex: 0, labels: [] });
+	const { windows, active, home, navigate: request } = useTmuxWindows(taskId);
 	const [menuOpen, setMenuOpen] = useState(false);
-	const busyRef = useRef(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
+	// Only an actual move tells the pane carousel to re-read the new window's panes.
 	const navigate = useCallback(
-		async (opts?: { step?: "next" | "prev"; index?: number }): Promise<WindowInfo | null> => {
-			if (busyRef.current) return null;
-			busyRef.current = true;
-			try {
-				const res = await api.request.tmuxWindowNavigate({ taskId, ...opts });
-				setInfo(res);
-				// Only when we actually moved windows — so the pane carousel re-reads +
-				// re-zooms the new window's panes. A plain read (poll) must not retrigger.
-				if (opts && (opts.step || typeof opts.index === "number")) onSwitch?.();
-				return res;
-			} catch {
-				return null;
-			} finally {
-				busyRef.current = false;
-			}
+		async (opts: { step?: "next" | "prev"; windowId?: string }) => {
+			await request(opts);
+			onSwitch?.();
 		},
-		[taskId, onSwitch],
+		[request, onSwitch],
 	);
-
-	// Poll the window list read-only while mounted (windows open/close outside
-	// React — ⌃B c, extra agents). Cheap: one list-windows per 3 s per open task.
-	useEffect(() => {
-		let cancelled = false;
-		const tick = async () => {
-			if (!cancelled) await navigate();
-		};
-		void tick();
-		const id = setInterval(tick, WINDOW_POLL_MS);
-		return () => {
-			cancelled = true;
-			clearInterval(id);
-		};
-	}, [taskId, navigate]);
 
 	// Close the window dropdown on outside click / Escape.
 	useEffect(() => {
@@ -103,9 +72,8 @@ function MobileWindowCarousel({
 		}
 	}
 
-	const multi = info.count > 1;
-	const active = Math.max(0, Math.min(info.activeIndex, info.count - 1));
-	const windowLabel = (i: number) => info.labels[i]?.trim() || t("windowPager.window", { index: String(i + 1) });
+	const multi = windows.length > 1;
+	const showHome = !!home && !home.active;
 
 	// Touch-sized, in lockstep with the pane bar right below it.
 	const chevronBtn =
@@ -133,45 +101,58 @@ function MobileWindowCarousel({
 						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F053}"}</span>
 					</button>
 
+					{showHome && home && (
+						<button
+							type="button"
+							onClick={() => navigate({ windowId: home.windowId })}
+							aria-label={t("windowPager.home")}
+							title={t("windowPager.home")}
+							className={chevronBtn}
+						>
+							<span aria-hidden="true" className="text-base leading-none">✦</span>
+						</button>
+					)}
+
 					<div ref={menuRef} className="relative flex-1 min-w-0">
 						<button
 							type="button"
 							onClick={() => setMenuOpen((o) => !o)}
 							aria-haspopup="listbox"
 							aria-expanded={menuOpen}
-							aria-label={t("windowPager.switchWindow")}
+							aria-label={active ? `${t("windowPager.switchWindow")}: ${active.index}. ${windowName(active, t, taskTitle)}` : t("windowPager.switchWindow")}
 							className="w-full h-11 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
 						>
-							<span className="text-base-lg leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F05C2}"}</span>
+							<span aria-hidden="true" className="text-base-lg leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{active?.home ? "✦" : "\u{F05C2}"}</span>
 							<span className="truncate text-sm font-medium">
-								{active + 1}. {windowLabel(active)}
+								{active ? `${active.index}. ${windowName(active, t, taskTitle)}` : ""}
 							</span>
-							<span className="text-micro leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
+							<span aria-hidden="true" className="text-micro leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
 						</button>
 
 						{menuOpen && (
 							<div
 								role="listbox"
+								aria-label={t("windowPager.role")}
 								className="absolute left-0 right-0 top-full mt-1 z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-1 max-h-64 overflow-auto"
 							>
-								{Array.from({ length: info.count }, (_, i) => (
+								{windows.map((w) => (
 									<button
-										key={i}
+										key={w.windowId}
 										type="button"
 										role="option"
-										aria-selected={i === active}
+										aria-selected={w.active}
 										onClick={() => {
 											setMenuOpen(false);
-											void navigate({ index: i });
+											void navigate({ windowId: w.windowId });
 										}}
 										className={`w-full flex items-center gap-2 px-2.5 min-h-[2.75rem] rounded-lg text-left text-sm transition-colors ${
-											i === active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
+											w.active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
 										}`}
 									>
-										<span className="text-fg-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-										<span className="truncate flex-1">{windowLabel(i)}</span>
-										{i === active && (
-											<span className="flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F00C}"}</span>
+										<span aria-hidden="true" className="text-fg-muted tabular-nums w-4 flex-shrink-0">{w.home ? "✦" : w.index}</span>
+										<span className="truncate flex-1">{windowName(w, t, taskTitle)}{w.home ? ` · ${t("windowNav.home")}` : ""}</span>
+										{w.active && (
+											<span aria-hidden="true" className="flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F00C}"}</span>
 										)}
 									</button>
 								))}

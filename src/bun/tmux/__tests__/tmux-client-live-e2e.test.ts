@@ -27,6 +27,7 @@ import {
 	PANE_SWITCHER_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
+	WINDOW_PANE_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
@@ -197,6 +198,17 @@ describe.skipIf(!TMUX_VERSION)("TmuxClient against a live tmux server", () => {
 		const windows = await client.listWindows(WINDOW_SWITCHER_FORMAT, { target: SESSION });
 		expect(windows.length).toBe(2);
 		expect(windows.map((w) => w.name)).toContain("live2");
+		// A fresh pane's title is the hostname — the window navigator relies on
+		// host_short naming it so that it can fall back to the window name.
+		const live2 = windows.find((w) => w.name === "live2")!;
+		expect(live2.title.startsWith(live2.hostShort)).toBe(true);
+		expect(live2.index).toBeGreaterThanOrEqual(0);
+
+		// The agent marker is a pane user option; the format reads it per pane.
+		await client.setPaneOption(paneId!, "@dev3_agent", "1");
+		const panes = await client.listPanes(WINDOW_PANE_FORMAT, { target: SESSION, scope: "session" });
+		expect(panes.find((p) => p.paneId === paneId)).toMatchObject({ windowId: live2.windowId, agent: true });
+		expect(panes.filter((p) => p.paneId !== paneId).every((p) => !p.agent)).toBe(true);
 		await client.selectWindow(windows[0].windowId);
 	});
 

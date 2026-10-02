@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openTmuxWindow } from "./terminal-window-nav";
 import { Terminal, FitAddon } from "ghostty-web";
 import { useT } from "./i18n";
 import { toast } from "./toast";
@@ -2334,7 +2335,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			else if (matchesShortcut(e, "pane-swap-next", ctx)) pane({ kind: "swapStep", step: "next" });
 			else if (matchesShortcut(e, "pane-swap-prev", ctx)) pane({ kind: "swapStep", step: "prev" });
 			else if (matchesShortcut(e, "tmux-new-window", ctx)) {
-				fire(() => void api.request.tmuxNewWindow({ taskId }).catch(() => {}));
+				fire(() => void openTmuxWindow(taskId));
 			}
 			// Only a tmux session has a prefix; on native the key stays with the page.
 			else if (tmuxStreamRef.current && matchesShortcut(e, "tmux-prefix", ctx)) {

@@ -614,6 +614,17 @@ body, #root {
 	display: none;
 }
 
+/* ---- Terminal window navigator (rail / tabs): scrolls, no visible bar ---- */
+
+.window-nav-scroll {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.window-nav-scroll::-webkit-scrollbar {
+	display: none;
+}
+
 /* ---- Artifact viewer toolbar: scrolls sideways, no visible bar ----
    A 7px always-on bar inside a 40px toolbar would eat the row's height and
    clip the icons it is supposed to give access to. */

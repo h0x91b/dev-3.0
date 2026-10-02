@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { api } from "../rpc";
+import { openTmuxWindow } from "../terminal-window-nav";
 import { useT } from "../i18n";
 import { confirm } from "../confirm";
 import BottomSheet from "./BottomSheet";
@@ -111,7 +111,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 		async (action: ManageAction) => {
 			setSheetOpen(false);
 			if (action === "newWindow") {
-				await api.request.tmuxNewWindow({ taskId }).catch(() => {});
+				await openTmuxWindow(taskId);
 			} else if (action === "close") {
 				// Closing the only pane tears down the session — confirm first.
 				let count = 0;

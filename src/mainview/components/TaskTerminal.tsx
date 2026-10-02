@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
+import { getTaskTitle } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { debugLog } from "../debug-log";
@@ -20,6 +21,7 @@ import ScrollToLatestButton from "./ScrollToLatestButton";
 /** Scroll-signal key for the tmux path, which renders one TerminalView for the whole session. */
 const TMUX_VIEW = "tmux-view";
 import MobileWindowCarousel from "./MobileWindowCarousel";
+import TerminalWindowNav from "./TerminalWindowNav";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
 import NativeViewerBar from "./NativeViewerBar";
@@ -1213,20 +1215,22 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-					<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
+					<MobileWindowCarousel taskId={taskId} taskTitle={task ? getTaskTitle(task) : undefined} onSwitch={() => setWindowEpoch((e) => e + 1)}>
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
 					{scrollToLatestFor(TMUX_VIEW, termHandle)}
 					{setupFailedNotice}
 				</div>
 			) : (
-				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
-					{terminalArea}
-					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
-					{ptyUrl && <ClosePanePicker taskId={taskId} />}
-					{scrollToLatestFor(TMUX_VIEW, termHandle)}
-					{setupFailedNotice}
-				</div>
+				<TerminalWindowNav taskId={taskId} taskStatus={task?.status} taskTitle={task ? getTaskTitle(task) : undefined} enabled={!!ptyUrl}>
+					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						{terminalArea}
+						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
+						{ptyUrl && <ClosePanePicker taskId={taskId} />}
+						{scrollToLatestFor(TMUX_VIEW, termHandle)}
+						{setupFailedNotice}
+					</div>
+				</TerminalWindowNav>
 			)}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
