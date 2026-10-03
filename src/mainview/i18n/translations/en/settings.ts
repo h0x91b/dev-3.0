@@ -563,7 +563,12 @@ const settings = {
 	// Agent Accounts (account switcher)
 	"settings.agentAccounts": "Agent accounts",
 	"settings.agentAccountsDesc": "Keep multiple logins per agent CLI and hot-swap the active one without re-login.",
-	"settings.accountsSystemLogin": "System login (~/.claude)",
+	"settings.accountsDefaultLogin": "Default login ({dir})",
+	"settings.accountsProjectLogin": "Project login ({dir})",
+	"settings.accountsNotSignedIn": "Not signed in",
+	"settings.accountsPinnedHint": "Projects that pin their own login always use it; the default login only applies to projects without one.",
+	"settings.accountsPinnedBy": "Pinned by {projects}",
+	"settings.accountsPinnedOverridden": "Your dev3-managed Claude accounts override these pins: launches set CLAUDE_CONFIG_DIR from the selected account instead.",
 	"settings.accountsActive": "Default",
 	"settings.accountsImportCurrent": "Import current login",
 	"settings.accountsAdd": "Add account",

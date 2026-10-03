@@ -72,8 +72,9 @@ vi.mock("../../rpc", () => ({
 			}),
 			spawnAgentInTask: vi.fn().mockResolvedValue({ handoff: null }),
 			previewTaskHandoff: vi.fn().mockResolvedValue(null),
+			getProjectClaudeLogin: vi.fn().mockResolvedValue({ configDir: null, identity: null }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
-				claude: { accounts: [], activeId: null, systemIdentity: null },
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 			// The memory banner lives in the header; without this its effect throws.

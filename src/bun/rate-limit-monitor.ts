@@ -26,6 +26,7 @@ import {
 	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
 	rateLimitActivityAt,
+	rateLimitLoginKey,
 } from "../shared/rate-limits";
 import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
@@ -47,6 +48,9 @@ export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
 /** Per-managed-account Claude dumps. The legacy global dump remains the system
  * login fallback and is also written for compatibility with older builds. */
 export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
+/** One dump per project-pinned `CLAUDE_CONFIG_DIR`, named by a hash of the dir;
+ *  the dir itself is stored inside each dump. */
+export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-config-dirs");
 /** The dev3-managed settings file injected via `claude --settings <path>`. It
  * always suppresses the one-time bypass-permission confirmation and optionally
  * routes statusLine through `dev3 statusline` (see buildClaudeManagedSettings). */
@@ -103,6 +107,14 @@ export function ensureClaudeStatusLineSettings(includeStatusLine = true): string
 	}
 }
 
+function listJsonFiles(dir: string): string[] {
+	try {
+		return readdirSync(dir).filter((name) => name.endsWith(".json"));
+	} catch {
+		return [];
+	}
+}
+
 /** Parse the dump written by `dev3 statusline`. Null when absent/corrupt. */
 export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PATH, accountId?: string | null): AgentRateLimitSnapshot | null {
 	try {
@@ -110,6 +122,7 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		const parsed = JSON.parse(readFileSync(dumpPath, "utf-8")) as {
 			capturedAt?: number;
 			accountId?: unknown;
+			configDir?: unknown;
 			payload?: unknown;
 		};
 		const capturedAt = typeof parsed.capturedAt === "number" ? parsed.capturedAt : statSync(dumpPath).mtimeMs;
@@ -118,7 +131,9 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		const dumpAccountId =
 			parsed.accountId === null ? null : typeof parsed.accountId === "string" && parsed.accountId.trim() ? parsed.accountId : undefined;
 		const resolvedAccountId = accountId !== undefined ? accountId : dumpAccountId;
-		return resolvedAccountId === undefined ? snapshot : { ...snapshot, accountId: resolvedAccountId };
+		const attributed = resolvedAccountId === undefined ? snapshot : { ...snapshot, accountId: resolvedAccountId };
+		const configDir = typeof parsed.configDir === "string" && parsed.configDir.trim() ? parsed.configDir : null;
+		return configDir && !resolvedAccountId ? { ...attributed, configDir } : attributed;
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
 	}
@@ -285,7 +300,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const addSnapshot = (snapshot: AgentRateLimitSnapshot | null): void => {
 		if (!snapshot || !isRateLimitSnapshotRecent(snapshot, now)) return;
 		if (snapshot.source === "claude" && snapshot.accountId && !knownClaudeAccountIds.has(snapshot.accountId)) return;
-		const key = `${snapshot.source}:${snapshot.accountId ?? "system"}`;
+		const key = rateLimitLoginKey(snapshot);
 		const existing = byAccount.get(key);
 		if (!existing || rateLimitActivityAt(snapshot) > rateLimitActivityAt(existing) || snapshot.capturedAt > existing.capturedAt) {
 			byAccount.set(key, snapshot);
@@ -300,6 +315,10 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	for (const dir of listClaudeAccountDirs()) {
 		const accountId = basename(dir);
 		addSnapshot(readClaudeSnapshot(join(CLAUDE_ACCOUNT_RATE_LIMITS_DIR, `${accountId}.json`), accountId));
+	}
+	for (const name of listJsonFiles(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR)) {
+		const snapshot = readClaudeSnapshot(join(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR, name), null);
+		if (snapshot?.configDir) addSnapshot(snapshot);
 	}
 
 	// Codex sessions are naturally partitioned by CODEX_HOME. Enrich only roots
@@ -338,7 +357,7 @@ function reportKey(report: AgentRateLimitsReport): string {
 	return report.snapshots
 		.map(
 			(s) =>
-				`${s.source}:${s.accountId ?? "system"}:${s.capturedAt}:${s.activeAt ?? ""}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}`,
+				`${rateLimitLoginKey(s)}:${s.capturedAt}:${s.activeAt ?? ""}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}`,
 		)
 		.join("|");
 }

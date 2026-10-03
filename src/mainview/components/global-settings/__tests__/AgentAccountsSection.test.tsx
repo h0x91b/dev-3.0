@@ -18,6 +18,7 @@ vi.mock("../../../rpc", () => ({
 			setActiveAgentAccount: vi.fn(),
 			removeAgentAccount: vi.fn(),
 			renameAgentAccount: vi.fn(),
+			listPinnedClaudeLogins: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));
@@ -53,7 +54,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 				},
 			],
 			activeId: null,
-			systemIdentity: {
+			systemConfigDir: "/home/me/.claude", systemIdentity: {
 				email: "main@example.com",
 				organization: null,
 				plan: null,
@@ -91,7 +92,7 @@ beforeEach(() => {
 describe("AgentAccountsSection", () => {
 	it("renders the system login row, accounts, and plan badges", async () => {
 		renderSection();
-		expect(await screen.findByText("System login (~/.claude)")).toBeTruthy();
+		expect(await screen.findByText("Default login (/home/me/.claude)")).toBeTruthy();
 		expect(screen.getByText("work@example.com")).toBeTruthy();
 		expect(screen.getByText("main@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
@@ -140,7 +141,7 @@ describe("AgentAccountsSection", () => {
 		mockedApi.request.importAgentAccount.mockResolvedValue({} as any);
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 		const importButtons = screen.getAllByText("Import current login");
 		await user.click(importButtons[0]);
 		await waitFor(() => {
@@ -156,7 +157,7 @@ describe("AgentAccountsSection", () => {
 		mockedApi.request.completeAgentAccountLogin.mockResolvedValue({} as any);
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 
 		const addButtons = screen.getAllByText("Add account");
 		await user.click(addButtons[0]);
@@ -178,7 +179,7 @@ describe("AgentAccountsSection", () => {
 		});
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 		await user.click(screen.getAllByText("Add account")[0]);
 		await screen.findByText("CLAUDE_CONFIG_DIR='/x' claude /login");
 
@@ -219,7 +220,7 @@ describe("AgentAccountsSection", () => {
 		mockedApi.request.addAgentApiProfile.mockResolvedValue({} as any);
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 
 		await user.click(screen.getByText("Add API profile"));
 		await user.type(screen.getByPlaceholderText("https://openrouter.ai/api"), "https://openrouter.ai/api");
@@ -243,7 +244,7 @@ describe("AgentAccountsSection", () => {
 	it("keeps the Add profile button disabled while the form is empty", async () => {
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 
 		await user.click(screen.getByText("Add API profile"));
 		expect((screen.getByText("Add profile") as HTMLButtonElement).disabled).toBe(true);
@@ -272,7 +273,7 @@ describe("AgentAccountsSection", () => {
 						},
 					],
 					activeId: "api-1",
-					systemIdentity: null,
+					systemConfigDir: "/home/me/.claude", systemIdentity: null,
 				},
 			}),
 		);
@@ -300,7 +301,7 @@ describe("AgentAccountsSection", () => {
 						},
 					],
 					activeId: "api-1",
-					systemIdentity: null,
+					systemConfigDir: "/home/me/.claude", systemIdentity: null,
 				},
 			}),
 		);
@@ -352,7 +353,7 @@ describe("AgentAccountsSection", () => {
 		mockedApi.request.addAgentApiProfile.mockResolvedValue({} as any);
 		const user = userEvent.setup();
 		renderSection();
-		await screen.findByText("System login (~/.claude)");
+		await screen.findByText("Default login (/home/me/.claude)");
 
 		await user.click(screen.getByText("Add API profile"));
 		// The Haiku slot's Model ID placeholder is a deepseek example.
@@ -389,7 +390,7 @@ describe("AgentAccountsSection", () => {
 						},
 					],
 					activeId: "api-1",
-					systemIdentity: null,
+					systemConfigDir: "/home/me/.claude", systemIdentity: null,
 				},
 			}),
 		);
@@ -456,5 +457,46 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText("Workspace Globex ChatGPT Enterprise")).toBeTruthy();
 		expect(screen.queryByText("Workspace b8e0e9ae")).toBeNull();
+	});
+
+	it("lists each project-pinned Claude login beside ~/.claude, with the projects that pin it", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				claude: { ...makeState().claude, accounts: [] },
+			}),
+		);
+		mockedApi.request.listPinnedClaudeLogins.mockResolvedValueOnce([
+			{
+				configDir: "/mnt/e/Projects/app/.claude",
+				identity: { email: "pin@example.com", organization: null, plan: null, planLabel: null, accountId: null },
+				projectNames: ["app", "app-docs"],
+			},
+		]);
+		renderSection();
+		expect(await screen.findByText("Project login (…/app/.claude)")).toBeTruthy();
+		expect(screen.getByText("pin@example.com")).toBeTruthy();
+		expect(screen.getByText("Pinned by app, app-docs")).toBeTruthy();
+		expect(screen.getByText("Default login (/home/me/.claude)")).toBeTruthy();
+		expect(screen.queryByText(/override these pins/)).toBeNull();
+		expect(screen.getByText(/the default login only applies to projects without one/)).toBeTruthy();
+		// Informational rows carry no radio circle that would read as "not selected".
+		expect(screen.getByTestId("pinned-claude-logins").querySelector(".rounded-full")).toBeNull();
+	});
+
+	it("says when nobody is signed into the default login", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({ claude: { ...makeState().claude, accounts: [], systemIdentity: null } }),
+		);
+		renderSection();
+		expect(await screen.findByText("Not signed in")).toBeTruthy();
+	});
+
+	it("warns that managed accounts override the pins", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
+		mockedApi.request.listPinnedClaudeLogins.mockResolvedValueOnce([
+			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] },
+		]);
+		renderSection();
+		expect(await screen.findByText(/override these pins/)).toBeTruthy();
 	});
 });

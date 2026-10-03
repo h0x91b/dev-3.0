@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { claudeDumpFilePaths, resolveOriginalStatusLine } from "../commands/statusline";
+import { claudeDumpFilePaths, configDirDumpName, resolveOriginalStatusLine } from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -97,5 +97,20 @@ describe("claudeDumpFilePaths", () => {
 		const paths = claudeDumpFilePaths("acc-123", base);
 		expect(paths).toEqual([join(base, "claude", "acc-123.json")]);
 		expect(paths).not.toContain(join(base, "claude.json"));
+	});
+
+	it("writes a project-pinned config dir to its own per-dir file, never claude.json", () => {
+		const paths = claudeDumpFilePaths(null, base, "/work/proj/.claude");
+		expect(paths).toEqual([join(base, "claude-config-dirs", `${configDirDumpName("/work/proj/.claude")}.json`)]);
+	});
+
+	it("lets a managed account id win over a config dir", () => {
+		expect(claudeDumpFilePaths("acc-123", base, "/work/proj/.claude")).toEqual([join(base, "claude", "acc-123.json")]);
+	});
+
+	it("names each config dir stably and distinctly", () => {
+		expect(configDirDumpName("/a/.claude")).toBe(configDirDumpName("/a/.claude"));
+		expect(configDirDumpName("/a/.claude")).not.toBe(configDirDumpName("/b/.claude"));
+		expect(configDirDumpName("/a/.claude")).toMatch(/^[0-9a-f]{16}$/);
 	});
 });

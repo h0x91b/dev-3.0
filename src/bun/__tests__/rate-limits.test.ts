@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	extractCodexSnapshotFromRolloutLines,
+	findRateLimitSnapshot,
+	rateLimitLoginKey,
 	formatResetDelta,
 	formatStatusLineSegment,
 	isRateLimitSnapshotRecent,
@@ -12,6 +14,8 @@ import {
 	parseCodexRateLimits,
 	RATE_LIMIT_ACTIVITY_WINDOW_MS,
 	rateLimitActivityAt,
+	scopeRateLimitSnapshots,
+	headerPillWindows,
 	windowLabel,
 	worstSnapshotWindow,
 	worstWindow,
@@ -255,5 +259,74 @@ describe("formatStatusLineSegment", () => {
 
 	it("returns empty for null/empty snapshots", () => {
 		expect(formatStatusLineSegment(null, NOW)).toBe("");
+	});
+});
+
+describe("findRateLimitSnapshot / rateLimitLoginKey", () => {
+	const base = { capturedAt: 1, windows: [], creditsBalance: null, monthlyCredits: null, planType: null };
+	const system = { ...base, source: "claude" as const, accountId: null };
+	const pinned = { ...base, source: "claude" as const, accountId: null, configDir: "/p/.claude" };
+	const managed = { ...base, source: "claude" as const, accountId: "acc" };
+	const report = { snapshots: [pinned, system, managed], generatedAt: 1 };
+
+	it("never hands a pinned dir's reading to the system row", () => {
+		expect(findRateLimitSnapshot(report, "claude", null)).toBe(system);
+		expect(findRateLimitSnapshot(report, "claude", null, "/p/.claude")).toBe(pinned);
+		expect(findRateLimitSnapshot(report, "claude", "acc")).toBe(managed);
+		expect(findRateLimitSnapshot(report, "claude", null, "/other/.claude")).toBeNull();
+	});
+
+	it("keys each login apart", () => {
+		const keys = new Set([system, pinned, managed].map(rateLimitLoginKey));
+		expect(keys.size).toBe(3);
+		expect(rateLimitLoginKey(system)).toBe("claude:system");
+	});
+});
+
+describe("scopeRateLimitSnapshots", () => {
+	const reading = (source: "claude" | "codex", configDir?: string) => ({
+		source,
+		accountId: null,
+		...(configDir ? { configDir } : {}),
+		capturedAt: 1,
+		windows: [],
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+	});
+	const all = [reading("claude", "/a/.claude"), reading("claude", "/b/.claude"), reading("claude"), reading("codex")];
+
+	it("keeps everything with no scope", () => {
+		expect(scopeRateLimitSnapshots(all, undefined)).toHaveLength(4);
+	});
+
+	it("keeps one pinned dir's Claude readings and every other agent's", () => {
+		expect(scopeRateLimitSnapshots(all, { configDir: "/a/.claude" })).toEqual([all[0], all[3]]);
+	});
+
+	it("keeps only unpinned Claude readings when the project has no pin", () => {
+		expect(scopeRateLimitSnapshots(all, { configDir: null })).toEqual([all[2], all[3]]);
+	});
+});
+
+describe("headerPillWindows", () => {
+	const w = (id: string, usedPercent: number, windowMinutes: number | null) => ({ id, usedPercent, resetsAt: null, windowMinutes });
+	const snap = (windows: ReturnType<typeof w>[]) => ({
+		source: "claude" as const,
+		capturedAt: 1,
+		windows,
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+	});
+
+	it("lists the 5h window before the weekly one, whatever the input order", () => {
+		const out = headerPillWindows(snap([w("seven_day", 55, 10080), w("five_hour", 7, 300)]));
+		expect(out.map((x) => x.id)).toEqual(["five_hour", "seven_day"]);
+	});
+
+	it("leaves monthly credits out beside timed windows, and keeps them when they are all there is", () => {
+		expect(headerPillWindows(snap([w("monthly_credits", 40, null), w("primary", 10, 300)])).map((x) => x.id)).toEqual(["primary"]);
+		expect(headerPillWindows(snap([w("monthly_credits", 40, null)])).map((x) => x.id)).toEqual(["monthly_credits"]);
 	});
 });

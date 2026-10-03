@@ -58,6 +58,24 @@ describe("readClaudeSnapshot", () => {
 		expect(readClaudeSnapshot(dump, "explicit-account")?.accountId).toBe("explicit-account");
 	});
 
+	it("tags a pinned config dir's dump with that dir, and never a managed account's", () => {
+		const dump = join(tmp, "dir.json");
+		const payload = { rate_limits: { five_hour: { used_percentage: 40 } } };
+		writeFileSync(dump, JSON.stringify({ capturedAt: 1, accountId: null, configDir: "/p/.claude", payload }));
+		const snap = readClaudeSnapshot(dump, null);
+		expect(snap?.configDir).toBe("/p/.claude");
+		expect(snap?.accountId).toBeNull();
+
+		writeFileSync(dump, JSON.stringify({ capturedAt: 1, accountId: "acc", configDir: "/p/.claude", payload }));
+		expect(readClaudeSnapshot(dump)?.configDir).toBeUndefined();
+	});
+
+	it("leaves a legacy system dump without a config dir", () => {
+		const dump = join(tmp, "claude.json");
+		writeFileSync(dump, JSON.stringify({ capturedAt: 1, payload: { rate_limits: { five_hour: { used_percentage: 1 } } } }));
+		expect(readClaudeSnapshot(dump)?.configDir).toBeUndefined();
+	});
+
 	it("returns null for a missing file", () => {
 		expect(readClaudeSnapshot(join(tmp, "nope.json"))).toBeNull();
 	});

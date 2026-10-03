@@ -303,6 +303,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 											variants.map((v, i) => (i === index ? { ...v, ...next } : v)),
 										)}
 										accountId={variant.accountId}
+										projectId={request.projectId}
 										onAccountChange={(accountId) => updateVariants(
 											variants.map((v, i) => (i === index ? { ...v, accountId } : v)),
 										)}

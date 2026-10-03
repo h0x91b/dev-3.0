@@ -13,7 +13,7 @@ vi.mock("../../../rpc", () => ({
 			setAgentBinaryPath: vi.fn(() => Promise.resolve()),
 			listAgentAccounts: vi.fn(() =>
 				Promise.resolve({
-					claude: { accounts: [], activeId: null, systemIdentity: null },
+					claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 					codex: { accounts: [], activeId: null, currentIdentity: null },
 				}),
 			),

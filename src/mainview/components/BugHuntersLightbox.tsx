@@ -177,6 +177,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 						{/* Provider → Model → Mode picker */}
 						<AgentConfigPicker
 							idPrefix="bughunt"
+							projectId={project.id}
 							agents={agents}
 							agentId={agentId}
 							configId={configId}

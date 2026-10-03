@@ -395,6 +395,7 @@ function LaunchVariantsModal({
 								{/* Provider → Model → Mode (stacks in a narrow dialog) */}
 								<AgentConfigPicker
 									idPrefix={`variant-${index}`}
+									projectId={project.id}
 									agents={agents}
 									agentId={variant.agentId}
 									configId={variant.configId}

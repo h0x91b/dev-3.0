@@ -1,5 +1,7 @@
 # 155 — Rate-limit dumps: isolate managed accounts from the shared claude.json
 
+> Partly superseded on 2026-10-01 by `decisions/2026/10/01/claude-usage-per-config-dir.md`: a session with no managed id that runs under a project-pinned `CLAUDE_CONFIG_DIR` now writes `claude-config-dirs/<hash>.json`, not `claude.json`. Only `~/.claude` sessions still write `claude.json`.
+
 ## Context
 
 The agent rate-limit panel kept losing Claude accounts: an account would appear,

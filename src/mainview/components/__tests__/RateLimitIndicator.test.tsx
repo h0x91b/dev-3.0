@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -23,7 +23,7 @@ const mockedAccounts = api.request.listAgentAccounts as ReturnType<typeof vi.fn>
 
 function emptyAccounts(): AgentAccountsState {
 	return {
-		claude: { accounts: [], activeId: null, systemIdentity: null },
+		claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 	};
 }
@@ -199,7 +199,7 @@ describe("RateLimitIndicator", () => {
 					{ id: "work", kind: "claude", label: "Work Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
 				],
 				activeId: null,
-				systemIdentity: null,
+				systemConfigDir: "/home/me/.claude", systemIdentity: null,
 			},
 			codex: { accounts: [], activeId: null, currentIdentity: null },
 		});
@@ -244,10 +244,22 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await openUsagePanel();
-		expect(await screen.findByText("5h")).toBeTruthy();
-		expect(screen.getByText("5% used")).toBeTruthy();
-		expect(screen.getByText("7d")).toBeTruthy();
-		expect(screen.getByText("42% used")).toBeTruthy();
+		const panel = within(await screen.findByRole("dialog"));
+		expect(panel.getByText("5h")).toBeTruthy();
+		expect(panel.getByText("5% used")).toBeTruthy();
+		expect(panel.getByText("7d")).toBeTruthy();
+		expect(panel.getByText("42% used")).toBeTruthy();
+	});
+
+	it("spells out both the 5h and the weekly window on the pill, coloured by the fuller one", async () => {
+		mockedGet.mockResolvedValue(report(97));
+		renderIndicator();
+		await act(async () => {});
+		const pill = getIndicator();
+		expect(pill.textContent).toContain("5h5%");
+		expect(pill.textContent).toContain("7d97%");
+		expect(pill.textContent!.indexOf("5h")).toBeLessThan(pill.textContent!.indexOf("7d"));
+		expect(pill.className).toContain("text-danger");
 	});
 
 	it("renders a usage bar per window with severity-colored fill and clamped width", async () => {
@@ -255,8 +267,7 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await openUsagePanel();
-		await screen.findByText("5h");
-		const dialog = screen.getByRole("dialog");
+		const dialog = await screen.findByRole("dialog");
 		const fills = dialog.querySelectorAll("[class*='rounded-full'] > span");
 		expect(fills.length).toBe(2);
 		expect((fills[0] as HTMLElement).className).toContain("bg-accent");
@@ -287,15 +298,15 @@ describe("RateLimitIndicator", () => {
 		expect(screen.queryByText(/credits: unlimited/)).toBeNull();
 	});
 
-	it("renders a mini usage bar inside the header pill", async () => {
+	it("renders one mini bar per window inside the header pill, 5h on top", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		const pill = getIndicator();
-		const fill = pill.querySelector('span[aria-hidden="true"] > span > span');
-		expect(fill).toBeTruthy();
-		expect((fill as HTMLElement).style.width).toBe("42%");
-		expect((fill as HTMLElement).className).toContain("bg-accent");
+		const fills = getIndicator().querySelectorAll('span[aria-hidden="true"] > span > span');
+		expect(fills.length).toBe(2);
+		expect((fills[0] as HTMLElement).style.width).toBe("5%");
+		expect((fills[1] as HTMLElement).style.width).toBe("42%");
+		expect((fills[1] as HTMLElement).className).toContain("bg-accent");
 	});
 
 	it("shows a per-account 'captured just now' note for a fresh reading", async () => {
@@ -332,38 +343,47 @@ describe("RateLimitIndicator", () => {
 		expect(note.className).toContain("text-warning");
 	});
 
-	it("stacks one pill bar per account with its own severity color", async () => {
+	it("colours each window's bar by its own usage, for the latest account only", async () => {
 		const now = Date.now();
-		const snapshot = (source: "claude" | "codex", accountId: string, percent: number, activeAt: number) => ({
-			source,
-			accountId,
-			capturedAt: activeAt,
-			activeAt,
-			windows: [{ id: source === "claude" ? "five_hour" : "primary", usedPercent: percent, resetsAt: now + 3_600_000, windowMinutes: 300 }],
-			creditsBalance: null,
-			monthlyCredits: null,
-			planType: null,
-		});
 		mockedGet.mockResolvedValue({
 			generatedAt: now,
-			snapshots: [snapshot("claude", "a", 42, now), snapshot("codex", "b", 85, now - 1_000), snapshot("codex", "c", 97, now - 2_000)],
+			snapshots: [
+				{
+					source: "claude",
+					accountId: "a",
+					capturedAt: now,
+					activeAt: now,
+					windows: [
+						{ id: "seven_day", usedPercent: 97, resetsAt: now + 86_400_000, windowMinutes: 10080 },
+						{ id: "five_hour", usedPercent: 85, resetsAt: now + 3_600_000, windowMinutes: 300 },
+					],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+				{
+					source: "codex",
+					accountId: "older",
+					capturedAt: now - 1_000,
+					activeAt: now - 1_000,
+					windows: [{ id: "primary", usedPercent: 10, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+			],
 		});
 		renderIndicator();
 		await act(async () => {});
-		const pill = getIndicator();
-		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
-		expect(fills.length).toBe(3);
-		expect((fills[0] as HTMLElement).style.width).toBe("42%");
-		expect((fills[0] as HTMLElement).className).toContain("bg-accent");
-		expect((fills[1] as HTMLElement).style.width).toBe("85%");
-		expect((fills[1] as HTMLElement).className).toContain("bg-warning");
-		expect((fills[2] as HTMLElement).style.width).toBe("97%");
-		expect((fills[2] as HTMLElement).className).toContain("bg-danger");
-		// The headline number still tracks the most recently active account.
-		expect(screen.getByText("42%")).toBeTruthy();
+		const fills = getIndicator().querySelectorAll('span[aria-hidden="true"] > span > span');
+		expect(fills.length).toBe(2);
+		expect((fills[0] as HTMLElement).style.width).toBe("85%");
+		expect((fills[0] as HTMLElement).className).toContain("bg-warning");
+		expect((fills[1] as HTMLElement).style.width).toBe("97%");
+		expect((fills[1] as HTMLElement).className).toContain("bg-danger");
 	});
 
-	it("renders an unlimited account's pill bar as a full success line and caps bars at four", async () => {
+	it("renders an unlimited account's pill bar as one full success line", async () => {
 		const now = Date.now();
 		const snapshot = (accountId: string, percent: number) => ({
 			source: "codex" as const,
@@ -398,7 +418,7 @@ describe("RateLimitIndicator", () => {
 		await act(async () => {});
 		const pill = getIndicator();
 		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
-		expect(fills.length).toBe(4);
+		expect(fills.length).toBe(1);
 		expect((fills[0] as HTMLElement).style.width).toBe("100%");
 		expect((fills[0] as HTMLElement).className).toContain("bg-success");
 	});
@@ -463,7 +483,7 @@ describe("RateLimitIndicator", () => {
 			claude: {
 				accounts: [],
 				activeId: null,
-				systemIdentity: {
+				systemConfigDir: "/home/me/.claude", systemIdentity: {
 					email: "alice@example.com",
 					organization: null,
 					plan: "default_claude_max_5x",
@@ -502,7 +522,7 @@ describe("RateLimitIndicator", () => {
 					},
 				],
 				activeId: "acc-1",
-				systemIdentity: null,
+				systemConfigDir: "/home/me/.claude", systemIdentity: null,
 			},
 			codex: { accounts: [], activeId: null, currentIdentity: null },
 		});
@@ -536,7 +556,7 @@ describe("RateLimitIndicator", () => {
 					{ id: "claude-2", kind: "claude", label: "Personal Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
 				],
 				activeId: "claude-1",
-				systemIdentity: null,
+				systemConfigDir: "/home/me/.claude", systemIdentity: null,
 			},
 			codex: {
 				accounts: [{ id: "codex-1", kind: "codex", label: "Enterprise Codex", identity: null, auth: "oauth", api: null, createdAt: 0 }],
@@ -559,7 +579,7 @@ describe("RateLimitIndicator", () => {
 			claude: {
 				accounts: [],
 				activeId: null,
-				systemIdentity: {
+				systemConfigDir: "/home/me/.claude", systemIdentity: {
 					email: "dev@example.com",
 					organization: "Acme Workspace",
 					plan: "default_claude_max_5x",
@@ -591,7 +611,7 @@ describe("RateLimitIndicator", () => {
 			],
 		});
 		mockedAccounts.mockResolvedValue({
-			claude: { accounts: [], activeId: null, systemIdentity: null },
+			claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 			codex: {
 				accounts: [
 					{
@@ -616,5 +636,80 @@ describe("RateLimitIndicator", () => {
 		expect(screen.queryByText("dev@example.com (Acme)")).toBeNull();
 		// … and the workspace shows exactly once as the chip.
 		expect(screen.getAllByText("· Acme")).toHaveLength(1);
+	});
+});
+
+describe("RateLimitIndicator project scope", () => {
+	const request = api.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+	function claudeReading(percent: number, configDir?: string) {
+		return {
+			source: "claude" as const,
+			accountId: null,
+			...(configDir ? { configDir } : {}),
+			capturedAt: Date.now(),
+			windows: [{ id: "five_hour", usedPercent: percent, resetsAt: Date.now() + 3_600_000, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		};
+	}
+
+	beforeEach(() => {
+		mockedAccounts.mockResolvedValue(emptyAccounts());
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [claudeReading(91, "/p/app/.claude"), claudeReading(12)],
+		});
+		request.getProjectClaudeLogin = vi.fn().mockResolvedValue({ configDir: "/p/app/.claude", identity: null });
+		request.listPinnedClaudeLogins = vi.fn().mockResolvedValue([
+			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] },
+			{ configDir: "/p/other/.claude", identity: null, projectNames: ["other"] },
+		]);
+	});
+
+	function renderIn(projectId: string | null) {
+		return render(
+			<I18nProvider>
+				<RateLimitIndicator projectId={projectId} />
+			</I18nProvider>,
+		);
+	}
+
+	it("shows only the pinned login's usage inside a project that pins one", async () => {
+		renderIn("app-id");
+		expect(await screen.findByRole("button", { name: /91% used/ })).toBeTruthy();
+		await userEvent.click(getIndicator());
+		expect(await screen.findByText("Project login (…/app/.claude)")).toBeTruthy();
+		expect(screen.queryByText("Project login (…/other/.claude)")).toBeNull();
+		expect(screen.queryByText(/12% used/)).toBeNull();
+	});
+
+	it("shows the default login, not other projects' pins, inside a project without one", async () => {
+		request.getProjectClaudeLogin.mockResolvedValue({ configDir: null, identity: null });
+		renderIn("plain-id");
+		expect(await screen.findByRole("button", { name: /12% used/ })).toBeTruthy();
+		await userEvent.click(getIndicator());
+		expect(screen.queryByText(/Project login/)).toBeNull();
+		expect(screen.queryByText(/91% used/)).toBeNull();
+	});
+
+	it("follows the selected account once a managed account overrides the pin", async () => {
+		const state = emptyAccounts();
+		state.claude.accounts = [
+			{ id: "work", kind: "claude", label: "Work", identity: null, auth: "oauth", api: null, createdAt: 0 },
+		];
+		state.claude.activeId = "work";
+		mockedAccounts.mockResolvedValue(state);
+		renderIn("app-id");
+		expect(await screen.findByRole("button", { name: /12% used/ })).toBeTruthy();
+	});
+
+	it("shows every login with no project in scope", async () => {
+		renderIn(null);
+		await userEvent.click(await screen.findByRole("button", { name: /Agent rate limits/ }));
+		expect(await screen.findByText("Project login (…/other/.claude)")).toBeTruthy();
+		expect(screen.getByText("Project login (…/app/.claude)")).toBeTruthy();
+		expect(screen.getByText(/91% used/)).toBeTruthy();
 	});
 });

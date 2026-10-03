@@ -210,6 +210,7 @@ describe("importCurrentClaudeAccount", () => {
 		const state = await listAgentAccounts(paths);
 		expect(state.claude.activeId).toBeNull();
 		expect(state.claude.systemIdentity?.email).toBe("main@example.com");
+		expect(state.claude.systemConfigDir).toBe(paths.claudeHome);
 	});
 
 	it("rejects a duplicate of an already-imported account", async () => {

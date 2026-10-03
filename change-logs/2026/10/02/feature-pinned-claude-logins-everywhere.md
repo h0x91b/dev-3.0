@@ -1,0 +1,3 @@
+Short: Pinned Claude logins shown everywhere
+
+A project that pins `CLAUDE_CONFIG_DIR` now shows its own login ("Project login (…/proj/.claude)", with that account's email and usage) on the launch dialogs' account pill, in the header usage panel and in Settings -> Accounts, and its sessions no longer feed their usage into the default login, now labelled "Default login (<full path>)". Inside a project the header usage pill shows only that project's login, with both windows spelled out ("5h 7% · 7d 55%") and one mini bar each, while the dashboard and Settings list every login. The default login is left out of the usage panel when nobody is signed into it and nothing needs it, so readings older builds filed under it no longer show as a phantom login.

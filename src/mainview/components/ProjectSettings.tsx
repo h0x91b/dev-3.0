@@ -291,9 +291,10 @@ interface CustomColumnRowProps {
 	onUpdate: (name: string, color: string, llmInstruction: string, agentConfig?: ColumnAgentConfig | null) => void;
 	onDelete: () => void;
 	availableAgents: CodingAgent[];
+	projectId: string;
 }
 
-function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }: CustomColumnRowProps) {
+function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents, projectId }: CustomColumnRowProps) {
 	const t = useT();
 	const [name, setName] = useState(column.name);
 	const [color, setColor] = useState(column.color);
@@ -410,6 +411,7 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 						<AgentConfigPicker
 							idPrefix={`column-agent-${column.id}`}
 							agents={availableAgents}
+							projectId={projectId}
 							agentId={agentId}
 							configId={configId}
 							onChange={(next) => {
@@ -2175,6 +2177,7 @@ function ProjectSettings({
 											onUpdate={(name, color, llmInstruction, agentConfig) => handleUpdateColumn(col.id, name, color, llmInstruction, agentConfig)}
 											onDelete={() => handleDeleteColumn(col.id)}
 											availableAgents={availableAgents}
+											projectId={projectId}
 										/>
 									))}
 									{(project.customColumns ?? []).length === 0 && (

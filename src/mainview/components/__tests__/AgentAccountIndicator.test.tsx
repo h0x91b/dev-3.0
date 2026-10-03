@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 			listAgentAccounts: vi.fn(),
 			setActiveAgentAccount: vi.fn(),
 			getAgentRateLimits: vi.fn(),
+			getProjectClaudeLogin: vi.fn(),
 		},
 	},
 }));
@@ -62,7 +63,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 				},
 			],
 			activeId: "cl-1",
-			systemIdentity: {
+			systemConfigDir: "/home/me/.claude", systemIdentity: {
 				email: "main@example.com",
 				organization: null,
 				plan: null,
@@ -81,6 +82,7 @@ function renderIndicator(
 		value?: string | null;
 		onSelect?: (accountId: string | null) => void;
 		onAddAccount?: () => void;
+		projectId?: string;
 	},
 ) {
 	return render(
@@ -90,6 +92,7 @@ function renderIndicator(
 				value={opts?.value}
 				onSelect={opts?.onSelect}
 				onAddAccount={opts?.onAddAccount}
+				projectId={opts?.projectId}
 			/>
 		</I18nProvider>,
 	);
@@ -117,6 +120,7 @@ beforeEach(() => {
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 	mockedApi.request.setActiveAgentAccount.mockResolvedValue(undefined as any);
 	mockedApi.request.getAgentRateLimits.mockResolvedValue(makeReport([]));
+	mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ configDir: null, identity: null });
 	mockedConfirm.mockResolvedValue(true);
 });
 
@@ -145,7 +149,7 @@ describe("AgentAccountIndicator", () => {
 				claude: {
 					accounts: [],
 					activeId: null,
-					systemIdentity: {
+					systemConfigDir: "/home/me/.claude", systemIdentity: {
 						email: "solo@example.com",
 						organization: null,
 						plan: null,
@@ -303,7 +307,7 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: "cl-1", onSelect });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		await user.click(screen.getByText("System login (~/.claude)"));
+		await user.click(screen.getByText("Default login (/home/me/.claude)"));
 
 		expect(onSelect).toHaveBeenCalledWith(null);
 		expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
@@ -314,7 +318,7 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator();
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		await user.click(screen.getByText("System login (~/.claude)"));
+		await user.click(screen.getByText("Default login (/home/me/.claude)"));
 
 		await waitFor(() => {
 			expect(mockedApi.request.setActiveAgentAccount).toHaveBeenCalledWith({
@@ -528,5 +532,83 @@ describe("AgentAccountIndicator", () => {
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 		expect(screen.getByText("Workspace Acme")).toBeTruthy();
+	});
+});
+
+describe("project-pinned CLAUDE_CONFIG_DIR", () => {
+	const projectLogin = {
+		configDir: "/mnt/e/Projects/thumbs/.claude",
+		identity: { email: "project@example.com", organization: null, plan: null, planLabel: null, accountId: "uuid-p" },
+	};
+
+	// The pin only holds with no managed Claude account: any registered one makes
+	// every launch set (or unset) CLAUDE_CONFIG_DIR itself.
+	function withNoManagedDefault() {
+		const base = makeState();
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({ claude: { ...base.claude, accounts: [], activeId: null } }),
+		);
+	}
+
+	it("shows the project's account, not ~/.claude's, when the project pins a config dir", async () => {
+		withNoManagedDefault();
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		expect(trigger.textContent).not.toContain("main@example.com");
+		expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalledWith({ projectId: "p1" });
+
+		await userEvent.click(trigger);
+		expect(await screen.findByText("Project login (…/thumbs/.claude)")).toBeTruthy();
+		expect(screen.queryByText("Default login (/home/me/.claude)")).toBeNull();
+	});
+
+	it("shows the pinned dir's usage on that row, not ~/.claude's", async () => {
+		withNoManagedDefault();
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		const snap = (usedPercent: number, configDir?: string): AgentRateLimitSnapshot => ({
+			source: "claude",
+			accountId: null,
+			...(configDir ? { configDir } : {}),
+			capturedAt: Date.now(),
+			windows: [{ id: "five_hour", usedPercent, resetsAt: null, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		});
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(makeReport([snap(11), snap(66, projectLogin.configDir)]));
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		expect(await screen.findByText("66% used")).toBeTruthy();
+		expect(screen.queryByText("11% used")).toBeNull();
+	});
+
+	it("does not claim the pin while a managed account overrides it", async () => {
+		const base = makeState();
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({ claude: { ...base.claude, activeId: null } }));
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		expect(trigger.textContent).not.toContain("project@example.com");
+		await userEvent.click(trigger);
+		expect(await screen.findByText("Default login (/home/me/.claude)")).toBeTruthy();
+	});
+
+	it("keeps the system login when the project pins nothing", async () => {
+		withNoManagedDefault();
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		expect(trigger.textContent).toContain("main@example.com");
+	});
+
+	it("does not ask without a project in scope (global Settings switcher)", async () => {
+		renderIndicator(claudeAgent);
+		await screen.findByTestId("agent-account-trigger");
+		expect(mockedApi.request.getProjectClaudeLogin).not.toHaveBeenCalled();
 	});
 });

@@ -6,7 +6,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			listAgentAccounts: vi.fn().mockResolvedValue({
-				claude: { accounts: [], activeId: null, systemIdentity: null },
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 			setActiveAgentAccount: vi.fn(),

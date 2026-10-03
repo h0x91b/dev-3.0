@@ -2,8 +2,26 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claudeConfigLocation, launchClaudeConfigLocation } from "../../shared/claude-config-dir";
+import { claudeConfigLocation, launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import { ENV_UNSET } from "../../shared/agent-accounts";
+
+describe("pinnedClaudeConfigDir", () => {
+	const home = "/home/me";
+	it("expands ~ and drops trailing slashes", () => {
+		expect(pinnedClaudeConfigDir("~/proj/.claude/", home)).toBe("/home/me/proj/.claude");
+		expect(pinnedClaudeConfigDir(" /work/x/.claude// ", home)).toBe("/work/x/.claude");
+	});
+	it("resolves a relative pin against cwd, as claudeConfigLocation does", () => {
+		expect(pinnedClaudeConfigDir(".claude", home, "/work/x")).toBe("/work/x/.claude");
+	});
+	it("treats unset, blank, the switcher's unset sentinel and ~/.claude as the system login", () => {
+		expect(pinnedClaudeConfigDir(undefined, home)).toBeNull();
+		expect(pinnedClaudeConfigDir("  ", home)).toBeNull();
+		expect(pinnedClaudeConfigDir(ENV_UNSET, home)).toBeNull();
+		expect(pinnedClaudeConfigDir("~/.claude", home)).toBeNull();
+		expect(pinnedClaudeConfigDir("/home/me/.claude/", home)).toBeNull();
+	});
+});
 
 describe("claudeConfigLocation", () => {
 	it("falls back to ~/.claude and ~/.claude.json when nothing pins a dir", () => {

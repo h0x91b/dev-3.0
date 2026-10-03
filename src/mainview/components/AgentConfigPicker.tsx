@@ -132,6 +132,9 @@ interface AgentConfigPickerProps {
 	/** What the "add another account" link in the account popover must do before
 	 *  Settings opens — a launch dialog closes itself. Omitted → no link. */
 	onAddAccount?: () => void;
+	/** The project being launched into, so the account pill can show the login
+	 *  the project pins via `CLAUDE_CONFIG_DIR`. Omitted on Settings surfaces. */
+	projectId?: string;
 }
 
 /**
@@ -159,6 +162,7 @@ function AgentConfigPicker({
 	accountId,
 	onAccountChange,
 	onAddAccount,
+	projectId,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
@@ -468,6 +472,7 @@ function AgentConfigPicker({
 						value={accountId}
 						onSelect={onAccountChange}
 						onAddAccount={onAddAccount}
+						projectId={projectId}
 					/>
 				</div>
 

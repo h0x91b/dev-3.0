@@ -111,6 +111,9 @@ export interface AgentAccountsState {
 		accounts: AgentAccount[];
 		/** Active managed account; null = system login (~/.claude, no env override). */
 		activeId: string | null;
+		/** Claude Code's own default config dir (`<home>/.claude`), used by any
+		 *  session no managed account or project pin redirects. Absolute. */
+		systemConfigDir: string;
 		/** Identity of the system login parsed from ~/.claude.json (null when absent). */
 		systemIdentity: AgentAccountIdentity | null;
 	};
@@ -153,6 +156,29 @@ export function codexPlanLabel(plan: string | null): string | null {
 	if (!plan) return null;
 	if (plan.startsWith("enterprise")) return "Enterprise";
 	return plan.split("_").map(titleCaseToken).join(" ");
+}
+
+/** The Claude login a project's sessions really use when its env pins
+ *  `CLAUDE_CONFIG_DIR`: the account then comes from that directory, not
+ *  `~/.claude`. `configDir` is null when the project does not pin one. */
+export interface ProjectClaudeLogin {
+	configDir: string | null;
+	identity: AgentAccountIdentity | null;
+}
+
+/** One login pinned by at least one project's `CLAUDE_CONFIG_DIR`, with the
+ *  names of the projects that pin it. Listed beside `~/.claude` because usage
+ *  and identity come from that directory, not from the system login. */
+export interface PinnedClaudeLogin {
+	configDir: string;
+	identity: AgentAccountIdentity | null;
+	projectNames: string[];
+}
+
+/** `/home/me/x/.claude` -> `.../x/.claude`; short paths stay whole. */
+export function shortClaudeConfigDir(dir: string): string {
+	const parts = dir.replace(/\\/g, "/").replace(/\/+$/, "").split("/");
+	return parts.length > 3 ? `…/${parts.slice(-2).join("/")}` : dir;
 }
 
 /** Parse a Claude Code `.claude.json` payload into an identity (via `.oauthAccount`). */

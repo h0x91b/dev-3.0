@@ -43,6 +43,9 @@ export interface AgentRateLimitSnapshot {
 	 *  Undefined keeps compatibility with reports produced before account-level
 	 *  attribution was added. */
 	accountId?: string | null;
+	/** Claude only: the `CLAUDE_CONFIG_DIR` a project pinned for the session that
+	 *  produced this reading. Absent for `~/.claude` and for managed accounts. */
+	configDir?: string;
 	/** When this data was captured locally (epoch ms). */
 	capturedAt: number;
 	/** When the provider session was active. Live Codex enrichment may be read
@@ -81,6 +84,27 @@ export function isRateLimitSnapshotRecent(snapshot: AgentRateLimitSnapshot, nowM
 	return rateLimitActivityAt(snapshot) >= nowMs - RATE_LIMIT_ACTIVITY_WINDOW_MS;
 }
 
+/** Identity of the login behind a snapshot: managed account, pinned dir, or system. */
+export function rateLimitLoginKey(snapshot: AgentRateLimitSnapshot): string {
+	const base = `${snapshot.source}:${snapshot.accountId ?? "system"}`;
+	return snapshot.configDir ? `${base}:dir:${snapshot.configDir}` : base;
+}
+
+/** The reading for one login. `configDir` null means "not a pinned dir", so the
+ *  system row never picks up a pinned project's numbers. */
+export function findRateLimitSnapshot(
+	report: AgentRateLimitsReport,
+	source: RateLimitSource,
+	accountId: string | null,
+	configDir: string | null = null,
+): AgentRateLimitSnapshot | null {
+	return (
+		report.snapshots.find(
+			(s) => s.source === source && (s.accountId ?? null) === accountId && (s.configDir ?? null) === configDir,
+		) ?? null
+	);
+}
+
 /** The account snapshot with the newest provider activity signal. */
 export function latestRateLimitSnapshot(report: AgentRateLimitsReport): AgentRateLimitSnapshot | null {
 	let latest: AgentRateLimitSnapshot | null = null;
@@ -92,6 +116,24 @@ export function latestRateLimitSnapshot(report: AgentRateLimitsReport): AgentRat
 	return latest;
 }
 
+/**
+ * The Claude login one screen is about: the dir its project pins when that pin is
+ * in force, null for the default login and managed accounts. A screen with no
+ * project in scope passes no scope and sees every login.
+ */
+export interface ClaudeLoginScope {
+	configDir: string | null;
+}
+
+/** Drops Claude readings from logins outside `scope`; other agents are untouched. */
+export function scopeRateLimitSnapshots(
+	snapshots: AgentRateLimitSnapshot[],
+	scope: ClaudeLoginScope | undefined,
+): AgentRateLimitSnapshot[] {
+	if (!scope) return snapshots;
+	return snapshots.filter((s) => s.source !== "claude" || (s.configDir ?? null) === scope.configDir);
+}
+
 /** The most-used window within one account snapshot. */
 export function worstSnapshotWindow(snapshot: AgentRateLimitSnapshot): RateLimitWindow | null {
 	let worst: RateLimitWindow | null = null;
@@ -99,6 +141,15 @@ export function worstSnapshotWindow(snapshot: AgentRateLimitSnapshot): RateLimit
 		if (!worst || window.usedPercent > worst.usedPercent) worst = window;
 	}
 	return worst;
+}
+
+/** The windows the header pill spells out, shortest first ("5h 7% · 7d 55%").
+ *  Monthly credits only appear when the account has no timed window. */
+export function headerPillWindows(snapshot: AgentRateLimitSnapshot): RateLimitWindow[] {
+	const timed = snapshot.windows.filter((w) => w.id !== "monthly_credits");
+	return [...(timed.length ? timed : snapshot.windows)].sort(
+		(a, b) => (a.windowMinutes ?? Number.POSITIVE_INFINITY) - (b.windowMinutes ?? Number.POSITIVE_INFINITY),
+	);
 }
 
 export function isUnlimitedRateLimitSnapshot(snapshot: AgentRateLimitSnapshot): boolean {

@@ -30,7 +30,7 @@ function accounts(): AgentAccountsState {
 				{ id: "home", kind: "claude", label: "Home Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
 			],
 			activeId: "work",
-			systemIdentity: null,
+			systemConfigDir: "/home/me/.claude", systemIdentity: null,
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 	};
@@ -53,7 +53,7 @@ function sameEmailAccounts(): AgentAccountsState {
 				{ id: "b", kind: "claude", label: "dev@corp.com", identity: identity("Beta"), auth: "oauth", api: null, createdAt: 0 },
 			],
 			activeId: null,
-			systemIdentity: null,
+			systemConfigDir: "/home/me/.claude", systemIdentity: null,
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 	};
@@ -198,7 +198,7 @@ describe("AgentUsagePanel", () => {
 	it("switches back to the Claude system login", async () => {
 		renderPanel();
 		await userEvent.click(
-			screen.getByRole("radio", { name: "Make System login (~/.claude) the default account" }),
+			screen.getByRole("radio", { name: "Make Default login (/home/me/.claude) the default account" }),
 		);
 		expect(setActive).toHaveBeenCalledWith({ kind: "claude", accountId: null });
 	});
@@ -217,5 +217,158 @@ describe("AgentUsagePanel", () => {
 		expect(unmanaged).toBeTruthy();
 		await userEvent.click(unmanaged as HTMLElement);
 		expect(setActive).not.toHaveBeenCalled();
+	});
+
+	it("gives each pinned config dir its own row and keeps its usage off the system row", async () => {
+		const now = Date.now();
+		const pinnedReport: AgentRateLimitsReport = {
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "claude",
+					accountId: null,
+					configDir: "/mnt/e/Projects/app/.claude",
+					capturedAt: now,
+					windows: [{ id: "five_hour", usedPercent: 77, resetsAt: null, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+			],
+		};
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={pinnedReport}
+					accounts={accounts()}
+					pinnedLogins={[
+						{
+							configDir: "/mnt/e/Projects/app/.claude",
+							identity: { email: "pin@corp.com", organization: null, plan: null, planLabel: null, accountId: null },
+							projectNames: ["app"],
+						},
+					]}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		const pinned = screen.getAllByRole("radio").find((r) => r.textContent?.includes("pin@corp.com"));
+		expect(pinned?.textContent).toContain("Project login (…/app/.claude)");
+		expect(pinned?.textContent).toContain("77% used");
+		const system = screen.getAllByRole("radio").find((r) => r.textContent?.includes("Default login (/home/me/.claude)"));
+		expect(system?.textContent).not.toContain("77%");
+		await userEvent.click(pinned as HTMLElement);
+		expect(setActive).not.toHaveBeenCalled();
+	});
+
+	it("still shows a reading from a dir no project pins any more, named by its dir", () => {
+		const now = Date.now();
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={{
+						generatedAt: now,
+						snapshots: [
+							{
+								source: "claude",
+								accountId: null,
+								configDir: "/old/proj/.claude",
+								capturedAt: now,
+								windows: [{ id: "five_hour", usedPercent: 13, resetsAt: null, windowMinutes: 300 }],
+								creditsBalance: null,
+								monthlyCredits: null,
+								planType: null,
+							},
+						],
+					}}
+					accounts={accounts()}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		const orphan = screen.getAllByRole("radio").find((r) => r.textContent?.includes("13% used"));
+		expect(orphan?.textContent).toContain("Project login (…/proj/.claude)");
+	});
+
+	it("drops an empty default login when nothing needs it", () => {
+		const state = accounts();
+		state.claude.accounts = [];
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={report()}
+					accounts={state}
+					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] }]}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByText("Default login (/home/me/.claude)")).toBeNull();
+		expect(screen.getByText("Project login (…/app/.claude)")).toBeTruthy();
+	});
+
+	it("drops a default login nobody is signed into, even when an old reading is filed under it", () => {
+		const now = Date.now();
+		const state = accounts();
+		state.claude.accounts = [];
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={{
+						generatedAt: now,
+						snapshots: [
+							{
+								source: "claude",
+								accountId: null,
+								capturedAt: now,
+								windows: [{ id: "five_hour", usedPercent: 83, resetsAt: null, windowMinutes: 300 }],
+								creditsBalance: null,
+								monthlyCredits: null,
+								planType: null,
+							},
+						],
+					}}
+					accounts={state}
+					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] }]}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByText(/Default login/)).toBeNull();
+		expect(screen.queryByText(/83% used/)).toBeNull();
+	});
+
+	it("puts a pinned dir's label on its own line so the identity keeps its room", () => {
+		const state = accounts();
+		state.claude.accounts = [];
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={{ generatedAt: Date.now(), snapshots: [] }}
+					accounts={state}
+					pinnedLogins={[
+						{
+							configDir: "/p/app/.claude",
+							identity: { email: "pin@corp.com", organization: null, plan: null, planLabel: null, accountId: null },
+							projectNames: ["app"],
+						},
+					]}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		const chip = screen.getByText("Project login (…/app/.claude)");
+		expect(chip.getAttribute("title")).toBe("/p/app/.claude");
+		expect(chip.closest(".flex.items-center")).toBeNull();
+	});
+
+	it("keeps an empty default login beside managed accounts, where it is a real choice", () => {
+		renderPanel();
+		expect(screen.getAllByRole("radio").some((r) => r.textContent?.includes("Default login (/home/me/.claude)"))).toBe(true);
 	});
 });

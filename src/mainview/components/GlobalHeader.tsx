@@ -1298,7 +1298,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
-				{!isNarrow && <RateLimitIndicator compact={compact} />}
+				{!isNarrow && <RateLimitIndicator compact={compact} projectId={currentProjectId} />}
 
 				{/* Quick Shell lives in the overflow menu at every width — it is a
 				    keyboard action (⌘⇧`) far more than a button. */}
@@ -1474,7 +1474,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<PreventSleepToggle />
 						<MemoryHeadroomIndicator navigate={navigate} />
 						{viewedOverRemote && <ConnectionQualityIndicator />}
-						<RateLimitIndicator compact={false} />
+						<RateLimitIndicator compact={false} projectId={currentProjectId} />
 						{currentProjectId && !isVirtualProject && (
 							<GitPullButton projectId={currentProjectId} compact={false} />
 						)}

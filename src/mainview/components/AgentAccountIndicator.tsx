@@ -6,12 +6,15 @@ import type {
 	AgentAccountKind,
 	AgentAccountsState,
 	AgentApiProfileInfo,
+	PinnedClaudeLogin,
+	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
-import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
+import type { AgentRateLimitSnapshot, AgentRateLimitsReport, ClaudeLoginScope } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
+	findRateLimitSnapshot,
 	formatResetDelta,
 	isUnlimitedRateLimitSnapshot,
 	windowLabel,
@@ -75,6 +78,78 @@ function useAgentAccountsState(enabled: boolean): AgentAccountsState | null {
 		return () => window.removeEventListener(AGENT_ACCOUNTS_CHANGED_EVENT, reload);
 	}, [enabled, reload]);
 	return enabled ? state : null;
+}
+
+/** The login a project pins via `CLAUDE_CONFIG_DIR`, or null when it pins none
+ *  (or no project is in scope, e.g. the global Settings switcher). */
+function useProjectClaudeLogin(projectId: string | undefined, enabled: boolean): ProjectClaudeLogin | null {
+	const [login, setLogin] = useState<ProjectClaudeLogin | null>(null);
+	useEffect(() => {
+		if (!enabled || !projectId) {
+			setLogin(null);
+			return;
+		}
+		let cancelled = false;
+		api.request
+			.getProjectClaudeLogin({ projectId })
+			.then((res) => {
+				if (!cancelled) setLogin(res.configDir ? res : null);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId, enabled]);
+	return login;
+}
+
+/**
+ * Which Claude login the screen's project uses, for scoping usage to it. Undefined
+ * (every login) with no project in scope or until the pin and accounts are known.
+ * A managed account overrides any pin, so the scope is then the switchable set.
+ */
+export function useClaudeLoginScope(
+	projectId: string | null | undefined,
+	accounts: AgentAccountsState | null,
+	refreshKey?: unknown,
+): ClaudeLoginScope | undefined {
+	const [pin, setPin] = useState<{ projectId: string; configDir: string | null } | null>(null);
+	useEffect(() => {
+		if (!projectId) return;
+		let cancelled = false;
+		Promise.resolve()
+			.then(() => api.request.getProjectClaudeLogin({ projectId }))
+			.then((res) => {
+				if (!cancelled) setPin({ projectId, configDir: res?.configDir ?? null });
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId, refreshKey]);
+	if (!projectId || !accounts || pin?.projectId !== projectId) return undefined;
+	return { configDir: accounts.claude.accounts.length > 0 ? null : pin.configDir };
+}
+
+/** Every login a project pins via `CLAUDE_CONFIG_DIR`, for global surfaces that
+ *  list them beside `~/.claude`. Re-read when `enabled` turns on. */
+export function usePinnedClaudeLogins(enabled = true): PinnedClaudeLogin[] {
+	const [logins, setLogins] = useState<PinnedClaudeLogin[]>([]);
+	useEffect(() => {
+		if (!enabled) return;
+		let cancelled = false;
+		// Promise.resolve absorbs a missing RPC method in plain-object api mocks.
+		Promise.resolve()
+			.then(() => api.request.listPinnedClaudeLogins())
+			.then((res) => {
+				if (!cancelled && Array.isArray(res)) setLogins(res);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [enabled]);
+	return logins;
 }
 
 /** Rate-limit report, fetched lazily (popover open) + refreshed by push. */
@@ -437,6 +512,7 @@ export default function AgentAccountIndicator({
 	value,
 	onSelect,
 	onAddAccount,
+	projectId,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -449,10 +525,15 @@ export default function AgentAccountIndicator({
 	 *  surface passes what it must do first (close itself); omit it where leaving
 	 *  is wrong — the blocked-CLI approval dialog. */
 	onAddAccount?: () => void;
+	/** The project the launch is for. When its env pins `CLAUDE_CONFIG_DIR`, the
+	 *  system-login row names that directory and shows its account instead of
+	 *  `~/.claude`'s, because that is the login the session will really use. */
+	projectId?: string;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
 	const state = useAgentAccountsState(kind !== null);
+	const projectLogin = useProjectClaudeLogin(projectId, kind === "claude");
 	const [anchor, setAnchor] = useState<DOMRect | null>(null);
 	const [busy, setBusy] = useState(false);
 	// Usage rings only matter while the popover is open — fetch lazily then.
@@ -506,9 +587,15 @@ export default function AgentAccountIndicator({
 	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver ? value : kindState.activeId;
 
 	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
-	const fallbackIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
-	const fallbackLabel =
-		kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged");
+	// Any managed Claude account makes every launch set (or unset) CLAUDE_CONFIG_DIR
+	// itself, which overrides the project's pin - so the pin only holds without one.
+	const pinnedDir = state.claude.accounts.length === 0 ? (projectLogin?.configDir ?? null) : null;
+	const fallbackIdentity =
+		kind === "claude" ? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity) : state.codex.currentIdentity;
+	const systemLoginLabel = pinnedDir
+		? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(pinnedDir) })
+		: t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir });
+	const fallbackLabel = kind === "claude" ? systemLoginLabel : t("settings.accountsUnmanaged");
 	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
 	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
 		if (kind !== "codex") return null;
@@ -518,9 +605,9 @@ export default function AgentAccountIndicator({
 
 	// Join the rate-limit report to a row's account: null accountId = the
 	// provider's system login. API profiles have no OAuth limit windows.
-	const usageFor = (accountId: string | null, isApi = false): RowUsage | null => {
+	const usageFor = (accountId: string | null, isApi = false, configDir: string | null = null): RowUsage | null => {
 		if (!report || isApi) return null;
-		const snap = report.snapshots.find((s) => s.source === kind && (s.accountId ?? null) === accountId) ?? null;
+		const snap = findRateLimitSnapshot(report, kind, accountId, configDir);
 		if (!snap) return { snap: null, state: "none" };
 		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, state: "unlimited" };
 		return { snap, state: snap.windows.length > 0 || snap.monthlyCredits ? "used" : "none" };
@@ -533,13 +620,13 @@ export default function AgentAccountIndicator({
 	if (kind === "claude" || isLocal) {
 		rows.push({
 			key: "system",
-			label: kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged"),
+			label: fallbackLabel,
 			sub: fallbackIdentity?.email ?? null,
 			planLabel: identityBadge(fallbackIdentity),
 			workspaceLabel: workspaceLabel(fallbackIdentity),
 			isApi: false,
 			isActive: effectiveSelectedId === null,
-			usage: usageFor(null),
+			usage: usageFor(null, false, kind === "claude" ? pinnedDir : null),
 			onSelect: isLocal
 				? () => handleSelectLocal(null)
 				: () => handleSelectGlobal("claude", null),

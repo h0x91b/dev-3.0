@@ -5,6 +5,7 @@ import {
 	decodeJwtPayload,
 	defaultAccountLabel,
 	defaultApiProfileLabel,
+	shortClaudeConfigDir,
 	parseClaudeIdentity,
 	parseCodexIdentity,
 	parseEnvLines,
@@ -208,5 +209,12 @@ describe("defaultApiProfileLabel", () => {
 	it("falls back to an ordinal for missing or unparsable URLs", () => {
 		expect(defaultApiProfileLabel(null, 2)).toBe("API profile 2");
 		expect(defaultApiProfileLabel("not a url", 3)).toBe("API profile 3");
+	});
+});
+
+describe("shortClaudeConfigDir", () => {
+	it("keeps the last two segments of a long path", () => {
+		expect(shortClaudeConfigDir("/mnt/e/Projects/dev/.claude")).toBe("…/dev/.claude");
+		expect(shortClaudeConfigDir("/x/.claude")).toBe("/x/.claude");
 	});
 });

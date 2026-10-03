@@ -3,10 +3,21 @@
  * hot-swap without re-login). Thin wrappers over src/bun/agent-accounts.ts.
  */
 
-import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "../../shared/agent-accounts";
+import type {
+	AgentAccount,
+	AgentAccountKind,
+	AgentAccountsState,
+	ClaudeSlotModels,
+	PinnedClaudeLogin,
+	ProjectClaudeLogin,
+} from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
 import { parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import * as accounts from "../agent-accounts";
+import * as data from "../data";
+import { resolveProjectEnv } from "../repo-config";
+import { homedir } from "node:os";
 import { log } from "./shared";
 
 function accountLogDetails(account: AgentAccount) {
@@ -151,7 +162,42 @@ async function renameAgentAccount(params: { kind: AgentAccountKind; accountId: s
 	log.info("← renameAgentAccount done");
 }
 
+/** Which Claude login a project's sessions use. Read on demand so an edit to
+ *  `.dev3/config*.json` shows on the next open of the launch dialog. */
+async function getProjectClaudeLogin(params: { projectId: string }): Promise<ProjectClaudeLogin> {
+	try {
+		const project = await data.getProject(params.projectId);
+		const configDir = pinnedClaudeConfigDir((await resolveProjectEnv(project)).CLAUDE_CONFIG_DIR, homedir(), project.path);
+		if (!configDir) return { configDir: null, identity: null };
+		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir) };
+	} catch (err) {
+		log.warn("getProjectClaudeLogin failed", { projectId: params.projectId, error: String(err) });
+		return { configDir: null, identity: null };
+	}
+}
+
+/** Every login some project pins via `CLAUDE_CONFIG_DIR`, one entry per
+ *  directory. Global surfaces list these beside `~/.claude`, because those
+ *  projects' sessions never use the system login. */
+async function listPinnedClaudeLogins(): Promise<PinnedClaudeLogin[]> {
+	const byDir = new Map<string, PinnedClaudeLogin>();
+	for (const project of await data.loadProjects()) {
+		try {
+			const configDir = pinnedClaudeConfigDir((await resolveProjectEnv(project)).CLAUDE_CONFIG_DIR, homedir(), project.path);
+			if (!configDir) continue;
+			const entry = byDir.get(configDir);
+			if (entry) entry.projectNames.push(project.name);
+			else byDir.set(configDir, { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir), projectNames: [project.name] });
+		} catch (err) {
+			log.warn("listPinnedClaudeLogins: project env unreadable", { projectId: project.id, error: String(err) });
+		}
+	}
+	return [...byDir.values()];
+}
+
 export const agentAccountHandlers = {
+	getProjectClaudeLogin,
+	listPinnedClaudeLogins,
 	listAgentAccounts,
 	importAgentAccount,
 	addAgentApiProfile,

@@ -20,16 +20,18 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { claudeConfigLocation } from "../../shared/claude-config-dir";
+import { claudeConfigLocation, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
 import { formatStatusLineSegment, parseClaudeStatusLinePayload } from "../../shared/rate-limits";
 
 export const RATE_LIMITS_DIR = join(homedir(), ".dev3.0", "data", "rate-limits");
 export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
 export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
+export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-config-dirs");
 
 const SAFE_ACCOUNT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -103,27 +105,48 @@ function managedAccountId(): string | null {
 	return value && SAFE_ACCOUNT_ID.test(value) ? value : null;
 }
 
+/** The project-pinned `CLAUDE_CONFIG_DIR` this session runs under, or null for
+ *  `~/.claude`. A managed account's dir is not a pin; its account id wins. */
+function pinnedConfigDir(): string | null {
+	return pinnedClaudeConfigDir(process.env.CLAUDE_CONFIG_DIR, homedir(), process.cwd());
+}
+
 /**
  * Where a statusLine dump for `accountId` is written. A managed account writes
- * ONLY its own per-account file; the system login (no managed id) writes the
- * shared claude.json. Keeping them apart stops a managed session from clobbering
- * the system login's slot in claude.json — the cause of accounts vanishing from
- * the rate-limit panel the moment another account ran.
+ * ONLY its own per-account file; a project-pinned `CLAUDE_CONFIG_DIR` writes one
+ * file per directory; only `~/.claude` writes the shared claude.json. Keeping
+ * them apart stops one login from clobbering another's slot - the cause of
+ * accounts vanishing from the rate-limit panel the moment another account ran,
+ * and of pinned logins' usage showing under the default `~/.claude` login.
  */
 export function claudeDumpFilePaths(
 	accountId: string | null,
 	baseDir: string = RATE_LIMITS_DIR,
+	configDir: string | null = null,
 ): string[] {
 	if (accountId) return [join(baseDir, "claude", `${accountId}.json`)];
+	if (configDir) return [join(baseDir, "claude-config-dirs", `${configDirDumpName(configDir)}.json`)];
 	return [join(baseDir, "claude.json")];
+}
+
+/** A filesystem-safe, stable name for a config dir's dump. The dir itself is
+ *  stored inside the dump, so the hash never has to be reversed. */
+export function configDirDumpName(configDir: string): string {
+	return createHash("sha256").update(configDir).digest("hex").slice(0, 16);
 }
 
 function dumpPayload(raw: string): void {
 	try {
 		const accountId = managedAccountId();
+		const configDir = accountId ? null : pinnedConfigDir();
 		const capturedAt = Date.now();
-		const serialized = JSON.stringify({ capturedAt, accountId, payload: JSON.parse(raw) });
-		for (const target of claudeDumpFilePaths(accountId)) {
+		const serialized = JSON.stringify({
+			capturedAt,
+			accountId,
+			...(configDir ? { configDir } : {}),
+			payload: JSON.parse(raw),
+		});
+		for (const target of claudeDumpFilePaths(accountId, RATE_LIMITS_DIR, configDir)) {
 			// Single small write; the monitor tolerates a torn read by keeping the
 			// previous snapshot (deliberately no tmp+rename — see the on-disk layout
 			// invariants about renames under ~/.dev3.0/).

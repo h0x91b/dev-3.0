@@ -41,6 +41,16 @@ export function claudeConfigLocation(
 }
 
 /**
+ * A project-pinned `CLAUDE_CONFIG_DIR` as one comparable key, or null when it is
+ * unset, cleared by the account switcher, or names `<home>/.claude` itself.
+ */
+export function pinnedClaudeConfigDir(raw: string | null | undefined, home: string, cwd?: string): string | null {
+	if (raw?.trim() === ENV_UNSET) return null;
+	const location = claudeConfigLocation({ CLAUDE_CONFIG_DIR: raw ?? undefined }, home, cwd);
+	return location.pinned && location.dir !== join(home, ".claude") ? location.dir : null;
+}
+
+/**
  * The env a launched agent ends up with for config-dir purposes: the launch's own
  * env wins, the server's inherited env fills in, exactly as the launch script
  * exports over the inherited environment.

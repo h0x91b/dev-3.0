@@ -37,7 +37,7 @@ vi.mock("../../rpc", () => ({
 			}),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
-				claude: { accounts: [], activeId: null, systemIdentity: null },
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 		},

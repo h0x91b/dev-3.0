@@ -12,18 +12,17 @@ import {
 	RATE_LIMIT_DANGER_PERCENT,
 	RATE_LIMIT_WARN_PERCENT,
 	formatResetDelta,
+	headerPillWindows,
 	isUnlimitedRateLimitSnapshot,
 	latestRateLimitSnapshot,
+	scopeRateLimitSnapshots,
 	windowLabel,
 	worstSnapshotWindow,
 } from "../../shared/rate-limits";
 import type { AgentAccountsState } from "../../shared/agent-accounts";
-import { AGENT_ACCOUNTS_CHANGED_EVENT } from "./AgentAccountIndicator";
+import { AGENT_ACCOUNTS_CHANGED_EVENT, useClaudeLoginScope, usePinnedClaudeLogins } from "./AgentAccountIndicator";
 import { SOURCE_NAMES, severityFill } from "./rate-limit-ui";
 import AgentUsagePanel from "./AgentUsagePanel";
-
-/** The pill stacks one mini bar per account, capped to keep the header slim. */
-const MAX_PILL_BARS = 4;
 
 /** Panel width in px — wide enough for a "label · bar · % · reset" line. */
 const PANEL_WIDTH = 26 * 16;
@@ -40,8 +39,10 @@ const PANEL_WIDTH = 26 * 16;
  * must not be one stray click away from a panel the pointer passed through.
  * Codex monthly credits come from a cached app-server account read; all other
  * data comes from local files — see rate-limit-monitor.ts.
+ * Inside a project only that project's Claude login counts; with none in scope
+ * (dashboard, settings) every login does.
  */
-function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
+function RateLimitIndicator({ compact = false, projectId = null }: { compact?: boolean; projectId?: string | null }) {
 	const t = useT();
 	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
 	const [accounts, setAccounts] = useState<AgentAccountsState | null>(null);
@@ -49,6 +50,9 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	// Same open/pin/position machinery as the memory-headroom readout: hover drops
 	// the panel below the pill, a click pins it — and pinned is what unlocks its rows.
 	const flyout = useHeaderFlyout({ variant: "bar", isNarrow, repositionKey: report });
+	// Re-read on every open: a project's pin lives in its config files, which
+	// change without any push.
+	const pinnedLogins = usePinnedClaudeLogins(flyout.open);
 
 	useEffect(() => {
 		api.request.getAgentRateLimits().then(setReport).catch(() => {
@@ -76,10 +80,15 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		return () => window.removeEventListener(AGENT_ACCOUNTS_CHANGED_EVENT, reload);
 	}, []);
 
-	const latestSnapshot = report ? latestRateLimitSnapshot(report) : null;
+	// Re-resolved on every open, like the pinned logins: the pin lives in config files.
+	const scope = useClaudeLoginScope(projectId, accounts, flyout.open);
+	const scoped: AgentRateLimitsReport | null = report
+		? { ...report, snapshots: scopeRateLimitSnapshots(report.snapshots, scope) }
+		: null;
+	const latestSnapshot = scoped ? latestRateLimitSnapshot(scoped) : null;
 	const latestWindow = latestSnapshot ? worstSnapshotWindow(latestSnapshot) : null;
 	const unlimited = latestSnapshot ? isUnlimitedRateLimitSnapshot(latestSnapshot) : false;
-	if (!report || !latestSnapshot || (!latestWindow && !unlimited)) return null;
+	if (!scoped || !latestSnapshot || (!latestWindow && !unlimited)) return null;
 
 	const now = Date.now();
 	const percent = latestWindow && !unlimited ? Math.round(latestWindow.usedPercent) : 0;
@@ -87,17 +96,17 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const warn = !danger && percent >= RATE_LIMIT_WARN_PERCENT;
 
 	const latestReset = formatResetDelta(latestWindow?.resetsAt ?? null, now);
-	const latestLabel = latestWindow
-		? latestWindow.id === "monthly_credits"
-			? t("rateLimits.monthlyLabel")
-			: windowLabel(latestWindow)
-		: null;
+	const labelOf = (w: NonNullable<typeof latestWindow>) =>
+		w.id === "monthly_credits" ? t("rateLimits.monthlyLabel") : windowLabel(w);
+	const latestLabel = latestWindow ? labelOf(latestWindow) : null;
+	// Every window spelled out: the 5h one tracks the session, the 7d one the week.
+	// The colour still follows the fullest, so a red week cannot hide behind the hour.
+	const pillWindows = headerPillWindows(latestSnapshot);
 	const ariaLabel = unlimited
 		? `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source} ${t("rateLimits.unlimited")}`
 		: `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
 	const interactiveAriaLabel = `${ariaLabel}. ${t("rateLimits.openAccounts")}`;
 
-	const pillSnapshots = report.snapshots.slice(0, MAX_PILL_BARS);
 
 	const colorClasses = danger
 		? "text-danger bg-danger/15 border-danger/30"
@@ -111,8 +120,10 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 
 	const panel = (
 		<AgentUsagePanel
-			report={report}
+			report={scoped}
 			accounts={accounts}
+			pinnedLogins={scope ? pinnedLogins.filter((login) => login.configDir === scope.configDir) : pinnedLogins}
+			projectPinned={!!scope?.configDir}
 			// A sheet is opened deliberately and has no hover state to pass through;
 			// the desktop flyout has to be pinned first.
 			interactive={isNarrow || flyout.pinned}
@@ -133,22 +144,21 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				className={`header-anim flex cursor-pointer select-none items-center gap-1.5 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 				{...flyout.triggerProps}
 			>
-				{/* One mini bar per recently active account, top-to-bottom in the
-				    same order as the panel cards. Unlimited accounts render a
-				    full success bar (matching the ∞ chip) instead of a fake 0%.
-				    In compact mode the bars ARE the whole pill. */}
+				{/* One mini bar per window the text spells out (5h on top, then 7d),
+				    each filled to its own usage. An unlimited account renders one full
+				    success bar (matching the ∞ chip) instead of a fake 0%. In compact
+				    mode the bars ARE the whole pill. */}
 				<span aria-hidden="true" className="flex w-7 shrink-0 flex-col gap-[0.0625rem]">
-					{pillSnapshots.map((snap) => {
-						const snapUnlimited = isUnlimitedRateLimitSnapshot(snap);
-						const snapPercent = snapUnlimited ? 100 : Math.round(worstSnapshotWindow(snap)?.usedPercent ?? 0);
-						const clamped = Math.max(0, Math.min(100, snapPercent));
+					{(unlimited ? [null] : pillWindows).map((w) => {
+						const barPercent = w ? Math.round(w.usedPercent) : 100;
+						const clamped = Math.max(0, Math.min(100, barPercent));
 						return (
 							<span
-								key={`${snap.source}:${snap.accountId ?? "system"}`}
-								className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillSnapshots.length > 1 ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
+								key={w?.id ?? "unlimited"}
+								className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillWindows.length > 1 && !unlimited ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
 							>
 								<span
-									className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${snapUnlimited ? "bg-success" : severityFill(snapPercent)}`}
+									className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${w ? severityFill(barPercent) : "bg-success"}`}
 									style={{ width: `${clamped}%`, minWidth: clamped > 0 ? "0.125rem" : undefined }}
 								/>
 							</span>
@@ -161,7 +171,14 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 							t("rateLimits.unlimited")
 						) : (
 							<>
-								{percent}%<span className="ml-0.5 text-nano font-normal opacity-70">{t("rateLimits.used")}</span>
+								{pillWindows.map((w, i) => (
+									<span key={w.id}>
+										{i > 0 ? <span className="mx-1 font-normal opacity-50">·</span> : null}
+										<span className="mr-0.5 font-normal opacity-70">{labelOf(w)}</span>
+										{Math.round(w.usedPercent)}%
+									</span>
+								))}
+								<span className="ml-0.5 text-nano font-normal opacity-70">{t("rateLimits.used")}</span>
 							</>
 						)}
 					</span>

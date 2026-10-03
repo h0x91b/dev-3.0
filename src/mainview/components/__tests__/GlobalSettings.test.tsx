@@ -57,7 +57,7 @@ vi.mock("../../rpc", () => ({
 			}),
 			setNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: "native" }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
-				claude: { accounts: [], activeId: null, systemIdentity: null },
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 			// Model catalog surfaces: an empty catalog keeps them quiet, which is

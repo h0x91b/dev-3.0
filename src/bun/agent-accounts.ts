@@ -281,6 +281,12 @@ function safeReadJson(path: string): unknown {
 	}
 }
 
+/** Identity of the Claude login stored in a `CLAUDE_CONFIG_DIR`. Claude Code keeps
+ *  `.claude.json` inside that directory when the variable is set. */
+export function readClaudeConfigDirIdentity(configDir: string): AgentAccountIdentity | null {
+	return parseClaudeIdentity(safeReadJson(join(configDir, ".claude.json")));
+}
+
 function withCodexWorkspaceName(
 	identity: AgentAccountIdentity | null,
 	workspaceName: string | null | undefined,
@@ -490,6 +496,7 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 		claude: {
 			accounts: registry.claude.accounts.map((e) => toAccount(e, "claude", paths)),
 			activeId: registry.claude.accounts.some((e) => e.id === registry.claude.activeId) ? registry.claude.activeId : null,
+			systemConfigDir: paths.claudeHome,
 			systemIdentity: parseClaudeIdentity(safeReadJson(paths.claudeJson)),
 		},
 		codex: {
