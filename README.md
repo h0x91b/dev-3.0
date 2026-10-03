@@ -217,6 +217,17 @@ it, stays attached to the task, and downloads as a ZIP. No server, no upload, no
   <img src="docs/screenshots/artifact-viewer.jpg" width="900" alt="An agent-authored interactive report open in the artifact panel, beside the terminal that wrote it">
 </p>
 
+### Your shell prompt, your style
+
+Shell panes get a two-line prompt with the task number, project, worktree-relative path, git
+changes and how long the last command took — and it sheds segments instead of wrapping when a pane
+gets narrow. Settings → Terminal → Shell prompt offers twelve zsh styles, each previewed by real
+zsh; copy any of them into your own and tweak it, or keep the prompt from your own `.zshrc`.
+
+<p align="center">
+  <img src="docs/screenshots/shell-prompt-styles.jpg" width="900" alt="Settings → Terminal → Shell prompt: zsh prompt styles with live previews, the selected one showing its source and an Edit a copy button">
+</p>
+
 ### And the small things
 
 Dark and light themes · a hand-tuned 16-color ANSI palette so agents look right in both ·
