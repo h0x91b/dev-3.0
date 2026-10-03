@@ -305,7 +305,7 @@ describe("saveSharedArtifact", () => {
 		expect(stored).toContain("<style data-dev3-text-artifact>");
 		expect(stored).toMatch(/<div class="dev3-wide dev3-table" role="region" aria-label="Table" tabindex="0"><table>[\s\S]*<\/table>\n<\/div>/);
 		expect(stored).toContain('<td align="right">$1</td>');
-		expect(stored).toContain('<pre class="dev3-wide" tabindex="0"><code class="language-ts">const a = 1 &lt; 2;</code></pre>');
+		expect(stored).toContain('<pre class="dev3-wide" tabindex="0"><code class="language-ts"><span class="dev3-line">const a = 1 &lt; 2;\n</span></code></pre>');
 	});
 
 	it("gives headings GitHub-style ids so in-page links land on them", () => {
