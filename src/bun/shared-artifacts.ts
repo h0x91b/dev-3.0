@@ -97,7 +97,8 @@ function base64DataUrl(mime: string, data: Uint8Array): string {
 }
 
 export function injectArtifactThemeContract(source: string): string {
-	if (source.includes("data-dev3-artifact-shell")) return source;
+	// A real tag, not the text: a report that merely mentions the attribute still needs the theme.
+	if (/<[a-z][^>]*\sdata-dev3-artifact-shell\b/i.test(source)) return source;
 	const headEnd = source.search(/<\/head\s*>/i);
 	if (headEnd >= 0) return `${source.slice(0, headEnd)}${ARTIFACT_THEME_CONTRACT}${source.slice(headEnd)}`;
 	const bodyStart = source.search(/<body(?:\s|>)/i);

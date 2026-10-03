@@ -55,6 +55,13 @@ describe("injectArtifactThemeContract", () => {
 		expect(once).toContain("prefers-color-scheme: light");
 		expect(twice).toBe(once);
 	});
+
+	it("treats only a real shell tag as already themed, not a mention of it in the text", () => {
+		const mention = "<html><head></head><body><pre>&lt;style data-dev3-artifact-shell&gt;</pre></body></html>";
+		expect(injectArtifactThemeContract(mention)).toContain("--dev3-surface-base");
+		const template = '<html><head><link rel="stylesheet" href="app.css" data-dev3-artifact-shell></head><body></body></html>';
+		expect(injectArtifactThemeContract(template)).toBe(template);
+	});
 });
 
 describe("saveSharedArtifact", () => {
@@ -276,6 +283,29 @@ describe("saveSharedArtifact", () => {
 		expect(stored).not.toContain("javascript:");
 		expect(stored).not.toContain("shots/a.png");
 		expect(loadSharedArtifactContent(saved).html).toBe(stored);
+	});
+
+	it("lays Markdown tables and code out as keyboard-scrollable wide blocks, keeping column alignment", () => {
+		const md = join(SRC_DIR, "layout.md");
+		writeFileSync(md, [
+			"Mentions `data-dev3-artifact-shell` in prose.",
+			"",
+			"| Metric | Value |",
+			"|---|--:|",
+			"| cost | $1 |",
+			"",
+			"```ts",
+			"const a = 1 < 2;",
+			"```",
+		].join("\n"));
+
+		const stored = readFileSync(saveSharedArtifact("/my/project", md, []).storedPath, "utf8");
+
+		expect(stored).toContain("<style data-dev3-artifact-shell>");
+		expect(stored).toContain("<style data-dev3-text-artifact>");
+		expect(stored).toMatch(/<div class="dev3-wide dev3-table" role="region" aria-label="Table" tabindex="0"><table>[\s\S]*<\/table>\n<\/div>/);
+		expect(stored).toContain('<td align="right">$1</td>');
+		expect(stored).toContain('<pre class="dev3-wide" tabindex="0"><code class="language-ts">const a = 1 &lt; 2;');
 	});
 
 	it("keeps a plain-text file verbatim and escaped, titled by --title", () => {
