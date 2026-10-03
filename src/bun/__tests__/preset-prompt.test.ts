@@ -66,13 +66,53 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/smallest sufficient change/);
 		expect(COORDINATOR_PROMPT).toMatch(/put extra work in a separate task before implementing it/);
 		expect(COORDINATOR_PROMPT).toContain("SIZE IT TO ONE SMALL, INDEPENDENTLY REVIEWABLE OUTCOME");
-		expect(COORDINATOR_PROMPT).toMatch(/Leave routine engineering to the child/);
 		expect(COORDINATOR_PROMPT).toMatch(/Verify agreed acceptance checks, then stop/);
 	});
 
-	it("requires every reply to be a self-contained status", () => {
+	// The manager rule (2026-10-03): a coordinator that reviews its children's diffs
+	// is a second, unasked code reviewer and slows every task it touches.
+	it("delegates and trusts instead of reviewing or finishing a child's code", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/manager who owns an outcome, delegates, trusts the implementers/);
+		expect(COORDINATOR_PROMPT).toMatch(/Not allowed: an engineering judgement from reading source or diffs/);
+		expect(COORDINATOR_PROMPT).toMatch(/no design review, bug hunt, rewriting, finishing or micromanaging/);
+		expect(COORDINATOR_PROMPT).toMatch(/Needed review is a delegated task, never automatic/);
+		expect(COORDINATOR_PROMPT).toMatch(/state gaps once, no endless rechecks/);
+	});
+
+	// The outcome half: a goal with a checkable criterion, a count that only takes
+	// accepted results, and a check that has to end in a decision, not a re-scheduled timer.
+	it("owns a checkable outcome and makes every check end in a decision", () => {
+		expect(COORDINATOR_PROMPT).toContain("TURN THE ASK INTO A CHECKABLE RESULT");
+		expect(COORDINATOR_PROMPT).toMatch(/Count only accepted results, never started, partial or unverified ones; never weaken a criterion/);
+		expect(COORDINATOR_PROMPT).toContain("EVERY CHECK ENDS IN ONE OF THREE");
+		expect(COORDINATOR_PROMPT).toMatch(/if only the user can lift it, say at once what stopped/);
+		expect(COORDINATOR_PROMPT).toMatch(/never poll with nothing new to learn or invent work to keep agents busy/);
+	});
+
+	// Seq 2070's ruling (2026-10-03): a coordinator that forwards other tasks' news
+	// and briefs children to report to each other defocuses every task on the board.
+	it("messages a child only to change or unblock its own work", () => {
+		expect(COORDINATOR_PROMPT).toContain("MESSAGE A CHILD ONLY TO CHANGE OR UNBLOCK ITS OWN WORK");
+		expect(COORDINATOR_PROMPT).toMatch(/Never news of other tasks, FYI, acks or progress requests/);
+		expect(COORDINATOR_PROMPT).toMatch(/read status from the board, `dev3 events`, `dev3 peek`/);
+		expect(COORDINATOR_PROMPT).toMatch(/never to a sibling/);
+		expect(COORDINATOR_PROMPT).toMatch(/only when the receiver needs it for its own work — never status/);
+		expect(COORDINATOR_PROMPT).toMatch(/Same-file overlap needs no traffic: the second to land rebases/);
+		// The old rules that produced exactly that traffic.
+		expect(COORDINATOR_PROMPT).not.toMatch(/which tasks work nearby/);
+		expect(COORDINATOR_PROMPT).not.toMatch(/file contention/);
+	});
+
+	// A description is the first prompt only; terminology spreads through the source.
+	it("never treats a description edit or a message as the way to align wording", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/A description edit never reaches a running child; shared wording lands in source, picked up by rebase/);
+	});
+
+	it("requires every reply to be a self-contained status, without a whole-board recap", () => {
 		expect(COORDINATOR_PROMPT).toContain("SELF-CONTAINED STATUS");
 		expect(COORDINATOR_PROMPT).toContain("does not see or read your conversations");
+		expect(COORDINATOR_PROMPT).toMatch(/no whole-board recap unless asked/);
+		expect(COORDINATOR_PROMPT).not.toMatch(/End every message with the board/);
 	});
 
 	// The seq alone is the name, because the board block now supplies it on every
@@ -118,12 +158,14 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("COMPARE THEIR RESULTS FOR THE USER");
 		expect(COORDINATOR_PROMPT).toMatch(/never back into a running variant/);
 		expect(COORDINATOR_PROMPT).toMatch(/with no sibling named as their source/);
+		expect(COORDINATOR_PROMPT).toMatch(/consolidate only on the user's word/);
 	});
 
 	it("keeps the four rules that were learned from a specific failure", () => {
 		expect(COORDINATOR_PROMPT).toContain("RELAY THE RULING, NOT YOUR READING OF IT");
 		expect(COORDINATOR_PROMPT).toContain("NEVER ATTRIBUTE WORDS THE USER DID NOT SAY");
 		expect(COORDINATOR_PROMPT).toContain("PERMISSION DOES NOT TRAVEL");
+		expect(COORDINATOR_PROMPT).toContain("Priority and task type are the user's call");
 		expect(COORDINATOR_PROMPT).toContain("ANNOUNCE A REVERSAL AS A REVERSAL");
 	});
 

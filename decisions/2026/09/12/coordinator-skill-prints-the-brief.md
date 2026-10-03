@@ -1,5 +1,7 @@
 # /dev3-coordinator prints the role brief instead of delivering it
 
+> Superseded on 2026-10-03 by `decisions/2026/10/03/coordinator-skill-embeds-the-full-brief.md`: the skill now embeds the full built-in brief (interpolated from `COORDINATOR_PROMPT`) and `--print-role` also prints which source won. The printing half below still holds.
+
 ## Context
 
 A task often turns into a coordination job halfway through its own conversation. Until now the only

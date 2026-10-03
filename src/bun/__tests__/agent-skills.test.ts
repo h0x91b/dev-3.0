@@ -847,16 +847,22 @@ describe("dev3-coordinator skill content", () => {
 		expect(skill).toContain("user-invocable: true");
 	});
 
-	it("keeps ONE source of truth: it prints the canonical brief instead of copying it", () => {
+	// The skill must work as the whole instruction on its own, yet never become a
+	// second hand-edited copy: it is generated from the constant on every launch.
+	it("carries the complete built-in brief, generated from COORDINATOR_PROMPT", () => {
 		const skill = getCoordinatorSkillContent();
 
 		expect(skill).toContain("dev3 task update --type coordinator --print-role");
-		// Any verbatim slice of the startup prompt in here is a second copy that
-		// would silently rot the next time COORDINATOR_PROMPT changes.
-		for (const line of COORDINATOR_PROMPT.split("\n")) {
-			if (line.trim().length < 40) continue;
-			expect(skill).not.toContain(line.trim());
-		}
+		expect(skill).toContain(`## The built-in coordinator brief (full text)\n\n${COORDINATOR_PROMPT}\n`);
+	});
+
+	it("lets a project or Settings override win over the embedded copy, without touching it", () => {
+		const skill = getCoordinatorSkillContent();
+
+		expect(skill).toContain("`Brief source:`");
+		expect(skill).toContain("**Only the printed text.**");
+		expect(skill).toContain("never merge rules back in from it");
+		expect(skill).toContain("Never edit, reset or \"update\" a custom brief to match the built-in one");
 	});
 
 	it("cannot promote anything by being installed or discovered", () => {
@@ -874,6 +880,8 @@ describe("dev3-coordinator skill content", () => {
 
 		expect(skill).toContain("## What does NOT change");
 		expect(skill).toContain("becoming a coordinator authorises no push, no pull request, no merge, no publication, no completion");
+		expect(skill).toContain("A full brief is not a wider mandate");
+		expect(skill).toContain("launching a task still goes through its approval dialog");
 		expect(skill).toContain("## Re-running it");
 		expect(skill).toContain("Harmless, by design.");
 	});
@@ -894,6 +902,7 @@ describe("dev3-coordinator skill content", () => {
 
 		expect(skill).toContain("say the role did **not** change");
 		expect(skill).toContain("do not claim the type changed");
+		expect(skill).toContain("it is not an authorisation to act on");
 	});
 });
 

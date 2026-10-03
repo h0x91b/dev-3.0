@@ -156,6 +156,7 @@ const COMMANDS: CommandHelp[] = [
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
 					"--print-role          With --type, on YOUR OWN task only: print the role brief to stdout",
+					"                      under a 'Brief source:' line (project, app-wide or built-in)",
 					"                      instead of typing it into your own pane, and print it again on a",
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",

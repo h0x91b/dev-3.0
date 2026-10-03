@@ -2838,9 +2838,10 @@ describe("task.update", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			const body = resp.data as { roleDelivery?: string; rolePrompt?: string };
+			const body = resp.data as { roleDelivery?: string; rolePrompt?: string; rolePromptSource?: string };
 			expect(body.roleDelivery).toBe("printed");
 			expect(body.rolePrompt).toBe(COORDINATOR_PROMPT);
+			expect(body.rolePromptSource).toBe("built-in");
 			// The mid-conversation channel carries the same defaults as a coordinator
 			// that started as one — including create-and-launch.
 			expect(body.rolePrompt).toContain("CREATING A TASK MEANS STARTING IT");
@@ -2868,7 +2869,10 @@ describe("task.update", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			expect((resp.data as { rolePrompt?: string }).rolePrompt).toBe("You coordinate MY board, my way.");
+			const body = resp.data as { rolePrompt?: string; rolePromptSource?: string };
+			expect(body.rolePrompt).toBe("You coordinate MY board, my way.");
+			// The skill's embedded built-in copy must yield to this, and the source line is how it knows.
+			expect(body.rolePromptSource).toBe("project");
 		});
 
 		it("re-prints the brief on a repeat that changes nothing on the board", async () => {

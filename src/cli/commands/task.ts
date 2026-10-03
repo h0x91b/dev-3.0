@@ -24,6 +24,11 @@ const DESTRUCTIVE_STATUSES: TaskStatus[] = ["completed", "cancelled"];
 const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.includes(s));
 
 // How long the CLI waits for the user to answer an approval dialog.
+const ROLE_SOURCE_LABELS: Record<string, string> = {
+	project: "project override (Project Settings)",
+	settings: "app-wide override (Settings → Tasks & Board)",
+	"built-in": "built-in default",
+};
 const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 /**
  * The one reading of `--type` for every command that takes it, so `task create`
@@ -381,7 +386,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const resp = await sendRequest(socketPath, "task.update", params);
 	if (!resp.ok) exitError(resp.error || "Failed to update task");
 
-	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string; rolePrompt?: string };
+	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string; rolePrompt?: string; rolePromptSource?: string };
 	const task = "task" in result ? result.task : result;
 	const titlePreserved = "task" in result ? Boolean(result.titlePreserved) : false;
 	// A role change is only real once the agent behind the badge has been told, so
@@ -410,11 +415,14 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	// reads it right here, and re-running prints the same text whether or not the
 	// type had to change.
 	const rolePrompt = "task" in result ? result.rolePrompt : undefined;
+	// Which layer won tells a skill-carried copy of the built-in brief whether it still applies.
+	const rolePromptSource = "task" in result ? result.rolePromptSource : undefined;
+	const roleSourceLine = rolePromptSource ? `Brief source: ${ROLE_SOURCE_LABELS[rolePromptSource] ?? rolePromptSource}.\n` : "";
 	if (rolePrompt !== undefined) {
 		const role = task.taskType ?? "standard";
 		process.stdout.write(
 			rolePrompt
-				? `\nYour role is now ${role}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n\n${rolePrompt}\n`
+				? `\nYour role is now ${role}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n${roleSourceLine}\n${rolePrompt}\n`
 				: `\nThis task no longer carries a special role — you are an ordinary task agent again and may do the work yourself.\n`,
 		);
 	}

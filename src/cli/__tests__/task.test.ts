@@ -704,6 +704,7 @@ describe("task update", () => {
 			titlePreserved: false,
 			roleDelivery: "printed",
 			rolePrompt: "You are the COORDINATOR of this board.",
+			rolePromptSource: "project",
 		}));
 
 		await handleTask("update", args([], { type: "coordinator", "print-role": "true" }), SOCKET, CTX);
@@ -716,6 +717,7 @@ describe("task update", () => {
 		});
 		expect(stdoutOutput).toContain("Your role is now coordinator");
 		expect(stdoutOutput).toContain("You are the COORDINATOR of this board.");
+		expect(stdoutOutput).toContain("Brief source: project override");
 		expect(stderrOutput).toContain("printed below instead of typed into your own pane");
 	});
 
@@ -729,6 +731,8 @@ describe("task update", () => {
 		await handleTask("update", args([], { type: "coordinator", "print-role": "true" }), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("You are the COORDINATOR of this board.");
+		// An older backend sends no source: no line rather than a guessed one.
+		expect(stdoutOutput).not.toContain("Brief source:");
 		expect(stderrOutput).not.toContain("Role:");
 	});
 

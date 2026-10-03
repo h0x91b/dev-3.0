@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, PresetPromptSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskType, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../shared/review";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, taskNeedsReset, taskResetConsent, normalizeTaskType, presetPromptForTaskType, taskSharedMedia, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, TASK_TYPES, agentLaunchAutoApproveMs, buildTaskDialogSubject, formatStatus, getTaskTitle, STATUS_LABELS, isStatusGuardBlocked, normalizePriority, taskNeedsReset, taskResetConsent, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, taskSharedMedia, repoConfigEnabled, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
@@ -1340,6 +1340,7 @@ const handlers: Record<string, Handler> = {
 		// promotion is idempotent instead of silent.
 		const printRole = params.printRole === true;
 		let rolePrompt: string | undefined;
+		let rolePromptSource: PresetPromptSource | undefined;
 		if (params.taskType !== undefined) {
 			const raw = params.taskType;
 			const next = raw === null || raw === "standard" ? null : normalizeTaskType(String(raw));
@@ -1347,7 +1348,9 @@ const handlers: Record<string, Handler> = {
 				throw new Error(`Invalid task type "${raw}". Use ${TASK_TYPES.join(", ")} or standard.`);
 			}
 			if (printRole) {
-				rolePrompt = next ? presetPromptForTaskType(next, project, await loadSettings()) : "";
+				const settings = await loadSettings();
+				rolePrompt = next ? presetPromptForTaskType(next, project, settings) : "";
+				if (next) rolePromptSource = presetPromptSourceForTaskType(next, project, settings);
 			}
 			if ((task.taskType ?? null) !== next) {
 				const settings = await loadSettings();
@@ -1426,6 +1429,7 @@ const handlers: Record<string, Handler> = {
 			titlePreserved,
 			...(roleDelivery ? { roleDelivery } : {}),
 			...(rolePrompt === undefined ? {} : { rolePrompt }),
+			...(rolePromptSource ? { rolePromptSource } : {}),
 		};
 	},
 
