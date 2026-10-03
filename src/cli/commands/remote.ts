@@ -141,6 +141,7 @@ Examples:
   dev3 remote uninstall-service            # (Linux) remove the systemd --user service
   dev3 remote --no-tunnel                  # LAN + SSH only (no public URL)
   dev3 remote --no-tunnel --host 127.0.0.1 # this machine only (no LAN, no public URL)
+  dev3 local                               # same as the line above (alias)
   dev3 remote --port 3000                  # fixed port (ideal for Docker -p 3000:3000)
   dev3 remote --expose-ports=3000,5173     # also expose dev-server ports publicly
 `;
