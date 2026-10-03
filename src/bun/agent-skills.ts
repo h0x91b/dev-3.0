@@ -7,7 +7,14 @@ import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../shared/agent-message-hold-timing";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../shared/agent-skill-content";
+import {
+	ARTIFACT_AUTHORING_STEPS,
+	ARTIFACT_FORMAT_RULES,
+	CLAUDE_SKILL_BODY,
+	CODEX_SKILL_BODY,
+	GENERIC_SKILL_BODY,
+	OMP_SKILL_BODY,
+} from "../shared/agent-skill-content";
 import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
 import { applyLowBattery } from "./low-battery";
 import { claudeConfigLocation } from "../shared/claude-config-dir";
@@ -961,6 +968,7 @@ Off the main flow entirely.
 - **\`/dev3-project-config\`** — analyze a repo and write its \`.dev3/config.json\`.
 - **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
 - **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
+- **\`/dev3-artifact\`** — make, publish and revise an HTML report inside dev3 (the task's artifact starter + \`dev3 show-artifact\`).
 - **\`/dev3-share-artifact\`** — publish an HTML report as a gist and hand back a verified preview URL.
 - **\`/dev3-coordinator\`** — turn the task you are already in into a coordinator, keeping its conversation and work.
 
@@ -980,6 +988,73 @@ const ASK_DEV3_OPENAI_YAML = `interface:
   display_name: "Ask dev3"
   short_description: "Ask which dev3 feature or flow fits your situation"
   default_prompt: "Use $ask-dev3 to learn how something is done in dev3 and which flow fits the situation."
+`;
+
+// ---- dev3-artifact skill (make and publish a report in the app) ----
+// The rules and steps are the protocol's own fragments, so the two can never disagree;
+// this file adds only what the protocol leaves to a pointer.
+
+const ARTIFACT_SKILL_DESCRIPTION =
+	"Make, publish and revise a dev3 HTML artifact: copy the task's artifact starter, follow its AUTHORING.md, edit index.html and report.js, then publish or add a version with dev3 show-artifact. Use it inside a dev3 task whenever a human will read the result — a report, summary, daily brief, review readout, dashboard, comparison or analysis page — even when the user only says 'write it up', 'make a report' or 'show me', or names a .md path for where to save it; also to update an artifact already published. Not for Claude Artifacts, CI/build artifacts or package outputs. Sharing a report as a link outside the app is /dev3-share-artifact.";
+
+const ARTIFACT_SKILL_CONTENT = `---
+name: dev3-artifact
+description: "${ARTIFACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# dev3 HTML artifacts — make, publish, revise
+
+A dev3 artifact is an HTML report shown inside the dev3 app, bound to the task that published it.
+This skill is the same workflow the dev3 protocol carries in its \`## dev3 HTML artifacts\` section,
+plus the parts that section only points at. It changes nothing about the starter, its shell, or
+\`dev3 show-artifact\`.
+
+## When a report becomes an artifact
+
+${ARTIFACT_FORMAT_RULES}
+## The workflow
+
+${ARTIFACT_AUTHORING_STEPS}
+## Getting the starter
+
+| Situation | Do |
+|---|---|
+| \`$DEV3_ARTIFACT_TEMPLATE_DIR\` is set | \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` |
+| It is unset (older session, a shell that never inherited it) | \`dev3 artifact-template\` — provisions the starter, copies it into \`./dev3-artifact-report\`, prints the path |
+| You already have an edited copy | Keep working in it. Re-running \`dev3 artifact-template\` copies every starter file over it, \`index.html\` and \`report.js\` included, and your edits are gone |
+
+Never edit the pristine starter itself, and never swap in another template.
+
+## Writing it
+
+The copied \`AUTHORING.md\` is the authoring card: shell classes, color tokens, charts, the
+template contract, and when a browser pass is due. Read it once per report — this skill does not
+repeat it. Its last table says which \`REFERENCE.md\` section to open for charts, controls,
+menus, dense tables, media, print, or a form that answers back to the agent.
+
+## Publishing and updating
+
+- **Publish the directory**, not \`index.html\`: every CSS, classic JS, image, video and audio file
+  under it rides along. A file outside the directory goes after \`--assets\`.
+- **Revise in place.** Edit the same copy and re-run \`dev3 show-artifact\` with the same
+  \`--title\` (or the same \`--artifact-id <slug>\`, so re-wording the title does not fork it) — the
+  viewer shows it as a new version of one artifact. \`--new\` only for a genuinely different report.
+- **Limits and exact flags:** \`dev3 show-artifact --help\`, and \`REFERENCE.md\` § Publishing and
+  assets / § Bundled media.
+
+## In the app versus a link outside it
+
+| The user wants | Use |
+|---|---|
+| To read the report in dev3 | \`dev3 show-artifact\` — this skill |
+| A URL to open elsewhere — phone, another machine, an issue, a colleague | \`/dev3-share-artifact\`, a separate step that publishes a GitHub gist. Run it only when they ask for a link |
+`;
+
+const ARTIFACT_OPENAI_YAML = `interface:
+  display_name: "dev3 Artifact"
+  short_description: "Make and publish an HTML report inside dev3"
+  default_prompt: "Use \$dev3-artifact to write this up as a dev3 HTML artifact and publish it with dev3 show-artifact."
 `;
 
 // ---- dev3-share-artifact skill (publish an artifact as a link) ----
@@ -1174,6 +1249,10 @@ const SHARE_ARTIFACT_OPENAI_YAML = `interface:
   default_prompt: "Use \$dev3-share-artifact to publish a local HTML report as a gist and verify its preview URL."
 `;
 
+export function getArtifactSkillContent(): string {
+	return ARTIFACT_SKILL_CONTENT;
+}
+
 export function getShareArtifactSkillContent(): string {
 	return SHARE_ARTIFACT_SKILL_CONTENT;
 }
@@ -1265,6 +1344,15 @@ const COORDINATOR_SKILL_DIRS = [
 	".omp/agent/skills/dev3-coordinator",
 ];
 
+const ARTIFACT_SKILL_DIRS = [
+	".cursor/skills/dev3-artifact",
+	".agents/skills/dev3-artifact",
+	".codex/skills/dev3-artifact",
+	".opencode/skills/dev3-artifact",
+	".config/opencode/skills/dev3-artifact",
+	".omp/agent/skills/dev3-artifact",
+];
+
 const SHARE_ARTIFACT_SKILL_DIRS = [
 	".cursor/skills/dev3-share-artifact",
 	".agents/skills/dev3-share-artifact",
@@ -1281,6 +1369,7 @@ const CLAUDE_SKILL_NAMES = [
 	"dev3-tmux",
 	"dev3-bug-hunter",
 	"ask-dev3",
+	"dev3-artifact",
 	"dev3-share-artifact",
 	"dev3-coordinator",
 ] as const;
@@ -1297,6 +1386,7 @@ function claudeSkillFiles(): Record<(typeof CLAUDE_SKILL_NAMES)[number], Record<
 		"dev3-tmux": { "SKILL.md": CLAUDE_TMUX_SKILL },
 		"dev3-bug-hunter": { "SKILL.md": BUG_HUNTER_SKILL_CONTENT },
 		"ask-dev3": { "SKILL.md": ASK_DEV3_SKILL_CONTENT },
+		"dev3-artifact": { "SKILL.md": ARTIFACT_SKILL_CONTENT },
 		"dev3-share-artifact": { "SKILL.md": SHARE_ARTIFACT_SKILL_CONTENT },
 		"dev3-coordinator": { "SKILL.md": COORDINATOR_SKILL_CONTENT },
 	};
@@ -1316,6 +1406,7 @@ export const MANAGED_SKILL_FILES = [
 	...GENERIC_TMUX_DIRS,
 	...BUG_HUNTER_SKILL_DIRS,
 	...ASK_DEV3_SKILL_DIRS,
+	...ARTIFACT_SKILL_DIRS,
 	...SHARE_ARTIFACT_SKILL_DIRS,
 	...COORDINATOR_SKILL_DIRS,
 ].map((dir) => `${dir}/SKILL.md`);
@@ -1340,6 +1431,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/ask-dev3",
 		content: ASK_DEV3_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-artifact",
+		content: ARTIFACT_OPENAI_YAML,
 	},
 	{
 		dir: ".agents/skills/dev3-share-artifact",
@@ -1786,6 +1881,21 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 			log.info("ask-dev3 skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install ask-dev3 skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	for (const dir of ARTIFACT_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, ARTIFACT_SKILL_CONTENT, "utf-8");
+			log.info("artifact skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install artifact skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

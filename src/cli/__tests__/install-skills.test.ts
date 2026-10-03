@@ -58,6 +58,7 @@ describe("install-skills", () => {
 		expect(stdoutOutput).toContain(".config/opencode/skills/dev3-bug-hunter/SKILL.md");
 		expect(stdoutOutput).toContain(".claude/skills/ask-dev3/SKILL.md");
 		expect(stdoutOutput).toContain(".claude/skills/dev3-tmux/SKILL.md");
+		expect(stdoutOutput).toContain(".claude/skills/dev3-artifact/SKILL.md");
 		expect(stdoutOutput).toContain(".claude/skills/dev3-share-artifact/SKILL.md");
 		expect(stdoutOutput).not.toContain(".gemini/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain("~/.agents/skills/*/agents/openai.yaml");

@@ -188,16 +188,16 @@ A project can declare **several dev servers by name**: every subcommand takes on
 
 Each server's output also lands as text in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it, and it greps.
 `;
-const SKILL_ARTIFACTS = `
-## dev3 HTML artifacts
-
-Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included. Other meanings win: Claude Artifacts, CI/build artifacts, package outputs.
+/** When a report becomes a dev3 HTML artifact. Shared verbatim by the protocol and the `dev3-artifact` skill. */
+export const ARTIFACT_FORMAT_RULES = `Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included. Other meanings win: Claude Artifacts, CI/build artifacts, package outputs.
 
 - **Copy the starter and publish its directory.** Prose or lists are fine; charts are optional.
 - Publish \`.md\`/\`.txt\` directly (no template CSS) only when the user explicitly asks for Markdown or plain text. A \`.md\` report path in a brief says where to save it, not how to show it.
 - If "do not generate HTML" conflicts with the template, ask which wins before publishing: the template needs an HTML wrapper.
+`;
 
-\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the pristine starter; never edit it. If unset, \`dev3 artifact-template\` creates \`./dev3-artifact-report\` instead. The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` has optional depth, \`index.html\` + \`report.js\` are editable, \`app.css\` + \`app.js\` are the shell, \`dev3-icon.png\` is the brand asset.
+/** How to make and publish one. Shared verbatim by the protocol and the `dev3-artifact` skill. */
+export const ARTIFACT_AUTHORING_STEPS = `\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the pristine starter; never edit it. If unset, \`dev3 artifact-template\` creates \`./dev3-artifact-report\` instead. The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` has optional depth, \`index.html\` + \`report.js\` are editable, \`app.css\` + \`app.js\` are the shell, \`dev3-icon.png\` is the brand asset.
 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\`.
 2. Read the copied \`AUTHORING.md\`; edit \`index.html\` and \`report.js\`. Do not read the shell files for ordinary reports. Open \`REFERENCE.md\` sections only as needed. Keep data local; CDN libraries and live fetch are supported.
@@ -206,6 +206,14 @@ Any report a human reads defaults to the dev3 template, text-only summaries and 
 Publish directly: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish lists exceptions.
 
 The same \`--title\` or stable \`--artifact-id <slug>\` adds a VERSION. Never invent \`report-v2.html\`; \`--new\` is for a different report. Outside dev3, \`/dev3-share-artifact\` inlines the files and publishes a gist with a checked preview URL.
+`;
+
+const SKILL_ARTIFACTS = `
+## dev3 HTML artifacts
+
+${ARTIFACT_FORMAT_RULES}
+${ARTIFACT_AUTHORING_STEPS}
+Full workflow as a skill: \`/dev3-artifact\`.
 
 `;
 
