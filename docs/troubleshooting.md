@@ -122,6 +122,11 @@ permission to its helpers
 restored access. The root cause is not established yet, so treat this as a workaround to try, not
 as a requirement for every installation.
 
+**Check first:** run `dev3 doctor` inside the failing task terminal. Its `repository access` line
+tells a deleted repository, a file-permission problem and an `Operation not permitted` denial
+apart — Git prints `not a git repository` for all three. For a denial it lists the possible causes
+and names the binary that hosts the terminal.
+
 ### 1. Find the tmux binary that is actually running
 
 First check the task's terminal backend with `dev3 task terminal-backend`. If it says `native`,

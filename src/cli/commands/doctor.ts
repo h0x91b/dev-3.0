@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { VENDORED_TMUX_PATHS } from "../../bun/rpc-handlers/shared-pure";
@@ -14,6 +14,7 @@ import {
 } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
+import { checkRepositoryAccess, type RepoAccessDeps } from "./doctor-repo-access";
 import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
 import {
 	collectWorktreeReport,
@@ -62,6 +63,8 @@ export interface DoctorDeps {
 	exec: (cmd: string, args: string[]) => { status: number | null; stdout: string };
 	/** Live app socket path, or null when the app is not running. */
 	socketPath: () => string | null;
+	/** Probes for the `repository access` check; absent → the check is skipped. */
+	repoAccess?: RepoAccessDeps;
 }
 
 export function realDoctorDeps(): DoctorDeps {
@@ -99,6 +102,53 @@ export function realDoctorDeps(): DoctorDeps {
 			}
 		},
 		socketPath: () => resolveSocketPath(),
+		repoAccess: realRepoAccessDeps(),
+	};
+}
+
+function errnoCode(err: unknown): string {
+	return (err as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+}
+
+function realRepoAccessDeps(): RepoAccessDeps | undefined {
+	let cwd: string;
+	try {
+		cwd = process.cwd();
+	} catch {
+		return undefined;
+	}
+	return {
+		platform: process.platform,
+		home: process.env.HOME || "/tmp",
+		cwd,
+		pid: process.pid,
+		probeDir: (path) => {
+			try {
+				readdirSync(path);
+				return null;
+			} catch (err) {
+				return errnoCode(err);
+			}
+		},
+		readDotGit: (path) => {
+			let isDir: boolean;
+			try {
+				isDir = statSync(path).isDirectory();
+			} catch (err) {
+				if (errnoCode(err) === "ENOENT") return null;
+				throw err;
+			}
+			return isDir ? "dir" : readFileSync(path, "utf-8");
+		},
+		processInfo: (pid) => {
+			try {
+				const res = spawnSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf-8", timeout: 5_000 });
+				const match = (res.stdout || "").trim().match(/^(\d+)\s+(.+)$/);
+				return match ? { ppid: Number(match[1]), path: match[2] } : null;
+			} catch {
+				return null;
+			}
+		},
 	};
 }
 
@@ -481,6 +531,8 @@ export function collectChecks(deps: DoctorDeps): CheckResult[] {
 	results.push(checkTmuxBinary(deps));
 	results.push(checkLowBattery(deps));
 	results.push(...checkHomebrew(deps, app.appVersion, Boolean(app.bundlePath)));
+	const repoAccess = deps.repoAccess ? checkRepositoryAccess(deps.repoAccess) : null;
+	if (repoAccess) results.push(repoAccess);
 	return results;
 }
 
