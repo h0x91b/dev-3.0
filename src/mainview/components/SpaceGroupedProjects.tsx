@@ -52,7 +52,10 @@ export interface RowReorderCtx {
 	 *  line. Scoped to the group because only this group accepts the drop. */
 	groupDragActive: boolean;
 	dragEnabled: boolean;
-	onDragStart: (event: DragEvent<HTMLElement>) => void;
+	/** `text/plain` payload the row's grip puts on the drag. */
+	dragData: string;
+	/** Marks the drag in flight. The row calls it after `dragstart`, never inside. */
+	onDragStart: () => void;
 	onDragEnd: () => void;
 	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
 	onDragLeave: () => void;
@@ -168,11 +171,8 @@ function SpaceGroupedProjects({
 			isDragged: dragged?.spaceId === spaceId && dragged.projectId === project.id,
 			groupDragActive: dragged?.spaceId === spaceId,
 			dragEnabled: canReorder,
-			onDragStart: (event) => {
-				setDragged({ spaceId, projectId: project.id });
-				event.dataTransfer.setData("text/plain", `space-project:${spaceId}:${project.id}`);
-				event.dataTransfer.effectAllowed = "move";
-			},
+			dragData: `space-project:${spaceId}:${project.id}`,
+			onDragStart: () => setDragged({ spaceId, projectId: project.id }),
 			onDragEnd: () => {
 				setDragged(null);
 				setDropTarget(null);

@@ -887,16 +887,20 @@ describe("ActivityOverview — dragging a project collapses the list", () => {
 		});
 	});
 
-	function startDragging(projectName: string) {
+	function gripOf(projectName: string) {
 		const row = screen.getByText(projectName).closest('[data-help-id="dashboard.project-row"]')!;
-		const grip = row.querySelector('[title="Drag to reorder project"]')!;
-		fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+		return row.querySelector('[title="Drag to reorder project"]')!;
+	}
+
+	async function startDragging(projectName: string) {
+		fireEvent.dragStart(gripOf(projectName), { dataTransfer: { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: "" } });
+		await waitFor(() => expect(screen.getByText(projectName).closest("[data-compact]")).not.toBeNull());
 	}
 
 	it("drops the task rows and the board footer for the duration of the drag", async () => {
 		renderWithProjects([mockProject, second]);
 		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		startDragging("My Project");
+		await startDragging("My Project");
 		expect(screen.queryByText(getTaskTitle(mockTask))).not.toBeInTheDocument();
 		expect(screen.queryByTestId("project-open-board-p1")).not.toBeInTheDocument();
 		expect(screen.queryByTestId("project-open-board-p2")).not.toBeInTheDocument();
@@ -908,19 +912,47 @@ describe("ActivityOverview — dragging a project collapses the list", () => {
 	it("hides the path so the row is a single line", async () => {
 		renderWithProjects([mockProject, second]);
 		expect(await screen.findByTitle("/home/user/my-project")).toBeInTheDocument();
-		startDragging("My Project");
+		await startDragging("My Project");
 		expect(screen.queryByTitle("/home/user/my-project")).not.toBeInTheDocument();
 	});
 
 	it("restores the full rows when the drag ends", async () => {
 		renderWithProjects([mockProject, second]);
 		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		const row = screen.getByText("My Project").closest('[data-help-id="dashboard.project-row"]')!;
-		const grip = row.querySelector('[title="Drag to reorder project"]')!;
-		fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
-		fireEvent.dragEnd(grip);
+		await startDragging("My Project");
+		fireEvent.dragEnd(gripOf("My Project"));
 		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
 		expect(screen.getByTestId("project-open-board-p1")).toBeInTheDocument();
+	});
+
+	// Collapsing inside dragstart is what broke the drag: Chromium ends it on the
+	// spot and WebKit turns the gesture into a text selection.
+	it("does not touch the list inside dragstart itself", async () => {
+		renderWithProjects([mockProject, second]);
+		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		const setData = vi.fn();
+		const setDragImage = vi.fn();
+		fireEvent.dragStart(gripOf("My Project"), { dataTransfer: { setData, setDragImage, effectAllowed: "" } });
+		expect(setData).toHaveBeenCalledWith("text/plain", "space-project:sp_a:p1");
+		expect(setDragImage.mock.calls[0][0]).toHaveAttribute("data-project-row-header");
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		await waitFor(() => expect(screen.queryByText(getTaskTitle(mockTask))).not.toBeInTheDocument());
+	});
+
+	it("never collapses a drag the browser cancelled before the collapse landed", async () => {
+		renderWithProjects([mockProject, second]);
+		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		fireEvent.dragStart(gripOf("My Project"), { dataTransfer: { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: "" } });
+		fireEvent.dragEnd(gripOf("My Project"));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		expect(document.querySelector("[data-compact]")).toBeNull();
+	});
+
+	it("keeps the reorder controls out of text selection", async () => {
+		renderWithProjects([mockProject, second]);
+		await screen.findByText(getTaskTitle(mockTask));
+		expect(gripOf("My Project").parentElement).toHaveClass("select-none");
 	});
 });
 
