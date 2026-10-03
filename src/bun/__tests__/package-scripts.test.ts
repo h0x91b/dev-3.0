@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsePackageScripts, detectRunner, resolveRunnerCommand } from "../package-scripts";
-import { devPlan, devRunEnv } from "../../../scripts/dev";
+import { devPlan, devRunEnv, devShell, headlessCommand, headlessRunEnv, linuxHasWebkit, qaScopeMode } from "../../../scripts/dev";
 
 describe("package-scripts", () => {
 	let tmp: string;
@@ -176,6 +176,64 @@ describe("package-scripts", () => {
 			expect(devRunEnv("dev", { staticCode: "stable-code", port0: "0" }).DEV3_REMOTE_STATIC_CODE)
 				.toBe("stable-code");
 			expect(devPlan("dev", "bun").some((s) => s.command.includes("scripts/build-cli.ts"))).toBe(true);
+		});
+	});
+
+	// Electrobun's Linux window needs a display and WebKitGTK. Without them the dev
+	// loop serves the UI headless instead of failing, so `dev3 dev-server start`
+	// works on WSL, SSH and container hosts.
+	describe("repo dev script (headless fallback)", () => {
+		const webkit = () => true;
+		const noWebkit = () => false;
+		const desktopEnv = { DISPLAY: ":0" };
+
+		it("keeps the desktop window where it can open", () => {
+			expect(devShell([], desktopEnv, "linux", webkit).shell).toBe("desktop");
+			expect(devShell([], {}, "darwin", noWebkit).shell).toBe("desktop");
+			expect(devShell([], {}, "win32", noWebkit).shell).toBe("desktop");
+		});
+
+		it("goes headless on Linux without a display or without WebKitGTK", () => {
+			expect(devShell([], {}, "linux", webkit)).toEqual({ shell: "headless", reason: "no DISPLAY or WAYLAND_DISPLAY" });
+			expect(devShell([], { WAYLAND_DISPLAY: "wayland-0" }, "linux", noWebkit).shell).toBe("headless");
+		});
+
+		it("goes headless on request on any platform", () => {
+			expect(devShell(["--headless"], {}, "darwin", webkit).shell).toBe("headless");
+			expect(devShell([], { ...desktopEnv, DEV3_DEV_HEADLESS: "1" }, "linux", webkit).shell).toBe("headless");
+		});
+
+		it("finds WebKitGTK only by its 4.1 soname", () => {
+			expect(linuxHasWebkit((path) => path === "/usr/lib64/libwebkit2gtk-4.1.so.0")).toBe(true);
+			expect(linuxHasWebkit((path) => path.endsWith("libwebkit2gtk-4.0.so.37"))).toBe(false);
+		});
+
+		it("builds the renderer and workers but no desktop bundle", () => {
+			const flat = devPlan("dev", "bun", "headless").map((s) => s.command.join(" "));
+			expect(flat).toContain("bun node_modules/vite/bin/vite.js build");
+			expect(flat.filter((c) => c.includes("--outdir dist/workers"))).toHaveLength(2);
+			expect(flat.some((c) => c.includes("electrobun") || c.includes("scripts/build-cli.ts"))).toBe(false);
+		});
+
+		// A compiled dist/dev3 reads as an install to the managed-CLI guard and would
+		// overwrite the shared ~/.dev3.0/bin/dev3; a bun process is refused that write.
+		it("runs the server from source, never the compiled CLI", () => {
+			expect(headlessCommand("/opt/bun")).toEqual(["/opt/bun", "src/cli/main.ts", "remote", "--no-detach"]);
+		});
+
+		it("overrides the installed server's inherited port and views dir", () => {
+			const env = headlessRunEnv("/repo", undefined);
+			expect(env).toMatchObject({ DEV3_REMOTE_PORT: "0", DEV3_REMOTE_HOST: "127.0.0.1", DEV3_REMOTE_NO_TUNNEL: "1" });
+			expect(env.DEV3_VIEWS_DIR).toBe(join("/repo", "dist"));
+			expect(env.DEV3_VIEWS_DIR_AUTO).toBe("");
+			expect(headlessRunEnv("/repo", "14279").DEV3_REMOTE_PORT).toBe("14279");
+		});
+
+		it("defaults headless to the throwaway board, with DEV3_QA_SCOPE=0 as the way out", () => {
+			expect(qaScopeMode([], {}, "seeded")).toBe("seeded");
+			expect(qaScopeMode([], { DEV3_QA_SCOPE: "0" }, "seeded")).toBeNull();
+			expect(qaScopeMode([], { DEV3_QA_SCOPE: "virgin" }, "seeded")).toBe("virgin");
+			expect(qaScopeMode([], {})).toBeNull();
 		});
 	});
 });

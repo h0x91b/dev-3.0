@@ -3,6 +3,10 @@
 > Amended on 2026-09-04 by `decisions/2026/09/04/dev-server-caller-env.md`: inside a task the
 > scoped board is now reached with `dev3 dev-server start --env DEV3_QA_SCOPE=seeded`, not with a
 > `DEV3_QA_SCOPE` entry in `.dev3/config.local.json`. Everything else below still holds.
+>
+> Amended on 2026-10-03 by `decisions/2026/10/03/headless-dev-server-fallback.md`: a headless
+> dev run (no display or no WebKitGTK on Linux) starts on the `seeded` scope by default;
+> `DEV3_QA_SCOPE=0` opts out. The desktop run is still opt-in as described below.
 
 ## Context
 

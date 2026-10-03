@@ -12,6 +12,16 @@ it works the same in a plain terminal session.
 This is **dev-internal tooling for the dev-3.0 repo** — NOT one of the skills dev3 ships to
 its users (those live in `src/bun/agent-skills.ts`).
 
+## Prerequisite: `agent-browser` on PATH
+
+Check with `agent-browser --version`. If it is missing, install it once per machine, not in the
+project `setupScript` (that runs for every new worktree):
+
+```bash
+bun add -g agent-browser        # or: npm i -g agent-browser
+agent-browser install           # downloads Chromium; on Linux add --with-deps for system libraries (needs sudo)
+```
+
 ## One rule before the flow: the app starts through `dev3 dev-server`, nothing else
 
 Every QA run in this skill boots the app with `dev3 dev-server start` and takes it down with
@@ -67,6 +77,22 @@ dev3 dev-server stop          # the port frees a second or two later (graceful s
 That's it. `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}` is wired into the repo's `dev` script and
 `portCount: 1` is committed in `.dev3/config.json`, so the dev app binds the exact port shown
 above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-pool.md)).
+
+## Linux without a display: the dev-server goes headless
+
+On Linux with no `DISPLAY`/`WAYLAND_DISPLAY`, or without `libwebkit2gtk-4.1` (WSL without WSLg,
+SSH, containers), the desktop window cannot open. `bun run dev` detects that and serves the same
+UI through `dev3 remote`, run from source, on the same port and access code. The flow above does
+not change: `agent-browser` only ever talked to the web server. The pane prints
+`[dev] headless (<reason>)` when this happens.
+
+- **Headless defaults to the scoped `seeded` board**, because the real `~/.dev3.0` usually
+  belongs to an installed `dev3 remote` on the same machine. `--env DEV3_QA_SCOPE=0` opts back
+  into the real board.
+- **Headless on request** where the window could open:
+  `dev3 dev-server start --wait --env DEV3_DEV_HEADLESS=1`.
+- **What it cannot show:** the native window, the application menu and OS notifications.
+  Everything rendered in the page is the same code.
 
 ## Scoped QA: a throwaway board instead of the real one
 
