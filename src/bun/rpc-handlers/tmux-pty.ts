@@ -2912,7 +2912,7 @@ export async function tmuxAction(params: { taskId: string; action: "splitH" | "s
 				await tmux.selectPane(`${tmuxSession}:.-`, { socket });
 				break;
 			case "newWindow":
-				await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, socket });
+				await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, focus: true, socket });
 				break;
 			case "nextLayout":
 				await tmux.nextLayout(tmuxSession, { socket });

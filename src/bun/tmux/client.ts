@@ -392,7 +392,11 @@ export class TmuxClient {
 		return { paneId: stdout.trim() || null, stderr };
 	}
 
-	/** `new-window` — same return contract as splitWindow. */
+	/**
+	 * `new-window` — same return contract as splitWindow. dev3's config makes
+	 * every new window open in the background; `focus` is for an explicit user
+	 * action and selects the window it just created.
+	 */
 	async newWindow(opts: {
 		target: string;
 		/** `-n`: window name. */
@@ -402,6 +406,7 @@ export class TmuxClient {
 		printPaneId?: boolean;
 		/** `-e KEY=VAL` env entries visible to the new pane. */
 		env?: Record<string, string>;
+		focus?: boolean;
 		cwd?: string;
 		command?: string;
 	} & SocketOpt): Promise<{ paneId: string | null; stderr: string }> {
@@ -409,7 +414,7 @@ export class TmuxClient {
 		const args = ["new-window"];
 		if (opts.detached) args.push("-d");
 		if (opts.name) args.push("-n", opts.name);
-		if (opts.printPaneId) args.push("-P", "-F", PANE_ID_FORMAT.formatString);
+		if (opts.printPaneId || opts.focus) args.push("-P", "-F", PANE_ID_FORMAT.formatString);
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);
 		}
@@ -417,7 +422,9 @@ export class TmuxClient {
 		if (opts.cwd) args.push("-c", opts.cwd);
 		if (opts.command) args.push(opts.command);
 		const { stdout, stderr } = await this.runChecked(opts.socket, args);
-		return { paneId: stdout.trim() || null, stderr };
+		const paneId = stdout.trim() || null;
+		if (opts.focus && paneId) await this.selectWindow(paneId, { socket: opts.socket, bestEffort: true });
+		return { paneId: opts.printPaneId ? paneId : null, stderr };
 	}
 
 	/** `kill-pane -t`. */

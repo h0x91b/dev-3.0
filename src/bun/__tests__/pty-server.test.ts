@@ -337,6 +337,28 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
+		it("a task session hands its window bar to the app's navigator; a project terminal keeps it", async () => {
+			vi.useFakeTimers();
+			const id = track("task-window-nav");
+			const projectId = track("project-window-nav");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
+			createSession(projectId, "proj-1", "/tmp/cwd", "bash", {}, "my-socket", "project");
+			mockSpawn.mockClear();
+
+			await vi.advanceTimersByTimeAsync(300);
+			await Promise.resolve();
+			await Promise.resolve();
+
+			const sets = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((a) => Array.isArray(a) && a.includes("set-option"));
+			const task = `=${getSessionTmuxName(id)}:`;
+			expect(sets).toContainEqual(expect.arrayContaining(["set-option", "-t", task, "@dev3_window_nav", "1"]));
+			expect(sets).toContainEqual(expect.arrayContaining(["set-option", "-t", task, "status", "off"]));
+			const project = `=${getSessionTmuxName(projectId)}:`;
+			expect(sets.some((a) => a.includes(project) && (a.includes("@dev3_window_nav") || a.includes("off")))).toBe(false);
+
+			vi.useRealTimers();
+		});
+
 		it("does not call tmux set-environment for user env when env is empty", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-empty");

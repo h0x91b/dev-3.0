@@ -78,6 +78,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 				cwd: worktreePath,
 				name: label.slice(0, 20),
 				printPaneId: true,
+				focus: true,
 				command: wrapped,
 				socket,
 			}));

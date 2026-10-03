@@ -51,6 +51,7 @@ import {
 	PANE_GEOMETRY_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	TMUX_TASK_TITLE_OPTION,
+	TMUX_WINDOW_NAV_OPTION,
 } from "./tmux";
 
 const log = createLogger("pty");
@@ -1099,6 +1100,17 @@ export async function syncTmuxTaskTitle(taskId: string, title: string): Promise<
 	});
 }
 
+/**
+ * A task terminal shows its windows in the app's own navigator, so its tmux
+ * window bar goes: the marker keeps the bar hooks from turning it back on.
+ */
+async function hideTmuxWindowBar(session: PtySession): Promise<void> {
+	const target = `=${session.tmuxSessionName}:`;
+	const opts = { socket: session.tmuxSocket, bestEffort: true };
+	await tmux.setOption(target, TMUX_WINDOW_NAV_OPTION, "1", opts);
+	await tmux.setOption(target, "status", "off", opts);
+}
+
 /** Seed the title on attach — the session may predate dev3 knowing it (app restart, resume). */
 async function syncTmuxTaskTitleFromBoard(session: PtySession): Promise<void> {
 	try {
@@ -2086,7 +2098,10 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		(async () => {
 			try {
 				await configureTmux(tmuxSessionName, session.tmuxSocket);
-				if (session.sessionType === "task") void syncTmuxTaskTitleFromBoard(session);
+				if (session.sessionType === "task") {
+					void syncTmuxTaskTitleFromBoard(session);
+					void hideTmuxWindowBar(session);
+				}
 				const sessionSocket = session.tmuxSocket;
 				tmux.setEnvironment(tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd, { socket: sessionSocket }).catch(() => {});
 				const envKeys = Object.keys(session.env);

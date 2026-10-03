@@ -286,6 +286,23 @@ describe("splitWindow / newWindow", () => {
 	});
 });
 
+describe("newWindow focus", () => {
+	it("an explicit user action creates the window, then selects exactly the pane it got", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%12\n" });
+		const result = await client.newWindow({ target: "dev3-abc:", cwd: "/wt", focus: true });
+		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "new-window", "-P", "-F", "#{pane_id}", "-t", "dev3-abc:", "-c", "/wt"]);
+		expect(argvOf(spawnFn, 1)).toEqual(["tmux", "-L", "dev3", "select-window", "-t", "%12"]);
+		// The caller did not ask for the pane id, so the contract stays "null".
+		expect(result.paneId).toBeNull();
+	});
+
+	it("without focus nothing is selected — the window stays in the background", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "" });
+		await client.newWindow({ target: "dev3-abc:" });
+		expect(spawnFn).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("newSessionDetached", () => {
 	it("starts detached with -f, env flags, and pins the client cwd to DEV3_HOME", async () => {
 		const { client, spawnFn } = makeClient({ stderr: "" });

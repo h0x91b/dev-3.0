@@ -10,7 +10,9 @@ Verified on a throwaway tmux 3.6a server: a fresh pane's `pane_title` is the hos
 `TerminalWindowNav.tsx` wraps the desktop tmux terminal and renders only at ≥ 2 windows: a left rail (default, costs width not a terminal row) or top tabs, chosen in Appearance (`terminal-window-nav.ts`, localStorage, like zoom). The terminal child keeps one tree position in every state so the navigator never remounts it. `tmuxWindowNavigate` now returns `TmuxWindowEntry[]` and navigates by `windowId`; `src/bun/tmux/window-nav.ts` owns the label rule (real title → window name → "Window N") and the home rule (window of the last-focused agent pane, else the first agent pane). The home window is named after the task title in the renderer, matching the tmux bar from the parallel status-bar work. "New output" is renderer-side (`useTmuxWindows`: activity past what you last saw) and never applies to the home window, which repaints constantly. Updates are a 3 s poll of the visible terminal plus an immediate refresh after the app's own new-window calls (`openTmuxWindow`).
 
 ## Risks
-Up to 3 s lag for windows created outside the app. With the tmux bar still on, windows are listed twice until the bar is reconciled. A restarted agent pane without `@dev3_agent` loses its ✦.
+Up to 3 s lag for windows created outside the app. A restarted agent pane without `@dev3_agent` loses its ✦.
+
+The navigator replaces the tmux window bar in task sessions: the app marks a task session with `@dev3_window_nav` and turns its `status` off (`hideTmuxWindowBar`, `src/bun/pty-server.ts`), and the bar hooks in `src/bun/tmux/config.ts` skip marked sessions. Project terminals and external sessions keep the bar.
 
 ## Alternatives considered
-Breadcrumb `task › window › pane` (hides the other windows), a window-count chip in the task panel (gone when the panel is collapsed), an overlay pill or an overview grid only (background state invisible). Opening agent-created windows in the background was deferred: it changes agent behaviour and needs its own decision.
+Breadcrumb `task › window › pane` (hides the other windows), a window-count chip in the task panel (gone when the panel is collapsed), an overlay pill or an overview grid only (background state invisible). Opening agent-created windows in the background is its own decision: `decisions/2026/10/03/new-tmux-windows-open-in-background.md`.

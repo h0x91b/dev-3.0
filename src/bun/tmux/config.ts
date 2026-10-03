@@ -268,6 +268,14 @@ set-hook -gu window-linked
 set-hook -gu window-unlinked
 set-hook -gu client-attached
 set-hook -gu client-session-changed
+
+# A new window never takes the screen on its own: an agent or a script opening
+# one must not hide the agent. Explicit user actions switch on purpose — the app
+# selects the window it created, and ⌃B c selects the new last window itself.
+# Decision: decisions/2026/10/03/new-tmux-windows-open-in-background.md
+set -s command-alias[90] 'new-window=new-window -d'
+set -s command-alias[91] 'neww=new-window -d'
+bind c new-window -c "${PANE_CWD_FORMAT}" \\; select-window -t "{end}"
 `;
 
 /**
