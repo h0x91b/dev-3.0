@@ -224,7 +224,7 @@ function WindowNavCard({
 	active: boolean;
 }) {
 	const tile = (on: boolean, key: number) => (
-		<div key={key} className={`rounded-sm ${on ? "bg-accent/70" : "bg-fg-muted/40"} ${style === "rail" ? "h-2 w-2" : "h-2 w-6"}`} />
+		<div key={key} className={`rounded-sm ${on ? "bg-accent/70" : "bg-fg-muted/40"} ${style === "rail" ? "h-6 w-2" : "h-2 w-6"}`} />
 	);
 	return (
 		<button

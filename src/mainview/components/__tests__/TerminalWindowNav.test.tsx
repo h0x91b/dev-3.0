@@ -215,7 +215,17 @@ describe("TerminalWindowNav", () => {
 		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
 	});
 
-	it("the rail closes a window from the × on its tile's corner, without a wider rail", async () => {
+	it("the rail is vertical tabs: full names written sideways, no numbers, same 28px width", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(4, "dev-server")]);
+		const { container } = renderNav();
+		const tab = await screen.findByRole("tab", { name: "dev-server" });
+		expect(tab).toHaveTextContent("dev-server");
+		expect(tab).not.toHaveTextContent("4");
+		expect(tab.className).toContain("[writing-mode:vertical-rl]");
+		expect(container.querySelector('[data-window-nav="rail"]')).toHaveClass("w-7");
+	});
+
+	it("the rail closes a window from the × at the end of its tab", async () => {
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
 		const { container } = renderNav();
 		await screen.findByRole("tablist");

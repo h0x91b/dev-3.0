@@ -5,7 +5,7 @@ import type { TFunction } from "./i18n";
 
 /**
  * How the desktop task terminal shows its tmux windows when there are two or
- * more: a vertical rail on the left (default — it costs width, not a terminal
+ * more: vertical tabs in a slim rail on the left (default — it costs width, not a terminal
  * row) or a tab row on top. A per-device rendering preference, like zoom, so it
  * lives in localStorage and applies live through a change event.
  */

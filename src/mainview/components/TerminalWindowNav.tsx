@@ -13,7 +13,7 @@ import Tooltip from "./Tooltip";
  * the task's one session; panes are the splits inside a window). Invisible with
  * a single window. With two or more it shows every window, which one you are
  * in, the agent's home window (✦, always first), and which background windows
- * printed something since you last looked. Rail (left) or tabs (top) per the
+ * printed something since you last looked. Vertical tabs (left) or tabs (top) per the
  * Appearance setting. The terminal child keeps its tree position across every
  * state, so showing or restyling the navigator never remounts the terminal.
  */
@@ -161,7 +161,7 @@ function WindowList({
 			data-window-nav={style}
 			className={
 				rail
-					? "flex-shrink-0 w-7 flex flex-col items-center gap-0.5 py-1 overflow-y-auto overflow-x-hidden bg-raised border-r border-edge window-nav-scroll"
+					? "flex-shrink-0 w-7 flex flex-col gap-0.5 py-1.5 pl-1 overflow-y-auto overflow-x-hidden bg-raised border-r border-edge window-nav-scroll"
 					: "flex-shrink-0 flex items-end gap-0.5 px-1.5 pt-1 overflow-x-auto overflow-y-hidden bg-raised border-b border-edge window-nav-scroll"
 			}
 		>
@@ -170,10 +170,9 @@ function WindowList({
 				const name = windowName(w, t, homeTitle);
 				const state = windowStateText(w, isUnseen, t, agentWorking, agentWaiting);
 				const accessibleName = state ? `${name}, ${state}` : name;
-				const marker = <WindowMarker window={w} unseen={isUnseen} inline={!rail} />;
-				return rail ? (
-					<div key={w.windowId} role="presentation" className="group relative flex-shrink-0 flex">
-					<Tooltip content={name} detail={state || undefined} placement="right">
+				return (
+					<div key={w.windowId} role="presentation" className={`group relative flex-shrink-0 flex ${rail ? "w-full" : ""}`}>
+					<Tooltip content={name} detail={state || undefined} placement={rail ? "right" : "bottom"}>
 						<button
 							type="button"
 							role="tab"
@@ -185,51 +184,17 @@ function WindowList({
 							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
 							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
 							onContextMenu={openMenu(w)}
-							className={`relative flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-micro font-semibold tabular-nums transition-[background-color,color,box-shadow] duration-150 active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+							className={`relative flex-shrink-0 min-w-0 min-h-0 flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+								rail ? "w-full max-h-[14rem] pt-2.5 pb-7 rounded-l-md [writing-mode:vertical-rl]" : "h-7 max-w-[14rem] pl-2.5 pr-7 rounded-t-md"
+							} ${
 								w.active
-									? "bg-base text-fg shadow-[0_0_0_2px_rgb(var(--accent))]"
-									: "text-fg-3 hover:text-fg hover:bg-elevated shadow-[0_0_0_1px_rgb(var(--border-default))]"
-							}`}
-						>
-							{w.home ? <HomeGlyph working={agentWorking} /> : <span aria-hidden="true">{w.index}</span>}
-							{marker}
-						</button>
-					</Tooltip>
-						{/* Overlays the tile's corner on hover, so closing costs the rail no width. */}
-						<button
-							type="button"
-							tabIndex={-1}
-							aria-label={t("windowNav.close", { name })}
-							data-window-close={w.windowId}
-							onClick={() => onClose(w)}
-							className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center bg-overlay text-fg-2 hover:text-fg hover:bg-danger/80 shadow-[0_0_0_1px_rgb(var(--border-default)),0_1px_2px_rgb(0_0_0/0.3)] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150"
-						>
-							<span aria-hidden="true" className="text-[10px] leading-none">×</span>
-						</button>
-					</div>
-				) : (
-					<div key={w.windowId} role="presentation" className="group relative flex-shrink-0 flex">
-					<Tooltip content={name} detail={state || undefined} placement="bottom">
-						<button
-							type="button"
-							role="tab"
-							aria-selected={w.active}
-							aria-label={accessibleName}
-							tabIndex={w.active ? 0 : -1}
-							data-window-id={w.windowId}
-							onClick={() => onSelect(w)}
-							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
-							onContextMenu={openMenu(w)}
-							className={`relative flex-shrink-0 h-7 max-w-[14rem] min-w-0 pl-2.5 pr-7 rounded-t-md flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-								w.active
-									? "bg-base text-fg shadow-[inset_0_2px_0_rgb(var(--accent))]"
+									? `bg-base text-fg ${rail ? "shadow-[inset_2px_0_0_rgb(var(--accent))]" : "shadow-[inset_0_2px_0_rgb(var(--accent))]"}`
 									: "text-fg-3 hover:text-fg hover:bg-elevated"
 							}`}
 						>
-							{w.home ? <HomeGlyph working={agentWorking} /> : <span aria-hidden="true" className="text-fg-muted tabular-nums">{w.index}</span>}
-							<span aria-hidden="true" className="truncate">{name}</span>
-							{marker}
+							{w.home ? <HomeGlyph working={agentWorking} /> : !rail && <span aria-hidden="true" className="text-fg-muted tabular-nums">{w.index}</span>}
+							<span aria-hidden="true" className="truncate min-w-0 min-h-0">{name}</span>
+							<WindowMarker window={w} unseen={isUnseen} />
 						</button>
 					</Tooltip>
 						{/* Keyboard users close with Delete on the focused tab; this is the pointer path. */}
@@ -240,9 +205,9 @@ function WindowList({
 							title={t("windowNav.close", { name })}
 							data-window-close={w.windowId}
 							onClick={() => onClose(w)}
-							className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center text-fg-muted hover:text-fg hover:bg-elevated transition-opacity duration-150 ${
-								w.active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-							}`}
+							className={`absolute w-5 h-5 rounded flex items-center justify-center text-fg-muted hover:text-fg hover:bg-elevated transition-opacity duration-150 ${
+								rail ? "bottom-1 left-1/2 -translate-x-1/2" : "right-1 top-1/2 -translate-y-1/2"
+							} ${w.active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
 						>
 							<span aria-hidden="true" className="text-sm leading-none">×</span>
 						</button>
@@ -346,14 +311,14 @@ function HomeGlyph({ working }: { working: boolean }) {
 	);
 }
 
-/** Background signal, top-right: bell (warning) outranks new output (accent). */
-function WindowMarker({ window: w, unseen, inline }: { window: TmuxWindowEntry; unseen: boolean; inline: boolean }) {
+/** Background signal after the name: bell (warning) outranks new output (accent). */
+function WindowMarker({ window: w, unseen }: { window: TmuxWindowEntry; unseen: boolean }) {
 	if (w.active || (!w.bell && !unseen)) return null;
 	return (
 		<span
 			aria-hidden="true"
 			data-window-marker={w.bell ? "bell" : "output"}
-			className={`${inline ? "flex-shrink-0" : "absolute top-0 right-0"} w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
+			className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
 		/>
 	);
 }
