@@ -275,7 +275,7 @@ describe("saveSharedArtifact", () => {
 		expect(saved.bundlePath).toBeUndefined();
 		expect(basename(saved.storedPath)).toBe("daily.html");
 		expect(stored).toContain("data-dev3-artifact-shell");
-		expect(stored).toContain("<h1>Daily &lt;report&gt;</h1>");
+		expect(stored).toContain('<h1 id="daily-report">Daily &lt;report&gt;</h1>');
 		expect(stored).toContain("<td>1991</td>");
 		expect(stored).toContain('<a href="https://dev3.h0x91b.com" target="_blank" rel="noopener">docs</a>');
 		expect(stored).toContain("&lt;script&gt;window.ran = true&lt;/script&gt;");
@@ -305,7 +305,19 @@ describe("saveSharedArtifact", () => {
 		expect(stored).toContain("<style data-dev3-text-artifact>");
 		expect(stored).toMatch(/<div class="dev3-wide dev3-table" role="region" aria-label="Table" tabindex="0"><table>[\s\S]*<\/table>\n<\/div>/);
 		expect(stored).toContain('<td align="right">$1</td>');
-		expect(stored).toContain('<pre class="dev3-wide" tabindex="0"><code class="language-ts">const a = 1 &lt; 2;');
+		expect(stored).toContain('<pre class="dev3-wide" tabindex="0"><code class="language-ts">const a = 1 &lt; 2;</code></pre>');
+	});
+
+	it("gives headings GitHub-style ids so in-page links land on them", () => {
+		const md = join(SRC_DIR, "anchors.md");
+		writeFileSync(md, ["[Jump](#plan--risks)", "", "## Plan & **risks**", "", "## Plan & risks", "", "## Шаг 1: план"].join("\n"));
+
+		const stored = readFileSync(saveSharedArtifact("/my/project", md, []).storedPath, "utf8");
+
+		expect(stored).toContain('<a href="#plan--risks">Jump</a>');
+		expect(stored).toContain('<h2 id="plan--risks">Plan &amp; <strong>risks</strong></h2>');
+		expect(stored).toContain('<h2 id="plan--risks-1">Plan &amp; risks</h2>');
+		expect(stored).toContain('<h2 id="шаг-1-план">Шаг 1: план</h2>');
 	});
 
 	it("keeps a plain-text file verbatim and escaped, titled by --title", () => {
