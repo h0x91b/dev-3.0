@@ -5,6 +5,7 @@
 - [Where did my disk go?](#where-did-my-disk-go)
 - [tmux is missing or terminals do not start](#tmux-is-missing-or-terminals-do-not-start)
 - [Git network commands hang only inside dev-3.0 on macOS](#git-network-commands-hang-only-inside-dev-30-on-macos)
+- [Task terminals lose access to Desktop or Documents on macOS](#task-terminals-lose-access-to-desktop-or-documents-on-macos)
 - [Terminal colors and recommended agent themes](#terminal-colors-and-recommended-agent-themes)
 
 ## Start with `dev3 doctor`
@@ -91,6 +92,102 @@ to dev-3.0 and restart it:
 <p align="center">
   <img src="screenshots/full-disk-access.jpg" width="700" alt="System Settings → Privacy & Security → Full Disk Access with dev-3.0 toggled on">
 </p>
+
+## Task terminals lose access to Desktop or Documents on macOS
+
+**Symptom:** inside a task terminal, Git reports `not a git repository` for a project under
+`~/Desktop` or `~/Documents`, and `ls ~/Desktop` prints `Operation not permitted` — while the same
+commands work in Terminal.app. Projects under `~/Desktop` are supported; you do not need to move
+them. The task worktree itself lives under `~/.dev3.0/worktrees/`, but Git keeps its data in the
+original repository: the worktree's `.git` is a one-line file such as
+`gitdir: ~/Desktop/src/app/.git/worktrees/worktree3`. Every Git command in the task therefore reads
+the protected folder, and a denial there breaks Git in every task of that project. `Operation not permitted` on these folders is consistent with macOS
+privacy protection (TCC), which guards Desktop, Documents, Downloads, iCloud Drive and network
+volumes per program
+([Apple: Controlling app access to files in macOS](https://support.apple.com/guide/security/controlling-app-access-to-files-secddd1d86a6/web)) —
+but an agent sandbox or another security policy returns the same error, so the message alone does
+not prove which one is blocking.
+
+**Why the app's own toggle may not be enough:** on macOS, task shells do not run under the
+dev-3.0 app process. They run inside a **tmux server** that dev-3.0 starts and that then detaches
+and keeps running on its own — it survives quitting the app. The commands you type descend from
+that tmux process, not from the running app, and in the observed case the dev-3.0 entry in Full
+Disk Access was not enough for them. Apple's Developer Technical Support notes that a child process
+which daemonizes itself — as tmux does — can break the link macOS uses to apply an app's
+permission to its helpers
+([Apple DTS: On File System Permissions](https://developer.apple.com/forums/thread/678819)).
+
+**Observed workaround** (one confirmed case, macOS 26.6): turning Full Disk Access for
+`dev-3.0.app` off and on did not help; adding the bundled tmux binary itself to Full Disk Access
+restored access. The root cause is not established yet, so treat this as a workaround to try, not
+as a requirement for every installation.
+
+### 1. Find the tmux binary that is actually running
+
+First check the task's terminal backend with `dev3 task terminal-backend`. If it says `native`,
+the shells run under dev3's native terminal host, not tmux, and this tmux workaround does not
+apply — `dev3 doctor --processes` shows that host. No permission fix for the native backend has
+been established.
+
+For `tmux`, do not guess the path. From a shell inside the affected task, ask the live server:
+
+```sh
+ps -o comm= -p "$(printf '%s' "$TMUX" | cut -d, -f2)"
+```
+
+`$TMUX` holds `socket-path,server-pid,session`, so this prints the executable of the server
+hosting that pane. If `$TMUX` is empty, `pgrep -lf -- '-L dev3'` lists every dev3 tmux process;
+the first path on each line is its binary. If you still cannot tell which binary it is, stop
+rather than granting access to an unrelated program. Typical locations:
+
+| Install | tmux binary |
+|---|---|
+| App in `/Applications` (DMG, in-app updates, Homebrew cask) | `/Applications/dev-3.0.app/Contents/Resources/app/tmux/tmux` |
+| App moved elsewhere (e.g. `~/Applications`) | `<that folder>/dev-3.0.app/Contents/Resources/app/tmux/tmux` |
+| Homebrew CLI formula (macOS) | `tmux/tmux` inside the formula's `libexec` (a versioned `Cellar` path) |
+| Homebrew `tmux@3.6` keg (older installs) | `/opt/homebrew/opt/tmux@3.6/bin/tmux` |
+| A custom tmux path set in dev-3.0 | Whatever path you entered |
+
+`dev3 doctor` shows which binary dev-3.0 would pick, but a tmux server started earlier — for
+example by a previous app version — keeps running from its original path until it exits, so trust
+step 1 for what is running now.
+
+### 2. Add that binary to Full Disk Access
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**. On macOS 13 and later this
+   command opens that pane directly (the URL Apple documents in `EndpointSecurity/ESClient.h`):
+
+   ```sh
+   open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"
+   ```
+
+2. Click **+**, then press **⇧⌘G** and paste the full path from step 1 (the file picker does not
+   open app bundles by itself). Click **Open**.
+3. Make sure the new `tmux` entry is switched on, then retry the command in a task terminal.
+   Do not kill or restart the shared tmux server as a repair step: it hosts every running task.
+
+### What you are granting
+
+Full Disk Access is the broadest file permission macOS has: Apple describes it as letting a program
+"access all files on your computer, including data from other apps (for example, Mail, Messages,
+Safari, and Home), data from Time Machine backups, and certain administrative settings for all
+users on this Mac"
+([Apple: Change Privacy & Security settings on Mac](https://support.apple.com/guide/mac-help/change-privacy-security-settings-on-mac-mchl211c911f/mac)).
+Granting it to tmux extends it to **everything you and your agents run in task terminals**.
+**System Settings → Privacy & Security → Files & Folders** holds the narrower per-folder
+switches; check whether the app is listed there first
+([Apple: Control access to files and folders on Mac](https://support.apple.com/guide/mac-help/control-access-to-files-and-folders-on-mac-mchld5a35146/mac)).
+Full Disk Access covers macOS privacy protection only: an agent sandbox or a device-management (MDM) policy can
+still deny access, and Full Disk Access does not override them. To revoke it later, select the
+`tmux` entry and click **−**.
+
+macOS has no way for an app to grant Full Disk Access itself or to show a consent prompt for it —
+Apple lists it as a setting the user must change in System Settings
+([Apple: Controlling app access to files in macOS](https://support.apple.com/guide/security/controlling-app-access-to-files-secddd1d86a6/web)).
+Keeping new projects outside protected folders avoids the question entirely, but it is optional.
+
+Still open and tracked separately: why the app entry alone was not enough, whether the grant
+survives an app update that replaces the bundle, and whether Homebrew installs behave the same way.
 
 ## Terminal colors and recommended agent themes
 

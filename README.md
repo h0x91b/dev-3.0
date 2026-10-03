@@ -316,6 +316,10 @@ brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps (sk
 brew install --cask dev3
 ```
 
+If a macOS task terminal later loses access to a repository on Desktop (`Operation not permitted`,
+or Git saying `not a git repository`), see [this troubleshooting entry](docs/troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos). Full Disk Access
+is a broad, optional troubleshooting step, not an install requirement.
+
 **Linux** (headless box, full UI in your browser):
 
 ```sh
@@ -356,7 +360,7 @@ rate-limit tracking and skill directories differ per agent — the full grid is 
 | [Your first task](https://dev3.h0x91b.com/first-task.html) | The guided first-run tour, screen by screen — the fastest way to see what using dev-3.0 feels like |
 | [Install guide](docs/install.md) | Every install path, tmux versions on Linux, cloud-VM caveats, build from source |
 | [Remote access](docs/remote-access.md) | `dev3 remote` in depth — tunnels, systemd, sessions, exposed ports, phone notifications |
-| [Troubleshooting](docs/troubleshooting.md) | `dev3 doctor`, disk reclamation, Full Disk Access, terminal colors and agent themes |
+| [Troubleshooting](docs/troubleshooting.md) | `dev3 doctor`, disk reclamation, Full Disk Access (including task terminals that lose access to Desktop on macOS), terminal colors and agent themes |
 | [Keyboard shortcuts](docs/keyboard-shortcuts.md) | The complete list, mirroring the in-app ⌘/ panel |
 | [Agent support matrix](agent-support-matrix.md) | What each agent supports, feature by feature |
 | [CLI exit codes](docs/cli-exit-codes.md) | The `dev3` exit-code contract, for scripting |

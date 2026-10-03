@@ -41,6 +41,14 @@ skip otherwise).
 
 Apple Silicon and Intel are both supported. For Windows, see the next section.
 
+### Repositories on Desktop or Documents
+
+Projects under `~/Desktop` or `~/Documents` are supported. If a task terminal later reports
+`Operation not permitted` there, or Git says `not a git repository`, follow
+[Task terminals lose access to Desktop or Documents](troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos).
+The fix observed so far involves the running tmux binary, which is a different entry from the app
+in macOS privacy settings. Full Disk Access is broad and not a blanket installation step.
+
 ## Windows — zip download
 
 **Windows support is brand new and may still be rough.** x64 only, and there is no installer or
