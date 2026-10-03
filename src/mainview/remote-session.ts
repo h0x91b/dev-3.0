@@ -10,7 +10,9 @@
  * socket close the machine probes POST /auth/refresh: an auth rejection
  * (401/403) terminates the loop and surfaces `onExpired` (the sign-in
  * screen); a network failure keeps the exponential backoff going (2s
- * doubling, 15s cap). `expired` is terminal for the automatic paths and is
+ * doubling, 15s cap). A handshake that never completes counts as a close: the
+ * server may accept the upgrade while the browser never sees the 101, and a
+ * socket left in CONNECTING would never close on its own. `expired` is terminal for the automatic paths and is
  * left only by `submitAccessCode` — the owner typing their permanent access
  * code. The session credential itself is an HttpOnly cookie —
  * this module never sees it; the injected `fetchFn` must send requests with
@@ -72,6 +74,8 @@ export interface RemoteSessionOptions {
 	refreshIntervalMs?: number;
 	backoffInitialMs?: number;
 	backoffMaxMs?: number;
+	/** How long a socket may stay CONNECTING before it is replaced; default 10s. */
+	connectTimeoutMs?: number;
 	callbacks?: RemoteSessionCallbacks;
 }
 
@@ -107,6 +111,7 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 		refreshIntervalMs = 15 * 60 * 1000,
 		backoffInitialMs = 2_000,
 		backoffMaxMs = 15_000,
+		connectTimeoutMs = 10_000,
 		callbacks = {},
 	} = opts;
 
@@ -246,7 +251,29 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 		const s = createSocket();
 		socket = s;
 
+		let handshakeTimer: ReturnType<typeof setTimeout> | null = setTimeoutFn(() => {
+			handshakeTimer = null;
+			if (socket !== s || destroyed) return;
+			// Detach first so the abandoned socket's own close event is ignored.
+			socket = null;
+			try {
+				s.close();
+			} catch {
+				/* already closed */
+			}
+			callbacks.onError?.(`WebSocket handshake timed out after ${connectTimeoutMs} ms`);
+			if (isDead()) return;
+			void handleClose();
+		}, connectTimeoutMs);
+		const clearHandshakeTimer = () => {
+			if (handshakeTimer !== null) {
+				clearTimeoutFn(handshakeTimer);
+				handshakeTimer = null;
+			}
+		};
+
 		s.addEventListener("open", () => {
+			clearHandshakeTimer();
 			if (socket !== s || destroyed) return;
 			hasConnected = true;
 			attempts = 0;
@@ -260,6 +287,7 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 		});
 
 		s.addEventListener("close", (ev) => {
+			clearHandshakeTimer();
 			if (socket !== s) return;
 			socket = null;
 			callbacks.onSocketClosed?.({

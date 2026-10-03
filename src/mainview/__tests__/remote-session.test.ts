@@ -301,6 +301,52 @@ describe("reconnect backoff", () => {
 	});
 });
 
+describe("handshake timeout", () => {
+	// The server accepted the upgrade but the browser never saw the 101: the
+	// socket sits in CONNECTING, fires no close, and boot hangs on "Connecting".
+	it("replaces a socket stuck in CONNECTING and connects on the next one", async () => {
+		const h = createHarness({ qrToken: "qr" });
+		h.session.start();
+		await h.timers.flush();
+		expect(h.sockets).toHaveLength(1);
+
+		await h.timers.advance(10_000);
+		expect(h.sockets[0].readyState).toBe(3);
+		expect(refreshCalls(h)).toHaveLength(1);
+		expect(h.session.getState()).toBe("reconnecting");
+
+		await h.timers.advance(2_000);
+		expect(h.sockets).toHaveLength(2);
+		h.sockets[1].open();
+		expect(h.session.getState()).toBe("connected");
+		expect(h.onSocketOpen).toHaveBeenCalledWith(h.sockets[1]);
+	});
+
+	it("a socket that opens in time is never torn down", async () => {
+		const h = createHarness({ qrToken: "qr" });
+		h.session.start();
+		await h.timers.flush();
+		h.sockets[0].open();
+
+		await h.timers.advance(60_000);
+		expect(h.sockets).toHaveLength(1);
+		expect(h.sockets[0].readyState).toBe(1);
+		expect(h.session.getState()).toBe("connected");
+	});
+
+	it("a stalled handshake on a dead session still ends in expired", async () => {
+		const h = createHarness({ qrToken: "qr", refresh: { ok: false, status: 401 } });
+		h.session.start();
+		await h.timers.flush();
+
+		await h.timers.advance(10_000);
+		expect(h.session.getState()).toBe("expired");
+		expect(h.onExpired).toHaveBeenCalledTimes(1);
+		await h.timers.advance(60_000);
+		expect(h.sockets).toHaveLength(1);
+	});
+});
+
 // ── Rolling refresh ──────────────────────────────────────────────────
 
 describe("periodic session refresh", () => {
