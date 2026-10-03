@@ -75,9 +75,11 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
   # Appends one angled segment; tracks the visible width alongside the markup.
   # Text is drawn in reverse video, so it takes the terminal's own background
   # colour: dark on the pastel fills of a dark theme, light on a light theme's.
+  # The separator is reversed too: dev3's terminal repaints a *white background*
+  # dark (Claude Code's message bars), which would break the timer's edge.
   _dev3_seg() {
     local color=$1 text=$2
-    [[ -n $_dev3_bg ]] && _dev3_ps+="%s%F{$_dev3_bg}%K{$color}$dev3_sep%k"
+    [[ -n $_dev3_bg ]] && _dev3_ps+="%S%F{$color}%K{$_dev3_bg}$dev3_sep%k"
     _dev3_ps+="%F{$color}%S $text "
     _dev3_bg=$color
     (( _dev3_w += \${#text} + 3 ))
@@ -201,7 +203,7 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
 
   # $1 ANSI colour 0-7, $2 text. Reverse video, as in the zsh prompt.
   _dev3_seg() {
-    [[ -n $_dev3_bg ]] && _dev3_ps+="\\[\\e[27;3\${_dev3_bg};4$1m\\]$_dev3_sep\\[\\e[49m\\]"
+    [[ -n $_dev3_bg ]] && _dev3_ps+="\\[\\e[7;3$1;4\${_dev3_bg}m\\]$_dev3_sep\\[\\e[49m\\]"
     _dev3_ps+="\\[\\e[3$1;7m\\] \${2//\\\\/\\\\\\\\} "
     _dev3_bg=$1
     _dev3_w=$((_dev3_w + \${#2} + 3))
