@@ -1,5 +1,5 @@
 /** OpenCode adapter. */
-import { GENERIC_SKILL_BODY } from "../agent-skill-content";
+import { GENERIC_SKILL_BODY, GENERIC_LEAN_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -11,6 +11,7 @@ export const opencodeAdapter: AgentAdapter = {
 	// Resume-only --session; no launch-time pre-assignment.
 	supportsPreAssignedSessionId: false,
 	skillBody: GENERIC_SKILL_BODY,
+	leanSkillBody: GENERIC_LEAN_SKILL_BODY,
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {
@@ -30,7 +31,7 @@ export const opencodeAdapter: AgentAdapter = {
 
 		if (!resume) {
 			let prompt = buildTaskPrompt(config?.appendPrompt, ctx);
-			if (prompt) prompt = `${prompt}\n\n${GENERIC_SKILL_BODY}`;
+			if (prompt) prompt = `${prompt}\n\n${options?.protocolBody ?? GENERIC_SKILL_BODY}`;
 			// OpenCode takes the prompt via --prompt (value form is unambiguous, so
 			// no `--` separator is needed).
 			if (prompt) args.push("--prompt", shellEscape(prompt));
