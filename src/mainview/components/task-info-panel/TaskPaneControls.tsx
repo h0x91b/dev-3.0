@@ -10,6 +10,7 @@ import { startClosePanePicker } from "../../close-pane-picker";
 import Tooltip from "../Tooltip";
 import {
 	ClosePaneIcon,
+	CloseWindowIcon,
 	CycleLayoutIcon,
 	LayoutEvenHIcon,
 	LayoutEvenVIcon,
@@ -26,6 +27,7 @@ import { currentNativePaneFocus } from "../../native-pane-focus";
 import { fetchPaneState, runPaneAction } from "../../pane-state-bus";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
 import { toast } from "../../toast";
+import { confirm } from "../../confirm";
 
 interface TaskPaneControlsProps {
 	taskId: string;
@@ -211,6 +213,28 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		startClosePanePicker(taskId);
 	};
 
+	/** The agent's window only goes after the user agreed — to that same window. */
+	async function closeWindow() {
+		const first = await api.request.tmuxCloseWindow({ taskId });
+		if (first.closed || first.reason !== "agentWindow") return;
+		const agreed = await confirm({
+			title: t("tmux.closeAgentWindowConfirmTitle"),
+			message: t("tmux.closeAgentWindowConfirmMessage"),
+			confirmLabel: t("tmux.closeAgentWindowConfirmLabel"),
+			danger: true,
+		});
+		if (agreed) await api.request.tmuxCloseWindow({ taskId, windowId: first.windowId, force: true });
+	}
+
+	const handleCloseWindow = (event: ReactMouseEvent<HTMLButtonElement>) => {
+		event.stopPropagation();
+		void withBusy(() =>
+			closeWindow()
+				.catch((err) => toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }))
+				.finally(refreshState),
+		);
+	};
+
 	const cycleLayout = (event: ReactMouseEvent<HTMLButtonElement>) => {
 		setActiveLayout(null);
 		void handleAction("nextLayout")(event);
@@ -226,6 +250,8 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	// Capability checks (fall back to permissive defaults while state loads).
 	const supportsSplit = paneState === null || taskPaneSupports(paneState, "split");
 	const showNewWindow = paneState !== null && taskPaneSupports(paneState, "newWindow");
+	// Only while there is a window to spare: the last one would end the terminal.
+	const showCloseWindow = paneState !== null && taskPaneSupports(paneState, "closeWindow");
 	const isNative = paneState?.backend === "native";
 
 	// Layout, zoom and close only mean anything once the task has a second pane —
@@ -238,6 +264,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const canZoom = !actionBusy;
 	const canSwap = paneState !== null && taskPaneSupports(paneState, "swap") && !actionBusy;
 	const canClose = !actionBusy;
+	const closeWarnClass = "text-warning-strong hover:text-warning-strong hover:bg-warning/15 border-warning/30";
 	const layoutDisabled = actionBusy;
 
 	// Neutral like the rest of the session bar (see the #1418 pass): only Close pane
@@ -300,6 +327,20 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					</Tooltip>
 				)}
 
+				{showCloseWindow && (
+					<Tooltip content={t("tmux.closeWindowDesc")} detail={t("ttip.tmux.closeWindow")}>
+						{/* Amber like Close pane: the window goes, the worktree stays. */}
+						<button
+							className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? closeWarnClass : ""}`}
+							disabled={!canClose}
+							onClick={canClose ? handleCloseWindow : undefined}
+							aria-label={t("tmux.closeWindowDesc")}
+						>
+							<CloseWindowIcon className={tmuxSvgClass} />
+						</button>
+					</Tooltip>
+				)}
+
 				{multiPane && (
 					<Tooltip content={t("tmux.nextLayoutDesc")} detail={t("ttip.tmux.nextLayout")}>
 						<div
@@ -357,7 +398,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							{/* Amber, matching Hibernate: the pane goes away, the work in the
 							    worktree does not. Red is reserved for the irreversible. */}
 							<button
-								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-warning-strong hover:text-warning-strong hover:bg-warning/15 border-warning/30" : ""}`}
+								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? closeWarnClass : ""}`}
 								disabled={!canClose}
 								onClick={canClose ? handleClosePane : undefined}
 								aria-label={t("tmux.closePaneDesc")}

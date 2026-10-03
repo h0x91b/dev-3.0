@@ -4,6 +4,7 @@
  * `taskPaneState`  — read current pane geometry for any backend.
  * `taskPaneAction` — execute a split/focus/zoom/close/layout/resize action.
  * `tmuxNewWindow`  — tmux-only: open a new window in the task session.
+ * `tmuxCloseWindow` — tmux-only: close one window, never the last, agent windows on confirm.
  * `getPanePtyUrl`  — native-only: return the WS URL for one native pane's viewer.
  * `peekTaskTerminal` — read-only text snapshot of one task's terminal (`dev3 peek`).
  *
@@ -17,6 +18,7 @@ import {
 	tmux,
 	PANE_CWD_FORMAT,
 	TmuxError,
+	WINDOW_PANE_FORMAT,
 } from "../tmux";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { buildTaskLifecycleEnv } from "./shared-pure";
@@ -32,6 +34,7 @@ import {
 	type NativeTaskPanesState,
 } from "../native-task-panes";
 import {
+	handlePaneExited,
 	readPaneLayout,
 	tmuxAction,
 	tmuxKillPane,
@@ -67,6 +70,7 @@ import {
 	type TaskPaneInfo,
 	type TaskPaneLayoutPreset,
 	type TaskPaneState,
+	type TmuxCloseWindowResult,
 } from "../../shared/task-panes";
 import { paneSessionKey } from "../../shared/pane-session-key";
 import { taskPeek } from "../task-peek";
@@ -143,6 +147,7 @@ async function tmuxTaskPaneState(taskId: string): Promise<TaskPaneState> {
 	} else if (count === 1) {
 		capabilities.push("close");
 	}
+	if (tmuxLayout.windows.length > 1) capabilities.push("closeWindow");
 
 	return {
 		backend: "tmux",
@@ -554,6 +559,47 @@ async function tmuxNewWindow(params: { taskId: string }): Promise<void> {
 	}
 }
 
+// ── Handler: tmuxCloseWindow ──────────────────────────────────────────────────
+
+/**
+ * Close one window of the task session — `windowId` (`@N`), else the active one.
+ * The last window is never closed (that would end the task's terminal), and a
+ * window holding an agent pane is only closed with `force`, after the user agreed.
+ */
+async function tmuxCloseWindow(params: { taskId: string; windowId?: string; force?: boolean }): Promise<TmuxCloseWindowResult> {
+	const notFound: TmuxCloseWindowResult = { closed: false, reason: "notFound" };
+	const { task } = await findTaskAcrossProjects(params.taskId);
+	if (task && taskTerminalBackendIdentity(task) === "native") return notFound;
+	if (params.windowId !== undefined && !/^@\d+$/.test(params.windowId)) return notFound;
+
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+	let rows;
+	try {
+		rows = await tmux.listPanes(WINDOW_PANE_FORMAT, { target: tmuxSession, scope: "session", socket });
+	} catch {
+		return notFound;
+	}
+
+	const windowIds = new Set(rows.map((row) => row.windowId));
+	const target = params.windowId ?? rows.find((row) => row.windowActive)?.windowId;
+	if (!target || !windowIds.has(target)) return notFound;
+	if (windowIds.size <= 1) return { closed: false, reason: "lastWindow" };
+	const panes = rows.filter((row) => row.windowId === target);
+	if (!params.force && panes.some((row) => row.agent)) return { closed: false, reason: "agentWindow", windowId: target };
+
+	try {
+		await tmux.killWindow(target, { socket });
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		throw new Error(`tmux kill-window failed: ${err.stderr || "unknown error"}`);
+	}
+	log.info("tmuxCloseWindow closed", { taskId: params.taskId.slice(0, 8), windowId: target, panes: panes.length, force: params.force === true });
+	// kill-window fires no pane-exited hook, so reconcile sessionState here.
+	void handlePaneExited(params.taskId, panes[0]?.paneId ?? "");
+	return { closed: true };
+}
+
 // ── Handler: getPanePtyUrl ────────────────────────────────────────────────────
 
 async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string } | { gone: true }> {
@@ -647,6 +693,7 @@ export const taskPanesHandlers = {
 	taskPaneState,
 	taskPaneAction,
 	tmuxNewWindow,
+	tmuxCloseWindow,
 	getPanePtyUrl,
 	peekTaskTerminal,
 };

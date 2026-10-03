@@ -263,6 +263,17 @@ export const PEEK_PANE_FORMAT = tmuxFormat()
 	.tail("title", "pane_title")
 	.build();
 
+/**
+ * Every pane of a session with the window it sits in — enough to close a window
+ * safely: which one is active, and whether it holds an agent pane (`@dev3_agent`).
+ */
+export const WINDOW_PANE_FORMAT = tmuxFormat()
+	.string("windowId", "window_id")
+	.flag("windowActive", "window_active")
+	.string("paneId", "pane_id")
+	.flag("agent", "@dev3_agent")
+	.build();
+
 /** Window list for the narrow-viewport window switcher. */
 export const WINDOW_SWITCHER_FORMAT = tmuxFormat()
 	.string("windowId", "window_id")

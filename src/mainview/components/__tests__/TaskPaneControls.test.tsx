@@ -45,6 +45,7 @@ vi.mock("../../rpc", () => ({
 			taskPaneAction: vi.fn(),
 			taskPaneState: vi.fn(),
 			tmuxNewWindow: vi.fn(),
+			tmuxCloseWindow: vi.fn(),
 		},
 	},
 }));
@@ -75,6 +76,7 @@ describe("TaskPaneControls", () => {
 		vi.mocked(api.request.taskPaneAction).mockReset();
 		vi.mocked(api.request.taskPaneState).mockReset().mockResolvedValue(TMUX_TWO_PANE);
 		vi.mocked(api.request.tmuxNewWindow).mockReset();
+		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
 		vi.mocked(confirm).mockReset();
 	});
 
@@ -365,5 +367,49 @@ describe("TaskPaneControls", () => {
 		);
 		expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("Zoom pane (toggle)")).not.toBeInTheDocument();
+	});
+
+	// ── Close window: only with a window to spare; the agent's needs a yes ────
+
+	const TWO_WINDOWS = { ...TMUX_ONE_PANE, capabilities: [...TMUX_ONE_PANE.capabilities, "closeWindow" as const] };
+
+	it("hides Close window while the session has a single window", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_ONE_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("New window")).toBeInTheDocument());
+		expect(screen.queryByLabelText("Close window")).not.toBeInTheDocument();
+	});
+
+	it("closes the active window straight away when it holds no agent", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_WINDOWS);
+		renderControls();
+		await userEvent.click(await screen.findByLabelText("Close window"));
+		await waitFor(() => expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1" }));
+		expect(confirm).not.toHaveBeenCalled();
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledTimes(1);
+	});
+
+	it("asks before closing the agent's window and retries that same window", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_WINDOWS);
+		vi.mocked(api.request.tmuxCloseWindow)
+			.mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" })
+			.mockResolvedValueOnce({ closed: true });
+		vi.mocked(confirm).mockResolvedValue(true);
+		renderControls();
+		await userEvent.click(await screen.findByLabelText("Close window"));
+		await waitFor(() => expect(api.request.tmuxCloseWindow).toHaveBeenCalledTimes(2));
+		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
+		expect(api.request.tmuxCloseWindow).toHaveBeenLastCalledWith({ taskId: "task-1", windowId: "@1", force: true });
+	});
+
+	it("keeps the agent's window when the user declines", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_WINDOWS);
+		vi.mocked(api.request.tmuxCloseWindow).mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" });
+		vi.mocked(confirm).mockResolvedValue(false);
+		renderControls();
+		await userEvent.click(await screen.findByLabelText("Close window"));
+		await waitFor(() => expect(confirm).toHaveBeenCalled());
+		await new Promise((r) => setTimeout(r, 20));
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledTimes(1);
 	});
 });

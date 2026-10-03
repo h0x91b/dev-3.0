@@ -417,6 +417,11 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["kill-pane", "-t", paneId], opts);
 	}
 
+	/** `kill-window -t` — target a window id (`@N`); indexes renumber under you. */
+	killWindow(windowId: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["kill-window", "-t", windowId], opts);
+	}
+
 	/**
 	 * `capture-pane -p` — pane contents. `escapes` preserves colors/attrs (`-e`);
 	 * startLine/endLine map to `-S`/`-E`.

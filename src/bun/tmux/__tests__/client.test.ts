@@ -388,6 +388,7 @@ describe("command methods build the documented argv", () => {
 		["swapPaneStep next", (c) => c.swapPaneStep("dev3-a", "next"), ["swap-pane", "-D", "-t", "dev3-a"]],
 		["swapPaneStep prev", (c) => c.swapPaneStep("dev3-a", "prev"), ["swap-pane", "-U", "-t", "dev3-a"]],
 		["killPane", (c) => c.killPane("%4"), ["kill-pane", "-t", "%4"]],
+		["killWindow", (c) => c.killWindow("@3"), ["kill-window", "-t", "@3"]],
 		["sendKeys", (c) => c.sendKeys("%4", ["Left", "Left"]), ["send-keys", "-t", "%4", "Left", "Left"]],
 		["sendKeys literal", (c) => c.sendKeys("%4", ["echo hi\r"], { literal: true }), ["send-keys", "-l", "-t", "%4", "echo hi\r"]],
 		["resizeWindow", (c) => c.resizeWindow({ target: "dev3-a", cols: 120, rows: 40 }), ["resize-window", "-t", "dev3-a", "-x", "120", "-y", "40"]],

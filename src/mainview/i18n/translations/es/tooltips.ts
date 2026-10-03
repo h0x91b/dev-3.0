@@ -89,6 +89,8 @@ export const tooltips = {
 		"tmux: maximiza temporalmente el panel activo a toda la ventana. Pulsa otra vez para restaurar el diseño — no se cierra nada.",
 	"ttip.tmux.closePane":
 		"tmux: cierra un panel y termina lo que corre dentro. Primero se abre un selector, así eliges exactamente qué panel muere.",
+	"ttip.tmux.closeWindow":
+		"tmux: cierra la ventana (pestaña) que estás viendo y todo lo que corre en ella. Las demás ventanas se quedan; la última no se puede cerrar.",
 
 	// Git bar
 	"ttip.infoPanel.branchChip":

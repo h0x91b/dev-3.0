@@ -74,7 +74,19 @@ export type TaskPaneCapability =
 	| "resizeSplit"
 	| "layoutPreset"
 	| "layoutCycle"
-	| "newWindow";
+	| "newWindow"
+	/** tmux only, and only while the session has a window to spare. */
+	| "closeWindow";
+
+/**
+ * Outcome of closing a tmux window. `agentWindow` means the window runs an agent
+ * pane and nothing was closed: the caller asks the user, then retries with `force`
+ * and the returned `windowId`, so focus moving meanwhile cannot redirect the kill.
+ */
+export type TmuxCloseWindowResult =
+	| { closed: true }
+	| { closed: false; reason: "agentWindow"; windowId: string }
+	| { closed: false; reason: "lastWindow" | "notFound" };
 
 export interface TaskPaneState {
 	backend: TaskPaneBackendKind;

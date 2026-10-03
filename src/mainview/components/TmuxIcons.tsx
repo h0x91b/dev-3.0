@@ -185,6 +185,22 @@ export function NewWindowIcon({ className }: TmuxIconProps) {
 	);
 }
 
+/** New window's glyph with the plus turned into a cross; reuses Close pane's motion. */
+export function CloseWindowIcon({ className }: TmuxIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<g className="tmx tmx-k-shake">
+				<g className="tmx-k-die">
+					<rect x="2" y="4" width="20" height="16" rx="2" />
+					<line x1="2" y1="9" x2="22" y2="9" />
+					<path d="M9.5 12 L14.5 17" pathLength={1} className="tmx-draw tmx-k-x1" />
+					<path d="M14.5 12 L9.5 17" pathLength={1} className="tmx-draw tmx-k-x2" />
+				</g>
+			</g>
+		</svg>
+	);
+}
+
 export function ManagePanesIcon({ className }: TmuxIconProps) {
 	return (
 		<svg {...svgBase(className)}>

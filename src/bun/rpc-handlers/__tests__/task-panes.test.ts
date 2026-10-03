@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
 	tmuxNewWindow: vi.fn(),
 	tmuxSplitWindow: vi.fn(),
 	tmuxKillPane: vi.fn(),
+	tmuxKillWindow: vi.fn(),
+	tmuxListPanes: vi.fn(),
 	// task-terminal-backend
 	taskTerminalBackendIdentity: vi.fn(),
 	// native-task-panes
@@ -70,6 +72,7 @@ vi.mock("../../pty-server", () => ({
 
 vi.mock("../../tmux", () => ({
 	PANE_CWD_FORMAT: "#{pane_current_path}",
+	WINDOW_PANE_FORMAT: { formatString: "window-panes" },
 	TmuxError: class TmuxError extends Error {
 		exitCode: number;
 		stderr: string;
@@ -90,6 +93,8 @@ vi.mock("../../tmux", () => ({
 		newWindow: mocks.tmuxNewWindow,
 		splitWindow: mocks.tmuxSplitWindow,
 		killPane: mocks.tmuxKillPane,
+		killWindow: mocks.tmuxKillWindow,
+		listPanes: mocks.tmuxListPanes,
 	},
 }));
 
@@ -172,6 +177,14 @@ function makeTwoPaneNativeState(): NativeTaskPanesState {
 	};
 }
 
+/** Three windows: @1 holds the agent pane, @2 is active with two panes, @3 is a shell. */
+const threeWindowPanes = [
+	{ windowId: "@1", windowActive: false, paneId: "%1", agent: true },
+	{ windowId: "@2", windowActive: true, paneId: "%2", agent: false },
+	{ windowId: "@2", windowActive: true, paneId: "%5", agent: false },
+	{ windowId: "@3", windowActive: false, paneId: "%3", agent: false },
+];
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -199,6 +212,8 @@ beforeEach(() => {
 	mocks.tmuxNextLayout.mockResolvedValue(undefined);
 	mocks.tmuxResizePaneDirection.mockResolvedValue(undefined);
 	mocks.tmuxNewWindow.mockResolvedValue(undefined);
+	mocks.tmuxKillWindow.mockResolvedValue(undefined);
+	mocks.tmuxListPanes.mockResolvedValue(threeWindowPanes);
 	mocks.ensureNativePanePtySession.mockResolvedValue(undefined);
 	mocks.hasSession.mockReturnValue(true);
 	mocks.reattachNativeTaskSession.mockResolvedValue(true);
@@ -808,6 +823,76 @@ describe("tmuxNewWindow", () => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
 		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
 		expect(mocks.tmuxNewWindow).not.toHaveBeenCalled();
+	});
+});
+
+// ── tmuxCloseWindow ───────────────────────────────────────────────────────────
+
+describe("tmuxCloseWindow", () => {
+	it("closes the active window when no window is named", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID });
+		expect(result).toEqual({ closed: true });
+		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@2", { socket: "dev3-sock" });
+		expect(mocks.handlePaneExited).toHaveBeenCalled();
+	});
+
+	it("closes a named window by its id", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@3" });
+		expect(result).toEqual({ closed: true });
+		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@3", { socket: "dev3-sock" });
+	});
+
+	it("refuses the agent's window without force and names it for the retry", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1" });
+		expect(result).toEqual({ closed: false, reason: "agentWindow", windowId: "@1" });
+		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
+	});
+
+	it("closes the agent's window once forced", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1", force: true });
+		expect(result).toEqual({ closed: true });
+		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@1", { socket: "dev3-sock" });
+	});
+
+	it("never closes the last window, even forced", async () => {
+		mocks.tmuxListPanes.mockResolvedValue([{ windowId: "@1", windowActive: true, paneId: "%1", agent: false }]);
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, force: true });
+		expect(result).toEqual({ closed: false, reason: "lastWindow" });
+		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
+	});
+
+	it("rejects a window id that is not a tmux window id", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "dev3-x:1" });
+		expect(result).toEqual({ closed: false, reason: "notFound" });
+		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
+	});
+
+	it("reports a window that is already gone without killing anything", async () => {
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@9" });
+		expect(result).toEqual({ closed: false, reason: "notFound" });
+		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op for a native task", async () => {
+		mocks.getTask.mockResolvedValue(nativeTask);
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID });
+		expect(result).toEqual({ closed: false, reason: "notFound" });
+		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
+	});
+});
+
+describe("taskPaneState closeWindow capability", () => {
+	it("is offered only while the session has more than one window", async () => {
+		const one = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(one.capabilities).not.toContain("closeWindow");
+
+		mocks.getTmuxLayout.mockResolvedValue({
+			...twoPane80TmuxLayout,
+			windows: [...twoPane80TmuxLayout.windows, { index: 1, name: "zsh", active: false, panes: 1, zoomed: false }],
+		});
+		const two = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(two.capabilities).toContain("closeWindow");
 	});
 });
 

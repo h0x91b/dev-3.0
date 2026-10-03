@@ -7,7 +7,7 @@ import type { TaskConversationView } from "./task-conversation-model";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
-import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
+import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind, TmuxCloseWindowResult } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
 import type { ReviewComment, ReviewReplyAuthor } from "./review";
 import type { UpdateChannel } from "./update-channel";
@@ -6007,6 +6007,10 @@ export type AppRPCSchema = {
 			tmuxNewWindow: {
 				params: { taskId: string };
 				response: void;
+			};
+			tmuxCloseWindow: {
+				params: { taskId: string; windowId?: string; force?: boolean };
+				response: TmuxCloseWindowResult;
 			};
 			tmuxLayout: {
 				params: { taskId: string };

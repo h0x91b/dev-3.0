@@ -91,6 +91,8 @@ export const tooltips = {
 		"tmux: temporarily maximizes the active pane to the whole window. Press again to restore the layout — nothing is closed.",
 	"ttip.tmux.closePane":
 		"tmux: closes a pane and terminates whatever runs inside. A picker opens first, so you choose exactly which pane dies.",
+	"ttip.tmux.closeWindow":
+		"tmux: closes the window (tab) you are looking at and everything running in it. The other windows stay; the last one can't be closed.",
 
 	// Git bar
 	"ttip.infoPanel.branchChip":
