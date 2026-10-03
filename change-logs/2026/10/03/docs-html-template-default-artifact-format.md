@@ -1,0 +1,1 @@
+Agent guidance now makes the dev3 HTML template the default for every report a human reads; agents publish Markdown or plain text only when the user explicitly asks for that format, and a `.md` report path in a brief no longer reads as a request for Markdown. The protocol section got shorter as part of the change.

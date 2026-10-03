@@ -697,9 +697,9 @@ const COMMANDS: CommandHelp[] = [
 		usage: 'dev3 show-artifact <report-dir | file.html | notes.md | notes.txt> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]',
 		details: [
 			"<report-dir>          Publish the directory: its index.html plus every CSS, classic JS, raster, MP4/WebM video and MP3/M4A/WAV/OGG audio file under it.",
-			"<notes.md | .txt>     Publish Markdown or plain text as-is; the app renders it into the viewer (raw HTML shows as text, no --assets).",
-			"                      Text files do not use the dev3 artifact template CSS. For template-styled reports, including prose-only briefs,",
-			"                      copy $DEV3_ARTIFACT_TEMPLATE_DIR (or run dev3 artifact-template), read AUTHORING.md, then publish the edited directory.",
+			"<notes.md | .txt>     Publish Markdown or plain text as-is, only when the user explicitly asked for that format (raw HTML shows as text, no --assets).",
+			"                      Text files skip the dev3 artifact template CSS. Every other human-facing report, prose-only briefs included, defaults to",
+			"                      the template: copy $DEV3_ARTIFACT_TEMPLATE_DIR (or run dev3 artifact-template), read AUTHORING.md, publish the directory.",
 			"--assets <paths...>   Name local CSS, classic JS, raster, video and audio assets by hand; all following paths belong to the artifact until the next flag.",
 			"                      A bundled video or audio file is capped at 16 MB, and all of them together at 48 MB; poster images count as ordinary rasters.",
 			"                      A player or link to a local media file that is not bundled or not a supported format stops the publish, naming the fix.",

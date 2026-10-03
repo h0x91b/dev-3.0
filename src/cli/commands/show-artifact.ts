@@ -56,7 +56,8 @@ function collectDirectoryAssets(dir: string, htmlPath: string): string[] {
  * `dev3 show-artifact ./report-dir --title "Report"` publishes `index.html` plus
  * every asset under the directory; `dev3 show-artifact report.html --assets
  * app.css chart.png` names them by hand. A `.md` or `.txt` file publishes as
- * text: the app renders it into the same viewer, no HTML to write.
+ * text into the same viewer — the exception, for an explicit request for that
+ * format; the template directory is the default for any human-facing report.
  */
 export async function handleShowArtifact(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
 	let html = "";

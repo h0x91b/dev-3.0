@@ -62,13 +62,17 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
-	it("distinguishes template-styled prose from raw text artifacts in every harness", () => {
+	it("defaults every human-facing report to the HTML template in every harness", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), OMP_SKILL_BODY, getGenericSkillContent()]) {
-			expect(skill).toContain("including text-only summaries and daily briefs");
-			expect(skill).toContain("**Template styling requested → copy the starter and publish its directory.**");
-			expect(skill).toContain("Markdown/plain-text publishing does not use the template CSS");
-			expect(skill).toContain("ask which requirement takes priority before publishing");
+			expect(skill).toContain("Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included.");
+			expect(skill).toContain("**Copy the starter and publish its directory.**");
+			expect(skill).toContain("only when the user explicitly asks for Markdown or plain text");
+			// A brief naming `…/REPORT.md` once read as a Markdown request (Seq 2070).
+			expect(skill).toContain("A `.md` report path in a brief says where to save it, not how to show it.");
+			expect(skill).toContain("ask which wins before publishing");
 			expect(skill).toContain('data-dev3-artifact-template="v1"');
+			expect(skill).toContain("`dev3 show-artifact <report-dir | file.html> [--assets");
+			expect(skill).not.toContain("file.html | .md | .txt");
 		}
 	});
 
