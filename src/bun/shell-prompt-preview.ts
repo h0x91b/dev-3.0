@@ -41,7 +41,10 @@ function ensureDemoWorktree(): void {
 }
 
 // Two prompts: after a command that ran 3 seconds, then after one that failed.
+// zsh replaces an inherited COLUMNS with its controlling terminal's width, so a
+// dev3 started from a narrow terminal would preview every style squeezed.
 export const PREVIEW_RENDER_SCRIPT = `
+COLUMNS=$DEV3_PREVIEW_COLUMNS
 source "$DEV3_PREVIEW_ENGINE"
 eval "$DEV3_PREVIEW_STYLE" || exit 3
 # A real shell hands %? the command's status even after precmd ran; restore it.
@@ -92,7 +95,7 @@ export async function previewShellPrompt(source: string, columns = 72): Promise<
 			HOST: "devbox",
 			LANG: "en_US.UTF-8",
 			LC_ALL: "en_US.UTF-8",
-			COLUMNS: String(columns),
+			DEV3_PREVIEW_COLUMNS: String(columns),
 			DEV3_WORKTREE_ROOT: DEMO_WORKTREE,
 			DEV3_PROJECT_NAME: "my-app",
 			DEV3_TASK_SEQ: "42",

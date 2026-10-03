@@ -78,6 +78,18 @@ describe("ShellPromptGallery", () => {
 		expect(badge).toHaveStyle({ color: "#1a1b26", background: "#bb9af7" });
 	});
 
+	it("draws solid powerline separators as shapes, so they match the segment height", async () => {
+		preview.mockImplementation(async (): Promise<ShellPromptPreview> => ({
+			ok: true,
+			afterSlowCommand: ["\u001b[35;7m #42 \u001b[34;45m\ue0bc\u001b[49m\u001b[34m app\ue0bc"],
+			afterFailedCommand: [""],
+		}));
+		const { container } = render(<Harness />);
+		await screen.findAllByText("#42", { exact: false });
+		expect(container.querySelectorAll("[data-powerline-shape]").length).toBeGreaterThanOrEqual(2);
+		expect(container.textContent).not.toContain("\ue0bc");
+	});
+
 	it("copies a style into the custom editor and applies it only after zsh accepts it", async () => {
 		const onSaveCustom = vi.fn();
 		render(<Harness onSaveCustom={onSaveCustom} />);

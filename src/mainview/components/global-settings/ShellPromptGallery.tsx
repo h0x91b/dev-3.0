@@ -25,6 +25,21 @@ function ansiColors(p: Palette): string[] {
 	];
 }
 
+/**
+ * The solid powerline separators, drawn as shapes. As font glyphs they stand taller
+ * than an HTML span's background, leaving a step at every segment edge — the
+ * terminal fits them to the cell (`terminal-glyph-cell-fit.ts`), a preview cannot.
+ */
+const POWERLINE_SHAPES: Record<string, string> = {
+	"\ue0b0": "polygon(0 0, 100% 50%, 0 100%)",
+	"\ue0b2": "polygon(100% 0, 0 50%, 100% 100%)",
+	"\ue0b8": "polygon(0 0, 100% 100%, 0 100%)",
+	"\ue0ba": "polygon(100% 0, 100% 100%, 0 100%)",
+	"\ue0bc": "polygon(0 0, 100% 0, 0 100%)",
+	"\ue0be": "polygon(0 0, 100% 0, 100% 100%)",
+};
+const POWERLINE_SHAPE_RUN = /([\ue0b0\ue0b2\ue0b8\ue0ba\ue0bc\ue0be])/u;
+
 /** SGR colours, bold and reverse video — all a zsh prompt emits. Anything else is dropped. */
 function renderAnsiLine(line: string, palette: Palette): ReactNode[] {
 	const colors = ansiColors(palette);
@@ -40,7 +55,22 @@ function renderAnsiLine(line: string, palette: Palette): ReactNode[] {
 			? { color: bg ?? palette.background, background: fg ?? palette.foreground }
 			: { color: fg, background: bg };
 		if (bold) style.fontWeight = 700;
-		out.push(<span key={out.length} style={style}>{text}</span>);
+		// Inline blocks fill the whole line box, so backgrounds meet the shapes edge to edge.
+		Object.assign(style, { display: "inline-block", verticalAlign: "top" });
+		for (const part of text.split(POWERLINE_SHAPE_RUN)) {
+			if (!part) continue;
+			const shape = POWERLINE_SHAPES[part];
+			out.push(
+				shape ? (
+					<span key={out.length} data-powerline-shape="" style={{ ...style, width: "1ch", height: "1lh" }}>
+						{/* Half a pixel past each side, so no antialiased seam opens against the segment it closes. */}
+						<span style={{ display: "block", height: "100%", marginInline: "-0.5px", background: style.color ?? palette.foreground, clipPath: shape }} />
+					</span>
+				) : (
+					<span key={out.length} style={style}>{part}</span>
+				),
+			);
+		}
 	};
 	for (const m of line.matchAll(/\u001b\[([0-9;]*)m/g)) {
 		flush(line.slice(last, m.index));
