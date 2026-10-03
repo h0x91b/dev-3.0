@@ -118,8 +118,45 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 	return out;
 }
 
+/**
+ * Variables the installing shell may set that change how the server behaves.
+ * systemd starts the unit with a bare environment, so anything not written into
+ * the unit is lost. An allowlist, not `DEV3_*`: a task shell also carries
+ * per-task vars (DEV3_TASK_ID, DEV3_REMOTE_PORT, ...) that must not leak in.
+ */
+export const SERVICE_ENV_KEYS = [
+	"DEV3_TELEMETRY",
+	"DO_NOT_TRACK",
+	"DEV3_HOME",
+	"DEV3_LOG_LEVEL",
+	"DEV3_CLOUDFLARED_PROTOCOL",
+	"DEV3_CLOUDFLARED_EDGE_BIND",
+] as const;
+
+export type ServiceEnv = Array<[string, string]>;
+
+/** The allowlisted variables that are set and non-empty, in allowlist order. */
+export function collectServiceEnv(env: Readonly<Record<string, string | undefined>>): ServiceEnv {
+	const out: ServiceEnv = [];
+	for (const key of SERVICE_ENV_KEYS) {
+		const value = env[key];
+		if (value === undefined || value.trim() === "") continue;
+		if (/[\x00-\x1f\x7f]/.test(value)) {
+			exitUsage(`$${key} contains a control character and cannot be written into a systemd unit`);
+		}
+		out.push([key, value]);
+	}
+	return out;
+}
+
+/** One `Environment=` line, quoted so spaces, quotes, backslashes and `%` survive systemd parsing. */
+function renderEnvironmentLine(key: string, value: string): string {
+	const escaped = `${key}=${value}`.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("%", "%%");
+	return `Environment="${escaped}"`;
+}
+
 /** Render the systemd unit file body. Pure — exported for tests. */
-export function renderUnitFile(binPath: string, execArgs: string[]): string {
+export function renderUnitFile(binPath: string, execArgs: string[], env: ServiceEnv = []): string {
 	const execStart = [binPath, ...execArgs].join(" ");
 	return [
 		"[Unit]",
@@ -129,6 +166,7 @@ export function renderUnitFile(binPath: string, execArgs: string[]): string {
 		"",
 		"[Service]",
 		"Type=simple",
+		...env.map(([key, value]) => renderEnvironmentLine(key, value)),
 		`ExecStart=${execStart}`,
 		// Clean `dev3 remote stop` / `systemctl stop` exits 0 → no restart; only a
 		// crash restarts. Keeps `dev3 remote stop` authoritative even under systemd.
@@ -163,13 +201,21 @@ export async function installRemoteService(args: ParsedArgs): Promise<void> {
 	const binPath = resolveDev3Binary();
 	const execArgs = buildExecStartArgs(args);
 	const noPort = !execArgs.includes("--port");
+	const serviceEnv = collectServiceEnv(process.env);
 
 	const dir = userUnitDir();
 	mkdirSync(dir, { recursive: true });
 	const path = unitPath();
-	writeFileSync(path, renderUnitFile(binPath, execArgs));
+	writeFileSync(path, renderUnitFile(binPath, execArgs, serviceEnv));
 	process.stdout.write(`Wrote systemd unit: ${path}\n`);
 	process.stdout.write(`  ExecStart=${[binPath, ...execArgs].join(" ")}\n`);
+	if (serviceEnv.length > 0) {
+		process.stdout.write(`  Carried from this shell into the unit:\n`);
+		for (const [key, value] of serviceEnv) process.stdout.write(`    ${key}=${value}\n`);
+	} else {
+		process.stdout.write(`  No environment carried (none of ${SERVICE_ENV_KEYS.join(", ")} is set).\n`);
+	}
+	process.stdout.write(`  To change it, set the variables and re-run \`dev3 remote install-service\`.\n`);
 	if (noPort) {
 		process.stdout.write(
 			`  ⚠ No --port given — the server picks a random port each start, which makes\n` +

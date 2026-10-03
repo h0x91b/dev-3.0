@@ -68,6 +68,8 @@ Subcommands:
                       server survives logout and starts on boot. Accepts the
                       same start flags (e.g. --port, --no-tunnel). The unit runs
                       in the foreground under systemd — do NOT pass --detach.
+                      Carries DEV3_TELEMETRY, DO_NOT_TRACK, DEV3_HOME and a few
+                      other DEV3_* settings from this shell into the unit.
   uninstall-service   (Linux) Stop, disable, and remove the systemd --user unit.
 
 Flags (start):
