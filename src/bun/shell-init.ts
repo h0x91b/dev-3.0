@@ -252,10 +252,13 @@ function bashrc(keepOwnPrompt: boolean): string {
 [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
 
 ${keepOwnPrompt ? "" : BASH_PROMPT}# Word motion on modifier+arrow — see the zsh block for why Alt, not Ctrl.
-bind '"\\e[1;3D": backward-word'
-bind '"\\e[1;3C": forward-word'
-bind '"\\e[1;5D": backward-word'
-bind '"\\e[1;5C": forward-word'
+# Outside an interactive shell bash 5 answers every bind with "line editing not enabled".
+if [[ $- == *i* ]]; then
+  bind '"\\e[1;3D": backward-word'
+  bind '"\\e[1;3C": forward-word'
+  bind '"\\e[1;5D": backward-word'
+  bind '"\\e[1;5C": forward-word'
+fi
 `;
 }
 
