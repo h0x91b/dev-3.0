@@ -963,3 +963,88 @@ describe("ActivityOverview — the board footer", () => {
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
 	});
 });
+
+// Coordinators are what the user opens to talk to a project, so the dashboard
+// pins every active one above the attention rows whatever its status.
+describe("ActivityOverview — coordinator rows", () => {
+	const coordinator = (id: string, seq: number, title: string, extra: Partial<Task> = {}): Task => ({
+		...mockTask,
+		id,
+		seq,
+		title,
+		description: title,
+		taskType: "coordinator",
+		worktreePath: null,
+		...extra,
+	});
+	const ordinary = (id: string, seq: number, title: string, status: Task["status"]): Task => ({
+		...mockTask,
+		id,
+		seq,
+		title,
+		description: title,
+		status,
+	});
+
+	function mockTasks(tasks: Task[]) {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks, todoCount: 0 }]);
+	}
+
+	const rows = () => screen.queryAllByTestId("dashboard-coordinator-row");
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("shows a working coordinator as its own row instead of folding it into the footer count", async () => {
+		mockTasks([coordinator("c1", 10, "Run the migration", { status: "in-progress" }), ordinary("t2", 2, "Port ledger", "in-progress")]);
+		renderActivityOverview();
+		await screen.findByText("Run the migration");
+		expect(rows()).toHaveLength(1);
+		expect(rows()[0].textContent).toContain("Agent is Working");
+		// Only the ordinary working task is left in the footer.
+		expect(screen.getByText("1 agent working")).toBeInTheDocument();
+	});
+
+	it("lists a waiting coordinator once, above the ordinary attention rows, with no Complete check", async () => {
+		mockTasks([ordinary("t2", 2, "Copy pass", "user-questions"), coordinator("c1", 10, "Lead onboarding", { status: "user-questions" })]);
+		renderActivityOverview();
+		await screen.findByText("Lead onboarding");
+		expect(screen.getAllByText("Lead onboarding")).toHaveLength(1);
+		const group = screen.getByRole("group", { name: "Coordinators" });
+		expect(within(group).queryByTestId("activity-row-complete")).toBeNull();
+		expect(group.compareDocumentPosition(screen.getByText("Copy pass")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it("renders nothing extra for a project without coordinators", async () => {
+		mockTasks([ordinary("t2", 2, "Copy pass", "user-questions")]);
+		renderActivityOverview();
+		await screen.findByText("Copy pass");
+		expect(screen.queryByRole("group", { name: "Coordinators" })).toBeNull();
+	});
+
+	it("lists every coordinator: live first, then disconnected, then hibernated", async () => {
+		mockTasks([
+			coordinator("c-hib", 1, "Infra lead", { status: "in-progress", hibernated: true }),
+			coordinator("c-lost", 2, "Research lead", { status: "in-progress", worktreePath: "/tmp/wt", runtimeState: { runtime: "idle", updatedAt: 0 } }),
+			coordinator("c-live", 3, "Release lead", { status: "in-progress" }),
+			coordinator("c-wait", 4, "Docs lead", { status: "review-by-user" }),
+		]);
+		renderActivityOverview();
+		await screen.findByText("Infra lead");
+		expect(rows().map((r) => r.getAttribute("data-coordinator-state"))).toEqual(["live", "live", "disconnected", "hibernated"]);
+		const hibernated = rows()[3];
+		expect(hibernated.textContent).toContain("Hibernated");
+		// A parked coordinator must not claim an agent is working.
+		expect(hibernated.textContent).not.toContain("Agent is Working");
+	});
+
+	it("opens the coordinator's task on click and never moves it", async () => {
+		const navigate = vi.fn();
+		mockTasks([coordinator("c-hib", 1, "Infra lead", { status: "in-progress", hibernated: true })]);
+		renderActivityOverview(navigate);
+		await userEvent.setup().click(await screen.findByText("Infra lead"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "c-hib" });
+		expect(mockedMove).not.toHaveBeenCalled();
+	});
+});

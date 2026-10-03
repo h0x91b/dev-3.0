@@ -66,6 +66,7 @@ const dashboard = {
 	"activity.showMoreTasks_other": "Показать ещё {count}",
 	"activity.showFewerTasks": "Свернуть",
 	"activity.openBoard": "Открыть доску",
+	"activity.coordinatorsGroup": "Координаторы",
 	"activity.justNow": "только что",
 	"activity.secondsAgo": "{count}с назад",
 	"activity.minutesAgo": "{count}м назад",

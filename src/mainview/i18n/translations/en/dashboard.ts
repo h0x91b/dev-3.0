@@ -52,6 +52,7 @@ const dashboard = {
 	"activity.showMoreTasks_other": "Show {count} more",
 	"activity.showFewerTasks": "Show fewer",
 	"activity.openBoard": "Open board",
+	"activity.coordinatorsGroup": "Coordinators",
 	"activity.justNow": "just now",
 	"activity.secondsAgo": "{count}s ago",
 	"activity.minutesAgo": "{count}m ago",

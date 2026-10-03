@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Dispatch, DragEvent } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
-import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
@@ -29,6 +29,8 @@ import { CompleteCheckIcon } from "./PipelineRing";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import DashboardCoordinatorRows from "./DashboardCoordinatorRows";
+import { coordinatorCandidates } from "../utils/coordinatorFinder";
 
 interface ActivityOverviewProps {
 	projects: Project[];
@@ -462,10 +464,14 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		// PR review) plus any task parked in a custom column. Custom-column
 		// tasks carry the column's identity, not their underlying status, and
 		// are never collapsed into the summary line below.
-		const rowTasks = tasks.filter(
+		// Coordinators get their own pinned rows whatever their status, so they are
+		// taken out of both the attention rows and the footer counts below.
+		const coordinators = coordinatorCandidates(tasks, null, []);
+		const ordinaryTasks = tasks.filter((task) => !isCoordinatorTask(task));
+		const rowTasks = ordinaryTasks.filter(
 			(task) => columnOf(task) !== null || ATTENTION_STATUSES.includes(task.status),
 		);
-		const backgroundTasks = tasks.filter(
+		const backgroundTasks = ordinaryTasks.filter(
 			(task) => columnOf(task) === null && BACKGROUND_STATUSES.includes(task.status),
 		);
 
@@ -693,6 +699,16 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 
 				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
+						<DashboardCoordinatorRows
+							project={project}
+							coordinators={coordinators}
+							narrow={narrow}
+							statusColors={statusColors}
+							bellCounts={bellCounts}
+							maskClass={privacy.maskClass(project)}
+							timeAgo={(iso) => timeAgo(iso, t)}
+							onOpen={(task) => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
+						/>
 						{/* Attention + custom-column tasks — shown individually. On narrow
 						    each row stacks (title on its own line, meta below) so the title
 						    is readable instead of squeezed by the status + time cluster. */}
