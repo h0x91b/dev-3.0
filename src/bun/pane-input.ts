@@ -16,6 +16,7 @@ import {
 	type PaneInputProgram,
 	type PaneInputStage,
 } from "../shared/pane-input";
+import { parseAgentFence, pinnableAgentFence } from "../shared/agent-fence";
 import { deliverNativePaneInput, resolveNativePaneIncarnation } from "./pane-input-native";
 import { executeTmuxPaneInput, tmuxStepPayload } from "./pane-input-tmux";
 import { runPaneInputProgramOnce } from "./pane-input-ledger";
@@ -76,11 +77,26 @@ export async function pinTaskPane(task: Task, paneId: string): Promise<PaneInput
 			detail: `pane ${paneId} belongs to session ${seen.sessionName}, not ${sessionName}`,
 		};
 	}
+	// The fence is read in the same sighting too. A closed fence is an agent that exited:
+	// nothing of dev3 may reach the shell it left behind. A malformed one fails closed.
+	const fence = parseAgentFence(seen.agentFence);
+	if (fence.kind === "closed") {
+		return { ok: false, reason: "agent-exited", detail: `the agent launched in pane ${paneId} exited (code ${fence.exitCode})` };
+	}
+	const agentFence = pinnableAgentFence(fence);
+	if (agentFence === null) {
+		return { ok: false, reason: "agent-exited", detail: `pane ${paneId} carries an unrecognised agent fence; refusing to type` };
+	}
+	// Loaded only for a fenced pane: the module reads the filesystem, and suites that mock
+	// `node:fs` by name must not have to learn about it to deliver into an unfenced pane.
+	if (fence.kind === "open" && (await (await import("./agent-fence")).agentFenceCloseRequested(fence.launchId, socket))) {
+		return { ok: false, reason: "agent-exited", detail: `the agent launched in pane ${paneId} exited; its fence is being closed` };
+	}
 	// The token comes from the SAME sighting as the pane, its liveness and its session, so a
 	// restart between two reads cannot pair one generation's pane with another's token.
 	return {
 		ok: true,
-		incarnation: { backend: "tmux", taskId: task.id, paneId, sessionName, serverToken: seen.serverToken },
+		incarnation: { backend: "tmux", taskId: task.id, paneId, sessionName, serverToken: seen.serverToken, agentFence },
 	};
 }
 

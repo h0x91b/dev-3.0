@@ -14,6 +14,7 @@ import {
 	agentMessageHoldKey,
 	hasStrandedAgentMessage,
 	holdAgentMessage,
+	type HeldAgentMessage,
 	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
 	type HeldMessageBatch,
@@ -215,9 +216,13 @@ function agentPromptSubmitStages(): PaneInputStage[] {
 	return [{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] }];
 }
 
-/** A scrolled-up pane refused the keys but is still the same pane: the hold waits for it. */
+/**
+ * A scrolled-up pane refused the keys but is still the same pane: the hold waits for it. An
+ * agent that exited must never have its shell read the rest; the hold keeps it for a successor.
+ */
 function heldDeliveryResult(outcome: PaneInputOutcome): HeldDeliveryResult {
 	if (outcome.status === "delivered") return "landed";
+	if ((outcome.status === "not-started" || outcome.status === "partial") && outcome.reason === "agent-exited") return "exited";
 	return outcome.status === "not-started" && outcome.reason === "pane-in-mode" ? "deferred" : "failed";
 }
 
@@ -280,7 +285,9 @@ async function reportHeldMessage(task: Task, event: HeldAgentMessageReport): Pro
 	const reason =
 		event.kind === "stranded"
 			? `A peer message is typed in the agent's input box but not sent. Press Enter there to send it${event.waiting > 0 ? `; ${event.waiting} more wait until you do` : ""}.`
-			: `${event.messages} held peer message(s) were not delivered: ${event.why}.${event.paths ? ` They are saved in ${event.paths.join(", ")}.` : ""}`;
+			: `${event.messages} held peer message(s) were not delivered: ${event.why}.` +
+				(event.paths ? ` They are saved in ${event.paths.join(", ")}.` : "") +
+				(event.lost ? ` ${event.lost} of them could not be saved anywhere; their text is lost.` : "");
 	try {
 		const { pushCliAttention } = await import("./rpc-handlers/shared");
 		pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
@@ -317,6 +324,152 @@ async function batchHeldMessages(task: Task, paneId: string, holdKey: string, te
 }
 
 /**
+ * Who a held message was for: the pane entry it arrived for, and every pane id the task had
+ * at that moment. Indices are useless here — the registry drops entries of closed panes.
+ */
+export interface HeldMessageLineage {
+	agentId: string;
+	configId: string | null;
+	agentFamily: string | null;
+	accountId: string | null;
+	/** The agent's own conversation id: a resumed agent keeps it, a new sibling does not. */
+	sessionId: string;
+	/** Pane ids present at arrival: none of them can be the replacement. */
+	siblings: readonly string[];
+}
+
+/** The lineage of the entry `paneId` belongs to, or undefined when it cannot be told apart safely. */
+export function heldMessageLineage(panes: readonly PaneSessionEntry[] | undefined, paneId: string): HeldMessageLineage | undefined {
+	const entry = (panes ?? []).find((p) => p.paneId === paneId);
+	if (!entry?.agentId || !entry.sessionId) return undefined;
+	return {
+		agentId: entry.agentId,
+		configId: entry.configId ?? null,
+		agentFamily: entry.agentFamily ?? null,
+		accountId: entry.accountId ?? null,
+		sessionId: entry.sessionId,
+		siblings: (panes ?? []).flatMap((p) => (p.paneId ? [p.paneId] : [])),
+	};
+}
+
+/**
+ * The pane that replaced a held message's exited agent: an entry with the SAME agent,
+ * config, family, account and conversation, on a pane id the task did not have when the
+ * message arrived, and live. Exactly one, or null — an ambiguous or unknown identity waits
+ * (and is saved at the bound) rather than typing into another agent.
+ */
+export function findReplacementPane(
+	lineage: HeldMessageLineage,
+	panes: readonly PaneSessionEntry[] | undefined,
+	livePaneIds: readonly string[],
+): string | null {
+	const candidates = (panes ?? []).filter(
+		(p) =>
+			!!p.paneId &&
+			!lineage.siblings.includes(p.paneId) &&
+			livePaneIds.includes(p.paneId) &&
+			p.agentId === lineage.agentId &&
+			(p.configId ?? null) === lineage.configId &&
+			(p.agentFamily ?? null) === lineage.agentFamily &&
+			(p.accountId ?? null) === lineage.accountId &&
+			p.sessionId === lineage.sessionId,
+	);
+	return candidates.length === 1 ? (candidates[0]!.paneId ?? null) : null;
+}
+
+/** The task as it is on disk now, or null. Loaded lazily: the data layer is app-side plumbing. */
+async function freshTask(task: Task): Promise<Task | null> {
+	try {
+		const data = await import("./data");
+		return await data.getTask(await data.getProject(task.projectId), task.id);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * One held `dev3 message` aimed at `paneId`, with every closure the hold needs. `lineage` names
+ * the agent it arrived for: when that agent exits, the messages may follow only the pane that
+ * replaced it ({@link findReplacementPane}) — never whatever agent pane the routing heuristics
+ * would pick (a bug hunter, a review agent, an identical sibling).
+ */
+function buildHeldMessage(
+	task: Task,
+	paneId: string,
+	prompt: string,
+	epilogue: AgentPromptEpilogue | undefined,
+	lineage: HeldMessageLineage | undefined,
+): { key: string; context: Record<string, string>; message: HeldAgentMessage } {
+	const context = { taskId: task.id.slice(0, 8), paneId };
+	const holdKey = agentMessageHoldKey("tmux", task.id, paneId);
+	const message: HeldAgentMessage = {
+		text: prompt,
+		alive: () => paneStillThere(task, paneId, holdKey),
+		report: (event) => void reportHeldMessage(task, event),
+		batch: (texts) => batchHeldMessages(task, paneId, holdKey, texts),
+		save: async (texts, why) => (await import("./agent-message-spill")).saveUndeliveredAgentMessages(task, texts, why),
+		...(lineage === undefined
+			? {}
+			: {
+				relocate: async () => {
+					const fresh = await freshTask(task);
+					if (!fresh) return null;
+					const { tmuxSession, socket } = tmuxRouting(fresh);
+					const next = findReplacementPane(lineage, fresh.sessionState?.panes, await listLivePaneIds(tmuxSession, socket));
+					if (!next || next === paneId) return null;
+					// From here on the replacement is the pane these messages arrived for.
+					const moved = { ...lineage, siblings: (fresh.sessionState?.panes ?? []).flatMap((p) => (p.paneId ? [p.paneId] : [])) };
+					const target = buildHeldMessage(fresh, next, "", epilogue, moved);
+					return {
+						key: target.key,
+						context: target.context,
+						rebuild: (text: string) => buildHeldMessage(fresh, next, text, epilogue, moved).message,
+					};
+				},
+			}),
+		deliver: async (separator) => {
+			const text = await typeHeldText(task, paneId, holdKey, `${separator}${prompt}`);
+			const result = heldDeliveryResult(text);
+			if (result === "failed") log.warn("held agent message text did not land", { ...context, status: text.status });
+			return result;
+		},
+		bytes: utf8Length(prompt),
+		...(epilogue
+			? {
+				epilogue: async (budgetBytes) => {
+					const trailer = await epilogue();
+					if (!trailer) return false;
+					if (utf8Length(trailer) > budgetBytes) {
+						// A board that does not fit would split the turn, and the piece the
+						// receiver drops is the first one — the messages, not the snapshot.
+						log.info("board trailer dropped: it would push the turn past one terminal read", {
+							...context,
+							trailerBytes: String(utf8Length(trailer)),
+							budgetBytes: String(budgetBytes),
+						});
+						return false;
+					}
+					const sent = await sendPaneInput(
+						task,
+						paneId,
+						agentMessageTextStages(`${AGENT_MESSAGE_BURST_SEPARATOR}${trailer}`),
+						{ idPrefix: "agent-epilogue" },
+					);
+					return sent.status === "delivered";
+				},
+			}
+			: {}),
+		submit: async () => {
+			const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
+			const result = heldDeliveryResult(submit);
+			if (result === "failed") log.warn("held agent message submit did not land", { ...context, status: submit.status });
+			return result;
+		},
+	};
+	return { key: holdKey, context, message };
+}
+
+/**
  * Hold a whole `dev3 message` for `paneId`: nothing is typed now, so nothing can land
  * in the middle of the line the user is writing.
  *
@@ -330,58 +483,10 @@ function holdAgentMessageForPane(
 	paneId: string,
 	prompt: string,
 	epilogue?: AgentPromptEpilogue,
+	lineage?: HeldMessageLineage,
 ): AgentPromptDelivery {
-	const context = { taskId: task.id.slice(0, 8), paneId };
-	const holdKey = agentMessageHoldKey("tmux", task.id, paneId);
-	const delayMs = holdAgentMessage(
-		holdKey,
-		{
-			text: prompt,
-			alive: () => paneStillThere(task, paneId, holdKey),
-			report: (event) => void reportHeldMessage(task, event),
-			batch: (texts) => batchHeldMessages(task, paneId, holdKey, texts),
-			deliver: async (separator) => {
-				const text = await typeHeldText(task, paneId, holdKey, `${separator}${prompt}`);
-				const result = heldDeliveryResult(text);
-				if (result === "failed") log.warn("held agent message text did not land", { ...context, status: text.status });
-				return result;
-			},
-			bytes: utf8Length(prompt),
-			...(epilogue
-				? {
-					epilogue: async (budgetBytes) => {
-						const trailer = await epilogue();
-						if (!trailer) return false;
-						if (utf8Length(trailer) > budgetBytes) {
-							// A board that does not fit would split the turn, and the piece the
-							// receiver drops is the first one — the messages, not the snapshot.
-							log.info("board trailer dropped: it would push the turn past one terminal read", {
-								...context,
-								trailerBytes: String(utf8Length(trailer)),
-								budgetBytes: String(budgetBytes),
-							});
-							return false;
-						}
-						const sent = await sendPaneInput(
-							task,
-							paneId,
-							agentMessageTextStages(`${AGENT_MESSAGE_BURST_SEPARATOR}${trailer}`),
-							{ idPrefix: "agent-epilogue" },
-						);
-						return sent.status === "delivered";
-					},
-				}
-				: {}),
-			submit: async () => {
-				const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
-				const result = heldDeliveryResult(submit);
-				if (result === "failed") log.warn("held agent message submit did not land", { ...context, status: submit.status });
-				return result;
-			},
-		},
-		context,
-	);
-	return agentPromptHeld(delayMs);
+	const { key, context, message } = buildHeldMessage(task, paneId, prompt, epilogue, lineage);
+	return agentPromptHeld(holdAgentMessage(key, message, context));
 }
 
 /** The verdict for a prompt that never found a pane to aim at. */
@@ -425,7 +530,27 @@ export async function sendPromptToAgentPane(
 	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
 	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, targetPane))) return inputOccupied(targetPane);
-	return sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	return keepCopyIfAgentExited(task, prompt, await sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" }));
+}
+
+/**
+ * A direct prompt whose text went in while the agent lived and whose Enter met the closed
+ * fence: the text sits in the dead agent's input (or the wrapper's raced-input file, maybe
+ * cut by the kernel). The caller sees `unconfirmed`; the user gets the whole text in a file.
+ */
+function keepCopyIfAgentExited(task: Task, prompt: string, outcome: PaneInputOutcome): PaneInputOutcome {
+	if (outcome.status !== "partial" || outcome.reason !== "agent-exited") return outcome;
+	void (async () => {
+		const { saveUndeliveredAgentMessages } = await import("./agent-message-spill");
+		const path = await saveUndeliveredAgentMessages(task, [prompt], "the agent exited while the prompt was being typed, before its Enter");
+		const { pushCliAttention } = await import("./rpc-handlers/shared");
+		pushCliAttention({
+			taskId: task.id,
+			projectId: task.projectId,
+			reason: `The agent exited while dev3 was typing a prompt into it, so it was never submitted.${path ? ` The prompt is saved in ${path}.` : " It could not be saved."}`,
+		});
+	})().catch((err) => log.warn("could not keep a copy of a prompt cut by the agent's exit", { taskId: task.id.slice(0, 8), error: String(err) }));
+	return outcome;
 }
 
 /**
@@ -448,7 +573,7 @@ export async function holdMessageForAgentPane(
 			detail: `no agent pane could be resolved in ${tmuxSession}`,
 		};
 	}
-	return holdAgentMessageForPane(task, targetPane, prompt, epilogue);
+	return holdAgentMessageForPane(task, targetPane, prompt, epilogue, heldMessageLineage(agentPanes, targetPane));
 }
 
 /**
@@ -478,5 +603,5 @@ export async function holdMessageForPane(
  */
 export async function sendPromptToPane(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, paneId))) return inputOccupied(paneId);
-	return sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	return keepCopyIfAgentExited(task, prompt, await sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" }));
 }

@@ -42,6 +42,12 @@
  *    text releases it (a raw keystroke Enter does not: it may have hit copy mode, a
  *    picker, or another pane). Until then later messages wait behind it, the pane is
  *    probed each quiet window, and a gone pane drops it — both said out loud.
+ *  - A pane whose agent EXITED (its delivery fence closed) never gets another byte. Its
+ *    messages move to the pane that replaced that agent in the same entry, in front of
+ *    anything held there, or wait for one for {@link AGENT_MESSAGE_EXITED_BOUND_MS}. Text
+ *    that landed before the exit is saved, never retyped into a successor.
+ *  - Every drop writes its undelivered texts to a file first; a text whose file cannot be
+ *    written is retried, and reported as lost only past the bound.
  *  - Putting anything back never overwrites a hold that started meanwhile; the
  *    leftovers go in front of it, so arrival order survives.
  *  - In-memory and deliberately not persisted. If the app dies inside the window the
@@ -67,15 +73,39 @@ const log = createLogger("agent-message-hold");
 
 /**
  * What one typing step did: `landed`, `deferred` (the pane is only scrolled up, nothing
- * was sent, try again later) or `failed` (nothing to wait for).
+ * was sent, try again later), `exited` (the agent dev3 launched there exited: its shell
+ * must not read this, but a replacement may) or `failed` (nothing to wait for).
  */
-export type HeldDeliveryResult = "landed" | "deferred" | "failed";
+export type HeldDeliveryResult = "landed" | "deferred" | "exited" | "failed";
+
+/**
+ * How long messages wait for a replacement once their pane's agent exited. Past it they are
+ * dropped — and, like every drop, saved to a file first.
+ */
+export const AGENT_MESSAGE_EXITED_BOUND_MS = 10 * 60 * 1000;
+
+/** How long an undelivered message whose file could not be written is retried before it is declared lost. */
+export const AGENT_MESSAGE_SAVE_RETRY_BOUND_MS = 10 * 60 * 1000;
+
+/**
+ * Where a hold's messages go when their agent exited and dev3 launched its replacement in
+ * another pane of the SAME entry. `rebuild` turns one message text back into a registration
+ * aimed at that pane.
+ */
+export interface HeldRelocation {
+	key: string;
+	context: Record<string, string>;
+	rebuild: (text: string) => HeldAgentMessage;
+}
 
 /** What the hold tells whoever is watching the pane, so a stuck or lost message is never silent. */
 export type HeldAgentMessageReport =
 	| { kind: "stranded"; waiting: number }
-	/** `paths`: batch files that still hold the undelivered messages, so they stay readable. */
-	| { kind: "dropped"; messages: number; why: string; paths?: string[] };
+	/**
+	 * `paths`: files that still hold the undelivered messages, so they stay readable.
+	 * `lost`: how many of them could not be written anywhere — their text is gone.
+	 */
+	| { kind: "dropped"; messages: number; why: string; paths?: string[]; lost?: number };
 
 /** At most this many messages go into one batch file; the rest wait for the next turn. */
 export const AGENT_MESSAGE_BATCH_MAX_MESSAGES = 50;
@@ -140,6 +170,17 @@ export interface HeldAgentMessage {
 	 * The newest registration wins, like `submit`.
 	 */
 	batch?: (texts: string[]) => Promise<HeldMessageBatch | null>;
+	/**
+	 * Writes undelivered texts (oldest first) to one file before a drop and returns its path,
+	 * or null when it could not. Absent means drops are not saved. The newest registration wins.
+	 */
+	save?: (texts: string[], why: string) => Promise<string | null>;
+	/**
+	 * Where these messages go when their agent exited: the pane that replaced it in the same
+	 * entry, or null while there is none. Absent for an explicit pane target. The newest
+	 * registration wins.
+	 */
+	relocate?: () => Promise<HeldRelocation | null>;
 }
 
 /**
@@ -179,6 +220,10 @@ interface Hold {
 	alive: HeldAgentMessage["alive"];
 	report: HeldAgentMessage["report"];
 	batch: HeldAgentMessage["batch"];
+	save: HeldAgentMessage["save"];
+	relocate: HeldAgentMessage["relocate"];
+	/** When a release first found the agent exited; the relocation bound runs from it. */
+	exitedSince: number | null;
 	context: Record<string, string>;
 	/**
 	 * Steps whose text landed in the pane with no Enter after them. Non-null means the turn
@@ -262,12 +307,81 @@ async function probe(key: string, hold: Hold): Promise<void> {
 		...hold.context,
 		waiting: String(hold.deliveries.length),
 	});
+	await dropSteps(hold, [...hold.stranded, ...hold.deliveries], "the agent pane is gone");
+}
+
+/** The texts a drop must write to a file: batch pointers already have theirs. */
+function unsavedTexts(steps: readonly HeldDelivery[]): string[] {
+	return steps.flatMap((step) => (step.path ? [] : unfold([step]).map((d) => d.text)));
+}
+
+/**
+ * Drop `steps` and say so — but first write every text that has no file yet. A text that
+ * cannot be written is not given up at once: the write is retried each quiet window, and only
+ * past {@link AGENT_MESSAGE_SAVE_RETRY_BOUND_MS} is it reported as lost, with its count.
+ */
+async function dropSteps(hold: Hold, steps: readonly HeldDelivery[], why: string): Promise<void> {
+	if (steps.length === 0) return;
+	const paths = batchPaths(steps) ?? [];
+	// An adapter without a save hook (native) reports as it always did: there is no file to wait for.
+	const texts = hold.save ? unsavedTexts(steps) : [];
+	if (texts.length > 0) {
+		const saved = await saveTexts(hold, texts, why);
+		if (saved) paths.push(saved);
+		else {
+			retrySave(hold, texts, why, Date.now());
+			log.warn("undelivered agent messages could not be saved yet; retrying", { ...hold.context, messages: String(texts.length) });
+			return;
+		}
+	}
 	report(hold, {
 		kind: "dropped",
-		messages: messageCount(hold.stranded) + messageCount(hold.deliveries),
-		why: "the agent pane is gone",
-		paths: batchPaths([...hold.stranded, ...hold.deliveries]),
+		messages: messageCount(steps),
+		why,
+		...(paths.length > 0 ? { paths } : {}),
 	});
+}
+
+async function saveTexts(hold: Hold, texts: string[], why: string): Promise<string | null> {
+	if (!hold.save) return null;
+	try {
+		return await hold.save(texts, why);
+	} catch (err) {
+		log.warn("undelivered agent messages could not be saved", { ...hold.context, error: String(err) });
+		return null;
+	}
+}
+
+const saveRetries = new Set<ReturnType<typeof setTimeout>>();
+
+function retrySave(hold: Hold, texts: string[], why: string, since: number): void {
+	const timer = setTimeout(async () => {
+		saveRetries.delete(timer);
+		const saved = await saveTexts(hold, texts, why);
+		if (saved) {
+			report(hold, { kind: "dropped", messages: texts.length, why, paths: [saved] });
+			return;
+		}
+		if (Date.now() - since < AGENT_MESSAGE_SAVE_RETRY_BOUND_MS) {
+			retrySave(hold, texts, why, since);
+			return;
+		}
+		log.warn("undelivered agent messages are lost: their file could not be written", { ...hold.context, messages: String(texts.length) });
+		report(hold, { kind: "dropped", messages: texts.length, why, lost: texts.length });
+	}, AGENT_MESSAGE_HOLD_IDLE_MS);
+	saveRetries.add(timer);
+}
+
+/** The newest registration's closures become the hold's: they carry the freshest pane pin. */
+function adopt(hold: Hold, message: HeldAgentMessage, context: Record<string, string>): void {
+	hold.epilogue = message.epilogue;
+	hold.submit = message.submit;
+	hold.alive = message.alive;
+	hold.report = message.report;
+	hold.batch = message.batch;
+	hold.save = message.save;
+	hold.relocate = message.relocate;
+	hold.context = context;
 }
 
 /**
@@ -287,17 +401,15 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		alive: message.alive,
 		report: message.report,
 		batch: message.batch,
+		save: message.save,
+		relocate: message.relocate,
+		exitedSince: null,
 		context,
 		stranded: null,
 		modeDeferred: false,
 	};
 	hold.deliveries.push({ deliver: message.deliver, bytes: message.bytes, text: message.text });
-	hold.epilogue = message.epilogue;
-	hold.submit = message.submit;
-	hold.alive = message.alive;
-	hold.report = message.report;
-	hold.batch = message.batch;
-	hold.context = context;
+	adopt(hold, message, context);
 	holds.set(key, hold);
 	const delay = rearm(key, hold, now);
 	log.info("agent message held", {
@@ -429,6 +541,7 @@ function requeue(
 		fresh.deliveries.unshift(...deliveries);
 		fresh.stranded = carry.stranded;
 		fresh.modeDeferred ||= carry.modeDeferred;
+		fresh.exitedSince ??= from.exitedSince;
 		rearm(key, fresh, now);
 		return;
 	}
@@ -502,7 +615,9 @@ async function release(key: string, hold: Hold): Promise<void> {
 	const { going, waiting } = await planRelease(hold);
 	let typed = 0;
 	const landedSteps: HeldDelivery[] = [];
+	const failedSteps: HeldDelivery[] = [];
 	let deferredAt = -1;
+	let exitedAt = -1;
 	for (const [index, delivery] of going.entries()) {
 		// The first message opens the turn; every later one needs a visible boundary,
 		// because an envelope ends without a newline and would weld onto its predecessor.
@@ -512,13 +627,30 @@ async function release(key: string, hold: Hold): Promise<void> {
 				deferredAt = index;
 				break;
 			}
+			if (result === "exited") {
+				exitedAt = index;
+				break;
+			}
 			if (result === "landed") landedSteps.push(delivery);
+			else failedSteps.push(delivery);
 		} catch (err) {
 			log.warn("held agent message text failed", { ...hold.context, error: String(err) });
+			failedSteps.push(delivery);
 		}
 		typed += delivery.bytes + (index === 0 ? 0 : SEPARATOR_BYTES);
 	}
 	const landed = landedSteps.length > 0;
+
+	if (exitedAt >= 0) {
+		// Nothing more may be typed into this pane: its agent is gone. What already landed is
+		// saved, never retyped into a successor; the rest waits for one (or for the bound).
+		const untyped = going.slice(exitedAt);
+		await discardUntyped(hold, untyped);
+		await dropSteps(hold, landedSteps, "the agent exited before its Enter; the text is not retyped into another agent");
+		await dropSteps(hold, failedSteps, "it did not reach the agent pane");
+		await handleExited(key, hold, [...unfold(untyped), ...waiting]);
+		return;
+	}
 
 	if (deferredAt >= 0) {
 		// A pointer that never reached the box goes back as the messages it stood for;
@@ -536,10 +668,11 @@ async function release(key: string, hold: Hold): Promise<void> {
 	}
 	if (!landed) {
 		log.warn("held agent message landed nowhere; sending no Enter", hold.context);
-		report(hold, { kind: "dropped", messages: messageCount(going), why: "no text reached the agent pane", paths: batchPaths(going) });
+		await dropSteps(hold, going, "no text reached the agent pane");
 		if (waiting.length > 0) requeue(key, hold, waiting, { stranded: null, modeDeferred: false });
 		return;
 	}
+	hold.exitedSince = null;
 	// After the messages, before the Enter — so the burst is one turn that ends on
 	// the board. A trailer that fails costs the snapshot, never the messages, and one
 	// that would push the turn past a single read is dropped by the adapter.
@@ -560,6 +693,15 @@ async function release(key: string, hold: Hold): Promise<void> {
 		strand(key, hold, landedSteps, waiting, "the pane went into copy mode before the Enter");
 		return;
 	}
+	if (submitted === "exited") {
+		// The texts are in the dead agent's box with no Enter, and no hook will ever report
+		// them submitted: saved and said, not stranded, never retyped into a successor.
+		await dropSteps(hold, landedSteps, "the agent exited before its Enter; the text is not retyped into another agent");
+		await dropSteps(hold, failedSteps, "it did not reach the agent pane");
+		await handleExited(key, hold, waiting);
+		return;
+	}
+	await dropSteps(hold, failedSteps, "it did not reach the agent pane");
 	if (waiting.length > 0) {
 		log.info("held agent message burst split to stay inside one terminal read", {
 			...hold.context,
@@ -571,6 +713,50 @@ async function release(key: string, hold: Hold): Promise<void> {
 		// newest registration left, so the next release still types against a fresh pin.
 		requeue(key, hold, waiting, { stranded: null, modeDeferred: false });
 	}
+}
+
+/**
+ * The agent this hold was typing for exited. Its messages move to the pane that replaced it
+ * (in front of anything already held there: they arrived earlier), or wait for one, retried
+ * every quiet window, until {@link AGENT_MESSAGE_EXITED_BOUND_MS}; then they are saved and dropped.
+ */
+async function handleExited(key: string, hold: Hold, rest: HeldDelivery[]): Promise<void> {
+	if (rest.length === 0) return;
+	const now = Date.now();
+	const since = hold.exitedSince ?? now;
+	let target: HeldRelocation | null = null;
+	try {
+		target = hold.relocate ? await hold.relocate() : null;
+	} catch (err) {
+		log.warn("held agent message relocation failed", { ...hold.context, error: String(err) });
+	}
+	if (target && target.key !== key) {
+		relocateTo(target, rest);
+		log.info("held agent messages moved to the pane that replaced the exited agent", {
+			...hold.context,
+			to: target.key,
+			messages: String(messageCount(rest)),
+		});
+		return;
+	}
+	if (now - since >= AGENT_MESSAGE_EXITED_BOUND_MS) {
+		await dropSteps(hold, rest, "the agent exited and nothing replaced it within 10 minutes");
+		return;
+	}
+	if (hold.exitedSince === null) log.info("held agent messages wait: the agent in their pane exited", hold.context);
+	hold.exitedSince = since;
+	requeue(key, hold, rest, { stranded: null, modeDeferred: true });
+}
+
+function relocateTo(target: HeldRelocation, rest: readonly HeldDelivery[]): void {
+	const messages = unfold(rest).map((d) => target.rebuild(d.text));
+	const existing = holds.get(target.key);
+	if (existing) {
+		existing.deliveries.unshift(...messages.map((m) => ({ deliver: m.deliver, bytes: m.bytes, text: m.text })));
+		rearm(target.key, existing, Date.now());
+		return;
+	}
+	for (const message of messages) holdAgentMessage(target.key, message, target.context);
 }
 
 /** Undo every batch among `steps`, which the pane refused before one byte of them was typed. */
@@ -613,5 +799,7 @@ export function pendingAgentMessageHoldCount(): number {
 export function resetAgentMessageHolds(): void {
 	for (const hold of holds.values()) if (hold.timer) clearTimeout(hold.timer);
 	holds.clear();
+	for (const timer of saveRetries) clearTimeout(timer);
+	saveRetries.clear();
 	lastHumanInputAt.clear();
 }

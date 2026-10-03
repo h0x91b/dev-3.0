@@ -68,6 +68,8 @@ import { noteDev3TypedPrompt } from "../agent-typed-prompt-claims";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../temp-paths";
 import { stopSetupFailureWatch, watchSetupFailure } from "../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { agentFenceIndexDir, isDev3BinShim } from "../agent-fence-paths";
+import type { AgentFenceWrapperOptions } from "../agent-fence-wrapper";
 import {
 	focusNativeTaskPane,
 	nativeTaskPaneCommands,
@@ -106,6 +108,27 @@ const devViewerPaneIds = new Map<string, string>();
 const fileBrowserPaneIds = new Map<string, string>();
 const MAIN_AGENT_PANE_CAPTURE_ATTEMPTS = 10;
 const MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS = 100;
+
+/**
+ * The delivery fence for a wrapper that runs an agent in a keepShell tmux pane, or
+ * undefined when it cannot be armed: native task, or no committed absolute tmux binary
+ * (never a PATH `tmux`, never the `~/.dev3.0/bin` shim — `pin-tmux-3.6-vendored-keg`).
+ * A fresh launch id per wrapper; see `decisions/2026/09/28/agent-delivery-fence.md`.
+ */
+export function agentFenceFor(project: Project, task: Task): AgentFenceWrapperOptions | undefined {
+	if (taskTerminalBackendIdentity(task) === "native") return undefined;
+	const tmuxBinary = tmux.binaryPath();
+	if (!tmuxBinary.startsWith("/") || isDev3BinShim(tmuxBinary)) return undefined;
+	const launchId = crypto.randomUUID();
+	log.info("agent delivery fence armed", { taskId: task.id.slice(0, 8), launchId });
+	return {
+		tmuxBinary,
+		launchId,
+		taskId: task.id,
+		racedDir: `${git.taskDir(project, task)}/messages`,
+		fenceDir: agentFenceIndexDir(),
+	};
+}
 
 async function waitForTaskTmuxSession(taskId: string, socket: string): Promise<void> {
 	for (let attempt = 0; attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS; attempt++) {
@@ -1140,6 +1163,8 @@ export async function launchTaskPty(
 		}
 	}
 
+	// Set once a script closer to the agent than run.sh carries the delivery fence.
+	let agentFencedInside = false;
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
 		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
 		const settings = await loadSettings();
@@ -1155,7 +1180,14 @@ export async function launchTaskPty(
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
 			const originalCmdPath = dev3TaskTempPath(task.id, `original-cmd${dialect.scriptExtension}`);
-			await writeLaunchScript(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
+			// The agent runs in THIS script once its binary appears, so the fence goes here and
+			// nowhere around it: an outer fenced wrapper would find the inner close and block.
+			await writeLaunchScript(originalCmdPath, buildCmdScript(tmuxCmd, env, {
+				keepShell: true,
+				shellPath: userShell,
+				agentFence: agentFenceFor(project, task),
+			}));
+			agentFencedInside = true;
 
 			const retryScript = buildAgentRetryWrapper({ binaryName, installCmd, originalCmdPath, shellPath: userShell });
 
@@ -1197,7 +1229,12 @@ export async function launchTaskPty(
 		const startupPath = `${prefix}-startup${ext}`;
 
 		await writeLaunchScript(setupPath, project.setupScript + "\n");
-		await writeLaunchScript(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
+		await writeLaunchScript(cmdPath, buildCmdScript(tmuxCmd, env, {
+			keepShell: true,
+			shellPath: userShell,
+			...(agentFencedInside ? {} : { agentFence: agentFenceFor(project, task) }),
+		}));
+		agentFencedInside = true;
 
 		const startupScript = buildSetupStartupWrapper({
 			setupPath,
@@ -1226,7 +1263,11 @@ export async function launchTaskPty(
 	}
 
 	const runScriptPath = dev3TaskTempPath(task.id, `run${dialect.scriptExtension}`);
-	await writeLaunchScript(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell }));
+	await writeLaunchScript(runScriptPath, buildCmdScript(tmuxCmd, env, {
+		keepShell: !isSetupWrapper,
+		shellPath: userShell,
+		...(agentFencedInside ? {} : { agentFence: agentFenceFor(project, task) }),
+	}));
 	const wrapperCmd = buildScriptRunnerCommand(runScriptPath, { shellPath: userShell });
 
 	log.info("Creating PTY session", {
@@ -2339,7 +2380,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 						family: resumeAgentFamily,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
-					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
+					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true, agentFence: agentFenceFor(project, task) }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId });

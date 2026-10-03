@@ -14,6 +14,7 @@ import {
 	type PaneInputStage,
 	type PaneInputStep,
 } from "../shared/pane-input";
+import { parseAgentFence } from "../shared/agent-fence";
 import { createLogger } from "./logger";
 import type { PaneInputExecution } from "./pane-input-ledger";
 import { monotonicNowMs } from "./pane-input-ledger";
@@ -111,11 +112,13 @@ export async function executeTmuxPaneInput(
 
 		let sent: boolean;
 		let inMode: boolean;
+		let liveFence: string | undefined;
 		try {
-			({ sent, inMode } = await tmux.sendKeysGuarded({
+			({ sent, inMode, liveFence } = await tmux.sendKeysGuarded({
 				pane: incarnation.paneId,
 				serverToken: incarnation.serverToken,
 				session: incarnation.sessionName,
+				agentFence: incarnation.agentFence,
 				chunks: tmuxStageChunks(stage),
 				socket,
 				timeoutMs: remainingMs,
@@ -157,6 +160,14 @@ export async function executeTmuxPaneInput(
 				accepted,
 				"pane-in-mode",
 				`${describePaneIncarnation(incarnation)} is in copy mode (the user scrolled up), so nothing was sent`,
+			);
+		}
+		if (!sent && liveFence !== undefined && liveFence !== incarnation.agentFence && parseAgentFence(liveFence).kind !== "open") {
+			// Same pane, but the agent that was pinned has exited since: its shell must not read this.
+			return stoppedClean(
+				accepted,
+				"agent-exited",
+				`${describePaneIncarnation(incarnation)}: the agent exited (fence now ${liveFence || "gone"}), so nothing was sent`,
 			);
 		}
 		if (!sent) {

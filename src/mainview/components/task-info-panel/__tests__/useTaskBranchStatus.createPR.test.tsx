@@ -74,6 +74,17 @@ describe("useTaskBranchStatus — Create PR feedback", () => {
 		]);
 	});
 
+	// The pane is there, but its agent exited: dev3 refuses to type into the shell it left.
+	it("names an exited agent, not a missing terminal", async () => {
+		const calls = await createPRWithVerdict("not-delivered", "agent-exited");
+		expect(calls).toEqual([
+			{
+				level: "error",
+				message: "The agent in this task has exited. dev3 types nothing into the shell it left behind until dev3 starts the agent again",
+			},
+		]);
+	});
+
 	it("keeps the no-terminal message for every other refusal reason", async () => {
 		const calls = await createPRWithVerdict("not-delivered", "pane-absent");
 		expect(calls).toEqual([{ level: "error", message: "No agent terminal found to hand PR creation to" }]);

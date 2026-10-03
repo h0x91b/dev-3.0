@@ -499,7 +499,7 @@ describe("the default command bound", () => {
 });
 
 describe("sendKeysGuarded — one server command list, no check/send window", () => {
-	const GUARDED = { pane: "%3", serverToken: "srv-token-1", session: "dev3-task-abc12345" };
+	const GUARDED = { pane: "%3", serverToken: "srv-token-1", session: "dev3-task-abc12345", agentFence: "" };
 
 	/** The if-shell call, which is the last one a successful send makes. */
 	function guardedArgv(spawnFn: ReturnType<typeof vi.fn>): string[] {
@@ -526,22 +526,21 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 			"%3",
 			"-F",
 		]);
-		// Token, session, liveness AND copy mode, all inside the one guard. The behavioural
-		// proof of this conjunction is the live e2e: each condition alone refuses a send.
-		expect(argv[7]).toBe(
+		// Token, session, liveness, the agent fence AND copy mode, all inside the one guard. The
+		// behavioural proof of this conjunction is the live e2e: each condition alone refuses a send.
+		const base =
 			"#{&&:#{==:#{@dev3_server_token},srv-token-1}," +
-				"#{&&:#{==:#{session_name},dev3-task-abc12345}," +
-				"#{&&:#{==:#{pane_dead},0},#{==:#{pane_in_mode},0}}}}",
-		);
+			"#{&&:#{==:#{session_name},dev3-task-abc12345},#{==:#{pane_dead},0}}}";
+		expect(argv[7]).toBe(`#{&&:${base},#{&&:#{==:#{@dev3_agent_input},},#{==:#{pane_in_mode},0}}}`);
 		const [[name, text]] = loadedBuffers(spawnFn);
 		expect(text).toBe("hi");
 		expect(argv[8]).toBe(`paste-buffer -d -p -r -b ${name} -t %3 ; display-message -p dev3-pane-input-sent`);
-		// The else branch: 1 only when copy mode was the one condition that failed.
+		// The else branch: 1 only when copy mode was the one condition that failed, then the
+		// live fence of the same pane (or `-` when it is not the same pane at all).
 		expect(argv[9]).toBe(
 			"display-message -p -t %3 'dev3-pane-input-in-mode:" +
-				"#{&&:#{==:#{@dev3_server_token},srv-token-1}," +
-				"#{&&:#{==:#{session_name},dev3-task-abc12345}," +
-				"#{&&:#{==:#{pane_dead},0},#{!=:#{pane_in_mode},0}}}}'",
+				`#{&&:${base},#{&&:#{==:#{@dev3_agent_input},},#{!=:#{pane_in_mode},0}}}' ; ` +
+				`display-message -p -t %3 'dev3-pane-input-fence:#{?${base},#{@dev3_agent_input},-}'`,
 		);
 		expect(result).toEqual({ sent: true, inMode: false });
 	});
@@ -727,11 +726,12 @@ describe("observePane — proves presence or absence, never writes", () => {
 	// Split across two commands, a restart in between could pair generation A's pane with
 	// generation B's token, and a recycled pane id would then pass the guard.
 	it("reports the session, liveness and generation token of a live pane in one command", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "%3\t0\tsrv-token-1\tdev3-task-abc12345\n" });
+		const { client, spawnFn } = makeClient({ stdout: "%3\t0\tsrv-token-1\t\tdev3-task-abc12345\n" });
 		await expect(client.observePane({ pane: "%3", socket: "s" })).resolves.toEqual({
 			kind: "present",
 			sessionName: "dev3-task-abc12345",
 			serverToken: "srv-token-1",
+			agentFence: "",
 		});
 		expect(spawnFn).toHaveBeenCalledTimes(1);
 		const argv = argvOf(spawnFn);
@@ -742,7 +742,7 @@ describe("observePane — proves presence or absence, never writes", () => {
 
 	// `remain-on-exit` keeps a dead pane listed and addressable, so it is its own state.
 	it("reports a listed but dead pane as dead, not present", async () => {
-		const { client } = makeClient({ stdout: "%3\t1\tsrv-token-1\tdev3-task-abc12345\n" });
+		const { client } = makeClient({ stdout: "%3\t1\tsrv-token-1\t\tdev3-task-abc12345\n" });
 		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({
 			kind: "dead",
 			sessionName: "dev3-task-abc12345",
@@ -751,14 +751,14 @@ describe("observePane — proves presence or absence, never writes", () => {
 	});
 
 	it("reports absence when the server does not list it", async () => {
-		const { client } = makeClient({ stdout: "%9\t0\tsrv-token-1\tdev3-task-other\n" });
+		const { client } = makeClient({ stdout: "%9\t0\tsrv-token-1\t\tdev3-task-other\n" });
 		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({ kind: "absent" });
 	});
 
 	// A server nothing minted a token on is not a server this app set up, so there is no
 	// generation to pin against — and observing must never write one.
 	it("reports unusable when the pane exists but its server has no dev3 token", async () => {
-		const { client } = makeClient({ stdout: "%3\t0\t\tdev3-task-abc12345\n" });
+		const { client } = makeClient({ stdout: "%3\t0\t\t\tdev3-task-abc12345\n" });
 		const seen = await client.observePane({ pane: "%3" });
 		expect(seen).toMatchObject({ kind: "unusable" });
 		expect(seen.kind === "unusable" && seen.detail).toContain("generation token");

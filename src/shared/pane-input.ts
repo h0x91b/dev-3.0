@@ -3,6 +3,8 @@
  * guards. Each backend owns its encoding. See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
+import { isPinnableAgentFence } from "./agent-fence";
+
 /** Every control key the seam can express. One tuple; the union is derived from it. */
 export const PANE_INPUT_KEYS = [
 	"enter",
@@ -66,6 +68,11 @@ export type PaneIncarnation =
 			readonly sessionName: string;
 			/** Random, minted once per tmux server lifetime and stored inside it. */
 			readonly serverToken: string;
+			/**
+			 * The pane's agent fence as pinned: `""` for a pane without one, else `open:<launchId>`.
+			 * Part of the identity, so a later launch in the same `%id` is another incarnation.
+			 */
+			readonly agentFence: string;
 	  }
 	| {
 			readonly backend: "native";
@@ -134,6 +141,8 @@ export const PANE_INPUT_REASON_SCHEMA = {
 	"incarnation-changed": { on: ["not-started", "partial"], retryable: false },
 	// Same pane, alive, but scrolled up in tmux copy mode: the keys would go to the mode.
 	"pane-in-mode": { on: ["not-started", "partial"], retryable: true },
+	// The agent dev3 launched in this pane exited; its fallback shell must never read dev3 input.
+	"agent-exited": { on: ["not-started", "partial"], retryable: true },
 	// dev3 text sits unsubmitted in the box; typing a prompt and its Enter would submit it too.
 	"input-occupied": { on: ["not-started"], retryable: true },
 	"owner-unknown": { on: ["not-started"], retryable: true },
@@ -229,7 +238,11 @@ export type PaneInputOutcome =
  */
 export type PaneInputPin =
 	| { readonly ok: true; readonly incarnation: PaneIncarnation }
-	| { readonly ok: false; readonly reason: "pane-absent" | "pane-dead" | "backend-failure"; readonly detail: string };
+	| {
+			readonly ok: false;
+			readonly reason: "pane-absent" | "pane-dead" | "agent-exited" | "backend-failure";
+			readonly detail: string;
+	  };
 
 export function paneInputStepCount(program: PaneInputProgram): number {
 	return program.stages.reduce((total, stage) => total + stage.steps.length, 0);
@@ -250,7 +263,14 @@ export function paneInputDeadlineMs(program: PaneInputProgram): number {
  */
 export function canonicalPaneIncarnation(incarnation: PaneIncarnation): string {
 	return incarnation.backend === "tmux"
-		? JSON.stringify(["tmux", incarnation.taskId, incarnation.paneId, incarnation.sessionName, incarnation.serverToken])
+		? JSON.stringify([
+				"tmux",
+				incarnation.taskId,
+				incarnation.paneId,
+				incarnation.sessionName,
+				incarnation.serverToken,
+				incarnation.agentFence,
+			])
 		: JSON.stringify([
 				"native",
 				incarnation.taskId,
@@ -280,7 +300,7 @@ export function samePaneIncarnation(a: PaneIncarnation, b: PaneIncarnation): boo
 /** One line naming an incarnation, for a verdict's detail. */
 export function describePaneIncarnation(incarnation: PaneIncarnation): string {
 	return incarnation.backend === "tmux"
-		? `tmux ${incarnation.sessionName}@server ${incarnation.serverToken} pane ${incarnation.paneId}`
+		? `tmux ${incarnation.sessionName}@server ${incarnation.serverToken} pane ${incarnation.paneId}${incarnation.agentFence ? ` fence ${incarnation.agentFence}` : ""}`
 		: `native ${incarnation.sessionId} host ${incarnation.host.pid}/${incarnation.host.startSignature} shell ${incarnation.shell.pid}/${incarnation.shell.startSignature}`;
 }
 
@@ -327,6 +347,10 @@ function validateIncarnation(inc: PaneIncarnation): string | null {
 		// pane id names nothing in particular.
 		if (!isIdentity(inc.serverToken) || !/^[A-Za-z0-9-]+$/.test(inc.serverToken)) {
 			return "a tmux incarnation must pin the tmux server token";
+		}
+		// Interpolated into the guard's format, so only the two forms a pin can produce.
+		if (typeof inc.agentFence !== "string" || !isPinnableAgentFence(inc.agentFence)) {
+			return "a tmux incarnation must pin its agent fence as \"\" or open:<launchId>";
 		}
 		return null;
 	}
@@ -427,6 +451,7 @@ function decodeIncarnation(raw: unknown): PaneInputDecoded<PaneIncarnation> {
 				paneId: inc.paneId,
 				sessionName: inc.sessionName,
 				serverToken: inc.serverToken,
+				agentFence: inc.agentFence,
 			}) as PaneIncarnation,
 		};
 	}

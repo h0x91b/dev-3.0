@@ -38,7 +38,18 @@ const spillHeldMessageBatch = vi.hoisted(() =>
 	}),
 );
 const discardHeldMessageBatch = vi.hoisted(() => vi.fn(async (path: string) => void batchFiles.alive.delete(path)));
-vi.mock("../agent-message-spill", () => ({ spillHeldMessageBatch, discardHeldMessageBatch }));
+/** Every drop saves its texts first; this records what was saved. */
+const saveUndeliveredAgentMessages = vi.hoisted(() =>
+	vi.fn(async (_task: unknown, _texts: string[], _why: string) => "/task/messages/undelivered-1.md"),
+);
+vi.mock("../agent-message-spill", () => ({ spillHeldMessageBatch, discardHeldMessageBatch, saveUndeliveredAgentMessages }));
+
+vi.mock("../agent-fence", () => ({ agentFenceCloseRequested: vi.fn(async () => false) }));
+const freshTask = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("../data", () => ({
+	getProject: vi.fn(async () => ({ id: "project-1" })),
+	getTask: vi.fn(async () => freshTask.current),
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -47,6 +58,8 @@ vi.mock("../logger", () => ({
 import { tmux } from "../tmux";
 import {
 	AGENT_PROMPT_ENTER_DELAY_MS,
+	findReplacementPane,
+	heldMessageLineage,
 	holdMessageForAgentPane,
 	holdMessageForPane,
 	sendPromptToAgentPane,
@@ -107,7 +120,7 @@ beforeEach(() => {
 	vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }] as never);
 	vi.mocked(tmux.showOption).mockResolvedValue(""); // no last-focused agent recorded
 	vi.mocked(tmux.setPaneOption).mockResolvedValue(undefined);
-	vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN } as never);
+	vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "" } as never);
 	vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: true } as never);
 });
 
@@ -133,6 +146,7 @@ describe("sendPromptToAgentPane — delivery", () => {
 			pane: "%1",
 			session: SESSION,
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		});
 	});
 
@@ -253,6 +267,7 @@ describe("sendPromptToPane — concrete pane target", () => {
 			kind: "dead",
 			sessionName: SESSION,
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		} as never);
 		await expect(runPrompt(sendPromptToPane(TASK, "%42", "hello"))).resolves.toMatchObject({
 			status: "not-started",
@@ -267,6 +282,7 @@ describe("sendPromptToPane — concrete pane target", () => {
 			kind: "present",
 			sessionName: "dev3-someone-else",
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		} as never);
 
 		await expect(runPrompt(sendPromptToPane(TASK, "%1", "hello"))).resolves.toMatchObject({
@@ -410,6 +426,9 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
+		// Dropped, but never discarded: the badge names the file the text was saved to.
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("/task/messages/undelivered-1.md") }));
+		expect(saveUndeliveredAgentMessages).toHaveBeenLastCalledWith(expect.anything(), ["check CI"], "the agent pane is gone");
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 	});
 
@@ -453,7 +472,7 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 	it("drops a stranded turn when the pane id now belongs to another tmux server generation", async () => {
 		pushCliAttention.mockClear();
 		await strandCheckCi();
-		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: "srv-token-2" } as never);
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: "srv-token-2", agentFence: "" } as never);
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("not delivered") }));
 		await expect(runPrompt(sendPromptToAgentPane(TASK, "commit your work", [agentPane("%1")]))).resolves.toMatchObject({
@@ -530,5 +549,119 @@ describe("a held backlog past one read is typed as ONE batch pointer", () => {
 		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
 		// Without the receipt the receiver's submit hook records the pointer as the user's prompt.
 		expect(claimDev3TypedPrompt(TASK_ID, pointer)).toBe(true);
+	});
+});
+
+describe("an agent that exited behind a pin", () => {
+	/** A pane entry with a full identity: agent, config, family, account, conversation. */
+	const codex = (paneId: string, sessionId: string): PaneSessionEntry =>
+		({ paneId, agentCmd: "codex", agentId: "codex", configId: "default", agentFamily: "codex", accountId: null, sessionId }) as PaneSessionEntry;
+
+	function exitedThenLanding(): void {
+		vi.mocked(tmux.observePane)
+			.mockResolvedValueOnce({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never)
+			.mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "" } as never);
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: false, inMode: false, liveFence: "closed:L1:143" })
+			.mockResolvedValue({ sent: true, inMode: false });
+	}
+
+	// The agent in %1 exits and is resumed in %4: same agent and the same conversation.
+	// %7 is another live agent of the task: the messages must never follow it.
+	it("moves a held message to the pane resuming the same conversation, never another agent", async () => {
+		exitedThenLanding();
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%7" }] as never);
+		await holdMessageForAgentPane(TASK, "check CI", [codex("%1", "conv-B"), codex("%7", "conv-C")]);
+
+		freshTask.current = { ...TASK, projectId: "project-1", sessionState: { panes: [codex("%4", "conv-B"), codex("%7", "conv-C")] } };
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%4" }, { paneId: "%7" }] as never);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+
+		const panes = vi.mocked(tmux.sendKeysGuarded).mock.calls.map((call) => call[0].pane);
+		expect(panes).toEqual(["%1", "%4", "%4"]);
+		expect(saveUndeliveredAgentMessages).not.toHaveBeenCalled();
+	});
+
+	// B1 (2003-031): entries [A %0, B %1, C %2]; the message waits for B's replacement; the user
+	// closes A and the registry drops its entry, so every later index shifts. C is live and
+	// different — relocating by index would type into it.
+	it("does not follow an index shift into another agent when an earlier pane is removed", async () => {
+		exitedThenLanding();
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%0" }, { paneId: "%1" }, { paneId: "%2" }] as never);
+		await holdMessageForAgentPane(TASK, "check CI", [codex("%0", "conv-A"), codex("%1", "conv-B"), codex("%2", "conv-C")]);
+
+		freshTask.current = { ...TASK, projectId: "project-1", sessionState: { panes: [codex("%1", "conv-B"), codex("%2", "conv-C")] } };
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }] as never);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 4);
+
+		const panes = vi.mocked(tmux.sendKeysGuarded).mock.calls.map((call) => call[0].pane);
+		expect(panes).not.toContain("%2");
+	});
+
+	it("keeps waiting, not guessing, when no pane resumes that conversation", async () => {
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never);
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false, liveFence: "closed:L1:143" });
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%7" }] as never);
+		freshTask.current = { ...TASK, projectId: "project-1", sessionState: { panes: [codex("%1", "conv-B"), codex("%7", "conv-C")] } };
+		await holdMessageForAgentPane(TASK, "check CI", [codex("%1", "conv-B"), codex("%7", "conv-C")]);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		const panes = vi.mocked(tmux.sendKeysGuarded).mock.calls.map((call) => call[0].pane);
+		expect(new Set(panes)).toEqual(new Set(["%1"]));
+		expect(saveUndeliveredAgentMessages).not.toHaveBeenCalled();
+	});
+
+	// The text went in while the agent lived; its Enter met the closed fence. The caller
+	// hears `partial`; the whole prompt is kept in a file and the user is told where.
+	it("keeps a copy of a direct prompt whose Enter found the agent gone", async () => {
+		pushCliAttention.mockClear();
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN, agentFence: "open:L1" } as never);
+		vi.mocked(tmux.sendKeysGuarded)
+			.mockResolvedValueOnce({ sent: true, inMode: false })
+			.mockResolvedValueOnce({ sent: false, inMode: false, liveFence: "closed:L1:0" });
+		const outcome = await runPrompt(sendPromptToAgentPane(TASK, "rebase please", [agentPane("%1")]));
+		expect(outcome).toMatchObject({ status: "partial", reason: "agent-exited" });
+		await vi.waitFor(() => expect(pushCliAttention).toHaveBeenCalled());
+		expect(saveUndeliveredAgentMessages).toHaveBeenLastCalledWith(expect.anything(), ["rebase please"], expect.stringContaining("exited"));
+		expect(pushCliAttention).toHaveBeenLastCalledWith(expect.objectContaining({ reason: expect.stringContaining("/task/messages/undelivered-1.md") }));
+	});
+});
+
+describe("findReplacementPane — identity, never position", () => {
+	const entry = (paneId: string | null, over: Partial<PaneSessionEntry> = {}): PaneSessionEntry =>
+		({ paneId, agentCmd: "codex", agentId: "codex", configId: "default", agentFamily: "codex", accountId: null, sessionId: "conv-B", ...over }) as PaneSessionEntry;
+	const arrived = [entry("%1"), entry("%2", { sessionId: "conv-C" })];
+	const lineage = heldMessageLineage(arrived, "%1")!;
+
+	it("finds the one new pane that resumes the same conversation", () => {
+		expect(findReplacementPane(lineage, [entry("%4"), entry("%2", { sessionId: "conv-C" })], ["%4", "%2"])).toBe("%4");
+	});
+
+	it("never picks a pane that already existed when the message arrived, even an identical twin", () => {
+		const twins = [entry("%1"), entry("%2")];
+		const twinLineage = heldMessageLineage(twins, "%1")!;
+		expect(findReplacementPane(twinLineage, [entry("%2")], ["%2"])).toBeNull();
+	});
+
+	it.each<[string, Partial<PaneSessionEntry>]>([
+		["another conversation", { sessionId: "conv-X" }],
+		["another agent", { agentId: "claude" }],
+		["another config", { configId: "fast" }],
+		["another family", { agentFamily: "claude" }],
+		["another account", { accountId: "work" }],
+	])("rejects a new pane of %s", (_name, over) => {
+		expect(findReplacementPane(lineage, [entry("%4", over)], ["%4"])).toBeNull();
+	});
+
+	it("waits when two new panes both qualify, or the only one is not live", () => {
+		expect(findReplacementPane(lineage, [entry("%4"), entry("%5")], ["%4", "%5"])).toBeNull();
+		expect(findReplacementPane(lineage, [entry("%4")], [])).toBeNull();
+	});
+
+	// A Codex pane before its hook captured the conversation id has nothing to match on.
+	it("records no lineage for an entry without an agent id or a conversation id", () => {
+		expect(heldMessageLineage([entry("%1", { sessionId: null })], "%1")).toBeUndefined();
+		expect(heldMessageLineage([entry("%1", { agentId: null })], "%1")).toBeUndefined();
+		expect(heldMessageLineage([entry("%1")], "%9")).toBeUndefined();
 	});
 });

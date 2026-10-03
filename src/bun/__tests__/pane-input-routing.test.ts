@@ -17,10 +17,12 @@ vi.mock("../tmux", () => ({
 	taskSessionName: (taskId: string) => `dev3-task-${taskId}`,
 	tmux: { observePane: vi.fn() },
 }));
+vi.mock("../agent-fence", () => ({ agentFenceCloseRequested: vi.fn(async () => false) }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+import { agentFenceCloseRequested } from "../agent-fence";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { tmux } from "../tmux";
 import { deliverNativePaneInput, resolveNativePaneIncarnation } from "../pane-input-native";
@@ -57,6 +59,7 @@ const TMUX_PIN: PaneIncarnation = {
 	paneId: "%3",
 	sessionName: `dev3-task-${TASK_ID}`,
 	serverToken: SERVER_TOKEN,
+	agentFence: "",
 };
 
 let programSeq = 0;
@@ -86,6 +89,7 @@ beforeEach(() => {
 		kind: "present",
 		sessionName: `dev3-task-${TASK_ID}`,
 		serverToken: SERVER_TOKEN,
+		agentFence: "",
 	});
 });
 
@@ -282,8 +286,8 @@ describe("pinning follows the same rule", () => {
 	it("takes pane, session and token from ONE observation, so a restart cannot split them", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		vi.mocked(tmux.observePane)
-			.mockResolvedValueOnce({ kind: "present", sessionName: `dev3-task-${TASK_ID}`, serverToken: "generation-A" })
-			.mockResolvedValue({ kind: "present", sessionName: `dev3-task-${TASK_ID}`, serverToken: "generation-B" });
+			.mockResolvedValueOnce({ kind: "present", sessionName: `dev3-task-${TASK_ID}`, serverToken: "generation-A", agentFence: "" })
+			.mockResolvedValue({ kind: "present", sessionName: `dev3-task-${TASK_ID}`, serverToken: "generation-B", agentFence: "" });
 		const pin = await pinTaskPane(task(), "%3");
 		expect(pin).toEqual({ ok: true, incarnation: { ...TMUX_PIN, serverToken: "generation-A" } });
 		expect(tmux.observePane).toHaveBeenCalledTimes(1);
@@ -312,6 +316,72 @@ describe("pinning follows the same rule", () => {
 		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "backend-failure" });
 	});
 
+	// The fence rides in the same sighting: a closed one is an agent that exited, and nothing
+	// of dev3 may be typed into the shell it left behind.
+	it("refuses a pane whose agent fence is closed, as agent-exited", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: `dev3-task-${TASK_ID}`,
+			serverToken: SERVER_TOKEN,
+			agentFence: "closed:L1:143",
+		});
+		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "agent-exited" });
+	});
+
+	it("fails closed on a fence value dev3 did not write", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: `dev3-task-${TASK_ID}`,
+			serverToken: SERVER_TOKEN,
+			agentFence: "open:x},1}",
+		});
+		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "agent-exited" });
+	});
+
+	it("pins an open fence into the incarnation, so the guard requires exactly it", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: `dev3-task-${TASK_ID}`,
+			serverToken: SERVER_TOKEN,
+			agentFence: "open:L1",
+		});
+		await expect(pinTaskPane(task(), "%3")).resolves.toEqual({
+			ok: true,
+			incarnation: { ...TMUX_PIN, agentFence: "open:L1" },
+		});
+		expect(agentFenceCloseRequested).toHaveBeenCalledWith("L1", "dev3");
+	});
+
+	// A wrapper that could not close its own fence asked the app to: the pin must not type,
+	// even though tmux still says open.
+	it("refuses an open fence whose wrapper asked for it to be closed", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		vi.mocked(agentFenceCloseRequested).mockResolvedValueOnce(true);
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: `dev3-task-${TASK_ID}`,
+			serverToken: SERVER_TOKEN,
+			agentFence: "open:L1",
+		});
+		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "agent-exited" });
+	});
+
+	it("never asks about close requests for a pane without a fence", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		vi.mocked(agentFenceCloseRequested).mockClear();
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: `dev3-task-${TASK_ID}`,
+			serverToken: SERVER_TOKEN,
+			agentFence: "",
+		});
+		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: true });
+		expect(agentFenceCloseRequested).not.toHaveBeenCalled();
+	});
+
 	// A pane that lives in ANOTHER task's session is not this task's pane.
 	it("reports a pane observed in a different session as absent", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
@@ -319,6 +389,7 @@ describe("pinning follows the same rule", () => {
 			kind: "present",
 			sessionName: "dev3-task-someone-else",
 			serverToken: SERVER_TOKEN,
+			agentFence: "",
 		});
 		const pin = await pinTaskPane(task(), "%3");
 		expect(pin).toMatchObject({ ok: false, reason: "pane-absent" });

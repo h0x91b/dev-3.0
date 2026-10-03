@@ -46,6 +46,7 @@ const TMUX: PaneIncarnation = {
 	paneId: "%3",
 	sessionName: "dev3-task-ef0ea197",
 	serverToken: "srv-token-1",
+	agentFence: "",
 };
 
 function program(stages: PaneInputStage[], overrides: Partial<PaneInputProgram> = {}): PaneInputProgram {

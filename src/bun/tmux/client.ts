@@ -14,7 +14,7 @@
  * app committed to, and mixed client/server versions break every command
  * (v1.29.1 ELOOP incident, decision 105).
  */
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { spawn as defaultSpawn } from "../spawn";
 import {
@@ -29,7 +29,15 @@ import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
-import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
+import { AGENT_FENCE_FORMAT, PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
+import {
+	AGENT_FENCE_NONCE_OPTION,
+	AGENT_FENCE_OPTION,
+	agentFenceSentinel,
+	isAgentFenceLaunchId,
+	isPinnableAgentFence,
+	parseAgentFence,
+} from "../../shared/agent-fence";
 import { removeTmuxSocketFile } from "./socket-files";
 
 type SpawnFn = typeof defaultSpawn;
@@ -65,7 +73,8 @@ export type TmuxLayoutName =
 
 /** What the server can be observed to hold for one pane, right now. */
 export type TmuxPaneSighting =
-	| { kind: "present"; sessionName: string; serverToken: string }
+	/** `agentFence` is the raw fence option as tmux printed it (`""` when the pane has none). */
+	| { kind: "present"; sessionName: string; serverToken: string; agentFence: string }
 	/** Listed but its process is gone — `remain-on-exit` keeps the pane addressable. */
 	| { kind: "dead"; sessionName: string; serverToken: string }
 	| { kind: "absent" }
@@ -75,6 +84,10 @@ export type TmuxPaneSighting =
 /** Printed by a guarded send if and only if the guard held and the keys went out. */
 const GUARDED_SEND_MARKER = "dev3-pane-input-sent";
 const GUARDED_SEND_IN_MODE_MARKER = "dev3-pane-input-in-mode:";
+/** Prefixes the fence value and stored nonce a fence close reads back. */
+const AGENT_FENCE_READBACK_MARKER = "dev3-agent-fence:";
+/** Printed on a refused guard: the pane's live agent fence, or `-` when it is not the same pane. */
+const GUARDED_SEND_FENCE_MARKER = "dev3-pane-input-fence:";
 /** The server option holding this server's generation token, for its whole lifetime. */
 const SERVER_TOKEN_OPTION = "@dev3_server_token";
 /** Bound for the token command: a wedged server must not hold a session's setup open. */
@@ -554,7 +567,7 @@ export class TmuxClient {
 	 */
 	async observePane(opts: { pane: string } & SocketOpt): Promise<TmuxPaneSighting> {
 		if (!/^%\d+$/.test(opts.pane)) return { kind: "unusable", detail: `unsafe tmux pane id: ${opts.pane}` };
-		let rows: { paneId: string; dead: boolean; serverToken: string; sessionName: string }[];
+		let rows: { paneId: string; dead: boolean; serverToken: string; agentFence: string; sessionName: string }[];
 		try {
 			rows = await this.listPanes(PANE_SIGHTING_FORMAT, { scope: "server", socket: opts.socket });
 		} catch (err) {
@@ -567,7 +580,7 @@ export class TmuxClient {
 		// tmux keeps a dead pane listed under `remain-on-exit`; it stays targetable, and
 		// send-keys into it is refused while the surrounding command list succeeds.
 		if (found.dead) return { kind: "dead", sessionName: found.sessionName, serverToken: found.serverToken };
-		return { kind: "present", sessionName: found.sessionName, serverToken: found.serverToken };
+		return { kind: "present", sessionName: found.sessionName, serverToken: found.serverToken, agentFence: found.agentFence };
 	}
 
 	/**
@@ -597,6 +610,59 @@ export class TmuxClient {
 	}
 
 	/**
+	 * Close a pane's agent fence for a wrapper that could not: ONE command list that
+	 * compare-and-sets `open:<launchId>` → `closed:<launchId>:<exitCode>`, and only when it
+	 * flipped, stores a fresh nonce and queues that nonce's sentinel behind everything tmux
+	 * already accepted for the pane. Then it reads the value and the stored nonce back.
+	 *
+	 * Idempotent across instances: a loser flips nothing, queues nothing, and reads back the
+	 * winner's nonce — so a launch gets exactly one sentinel whoever closed it. An unknown pane
+	 * id reads back as `not-this-launch` (tmux does not abort the list on a missing target).
+	 */
+	async closeAgentFence(
+		opts: { pane: string; launchId: string; exitCode: number } & SocketOpt,
+	): Promise<{ kind: "closed"; nonce: string } | { kind: "not-this-launch"; fence: string } | { kind: "failed"; detail: string }> {
+		if (!/^%\d+$/.test(opts.pane)) throw new Error(`unsafe tmux pane id: ${opts.pane}`);
+		if (!isAgentFenceLaunchId(opts.launchId)) throw new Error(`unsafe agent fence launch id: ${opts.launchId}`);
+		if (!Number.isInteger(opts.exitCode) || opts.exitCode < 0 || opts.exitCode > 255) {
+			throw new Error(`unsafe agent exit code: ${opts.exitCode}`);
+		}
+		const nonce = randomBytes(8).toString("hex");
+		const buffer = `dev3-fence-${nonce}`;
+		const pane = opts.pane;
+		const args = [
+			"set-buffer", "-b", buffer, "--", agentFenceSentinel(nonce),
+			";",
+			"if-shell", "-t", pane, "-F", `#{==:#{${AGENT_FENCE_OPTION}},open:${opts.launchId}}`,
+			`set-option -p -t ${pane} ${AGENT_FENCE_OPTION} closed:${opts.launchId}:${opts.exitCode} ; ` +
+				`set-option -p -t ${pane} ${AGENT_FENCE_NONCE_OPTION} ${nonce} ; ` +
+				`paste-buffer -d -r -b ${buffer} -t ${pane}`,
+			";",
+			"display-message", "-p", "-t", pane, `${AGENT_FENCE_READBACK_MARKER}#{${AGENT_FENCE_OPTION}} #{${AGENT_FENCE_NONCE_OPTION}}`,
+		];
+		try {
+			const result = await this.run(opts.socket, args, { timeoutMs: SERVER_TOKEN_TIMEOUT_MS });
+			if (result.exitCode !== 0) return { kind: "failed", detail: new TmuxError(args, result.exitCode, result.stderr).message };
+			const line = result.stdout.split("\n").find((l) => l.startsWith(AGENT_FENCE_READBACK_MARKER));
+			if (line === undefined) return { kind: "failed", detail: "tmux printed no fence read-back" };
+			const [fence = "", stored = ""] = line.slice(AGENT_FENCE_READBACK_MARKER.length).split(" ");
+			const state = parseAgentFence(fence);
+			if (state.kind === "closed" && state.launchId === opts.launchId && /^[0-9a-f]{16}$/.test(stored)) {
+				return { kind: "closed", nonce: stored };
+			}
+			return { kind: "not-this-launch", fence };
+		} finally {
+			// A flip consumed the buffer with `-d`; a loser's buffer must not linger server-wide.
+			void this.runCommand(opts.socket, ["delete-buffer", "-b", buffer], { bestEffort: true }).catch(() => {});
+		}
+	}
+
+	/** Every pane's raw agent fence on this server (the close-request sweep's view). */
+	listAgentFences(opts?: SocketOpt): Promise<{ paneId: string; agentFence: string }[]> {
+		return this.listPanes(AGENT_FENCE_FORMAT, { scope: "server", socket: opts?.socket });
+	}
+
+	/**
 	 * Validate the pane's incarnation and send in ONE command list, so nothing can move
 	 * the pane in between. `{ sent: false }` means NOTHING went out — an unknown pane
 	 * included (tmux exits 0). `inMode` says the ONLY failed condition was copy mode:
@@ -621,6 +687,8 @@ export class TmuxClient {
 			pane: string;
 			serverToken: string;
 			session: string;
+			/** The pinned agent fence: `""` (none) or `open:<launchId>`; the pane must still say exactly that. */
+			agentFence: string;
 			/** In order: literal text, or key names from the closed neutral table. */
 			chunks: readonly ({ literal: string } | { keys: readonly string[] })[];
 			/** Kill and reap the command after this long. */
@@ -628,10 +696,11 @@ export class TmuxClient {
 			/** Kill and reap the command when this aborts. */
 			signal?: AbortSignal;
 		} & SocketOpt,
-	): Promise<{ sent: boolean; inMode: boolean }> {
+	): Promise<{ sent: boolean; inMode: boolean; liveFence?: string }> {
 		if (!/^[A-Za-z0-9_.-]+$/.test(opts.session)) throw new Error(`unsafe tmux session name: ${opts.session}`);
 		if (!/^%\d+$/.test(opts.pane)) throw new Error(`unsafe tmux pane id: ${opts.pane}`);
 		if (!/^[A-Za-z0-9-]{1,64}$/.test(opts.serverToken)) throw new Error(`unsafe tmux server token: ${opts.serverToken}`);
+		if (!isPinnableAgentFence(opts.agentFence)) throw new Error(`unsafe agent fence: ${opts.agentFence}`);
 
 		// One buffer per literal chunk, named per send: tmux buffers are server-wide, so a
 		// fixed name would let two concurrent messages paste each other's text.
@@ -651,12 +720,15 @@ export class TmuxClient {
 		// preflight: a dead pane stays addressable, and a pane in copy mode routes send-keys
 		// through the MODE key table — measured: the marker still prints and the program
 		// receives nothing, which would be a false `delivered`.
-		const identity = (mode: string) =>
+		// The same pane, server and session, still alive: everything but the fence and the mode.
+		const base =
 			`#{&&:#{==:#{${SERVER_TOKEN_OPTION}},${opts.serverToken}},` +
-			`#{&&:#{==:#{session_name},${opts.session}},` +
-			`#{&&:#{==:#{pane_dead},0},#{${mode}:#{pane_in_mode},0}}}}`;
+			`#{&&:#{==:#{session_name},${opts.session}},#{==:#{pane_dead},0}}}`;
+		const fenceHolds = `#{==:#{${AGENT_FENCE_OPTION}},${opts.agentFence}}`;
+		const identity = (mode: string) => `#{&&:${base},#{&&:${fenceHolds},#{${mode}:#{pane_in_mode},0}}}`;
 		// The else branch tells a scrolled-up pane from a foreign one in the same server
 		// turn: it prints 1 only when identity and liveness held and copy mode alone refused.
+		// It also prints the live fence of THIS pane, so a closed one reads as an exited agent.
 		const args = [
 			"if-shell",
 			"-t",
@@ -664,7 +736,8 @@ export class TmuxClient {
 			"-F",
 			identity("=="),
 			[...commands, `display-message -p ${GUARDED_SEND_MARKER}`].join(" ; "),
-			`display-message -p -t ${opts.pane} '${GUARDED_SEND_IN_MODE_MARKER}${identity("!=")}'`,
+			`display-message -p -t ${opts.pane} '${GUARDED_SEND_IN_MODE_MARKER}${identity("!=")}' ; ` +
+				`display-message -p -t ${opts.pane} '${GUARDED_SEND_FENCE_MARKER}#{?${base},#{${AGENT_FENCE_OPTION}},-}'`,
 		];
 		// One send is now several tmux commands, so `timeoutMs` is the budget for ALL of
 		// them: spending it whole on each would let one stage run past the deadline its
@@ -686,7 +759,14 @@ export class TmuxClient {
 			const result = await this.run(opts.socket, args, bounds());
 			if (result.exitCode !== 0) throw new TmuxError(args, result.exitCode, result.stderr);
 			pasted = result.stdout.includes(GUARDED_SEND_MARKER);
-			return { sent: pasted, inMode: !pasted && result.stdout.includes(`${GUARDED_SEND_IN_MODE_MARKER}1`) };
+			if (pasted) return { sent: true, inMode: false };
+			const fenceLine = result.stdout.split("\n").find((line) => line.startsWith(GUARDED_SEND_FENCE_MARKER));
+			const liveFence = fenceLine?.slice(GUARDED_SEND_FENCE_MARKER.length);
+			return {
+				sent: false,
+				inMode: result.stdout.includes(`${GUARDED_SEND_IN_MODE_MARKER}1`),
+				...(liveFence !== undefined && liveFence !== "-" ? { liveFence } : {}),
+			};
 		} finally {
 			// `-d` dropped every buffer that was actually pasted; a refused guard or a failure
 			// leaves one behind, and a message body must not linger in the server's buffer
