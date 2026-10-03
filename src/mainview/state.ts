@@ -52,6 +52,7 @@ export type Route =
 	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
+	| { screen: "sessions"; scopeProjectId?: string }
 	/**
 	 * Agent traffic. The id seeds the screen's scope filter with the project the
 	 * user came from; it is NOT a location, and the field is deliberately not

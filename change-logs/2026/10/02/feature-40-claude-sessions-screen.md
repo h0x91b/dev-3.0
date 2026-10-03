@@ -1,0 +1,3 @@
+Short: Per-task Claude session stats
+
+A new Claude Sessions screen lists every live task session with its context use, prompt cache state and expiry, cost and model, sortable by column and searchable by title or task number. Each row opens its task or expands to show tokens, cache reads and writes, hit ratio, duration, lines changed, effort and thinking. The header usage panel adds one Sessions line with the session count, warm caches and total cost, at most three sessions that need you now (a cache about to expire while the task waits on you, or context at 85% or more), and a link to the full screen.

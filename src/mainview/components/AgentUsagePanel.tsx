@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, type TFunction } from "../i18n";
 import { notifyAgentAccountsChanged } from "./AgentAccountIndicator";
+import UsageSessionsStrip from "./UsageSessionsStrip";
 import {
 	ACCOUNT_CARD_CLASS,
 	AccountCardHeader,
@@ -240,15 +241,22 @@ const ARM_DELAY_MS = 300;
 export default function AgentUsagePanel({
 	report,
 	accounts,
+	projectId = null,
 	interactive,
 	onOpenSettings,
+	onOpenSessions,
 }: {
 	report: AgentRateLimitsReport;
 	accounts: AgentAccountsState | null;
+	/** The screen's project; only its tasks' sessions count. Null counts all. */
+	projectId?: string | null;
 	interactive: boolean;
 	onOpenSettings: () => void;
+	/** Opens the full Sessions screen. A navigation, so the dwell gate does not apply. */
+	onOpenSessions?: () => void;
 }) {
 	const t = useT();
+	const sessions = (report.sessions ?? []).filter((s) => !projectId || s.projectId === projectId);
 	const [busy, setBusy] = useState(false);
 	const [dwelled, setDwelled] = useState(false);
 	const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -376,6 +384,7 @@ export default function AgentUsagePanel({
 					</div>
 				);
 			})}
+			<UsageSessionsStrip sessions={sessions} onOpenAll={onOpenSessions} />
 		</div>
 	);
 }

@@ -2,7 +2,16 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildClaudeManagedSettings, findLatestCodexRollout, readClaudeSnapshot, readCodexSnapshot } from "../rate-limit-monitor";
+import type { Project, Task, TaskStatus } from "../../shared/types";
+import { parseClaudeSessionStats } from "../../shared/session-stats";
+import {
+	attachTaskIdentity,
+	buildClaudeManagedSettings,
+	findLatestCodexRollout,
+	readClaudeSessionDumps,
+	readClaudeSnapshot,
+	readCodexSnapshot,
+} from "../rate-limit-monitor";
 
 let tmp: string;
 
@@ -117,5 +126,64 @@ describe("readCodexSnapshot", () => {
 
 	it("returns null when no rollouts exist", () => {
 		expect(readCodexSnapshot(tmp)).toBeNull();
+	});
+});
+
+describe("readClaudeSessionDumps", () => {
+	const payload = (percent: number) => ({ model: { display_name: "Opus" }, context_window: { used_percentage: percent } });
+
+	it("reads recent per-task dumps newest first, keyed by file name", () => {
+		const now = Date.now();
+		writeFileSync(join(tmp, "task-a.json"), JSON.stringify({ capturedAt: now - 60_000, payload: payload(10) }));
+		writeFileSync(join(tmp, "task-b.json"), JSON.stringify({ capturedAt: now - 1_000, payload: payload(20) }));
+		const sessions = readClaudeSessionDumps(tmp, now);
+		expect(sessions.map((s) => [s.taskId, s.contextPercent])).toEqual([
+			["task-b", 20],
+			["task-a", 10],
+		]);
+	});
+
+	it("skips stale, corrupt and non-session dumps", () => {
+		const now = Date.now();
+		writeFileSync(join(tmp, "old.json"), JSON.stringify({ capturedAt: now - 7 * 3_600_000, payload: payload(1) }));
+		writeFileSync(join(tmp, "torn.json"), "{not json");
+		writeFileSync(join(tmp, "empty.json"), JSON.stringify({ capturedAt: now, payload: { rate_limits: {} } }));
+		expect(readClaudeSessionDumps(tmp, now)).toEqual([]);
+	});
+
+	it("returns nothing when the directory does not exist", () => {
+		expect(readClaudeSessionDumps(join(tmp, "missing"))).toEqual([]);
+	});
+});
+
+describe("attachTaskIdentity", () => {
+	const session = (taskId: string, capturedAt: number) =>
+		parseClaudeSessionStats({ model: { display_name: "Opus" }, context_window: { used_percentage: 5 } }, taskId, capturedAt)!;
+	const project = (id: string) => ({ id, name: id }) as Project;
+	const task = (id: string, status: TaskStatus = "in-progress") => ({ id, seq: 1, title: id, status }) as Task;
+
+	it("lists every live session uncapped, and marks tasks waiting on the user", async () => {
+		const ids = Array.from({ length: 12 }, (_, i) => `b${i}`);
+		const out = await attachTaskIdentity(
+			ids.map((id, i) => session(id, 1000 - i)),
+			{
+				projects: async () => [project("B")],
+				tasks: async () => ids.map((id, i) => task(id, i === 0 ? "user-questions" : i === 1 ? "review-by-user" : "in-progress")),
+			},
+		);
+		expect(out).toHaveLength(ids.length);
+		expect(out.filter((s) => s.awaitingUser).map((s) => s.taskId)).toEqual(["b0", "b1"]);
+		expect(out[0]).toMatchObject({ projectId: "B", projectName: "B", taskTitle: "b0" });
+	});
+
+	it("keeps other projects' sessions when one board cannot be read, and drops finished tasks", async () => {
+		const out = await attachTaskIdentity([session("x", 2), session("y", 1)], {
+			projects: async () => [project("broken"), project("ok")],
+			tasks: async (p) => {
+				if (p.id === "broken") throw new Error("corrupt tasks.json");
+				return [task("x"), task("y", "completed")];
+			},
+		});
+		expect(out.map((s) => s.taskId)).toEqual(["x"]);
 	});
 });

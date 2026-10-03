@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { claudeDumpFilePaths, resolveOriginalStatusLine } from "../commands/statusline";
+import { claudeDumpFilePaths, resolveOriginalStatusLine, sessionDumpFilePath } from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -97,5 +97,17 @@ describe("claudeDumpFilePaths", () => {
 		const paths = claudeDumpFilePaths("acc-123", base);
 		expect(paths).toEqual([join(base, "claude", "acc-123.json")]);
 		expect(paths).not.toContain(join(base, "claude.json"));
+	});
+});
+
+describe("sessionDumpFilePath", () => {
+	it("writes one dump per dev3 task under sessions/", () => {
+		expect(sessionDumpFilePath("9994e79b-4c1b", "/base")).toBe(join("/base", "sessions", "9994e79b-4c1b.json"));
+	});
+
+	it("writes nothing outside a task or for an unsafe id", () => {
+		expect(sessionDumpFilePath(undefined, "/base")).toBeNull();
+		expect(sessionDumpFilePath("  ", "/base")).toBeNull();
+		expect(sessionDumpFilePath("../escape", "/base")).toBeNull();
 	});
 });

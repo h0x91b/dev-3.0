@@ -57,6 +57,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "find-coordinator", labelKey: "command.findCoordinator", category: "nav", scope: "always" },
 	{ id: "view-changelog", labelKey: "command.viewChangelog", category: "nav", scope: "always" },
 	{ id: "view-stats", labelKey: "command.openStats", category: "nav", scope: "always" },
+	{ id: "view-sessions", labelKey: "command.openSessions", category: "nav", scope: "always" },
 	{ id: "open-settings", labelKey: "command.openSettings", category: "nav", scope: "always" },
 	{ id: "project-settings", labelKey: "command.projectSettings", category: "nav", scope: "project" },
 	{ id: "go-back", labelKey: "command.goBack", category: "nav", scope: "always" },

@@ -415,6 +415,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	);
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
+	const openSessions = () => navigate(currentProjectId ? { screen: "sessions", scopeProjectId: currentProjectId } : { screen: "sessions" });
 	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
 	// ---- The space level of the trail, and the way up to it ----
 	// The space the user came THROUGH rides on the route (board and task routes
@@ -530,6 +531,9 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		// A global screen, so the tail names it and nothing claims a project — the
 		// route's scope seed is a filter on the screen, not a location.
 		segments.push({ label: t("traffic.label") });
+	} else if (route.screen === "sessions") {
+		// Same as traffic: the scope project is a filter on the screen, not a location.
+		segments.push({ label: t("sessions.title") });
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
 	} else if (route.screen === "native-pane-layout-lab") {
@@ -1298,7 +1302,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
-				{!isNarrow && <RateLimitIndicator compact={compact} />}
+				{!isNarrow && <RateLimitIndicator compact={compact} projectId={currentProjectId} onOpenSessions={openSessions} />}
 
 				{/* Quick Shell lives in the overflow menu at every width — it is a
 				    keyboard action (⌘⇧`) far more than a button. */}
@@ -1474,7 +1478,14 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<PreventSleepToggle />
 						<MemoryHeadroomIndicator navigate={navigate} />
 						{viewedOverRemote && <ConnectionQualityIndicator />}
-						<RateLimitIndicator compact={false} />
+						<RateLimitIndicator
+							compact={false}
+							projectId={currentProjectId}
+							onOpenSessions={() => {
+								setShowActionSheet(false);
+								openSessions();
+							}}
+						/>
 						{currentProjectId && !isVirtualProject && (
 							<GitPullButton projectId={currentProjectId} compact={false} />
 						)}

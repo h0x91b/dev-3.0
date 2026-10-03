@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useT } from "../i18n";
+import { useAgentRateLimitsReport } from "../hooks/useAgentRateLimitsReport";
 import { useHeaderFlyout } from "../hooks/useHeaderFlyout";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import BottomSheet from "./BottomSheet";
 import HeaderFlyoutPanel from "./HeaderFlyoutPanel";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
 	RATE_LIMIT_WARN_PERCENT,
@@ -40,26 +40,25 @@ const PANEL_WIDTH = 26 * 16;
  * must not be one stray click away from a panel the pointer passed through.
  * Codex monthly credits come from a cached app-server account read; all other
  * data comes from local files — see rate-limit-monitor.ts.
+ * Inside a project the Sessions strip counts only that project's tasks; with
+ * none in scope (dashboard, settings) it counts every project's.
  */
-function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
+function RateLimitIndicator({
+	compact = false,
+	projectId = null,
+	onOpenSessions,
+}: {
+	compact?: boolean;
+	projectId?: string | null;
+	onOpenSessions?: () => void;
+}) {
 	const t = useT();
-	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
+	const report = useAgentRateLimitsReport();
 	const [accounts, setAccounts] = useState<AgentAccountsState | null>(null);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Same open/pin/position machinery as the memory-headroom readout: hover drops
 	// the panel below the pill, a click pins it — and pinned is what unlocks its rows.
 	const flyout = useHeaderFlyout({ variant: "bar", isNarrow, repositionKey: report });
-
-	useEffect(() => {
-		api.request.getAgentRateLimits().then(setReport).catch(() => {
-			// backend not ready — stay hidden until the first push arrives
-		});
-		function onUpdate(e: Event) {
-			setReport((e as CustomEvent).detail as AgentRateLimitsReport);
-		}
-		window.addEventListener("rpc:agentRateLimitsUpdated", onUpdate);
-		return () => window.removeEventListener("rpc:agentRateLimitsUpdated", onUpdate);
-	}, []);
 
 	useEffect(() => {
 		function reload() {
@@ -113,6 +112,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		<AgentUsagePanel
 			report={report}
 			accounts={accounts}
+			projectId={projectId}
 			// A sheet is opened deliberately and has no hover state to pass through;
 			// the desktop flyout has to be pinned first.
 			interactive={isNarrow || flyout.pinned}
@@ -120,6 +120,13 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				flyout.close();
 				openAccountsSettings();
 			}}
+			onOpenSessions={
+				onOpenSessions &&
+				(() => {
+					flyout.close();
+					onOpenSessions();
+				})
+			}
 		/>
 	);
 

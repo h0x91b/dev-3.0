@@ -27,7 +27,12 @@ import {
 	parseClaudeStatusLinePayload,
 	rateLimitActivityAt,
 } from "../shared/rate-limits";
+import type { ClaudeSessionStats } from "../shared/session-stats";
+import { SESSION_STATS_RECENT_MS, parseClaudeSessionStats } from "../shared/session-stats";
 import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
+import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
+import { TERMINAL_STATUSES, getTaskTitle } from "../shared/types";
+import type { Project, Task, TaskStatus } from "../shared/types";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
@@ -47,6 +52,8 @@ export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
 /** Per-managed-account Claude dumps. The legacy global dump remains the system
  * login fallback and is also written for compatibility with older builds. */
 export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
+/** Per-task Claude session dumps, written by `dev3 statusline` inside a dev3 task. */
+export const CLAUDE_SESSION_STATS_DIR = join(RATE_LIMITS_DIR, "sessions");
 /** The dev3-managed settings file injected via `claude --settings <path>`. It
  * always suppresses the one-time bypass-permission confirmation and optionally
  * routes statusLine through `dev3 statusline` (see buildClaudeManagedSettings). */
@@ -122,6 +129,90 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
 	}
+}
+
+/** Parse every per-task session dump captured within SESSION_STATS_RECENT_MS, newest first. */
+export function readClaudeSessionDumps(dir: string = CLAUDE_SESSION_STATS_DIR, now: number = Date.now()): ClaudeSessionStats[] {
+	let files: string[];
+	try {
+		files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+	} catch {
+		return [];
+	}
+	const sessions: ClaudeSessionStats[] = [];
+	for (const file of files) {
+		const path = join(dir, file);
+		try {
+			if (statSync(path).mtimeMs < now - SESSION_STATS_RECENT_MS) continue;
+			const parsed = JSON.parse(readFileSync(path, "utf-8")) as { capturedAt?: unknown; payload?: unknown };
+			const capturedAt = typeof parsed.capturedAt === "number" ? parsed.capturedAt : statSync(path).mtimeMs;
+			if (capturedAt < now - SESSION_STATS_RECENT_MS) continue;
+			const stats = parseClaudeSessionStats(parsed.payload, basename(file, ".json"), capturedAt);
+			if (stats) sessions.push(stats);
+		} catch {
+			// torn write or corrupt dump - skip it this round
+		}
+	}
+	return sessions.sort((a, b) => b.capturedAt - a.capturedAt);
+}
+
+/** Statuses in which the task waits on the user, so an expiring cache is theirs to save. */
+const AWAITING_USER_STATUSES: readonly TaskStatus[] = ["user-questions", "review-by-user"];
+
+/** Attach board identity and drop sessions whose task is gone or finished. No cap:
+ *  the Sessions screen lists them all, and the panel's attention strip bounds itself. */
+export async function attachTaskIdentity(
+	sessions: ClaudeSessionStats[],
+	load: { projects: () => Promise<Project[]>; tasks: (project: Project) => Promise<Task[]> } = {
+		projects: async () => [...(await loadProjects()), ...(await loadVirtualProjects())],
+		tasks: loadTasks,
+	},
+): Promise<ClaudeSessionStats[]> {
+	if (sessions.length === 0) return [];
+	const wanted = new Set(sessions.map((s) => s.taskId));
+	const found = new Map<
+		string,
+		{ title: string; seq: number; projectName: string; projectId: string; awaitingUser: boolean }
+	>();
+	let projects: Project[];
+	try {
+		projects = await load.projects();
+	} catch (err) {
+		log.warn("Session stats project lookup failed", { error: String(err) });
+		return [];
+	}
+	for (const project of projects) {
+		if (found.size === wanted.size) break;
+		try {
+			for (const task of await load.tasks(project)) {
+				if (!wanted.has(task.id) || TERMINAL_STATUSES.includes(task.status)) continue;
+				found.set(task.id, {
+					title: getTaskTitle(task),
+					seq: task.seq,
+					projectName: project.name,
+					projectId: project.id,
+					awaitingUser: AWAITING_USER_STATUSES.includes(task.status),
+				});
+			}
+		} catch (err) {
+			// One unreadable board must not hide every other project's sessions.
+			log.warn("Session stats task lookup failed", { projectId: project.id, error: String(err) });
+		}
+	}
+	const out: ClaudeSessionStats[] = [];
+	for (const s of sessions) {
+		const task = found.get(s.taskId);
+		if (!task) continue;
+		out.push({
+			...s,
+			taskTitle: task.title,
+			taskSeq: task.seq,
+			projectName: task.projectName,
+			projectId: task.projectId,
+			awaitingUser: task.awaitingUser,
+		});
+	}
+	return out;
 }
 
 function codexHomeRoot(): string {
@@ -328,7 +419,8 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const snapshots = [...byAccount.values()].sort(
 		(a, b) => (a.source === b.source ? 0 : a.source === "claude" ? -1 : 1) || rateLimitActivityAt(b) - rateLimitActivityAt(a),
 	);
-	const report: AgentRateLimitsReport = { snapshots, generatedAt: now };
+	const sessions = await attachTaskIdentity(readClaudeSessionDumps(CLAUDE_SESSION_STATS_DIR, now));
+	const report: AgentRateLimitsReport = { snapshots, sessions, generatedAt: now };
 	cachedReport = report;
 	return report;
 }
@@ -340,7 +432,13 @@ function reportKey(report: AgentRateLimitsReport): string {
 			(s) =>
 				`${s.source}:${s.accountId ?? "system"}:${s.capturedAt}:${s.activeAt ?? ""}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}`,
 		)
-		.join("|");
+		.join("|")
+		.concat(
+			"#",
+			(report.sessions ?? [])
+				.map((s) => `${s.taskId}:${s.projectId}:${s.capturedAt}:${s.taskTitle}:${s.awaitingUser}:${s.cache?.warm}:${s.cache?.expiresAt}`)
+				.join("|"),
+		);
 }
 
 async function poll() {
