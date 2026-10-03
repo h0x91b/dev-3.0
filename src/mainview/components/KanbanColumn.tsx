@@ -88,6 +88,8 @@ interface KanbanColumnProps {
 	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
 	// Rename support for built-in columns
 	onRenameColumn?: (newName: string | null) => void;
+	// Delete support for custom columns (the caller confirms first)
+	onDeleteColumn?: () => void;
 	// Freshly created board columns open directly in rename mode so the user can
 	// name them without leaving the board (issue #222).
 	autoStartEditing?: boolean;
@@ -145,6 +147,7 @@ function KanbanColumn({
 	onCollapseToggle,
 	collapseDragHandlers,
 	onRenameColumn,
+	onDeleteColumn,
 	autoStartEditing,
 	onAutoEditConsumed,
 	fullWidth,
@@ -546,6 +549,17 @@ function KanbanColumn({
 							title={t("kanban.renameColumn")}
 						>
 							{"\u{F11E7}"}
+						</button>
+					)}
+					{!editing && onDeleteColumn && !isCompactNarrow && (
+						<button
+							onClick={(e) => { e.stopPropagation(); onDeleteColumn(); }}
+							className="text-fg-muted hover:text-danger transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("customColumns.deleteColumn")}
+							title={t("customColumns.deleteColumn")}
+						>
+							{"\u{F0A7A}"}
 						</button>
 					)}
 					{!editing && !isCompactNarrow && (

@@ -106,6 +106,7 @@ function renderColumn(overrides: {
 	customColumnId?: string;
 	label?: string;
 	onRenameColumn?: (name: string | null) => void;
+	onDeleteColumn?: () => void;
 	autoStartEditing?: boolean;
 	onAutoEditConsumed?: () => void;
 } = {}) {
@@ -140,6 +141,7 @@ function renderColumn(overrides: {
 				onColumnDrop={overrides.onColumnDrop}
 				isDraggedColumn={overrides.isDraggedColumn}
 				onRenameColumn={overrides.onRenameColumn}
+				onDeleteColumn={overrides.onDeleteColumn}
 				autoStartEditing={overrides.autoStartEditing}
 				onAutoEditConsumed={overrides.onAutoEditConsumed}
 			/>
@@ -718,6 +720,20 @@ describe("custom column inline rename (issue #222)", () => {
 		await userEvent.clear(input);
 		await userEvent.type(input, "Beta{Enter}");
 		expect(onRenameColumn).toHaveBeenCalledWith("Beta");
+	});
+});
+
+describe("custom column delete from the board", () => {
+	it("calls onDeleteColumn from the header button", async () => {
+		const onDeleteColumn = vi.fn();
+		renderColumn({ onDeleteColumn });
+		await userEvent.click(screen.getByLabelText("Delete column"));
+		expect(onDeleteColumn).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows no delete button without onDeleteColumn (merged space lanes)", () => {
+		renderColumn();
+		expect(screen.queryByLabelText("Delete column")).toBeNull();
 	});
 });
 

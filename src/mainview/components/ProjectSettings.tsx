@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject, type ReactNode } from "react";
 import { toast } from "../toast";
 import { confirm } from "../confirm";
+import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, DevServerConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { DEV_SERVER_NAME_PATTERN } from "../../shared/dev-servers";
 import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
@@ -1924,16 +1925,7 @@ function ProjectSettings({
 	async function handleDeleteColumn(columnId: string) {
 		if (!project) return;
 		const column = (project.customColumns ?? []).find((c) => c.id === columnId);
-		const parked = tasks.filter((task) => task.customColumnId === columnId).length;
-		const confirmed = await confirm({
-			title: t("customColumns.deleteConfirmTitle"),
-			message: parked > 0
-				? t.plural("customColumns.deleteConfirmMessage", parked, { name: column?.name ?? "" })
-				: t("customColumns.deleteConfirmMessageEmpty", { name: column?.name ?? "" }),
-			confirmLabel: t("customColumns.deleteColumn"),
-			danger: true,
-		});
-		if (!confirmed) return;
+		if (!column || !(await confirmCustomColumnDelete(column, tasks, t))) return;
 		setColumnSaving(columnId);
 		try {
 			await api.request.deleteCustomColumn({ projectId, columnId });

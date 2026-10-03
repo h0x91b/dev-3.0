@@ -23,6 +23,7 @@ import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
+import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -449,6 +450,21 @@ function KanbanBoard({
 		}
 	}
 
+	// Same confirm as Project Settings: tasks parked in the column go back to To Do.
+	async function handleDeleteCustomColumn(columnId: string) {
+		const column = customColumns.find((c) => c.id === columnId);
+		if (!column || !(await confirmCustomColumnDelete(column, tasks, t))) return;
+		try {
+			await api.request.deleteCustomColumn({ projectId: project.id, columnId });
+			dispatch({
+				type: "updateProject",
+				project: { ...project, customColumns: customColumns.filter((c) => c.id !== columnId) },
+			});
+		} catch (err) {
+			toast.error(t("customColumns.failedDelete", { error: String(err) }), { projectId: project.id });
+		}
+	}
+
 	// Apply the token-DSL filter (facets + free text) — the search string is the
 	// single source of truth; the old separate `activeFilters` state is gone.
 	let displayTasks = tasks;
@@ -666,6 +682,7 @@ function KanbanBoard({
 				onColumnDragEnd={laneIsMerged ? undefined : handleColumnDragEnd}
 				onColumnDrop={laneIsMerged ? undefined : (side) => handleColumnDrop(laneId, side)}
 				onRenameColumn={laneIsMerged ? undefined : (name) => handleRenameCustomColumn(laneId, name ?? "")}
+				onDeleteColumn={laneIsMerged ? undefined : () => handleDeleteCustomColumn(laneId)}
 				autoStartEditing={autoEditColumnId === laneId}
 				onAutoEditConsumed={() => setAutoEditColumnId(null)}
 				tip={tipColumnId === col.id ? currentTip : undefined}
