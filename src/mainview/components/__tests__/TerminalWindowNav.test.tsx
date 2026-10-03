@@ -208,11 +208,53 @@ describe("TerminalWindowNav", () => {
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
 		renderNav();
 		const tabs = await screen.findAllByRole("tab");
-		expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
 		tabs[1].focus();
 		await userEvent.keyboard("{Delete}");
 		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
 		await userEvent.pointer({ keys: "[MouseMiddle]", target: tabs[2] });
 		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
+	});
+
+	it("the rail closes a window from the × on its tile's corner, without a wider rail", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
+		const { container } = renderNav();
+		await screen.findByRole("tablist");
+		expect(container.querySelector('[data-window-nav="rail"]')).toHaveClass("w-7");
+		await userEvent.click(screen.getByRole("button", { name: "Close zsh" }));
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
+	});
+
+	it("right-click opens a menu that closes that window", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
+		renderNav();
+		await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "logs" }) });
+		const menu = screen.getByRole("menu");
+		expect(screen.getAllByRole("menuitem")[0]).toHaveFocus();
+		await userEvent.click(screen.getByRole("menuitem", { name: "Close window" }));
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
+		expect(menu).not.toBeInTheDocument();
+	});
+
+	it("the menu switches to a background window; the active one offers only Close", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+		renderNav();
+		await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "zsh" }) });
+		await userEvent.click(screen.getByRole("menuitem", { name: "Switch to this window" }));
+		expect(navigate()).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
+		await userEvent.pointer({ keys: "[MouseRight]", target: screen.getByRole("tab", { name: /Fix auth/ }) });
+		expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Close window"]);
+	});
+
+	it("Shift+F10 opens the menu from the keyboard and Escape returns focus to the window", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+		renderNav();
+		const tab = await screen.findByRole("tab", { name: "zsh" });
+		tab.focus();
+		await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+		expect(screen.getByRole("menu")).toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(tab).toHaveFocus();
+		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
 	});
 });

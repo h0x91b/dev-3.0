@@ -84,6 +84,7 @@ const terminal = {
 	"windowPager.home": "Back to the agent",
 	"windowNav.arrived": "Window opened: {name}",
 	"windowNav.close": "Close {name}",
+	"windowNav.switchTo": "Switch to this window",
 	"windowNav.home": "agent",
 	"windowNav.homeWorking": "agent, working",
 	"windowNav.homeWaiting": "agent, waiting for you",
