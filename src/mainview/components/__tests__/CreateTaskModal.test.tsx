@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import CreateTaskModal from "../CreateTaskModal";
 import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
-import type { GlobalSettings, Project, Task, SystemMemorySnapshot } from "../../../shared/types";
+import { COORDINATOR_PROMPT, type GlobalSettings, type Project, type Task, type SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -1848,7 +1848,7 @@ describe("CreateTaskModal — task type presets", () => {
 		await userEvent.type(description(), "Ship the Windows track.");
 		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
 
-		await waitFor(() => expect(description().value).toContain("You are the COORDINATOR of this board."));
+		await waitFor(() => expect(description().value).toContain(COORDINATOR_PROMPT));
 		expect(description().value).toMatch(/\n\n---\n\nShip the Windows track\.$/);
 	});
 
@@ -2001,7 +2001,7 @@ describe("CreateTaskModal — task type presets", () => {
 		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
 		const sent = mockedApi.request.createTask.mock.calls[0][0];
 		expect(sent.title).toBe("Ship the Windows track.");
-		expect(sent.description).toContain("You are the COORDINATOR of this board.");
+		expect(sent.description).toContain(COORDINATOR_PROMPT);
 	});
 
 	// The type has to reach disk, not just the prompt: the board marks the card and

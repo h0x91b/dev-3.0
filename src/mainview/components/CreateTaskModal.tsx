@@ -304,7 +304,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	/**
 	 * A preset preamble leads the description, so the board title must come from
 	 * the user's own text below it — otherwise every coordinator task is called
-	 * "You are the COORDINATOR of this board. You manage other tasks...".
+	 * "You are the COORDINATOR of this board: a manager who owns an outcome...".
 	 */
 	const activePresetPrompt = taskType !== "standard" && presetSettings
 		? presetPrompt(taskType, presetSettings)
