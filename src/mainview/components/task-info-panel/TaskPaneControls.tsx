@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { openTmuxWindow } from "../../terminal-window-nav";
+import { closeTmuxWindow, openTmuxWindow } from "../../terminal-window-nav";
 import { createPortal } from "react-dom";
 import { useT, type TFunction } from "../../i18n";
 import { shortcutById, shortcutKeysFor } from "../../keymap";
@@ -27,7 +27,6 @@ import { currentNativePaneFocus } from "../../native-pane-focus";
 import { fetchPaneState, runPaneAction } from "../../pane-state-bus";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
 import { toast } from "../../toast";
-import { confirm } from "../../confirm";
 
 interface TaskPaneControlsProps {
 	taskId: string;
@@ -213,23 +212,10 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		startClosePanePicker(taskId);
 	};
 
-	/** The agent's window only goes after the user agreed — to that same window. */
-	async function closeWindow() {
-		const first = await api.request.tmuxCloseWindow({ taskId });
-		if (first.closed || first.reason !== "agentWindow") return;
-		const agreed = await confirm({
-			title: t("tmux.closeAgentWindowConfirmTitle"),
-			message: t("tmux.closeAgentWindowConfirmMessage"),
-			confirmLabel: t("tmux.closeAgentWindowConfirmLabel"),
-			danger: true,
-		});
-		if (agreed) await api.request.tmuxCloseWindow({ taskId, windowId: first.windowId, force: true });
-	}
-
 	const handleCloseWindow = (event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
 		void withBusy(() =>
-			closeWindow()
+			closeTmuxWindow(taskId, undefined, t)
 				.catch((err) => toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }))
 				.finally(refreshState),
 		);

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./rpc";
+import { confirm } from "./confirm";
+import type { TFunction } from "./i18n";
 
 /**
  * How the desktop task terminal shows its tmux windows when there are two or
@@ -66,4 +68,25 @@ export async function openTmuxWindow(taskId: string): Promise<void> {
 		// Same contract as before: a failed new-window is silent; the poll stays truthful.
 	}
 	notifyTmuxWindowsChanged(taskId);
+}
+
+/**
+ * Close one tmux window — `windowId`, or the active one when omitted. The agent's
+ * window only goes after the user agreed, to that same window; the backend never
+ * closes the last window. The one close path for the header button and the tabs.
+ */
+export async function closeTmuxWindow(taskId: string, windowId: string | undefined, t: TFunction): Promise<void> {
+	try {
+		const first = await api.request.tmuxCloseWindow({ taskId, windowId });
+		if (first.closed || first.reason !== "agentWindow") return;
+		const agreed = await confirm({
+			title: t("tmux.closeAgentWindowConfirmTitle"),
+			message: t("tmux.closeAgentWindowConfirmMessage"),
+			confirmLabel: t("tmux.closeAgentWindowConfirmLabel"),
+			danger: true,
+		});
+		if (agreed) await api.request.tmuxCloseWindow({ taskId, windowId: first.windowId, force: true });
+	} finally {
+		notifyTmuxWindowsChanged(taskId);
+	}
 }

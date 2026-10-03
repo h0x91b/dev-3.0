@@ -3,7 +3,8 @@ import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
 import { useTmuxWindows } from "../hooks/useTmuxWindows";
 import { requestTaskTerminalFocus } from "../terminal-focus-request";
-import { useWindowNavStyle, type WindowNavStyle } from "../terminal-window-nav";
+import { closeTmuxWindow, useWindowNavStyle, type WindowNavStyle } from "../terminal-window-nav";
+import { toast } from "../toast";
 import Tooltip from "./Tooltip";
 
 /**
@@ -37,6 +38,9 @@ export default function TerminalWindowNav({
 	const select = (w: TmuxWindowEntry) => {
 		void navigate({ windowId: w.windowId }).then(() => requestTaskTerminalFocus(taskId));
 	};
+	const close = (w: TmuxWindowEntry) => {
+		void closeTmuxWindow(taskId, w.windowId, t).catch((err) => toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }));
+	};
 
 	return (
 		<div className={`flex-1 min-h-0 min-w-0 flex ${style === "rail" ? "flex-row" : "flex-col"}`}>
@@ -48,6 +52,7 @@ export default function TerminalWindowNav({
 					agentWorking={taskStatus === "in-progress"}
 					agentWaiting={taskStatus === "user-questions"}
 					onSelect={select}
+					onClose={close}
 					homeTitle={taskTitle}
 					t={t}
 				/>
@@ -81,6 +86,7 @@ function WindowList({
 	agentWorking,
 	agentWaiting,
 	onSelect,
+	onClose,
 	homeTitle,
 	t,
 }: {
@@ -90,6 +96,7 @@ function WindowList({
 	agentWorking: boolean;
 	agentWaiting: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
+	onClose: (w: TmuxWindowEntry) => void;
 	homeTitle?: string;
 	t: TFunction;
 }) {
@@ -108,6 +115,14 @@ function WindowList({
 		const tabs = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
 		const at = tabs.indexOf(document.activeElement as HTMLElement);
 		if (at < 0) return;
+		if (e.key === "Delete" || e.key === "Backspace") {
+			const target = windows.find((w) => w.windowId === tabs[at].dataset.windowId);
+			if (target) {
+				e.preventDefault();
+				onClose(target);
+			}
+			return;
+		}
 		const prev = rail ? "ArrowUp" : "ArrowLeft";
 		const next = rail ? "ArrowDown" : "ArrowRight";
 		let to = -1;
@@ -139,7 +154,7 @@ function WindowList({
 				const name = windowName(w, t, homeTitle);
 				const state = windowStateText(w, isUnseen, t, agentWorking, agentWaiting);
 				const accessibleName = state ? `${name}, ${state}` : name;
-				const marker = <WindowMarker window={w} unseen={isUnseen} />;
+				const marker = <WindowMarker window={w} unseen={isUnseen} inline={!rail} />;
 				return rail ? (
 					<Tooltip key={w.windowId} content={name} detail={state || undefined} placement="right">
 						<button
@@ -148,7 +163,10 @@ function WindowList({
 							aria-selected={w.active}
 							aria-label={accessibleName}
 							tabIndex={w.active ? 0 : -1}
+							data-window-id={w.windowId}
 							onClick={() => onSelect(w)}
+							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
 							className={`relative flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-micro font-semibold tabular-nums transition-[background-color,color,box-shadow] duration-150 active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
 								w.active
 									? "bg-base text-fg shadow-[0_0_0_2px_rgb(var(--accent))]"
@@ -160,15 +178,19 @@ function WindowList({
 						</button>
 					</Tooltip>
 				) : (
-					<Tooltip key={w.windowId} content={name} detail={state || undefined} placement="bottom">
+					<div key={w.windowId} role="presentation" className="group relative flex-shrink-0 flex">
+					<Tooltip content={name} detail={state || undefined} placement="bottom">
 						<button
 							type="button"
 							role="tab"
 							aria-selected={w.active}
 							aria-label={accessibleName}
 							tabIndex={w.active ? 0 : -1}
+							data-window-id={w.windowId}
 							onClick={() => onSelect(w)}
-							className={`relative flex-shrink-0 h-7 max-w-[14rem] min-w-0 px-2.5 rounded-t-md flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
+							className={`relative flex-shrink-0 h-7 max-w-[14rem] min-w-0 pl-2.5 pr-7 rounded-t-md flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
 								w.active
 									? "bg-base text-fg shadow-[inset_0_2px_0_rgb(var(--accent))]"
 									: "text-fg-3 hover:text-fg hover:bg-elevated"
@@ -179,6 +201,21 @@ function WindowList({
 							{marker}
 						</button>
 					</Tooltip>
+						{/* Keyboard users close with Delete on the focused tab; this is the pointer path. */}
+						<button
+							type="button"
+							tabIndex={-1}
+							aria-label={t("windowNav.close", { name })}
+							title={t("windowNav.close", { name })}
+							data-window-close={w.windowId}
+							onClick={() => onClose(w)}
+							className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center text-fg-muted hover:text-fg hover:bg-elevated transition-opacity duration-150 ${
+								w.active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+							}`}
+						>
+							<span aria-hidden="true" className="text-sm leading-none">×</span>
+						</button>
+					</div>
 				);
 			})}
 		</div>
@@ -194,13 +231,13 @@ function HomeGlyph({ working }: { working: boolean }) {
 }
 
 /** Background signal, top-right: bell (warning) outranks new output (accent). */
-function WindowMarker({ window: w, unseen }: { window: TmuxWindowEntry; unseen: boolean }) {
+function WindowMarker({ window: w, unseen, inline }: { window: TmuxWindowEntry; unseen: boolean; inline: boolean }) {
 	if (w.active || (!w.bell && !unseen)) return null;
 	return (
 		<span
 			aria-hidden="true"
 			data-window-marker={w.bell ? "bell" : "output"}
-			className={`absolute top-0 right-0 w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
+			className={`${inline ? "flex-shrink-0" : "absolute top-0 right-0"} w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
 		/>
 	);
 }

@@ -8,8 +8,10 @@ import { notifyTmuxWindowsChanged, setWindowNavStyle } from "../../terminal-wind
 import type { TmuxWindowEntry } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxWindowNavigate: vi.fn() } },
+	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn() } },
 }));
+vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
+import { confirm } from "../../confirm";
 
 function win(index: number, label: string, extra: Partial<TmuxWindowEntry> = {}): TmuxWindowEntry {
 	return { windowId: `@${index}`, index, label, active: false, home: false, panes: 1, activity: 100, bell: false, ...extra };
@@ -44,6 +46,8 @@ const reread = async () => {
 describe("TerminalWindowNav", () => {
 	beforeEach(() => {
 		navigate().mockReset();
+		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
+		vi.mocked(confirm).mockReset();
 		mounts.count = 0;
 		localStorage.clear();
 	});
@@ -168,5 +172,47 @@ describe("TerminalWindowNav", () => {
 		expect(navigate()).not.toHaveBeenCalledWith(expect.objectContaining({ windowId: expect.anything() }));
 		await userEvent.keyboard("{Enter}");
 		expect(navigate()).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
+	});
+
+	it("the × on a tab closes exactly that window through the shared close path", async () => {
+		act(() => setWindowNavStyle("tabs"));
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
+		renderNav();
+		await userEvent.click(await screen.findByRole("button", { name: "Close logs" }));
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
+	});
+
+	it("closing the agent's window asks first, then retries that same window with force", async () => {
+		act(() => setWindowNavStyle("tabs"));
+		vi.mocked(api.request.tmuxCloseWindow).mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" });
+		vi.mocked(confirm).mockResolvedValue(true);
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+		renderNav();
+		await userEvent.click(await screen.findByRole("button", { name: "Close Fix auth" }));
+		await waitFor(() => expect(api.request.tmuxCloseWindow).toHaveBeenLastCalledWith({ taskId: "task-1", windowId: "@1", force: true }));
+		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
+	});
+
+	it("declining the confirmation leaves the agent's window alone", async () => {
+		act(() => setWindowNavStyle("tabs"));
+		vi.mocked(api.request.tmuxCloseWindow).mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" });
+		vi.mocked(confirm).mockResolvedValue(false);
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+		renderNav();
+		await userEvent.click(await screen.findByRole("button", { name: "Close Fix auth" }));
+		await waitFor(() => expect(confirm).toHaveBeenCalled());
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledTimes(1);
+	});
+
+	it("Delete on a focused window and a middle click both close it, in the rail too", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
+		renderNav();
+		const tabs = await screen.findAllByRole("tab");
+		expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
+		tabs[1].focus();
+		await userEvent.keyboard("{Delete}");
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
+		await userEvent.pointer({ keys: "[MouseMiddle]", target: tabs[2] });
+		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
 	});
 });

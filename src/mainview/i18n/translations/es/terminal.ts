@@ -83,6 +83,7 @@ const terminal = {
 	"windowPager.window": "Ventana {index}",
 	"windowPager.home": "Volver al agente",
 	"windowNav.arrived": "Ventana abierta: {name}",
+	"windowNav.close": "Cerrar {name}",
 	"windowNav.home": "agente",
 	"windowNav.homeWorking": "agente, trabajando",
 	"windowNav.homeWaiting": "agente, esperándote",
