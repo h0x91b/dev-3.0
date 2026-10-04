@@ -23,9 +23,3 @@ export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
  */
 export const TMUX_TASK_TITLE_OPTION = "@dev3_task_title";
 
-/**
- * Session-scoped user option ("1") marking a session the app shows with its own
- * window navigator (every task terminal). Such a session never shows the tmux
- * window bar — the navigator replaces it; other sessions keep the bar.
- */
-export const TMUX_WINDOW_NAV_OPTION = "@dev3_window_nav";

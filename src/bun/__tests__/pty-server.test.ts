@@ -351,10 +351,9 @@ describe("pty-server", () => {
 
 			const sets = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((a) => Array.isArray(a) && a.includes("set-option"));
 			const task = `=${getSessionTmuxName(id)}:`;
-			expect(sets).toContainEqual(expect.arrayContaining(["set-option", "-t", task, "@dev3_window_nav", "1"]));
 			expect(sets).toContainEqual(expect.arrayContaining(["set-option", "-t", task, "status", "off"]));
 			const project = `=${getSessionTmuxName(projectId)}:`;
-			expect(sets.some((a) => a.includes(project) && (a.includes("@dev3_window_nav") || a.includes("off")))).toBe(false);
+			expect(sets.some((a) => a.includes(project) && a.includes("off"))).toBe(false);
 
 			vi.useRealTimers();
 		});

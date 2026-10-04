@@ -51,7 +51,6 @@ import {
 	PANE_GEOMETRY_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	TMUX_TASK_TITLE_OPTION,
-	TMUX_WINDOW_NAV_OPTION,
 } from "./tmux";
 
 const log = createLogger("pty");
@@ -1102,12 +1101,12 @@ export async function syncTmuxTaskTitle(taskId: string, title: string): Promise<
 
 /**
  * A task terminal shows its windows in the app's own navigator, so its tmux
- * window bar goes: the marker keeps the bar hooks from turning it back on.
+ * window bar goes. Runs after configureTmux clears stale overrides; no hook
+ * turns a session's bar back on, so this per-session `off` holds.
  */
 async function hideTmuxWindowBar(session: PtySession): Promise<void> {
 	const target = `=${session.tmuxSessionName}:`;
 	const opts = { socket: session.tmuxSocket, bestEffort: true };
-	await tmux.setOption(target, TMUX_WINDOW_NAV_OPTION, "1", opts);
 	await tmux.setOption(target, "status", "off", opts);
 }
 

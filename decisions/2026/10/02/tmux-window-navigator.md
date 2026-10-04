@@ -12,7 +12,7 @@ Verified on a throwaway tmux 3.6a server: a fresh pane's `pane_title` is the hos
 ## Risks
 Up to 3 s lag for windows created outside the app. A restarted agent pane without `@dev3_agent` loses its ✦.
 
-The navigator replaces the tmux window bar in task sessions: the app marks a task session with `@dev3_window_nav` and turns its `status` off (`hideTmuxWindowBar`, `src/bun/pty-server.ts`), and the bar hooks in `src/bun/tmux/config.ts` skip marked sessions. Project terminals and external sessions keep the bar.
+The navigator replaces the tmux window bar in task sessions: the app turns a task session's own `status` off on every attach (`hideTmuxWindowBar`, `src/bun/pty-server.ts`), right after `configureTmux` clears stale overrides; since #1912 no hook re-evaluates the bar, so that `off` holds. Project terminals and external sessions keep the bar.
 
 ## Alternatives considered
 Breadcrumb `task › window › pane` (hides the other windows), a window-count chip in the task panel (gone when the panel is collapsed), an overlay pill or an overview grid only (background state invisible). Opening agent-created windows in the background is its own decision: `decisions/2026/10/03/new-tmux-windows-open-in-background.md`.

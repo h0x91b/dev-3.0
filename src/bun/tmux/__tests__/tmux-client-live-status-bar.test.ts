@@ -16,7 +16,7 @@ vi.mock("../../logger", () => ({
 
 import { buildThemeConfig } from "../config";
 import { WINDOW_LABEL } from "../themes";
-import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAV_OPTION } from "../constants";
+import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "../constants";
 
 function tmuxVersion(): string | null {
 	try {
@@ -110,16 +110,13 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		expect(sessionStatus("solo")).toBe("");
 	});
 
-	it("never shows the bar in a session the app draws its own window navigator for", () => {
+	it("keeps the bar off in a session the app turned it off for, as windows come and go", () => {
 		tmux("new-session", "-d", "-s", "nav", "sh");
-		tmux("set-option", "-t", "=nav:", TMUX_WINDOW_NAV_OPTION, "1");
-		tmux("new-window", "-t", "=nav:", "sh");
-		expect(tmux("display-message", "-p", "-t", "=nav:", "#{session_windows}")).toBe("2");
+		tmux("set-option", "-t", "=nav:", "status", "off");
+		const second = tmux("new-window", "-d", "-P", "-F", "#{window_id}", "-t", "=nav:", "sh");
 		expect(sessionStatus("nav")).toBe("off");
-		// A session without the marker still gets the bar.
-		tmux("new-window", "-t", "=one:", "sh");
-		expect(sessionStatus("one")).toBe("on");
-		tmux("kill-window", "-t", "=one:{end}");
+		tmux("kill-window", "-t", second);
+		expect(sessionStatus("nav")).toBe("off");
 	});
 
 	it("opens a new window in the background, whoever asks — no -d needed", () => {
