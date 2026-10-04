@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Docs — dev-3.0</title>
+<meta name="description" content="Every dev-3.0 (dev3) guide in one place: install, your first task, remote access, troubleshooting, keyboard shortcuts, agent support and the CLI.">
+<link rel="canonical" href="https://dev3.h0x91b.com/docs/">
+<meta property="og:title" content="Docs — dev-3.0">
+<meta property="og:description" content="Every dev-3.0 guide in one place: install, first task, remote access, troubleshooting, shortcuts, agent support and the CLI.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="dev-3.0">
+<meta property="og:url" content="https://dev3.h0x91b.com/docs/">
+<meta property="og:image" content="https://dev3.h0x91b.com/og-image.jpg">
+<meta name="theme-color" content="#060915">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="stylesheet" href="/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "dev-3.0 documentation",
+  "url": "https://dev3.h0x91b.com/docs/",
+  "isPartOf": { "@id": "https://dev3.h0x91b.com/#website" },
+  "about": { "@id": "https://dev3.h0x91b.com/#software" }
+}
+</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-logo" href="/"><img src="/icon-192.png" width="30" height="30" alt=""> dev-3.0</a>
+    <nav aria-label="Site">
+      <ul class="site-nav">
+        <li><a href="/">Home</a></li>
+        <li><a href="/docs/" aria-current="page">Docs</a></li>
+        <li><a href="/changelog/">Changelog</a></li>
+        <li><a href="/integrations/">Integrations</a></li>
+        <li><a href="/pricing/">Pricing</a></li>
+        <li><a href="https://github.com/h0x91b/dev-3.0">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Documentation</p>
+  <h1>dev-3.0 docs</h1>
+  <p class="lede">Everything written about dev-3.0 (also called dev3), in the order you are likely to need it. The guides live in the GitHub repository and change with the code.</p>
+
+  <h2>Get started</h2>
+  <div class="cards">
+    <a class="card" href="/first-task.html"><strong>Your first task</strong><span>The guided first run, screen by screen — from an empty board to a merged and closed task.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/install.md"><strong>Install guide</strong><span>Every install path: macOS, Windows, Linux, tmux versions, cloud VMs, build from source.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0#readme"><strong>README</strong><span>What dev-3.0 is, how a task flows, and the quick start.</span></a>
+    <a class="card" href="/ai-install.txt"><strong>Install with an AI agent</strong><span>A plain-text brief your coding agent can follow to install dev-3.0 for you.</span></a>
+  </div>
+
+  <h2>Using it every day</h2>
+  <div class="cards">
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/remote-access.md"><strong>Remote access</strong><span><code>dev3 remote</code> in depth: tunnels, LAN, systemd, sessions, phone notifications.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/keyboard-shortcuts.md"><strong>Keyboard shortcuts</strong><span>The complete list, mirroring the in-app ⌘/ panel.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/glossary.md"><strong>Glossary</strong><span>The words dev-3.0 uses for tasks, columns, variants and agents.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/state-backups.md"><strong>State backups</strong><span>What dev-3.0 keeps on disk and how to restore it.</span></a>
+  </div>
+
+  <h2>Agents and compatibility</h2>
+  <div class="cards">
+    <a class="card" href="/integrations/"><strong>Integrations</strong><span>Which coding agents dev-3.0 launches, what each one supports, and what goes through your agent instead.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/agent-support-matrix.md"><strong>Agent support matrix</strong><span>The full feature-by-feature grid for every supported agent.</span></a>
+  </div>
+
+  <h2>When something goes wrong</h2>
+  <div class="cards">
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/troubleshooting.md"><strong>Troubleshooting</strong><span><code>dev3 doctor</code>, disk reclamation, Full Disk Access, terminal colors.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/diagnostic-logs.md"><strong>Diagnostic logs</strong><span>What is logged locally, for how long, and what is redacted.</span></a>
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/issues"><strong>Report an issue</strong><span>GitHub issues — bugs and feature requests.</span></a>
+  </div>
+
+  <h2>CLI and scripting</h2>
+  <div class="cards">
+    <a class="card" href="https://github.com/h0x91b/dev-3.0/blob/main/docs/cli-exit-codes.md"><strong>CLI exit codes</strong><span>The <code>dev3</code> exit-code contract, for scripts and agents.</span></a>
+    <a class="card" href="/llms.txt"><strong>llms.txt</strong><span>A short machine-readable summary of dev-3.0 for language models.</span></a>
+  </div>
+
+  <h2>Releases</h2>
+  <div class="cards">
+    <a class="card" href="/changelog/"><strong>Changelog</strong><span>What changed in each release, with release dates.</span></a>
+    <a class="card" href="/pricing/"><strong>Pricing</strong><span>dev-3.0 is free and open source. What you do pay for is your agents.</span></a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <span>dev-3.0 (dev3) — free and open source, Apache 2.0</span>
+    <ul>
+      <li><a href="https://github.com/h0x91b/dev-3.0/releases">Releases</a></li>
+      <li><a href="https://github.com/h0x91b/dev-3.0/issues">Issues</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

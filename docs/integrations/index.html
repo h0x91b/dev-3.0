@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integrations — dev-3.0</title>
+<meta name="description" content="Which AI coding agents dev-3.0 (dev3) launches — Claude Code, Codex, Gemini CLI, Cursor Agent, GitHub Copilot CLI, OpenCode, Oh My Pi or any CLI — and what each one supports.">
+<link rel="canonical" href="https://dev3.h0x91b.com/integrations/">
+<meta property="og:title" content="Integrations — dev-3.0">
+<meta property="og:description" content="Which AI coding agents dev-3.0 launches and what each one supports.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="dev-3.0">
+<meta property="og:url" content="https://dev3.h0x91b.com/integrations/">
+<meta property="og:image" content="https://dev3.h0x91b.com/og-image.jpg">
+<meta name="theme-color" content="#060915">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="stylesheet" href="/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "dev-3.0 integrations",
+  "url": "https://dev3.h0x91b.com/integrations/",
+  "isPartOf": { "@id": "https://dev3.h0x91b.com/#website" },
+  "about": { "@id": "https://dev3.h0x91b.com/#software" }
+}
+</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-logo" href="/"><img src="/icon-192.png" width="30" height="30" alt=""> dev-3.0</a>
+    <nav aria-label="Site">
+      <ul class="site-nav">
+        <li><a href="/">Home</a></li>
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="/changelog/">Changelog</a></li>
+        <li><a href="/integrations/" aria-current="page">Integrations</a></li>
+        <li><a href="/pricing/">Pricing</a></li>
+        <li><a href="https://github.com/h0x91b/dev-3.0">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Integrations</p>
+  <h1>Agents dev-3.0 runs, and how far each one is wired in</h1>
+  <p class="lede">dev-3.0 does not ship its own model or host agents for you. It launches the coding-agent CLI you already installed, under your own account, inside each task's git worktree and terminal. What differs per agent is how much dev-3.0 can do around it.</p>
+
+  <h2>Built-in agent support</h2>
+  <p>These agents have a dedicated adapter: dev-3.0 knows their flags, installs the dev3 skill for them, and can bring a task's session back after a restart.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th scope="col">Agent</th><th scope="col">Command</th><th scope="col">Task status updates</th><th scope="col">Session resume</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Claude Code</td><td><code>claude</code></td><td class="yes">Automatic, via hooks</td><td class="yes">The exact session</td></tr>
+        <tr><td>Codex</td><td><code>codex</code></td><td class="yes">Automatic, via hooks</td><td class="yes">The exact session</td></tr>
+        <tr><td>GitHub Copilot CLI</td><td><code>copilot</code></td><td class="yes">Automatic, via hooks</td><td class="yes">The exact session</td></tr>
+        <tr><td>Oh My Pi</td><td><code>omp</code></td><td class="yes">Automatic, via a status extension</td><td class="yes">The exact session</td></tr>
+        <tr><td>Cursor Agent</td><td><code>agent</code></td><td class="partial">Reported by the agent, following the dev3 skill</td><td class="yes">The exact session</td></tr>
+        <tr><td>Gemini CLI</td><td><code>gemini</code></td><td class="partial">Reported by the agent, following the dev3 skill</td><td class="yes">The exact session</td></tr>
+        <tr><td>OpenCode</td><td><code>opencode</code></td><td class="partial">Reported by the agent, following the dev3 skill</td><td class="partial">The most recent session only</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Model selection, permission modes, effort, budgets and system-prompt injection also differ per agent. The full grid, kept next to the code, is the <a href="https://github.com/h0x91b/dev-3.0/blob/main/agent-support-matrix.md">agent support matrix</a>.</p>
+
+  <h2>Any other CLI tool</h2>
+  <p>Any command can be configured as a task's agent. dev-3.0 starts it in the task's worktree and terminal and passes the task prompt, but there are no status hooks, no dev3 skill and no session resume: you move the card yourself.</p>
+
+  <h2>Model backends</h2>
+  <p>Claude Code and Codex can each run against their native API or against Amazon Bedrock, switched per agent in Settings → Coding Agents. dev-3.0 sets only the provider switch and the model; your credentials stay in your own agent setup.</p>
+
+  <h2>Tools around the agent</h2>
+  <ul>
+    <li><strong>Git and GitHub.</strong> Every task is a git worktree on its own branch. Pull requests are opened through the GitHub CLI (<code>gh</code>), and a pull request can be pulled onto the board as a review task.</li>
+    <li><strong>Your editor.</strong> One click opens a task's worktree in VS Code or Cursor. dev-3.0 has no editor of its own.</li>
+    <li><strong>Remote access.</strong> <code>dev3 remote</code> serves the full UI to a browser over your LAN, an SSH forward or a Cloudflare tunnel (<code>cloudflared</code>). See the <a href="https://github.com/h0x91b/dev-3.0/blob/main/docs/remote-access.md">remote access guide</a>.</li>
+  </ul>
+
+  <h2>Through your agent, not through dev-3.0</h2>
+  <p>Issue trackers, chat, databases and other services are reached by your agent, for example through the MCP servers you configure in it. dev-3.0 has no direct Linear, Jira or Slack integration of its own. For Claude Code, dev-3.0 pre-approves the MCP servers a project lists in its <code>.mcp.json</code>, so they are ready inside every task.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <span>dev-3.0 (dev3) — free and open source, Apache 2.0</span>
+    <ul>
+      <li><a href="https://github.com/h0x91b/dev-3.0/releases">Releases</a></li>
+      <li><a href="https://github.com/h0x91b/dev-3.0/issues">Issues</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

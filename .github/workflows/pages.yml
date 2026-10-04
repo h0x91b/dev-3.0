@@ -13,7 +13,10 @@ name: Deploy landing page
 #      concurrent run (a GitHub-side hiccup). Retry once in-job so it
 #      self-heals — no manual "Re-run" needed (a manual re-run re-uploads
 #      the artifact and then dies with "Multiple artifacts named github-pages").
-#   4. never fail   — if both attempts hit a transient backend error the job
+#   4. changelog    — docs/changelog/ is generated here from GitHub Releases and
+#      change-logs/ (scripts/generate-site-changelog.ts), so each finished
+#      Release run redeploys the site and the page is never committed.
+#   5. never fail   — if both attempts hit a transient backend error the job
 #      stays green and only emits a ::warning:: (visible in the Actions UI, no
 #      email). The site keeps serving the previous version and the next docs
 #      change redeploys. A landing page is not worth a false failure alert.
@@ -23,6 +26,11 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
+      - "scripts/generate-site-changelog.ts"
+      - "src/shared/site-changelog.ts"
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 # Only one Pages deployment at a time. Queue (don't cancel) so an in-flight
@@ -42,9 +50,23 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history + tags: each release is matched to the change-logs/ files in its tag tree.
+          fetch-depth: 0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Generate changelog page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/generate-changelog.ts
+          bun scripts/generate-site-changelog.ts
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload docs/ as Pages artifact
