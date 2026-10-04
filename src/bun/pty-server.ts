@@ -1866,6 +1866,10 @@ async function configureTmux(tmuxSessionName: string, socket: string): Promise<v
 		log.warn("tmux source-file failed (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
 	}
 
+	// A session from an older config can carry its own `status off`, which hides
+	// the always-on window bar. Drop it so the session inherits the global value.
+	await tmux.unsetOption(`=${tmuxSessionName}:`, "status", { socket, bestEffort: true });
+
 	// Set pane-exited hook — when any pane in this session exits, notify the app
 	// via HTTP so the dead pane entry can be removed from sessionState.
 	// pane-exited is a window-level hook (-w flag required).

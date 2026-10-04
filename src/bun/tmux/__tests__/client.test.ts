@@ -399,6 +399,7 @@ describe("command methods build the documented argv", () => {
 		["copyModeSearchStep older", (c) => c.copyModeSearchStep("%4", "older"), ["send-keys", "-t", "%4", "-X", "search-again"]],
 		["copyModeSearchStep newer", (c) => c.copyModeSearchStep("%4", "newer"), ["send-keys", "-t", "%4", "-X", "search-reverse"]],
 		["setOption", (c) => c.setOption("dev3-a", "pane-border-status", "top"), ["set-option", "-t", "dev3-a", "pane-border-status", "top"]],
+		["unsetOption", (c) => c.unsetOption("=dev3-a:", "status"), ["set-option", "-u", "-t", "=dev3-a:", "status"]],
 		["setPaneOption", (c) => c.setPaneOption("%1", "@dev3_agent", "1"), ["set-option", "-p", "-t", "%1", "@dev3_agent", "1"]],
 		["setGlobalOption", (c) => c.setGlobalOption("@dev3_pane_dimming", "off"), ["set-option", "-g", "@dev3_pane_dimming", "off"]],
 		["setWindowHook", (c) => c.setWindowHook("dev3-a", "pane-exited", "run-shell x"), ["set-hook", "-wt", "dev3-a", "pane-exited", "run-shell x"]],

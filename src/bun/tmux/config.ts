@@ -248,28 +248,21 @@ function defaultShellConfig(): string[] {
 	}
 }
 
-const MULTI_WINDOW = "#{>:#{session_windows},1}";
-const STATUS_BAR_BY_CLIENT_SESSION = `if -F "${MULTI_WINDOW}" "set status on" "set status off"`;
-const HOOK_SESSION = "=#{hook_session_name}:";
-const STATUS_BAR_BY_HOOK_SESSION = String.raw`run -C \"if -F -t '${HOOK_SESSION}' '${MULTI_WINDOW.replaceAll("#", "##")}' 'set -t ${HOOK_SESSION} status on' 'set -t ${HOOK_SESSION} status off'\"`;
-
 // Status bar setup — window tabs, and the focused pane's id on the right
 const TMUX_STATUS_BAR = `
 # Status bar — window tabs, focused pane id on the right. On top so the window list sits where the
 # eye starts: a window opened by Cmd+T or an agent must not hide its task.
+set -g status on
 set -g status-position top
 set -g status-right "${PANE_ID_BADGE}"
 set -g status-left ""
 
-# Show the bar only while a session has more than one window — a lone window
-# gets its row back. Session-scoped, re-evaluated whenever a window joins or
-# leaves a session and when a client attaches (covers sessions that predate
-# this config). window-(un)linked hooks run outside the session's context, so
-# they target it by #{hook_session_name}; ## defers the count until if-shell.
-set-hook -g window-linked "${STATUS_BAR_BY_HOOK_SESSION}"
-set-hook -g window-unlinked "${STATUS_BAR_BY_HOOK_SESSION}"
-set-hook -g client-attached '${STATUS_BAR_BY_CLIENT_SESSION}'
-set-hook -g client-session-changed '${STATUS_BAR_BY_CLIENT_SESSION}'
+# The bar stays visible with a single window too. Earlier configs hid it through
+# these hooks, and re-sourcing never drops a hook on a live server — unset them.
+set-hook -gu window-linked
+set-hook -gu window-unlinked
+set-hook -gu client-attached
+set-hook -gu client-session-changed
 `;
 
 /**

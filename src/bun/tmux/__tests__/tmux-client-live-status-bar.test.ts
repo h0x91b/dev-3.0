@@ -1,8 +1,7 @@
 /**
  * Live-tmux check of the full dev3 themed config: it parses, the bar sits on
- * top, shows only while a session has more than one window, and tabs are slanted. The hooks are
- * tmux command strings with two levels of quoting and deferred `##` formats,
- * so only a real server proves they parse and target the right session.
+ * top, stays visible with one window and through window churn, and tabs are slanted. Only a
+ * real server proves the config parses and that a re-source drops the old auto-hide hooks.
  * Named to match the `tmux-client-live*` exclusion — runs in `test:full`/CI.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
@@ -39,6 +38,13 @@ function sessionStatus(session: string): string {
 	return tmux("show-options", "-v", "-t", `=${session}:`, "status");
 }
 
+/** The `status` value the session actually renders with, inherited or its own. */
+function effectiveStatus(session: string): string {
+	return tmux("show-options", "-Av", "-t", `=${session}:`, "status");
+}
+
+const AUTO_HIDE_HOOKS = ["window-linked", "window-unlinked", "client-attached", "client-session-changed"];
+
 let workDir = "";
 
 describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
@@ -47,8 +53,10 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		const conf = join(workDir, "status.conf");
 		writeFileSync(conf, buildThemeConfig("mocha"));
 		tmux("-f", "/dev/null", "new-session", "-d", "-s", "solo", "sh");
+		// What an older dev3 config left behind: an auto-hide hook and a hidden lone-window bar.
+		tmux("set-hook", "-g", "window-linked", "set -t =solo: status off");
+		tmux("set-option", "-t", "=solo:", "status", "off");
 		tmux("source-file", conf);
-		// Session "solo" predates the config, so its bar is whatever tmux defaulted to.
 	});
 
 	afterAll(() => {
@@ -62,30 +70,44 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		expect(tmux("show-options", "-gv", "status-position")).toBe("top");
 	});
 
-	it("hides the bar for a new single-window session", () => {
+	it("drops the auto-hide hooks an older config left on the live server", () => {
+		// An empty hook prints its bare name; a set one adds `[0] <command>`.
+		for (const hook of AUTO_HIDE_HOOKS) {
+			expect(tmux("show-hooks", "-g", hook)).toBe(hook);
+		}
+	});
+
+	it("shows the bar for a new single-window session", () => {
 		tmux("new-session", "-d", "-s", "one", "sh");
-		expect(sessionStatus("one")).toBe("off");
+		expect(sessionStatus("one")).toBe("");
+		expect(effectiveStatus("one")).toBe("on");
 	});
 
-	it("shows it once a second window opens, and only in that session", () => {
+	it("keeps it on as a second window opens and closes again", () => {
 		tmux("new-session", "-d", "-s", "multi", "sh");
+		expect(effectiveStatus("multi")).toBe("on");
 		tmux("new-window", "-d", "-t", "=multi:", "sh");
-		expect(sessionStatus("multi")).toBe("on");
-		expect(sessionStatus("one")).toBe("off");
-	});
-
-	it("hides it again when the session is back to one window", () => {
+		expect(effectiveStatus("multi")).toBe("on");
 		tmux("kill-window", "-t", "=multi:1");
 		expect(tmux("display-message", "-p", "-t", "=multi:", "#{session_windows}")).toBe("1");
-		expect(sessionStatus("multi")).toBe("off");
+		expect(effectiveStatus("multi")).toBe("on");
+		expect(sessionStatus("multi")).toBe("");
 	});
 
-	it("follows a window moved between sessions on both ends", () => {
+	it("keeps it on at both ends of a window moved between sessions", () => {
 		tmux("new-window", "-d", "-t", "=one:", "sh");
-		expect(sessionStatus("one")).toBe("on");
 		tmux("move-window", "-s", "=one:2", "-t", "=multi:");
-		expect(sessionStatus("one")).toBe("off");
-		expect(sessionStatus("multi")).toBe("on");
+		expect(effectiveStatus("one")).toBe("on");
+		expect(effectiveStatus("multi")).toBe("on");
+	});
+
+	it("shows the bar again once a stale per-session off is unset, as dev3 does on attach", () => {
+		expect(sessionStatus("solo")).toBe("off");
+		tmux("set-option", "-u", "-t", "=solo:", "status");
+		expect(effectiveStatus("solo")).toBe("on");
+		const second = tmux("new-window", "-d", "-P", "-F", "#{window_id}", "-t", "=solo:", "sh");
+		tmux("kill-window", "-t", second);
+		expect(sessionStatus("solo")).toBe("");
 	});
 
 	it("shows only the focused pane's id beside the tabs", () => {

@@ -97,6 +97,7 @@ vi.mock("../tmux", () => {
 			nextLayout: vi.fn(async () => undefined),
 			toggleZoom: vi.fn(async () => undefined),
 			setOption: vi.fn(async () => undefined),
+			unsetOption: vi.fn(async () => undefined),
 			setWindowHook: vi.fn(async () => undefined),
 			setEnvironment: vi.fn(async () => undefined),
 			removeEnvironment: vi.fn(async () => undefined),

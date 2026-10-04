@@ -760,6 +760,11 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["set-option", "-t", target, option, value], opts);
 	}
 
+	/** `set-option -u -t <target> <option>` — drop the target's own value so it inherits again. */
+	unsetOption(target: string, option: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-option", "-u", "-t", target, option], opts);
+	}
+
 	/** `set-option -g <option> <value>` — a server-global (session) option. */
 	setGlobalOption(option: string, value: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["set-option", "-g", option, value], opts);

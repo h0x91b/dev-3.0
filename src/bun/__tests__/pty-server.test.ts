@@ -319,6 +319,24 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
+		it("clears a session's own status override on attach so the window bar shows", async () => {
+			vi.useFakeTimers();
+			const id = track("task-status-heal");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
+			mockSpawn.mockClear();
+
+			await vi.advanceTimersByTimeAsync(300);
+
+			const unsetCalls = mockSpawn.mock.calls
+				.map((c) => c[0])
+				.filter((cmd) => Array.isArray(cmd) && cmd.includes("set-option") && cmd.includes("-u"));
+			expect(unsetCalls).toContainEqual(
+				expect.arrayContaining(["-L", "my-socket", "set-option", "-u", "-t", expect.stringMatching(/^=dev3-.*:$/), "status"]),
+			);
+
+			vi.useRealTimers();
+		});
+
 		it("does not call tmux set-environment for user env when env is empty", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-empty");
