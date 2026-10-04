@@ -192,7 +192,7 @@ const settings = {
 	"settings.streamerMode": "Modo streamer",
 	"settings.streamerModeDesc": "Difumina correos, nombres de cuentas, organizaciones, rutas de archivos y URLs de túnel — para grabaciones de pantalla y capturas. Los proyectos marcados como sensibles además se bloquean y se silencian. El contenido del terminal no se oculta.",
 	"settings.windowNav": "Ventanas del terminal",
-	"settings.windowNavDesc": "Cómo muestra el terminal de una tarea sus ventanas de tmux cuando hay dos o más. La ventana del agente lleva ✦ y siempre va primero.",
+	"settings.windowNavDesc": "Cómo muestra el terminal de una tarea sus ventanas de tmux. La ventana del agente lleva ✦ y siempre va primero.",
 	"settings.windowNavRail": "Pestañas verticales",
 	"settings.windowNavRailDesc": "Pestañas con nombre en una columna estrecha a la izquierda. No quitan filas al terminal.",
 	"settings.windowNavTabs": "Pestañas arriba",

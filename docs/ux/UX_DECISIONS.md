@@ -720,5 +720,5 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 - **Why:** "insert path" needs a terminal and the board is task triage. Rejected a Board/Files switch (a destination hidden in a toolbar, IDE drift) and a Files destination (budget spent). `decisions/2026/10/02/file-explorer-panel.md`.
 
 ## 2026-10-02 — Desktop tmux windows get an in-app navigator; vertical tabs by default
-- **Rule:** at ≥ 2 windows a task terminal shows vertical tabs on the left (default) or tabs on top (Settings → Appearance) instead of the tmux bar; the agent's window is ✦ and first; new windows open in the background unless the user asked. Bible §12.
+- **Rule:** a task terminal always (even with one window) shows vertical tabs on the left (default) or tabs on top (Settings → Appearance) instead of the tmux bar; the agent's window is ✦ and first; new windows open in the background unless the user asked. Bible §12.
 - **Why:** a new window hid the agent behind a tmux status line, read as "my task vanished". Rail costs width, not a row. Rejected breadcrumb and overview-only. User-selected. Evidence: `decisions/2026/10/02/tmux-window-navigator.md`.

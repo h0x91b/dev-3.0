@@ -10,8 +10,8 @@ import Tooltip from "./Tooltip";
 
 /**
  * Desktop navigator for a task's tmux WINDOWS (full-terminal workspaces inside
- * the task's one session; panes are the splits inside a window). Invisible with
- * a single window. With two or more it shows every window, which one you are
+ * the task's one session; panes are the splits inside a window). Always shown,
+ * even with a single window, so the place never moves. It lists every window, which one you are
  * in, the agent's home window (✦, always first), and which background windows
  * printed something since you last looked. Vertical tabs (left) or tabs (top) per the
  * Appearance setting. The terminal child keeps its tree position across every
@@ -34,12 +34,14 @@ export default function TerminalWindowNav({
 	const t = useT();
 	const style = useWindowNavStyle();
 	const { windows, unseen, arrived, navigate } = useTmuxWindows(taskId, enabled);
-	const visible = windows.length > 1;
+	const visible = windows.length > 0;
 
 	const select = (w: TmuxWindowEntry) => {
 		void navigate({ windowId: w.windowId }).then(() => requestTaskTerminalFocus(taskId));
 	};
 	const close = (w: TmuxWindowEntry) => {
+		// tmux never closes a session's last window; offering it would be a dead control.
+		if (windows.length < 2) return;
 		void closeTmuxWindow(taskId, w.windowId, t).catch((err) => toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }));
 	};
 
@@ -104,6 +106,8 @@ function WindowList({
 	const listRef = useRef<HTMLDivElement>(null);
 	const [menu, setMenu] = useState<WindowMenuState | null>(null);
 	const rail = style === "rail";
+	// A lone window has nothing to switch to and cannot be closed, so it gets no × and no menu.
+	const closable = windows.length > 1;
 	const activeId = windows.find((w) => w.active)?.windowId;
 
 	useEffect(() => {
@@ -119,7 +123,7 @@ function WindowList({
 		if (at < 0) return;
 		if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
 			const target = windows.find((w) => w.windowId === tabs[at].dataset.windowId);
-			if (target) {
+			if (target && closable) {
 				e.preventDefault();
 				const r = tabs[at].getBoundingClientRect();
 				setMenu({ window: target, x: rail ? r.right : r.left, y: rail ? r.top : r.bottom, opener: tabs[at] });
@@ -148,7 +152,7 @@ function WindowList({
 
 	const openMenu = (w: TmuxWindowEntry) => (e: MouseEvent<HTMLButtonElement>) => {
 		e.preventDefault();
-		setMenu({ window: w, x: e.clientX, y: e.clientY, opener: e.currentTarget });
+		if (closable) setMenu({ window: w, x: e.clientX, y: e.clientY, opener: e.currentTarget });
 	};
 
 	return (
@@ -185,7 +189,7 @@ function WindowList({
 							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
 							onContextMenu={openMenu(w)}
 							className={`relative flex-shrink-0 min-w-0 min-h-0 flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-								rail ? "w-full max-h-[14rem] pt-2.5 pb-7 rounded-l-md [writing-mode:vertical-rl]" : "h-7 max-w-[14rem] pl-2.5 pr-7 rounded-t-md"
+								rail ? `w-full max-h-[14rem] pt-2.5 ${closable ? "pb-7" : "pb-2.5"} rounded-l-md [writing-mode:vertical-rl]` : `h-7 max-w-[14rem] pl-2.5 ${closable ? "pr-7" : "pr-2.5"} rounded-t-md`
 							} ${
 								w.active
 									? `bg-base text-fg ${rail ? "shadow-[inset_2px_0_0_rgb(var(--accent))]" : "shadow-[inset_0_2px_0_rgb(var(--accent))]"}`
@@ -198,7 +202,7 @@ function WindowList({
 						</button>
 					</Tooltip>
 						{/* Keyboard users close with Delete on the focused tab; this is the pointer path. */}
-						<button
+						{closable && <button
 							type="button"
 							tabIndex={-1}
 							aria-label={t("windowNav.close", { name })}
@@ -210,7 +214,7 @@ function WindowList({
 							} ${w.active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
 						>
 							<span aria-hidden="true" className="text-sm leading-none">×</span>
-						</button>
+						</button>}
 					</div>
 				);
 			})}

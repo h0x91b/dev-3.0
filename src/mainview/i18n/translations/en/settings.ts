@@ -192,7 +192,7 @@ const settings = {
 	"settings.streamerMode": "Streamer mode",
 	"settings.streamerModeDesc": "Blur emails, account names, organizations, file paths, and tunnel URLs — for screen recordings and screenshots. Projects marked sensitive are also locked and silenced. Terminal content is not masked.",
 	"settings.windowNav": "Terminal windows",
-	"settings.windowNavDesc": "How a task terminal shows its tmux windows once there are two or more. The agent's window is marked ✦ and always comes first.",
+	"settings.windowNavDesc": "How a task terminal shows its tmux windows. The agent's window is marked ✦ and always comes first.",
 	"settings.windowNavRail": "Vertical tabs",
 	"settings.windowNavRailDesc": "Named tabs down a slim column on the left. Keeps every terminal row.",
 	"settings.windowNavTabs": "Tabs on top",

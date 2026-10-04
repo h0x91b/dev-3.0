@@ -52,12 +52,17 @@ describe("TerminalWindowNav", () => {
 		localStorage.clear();
 	});
 
-	it("shows nothing but the terminal while the session has one window", async () => {
+	it("stays visible with a single window, which offers no × and no menu", async () => {
 		respond([win(1, "Fix auth", { active: true, home: true })]);
 		renderNav();
-		await waitFor(() => expect(navigate()).toHaveBeenCalled());
+		const tab = await screen.findByRole("tab", { name: "Fix auth, agent" });
 		expect(screen.getByTestId("terminal")).toBeInTheDocument();
-		expect(screen.queryByRole("tablist")).toBeNull();
+		expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
+		await userEvent.pointer({ keys: "[MouseRight]", target: tab });
+		expect(screen.queryByRole("menu")).toBeNull();
+		tab.focus();
+		await userEvent.keyboard("{Delete}");
+		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
 	});
 
 	it("defaults to the rail, lists the agent's home window first and marks the active one", async () => {
@@ -108,8 +113,7 @@ describe("TerminalWindowNav", () => {
 		expect(mounts.count).toBe(1);
 	});
 
-	it("the navigator appearing for a second window does not remount the terminal", async () => {
-		respond([win(1, "Fix auth", { home: true, active: true })]);
+	it("the navigator appearing once windows load does not remount the terminal", async () => {
 		renderNav();
 		await waitFor(() => expect(navigate()).toHaveBeenCalled());
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
