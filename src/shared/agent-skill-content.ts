@@ -192,8 +192,7 @@ Each server's output also lands as text in \`<taskDir>/logs/dev-server*.log\`, f
 export const ARTIFACT_FORMAT_RULES = `Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included. Other meanings win: Claude Artifacts, CI/build artifacts, package outputs.
 
 - **Copy the starter and publish its directory.** Prose or lists are fine; charts are optional.
-- Publish \`.md\`/\`.txt\` directly (no template CSS) only when the user explicitly asks for Markdown or plain text. A \`.md\` report path in a brief says where to save it, not how to show it.
-- If "do not generate HTML" conflicts with the template, ask which wins before publishing: the template needs an HTML wrapper.
+- An explicit ask for Markdown, plain text or no HTML overrides the default: write that, publish the \`.md\`/\`.txt\` directly (no template CSS), and do not ask to choose again. A \`.md\` report path in a brief says where to save it, not how to show it.
 `;
 
 /** How to make and publish one. Shared verbatim by the protocol and the `dev3-artifact` skill. */

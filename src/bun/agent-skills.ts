@@ -1016,7 +1016,7 @@ const ASK_DEV3_OPENAI_YAML = `interface:
 // this file adds only what the protocol leaves to a pointer.
 
 const ARTIFACT_SKILL_DESCRIPTION =
-	"Make, publish and revise a dev3 HTML artifact: copy the task's artifact starter, follow its AUTHORING.md, edit index.html and report.js, then publish or add a version with dev3 show-artifact. Use it inside a dev3 task whenever a human will read the result — a report, summary, daily brief, review readout, dashboard, comparison or analysis page — even when the user only says 'write it up', 'make a report' or 'show me', or names a .md path for where to save it; also to update an artifact already published. Not for Claude Artifacts, CI/build artifacts or package outputs. Sharing a report as a link outside the app is /dev3-share-artifact.";
+	"Make, publish and revise a dev3 HTML artifact: copy the task's artifact starter, follow its AUTHORING.md, edit index.html and report.js, then publish or add a version with dev3 show-artifact. Use it inside a dev3 task whenever a human will read the result — a report, summary, daily brief, review readout, dashboard, comparison or analysis page — even when the user only says 'write it up', 'make a report' or 'show me', or names a .md path for where to save it (an explicit ask for Markdown, plain text or no HTML skips it); also to update an artifact already published. Not for Claude Artifacts, CI/build artifacts or package outputs. Sharing a report as a link outside the app is /dev3-share-artifact.";
 
 const ARTIFACT_SKILL_CONTENT = `---
 name: dev3-artifact
