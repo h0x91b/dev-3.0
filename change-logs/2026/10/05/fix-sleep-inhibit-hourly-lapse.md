@@ -1,0 +1,1 @@
+Prevent sleep no longer lapses once an hour: the sleep inhibitor is renewed with an overlap before its safety timeout, so an idle Mac waiting on scheduled messages or timers no longer sleeps the moment the old inhibitor expires.

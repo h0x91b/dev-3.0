@@ -1,5 +1,7 @@
 # 059 — Prevent-sleep header toggle, app-running semantics, remote force-on
 
+Partly superseded on 2026-10-05 by `decisions/2026/10/05/sleep-inhibit-overlapping-renewal.md`: the inhibit process is renewed by its own overlapping timer, not by the poll.
+
 ## Context
 
 Sleep prevention already existed as a buried Global Settings toggle

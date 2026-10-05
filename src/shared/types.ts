@@ -1514,7 +1514,7 @@ export interface GlobalSettings {
 	 * the desktop app, which has its own updater.
 	 */
 	remoteSilentUpdate?: boolean;
-	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
+	preventSleepWhileRunning?: boolean; // keep a sleep inhibitor running while the app is open
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
 	/**
 	 * Inherit the user's full exported login-shell environment into agent/MCP
