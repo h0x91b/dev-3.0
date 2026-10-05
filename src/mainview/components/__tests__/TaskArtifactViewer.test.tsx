@@ -38,6 +38,7 @@ beforeEach(() => {
 	vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValue({
 		html: '<!doctype html><html><head></head><body><img src="chart.png"></body></html>',
 		assets: [{ name: "chart.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" }],
+		downloadKind: "zip",
 	});
 	platform.remote = false;
 	vi.mocked(mockedApi.request.openArtifactInBrowser).mockResolvedValue(undefined);
@@ -216,6 +217,7 @@ describe("TaskArtifactViewer", () => {
 		vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValueOnce({
 			html: '<img src="charts/chart.png">',
 			assets: [{ name: "charts/chart.png", mime: "image/png", dataUrl }],
+			downloadKind: "html",
 		});
 		const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:img");
 		const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -370,6 +372,17 @@ describe("TaskArtifactViewer", () => {
 		expect(mockedApi.request.openArtifactInBrowser).not.toHaveBeenCalled();
 		expect(openSpy).toHaveBeenCalledOnce();
 		expect(String(openSpy.mock.calls[0][0])).toMatch(/^blob:/);
+	});
+
+	it("labels the download HTML when the host folds a bundled artifact into one page", async () => {
+		vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValueOnce({
+			html: '<!doctype html><html><head></head><body><img src="chart.png"></body></html>',
+			assets: [{ name: "chart.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" }],
+			downloadKind: "html",
+		});
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("b", true)]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		expect(await screen.findByRole("button", { name: /download html/i })).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /download zip/i })).toBeNull();
 	});
 
 	it("requests ZIP download when the artifact has assets", async () => {

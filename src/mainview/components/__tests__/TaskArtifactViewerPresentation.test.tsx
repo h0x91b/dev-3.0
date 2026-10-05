@@ -36,6 +36,7 @@ beforeEach(() => {
 	vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValue({
 		html: "<!doctype html><html><head></head><body>hi</body></html>",
 		assets: [],
+		downloadKind: "html",
 	});
 });
 

@@ -23,6 +23,7 @@ import {
 	loadSharedArtifactContent,
 	loadSharedArtifactDownload,
 	saveSharedArtifact,
+	sharedArtifactDownloadKind,
 	sharedArtifactHtmlPath,
 } from "../shared-artifacts";
 
@@ -143,7 +144,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(image, "PNGDATA");
 		const saved = saveSharedArtifact("/my/project", html, [image], 'Q4 Revenue / "Draft"');
 		expect(basename(saved.bundlePath!)).toBe("index.zip");
-		expect(loadSharedArtifactDownload(saved).fileName).toBe("Q4 Revenue Draft.zip");
+		expect(loadSharedArtifactDownload(saved).fileName).toBe("Q4 Revenue Draft.html");
 	});
 
 	it("falls back to the HTML basename when the title yields no usable stem", () => {
@@ -153,7 +154,7 @@ describe("saveSharedArtifact", () => {
 		expect(loadSharedArtifactDownload(saved).fileName).toBe("index.html");
 	});
 
-	it("loads copied images as data URLs and downloads the ZIP bundle", () => {
+	it("loads copied images as data URLs and downloads the page as one HTML", () => {
 		const html = join(SRC_DIR, "bundle.html");
 		const image = join(SRC_DIR, "bundle.png");
 		writeFileSync(html, '<!doctype html><img src="bundle.png">');
@@ -164,9 +165,9 @@ describe("saveSharedArtifact", () => {
 			expect.objectContaining({ name: "bundle.png", dataUrl: expect.stringMatching(/^data:image\/png;base64,/) }),
 		]);
 		const download = loadSharedArtifactDownload(saved);
-		expect(download.fileName).toBe("bundle.zip");
-		expect(download.mime).toBe("application/zip");
-		expect(Buffer.from(download.base64, "base64").subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+		expect(download.fileName).toBe("bundle.html");
+		expect(download.mime).toBe("text/html");
+		expect(Buffer.from(download.base64, "base64").toString("utf8")).toContain(`src="data:image/png;base64,${Buffer.from("PNGDATA").toString("base64")}"`);
 	});
 
 	it("labels text asset data URLs as UTF-8", () => {
@@ -565,5 +566,111 @@ describe("bundled audio assets", () => {
 		const md = join(SRC_DIR, "audio-remote", "notes.md");
 		writeFileSync(md, '<audio src="audio/A.mp3"></audio>');
 		expect(() => saveSharedArtifact("/my/project", md, [])).not.toThrow();
+	});
+});
+
+describe("artifact download format", () => {
+	beforeEach(() => rmSync(TEST_HOME, { recursive: true, force: true }));
+
+	const TEMPLATE_DIR = join(__dirname, "../../assets/artifact-template");
+	const TEMPLATE_FILES = ["index.html", "app.css", "app.js", "report.js", "dev3-icon.png"];
+
+	function reportDir(name: string, files: Record<string, string | Buffer>): { html: string; assets: string[] } {
+		const root = join(SRC_DIR, name);
+		rmSync(root, { recursive: true, force: true });
+		for (const [rel, content] of Object.entries(files)) {
+			mkdirSync(dirname(join(root, rel)), { recursive: true });
+			writeFileSync(join(root, rel), content);
+		}
+		const assets = Object.keys(files).filter((rel) => rel !== "index.html").sort().map((rel) => join(root, rel));
+		return { html: join(root, "index.html"), assets };
+	}
+
+	function download(saved: SharedArtifact): { mime: string; fileName: string; text: string } {
+		const payload = loadSharedArtifactDownload(saved);
+		return { mime: payload.mime, fileName: payload.fileName, text: Buffer.from(payload.base64, "base64").toString("utf8") };
+	}
+
+	it("downloads an unmodified template report as one HTML with its shell folded in", () => {
+		const files = Object.fromEntries(TEMPLATE_FILES.map((name) => [name, readFileSync(join(TEMPLATE_DIR, name))]));
+		const { html, assets } = reportDir("template", files);
+		const saved = saveSharedArtifact("/my/project", html, assets, "Weekly report");
+
+		// The template's own files are assets, so a ZIP is still kept on disk...
+		expect(saved.bundlePath).toBeTruthy();
+		const { mime, fileName, text } = download(saved);
+		// ...but the download is the standalone page.
+		expect(mime).toBe("text/html");
+		expect(fileName).toBe("Weekly report.html");
+		expect(sharedArtifactDownloadKind(saved)).toBe("html");
+		expect(text).toContain("<style data-dev3-artifact-shell>");
+		expect(text).toContain(readFileSync(join(TEMPLATE_DIR, "report.js"), "utf8").slice(0, 200));
+		expect(text).toContain(`src="data:image/png;base64,${readFileSync(join(TEMPLATE_DIR, "dev3-icon.png")).toString("base64")}"`);
+		for (const name of ["app.css", "app.js", "report.js", "dev3-icon.png"]) {
+			expect(text).not.toMatch(new RegExp(`(?:src|href)="${name.replace(".", "\\.")}"`));
+		}
+		// Pinned CDN libraries stay links; a browser fetches them like any page.
+		expect(text).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js"');
+	});
+
+	it("folds nested stylesheets, CSS urls, scripts and images into the standalone page", () => {
+		const { html, assets } = reportDir("inlineable", {
+			"index.html": '<!doctype html><html><head><link rel="stylesheet" href="css/app.css"></head><body><img src="img/a%20b.png"><script src="js/run.js"></script></body></html>',
+			"css/app.css": '@import "theme.css"; .hero { background: url("../img/bg.png"); }',
+			"css/theme.css": ":root { --accent: blue; }",
+			"img/bg.png": "BG",
+			"img/a b.png": "AB",
+			"js/run.js": "window.ran = true;",
+		});
+		const { mime, text } = download(saveSharedArtifact("/my/project", html, assets, "Inlined"));
+		expect(mime).toBe("text/html");
+		expect(text).toContain(`@import "data:text/css;charset=utf-8;base64,${Buffer.from(":root { --accent: blue; }").toString("base64")}"`);
+		expect(text).toContain(`url("data:image/png;base64,${Buffer.from("BG").toString("base64")}")`);
+		expect(text).toContain(`src="data:image/png;base64,${Buffer.from("AB").toString("base64")}"`);
+		expect(text).toContain("window.ran = true;");
+	});
+
+	it("keeps the ZIP for a file the page links to as a download", () => {
+		const { html, assets } = reportDir("attachment-link", {
+			"index.html": '<!doctype html><img src="chart.png"><a href="chart.png" download>Get the chart</a>',
+			"chart.png": "PNG",
+		});
+		const saved = saveSharedArtifact("/my/project", html, assets, "Linked");
+		expect(download(saved).mime).toBe("application/zip");
+		expect(download(saved).fileName).toBe("Linked.zip");
+	});
+
+	it("keeps the ZIP for a file the page never references statically", () => {
+		const { html, assets } = reportDir("runtime-path", {
+			"index.html": '<!doctype html><div id="g"></div><script src="report.js"></script>',
+			"report.js": 'document.getElementById("g").innerHTML = "<img src=shots/" + 1 + ".png>";',
+			"shots/1.png": "PNG",
+		});
+		const saved = saveSharedArtifact("/my/project", html, assets, "Runtime");
+		expect(sharedArtifactDownloadKind(saved)).toBe("zip");
+		expect(download(saved).mime).toBe("application/zip");
+	});
+
+	it("keeps the ZIP for video and audio, even when every reference is static", () => {
+		const { html, assets } = reportDir("media", {
+			"index.html": '<!doctype html><video src="clip.mp4" controls></video>',
+			"clip.mp4": TINY_MP4,
+		});
+		const saved = saveSharedArtifact("/my/project", html, assets, "Clip");
+		expect(sharedArtifactDownloadKind(saved)).toBe("zip");
+		const entries = unzipEntries(Buffer.from(loadSharedArtifactDownload(saved).base64, "base64"));
+		expect(entries.get("clip.mp4")!.equals(TINY_MP4)).toBe(true);
+	});
+
+	it("never folds a file from outside the artifact's own copies", () => {
+		const outside = join(SRC_DIR, "outside-secret.png");
+		writeFileSync(outside, "SECRET");
+		const { html, assets } = reportDir("escape", {
+			"index.html": '<!doctype html><img src="pic.png"><img src="../../../../outside-secret.png">',
+			"pic.png": "PNG",
+		});
+		const { mime, text } = download(saveSharedArtifact("/my/project", html, assets, "Escape"));
+		expect(mime).toBe("text/html");
+		expect(text).not.toContain(Buffer.from("SECRET").toString("base64"));
 	});
 });

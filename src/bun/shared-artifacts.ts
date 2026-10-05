@@ -23,6 +23,7 @@ import { unplayableMediaReferences } from "./artifact-media-references";
 import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
 import { createZip } from "./zip";
+import { inlineHtmlSource } from "../shared/html-inline";
 import { projectSlug } from "./git";
 import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
 
@@ -341,25 +342,75 @@ function sanitizeDownloadStem(raw: string): string {
 		.trim();
 }
 
+export type SharedArtifactDownloadKind = "html" | "zip";
+
+type DownloadPlan =
+	| { kind: "html"; html: string }
+	| { kind: "zip"; reason: string };
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * One self-contained HTML file whenever the page embeds every copied file; the
+ * ZIP only for genuine attachments. The template's own CSS, JS and icon are
+ * referenced from the page, so they fold in like any stylesheet or image.
+ * The ZIP stays when a file is video or audio (data-URI playback is unreliable
+ * in WebKit and unseekable), when the page never references it statically (a
+ * download link, a path built at runtime), or when a reference survives folding.
+ * decisions/2026/10/05/artifact-download-standalone-html.md
+ */
+function planSharedArtifactDownload(artifact: SharedArtifact): DownloadPlan {
+	const dir = assertStoredArtifactRecord(artifact);
+	const html = readFileSync(artifact.storedPath, "utf8");
+	if (artifact.assets.length === 0 || !artifact.bundlePath) return { kind: "html", html };
+	const media = artifact.assets.find((asset) => /^(?:video|audio)\//.test(asset.mime));
+	if (media) return { kind: "zip", reason: `${media.name} is video or audio` };
+
+	const byPath = new Map(artifact.assets.map((asset) => [resolvePath(asset.storedPath), asset]));
+	const folded = inlineHtmlSource(html, dir, (path) => {
+		const asset = byPath.get(resolvePath(path));
+		return asset ? readFileSync(asset.storedPath) : null;
+	});
+	const embedded = new Set(folded.state.inlined.map((ref) => ref.resolved && resolvePath(ref.resolved)));
+	for (const [path, asset] of byPath) {
+		if (!embedded.has(path)) return { kind: "zip", reason: `${asset.name} is not embedded by the page` };
+	}
+	// A name right after a quote, `(` or `=` is a reference; prose and comments that
+	// merely mention it are not. Base64 has no ".", so data URIs never match.
+	for (const asset of artifact.assets) {
+		const leftover = new RegExp(`["'(=](?:\\.\\/)?${escapeRegExp(asset.name)}(?=["')?#\\s>])`);
+		if (leftover.test(folded.html)) return { kind: "zip", reason: `${asset.name} is still referenced as a file` };
+	}
+	return { kind: "html", html: folded.html };
+}
+
+/** What the download button hands over — the viewer labels the button with it. */
+export function sharedArtifactDownloadKind(artifact: SharedArtifact): SharedArtifactDownloadKind {
+	return planSharedArtifactDownload(artifact).kind;
+}
+
 /** Human-friendly download name from the artifact title, not the stored HTML basename. */
-export function sharedArtifactDownloadName(artifact: SharedArtifact): string {
-	const ext = artifact.bundlePath ? ".zip" : ".html";
+export function sharedArtifactDownloadName(artifact: SharedArtifact, kind: SharedArtifactDownloadKind): string {
+	const ext = kind === "zip" ? ".zip" : ".html";
 	const fromTitle = sanitizeDownloadStem(artifact.title);
 	const fallback = basename(artifact.name || artifact.storedPath).replace(/\.html$/i, "");
 	return `${fromTitle || fallback || "artifact"}${ext}`;
 }
 
-/** Read the portable download: ZIP when assets exist, otherwise the HTML. */
+/** Read the portable download: one standalone HTML, or the ZIP when attachments need it. */
 export function loadSharedArtifactDownload(artifact: SharedArtifact): {
 	fileName: string;
 	mime: "application/zip" | "text/html";
 	base64: string;
 } {
-	assertStoredArtifactRecord(artifact);
-	const path = artifact.bundlePath ?? artifact.storedPath;
+	const plan = planSharedArtifactDownload(artifact);
 	return {
-		fileName: sharedArtifactDownloadName(artifact),
-		mime: artifact.bundlePath ? "application/zip" : "text/html",
-		base64: readFileSync(path).toString("base64"),
+		fileName: sharedArtifactDownloadName(artifact, plan.kind),
+		mime: plan.kind === "zip" ? "application/zip" : "text/html",
+		base64: plan.kind === "zip"
+			? readFileSync(artifact.bundlePath!).toString("base64")
+			: Buffer.from(plan.html, "utf8").toString("base64"),
 	};
 }

@@ -3827,7 +3827,9 @@ export interface SharedArtifactVersion {
  *
  * The stored HTML contains the stable dev3 artifact theme contract. When
  * `assets` is non-empty, `bundlePath` points at a portable ZIP containing the
- * HTML and every copied local asset at its relative path.
+ * HTML and every copied local asset at its relative path. The download hands
+ * it over only when attachments need it; otherwise it folds everything into one
+ * standalone HTML (`loadSharedArtifactDownload`).
  *
  * Re-publishing the same artifact adds a VERSION instead of a new record: the
  * top-level fields above always describe the newest version, while
@@ -6091,7 +6093,12 @@ export type AppRPCSchema = {
 			};
 			readArtifactContent: {
 				params: { artifact: SharedArtifact };
-				response: { html: string; assets: Array<{ name: string; mime: string; dataUrl: string }> };
+				response: {
+					html: string;
+					assets: Array<{ name: string; mime: string; dataUrl: string }>;
+					/** What the download button saves: one standalone HTML, or the ZIP when attachments need it. */
+					downloadKind: "html" | "zip";
+				};
 			};
 			readArtifactDownload: {
 				params: { artifact: SharedArtifact };

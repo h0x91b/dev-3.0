@@ -1,47 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import {
 	CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING,
 	CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
 	CLI_EXIT_CODE_SUCCESS,
 } from "../../shared/cli-exit-codes";
+import { inlineHtmlSource, type InlineState } from "../../shared/html-inline";
 import { resolveValue } from "../args";
 import { exitUsage } from "../output";
-
-/** Binary assets become base64 data URIs; SVG is inlined as text-ish base64 too. */
-const BINARY_EXT = new Set([
-	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".bmp",
-	".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp4", ".webm", ".mp3",
-	".m4a", ".wav", ".ogg",
-	".svg",
-]);
-
-const MIME_BY_EXT: Record<string, string> = {
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".webp": "image/webp",
-	".avif": "image/avif",
-	".ico": "image/x-icon",
-	".bmp": "image/bmp",
-	".svg": "image/svg+xml",
-	".woff": "font/woff",
-	".woff2": "font/woff2",
-	".ttf": "font/ttf",
-	".otf": "font/otf",
-	".eot": "application/vnd.ms-fontobject",
-	".mp4": "video/mp4",
-	".webm": "video/webm",
-	".mp3": "audio/mpeg",
-	".m4a": "audio/mp4",
-	".wav": "audio/wav",
-	".ogg": "audio/ogg",
-};
-
-/** A scheme, a protocol-relative URL or a bare fragment all resolve from the browser. */
-const REMOTE = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 
 /** Credentials must never reach a public URL. Everything else is a soft warning. */
 const SECRET_PATTERNS: Array<[string, RegExp]> = [
@@ -61,19 +28,6 @@ const LEAK_PATTERNS: Array<[string, RegExp]> = [
 
 const MAX_REPORTED_LEAKS = 25;
 
-export interface InlineRef {
-	kind: string;
-	ref: string;
-	bytes?: number;
-	resolved?: string;
-}
-
-export interface InlineState {
-	inlined: InlineRef[];
-	external: InlineRef[];
-	missing: InlineRef[];
-}
-
 export interface InlineReport extends InlineState {
 	input: string;
 	output: string;
@@ -83,123 +37,10 @@ export interface InlineReport extends InlineState {
 	error?: string;
 }
 
-class MissingAsset extends Error {}
-
-function isRemote(url: string): boolean {
-	return !url || REMOTE.test(url) || url.startsWith("data:");
-}
-
-/** Drop query strings and fragments — they mean nothing on disk. */
-function stripUrl(raw: string): string {
-	return raw.split("?")[0].split("#")[0];
-}
-
-function dataUri(path: string): string {
-	const ext = extname(path).toLowerCase();
-	const mime = MIME_BY_EXT[ext] ?? "application/octet-stream";
-	return `data:${mime};base64,${readFileSync(path).toString("base64")}`;
-}
-
-function readLocal(base: string, url: string, kind: string, state: InlineState): string {
-	const target = resolvePath(base, stripUrl(url));
-	if (!existsSync(target) || !statSync(target).isFile()) {
-		state.missing.push({ kind, ref: url, resolved: target });
-		throw new MissingAsset(url);
-	}
-	state.inlined.push({ kind, ref: url, bytes: statSync(target).size });
-	return target;
-}
-
-function attr(tag: string, name: string): string | null {
-	const match = new RegExp(`\\b${name}\\s*=\\s*(['"])([\\s\\S]*?)\\1`, "i").exec(tag);
-	return match ? match[2] : null;
-}
-
-/** Rewrite url(...) inside a stylesheet — fonts and background images. */
-function inlineCssUrls(css: string, cssDir: string, state: InlineState): string {
-	return css.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/g, (whole, quote: string, rawUrl: string) => {
-		const url = rawUrl.trim();
-		if (isRemote(url)) {
-			state.external.push({ kind: "css-url", ref: url });
-			return whole;
-		}
-		try {
-			return `url(${quote}${dataUri(readLocal(cssDir, url, "css-url", state))}${quote})`;
-		} catch {
-			return whole;
-		}
-	});
-}
-
 /** Fold every local stylesheet, script, image and font into one HTML string. */
 export function inlineHtml(htmlPath: string): { html: string; state: InlineState } {
-	const base = dirname(htmlPath);
-	const state: InlineState = { inlined: [], external: [], missing: [] };
-	let html = readFileSync(htmlPath, "utf-8");
-
-	html = html.replace(/<link\b[^>]*>/gi, (tag) => {
-		const rel = (attr(tag, "rel") ?? "").toLowerCase();
-		const href = attr(tag, "href");
-		if (!href || isRemote(href)) {
-			if (href) state.external.push({ kind: "link", ref: href });
-			return tag;
-		}
-		if (rel.includes("stylesheet")) {
-			let target: string;
-			try {
-				target = readLocal(base, href, "stylesheet", state);
-			} catch {
-				return tag;
-			}
-			const css = inlineCssUrls(readFileSync(target, "utf-8"), dirname(target), state);
-			// Keep marker/media attributes: shell scripts select on them.
-			const keep: string[] = [];
-			if (/\bdata-dev3-artifact-shell\b/i.test(tag)) keep.push("data-dev3-artifact-shell");
-			const media = attr(tag, "media");
-			if (media) keep.push(`media="${media}"`);
-			const open = keep.length > 0 ? `<style ${keep.join(" ")}>` : "<style>";
-			return `${open}\n${css}\n</style>`;
-		}
-		if (rel.includes("icon")) {
-			try {
-				return tag.replace(href, dataUri(readLocal(base, href, "icon", state)));
-			} catch {
-				return tag;
-			}
-		}
-		return tag;
-	});
-
-	html = html.replace(/(<script\b[^>]*>)\s*<\/script>/gi, (whole, open: string) => {
-		const src = attr(open, "src");
-		if (!src) return whole;
-		if (isRemote(src)) {
-			state.external.push({ kind: "script", ref: src });
-			return whole;
-		}
-		let target: string;
-		try {
-			target = readLocal(base, src, "script", state);
-		} catch {
-			return whole;
-		}
-		// A literal </script> inside the source would close the tag early.
-		const js = readFileSync(target, "utf-8").replaceAll("</script", "<\\/script");
-		const opening = open.replace(/\s*\bsrc\s*=\s*(['"])[\s\S]*?\1/i, "");
-		return `${opening}\n${js}\n</script>`;
-	});
-
-	html = html.replace(/(\bsrc\s*=\s*)(['"])([^'"]+)\2/gi, (whole, prefix: string, quote: string, url: string) => {
-		if (isRemote(url)) return whole;
-		if (!BINARY_EXT.has(extname(stripUrl(url)).toLowerCase())) return whole;
-		try {
-			return `${prefix}${quote}${dataUri(readLocal(base, url, "media", state))}${quote}`;
-		} catch {
-			return whole;
-		}
-	});
-
-	return { html, state };
+	const read = (path: string) => (existsSync(path) && statSync(path).isFile() ? readFileSync(path) : null);
+	return inlineHtmlSource(readFileSync(htmlPath, "utf-8"), dirname(htmlPath), read);
 }
 
 /** Credential hits block publishing; leak hits are reported and deduped. */

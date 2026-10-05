@@ -117,6 +117,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	// key, no overlay layer and no terminal blanking while it waits.
 	const modal = !offscreen && (!dock || fullscreen);
 	const [downloading, setDownloading] = useState(false);
+	const [downloadKind, setDownloadKind] = useState<"html" | "zip" | null>(null);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -205,6 +206,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		let cancelled = false;
 		setSrcDoc(null);
 		setError(false);
+		setDownloadKind(null);
 		assetsRef.current = [];
 		// A different document invalidates the query's matches — start it clean
 		// instead of showing a counter from the artifact the user just left.
@@ -215,6 +217,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 			.then((payload) => {
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
+				setDownloadKind(payload.downloadKind);
 				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
@@ -675,7 +678,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 						aria-label={themeLabel}
 						title={themeLabel}
 					><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
-					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={current.bundlePath ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
+					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={(downloadKind ?? (current.bundlePath ? "zip" : "html")) === "zip" ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
 					<button
 						type="button"
 						data-testid="artifact-viewer-open-browser"

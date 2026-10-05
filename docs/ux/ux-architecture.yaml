@@ -129,7 +129,7 @@ ux_architecture:
       observed: true
       owner: "task"
       common_actions: ["view", "resize", "fullscreen", "navigate_history", "download_html_or_zip", "open_in_external_browser"]
-      shape: "HTML entrypoint plus explicit local CSS, classic JS, and raster assets copied with --assets; assets trigger a portable ZIP download."
+      shape: "HTML entrypoint plus explicit local CSS, classic JS, and raster assets copied with --assets; downloads as one folded HTML; ZIP only for attachments."
       evidence: ["src/shared/types.ts (SharedArtifact)", "src/bun/shared-artifacts.ts", "src/cli/commands/show-artifact.ts"]
     automation:
       label: "Automation"
@@ -598,7 +598,7 @@ ux_architecture:
       layout: "Mounted by App.tsx for every entry point, three shapes. DOCKED (default): portalled via utils/artifact-dock into TaskWorkspacePane's slot, right of the terminal, behind a role=separator drag/keyboard handle at a persisted width (dev3-artifact-panel-width; min 360px, max 80%). POPUP: centred fixed z-[70] card on a scrim, ~90% of the viewport, chosen by the default-off GlobalSettings.openArtifactsInPopup (registry id/anchor artifact-popup; its copy calls it an alternative for anyone the panel freezes, not a fix). The pane refuses the slot under the inline diff, on narrow and in immersive fullscreen; that and any paneless surface get the popup. OFFSCREEN: a docked viewer whose task the route leaves renders hidden, never popping up over another board; it stays mounted (document, version, draft) and owns no key. One slot, one viewer: a flip re-hosts the live artifact; no second instance exists."
       escape: "A modal presentation (the popup, or either in fullscreen) joins the overlay-layer stack, one layer per press: find bar -> fullscreen -> close -- that is what wins Escape against the archived task modal underneath, and it claims Cmd/Ctrl+F and the arrows unconditionally. The docked panel is not modal (the terminal beside it is live), so it claims those keys only while focused."
       no_focus_trap: "The one divergence from the image lightbox: an artifact may draw a form the user sends to the agent, and the opaque-origin iframe is not in the trap tabbable set, so a trap would put it out of keyboard reach."
-      export: "No assets -> HTML download. Any --assets files -> STORE ZIP of the HTML plus safe asset paths relative to it."
+      export: "One folded HTML; ZIP only if a file is media, a download link, or not embedded statically."
       open_in_external_browser: "One neutral external-link icon in the header, grouped with download (the hand-off pair). Desktop hands the stored HTML path to the OS browser via RPC (relative assets resolve on disk); browser/remote opens a blob URL of the composed document in a new tab, synchronously inside the click so popup blockers allow it. Failure is a toast, never a dialog. No shortcut."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md", "decisions/2026/09/16/review-comments-on-the-task-record.md"]
 

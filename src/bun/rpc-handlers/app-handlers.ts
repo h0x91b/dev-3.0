@@ -29,7 +29,7 @@ import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRende
 import { forgetRendererClient, recordRendererHeartbeat } from "../renderer-watchdog";
 import { consumeArtifactFreezeNotice } from "../artifact-freeze-recovery";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
-import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactHtmlPath } from "../shared-artifacts";
+import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath } from "../shared-artifacts";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { clipboardImageToPng } from "../clipboard-image";
 
@@ -871,7 +871,7 @@ async function readImageBase64(params: { path: string }): Promise<{ dataUrl: str
 }
 
 async function readArtifactContent(params: { artifact: SharedArtifact }) {
-	return loadSharedArtifactContent(params.artifact);
+	return { ...loadSharedArtifactContent(params.artifact), downloadKind: sharedArtifactDownloadKind(params.artifact) };
 }
 
 async function readArtifactDownload(params: { artifact: SharedArtifact }) {
