@@ -88,7 +88,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 			setGlobalSettings(gs);
 			// Nothing is interactive until settings land (the picker is a skeleton and
 			// there is no add affordance), so this can seed the list outright.
-			setVariants([request.spawn?.choice ?? defaultVariant(a, gs)]);
+			// A requester's suggestion only preselects; one naming an agent that has
+			// since disappeared falls back to the default rather than an empty picker.
+			const suggested = request.suggested && a.some((agent) => agent.id === request.suggested?.agentId) ? request.suggested : null;
+			setVariants([request.spawn?.choice ?? suggested ?? defaultVariant(a, gs)]);
 		}).catch(() => {});
 	}, []);
 

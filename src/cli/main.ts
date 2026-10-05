@@ -60,7 +60,7 @@ Commands:
                                          (--brief: hide the full description if you already have it in your prompt)
   dev3 task show [--task <id>] [--notes] [--history] [--json]  Full task details
                                          (always shows current overview; --notes inlines note bodies, --history shows title/overview change log; --json prints a stable object)
-  dev3 task move [--task <id>] --status <status>  Change task status
+  dev3 task move [--task <id>] --status <status> [--agent <id> [--config <id>]]  Change task status
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|standard]  Update task fields
   dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard]  Create a new task (To Do)

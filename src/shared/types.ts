@@ -3451,6 +3451,11 @@ export interface AgentCancellationRequest {
 export interface AgentLaunchRequest {
 	/** CLI +Agent request: one pane, not a task/variant launch. */
 	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean };
+	/**
+	 * Agent/config the requesting agent suggested with `--agent`/`--config`,
+	 * already validated. Only preselects the picker — the user still decides.
+	 */
+	suggested?: LaunchVariant;
 	requestId: string;
 	taskId: string;
 	projectId: string;

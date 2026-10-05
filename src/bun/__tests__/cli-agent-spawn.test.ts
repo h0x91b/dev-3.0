@@ -10,7 +10,7 @@ vi.mock("../agent-accounts", () => ({ listAgentAccounts: vi.fn(async () => ({ co
 vi.mock("../rpc-handlers/settings-config", () => ({ settingsConfigHandlers: { checkAgentAvailability: vi.fn(async () => [{ agentId: "agent-1", installed: true }]) } }));
 vi.mock("../rpc-handlers/tmux-pty", () => ({ tmuxPtyHandlers: { spawnAgentInTask: vi.fn() } }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: vi.fn() }));
-import { listCliAgents, spawnCliAgent } from "../cli-agent-spawn";
+import { listCliAgents, spawnCliAgent, validateLaunchSuggestion } from "../cli-agent-spawn";
 import { getAllAgents } from "../agents";
 import { getTask } from "../data";
 import { tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
@@ -163,6 +163,32 @@ describe("managed CLI agent spawning", () => {
 		vi.mocked(tmuxPtyHandlers.spawnAgentInTask).mockResolvedValue({ paneId: "native-9", backend: "native", agentId: "agent-1", configId: "config-1", handoff: null });
 		expect(await spawnCliAgent(options(null))).toMatchObject({ spawn: { backend: "native" } });
 		expect(push).not.toHaveBeenCalled();
+	});
+});
+describe("validateLaunchSuggestion", () => {
+	beforeEach(() => {
+		vi.mocked(getAllAgents).mockResolvedValue([
+			{ id: "agent-1", baseCommand: "codex", configurations: [{ id: "config-1" }, { id: "config-cheap" }], defaultConfigId: "config-1" },
+			{ id: "agent-2", baseCommand: "claude", configurations: [{ id: "config-2" }], defaultConfigId: "config-2" },
+		] as any);
+	});
+	it("keeps the suggested agent and preset, with no account", async () => {
+		expect(await validateLaunchSuggestion({ agentId: "agent-1", configId: "config-cheap" })).toEqual({ agentId: "agent-1", configId: "config-cheap" });
+	});
+	it("fills the agent's own default preset, not the global one, when --config is omitted", async () => {
+		vi.mocked(settingsConfigHandlers.checkAgentAvailability).mockResolvedValue([{ agentId: "agent-2", installed: true }] as any);
+		expect(await validateLaunchSuggestion({ agentId: "agent-2", configId: null })).toEqual({ agentId: "agent-2", configId: "config-2" });
+	});
+	it.each([
+		[{ agentId: "nope", configId: null }, "Unknown agent"],
+		[{ agentId: "agent-1", configId: "config-2" }, "Unknown config"],
+		[{ agentId: null, configId: "config-1" }, "--config requires --agent"],
+	])("rejects %j instead of falling back to a default", async (choice, message) => {
+		await expect(validateLaunchSuggestion(choice)).rejects.toThrow(message);
+	});
+	it("rejects an agent that is not installed", async () => {
+		vi.mocked(settingsConfigHandlers.checkAgentAvailability).mockResolvedValue([{ agentId: "agent-1", installed: false }] as any);
+		await expect(validateLaunchSuggestion({ agentId: "agent-1", configId: null })).rejects.toThrow("not installed");
 	});
 });
 describe("listCliAgents", () => {

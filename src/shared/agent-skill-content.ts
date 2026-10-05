@@ -285,7 +285,7 @@ You may ask the user to set another task running; you never launch anything your
 - **An existing To Do task** → \`dev3 task move --task seq:<N> --status in-progress\`. Not your task, so the ordinary board move becomes an approval request.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. A scratch task has **no prompt by design** — it starts idle and you drive it with messages.
 
-It **inherits your priority** unless it has its own; only the user may change that band. Approval returns its \`seq\` and reply command. Its first prompt already names you, treats its description as the brief, and asks for file reports sent back as paths. Add standing instructions with \`--handoff-file <path>\`. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself after a few minutes** (5 by default, configurable, switchable off); a retry joins it without restarting its clock.
+It **inherits your priority** unless it has its own; only the user may change that band. Approval returns its \`seq\` and reply command. Its first prompt already names you, treats its description as the brief, and asks for file reports sent back as paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself after a few minutes** (5 by default, configurable, switchable off); a retry joins it without restarting its clock.
 
 Use it only for work that belongs in its own session — never to escape your scope, never several at once: each interrupts the user.
 

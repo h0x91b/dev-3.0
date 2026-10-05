@@ -64,6 +64,21 @@ function readHandoffFile(args: ParsedArgs): string | undefined {
 	return text.trim();
 }
 
+/**
+ * `--agent <id> [--config <id>]` on a launch request: the agent/config the
+ * approval dialog starts on. The user can still pick another; the app rejects
+ * unknown or mismatched ids instead of falling back to the default preset.
+ */
+function readLaunchSuggestion(args: ParsedArgs): { agentId: string; configId?: string } | undefined {
+	const agentId = args.flags.agent?.trim();
+	const configId = args.flags.config?.trim();
+	if (args.flags.config !== undefined && !configId) exitUsage("--config needs a preset id (see dev3 agent list).");
+	if (args.flags.agent !== undefined && !agentId) exitUsage("--agent needs an agent id (see dev3 agent list).");
+	if (configId && !agentId) exitUsage("--config requires --agent (see dev3 agent list).");
+	if (!agentId) return undefined;
+	return { agentId, ...(configId ? { configId } : {}) };
+}
+
 function formatDate(iso: string): string {
 	const d = new Date(iso);
 	return d.toLocaleDateString("en-GB", {
@@ -217,7 +232,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
@@ -238,10 +253,13 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
-		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args));
+		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args));
 	}
 	if (args.flags["handoff-file"] !== undefined) {
 		exitUsage("--handoff-file only applies to a launch: `task create --scratch --run` or `task move --status in-progress`.");
+	}
+	if (args.flags.agent !== undefined || args.flags.config !== undefined) {
+		exitUsage("--agent/--config only apply to a launch: `task create --scratch --run` or `task move --status in-progress`.");
 	}
 
 	const prFlag = args.flags.pr?.trim();
@@ -766,6 +784,7 @@ async function createScratchAndRun(
 	socketPath: string,
 	context: CliContext | null,
 	handoffNote?: string,
+	suggestion?: { agentId: string; configId?: string },
 ): Promise<void> {
 	if (!context?.taskId) {
 		exitUsage("Run this from inside a task worktree — the new scratch task reports back to yours.");
@@ -777,6 +796,7 @@ async function createScratchAndRun(
 			projectId,
 			sourceTaskId: context.taskId,
 			...(handoffNote ? { handoffNote } : {}),
+			...suggestion,
 		}, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
@@ -863,7 +883,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
-		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file",
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config",
 		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
 	]);
 	const taskId = resolveTaskId(args, context);
@@ -876,6 +896,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` and \`cancelled\` (both ask the user for approval; \`todo\` asks too when it would reset a running task); or a custom column ID (see \`dev3 current\`)`);
 	}
 	// Non-built-in values may be custom column IDs — let the server validate
+
+	// Before the completed/cancelled/todo detours, which would drop it silently.
+	const suggestion = readLaunchSuggestion(args);
+	if (suggestion && !movesForeignTaskIntoActiveColumn(taskId, newStatus, context)) {
+		exitUsage("--agent/--config only apply when starting ANOTHER task: run from your worktree with --task <other> --status in-progress.");
+	}
 
 	const ifStatus = args.flags["if-status"];
 	const ifStatusNot = args.flags["if-status-not"];
@@ -916,6 +942,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// carries it and the server ignores it.
 	const handoffNote = readHandoffFile(args);
 	if (handoffNote) params.handoffNote = handoffNote;
+	if (suggestion) Object.assign(params, suggestion);
 
 	// The approval dialog can sit open for minutes, so a move that might turn
 	// into one waits on the long timeout. A silent move still answers instantly.

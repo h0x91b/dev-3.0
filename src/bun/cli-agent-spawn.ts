@@ -54,6 +54,16 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	return { ...choice, agentId: id, configId };
 }
 
+/**
+ * A requesting agent's `--agent`/`--config` suggestion for a task launch dialog,
+ * held to the same checks as a spawn. Never carries an account: that stays the
+ * human's pick in the dialog.
+ */
+export async function validateLaunchSuggestion(choice: Pick<LaunchVariant, "agentId" | "configId">): Promise<LaunchVariant> {
+	if (!choice.agentId) throw new Error("--config requires --agent (see dev3 agent list).");
+	return validateChoice({ agentId: choice.agentId, configId: choice.configId });
+}
+
 function assertRunning(task: Task): void {
 	if (!task.worktreePath || task.hibernated || task.draft || !ACTIVE_STATUSES.includes(task.status)) throw new Error("The target task must have a running terminal and worktree — start or wake it first.");
 }

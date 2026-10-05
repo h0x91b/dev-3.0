@@ -78,6 +78,10 @@ vi.mock("../settings", () => ({
 	recordFavoriteUsages: vi.fn(),
 }));
 
+vi.mock("../cli-agent-spawn", () => ({
+	validateLaunchSuggestion: vi.fn(),
+}));
+
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -97,6 +101,7 @@ import { moveTask, launchTaskWithAgentChoice, createScratchTask, deleteTask, get
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
 import { loadSettings } from "../settings";
+import { validateLaunchSuggestion } from "../cli-agent-spawn";
 
 const { handleRequest } = await import("../cli-socket-server");
 
@@ -762,5 +767,137 @@ describe("task.move — agent-initiated launch with variants", () => {
 				{ variantIndex: 2, replyCommand: 'dev3 message --task seq:7 --variant 2 --subject "what your reply is about" "your message"' },
 			],
 		});
+	});
+});
+
+describe("launch requests with a suggested agent/config (issue #1911)", () => {
+	const SUGGESTED = { agentId: "builtin-codex", configId: "codex-low" };
+
+	async function startMove(params: Record<string, unknown> = {}) {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID, ...params,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const payload = pushFn.mock.calls[0]![1] as Record<string, unknown>;
+		return { respPromise, payload };
+	}
+
+	beforeEach(() => {
+		vi.mocked(validateLaunchSuggestion).mockResolvedValue(SUGGESTED);
+		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 0 } as never);
+	});
+
+	it("validates the suggestion and hands it to the dialog as a preselection", async () => {
+		const { respPromise, payload } = await startMove({ agentId: "builtin-codex", configId: "codex-low" });
+		expect(validateLaunchSuggestion).toHaveBeenCalledWith({ agentId: "builtin-codex", configId: "codex-low" });
+		expect(payload.suggested).toEqual(SUGGESTED);
+		resolveAgentRequest(payload.requestId as string, { approved: false });
+		expect((await respPromise).data).toEqual({ approved: false });
+	});
+
+	it("launches what the user picked when they override the suggestion", async () => {
+		const { respPromise, payload } = await startMove({ agentId: "builtin-codex", configId: "codex-low" });
+		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] };
+		resolveAgentRequest(payload.requestId as string, { approved: true, launch });
+		await respPromise;
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { ...launch, priority: "P3" } }));
+	});
+
+	it("an unattended auto-approval launches the suggestion, not the global default", async () => {
+		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 1 } as never);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const { respPromise } = await startMove({ agentId: "builtin-codex", configId: "codex-low" });
+			vi.advanceTimersByTime(60_000);
+			await respPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { variants: [SUGGESTED], priority: "P3" } }));
+	});
+
+	it("without flags: no suggestion, no validation, and auto-approval keeps the default variant", async () => {
+		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 1 } as never);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		let payload: Record<string, unknown>;
+		try {
+			const started = await startMove();
+			payload = started.payload;
+			vi.advanceTimersByTime(60_000);
+			await started.respPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(payload).not.toHaveProperty("suggested");
+		expect(validateLaunchSuggestion).not.toHaveBeenCalled();
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: { variants: [{ agentId: null, configId: null }], priority: "P3" },
+		}));
+	});
+
+	it("fails an invalid suggestion before any dialog opens", async () => {
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(validateLaunchSuggestion).mockRejectedValue(new Error('Unknown config "codex-max" for agent "builtin-codex".'));
+
+		const resp = await handleRequest(moveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
+			agentId: "builtin-codex", configId: "codex-max",
+		}));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Unknown config");
+		expect(pushFn).not.toHaveBeenCalled();
+		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
+	});
+
+	it("refuses an account id — the account stays the user's pick", async () => {
+		setupBoard(makeTask());
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+		const resp = await handleRequest(moveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
+			agentId: "builtin-codex", accountId: "slot-1",
+		}));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Account selection is not supported");
+	});
+
+	it("refuses a suggestion on a move that is not a launch", async () => {
+		setupBoard(makeTask());
+		const resp = await handleRequest(moveRequest({
+			taskId: REQUESTER_ID, newStatus: "review-by-ai", projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "builtin-codex",
+		}));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("only apply when the move asks to start");
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("scratch: an invalid suggestion creates no placeholder task", async () => {
+		setupBoard(makeTask());
+		vi.mocked(validateLaunchSuggestion).mockRejectedValue(new Error('Unknown agent "nope" — see dev3 agent list.'));
+		const resp = await handleRequest({ id: "req-1", method: "task.createScratchAndRun", params: { projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "nope" } });
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Unknown agent");
+		expect(createScratchTask).not.toHaveBeenCalled();
+	});
+
+	it("scratch: a valid suggestion preselects the dialog", async () => {
+		const scratch = makeTask({ title: "Scratch — 14:32", scratch: true, seq: 9 });
+		setupBoard(scratch);
+		vi.mocked(createScratchTask).mockResolvedValue(scratch);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const respPromise = handleRequest({ id: "req-1", method: "task.createScratchAndRun", params: { projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "builtin-codex", configId: "codex-low" } });
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const payload = pushFn.mock.calls[0]![1] as Record<string, unknown>;
+		expect(payload.suggested).toEqual(SUGGESTED);
+		resolveAgentRequest(payload.requestId as string, { approved: false });
+		await respPromise;
 	});
 });

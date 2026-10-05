@@ -138,6 +138,34 @@ describe("AgentLaunchRequestModal", () => {
 		});
 	});
 
+	it("starts on the requester's suggested agent/config instead of the global default (issue #1911)", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ suggested: { agentId: "builtin-claude", configId: "claude-plan" } }));
+
+		const launch = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(launch).toBeEnabled());
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, {
+			variants: [{ agentId: "builtin-claude", configId: "claude-plan" }],
+			priority: "P2",
+		});
+	});
+
+	it("falls back to the global default when the suggested agent no longer exists", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ suggested: { agentId: "gone-agent", configId: "gone-config" } }));
+
+		const launch = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(launch).toBeEnabled());
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, {
+			variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
+			priority: "P2",
+		});
+	});
+
 	it("answers with a refusal on Decline, carrying no launch choice", async () => {
 		const user = userEvent.setup();
 		const { onRespond } = renderModal();

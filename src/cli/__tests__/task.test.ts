@@ -2185,6 +2185,59 @@ describe("task move — agent asking to start another task", () => {
 		});
 	});
 
+	describe("--agent/--config (issue #1911)", () => {
+		const approved = () => okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] });
+
+		it("passes the suggested agent and preset with the launch request", async () => {
+			mockSend.mockResolvedValue(approved());
+
+			await handleTask("move", args([], { task: OTHER, status: "in-progress", agent: "builtin-codex", config: "codex-low" }), SOCKET, CTX);
+
+			expect(moveCall(mockSend)![2]!).toMatchObject({ agentId: "builtin-codex", configId: "codex-low" });
+		});
+
+		it("passes the agent alone when --config is omitted", async () => {
+			mockSend.mockResolvedValue(approved());
+
+			await handleTask("move", args([], { task: OTHER, status: "in-progress", agent: "builtin-codex" }), SOCKET, CTX);
+
+			expect(moveCall(mockSend)![2]!.agentId).toBe("builtin-codex");
+			expect(moveCall(mockSend)![2]!).not.toHaveProperty("configId");
+		});
+
+		it("sends no suggestion without the flags, so the dialog keeps the global default", async () => {
+			mockSend.mockResolvedValue(approved());
+
+			await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+			expect(moveCall(mockSend)![2]!).not.toHaveProperty("agentId");
+			expect(moveCall(mockSend)![2]!).not.toHaveProperty("configId");
+		});
+
+		it("refuses --config without --agent", async () => {
+			await expect(
+				handleTask("move", args([], { task: OTHER, status: "in-progress", config: "codex-low" }), SOCKET, CTX),
+			).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain("--config requires --agent");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		it("refuses the flags on a move that is not a launch", async () => {
+			await expect(
+				handleTask("move", args([], { status: "review-by-ai", agent: "builtin-codex" }), SOCKET, CTX),
+			).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain("only apply when starting ANOTHER task");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		it("refuses the flags on a completion request instead of dropping them", async () => {
+			await expect(
+				handleTask("move", args([], { task: OTHER, status: "completed", agent: "builtin-codex" }), SOCKET, CTX),
+			).rejects.toThrow("EXIT_3");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+	});
+
 	it("keeps the agent's OWN status move on the fast path", async () => {
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-ai" as const }));
 
@@ -2245,6 +2298,27 @@ describe("task create --scratch --run", () => {
 			{ timeoutMs: 10 * 60 * 1000 },
 		);
 		expect(stdoutOutput).toContain("seq:91");
+	});
+
+	it("passes --agent/--config as the dialog's suggested choice", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 91, title: "Scratch — 14:32", launched: [{ variantIndex: null, replyCommand: "x" }] }));
+
+		await handleTask("create", args([], { scratch: "true", run: "true", agent: "builtin-codex", config: "codex-low" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"task.createScratchAndRun",
+			{ projectId: "proj-001", sourceTaskId: CTX.taskId, agentId: "builtin-codex", configId: "codex-low" },
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+	});
+
+	it("refuses --agent on a plain task create, which launches nothing", async () => {
+		await expect(
+			handleTask("create", args([], { title: "Later", agent: "builtin-codex", project: "proj-001" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--agent/--config only apply to a launch");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("exits with the launch-declined code when the scratch request is refused", async () => {

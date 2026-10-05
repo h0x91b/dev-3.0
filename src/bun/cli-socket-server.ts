@@ -16,9 +16,9 @@ import { SharedImageError, saveSharedImage, saveSharedVideo } from "./shared-ima
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
-import { createAgentRequest, getAgentRequestState, joinAgentRequest } from "./agent-requests";
+import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice } from "./agent-requests";
 import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../shared/agent-approval";
-import type { AgentLaunchChoice } from "../shared/types";
+import type { AgentLaunchChoice, LaunchVariant } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import * as taskNotes from "./board-operations/task-notes";
@@ -617,6 +617,25 @@ function launcherHandoffNote(params: Record<string, unknown>): string | null {
 	return raw ? raw : null;
 }
 
+function launchSuggestionRequested(params: Record<string, unknown>): boolean {
+	return params.agentId != null || params.configId != null;
+}
+
+/**
+ * The agent/config a launch request suggests (`--agent`/`--config`), validated
+ * BEFORE any dialog or placeholder task exists: a bad id must fail loudly, never
+ * fall back to the default preset. Null when nothing was suggested.
+ */
+async function resolveLaunchSuggestion(params: Record<string, unknown>): Promise<LaunchVariant | null> {
+	if ("accountId" in params) throw new Error("Account selection is not supported for launch requests — the user picks the account in the approval dialog.");
+	if (!launchSuggestionRequested(params)) return null;
+	const { validateLaunchSuggestion } = await import("./cli-agent-spawn");
+	return validateLaunchSuggestion({
+		agentId: typeof params.agentId === "string" ? params.agentId : null,
+		configId: typeof params.configId === "string" ? params.configId : null,
+	});
+}
+
 /** {@link seqIsShared} against a project's live task list; pessimistic if it cannot be read. */
 async function isSeqSharedOnBoard(project: Project, task: Task): Promise<boolean> {
 	try {
@@ -677,6 +696,8 @@ async function requestAgentLaunchApproval(opts: {
 	requester: AgentMessageSource;
 	/** The launcher's standing text, already read from its `--handoff-file`. */
 	launcherNote?: string | null;
+	/** Validated `--agent`/`--config` suggestion; only preselects the dialog. */
+	suggested?: LaunchVariant | null;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	const push = getPushMessage();
@@ -689,12 +710,16 @@ async function requestAgentLaunchApproval(opts: {
 	// deliberately does not do this — it destroys a worktree.
 	const defaultPriority = await resolveLaunchPriority(task, requester);
 	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+	const joining = getAgentRequestState("launch", task.id).state === "pending";
 	const { requestId, decision, autoApproveAt } = createAgentRequest(
 		"launch",
 		task.id,
 		project.id,
 		{ autoApproveAfterMs },
 	);
+	// Seeds what an unwatched auto-approval launches. A joined retry must not
+	// overwrite a pick the user may already have made in the open dialog.
+	if (opts.suggested && !joining) setAgentRequestLaunchChoice(requestId, { variants: [opts.suggested] });
 	// Pushed on EVERY attempt, joined retries included — see the note on
 	// `task.requestCancellation`. Clients dedup by `requestId`, so a dialog that
 	// is already on screen is untouched and nothing here re-arms the countdown.
@@ -713,6 +738,7 @@ async function requestAgentLaunchApproval(opts: {
 		defaultPriority,
 		canAddVariants: canSpawnAsVariants(task),
 		autoApproveAt,
+		...(opts.suggested ? { suggested: opts.suggested } : {}),
 	});
 
 	const answer = await decision;
@@ -1271,6 +1297,8 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const project = await data.getProject(projectId);
+		// Before the placeholder exists, so a bad id leaves nothing behind.
+		const suggested = await resolveLaunchSuggestion(params);
 		const task = await createScratchTask(project.id);
 		const requester = await resolveAgentMessageSource(params, task.id);
 		if (!requester) {
@@ -1284,6 +1312,7 @@ const handlers: Record<string, Handler> = {
 			targetStatus: "in-progress",
 			requester,
 			launcherNote: launcherHandoffNote(params),
+			suggested,
 		});
 		// A declined scratch task has no reason to exist — it was created only to
 		// have something for the dialog to launch. Leaving it would litter To Do
@@ -2122,6 +2151,7 @@ const handlers: Record<string, Handler> = {
 		const customColumns = project.customColumns ?? [];
 		const customColumn = findByIdPrefix(customColumns, newStatus, "custom column");
 		if (customColumn) {
+			if (launchSuggestionRequested(params)) throw new Error("--agent/--config only apply when the move asks to start another task's agent — a custom column is a plain move.");
 			return moveTask({
 				taskId: task.id,
 				projectId: project.id,
@@ -2154,13 +2184,18 @@ const handlers: Record<string, Handler> = {
 			log.info("Ignoring own-agent activation of a To Do task", { taskId: task.id.slice(0, 8), to: builtinStatus });
 			return task;
 		}
-		if (requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot })) {
+		const isLaunch = requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot });
+		if (launchSuggestionRequested(params) && !isLaunch) {
+			throw new Error("--agent/--config only apply when the move asks to start another task's agent — this one is a plain move.");
+		}
+		if (isLaunch) {
 			return requestAgentLaunchApproval({
 				project,
 				task,
 				targetStatus: builtinStatus,
 				requester,
 				launcherNote: launcherHandoffNote(params),
+				suggested: await resolveLaunchSuggestion(params),
 			});
 		}
 

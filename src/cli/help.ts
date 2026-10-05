@@ -110,7 +110,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -138,6 +138,9 @@ const COMMANDS: CommandHelp[] = [
 					"--handoff-file <path> Append this file's text to the handoff note the new agent",
 					"                      receives, for standing instructions you would otherwise",
 					"                      message by hand. Launches only; unreadable/empty exits 3.",
+					"--agent <id> [--config <id>]  With --scratch --run: preselect this agent/preset in",
+					"                      the approval dialog (ids from `dev3 agent list`). The user",
+					"                      can still pick another; unknown/mismatched ids fail.",
 				],
 			},
 			{
@@ -164,7 +167,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status>",
+				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
@@ -183,6 +186,11 @@ const COMMANDS: CommandHelp[] = [
 					"--handoff-file <path>    Append this file's text to that handoff note, for",
 					"                         standing instructions you would otherwise message by",
 					"                         hand. Only read when the move becomes a launch.",
+					"--agent <id>             Preselect this agent in that approval dialog, and",
+					"--config <id>            this preset of it (ids from `dev3 agent list`). The",
+					"                         user keeps the final pick; an unattended auto-approval",
+					"                         launches the suggestion. Unknown or mismatched ids fail",
+					"                         instead of falling back to the default. Launches only.",
 				],
 			},
 			{
