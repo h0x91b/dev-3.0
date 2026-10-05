@@ -26,6 +26,7 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"claude-opus-5-5[1m]": "Opus 5.5",
 	"claude-opus-5[1m]": "Opus 5",
 	"claude-opus-4-8[1m]": "Opus 4.8",
+	"claude-sonnet-5-5": "Sonnet 5.5",
 	"claude-sonnet-5": "Sonnet 5",
 	"claude-opus-4-7[1m]": "Opus 4.7",
 	// Codex

@@ -412,12 +412,42 @@ describe("DEFAULT_AGENTS", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
 		expect(claude).toBeDefined();
 
-		const sonnetConfigs = claude!.configurations.filter((config) => config.id.includes("-sonnet5"));
+		const sonnetConfigs = claude!.configurations.filter((config) => /-sonnet5(-|$)/.test(config.id));
 		expect(sonnetConfigs.length).toBeGreaterThan(0);
 		for (const config of sonnetConfigs) {
 			expect(config.model).toBe("claude-sonnet-5");
 			expect(config.version).toBeGreaterThan(0);
 		}
+	});
+
+	it("uses the native-1M Sonnet 5.5 model in Sonnet 5.5 presets", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const sonnet55Configs = claude!.configurations.filter((config) => /-sonnet55(-|$)/.test(config.id));
+		expect(sonnet55Configs.map((c) => c.id)).toEqual([
+			"claude-auto-sonnet55-medium",
+			"claude-auto-sonnet55-xhigh",
+			"claude-bypass-sonnet55-medium",
+			"claude-bypass-sonnet55-xhigh",
+			"claude-default-sonnet55",
+			"claude-plan-sonnet55",
+			"claude-approvals-sonnet55",
+		]);
+		for (const config of sonnet55Configs) {
+			expect(config.model).toBe("claude-sonnet-5-5");
+		}
+	});
+
+	it("lists Sonnet 5.5 directly ahead of Sonnet 5 in every Claude mode group", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const ids = claude!.configurations.map((c) => c.id);
+		for (const sonnet5 of ids.filter((id) => /-sonnet5(-|$)/.test(id))) {
+			expect(ids[ids.indexOf(sonnet5) - 1], sonnet5).toBe(sonnet5.replace("-sonnet5", "-sonnet55"));
+		}
+	});
+
+	it("keeps Claude's default on Opus 5.5, not the new Sonnet 5.5", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		expect(claude!.defaultConfigId).toBe("claude-auto-opus55-medium");
 	});
 
 	it("uses GPT-6 Astra Medium bypass as the default Codex configuration", () => {

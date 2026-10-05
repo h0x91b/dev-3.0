@@ -20,6 +20,10 @@ describe("resolveModelRate", () => {
 		expect(resolveModelRate("claude-sonnet-5")).toMatchObject({ input: 2, output: 10 });
 	});
 
+	it("prices Sonnet 5.5 at the same $2/$10 tier as Sonnet 5, cache reads at $0.20", () => {
+		expect(resolveModelRate("claude-sonnet-5-5")).toEqual({ input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 });
+	});
+
 	it("keeps Sonnet 3.x/4.x at $3/$15", () => {
 		expect(resolveModelRate("claude-sonnet-4-6")).toMatchObject({ input: 3, output: 15 });
 	});

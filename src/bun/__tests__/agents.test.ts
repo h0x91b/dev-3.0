@@ -1611,6 +1611,7 @@ describe("claudeModelFamily", () => {
 	it("classifies dev3 preset model ids into alias families", () => {
 		expect(claudeModelFamily("claude-opus-4-8[1m]")).toBe("opus");
 		expect(claudeModelFamily("claude-sonnet-5")).toBe("sonnet");
+		expect(claudeModelFamily("claude-sonnet-5-5")).toBe("sonnet");
 		expect(claudeModelFamily("claude-haiku-4-5")).toBe("haiku");
 		expect(claudeModelFamily("claude-fable-5")).toBe("fable");
 		expect(claudeModelFamily("claude-fable-5-1[1m]")).toBe("fable");
