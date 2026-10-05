@@ -1,5 +1,5 @@
 {
-  "setupScript": "echo setup\nbun install\nbun scripts/generate-build-info.ts\nbun scripts/generate-changelog.ts",
+  "setupScript": "echo setup\nbun scripts/generate-build-info.ts\nbun scripts/generate-changelog.ts\nbun install",
   "devScript": "bun run dev",
   "portCount": 1,
   "clonePaths": [

@@ -1,0 +1,1 @@
+The repo's own task setup script now generates `build-info.generated.ts` and `changelog-bundled.ts` before `bun install` (which stays last, so a failed install still reports setup as failed on both bash and PowerShell), letting a fresh worktree run tests before `bun run lint` without suites such as `doctor.test.ts` failing with "Cannot find module".

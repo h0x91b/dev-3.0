@@ -1,1 +1,0 @@
-The repo's own task setup script now generates `build-info.generated.ts` and `changelog-bundled.ts`, so a fresh worktree can run tests before `bun run lint` without suites such as `doctor.test.ts` failing with "Cannot find module".
