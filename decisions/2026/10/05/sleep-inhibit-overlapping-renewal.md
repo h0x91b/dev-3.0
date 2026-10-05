@@ -18,11 +18,14 @@ agents are idle". The keep-awake policy itself never depended on agent activity 
 
 `startInhibit()` arms a timer (`armRenewal`) that fires 5 minutes before the safety timeout; `handOver()`
 spawns the successor first and only then kills the old process. If the successor fails to start, the old
-process is kept. The renewal does not depend on the resource-monitor poll. The policy (setting OR remote
+process is kept. The renewal does not depend on the resource-monitor poll. The macOS command also gained `-i`:
+`-s` alone holds only on AC power, so an idle laptop on battery used to sleep with the setting on. The policy (setting OR remote
 access) is unchanged, so pending scheduled messages, deferred launches and automations are covered because
 the app keeps the machine awake for its whole run.
 
 ## Risks
+
+With `-i`, a laptop on battery no longer sleeps from idle while dev3 is open, so it drains faster.
 
 `setTimeout` and the inhibit process's own timer must agree on whether host sleep counts; both use clocks
 that pause during sleep, and the 5-minute lead absorbs drift. If the old process exits first anyway, the
@@ -34,5 +37,5 @@ poll still respawns it as before.
   two backends would diverge.
 - Adding pending timers to the keep-awake condition: a no-op while the setting is on (already always-on), and
   it must not override an explicit user disable.
-- Adding `-i` so battery idle sleep is also blocked: `-s` only holds on AC power, but changing battery
-  behaviour is a user decision, left open.
+- Keeping `-s` only, to spare the battery: rejected by the user, because the setting promises "keep the
+  system awake" and turning it off is still one click away.

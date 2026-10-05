@@ -69,7 +69,7 @@ describe("caffeinate safety-timeout renewal", () => {
 		vi.advanceTimersByTime(1 * MINUTE);
 		expect(events).toEqual(["spawn 100", "spawn 101", "kill 100"]);
 		const [cmd] = spawn.mock.calls[1] as [string[]];
-		expect(cmd).toEqual(["/usr/bin/caffeinate", "-s", "-t", "3600"]);
+		expect(cmd).toEqual(["/usr/bin/caffeinate", "-i", "-s", "-t", "3600"]);
 		shutdownCaffeinate();
 	});
 

@@ -107,11 +107,12 @@ function buildInhibitCommand(): string[] | null {
 	if (!backend) return null;
 
 	if (backend === "caffeinate") {
-		// -s: prevent system sleep (allows display sleep)
+		// -i: prevent idle sleep, on battery too; -s: prevent system sleep, AC only.
+		// Neither keeps the display on.
 		// -t: auto-exit after timeout
 		// Use the absolute path resolved by `which` — spawning the bare name
 		// intermittently failed with posix_spawn ENOENT (PATH drift at runtime).
-		return [detectedBackendPath ?? "caffeinate", "-s", "-t", String(INHIBIT_TIMEOUT_SECS)];
+		return [detectedBackendPath ?? "caffeinate", "-i", "-s", "-t", String(INHIBIT_TIMEOUT_SECS)];
 	}
 
 	// systemd-inhibit wraps a command; we use `sleep` as the payload
