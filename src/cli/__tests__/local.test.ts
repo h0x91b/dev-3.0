@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { expandLocalAlias, LOCAL_HELP } from "../commands/local";
+import { expandLocalAlias, localHostError, LOCAL_HELP } from "../commands/local";
 import { parseArgs } from "../args";
 import { buildExecStartArgs } from "../commands/remote-service";
 import { computeDetachedChildArgs } from "../commands/remote";
@@ -42,6 +42,36 @@ describe("expandLocalAlias", () => {
 
 	it("lets a user --host override the alias default", () => {
 		expect(remoteFlags(["local", "--host", "localhost"]).host).toBe("localhost");
+	});
+});
+
+describe("localHostError", () => {
+	const check = (argv: string[]) => localHostError(expandLocalAlias(argv));
+
+	it.each([
+		[["local"]],
+		[["local", "--host", "localhost"]],
+		[["local", "start", "--host", "127.0.0.1"]],
+		[["local", "install-service", "--host=localhost"]],
+	])("accepts a loopback bind: %j", (argv) => {
+		expect(check(argv)).toBeNull();
+	});
+
+	it.each([
+		[["local", "--host", "0.0.0.0"]],
+		[["local", "restart", "--host", "0.0.0.0"]],
+		[["local", "install-service", "--host=0.0.0.0"]],
+		[["local", "--host", "1.2.3.4"]],
+	])("refuses a bind beyond this machine: %j", (argv) => {
+		expect(check(argv)).toContain("this machine only");
+	});
+
+	it("leaves a bare --host to remote's own missing-value error", () => {
+		expect(check(["local", "--host"])).toBeNull();
+	});
+
+	it("ignores subcommands that start nothing", () => {
+		expect(check(["local", "status", "--host", "0.0.0.0"])).toBeNull();
 	});
 });
 

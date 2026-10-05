@@ -17,7 +17,7 @@ import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
-import { LOCAL_HELP, expandLocalAlias } from "./commands/local";
+import { LOCAL_HELP, expandLocalAlias, localHostError } from "./commands/local";
 import { handleGui } from "./commands/gui";
 import { handleConversations, handleImportCurrentSession, resolveImportTarget } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
@@ -189,6 +189,10 @@ async function main(): Promise<void> {
 		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
 	const rawArgs = argvRest[0] === "local" ? expandLocalAlias(argvRest) : argvRest;
+	if (argvRest[0] === "local") {
+		const problem = localHostError(rawArgs);
+		if (problem) exitUsage(problem);
+	}
 
 	// Every short print-and-exit command may have its stdout closed early by a
 	// downstream consumer (`dev3 … | head`, `| grep -m1`, quitting a pager).

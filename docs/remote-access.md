@@ -36,8 +36,10 @@ keeps its QR).
 `dev3 local` is a shorthand for `dev3 remote --no-tunnel --host 127.0.0.1`. It takes every
 `dev3 remote` subcommand. `start`, `restart` and `install-service` get the two flags added; the
 others pass through unchanged. Flags you pass come after the added ones and win, so
-`dev3 local --host localhost` binds `localhost`. For example, `dev3 local install-service --port 8090`
-writes a loopback-only systemd unit.
+`dev3 local --host localhost` binds `localhost`; any other `--host` is refused, since that would put
+the server on the LAN. For example, `dev3 local install-service --port 8090` writes a loopback-only
+systemd unit. There is still one server: `dev3 local stop`, `status` and `restart` act on whichever one
+is running, including a tunnelled server started with plain `dev3 remote`.
 
 ## Background lifecycle (for SSH boxes)
 
