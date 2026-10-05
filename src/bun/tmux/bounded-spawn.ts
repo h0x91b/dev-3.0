@@ -8,7 +8,7 @@
  * with it (it froze startup on "Checking system…" — see
  * decisions/2026/08/16/bound-every-tmux-spawn.md).
  *
- * Internal to the tmux module: TmuxClient and ./binary are the only consumers.
+ * Consumers: TmuxClient, ./binary, and ../probe-spawn (the pollers' ps/vm_stat probes).
  */
 import type { spawn } from "../spawn";
 

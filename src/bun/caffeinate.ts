@@ -32,7 +32,7 @@ const MAX_SPAWN_FAILURES = 3;
 const QUICK_EXIT_MS = 5000;
 
 // Safety timeout: the inhibit process exits on its own after this period.
-// The 10-second poll cycle restarts it if sessions are still active.
+// The 10-second sleep-inhibit watch restarts it while inhibition is wanted.
 // This prevents the process from running forever if the app crashes
 // or the poll loop breaks.
 const INHIBIT_TIMEOUT_SECS = 3600; // 1 hour
@@ -213,11 +213,11 @@ function stopInhibit(): void {
 }
 
 /**
- * Called from resource-monitor's poll cycle. Starts or stops sleep
- * inhibition. While the setting is enabled, sleep is inhibited for the whole
- * time the app is running (the recurring poll keeps the inhibit process
- * alive). When remote access is active, inhibition is forced on regardless of
- * the setting, since the machine must stay reachable.
+ * Starts or stops sleep inhibition — on every tick of the sleep-inhibit watch,
+ * and at once when the setting is toggled. While the setting is enabled, sleep
+ * is inhibited for the whole time the app is running (the watch restarts an
+ * exited inhibit process). When remote access is active, inhibition is forced
+ * on regardless of the setting, since the machine must stay reachable.
  */
 export function updateCaffeinateState(remoteActive: boolean): void {
 	const enabled = remoteActive || isPreventSleepEnabled();
@@ -228,10 +228,55 @@ export function updateCaffeinateState(remoteActive: boolean): void {
 	}
 }
 
+const WATCH_INTERVAL_MS = 10_000;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+let readRemoteActive: (() => boolean) | null = null;
+let watchTickFailing = false;
+
+function watchTick(): void {
+	try {
+		updateCaffeinateState(readRemoteActive?.() ?? false);
+		watchTickFailing = false;
+	} catch (err) {
+		// Logged once per failing streak — the interval keeps retrying regardless.
+		if (!watchTickFailing) log.error("Sleep inhibit watch tick failed", { error: String(err) });
+		watchTickFailing = true;
+	}
+}
+
 /**
- * Force-stop sleep inhibition. Called on app shutdown.
+ * Re-evaluate sleep inhibition every 10 s on a timer of its own. It used to ride
+ * the resource-monitor tick, so a tick stuck on an await stopped the respawn of
+ * an exited inhibit process for good. Every tick here is synchronous: nothing
+ * it waits on can stall the next one.
+ *
+ * `loadRemoteReader` resolves the remote-access check lazily, so this module
+ * stays free of the electrobun-heavy remote-access import.
+ */
+export function startSleepInhibitWatch(loadRemoteReader: () => Promise<() => boolean>): void {
+	if (watchTimer) return;
+	watchTimer = setInterval(watchTick, WATCH_INTERVAL_MS);
+	loadRemoteReader().then(
+		(reader) => {
+			readRemoteActive = reader;
+			if (watchTimer) watchTick();
+		},
+		(err) => log.warn("Remote-access check unavailable for the sleep inhibit watch", { error: String(err) }),
+	);
+}
+
+/** Stop re-evaluating. Leaves a running inhibit process alone. */
+export function stopSleepInhibitWatch(): void {
+	if (watchTimer) clearInterval(watchTimer);
+	watchTimer = null;
+}
+
+/**
+ * Force-stop sleep inhibition. Called on app shutdown. Stops the watch first,
+ * or its next tick would start a fresh inhibit process during the quit.
  */
 export function shutdownCaffeinate(): void {
+	stopSleepInhibitWatch();
 	stopInhibit();
 }
 

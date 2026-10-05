@@ -5,6 +5,7 @@ import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionF
 import { getPortAssignments } from "./port-pool";
 import { resolveOperationalProjectConfig } from "./repo-config";
 import { createLogger } from "./logger";
+import { runProbeText } from "./probe-spawn";
 import { cleanupTaskTunnels } from "./port-tunnels";
 import { classifyAgainstStartSnapshot, getTaskStartSnapshot, mergePortInfos } from "./dev-server-ports";
 
@@ -32,6 +33,12 @@ async function runText(cmd: string[]): Promise<string> {
 		return "";
 	}
 }
+
+/**
+ * A healthy `ps -eo` over the whole table takes ~120 ms, and seconds under heavy
+ * load. One that runs past this is stuck, and both pollers share its promise.
+ */
+const PROCESS_TABLE_TIMEOUT_MS = 15_000;
 
 // ── Shared process info cache ─────────────────────────────────────
 
@@ -110,7 +117,7 @@ export function collectProcessInfo(options?: { maxAgeMs?: number }): Promise<Pro
 	const maxAge = options?.maxAgeMs ?? PROCESS_INFO_CACHE_MS;
 	if (_processInfoCache && now - _processInfoCache.startedAt < maxAge) return _processInfoCache.promise;
 
-	const promise = runText(["ps", "-eo", "pid=,ppid=,rss=,%cpu=,args="]).then(parseProcessInfoOutput);
+	const promise = runProbeText(["ps", "-eo", "pid=,ppid=,rss=,%cpu=,args="], PROCESS_TABLE_TIMEOUT_MS).then(parseProcessInfoOutput);
 	_processInfoCache = { promise, startedAt: now };
 	return promise;
 }

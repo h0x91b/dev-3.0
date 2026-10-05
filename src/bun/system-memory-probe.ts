@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { spawn } from "./spawn";
+import { runProbeText } from "./probe-spawn";
 import { parseLinuxMemory, parseMacMemory, type MemoryFacts } from "./system-memory";
 
 /**
@@ -13,20 +13,11 @@ import { parseLinuxMemory, parseMacMemory, type MemoryFacts } from "./system-mem
 /** Total RAM never changes while the app runs — read once, keep forever. */
 let cachedTotalMemory: string | null = null;
 
-/**
- * Run a command and return stdout, or "" on any failure. Stdout is drained
- * concurrently with awaiting exit — awaiting `exited` first deadlocks on a full
- * pipe buffer (same reason as port-scanner's runText).
- */
-async function runText(cmd: string[]): Promise<string> {
-	try {
-		const proc = spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-		if (exitCode !== 0) return "";
-		return stdout;
-	} catch {
-		return "";
-	}
+/** vm_stat and sysctl answer in milliseconds; past this the child is stuck. */
+const PROBE_TIMEOUT_MS = 10_000;
+
+function runText(cmd: string[]): Promise<string> {
+	return runProbeText(cmd, PROBE_TIMEOUT_MS);
 }
 
 async function readTextFile(path: string): Promise<string> {

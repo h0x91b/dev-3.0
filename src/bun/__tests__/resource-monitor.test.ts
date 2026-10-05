@@ -11,17 +11,20 @@ vi.mock("../pty-server", () => ({
 		["tmux", "-L", socket, ...args],
 }));
 
+const mockLog = vi.hoisted(() => ({
+	info: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+	debug: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
-	createLogger: () => ({
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	}),
+	createLogger: () => mockLog,
 }));
 
 vi.mock("../caffeinate", () => ({
-	updateCaffeinateState: vi.fn(),
+	startSleepInhibitWatch: vi.fn(),
+	stopSleepInhibitWatch: vi.fn(),
 }));
 
 // The poller must not know which platform it is on — the probe is the seam, and
@@ -54,6 +57,7 @@ import { spawn } from "../spawn";
 import { getAllSessionPanePids, clearProcessInfoCache } from "../port-scanner";
 import { probeMemoryFacts } from "../system-memory-probe";
 import { loadProjects, loadTasks } from "../data";
+import { startSleepInhibitWatch, stopSleepInhibitWatch } from "../caffeinate";
 import type { MemoryFacts } from "../system-memory";
 
 const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
@@ -572,5 +576,154 @@ describe("system memory snapshot", () => {
 		expect(memoryPushes(push)).toHaveLength(0);
 		expect(push).toHaveBeenCalledWith("resourceUsageUpdated", expect.anything());
 		expect(getSystemMemorySnapshot()).toBeNull();
+	});
+});
+
+describe("resource-monitor stalled poll", () => {
+	const PS_LINE = "  100     1   204800   5.2\n";
+	const stalls = () => mockLog.warn.mock.calls.filter((c) => String(c[0]).includes("poll stalled"));
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mockSpawn.mockReset();
+		mockGetAllSessionPanePids.mockReset();
+		mockProbe.mockReset();
+		mockProbe.mockResolvedValue(null);
+		mockLoadProjects.mockResolvedValue([]);
+		mockLoadTasks.mockResolvedValue([]);
+		mockLog.warn.mockClear();
+		mockLog.info.mockClear();
+		clearProcessInfoCache();
+		clearResourceMonitorBoost();
+		mockSpawn.mockReturnValue(makeProc(PS_LINE));
+	});
+
+	afterEach(() => {
+		stopResourceMonitor();
+		vi.useRealTimers();
+	});
+
+	it("abandons a tick stuck on an await that never settles, and keeps polling", async () => {
+		mockGetAllSessionPanePids.mockReturnValueOnce(new Promise(() => {}));
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({ "dev3-abc12345": [100] }));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
+
+		// Healthy-looking silence until the stall threshold.
+		await vi.advanceTimersByTimeAsync(45_000);
+		expect(stalls()).toHaveLength(0);
+
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(stalls()).toHaveLength(1);
+		expect(stalls()[0][1]).toMatchObject({ stage: "tmux" });
+
+		// The fresh loop ticks on its normal cadence.
+		const after = mockGetAllSessionPanePids.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(mockGetAllSessionPanePids.mock.calls.length).toBe(after + 2);
+		expect(getResourceUsage("abc12345")).toBeDefined();
+	});
+
+	it("names the stage it is stuck in", async () => {
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({}));
+		mockProbe.mockReturnValueOnce(new Promise(() => {}));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(10_000 + 75_000);
+		expect(stalls()[0][1]).toMatchObject({ stage: "system-memory" });
+	});
+
+	it("never piles up more than two abandoned ticks", async () => {
+		mockGetAllSessionPanePids.mockReturnValue(new Promise(() => {}));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
+
+		// 1 original + 2 replacements, then it waits for one of them to settle.
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(3);
+		expect(stalls()).toHaveLength(2);
+	});
+
+	it("a stuck tick that settles late does not start a second loop", async () => {
+		let release: (value: Map<string, number[]>) => void = () => {};
+		mockGetAllSessionPanePids.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({}));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(10_000 + 75_000);
+		expect(stalls()).toHaveLength(1);
+
+		release(paneMap({}));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mockLog.info).toHaveBeenCalledWith("A stalled resource monitor poll finally settled", expect.objectContaining({ stage: "tmux" }));
+
+		const before = mockGetAllSessionPanePids.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(100_000);
+		expect(mockGetAllSessionPanePids.mock.calls.length - before).toBe(10);
+	});
+
+	it("a tick in flight at stop does not reschedule", async () => {
+		let release: (value: Map<string, number[]>) => void = () => {};
+		mockGetAllSessionPanePids.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(10_000);
+		stopResourceMonitor();
+		release(paneMap({}));
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
+		expect(stalls()).toHaveLength(0);
+	});
+
+	it("a boost during a tick in flight does not run a second loop", async () => {
+		let release: (value: Map<string, number[]>) => void = () => {};
+		mockGetAllSessionPanePids.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({}));
+
+		startResourceMonitor(vi.fn());
+		await vi.advanceTimersByTimeAsync(10_000);
+		boostResourceMonitor();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
+
+		release(paneMap({}));
+		await vi.advanceTimersByTimeAsync(6_000);
+		// One loop at the 2 s boosted cadence, not two.
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(4);
+	});
+
+	it("a ps child that never exits is stopped, and the tick finishes on its own", async () => {
+		const kill = vi.fn();
+		mockSpawn.mockReturnValueOnce({
+			pid: 4242,
+			kill,
+			exited: new Promise(() => {}),
+			stdout: new ReadableStream({ start() {} }),
+			stderr: new ReadableStream({ start() {} }),
+		});
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({ "dev3-abc12345": [100] }));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000 + 15_000 + 1_000);
+		expect(kill).toHaveBeenCalledWith("SIGTERM");
+		// The failed sample pushes nothing, rather than zeros for every task.
+		expect(push).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(getResourceUsage("abc12345")?.rss).toBe(204800 * 1024);
+		expect(stalls()).toHaveLength(0);
+	});
+
+	it("owns the sleep-inhibit watch with the monitor's lifetime", () => {
+		vi.mocked(startSleepInhibitWatch).mockClear();
+		startResourceMonitor(vi.fn());
+		expect(startSleepInhibitWatch).toHaveBeenCalledTimes(1);
+		stopResourceMonitor();
+		expect(stopSleepInhibitWatch).toHaveBeenCalled();
 	});
 });
