@@ -579,10 +579,13 @@ function TaskInfoPanel({
 		if (!onOpenInlineDiff) {
 			return;
 		}
+		// Pinned: the badge counts committed work, so the viewer's remembered mode
+		// (default "uncommitted") must not swap in a different scope on open.
 		onOpenInlineDiff({
 			mode: "branch",
+			pinMode: true,
 			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project),
+			compareLabel: diffCompareLabel,
 			focusFile,
 		});
 	}
@@ -635,6 +638,7 @@ function TaskInfoPanel({
 			? metadataBranchState
 			: null;
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
+	const diffCompareLabel = branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project);
 	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
 	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache) : undefined;
 	const metadataPrTone = metadataPrState ? prStateTone(metadataPrState) : null;
@@ -655,9 +659,16 @@ function TaskInfoPanel({
 	const visibleDiffDeletions = showRawDiffTotals
 		? (metadataBranchStatus?.diffDeletions ?? 0)
 		: visibleDiffFileStats.reduce((sum, e) => sum + e.deletions, 0);
-	const diffBadgeTitle = !includeTests && excludedTestCount > 0
-		? t.plural("infoPanel.diffTestsHidden", excludedTestCount)
-		: t("infoPanel.showDiff");
+	const diffBadgeTitle = [
+		t("infoPanel.diffBadgeTooltip", { branch: diffCompareLabel }),
+		!includeTests && excludedTestCount > 0 ? t.plural("infoPanel.diffTestsHidden", excludedTestCount) : null,
+	].filter(Boolean).join(" ");
+	const diffBadgeAriaLabel = t("infoPanel.diffBadgeAria", {
+		files: t.plural("infoPanel.diffFileCount", visibleDiffFiles),
+		insertions: String(visibleDiffInsertions),
+		deletions: String(visibleDiffDeletions),
+		branch: diffCompareLabel,
+	});
 	// The tests filter is a segment of the diff badge, not a chip of its own: it
 	// only ever modifies these very numbers, and as a neighbour it read as a
 	// second, unrelated action. Same segmented idiom as the status control —
@@ -673,6 +684,7 @@ function TaskInfoPanel({
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
 			title={diffBadgeTitle}
+			aria-label={diffBadgeAriaLabel}
 			data-testid="diff-summary-badge"
 		>
 			<span className="text-fg-muted text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>

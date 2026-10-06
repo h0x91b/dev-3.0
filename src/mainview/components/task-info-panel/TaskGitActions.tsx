@@ -11,7 +11,7 @@ import { useReducedMotion } from "../../utils/useReducedMotion";
 import Tooltip from "../Tooltip";
 import { toast } from "../../toast";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
-import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
+import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon } from "./GitIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 import { inspectorPRBadge, isLivePullRequest } from "../../utils/taskPrBadge";
 import { prBadgeDisplayState, prStateTone } from "../../utils/prStateTone";
@@ -466,20 +466,45 @@ export default function TaskGitActions({
 					: t("infoPanel.merge");
 
 	const showDiffDisabled = !onOpenInlineDiff;
-	const showDiffTooltip = t("infoPanel.showDiffTooltip", { branch: displayRef });
-
-	const openBranchDiff = () => onOpenInlineDiff?.({
-		mode: "branch",
-		compareRef: compareRef || undefined,
-		compareLabel: displayRef,
-	});
 
 	/**
-	 * Ahead / behind and the uncommitted line counts are one statement about the
-	 * same branch, so they share one control with no separator between them — and
-	 * that control opens the diff, which is what the numbers make you want to do.
-	 * Which ref they compare against lives in the tooltip now; the project setting
-	 * owns the choice (Project Settings → compare ref).
+	 * The +/− numbers here are the working tree (`git diff HEAD` + untracked), not
+	 * the branch — the top diff badge owns the committed count. So a dirty tree opens
+	 * the uncommitted diff, and only a clean one falls back to the branch diff the
+	 * ahead/behind count is about. Pinned: the remembered mode would undo the choice.
+	 */
+	const changesTarget: TaskInlineDiffRequest = hasUncommittedChanges
+		? { mode: "uncommitted", pinMode: true }
+		: { mode: "branch", pinMode: true, compareRef: compareRef || undefined, compareLabel: displayRef };
+	const changesTooltip = hasUncommittedChanges
+		? t("infoPanel.changesSummaryUncommitted")
+		: t("infoPanel.changesSummaryBranch", { branch: displayRef });
+	const aheadBehindLabel = !branchStatus || branchStatus.baseUnreachable
+		? null
+		: branchStatus.ahead > 0 && branchStatus.behind > 0
+			? t("infoPanel.commitsAheadBehind", { ahead: String(branchStatus.ahead), behind: String(branchStatus.behind) })
+			: branchStatus.behind > 0
+				? t.plural("infoPanel.commitsBehind", branchStatus.behind)
+				: branchStatus.ahead > 0
+					? t.plural("infoPanel.commitsAhead", branchStatus.ahead)
+					: null;
+	const uncommittedLabel = hasUncommittedChanges
+		? t("infoPanel.uncommittedLines", { insertions: String(branchStatus.insertions), deletions: String(branchStatus.deletions) })
+		: null;
+	const changesDetail = !hasUncommittedChanges
+		? t("ttip.infoPanel.changesSummaryBranch", { branch: displayRef })
+		: aheadBehindLabel
+			? t("ttip.infoPanel.changesSummaryUncommitted", { branch: displayRef })
+			: t("ttip.infoPanel.changesSummaryUncommittedOnly");
+	const changesAriaLabel = [changesTooltip, [aheadBehindLabel, uncommittedLabel].filter(Boolean).join(", ")]
+		.filter(Boolean)
+		.join(": ");
+
+	/**
+	 * Ahead / behind and the uncommitted line counts share one control with no
+	 * separator between them, and that control opens the diff the numbers describe.
+	 * Which ref they compare against lives in the tooltip; the project setting owns
+	 * the choice (Project Settings → compare ref).
 	 */
 	const changesSummary = branchStatusBadge || uncommittedBadge ? (
 		showDiffDisabled ? (
@@ -488,11 +513,13 @@ export default function TaskGitActions({
 				{uncommittedBadge}
 			</span>
 		) : (
-			<Tooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")}>
+			<Tooltip content={changesTooltip} detail={changesDetail}>
 				<button
-					onClick={openBranchDiff}
+					type="button"
+					onClick={() => onOpenInlineDiff?.(changesTarget)}
 					className="git-anim flex items-center gap-1.5 flex-shrink-0 rounded px-1 py-0.5 hover:bg-elevated transition-colors"
-					aria-label={showDiffTooltip}
+					aria-label={changesAriaLabel}
+					data-testid="changes-summary"
 				>
 					{branchStatusBadge}
 					{uncommittedBadge}
@@ -543,18 +570,6 @@ export default function TaskGitActions({
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-micro flex-shrink-0">
-			<GitActionTooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")} disabled={showDiffDisabled}>
-				<button
-					onClick={openBranchDiff}
-					disabled={showDiffDisabled}
-					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-semibold transition-colors ${
-						showDiffDisabled ? disabledBtnClass : enabledBtnClass
-					}`}
-					aria-label={t("infoPanel.showDiff")}
-				>
-					{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
-				</button>
-			</GitActionTooltip>
 			<GitActionTooltip content={commitTooltip} detail={t("ttip.git.commit")} disabled={commitDisabled}>
 					<button
 						onClick={() => void handleCommit()}

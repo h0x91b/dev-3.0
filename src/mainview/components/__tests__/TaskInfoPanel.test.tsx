@@ -464,8 +464,11 @@ describe("TaskInfoPanel", () => {
 
 			await user.click(screen.getByText("2 files").closest("button")!);
 
+			// Pinned: the badge counts committed work, so the remembered viewer mode
+			// (default "uncommitted") must not swap in a different scope.
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				pinMode: true,
 				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
@@ -492,6 +495,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				pinMode: true,
 				compareRef: "origin/main",
 				compareLabel: "origin/main",
 				focusFile: "bun.lock",
@@ -1792,11 +1796,8 @@ describe("TaskInfoPanel", () => {
 			expect(summary).toContainElement(screen.getAllByTestId("behind-count")[0]);
 			await user.click(summary);
 
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
-				mode: "branch",
-				compareRef: "origin/main",
-				compareLabel: "origin/main",
-			});
+			// The +/− half is the working tree, so a dirty tree opens that scope.
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({ mode: "uncommitted", pinMode: true });
 		});
 
 		it("keeps no separator between the commit counts and the line counts", async () => {
@@ -1837,7 +1838,8 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			expect(screen.getAllByText("Diff").length).toBeGreaterThanOrEqual(1);
+			// The standalone Diff button is gone: the two counters are the diff entry points.
+			expect(screen.queryAllByText("Diff")).toHaveLength(0);
 			expect(screen.queryByText("Unpushed")).not.toBeInTheDocument();
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Push").length).toBeGreaterThanOrEqual(1);
@@ -2072,8 +2074,8 @@ describe("TaskInfoPanel", () => {
 			for (const label of ["Push", "Force push", "PR", "Auto PR", "Merge"]) {
 				expect(screen.queryAllByText(label)).toHaveLength(0);
 			}
-			// Read-only git stays: the diff and the rebase both serve the review.
-			expect(screen.getAllByText("Diff").length).toBeGreaterThan(0);
+			// Read-only git stays: the diff counter and the rebase both serve the review.
+			expect(screen.getByText("3 commits ahead")).toBeInTheDocument();
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThan(0);
 		});
 
@@ -2244,7 +2246,23 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
 		});
 
-		it("calls showDiff on Show Diff click", async () => {
+		it("opens the uncommitted diff from the changes summary when the tree is dirty", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockResolvedValue({ ...defaultBranchStatus, ahead: 1, behind: 3, insertions: 700, deletions: 11 });
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			const summary = await screen.findByTestId("changes-summary");
+			expect(summary).toHaveAccessibleName("Open uncommitted changes: 1 ahead · 3 behind, uncommitted +700 −11 lines");
+			await user.click(summary);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({ mode: "uncommitted", pinMode: true });
+		});
+
+		it("opens the branch diff from the changes summary when the tree is clean", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const onOpenInlineDiff = vi.fn();
 
@@ -2252,16 +2270,35 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
 
-			const diffButtons = screen.getAllByText("Diff");
-			const enabledBtn = diffButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
+			const summary = await screen.findByTestId("changes-summary");
+			expect(summary).toHaveAccessibleName("Open branch diff vs origin/main: 3 commits ahead");
+			await user.click(summary);
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				pinMode: true,
 				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
+		});
+
+		it("explains the top diff badge as committed-only", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				insertions: 700,
+				deletions: 11,
+				diffFiles: 19,
+				diffInsertions: 697,
+				diffDeletions: 131,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+
+			const badge = await screen.findByTestId("diff-summary-badge");
+			expect(badge).toHaveAccessibleName("Open branch diff vs origin/main: 19 files, +697 −131 committed lines");
+			expect(badge).toHaveAttribute("title", expect.stringContaining("Uncommitted edits are not counted here"));
 		});
 
 		it("opens a fork PR-review diff against the project base", async () => {
@@ -2279,34 +2316,11 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { onOpenInlineDiff });
 			});
 
-			const diffButtons = screen.getAllByRole("button", { name: "Show Diff" });
-			const enabledButton = diffButtons.find((button) => !button.hasAttribute("disabled"));
-			await user.click(enabledButton!);
+			await user.click(await screen.findByTestId("changes-summary"));
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
-				compareRef: "origin/main",
-				compareLabel: "origin/main",
-			});
-		});
-
-		it("keeps Show Diff active while branch status is still loading", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const onOpenInlineDiff = vi.fn();
-			mockedApi.request.getBranchStatus.mockImplementation(() => new Promise(() => {}));
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
-
-			const diffButtons = screen.getAllByText("Diff");
-			const enabledBtn = diffButtons.find((button) => !button.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-
-			await user.click(enabledBtn!.closest("button")!);
-
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
-				mode: "branch",
+				pinMode: true,
 				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});

@@ -48,7 +48,7 @@ const tips = {
 	"tip.prBadgeOnCard.title": "Номер PR на карточке",
 	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж связанного PR — нажмите, чтобы перейти на GitHub.",
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
-	"tip.showDiffButton.body": "Нажмите «Show Diff» в панели задачи, чтобы заменить терминал inline diff’ом ветки, а потом нажмите Esc, чтобы вернуться.",
+	"tip.showDiffButton.body": "Нажмите на счётчик файлов (например «19 files») в панели задачи — diff ветки, или на счётчик +/− — незакоммиченные изменения; Esc вернёт назад.",
 	"tip.diffExcludeTests.title": "Верните тесты в diff",
 	"tip.diffExcludeTests.body": "Тестовые файлы по умолчанию не входят в +/− суммы — нажмите на колбу внутри diff-бейджа (или «Include tests» в toolbar diff’а), чтобы снова их считать.",
 	"tip.inlineDiffComments.title": "Комментируйте прямо в diff",

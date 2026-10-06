@@ -48,7 +48,7 @@ const tips = {
 	"tip.prBadgeOnCard.title": "PR number on every card",
 	"tip.prBadgeOnCard.body": "Task cards show a clickable PR badge when a pull request is linked — click it to jump to GitHub.",
 	"tip.showDiffButton.title": "Review your diff inline",
-	"tip.showDiffButton.body": "Click \"Show Diff\" in the task panel to swap the terminal for an inline branch diff, then press Esc to jump back.",
+	"tip.showDiffButton.body": "Click the file counter (e.g. \"19 files\") in the task panel for the branch diff, or the +/− counter for uncommitted changes; Esc jumps back.",
 	"tip.diffExcludeTests.title": "Bring tests back into the diff",
 	"tip.diffExcludeTests.body": "Test files are left out of the +/− totals by default — click the flask inside the diff badge (or \"Include tests\" in the diff toolbar) to count them again.",
 	"tip.inlineDiffComments.title": "Comment right on the diff",

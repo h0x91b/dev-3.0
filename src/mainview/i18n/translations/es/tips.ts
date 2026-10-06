@@ -48,7 +48,7 @@ const tips = {
 	"tip.prBadgeOnCard.title": "Número de PR en la tarjeta",
 	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando hay un pull request vinculado — haz clic para ir a GitHub.",
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",
-	"tip.showDiffButton.body": "Pulsa \"Show Diff\" en el panel de la tarea para reemplazar el terminal por un diff inline de la rama, y usa Esc para volver.",
+	"tip.showDiffButton.body": "Pulsa el contador de archivos (p. ej. \"19 files\") del panel de la tarea para el diff de la rama, o el contador +/− para los cambios sin commit; Esc vuelve.",
 	"tip.diffExcludeTests.title": "Devuelve los tests al diff",
 	"tip.diffExcludeTests.body": "Los archivos de tests quedan fuera de los totales +/− por defecto: pulsa el matraz dentro del badge del diff (o \"Include tests\" en la toolbar) para volver a contarlos.",
 	"tip.inlineDiffComments.title": "Comenta directo en el diff",

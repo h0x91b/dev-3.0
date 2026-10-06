@@ -58,7 +58,10 @@ export const tooltips = {
 	// Task info panel
 	"ttip.infoPanel.includeTests":
 		"Cuando está apagado, los archivos de test se excluyen del diff y de los contadores +/− — ves solo la huella del código de producción.",
-	"ttip.infoPanel.showDiff": "Todo lo que cambió esta tarea, comparado con la rama base.",
+	"ttip.infoPanel.changesSummaryUncommitted": "Los números +/− cuentan líneas aún sin commit: staged, unstaged y archivos nuevos. Ahead / behind cuenta commits respecto a {branch}. El contador de archivos de arriba solo cuenta trabajo con commit.",
+	"ttip.infoPanel.changesSummaryUncommittedOnly": "Los números +/− cuentan líneas aún sin commit: staged, unstaged y archivos nuevos. Esta rama aún no tiene commits.",
+	"ttip.infoPanel.changesSummaryBranch": "Ahead / behind cuenta commits respecto a {branch}. El árbol de trabajo está limpio, así que se abre el diff de la rama con commits.",
+	"ttip.infoPanel.showDiff": "Los cambios con commit de este archivo en la rama, comparados con la rama base.",
 	"ttip.infoPanel.spawnAgent":
 		"Añade otro panel de agente a la ventana tmux de esta tarea. Ambos agentes comparten el mismo worktree — útil para un ayudante o un revisor.",
 	"ttip.infoPanel.bugHunters":
