@@ -139,6 +139,23 @@ function tabCaps(tab: string): [string, string] {
 /** The focused pane's id (`%12`), as a slanted badge matching the tabs. */
 export const PANE_ID_BADGE = `${tabCaps("@thm_surface_1")[0]}#[fg=#{@thm_subtext_0},bg=#{@thm_surface_1}] #{pane_id} ${tabCaps("@thm_surface_1")[1]}`;
 
+/** `mouse_status_range` of the bar's new-window button; the click binding in config.ts matches it. */
+export const NEW_WINDOW_STATUS_RANGE = "dev3-new-window";
+
+/** A slanted `+` tab after a one-cell gap, on a darker fill than a tab so it never reads as a window. */
+export const NEW_WINDOW_BUTTON = ` #[range=user|${NEW_WINDOW_STATUS_RANGE}]${tabCaps("@thm_surface_0")[0]}#[fg=#{@thm_subtext_0},bg=#{@thm_surface_0}] + ${tabCaps("@thm_surface_0")[1]}#[norange default]`;
+
+// tmux 3.6a's default `status-format[0]`, verbatim, split where the window list ends.
+const DEFAULT_STATUS_LEFT_AND_LIST = "#[align=left range=left #{E:status-left-style}]#[push-default]#{T;=/#{status-left-length}:status-left}#[pop-default]#[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{W:#[range=window|#{window_index} #{E:window-status-style}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-format}#[pop-default]#[norange default]#{?loop_last_flag,,#{window-status-separator}},#[range=window|#{window_index} list=focus #{?#{!=:#{E:window-status-current-style},default},#{E:window-status-current-style},#{E:window-status-style}}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-current-format}#[pop-default]#[norange list=on default]#{?loop_last_flag,,#{window-status-separator}}}";
+const DEFAULT_STATUS_RIGHT = "#[nolist align=right range=right #{E:status-right-style}]#[push-default]#{T;=/#{status-right-length}:status-right}#[pop-default]#[norange default]";
+
+/**
+ * tmux's default bar plus the new-window button. `#[nolist]` right after the
+ * list puts the button in tmux's "after the list" slot: an overflowing list is
+ * trimmed behind its `<`/`>` markers, the button never is.
+ */
+export const STATUS_FORMAT = `${DEFAULT_STATUS_LEFT_AND_LIST}#[nolist]${NEW_WINDOW_BUTTON}${DEFAULT_STATUS_RIGHT}`;
+
 const CATPPUCCIN_MAIN = `# Catppuccin tmux main config — %if blocks removed for reliability
 # Note: palette is sourced by the wrapper config before this file
 

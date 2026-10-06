@@ -20,6 +20,7 @@ import {
 	tmuxClientCwd,
 	writeTmuxConfigs,
 } from "../config";
+import { NEW_WINDOW_STATUS_RANGE, STATUS_FORMAT } from "../themes";
 import { DEV3_HOME } from "../../paths";
 
 describe("tmux config paths", () => {
@@ -59,6 +60,20 @@ describe("buildThemeConfig", () => {
 		// After every plugin `source` line, so the theme cannot move it back.
 		expect(position).toBeGreaterThan(config.lastIndexOf("source "));
 		expect(config).not.toMatch(/status-position bottom/);
+	});
+
+	it("draws the + button after the window list and opens a window with the split cwd rule", () => {
+		const config = buildThemeConfig("mocha");
+		expect(config).toContain(`set -g 'status-format[0]' '${STATUS_FORMAT}'`);
+		const list = STATUS_FORMAT.indexOf("#{W:");
+		const button = STATUS_FORMAT.indexOf(`range=user|${NEW_WINDOW_STATUS_RANGE}`);
+		// After the list and in tmux's after-list slot: overflow trims tabs, never the button.
+		expect(button).toBeGreaterThan(list);
+		expect(STATUS_FORMAT.lastIndexOf("#[nolist]", button)).toBeGreaterThan(list);
+		expect(button).toBeLessThan(STATUS_FORMAT.indexOf("align=right"));
+		expect(config).toContain(
+			`bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},${NEW_WINDOW_STATUS_RANGE}}' 'new-window -c "${PANE_CWD_FORMAT}"' 'switch-client -t ='`,
+		);
 	});
 
 	it("includes synchronized output (Sync) terminal features", () => {

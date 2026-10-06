@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -164,4 +164,88 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		const plain = tmux("display-message", "-p", "-t", "=agent:2", WINDOW_LABEL);
 		expect(plain).toBe(tmux("display-message", "-p", "-t", "=agent:2", "#{window_name}"));
 	});
+});
+
+const INNER = `dev3-live-plus-${process.pid}`;
+const OUTER = `dev3-live-plus-outer-${process.pid}`;
+
+function inner(...args: string[]): string {
+	return execFileSync("tmux", ["-L", INNER, ...args], { encoding: "utf-8" }).trim();
+}
+function outer(...args: string[]): string {
+	return execFileSync("tmux", ["-L", OUTER, ...args], { encoding: "utf-8" }).trimEnd();
+}
+
+async function until<T>(read: () => T, ok: (value: T) => boolean, what: string): Promise<T> {
+	for (let i = 0; i < 50; i++) {
+		const value = read();
+		if (ok(value)) return value;
+		await new Promise((r) => setTimeout(r, 100));
+	}
+	throw new Error(`timed out waiting for ${what}: ${JSON.stringify(read())}`);
+}
+
+/**
+ * The bar as a real attached client draws it: the dev3 server's client runs in
+ * a pane of a second throwaway server, which also delivers the mouse clicks.
+ */
+describe.skipIf(!tmuxVersion())("dev3 status bar + button on a live tmux server", () => {
+	let dir = "";
+	let sub = "";
+	const bar = () => outer("capture-pane", "-p", "-t", "=outer:").split("\n")[0] ?? "";
+	const windows = () => inner("list-windows", "-t", "=click:", "-F", "#{window_index}#{?window_active,*,}").split("\n");
+	/**
+	 * Left-click at 1-based column `col` of the bar row. tmux reads a second click
+	 * within its double-click window as DoubleClick1Status, so clicks are spaced.
+	 */
+	const click = async (col: number) => {
+		await new Promise((r) => setTimeout(r, 400));
+		outer("send-keys", "-t", "=outer:", "-l", `\x1b[<0;${col};1M`);
+		outer("send-keys", "-t", "=outer:", "-l", `\x1b[<0;${col};1m`);
+	};
+
+	beforeAll(async () => {
+		dir = mkdtempSync(join(tmpdir(), "dev3-statusbar-plus-"));
+		sub = join(dir, "sub");
+		mkdirSync(sub);
+		const conf = join(dir, "status.conf");
+		writeFileSync(conf, buildThemeConfig("mocha"));
+		inner("-f", conf, "new-session", "-d", "-s", "click", "-c", dir, "sh");
+		inner("send-keys", "-t", "=click:", `cd '${sub}'`, "Enter");
+		outer("-f", "/dev/null", "new-session", "-d", "-s", "outer", "-x", "80", "-y", "5", `tmux -L ${INNER} attach -t click`);
+		outer("set-option", "-g", "status", "off");
+		await until(bar, (line) => line.includes("+"), "the + button");
+	});
+
+	afterAll(() => {
+		for (const server of [outer, inner]) {
+			try {
+				server("kill-server");
+			} catch { /* already gone */ }
+		}
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("opens a window in the focused pane's directory, hitting only the button's own cells", async () => {
+		const plus = bar().indexOf("+") + 1;
+		// Layout: last tab, one gap cell, then the button's cap, " + ", cap.
+		await click(plus - 3);
+		await new Promise((r) => setTimeout(r, 300));
+		expect(windows()).toEqual(["1*"]);
+
+		await click(plus);
+		await until(windows, (w) => w.length === 2, "the new window");
+		expect(windows()).toEqual(["1", "2*"]);
+		const cwd = await until(() => inner("display-message", "-p", "-t", "=click:2", "#{pane_current_path}"), Boolean, "the new pane's cwd");
+		expect(realpathSync(cwd)).toBe(realpathSync(sub));
+
+		await click(bar().indexOf("+") + 3);
+		await until(windows, (w) => w.length === 3, "a window from the button's right cap");
+	}, 15_000);
+
+	it("still switches windows on a tab click", async () => {
+		await click(bar().indexOf("1") + 1);
+		await until(windows, (w) => w[0] === "1*", "window 1 active");
+		expect(windows()).toHaveLength(3);
+	}, 15_000);
 });
