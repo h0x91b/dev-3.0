@@ -529,6 +529,38 @@ describe("TaskInfoPanel", () => {
 			expect(await screen.findByText("TextMate")).toBeInTheDocument();
 		});
 
+		it("stacks the file-row tooltips above the changed files popup", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 1,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileStats: [{path:"src/mainview/App.tsx",insertions:10,deletions:3}],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			await user.hover(screen.getByText("1 file").closest("span")!);
+			const popover = (await screen.findByText("Changed files")).parentElement!;
+			const popoverZ = Number(popover.style.zIndex);
+			const fileRow = screen.getByText("src/mainview/App.tsx").closest("div")!;
+
+			for (const name of ["Show Diff", "Open in..."]) {
+				const button = within(fileRow).getByRole("button", { name });
+				fireEvent.mouseEnter(button);
+				await act(async () => {
+					vi.advanceTimersByTime(300);
+				});
+				const tooltip = screen.getByRole("tooltip");
+				const tooltipZ = Number(/z-\[(\d+)\]/.exec(tooltip.className)?.[1]);
+				expect(tooltipZ).toBeGreaterThan(popoverZ);
+				fireEvent.mouseLeave(button);
+			}
+		});
+
 		it("skips unknown label IDs", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ labelIds: ["nonexistent"] }));

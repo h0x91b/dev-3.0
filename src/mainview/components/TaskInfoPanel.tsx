@@ -745,6 +745,8 @@ function TaskInfoPanel({
 			)}
 		</button>
 	) : null;
+	// Sits at z 9999, above the default tooltip tier — so the row tooltips below
+	// take the "popover" layer, or they open underneath this very list.
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
 		<div
 			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 pl-3 pr-1.5 max-w-[25rem] max-h-[20rem] overflow-auto"
@@ -766,7 +768,7 @@ function TaskInfoPanel({
 						</span>
 					)}
 					<div className="flex items-center gap-1.5 flex-shrink-0">
-						<Tooltip content={t("infoPanel.showDiff")} detail={t("ttip.infoPanel.showDiff")}>
+						<Tooltip content={t("infoPanel.showDiff")} detail={t("ttip.infoPanel.showDiff")} layer="popover">
 							<button
 								onClick={(event) => handleFileDiff(event, fileName)}
 								aria-label={t("infoPanel.showDiff")}
@@ -775,7 +777,7 @@ function TaskInfoPanel({
 								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
 							</button>
 						</Tooltip>
-						<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")}>
+						<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")} layer="popover">
 							<button
 								onClick={(event) => handleFileOpenIn(event, fileName)}
 								aria-label={t("openIn.menuTitle")}
