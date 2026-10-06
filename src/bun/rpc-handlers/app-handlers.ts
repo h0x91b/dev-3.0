@@ -11,11 +11,9 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
-import { consumePendingNotificationNav as consumeNotificationNavPending } from "../notification-nav";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
 import { parseDeepLink, type DeepLinkNav } from "../../shared/deep-link";
 import { resolveDeepLink as resolveDeepLinkTarget } from "../deep-link";
-import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
@@ -71,13 +69,6 @@ async function requestQuit(): Promise<void> {
 // mount avoids the race where a push fires before the renderer's listener is up.
 async function consumePendingQuitDialog(): Promise<boolean> {
 	return consumeQuitDialogPending();
-}
-
-// A window reopened by a native notification click (the app was window-less in
-// the dock) calls this on mount and navigates to the clicked task. Same
-// pull-on-mount rationale as consumePendingQuitDialog.
-async function consumePendingNotificationNav(): Promise<NotificationClickTarget | null> {
-	return consumeNotificationNavPending();
 }
 
 // A window reopened by a `dev3://…` deep link (app was window-less in the dock)
@@ -1085,7 +1076,6 @@ export const appHandlers = {
 	quitApp,
 	requestQuit,
 	consumePendingQuitDialog,
-	consumePendingNotificationNav,
 	consumePendingDeepLinkNav,
 	resolveDeepLinkNav,
 	openNewWindow,

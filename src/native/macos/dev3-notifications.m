@@ -5,8 +5,8 @@
 // only activate the app — the app cannot tell WHICH notification was clicked
 // (upstream: blackboardsh/electrobun#384). This shim owns both sides:
 //
-//   • posting  — dev3_notif_post() attaches the task target to the request
-//     identifier, so a click carries its payload back to us;
+//   • posting  — dev3_notif_post() uses a stable per-task request identifier,
+//     so a click on one of our notifications is recognisable;
 //   • clicking — a UNUserNotificationCenterDelegate forwards the clicked
 //     request identifier to a Bun JSCallback.
 //
@@ -40,8 +40,8 @@ static _Atomic int gAuthStatus = 0;
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
     didReceiveNotificationResponse:(UNNotificationResponse *)response
              withCompletionHandler:(void (^)(void))completionHandler {
-	// Only the default action (the user clicked the notification body) navigates;
-	// dismissals must not teleport the user anywhere.
+	// Only the default action (the user clicked the notification body) counts as
+	// a click; dismissals are ignored. The app only foregrounds on it.
 	if ([response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier]) {
 		dev3_notif_click_cb cb = self.clickCallback;
 		if (cb != NULL) {

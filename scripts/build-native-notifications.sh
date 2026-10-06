@@ -7,7 +7,7 @@
 #
 # On Linux (and on macOS without clang) this produces an empty dist/native/ so
 # the electrobun.config.ts copy rule always has a source; the app degrades to
-# the focus-proxy fallback at runtime when the dylib is absent.
+# Electrobun's fire-and-forget notifications (no click callback) when it is absent.
 #
 # Signing mirrors scripts/sign-cli-binaries.sh: ad-hoc by default (enough for
 # AMFI on dev machines), Developer ID when ELECTROBUN_DEVELOPER_ID is set.
@@ -25,7 +25,7 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 
 if ! command -v clang >/dev/null 2>&1; then
-  echo "[build-native-notifications] clang not found — skipping (notification clicks fall back to focus-proxy)"
+  echo "[build-native-notifications] clang not found — skipping (Electrobun notifications, no click callback)"
   exit 0
 fi
 

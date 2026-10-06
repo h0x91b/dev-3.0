@@ -1,18 +1,13 @@
 // Native macOS notification channel with REAL click callbacks.
 //
-// Electrobun's Utils.showNotification cannot report clicks (upstream #384), so
-// the app historically guessed clicks from window-focus timing (a 3s TTL proxy
-// in rpc-handlers/shared.ts). This module replaces the guess on macOS with a
-// compiled shim (src/native/macos/dev3-notifications.m) that sets a
-// UNUserNotificationCenterDelegate and posts notifications whose request
-// identifier encodes the task target — a click hands us back exactly the task
-// that fired it, no timing heuristics.
+// A compiled shim (src/native/macos/dev3-notifications.m) sets a
+// UNUserNotificationCenterDelegate, so a genuine click on one of OUR
+// notifications is reported — the app only brings its window forward on it,
+// never navigates (decisions/2026/10/06/notification-click-only-foregrounds.md).
 //
 // Degrades to `false` from every entry point (non-macOS, headless mode, dylib
 // missing, notification permission denied) — callers then fall back to
-// Electrobun's fire-and-forget path plus the focus-proxy.
-//
-// See decisions/2026/07/05/native-notification-click-shim.md.
+// Electrobun's fire-and-forget path, which has no click callback.
 
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -29,10 +24,9 @@ export interface NotificationClickTarget {
 
 // ── Identifier codec (pure — unit-tested) ───────────────────────────────────
 //
-// The task target rides in the UNNotificationRequest identifier, so no native
-// userInfo dictionary plumbing is needed. Identifiers are stable per task:
-// a newer notification for the same task replaces the older one in
-// Notification Center instead of stacking.
+// Identifiers are stable per task: a newer notification for the same task
+// replaces the older one in Notification Center instead of stacking. Decoding
+// only tells our notifications apart from foreign ones.
 
 const IDENTIFIER_PREFIX = "dev3-task-nav";
 const IDENTIFIER_SEPARATOR = "|";
@@ -85,7 +79,7 @@ function shimDylibPath(): string {
  * Called once from `src/bun/index.ts` (GUI entry). Tests never call it, which
  * keeps `postNativeTaskNotification` inert (always false) under vitest.
  */
-export function initNativeNotifications(onClick: (target: NotificationClickTarget) => void): boolean {
+export function initNativeNotifications(onClick: () => void): boolean {
 	if (shim) return true;
 	if (process.platform !== "darwin") return false;
 	if (process.env.DEV3_HEADLESS === "1") return false;
@@ -93,7 +87,7 @@ export function initNativeNotifications(onClick: (target: NotificationClickTarge
 	try {
 		const dylib = shimDylibPath();
 		if (!existsSync(dylib)) {
-			log.info("notification shim dylib not found — using focus-proxy fallback", { dylib });
+			log.info("notification shim dylib not found — using Electrobun notifications", { dylib });
 			return false;
 		}
 		const lib = dlopen(dylib, {
@@ -115,12 +109,11 @@ export function initNativeNotifications(onClick: (target: NotificationClickTarge
 				try {
 					const identifier = identifierPtr ? new CString(identifierPtr).toString() : "";
 					if (identifierPtr) symbols.dev3_notif_free_cstr(identifierPtr);
-					const target = decodeTaskNotificationIdentifier(identifier);
-					if (!target) {
+					if (!decodeTaskNotificationIdentifier(identifier)) {
 						log.debug("notification click with foreign identifier ignored", { identifier });
 						return;
 					}
-					onClick(target);
+					onClick();
 				} catch (err) {
 					log.error("notification click handler failed", { error: String(err) });
 				}
@@ -129,7 +122,7 @@ export function initNativeNotifications(onClick: (target: NotificationClickTarge
 		);
 
 		if (symbols.dev3_notif_init(clickCallback.ptr as Pointer) !== 1) {
-			log.warn("dev3_notif_init reported UNUserNotificationCenter unavailable — using focus-proxy fallback");
+			log.warn("dev3_notif_init reported UNUserNotificationCenter unavailable — using Electrobun notifications");
 			clickCallback.close();
 			clickCallback = null;
 			return false;
@@ -138,7 +131,7 @@ export function initNativeNotifications(onClick: (target: NotificationClickTarge
 		log.info("native notification click channel active", { dylib });
 		return true;
 	} catch (err) {
-		log.warn("native notification shim failed to load — using focus-proxy fallback", { error: String(err) });
+		log.warn("native notification shim failed to load — using Electrobun notifications", { error: String(err) });
 		clickCallback?.close();
 		clickCallback = null;
 		return false;
@@ -147,8 +140,7 @@ export function initNativeNotifications(onClick: (target: NotificationClickTarge
 
 /**
  * Post a task notification through the native shim. Returns true when the
- * notification was handed to UNUserNotificationCenter with a click-navigation
- * identifier; false when the channel is unavailable or notification permission
+ * notification was handed to UNUserNotificationCenter; false when the channel is unavailable or notification permission
  * is not (yet) granted — callers must then use the legacy Electrobun path.
  */
 export function postNativeTaskNotification(opts: {

@@ -67,23 +67,12 @@ describe("Electrobun RPC transport", () => {
 		window.removeEventListener("rpc:osc52Clipboard", osc52ClipboardListener);
 	});
 
-	it("dispatches a CustomEvent when bun pushes openTaskFromNotification", async () => {
-		const listener = vi.fn();
-		window.addEventListener("rpc:openTaskFromNotification", listener);
-
+	it("registers no openTaskFromNotification handler — OS notification clicks never navigate", async () => {
 		await import("../rpc");
 
 		const rpcConfig = defineRPCMock.mock.calls[0]?.[0];
 		expect(rpcConfig).toBeDefined();
-
-		rpcConfig.handlers.messages.openTaskFromNotification({ taskId: "task-7", projectId: "proj-3" });
-
-		expect(listener).toHaveBeenCalledTimes(1);
-		expect(listener.mock.calls[0]?.[0]).toMatchObject({
-			detail: { taskId: "task-7", projectId: "proj-3" },
-		});
-
-		window.removeEventListener("rpc:openTaskFromNotification", listener);
+		expect(rpcConfig.handlers.messages.openTaskFromNotification).toBeUndefined();
 	});
 
 	it("dispatches a CustomEvent when the native menu pushes openAddProjectModal", async () => {

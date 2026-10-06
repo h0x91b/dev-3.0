@@ -5782,14 +5782,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: boolean;
 			};
-			consumePendingNotificationNav: {
-				params: void;
-				response: { taskId: string; projectId: string } | null;
-			};
 			/**
 			 * Read-and-clear a deep link (`dev3://…`) that arrived while the app sat
 			 * window-less in the dock. The reopened renderer pulls it on mount and
-			 * navigates — same pull-on-mount pattern as consumePendingNotificationNav.
+			 * navigates — same pull-on-mount pattern as consumePendingQuitDialog.
 			 */
 			consumePendingDeepLinkNav: {
 				params: void;
@@ -6729,11 +6725,6 @@ export type AppRPCSchema = {
 			 *  Surfaces that hold a long-lived snapshot (boards, launch pickers) would
 			 *  otherwise keep offering presets the user just renamed or deleted. */
 			agentsUpdated: CodingAgent[];
-			/**
-			 * Emitted when the main window gains focus shortly after a watched-task notification fired.
-			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
-			 */
-			openTaskFromNotification: { taskId: string; projectId: string };
 			/**
 			 * Navigate from an inbound `dev3://…` deep link while a window is already
 			 * open: jump to a task, open a project board, or open the Create Task

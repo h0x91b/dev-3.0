@@ -1,7 +1,7 @@
 // Pending deep-link navigation, for `dev3://…` opens that arrive while the app
 // has NO window (it lives in the dock after the last window closed).
 //
-// Same pull-on-mount pattern as notification-nav: the open-url handler stores
+// Same pull-on-mount pattern as quit-manager: the open-url handler stores
 // the resolved target and reopens a window; the freshly mounted renderer PULLS
 // it via `consumePendingDeepLinkNav` (a push would race the not-yet-registered
 // `rpc:openDeepLink` listener and get lost) and navigates.

@@ -88,24 +88,9 @@ export function logRendererDiagnostic(params: {
 
 
 /**
- * Window in which a window-focus event is treated as "user clicked the notification".
- * macOS activates the app when a notification is clicked, which fires our BrowserWindow
- * `focus` event. We use this as a proxy for click-to-open since Electrobun's
- * `Utils.showNotification` does not expose a click callback.
- *
- * Kept deliberately short: the smaller this window, the smaller the chance that an
- * unrelated app activation (cmd-tab, dock click) within it is misread as a click-through.
- */
-export const NOTIFICATION_CLICK_TTL_MS = 3000;
-
-let lastWatchedNotification: { taskId: string; projectId: string; timestamp: number } | null = null;
-
-/**
  * Whether the app is currently in the foreground (any window has key focus).
  * The renderer reports this via `setWindowForeground`; `index.ts`'s window-focus
- * hook also flips it true. We need it because Electrobun exposes no native
- * "did resign active" signal — without it the focus proxy below cannot tell a
- * genuine notification click from an in-app re-focus.
+ * hook also flips it true (Electrobun exposes no native "did resign active" signal).
  */
 let appForeground = false;
 
@@ -410,13 +395,8 @@ function pushWebNotification(opts: {
 
 /**
  * Deliver a task notification to the OS. Prefers the native shim
- * (src/bun/native-notifications.ts): it encodes the task target in the
- * notification identifier and reports REAL clicks through its delegate, so no
- * focus-proxy arming is needed and false "click" positives are impossible.
- *
- * When the shim is unavailable (Linux, headless, dylib missing, permission not
- * granted) this falls back to Electrobun's fire-and-forget path and arms the
- * legacy focus-proxy slot below.
+ * (src/bun/native-notifications.ts), else Electrobun's fire-and-forget path.
+ * Clicking it never navigates — see decisions/2026/10/06/notification-click-only-foregrounds.md.
  */
 function deliverTaskNotification(
 	task: Task,
@@ -450,10 +430,8 @@ function deliverTaskNotification(
 		});
 	}
 	pushWebNotification({ task, body, projectName: projectName ?? "" });
-	// A destination that survives having no listener. Sits here, after the silence
-	// and suppression gates above, so a muted project or a foregrounded app is
-	// still respected — and before the early return, which only concerns the
-	// legacy focus-proxy below.
+	// A destination that survives having no listener. Sits after the silence and
+	// suppression gates above, so a muted project is still respected.
 	outboundNotify({
 		taskId: task.id,
 		projectId: task.projectId,
@@ -464,18 +442,6 @@ function deliverTaskNotification(
 		taskTitle: getTaskTitle(task),
 		projectName: projectName ?? "",
 	});
-	if (nativePosted) return;
-	// Only arm click-to-open when the app is NOT already in the foreground. If the
-	// user is actively looking at the app, the banner is purely informational — a
-	// subsequent in-app click that happens to re-key the window must not be misread
-	// as "clicked the notification" and teleport them to the task. This is the core
-	// fix for the "any click after a notification zooms me into the task" bug.
-	if (appForeground) return;
-	lastWatchedNotification = {
-		taskId: task.id,
-		projectId: task.projectId,
-		timestamp: Date.now(),
-	};
 }
 
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
@@ -483,11 +449,7 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 	deliverTaskNotification(task, `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`, projectName);
 }
 
-/**
- * Fire a native OS notification on behalf of `dev3 notify --desktop`, so a
- * click on it navigates to the task (native click delegate, or the focus-proxy
- * fallback — see `deliverTaskNotification`).
- */
+/** Fire a native OS notification on behalf of `dev3 notify --desktop`. */
 export function notifyFromCliDesktop(opts: { task: Task; body: string; projectName?: string }): void {
 	deliverTaskNotification(opts.task, opts.body, opts.projectName);
 }
@@ -502,24 +464,8 @@ export function notifyWatchedTaskEvent(task: Task, body: string, projectName: st
 	deliverTaskNotification(task, body, projectName);
 }
 
-/**
- * If a watched-task notification fired within the last `NOTIFICATION_CLICK_TTL_MS`,
- * return its target (taskId + projectId) and clear the slot. Otherwise return null.
- *
- * Called from the window-focus listener in `src/bun/index.ts` to implement
- * click-to-open for watched-task notifications.
- */
-export function consumeRecentWatchedNotification(now: number = Date.now()): { taskId: string; projectId: string } | null {
-	const recent = lastWatchedNotification;
-	if (!recent) return null;
-	lastWatchedNotification = null;
-	if (now - recent.timestamp > NOTIFICATION_CLICK_TTL_MS) return null;
-	return { taskId: recent.taskId, projectId: recent.projectId };
-}
-
-/** For tests only — resets the last-watched-notification slot and foreground flag. */
+/** For tests only — resets the foreground flag, active context and suppression state. */
 export function _resetWatchedNotificationState(): void {
-	lastWatchedNotification = null;
 	appForeground = false;
 	activeContext = { projectId: null, taskId: null };
 	notificationSuppressionSources.clear();

@@ -29,7 +29,6 @@ vi.mock("../rpc", () => ({
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			requestQuit: vi.fn().mockResolvedValue(undefined),
 			consumePendingQuitDialog: vi.fn().mockResolvedValue(false),
-			consumePendingNotificationNav: vi.fn().mockResolvedValue(null),
 			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			setWindowTitleContext: vi.fn().mockResolvedValue(undefined),
@@ -718,7 +717,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
 		});
 
-		it("exits before native notification navigation and preserves split open mode", async () => {
+		it("ignores a legacy openTaskFromNotification push — OS notifications never navigate", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
@@ -726,38 +725,16 @@ describe("App keyboard shortcuts", () => {
 
 			await renderApp();
 			await userEvent.keyboard("{F11}");
-			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
-
 			act(() => {
 				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
 					detail: { taskId: "t2", projectId: "p2" },
 				}));
 			});
 
-			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t2");
-			});
-			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
-		});
-
-		it("exits but does not navigate when a notification target is malformed", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			vi.mocked(api.request.getLastRoute).mockResolvedValue({
-				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
-			});
-
-			await renderApp();
+			// Any navigation would have exited immersive fullscreen first.
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
 			await userEvent.keyboard("{F11}");
-			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
-					detail: { taskId: "", projectId: "" },
-				}));
-			});
-
-			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
 		});
 
@@ -784,26 +761,6 @@ describe("App keyboard shortcuts", () => {
 			});
 			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
 		});
-
-		it("exits before pending notification navigation and preserves fullscreen open mode", async () => {
-			localStorage.setItem("dev3-task-open-mode", "fullscreen");
-			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
-			vi.mocked(api.request.getLastRoute).mockResolvedValue({
-				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
-			});
-			let resolvePending!: (target: { taskId: string; projectId: string }) => void;
-			vi.mocked(api.request.consumePendingNotificationNav).mockImplementationOnce(
-				() => new Promise((resolve) => { resolvePending = resolve; }),
-			);
-
-			await renderApp();
-			await userEvent.keyboard("{F11}");
-			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
-			resolvePending({ taskId: "t2", projectId: "p2" });
-
-			await waitFor(() => expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "false"));
-			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
-		});
 	});
 
 	describe("remote web notifications", () => {
@@ -811,7 +768,7 @@ describe("App keyboard shortcuts", () => {
 			delete (window as unknown as { Notification?: unknown }).Notification;
 		});
 
-		it("opens the task when a Chrome notification is clicked", async () => {
+		it("only focuses the page when a Chrome notification is clicked", async () => {
 			rpcTransport.isElectrobun = false;
 			Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
 			FakeWebNotification.permission = "granted";
@@ -839,9 +796,12 @@ describe("App keyboard shortcuts", () => {
 
 			expect(FakeWebNotification.instances).toHaveLength(1);
 			expect(FakeWebNotification.instances[0].options?.tag).toBeUndefined();
+			const focus = vi.spyOn(window, "focus").mockImplementation(() => {});
 			act(() => FakeWebNotification.instances[0].onclick?.());
 
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-web"));
+			expect(focus).toHaveBeenCalledTimes(1);
+			expect(screen.getByTestId("project-screen")).not.toHaveAttribute("data-active-task-id", "t-web");
+			focus.mockRestore();
 		});
 
 		// Regression for #1042 reversal: a watched status-change notification must
@@ -1472,8 +1432,8 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
 
 			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
-					detail: { taskId: "t-other", projectId: "p1" },
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t-other", projectId: "p1" },
 				}));
 			});
 
@@ -1484,8 +1444,8 @@ describe("App keyboard shortcuts", () => {
 
 			// Still mounted, so coming back re-hosts the very same viewer.
 			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
-					detail: { taskId: "t-artifact", projectId: "p1" },
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t-artifact", projectId: "p1" },
 				}));
 			});
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "true"));
@@ -1517,8 +1477,8 @@ describe("App keyboard shortcuts", () => {
 			await screen.findByTestId("artifact-viewer");
 
 			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
-					detail: { taskId: "t-other", projectId: "p1" },
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t-other", projectId: "p1" },
 				}));
 			});
 
@@ -1549,8 +1509,8 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-dock-artifact", "false");
 
 			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
-					detail: { taskId: "t-other", projectId: "p1" },
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t-other", projectId: "p1" },
 				}));
 			});
 

@@ -1,9 +1,6 @@
-// Verifies that task notifications prefer the native click channel: when the
-// shim accepts the notification, the legacy Electrobun path must NOT fire and
-// the focus-proxy slot must stay un-armed (real clicks make the proxy's
-// "activation shortly after = click" guess obsolete — and dangerous, since a
-// stale armed slot teleports the user on an unrelated app activation).
-
+// Verifies that task notifications prefer the native shim: when it accepts the
+// notification, the legacy Electrobun path must NOT fire. Neither path may ever
+// push task navigation — an OS notification click only foregrounds the app.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Task } from "../../shared/types";
 
@@ -41,7 +38,6 @@ const { postNativeTaskNotification } = await import("../native-notifications");
 const {
 	notifyWatchedTaskStatusChange,
 	notifyFromCliDesktop,
-	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	setPushMessage,
 	setTerminalFocus,
@@ -79,8 +75,10 @@ beforeEach(() => {
 });
 
 describe("native notification channel routing", () => {
-	it("skips the legacy path and does not arm the focus-proxy when the shim posts", () => {
+	it("skips the legacy path and never pushes task navigation when the shim posts", () => {
 		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
+		const push = vi.fn();
+		setPushMessage(push);
 
 		notifyWatchedTaskStatusChange(makeTask(), "in-progress", "review-by-user", "MyProject");
 
@@ -93,8 +91,7 @@ describe("native notification channel routing", () => {
 			silent: true,
 		});
 		expect(Utils.showNotification).not.toHaveBeenCalled();
-		// The native delegate reports real clicks — the proxy slot must stay empty.
-		expect(consumeRecentWatchedNotification()).toBeNull();
+		expect(push.mock.calls.map(([name]) => name)).toEqual(["webNotification"]);
 	});
 
 	it("still mirrors a web notification to remote clients when the shim posts", () => {
@@ -107,8 +104,10 @@ describe("native notification channel routing", () => {
 		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: "task-1", body: "done" }));
 	});
 
-	it("falls back to the legacy path and arms the focus-proxy when the shim declines", () => {
+	it("falls back to the legacy path without any click navigation when the shim declines", () => {
 		vi.mocked(postNativeTaskNotification).mockReturnValue(false);
+		const push = vi.fn();
+		setPushMessage(push);
 
 		notifyWatchedTaskStatusChange(makeTask(), "in-progress", "review-by-user", "MyProject");
 
@@ -118,7 +117,7 @@ describe("native notification channel routing", () => {
 			subtitle: "MyProject",
 			silent: true,
 		});
-		expect(consumeRecentWatchedNotification()).toEqual({ taskId: "task-1", projectId: "proj-1" });
+		expect(push.mock.calls.map(([name]) => name)).toEqual(["webNotification"]);
 	});
 
 	it("queues native and web notifications until terminal focus ends", () => {

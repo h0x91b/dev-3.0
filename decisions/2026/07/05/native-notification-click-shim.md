@@ -1,5 +1,7 @@
 # 106 — Compiled ObjC shim for notification click callbacks
 
+> Superseded on 2026-10-06 by `decisions/2026/10/06/notification-click-only-foregrounds.md`: OS notification clicks no longer navigate anywhere; they only bring the app window forward.
+
 ## Context
 
 Clicking a macOS notification should focus the task that fired it. Electrobun's

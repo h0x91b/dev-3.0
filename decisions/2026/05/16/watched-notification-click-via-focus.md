@@ -1,5 +1,7 @@
 # 049 — Click-to-open for watched-task notifications via activation events
 
+> Superseded on 2026-10-06 by `decisions/2026/10/06/notification-click-only-foregrounds.md`: OS notification clicks no longer navigate anywhere; they only bring the app window forward.
+
 ## Context
 
 Watched tasks emit a native notification on every status change

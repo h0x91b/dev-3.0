@@ -1,5 +1,7 @@
 # 062 — Notification click-to-open: foreground gate + open-mode
 
+> Superseded on 2026-10-06 by `decisions/2026/10/06/notification-click-only-foregrounds.md`: OS notification clicks no longer navigate anywhere; they only bring the app window forward.
+
 ## Context
 
 Watched-task notifications support click-to-open: clicking the macOS notification

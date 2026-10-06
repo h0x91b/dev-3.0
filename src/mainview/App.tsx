@@ -1006,8 +1006,8 @@ function App() {
 
 	// Route an inbound `dev3://…` deep link (resolved by the backend) to the right
 	// surface: jump to a task, open a project board, or open the Create Task modal
-	// on a project prefilled with text. Reuses the same navigation the notification
-	// click and Cmd+1..9 paths use.
+	// on a project prefilled with text. Reuses the same navigation the toast click
+	// and Cmd+1..9 paths use.
 	const handleDeepLink = useCallback(
 		(nav: DeepLinkNav) => {
 			if (nav.kind === "task") {
@@ -2622,15 +2622,6 @@ function App() {
 	}, [t]);
 
 	useEffect(() => {
-		function onOpenTaskFromNotification(e: Event) {
-			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
-			openTaskFromNotification(taskId, projectId);
-		}
-		window.addEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
-		return () => window.removeEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
-	}, [openTaskFromNotification]);
-
-	useEffect(() => {
 		function onOpenDeepLink(e: Event) {
 			handleDeepLink((e as CustomEvent).detail as DeepLinkNav);
 		}
@@ -2638,26 +2629,9 @@ function App() {
 		return () => window.removeEventListener("rpc:openDeepLink", onOpenDeepLink);
 	}, [handleDeepLink]);
 
-	// If this window was reopened by a notification click while the app sat
-	// window-less in the dock, the click target is waiting in the backend — pull
-	// it on mount and navigate. Pulling (rather than bun pushing) avoids racing
-	// the listener registration above; same pattern as consumePendingQuitDialog.
-	// Optional-chained: some tests mock `api.request` without this method.
-	useEffect(() => {
-		const pending = api.request.consumePendingNotificationNav?.();
-		if (!pending) return;
-		pending
-			.then((target) => {
-				if (target) openTaskFromNotification(target.taskId, target.projectId);
-			})
-			.catch(() => {});
-		// Mount-only on purpose: the backend slot is consumed on first read, so
-		// re-running on `openTaskFromNotification` identity changes would only
-		// ever read null.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
-
-	// Same cold-start pull for a `dev3://…` deep link that reopened this window.
+	// If this window was reopened by a `dev3://…` deep link while the app sat
+	// window-less in the dock, the target is waiting in the backend — pull it on
+	// mount (a push would race the listener above; same as consumePendingQuitDialog).
 	useEffect(() => {
 		const pending = api.request.consumePendingDeepLinkNav?.();
 		if (!pending) return;
@@ -2669,10 +2643,8 @@ function App() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	// Report window focus state to the backend. It uses this to suppress
-	// notification click-to-open arming while the app is already in the foreground —
-	// otherwise an in-app click that re-keys the window gets misread as a
-	// notification click and zooms the user into the task.
+	// Report window focus state to the backend (`dev3 ui state`, time tracking,
+	// and a notification click leaving an already-focused window alone).
 	useEffect(() => {
 		const report = (focused: boolean) => {
 			// Optional-chained: best-effort telemetry, and some tests mock `api`

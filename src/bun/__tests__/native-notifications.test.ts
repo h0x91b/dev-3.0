@@ -77,7 +77,7 @@ describe("initNativeNotifications guards", () => {
 
 	it.runIf(process.platform === "darwin")("returns false when the shim dylib does not exist", () => {
 		// VIEWS_FOLDER is mocked to a nonexistent bundle path — init must degrade
-		// to false (focus-proxy fallback), not throw.
+		// to false (Electrobun notifications), not throw.
 		expect(initNativeNotifications(() => {})).toBe(false);
 	});
 });

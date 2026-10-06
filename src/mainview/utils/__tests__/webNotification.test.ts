@@ -125,7 +125,7 @@ describe("canShowWebNotification", () => {
 });
 
 describe("showWebNotificationOrToast", () => {
-	it("creates a Web Notification when allowed, wiring click-to-open", () => {
+	it("creates a Web Notification when allowed; its click only focuses, never navigates", () => {
 		const onOpen = vi.fn();
 		showWebNotificationOrToast(baseDetail, onOpen);
 
@@ -135,9 +135,13 @@ describe("showWebNotificationOrToast", () => {
 		expect(n.options?.body).toBe("In Progress → Review");
 		expect(toastMock.info).not.toHaveBeenCalled();
 
+		const focus = vi.spyOn(window, "focus").mockImplementation(() => {});
 		n.onclick?.();
-		expect(onOpen).toHaveBeenCalledWith("task-1", "proj-1");
+		n.onclick?.();
+		expect(focus).toHaveBeenCalledTimes(2);
+		expect(onOpen).not.toHaveBeenCalled();
 		expect(n.close).toHaveBeenCalled();
+		focus.mockRestore();
 	});
 
 	it("falls back to a toast in an insecure context", () => {
@@ -169,7 +173,7 @@ describe("showWebNotificationOrToast", () => {
 		expect(toastMock.info).not.toHaveBeenCalled();
 	});
 
-	it("queues notifications while suppressed and preserves click navigation", () => {
+	it("queues notifications while suppressed; a flushed one still never navigates on click", () => {
 		const onOpen = vi.fn();
 		setWebNotificationsSuppressed(true);
 		showWebNotificationOrToast(baseDetail, onOpen);
@@ -180,6 +184,6 @@ describe("showWebNotificationOrToast", () => {
 		setWebNotificationsSuppressed(false);
 		expect(FakeNotification.instances).toHaveLength(1);
 		FakeNotification.instances[0].onclick?.();
-		expect(onOpen).toHaveBeenCalledWith("task-1", "proj-1");
+		expect(onOpen).not.toHaveBeenCalled();
 	});
 });

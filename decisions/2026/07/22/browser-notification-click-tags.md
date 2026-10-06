@@ -1,5 +1,7 @@
 # 160 — Keep browser notification clicks independent
 
+> Superseded on 2026-10-06 by `decisions/2026/10/06/notification-click-only-foregrounds.md`: OS notification clicks no longer navigate anywhere; they only bring the app window forward.
+
 ## Context
 
 Remote browser notifications used the originating task ID as `Notification.tag`.
