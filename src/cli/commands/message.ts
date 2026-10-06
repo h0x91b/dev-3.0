@@ -182,6 +182,13 @@ export async function handleMessage(
 	}
 
 	params.at = at.toISOString();
+	// Our pane and pid, so a reminder an agent schedules for its own task comes back
+	// to that agent rather than to a sibling. The app decides whether it applies.
+	const sourcePaneId = context?.taskId ? (process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim()) : undefined;
+	if (sourcePaneId) {
+		params.sourcePaneId = sourcePaneId;
+		params.sourcePid = process.pid;
+	}
 	const resp = await sendRequest(socketPath, "message.schedule", params);
 	if (!resp.ok) exitError(resp.error || "Failed to schedule message");
 	const data = resp.data as { taskId: string; pending: number; messageId?: string };

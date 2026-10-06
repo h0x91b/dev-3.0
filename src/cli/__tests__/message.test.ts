@@ -127,6 +127,27 @@ describe("message — scheduled", () => {
 		expect(stdoutOutput).toContain("Message scheduled");
 	});
 
+	it("hands the app its own tmux pane so a self-reminder can come back to this agent", async () => {
+		vi.stubEnv("TMUX_PANE", "%3");
+		try {
+			mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
+			await handleMessage(args(["later"], { in: "30m" }), SOCKET, CTX);
+			expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
+			mockSend.mockClear();
+			// Outside a worktree there is no author to bind, whatever pane the shell is in.
+			await handleMessage(args(["later"], { in: "30m", task: "seq:9" }), SOCKET, null);
+			expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("sourcePaneId");
+			// A native pane names itself through DEV3_PANE_ID instead.
+			vi.stubEnv("TMUX_PANE", "");
+			vi.stubEnv("DEV3_PANE_ID", "pane-2");
+			mockSend.mockClear();
+			await handleMessage(args(["later"], { in: "30m" }), SOCKET, CTX);
+			expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourcePaneId: "pane-2" });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("schedules with --at a wall-clock time", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
 		await handleMessage(args(["at thing"], { at: "23:59" }), SOCKET, CTX);

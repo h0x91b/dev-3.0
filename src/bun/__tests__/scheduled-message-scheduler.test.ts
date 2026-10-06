@@ -21,6 +21,9 @@ vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativePane: vi.fn(async () => true),
 }));
 vi.mock("../pty-server", () => ({ DEFAULT_TMUX_SOCKET: "dev3" }));
+vi.mock("../scheduled-message-author", () => ({
+	resolveScheduledMessageAuthorPane: vi.fn(async (_task: unknown, author: { paneId: string }) => ({ ok: true, paneId: author.paneId })),
+}));
 const pushFn = vi.fn();
 vi.mock("../rpc-handlers", () => ({
 	getPushMessage: vi.fn(() => pushFn),
@@ -35,6 +38,7 @@ vi.mock("../logger", () => ({
 import * as data from "../data";
 import { holdMessageForAgentPane, holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
+import { resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
 import {
 	startScheduledMessageScheduler,
 	stopScheduledMessageScheduler,
@@ -508,5 +512,94 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		const text = vi.mocked(sendPromptToNativeAgentPane).mock.calls[0]![1];
 		expect(text).toContain("<from-task>seq:7</from-task>");
 		expect(text).toContain("hello now");
+	});
+});
+
+describe("scheduled-message scheduler — self-reminders in a multi-agent task", () => {
+	const twoAgents = {
+		panes: [
+			{ paneId: "%1", agentCmd: "claude", sessionId: "conv-a", agentId: null, configId: null },
+			{ paneId: "%2", agentCmd: "claude", sessionId: "conv-b", agentId: null, configId: null },
+		],
+	};
+	const authorB = { paneId: "%2", sessionId: "conv-b", paneToken: "gen-1", agentProcess: "201@Mon Oct  5 09:00:00 2026" };
+
+	it("fires to the agent that scheduled it, never through the focus-based task resolver", async () => {
+		const message = makeMessage({ author: authorB });
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const { delivery } = await fireScheduledMessage(project, task as never, message, { late: false });
+		expect(delivery.status).toBe("held");
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", "check CI and continue", expect.any(Function));
+		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("fires a native extra agent's self-reminder into its own native pane, not pane-1", async () => {
+		const message = makeMessage({ author: { ...authorB, paneId: "pane-2", sessionId: null, paneToken: "native-s2" } });
+		const task = makeTask({ terminalBackend: "native", sessionState: { panes: [] }, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		await fireScheduledMessage(project, task as never, message, { late: false });
+		expect(sendPromptToNativePane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "pane-2", "check CI and continue", expect.anything());
+		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("'Send now' on a self-reminder types into the author's pane", async () => {
+		const message = makeMessage({ author: authorB });
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		vi.mocked(data.getTask).mockResolvedValue(task as never);
+		await sendScheduledMessageNow(project, task.id, message.id);
+		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", "check CI and continue");
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("drops with a notice when the author is gone, instead of reaching the sibling", async () => {
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: false, detail: "the agent is no longer running" });
+		const message = makeMessage({ author: authorB });
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const { delivery, task: after } = await fireScheduledMessage(project, task as never, message, { late: false });
+		expect(delivery).toMatchObject({ status: "not-delivered", reason: "pane-absent" });
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
+		expect(after.scheduledMessages).toEqual([]);
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({
+			level: "error",
+			message: expect.stringContaining("the agent that scheduled it is gone"),
+		}));
+	});
+
+	it("keeps the author through tasks.json and fires to it after a reload", async () => {
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [] });
+		mockUpdateTaskWith(task);
+		const queued = await scheduleMessage(project, task as never, {
+			text: "wake up", at: new Date(Date.now() + 60_000).toISOString(), author: authorB,
+		});
+		const reloaded = JSON.parse(JSON.stringify(queued)) as typeof task;
+		const message = reloaded.scheduledMessages[0]!;
+		expect(message).toMatchObject({ target: { kind: "agent" }, author: authorB });
+		mockUpdateTaskWith(reloaded);
+		await fireScheduledMessage(project, reloaded as never, message, { late: true });
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%2", "wake up", expect.any(Function));
+	});
+
+	it("leaves a message without an author on the task-level route", async () => {
+		const message = makeMessage();
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const queued = await scheduleMessage(project, task as never, { text: "x", at: new Date(Date.now() + 60_000).toISOString() });
+		expect(queued.scheduledMessages?.[queued.scheduledMessages.length - 1]).not.toHaveProperty("author");
+		await fireScheduledMessage(project, task as never, message, { late: false });
+		expect(holdMessageForAgentPane).toHaveBeenCalledTimes(1);
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+	});
+
+	it("cancels a self-reminder by id like any other", async () => {
+		const message = makeMessage({ id: "abc12345", author: authorB });
+		const task = makeTask({ sessionState: twoAgents, scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const { task: after } = await cancelScheduledMessageByRef(project, task.id, "abc1");
+		expect(after.scheduledMessages).toEqual([]);
+		expect(holdMessageForPane).not.toHaveBeenCalled();
 	});
 });

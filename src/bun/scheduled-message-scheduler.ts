@@ -4,6 +4,7 @@ import {
 	type Task,
 	type TaskStatus,
 	type ScheduledMessage,
+	type ScheduledMessageAuthor,
 	type ScheduledMessageTarget,
 	getTaskTitle,
 	MAX_SCHEDULED_MESSAGES_PER_TASK,
@@ -17,6 +18,7 @@ import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
+import { resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
 // this module through cli-socket-server — don't load the real Electrobun-backed
@@ -81,11 +83,18 @@ async function deliverToTarget(task: Task, message: ScheduledMessage, hold: bool
 	// reaching one ends on a fresh board snapshot — once per burst, built when the
 	// text is actually typed. Empty for every task that is not a coordinator.
 	const epilogue = () => coordinatorBoardEpilogue(task);
+	// A self-reminder goes back to the agent that wrote it, never to a sibling.
+	let target = message.target;
+	if (message.author) {
+		const resolved = await resolveScheduledMessageAuthorPane(task, message.author);
+		if (!resolved.ok) return { status: "not-delivered", reason: "pane-absent", detail: resolved.detail };
+		target = { kind: "pane", paneId: resolved.paneId };
+	}
 	// Held message: nothing is typed until the pane goes quiet. Bursts (one agent
 	// writing three in a row, or several peers reporting at once) then become one
 	// agent turn, and no text lands in the middle of the user's own line. See
 	// agent-message-hold.ts.
-	const delivery = await deliverAgentPrompt(task, text, message.target, { hold, epilogue });
+	const delivery = await deliverAgentPrompt(task, text, target, { hold, epilogue });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
 }
@@ -224,10 +233,11 @@ export async function fireScheduledMessage(
 	const updated = await removeFromQueue(project, task, message.id);
 	const preview = messagePreview(message.text);
 	if (delivery.status === "not-delivered") {
+		const who = message.author ? "the agent that scheduled it is gone" : "no live agent";
 		notifyOutcome(project, task, {
-			toast: `Scheduled message not delivered — no live agent: "${preview}"`,
+			toast: `Scheduled message not delivered — ${who}: "${preview}"`,
 			level: "error",
-			reason: `Scheduled message dropped (no live agent): "${preview}"`,
+			reason: `Scheduled message dropped (${who}): "${preview}"`,
 		});
 	} else if (delivery.status === "unconfirmed") {
 		// Never silent. The message is out of the queue whatever happened, so saying
@@ -280,6 +290,8 @@ export async function scheduleMessage(
 		subject?: string | null;
 		/** Set only by a caller that can prove a human queued this. */
 		origin?: AgentMessageOrigin;
+		/** The agent a self-reminder must return to; see {@link ScheduledMessage.author}. */
+		author?: ScheduledMessageAuthor | null;
 	},
 ): Promise<Task> {
 	const validated = validateText(input.text);
@@ -306,6 +318,7 @@ export async function scheduleMessage(
 		...(input.source ? { source: input.source } : {}),
 		...(input.origin ? { origin: input.origin } : {}),
 		...(spilledPath ? { spilledPath } : {}),
+		...(input.author ? { author: input.author } : {}),
 	};
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
 		const queue = current.scheduledMessages ?? [];
@@ -315,7 +328,11 @@ export async function scheduleMessage(
 		return { updates: { scheduledMessages: [...queue, item] }, result: undefined };
 	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("Scheduled message queued", { taskId: task.id.slice(0, 8), at: item.at, target: item.target.kind });
+	log.info("Scheduled message queued", {
+		taskId: task.id.slice(0, 8),
+		at: item.at,
+		target: item.author ? `author ${item.author.paneId}` : item.target.kind,
+	});
 	return updated;
 }
 

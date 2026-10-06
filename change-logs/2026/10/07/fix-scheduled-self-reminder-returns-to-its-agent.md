@@ -1,0 +1,3 @@
+Short: Self-reminders return to the agent that set them
+
+In a task running several agents — including an AI Review agent or extra agents on the native terminal — a message an agent schedules for its own task (`dev3 message --in/--at`) now fires back into that same agent instead of whichever agent was focused last. If that agent has exited (even when its pane stayed open as a shell) and was not resumed elsewhere, the message goes to no one else: it is dropped with an error toast and attention badge, and its full text stays in the task's message log. Messages for other tasks, and messages queued by the user, route exactly as before.

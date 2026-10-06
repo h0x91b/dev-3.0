@@ -34,6 +34,7 @@ import type { NotificationLogInput, NotificationLogMode, NotificationLogOutcome 
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { cancelScheduledMessageByRef, scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
+import { captureScheduledMessageAuthor } from "./scheduled-message-author";
 import { toScheduledMessageListing } from "../shared/scheduled-message-listing";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
@@ -2406,7 +2407,16 @@ const handlers: Record<string, Handler> = {
 		// Same gate as the immediate send: a delay changes nothing about the subject.
 		const subject = requireMessageSubject(params.subject, text);
 		const source = await resolveAgentMessageSource(params, task.id);
-		const updated = await scheduleMessageCore(project, task, { text, at, source, subject });
+		// Only a self-reminder is bound to its author: a message for another task
+		// is addressed to that task, whichever of its agents is live.
+		const author = params.sourceTaskId === task.id
+			? await captureScheduledMessageAuthor(
+				task,
+				typeof params.sourcePaneId === "string" ? params.sourcePaneId : null,
+				typeof params.sourcePid === "number" ? params.sourcePid : null,
+			)
+			: null;
+		const updated = await scheduleMessageCore(project, task, { text, at, source, subject, author });
 		const queue = updated.scheduledMessages ?? [];
 		// Appended under the tasks-file lock, so the returned queue ends with ours.
 		const messageId = queue[queue.length - 1]?.id;

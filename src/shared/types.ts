@@ -3087,6 +3087,28 @@ export interface ScheduledMessage {
 	 * pointer rather than a body, instead of guessing from the wording.
 	 */
 	spilledPath?: string;
+	/**
+	 * The agent that queued this for its OWN task (a self-reminder), so the fire
+	 * goes back to that agent instead of whichever sibling is focused. Absent for
+	 * cross-task and human-queued messages. Additive: older versions ignore it.
+	 */
+	author?: ScheduledMessageAuthor;
+}
+
+/**
+ * Who a self-reminder belongs to, captured when it was queued. The identity is
+ * the agent PROCESS (pid + start time): pane ids are reused across tmux servers,
+ * and an agent that exits leaves its pane behind as a plain shell.
+ */
+export interface ScheduledMessageAuthor {
+	/** Pane the scheduling agent ran in (tmux `%N` or native pane id). */
+	paneId: string;
+	/** That pane's agent conversation id from `sessionState`, when known. */
+	sessionId: string | null;
+	/** The pane's generation: tmux server token, or the native registry session id. */
+	paneToken: string;
+	/** Start signature (`pid@lstart`) of the agent process itself. */
+	agentProcess: string;
 }
 
 /**
