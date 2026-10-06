@@ -25,6 +25,7 @@ import { telemetryBootstrapScript } from "./analytics-identity";
 import { shouldAutoOpenDevTools } from "./devtools-auto-open";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
+import { adoptNativeWindowsMenu } from "./native-window-menu";
 import { handleNotificationClick } from "./notification-click";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { resolveDeepLink } from "./deep-link";
@@ -52,7 +53,7 @@ import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { ensureCodexConfigFile } from "./codex-config";
 import { ensureWindowsShortcuts } from "./windows-shortcuts";
 import { makeTitle } from "./app-utils";
-import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
+import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange, type MenuContext } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
@@ -419,13 +420,20 @@ applyFreezeDiagnosticsSetting(loadSettingsSync().freezeDiagnosticsEnabled === tr
 
 // --- Application Menu ---
 
-ApplicationMenu.setApplicationMenu(buildApplicationMenu(getMenuContext()));
+// Every rebuild must also re-register the Window menu with AppKit — see
+// native-window-menu.ts. Keep both calls together here.
+function installApplicationMenu(ctx: MenuContext): void {
+	ApplicationMenu.setApplicationMenu(buildApplicationMenu(ctx));
+	adoptNativeWindowsMenu();
+}
+
+installApplicationMenu(getMenuContext());
 
 // Rebuild the menu whenever the renderer pushes a new context (route change).
 // Items that require a task / project / terminal toggle their enabled state.
 onMenuContextChange((ctx) => {
 	log.debug("Menu context changed, rebuilding native menu", { hasTask: ctx.hasTask, hasProject: ctx.hasProject, hasTerminal: ctx.hasTerminal });
-	ApplicationMenu.setApplicationMenu(buildApplicationMenu(ctx));
+	installApplicationMenu(ctx);
 });
 
 // --- Main Window ---

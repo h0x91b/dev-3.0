@@ -27,7 +27,7 @@ dies; both are impossible from a deferred JS callback.
 
 Ship a ~130-line compiled shim, `src/native/macos/dev3-notifications.m` →
 `dist/native/dev3-notifications.dylib` (built by
-`scripts/build-native-notifications.sh` inside `build:cli`, bundled via the
+`scripts/build-native-macos.sh` inside `build:cli`, bundled via the
 `"dist/native": "native"` copy rule). It sets a UN delegate, posts
 notifications whose **request identifier encodes `taskId|projectId`** (no
 userInfo plumbing; stable per task, so newer notifications replace older ones),

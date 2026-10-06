@@ -55,8 +55,8 @@ describe("build plans", () => {
 		expect(cliBuildPlan("win32")).toEqual({ outfile: "dist/dev3.exe", shellSteps: [] });
 	});
 
-	it("builds the macOS notification shim only where a shell exists", () => {
-		expect(nativeBuildPlan("darwin").shellSteps).toEqual(["scripts/build-native-notifications.sh"]);
+	it("builds the macOS native shims only where a shell exists", () => {
+		expect(nativeBuildPlan("darwin").shellSteps).toEqual(["scripts/build-native-macos.sh"]);
 		expect(nativeBuildPlan("win32").shellSteps).toEqual([]);
 	});
 });

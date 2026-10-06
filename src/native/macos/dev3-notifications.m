@@ -17,7 +17,7 @@
 // completion handler must be called HERE, synchronously. That is exactly why
 // this must be compiled code and cannot be done with pure bun:ffi + libobjc.
 //
-// Built by scripts/build-native-notifications.sh into
+// Built by scripts/build-native-macos.sh into
 // dist/native/dev3-notifications.dylib and bundled under Resources/app/native/.
 
 #import <Foundation/Foundation.h>

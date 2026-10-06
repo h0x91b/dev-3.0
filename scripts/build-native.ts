@@ -2,7 +2,7 @@
  * Native asset build orchestrator — replaces the bash chain that used to live in
  * the `build:native` package script.
  *
- * The macOS notification shim is still built by its `.sh` script; Windows only
+ * The macOS native shims are still built by their `.sh` script; Windows only
  * needs the `dist/native` copy source to exist. The terminal host bundler runs
  * on every platform — a package without it has no native terminal to launch.
  */
@@ -17,7 +17,7 @@ export interface NativeBuildPlan {
 
 export function nativeBuildPlan(platform: NodeJS.Platform): NativeBuildPlan {
 	if (platform === "win32") return { shellSteps: [] };
-	return { shellSteps: ["scripts/build-native-notifications.sh"] };
+	return { shellSteps: ["scripts/build-native-macos.sh"] };
 }
 
 function runOrExit(command: string[], label: string): void {
