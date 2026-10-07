@@ -1,0 +1,22 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-superseded-canary-archives",
+      "Status": "Enabled",
+      "Filter": { "And": { "Prefix": "dev-3.0/", "Tags": [{ "Key": "dev3-retention", "Value": "superseded-canary" }] } },
+      "Expiration": { "Days": 7 }
+    },
+    {
+      "ID": "expire-superseded-stable-archives",
+      "Status": "Enabled",
+      "Filter": { "And": { "Prefix": "dev-3.0/", "Tags": [{ "Key": "dev3-retention", "Value": "superseded-stable" }] } },
+      "Expiration": { "Days": 90 }
+    },
+    {
+      "ID": "abort-stale-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "dev-3.0/" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}

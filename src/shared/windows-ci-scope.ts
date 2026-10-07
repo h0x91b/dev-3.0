@@ -55,6 +55,8 @@ export const WINDOWS_SCOPE_PATHS = [
 	// Pins Bun only to run the site changelog generator; in under (2) like every pin, so
 	// the pin never drifts from the packaged runtime unseen. Edits here are rare.
 	".github/workflows/pages.yml",
+	// Pins Bun only to run the release-retention tagger; in under (2) like every pin.
+	".github/workflows/release-retention.yml",
 	"electrobun.config.ts",
 	"package.json",
 	"scripts/fixtures/windows-conpty-package/**",

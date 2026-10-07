@@ -1,0 +1,1 @@
+A daily workflow now tags release archives no current manifest or Homebrew formula points at, and `infra/release-bucket-lifecycle.json` expires tagged canary archives after 7 days and stable ones after 90, so the release bucket stops growing without ever touching the build users are on.

@@ -1,0 +1,48 @@
+# Tags superseded release archives in the bucket so its lifecycle rule can expire them.
+# Tags alone delete nothing — infra/release-bucket-lifecycle.json turns them into an expiry once
+# it is applied to the bucket. Why tags and not a prefix rule:
+# decisions/2026/10/07/release-feed-behind-cloudfront.md.
+name: Release retention
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write tags (off = dry run, prints the plan only)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-retention
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # No `bun install`: the script imports only src/shared.
+      - name: Tag superseded archives
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            bun scripts/release-retention.ts --apply
+          else
+            bun scripts/release-retention.ts
+          fi

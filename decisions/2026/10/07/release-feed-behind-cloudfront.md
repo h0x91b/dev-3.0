@@ -16,7 +16,7 @@
 - The bucket keeps its public-read policy: every build before this one polls S3 directly. Uploads stay on `s3://`.
 - Cache behaviors: `dev-3.0/*-update.json`, `dev-3.0/canary-*`, `dev-3.0/stable-*` (the mutable root feed) are `Managed-CachingDisabled` — caching a same-named, overwritten `.tar.zst` could pair a new manifest with an old bundle. Versioned dirs use `Managed-CachingOptimized` (1 day; a re-run of a release overwrites them).
 - Canary archives keep only `dev3-cli-*.tar.gz` (macOS, Linux); Windows writes no canary archive because it ships no CLI tarball.
-- Retention (follow-up): a sweeper tags every dir that no current manifest references `superseded`; a lifecycle rule expires tagged canary objects after 7 days and stable `v*` after 90. Untagged objects are never expired, so the current build of either channel survives however old it is.
+- Retention: `scripts/release-retention.ts` (daily, `.github/workflows/release-retention.yml`) tags every archive dir that no current manifest or the Homebrew formula references, keeping the newest 10 canary / 3 stable dirs regardless; `infra/release-bucket-lifecycle.json` expires tagged canary objects 7 days after upload and stable `v*` after 90. Untagged objects are never expired, so the current build of either channel survives however old it is, and a planner bug can only leave objects untagged. The planner refuses to run on any unreadable manifest or formula.
 
 ## 4. Risks
 
