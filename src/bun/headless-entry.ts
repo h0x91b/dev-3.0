@@ -20,6 +20,7 @@ import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
  */
 
 import { existsSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
@@ -242,7 +243,9 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 {
 	try {
 		const { installAgentSkills } = await import("./agent-skills");
-		await installAgentSkills({ lowBattery: (await loadSettings()).lowBatteryEnabled });
+		await installAgentSkills();
+		const { retireLowBattery } = await import("./low-battery");
+		await retireLowBattery(homedir());
 	} catch (err) {
 		console.error("[headless] dev3 skill install failed (non-fatal):", err);
 	}

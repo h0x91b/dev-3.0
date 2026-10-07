@@ -367,15 +367,6 @@ export const SETTINGS_ENTRIES = [
 		storage: "surface",
 	},
 	{
-		id: "low-battery",
-		category: "agents",
-		titleKey: "settings.lowBattery",
-		descriptionKey: "settings.lowBatteryDesc",
-		anchor: "low-battery",
-		globalField: "lowBatteryEnabled",
-		storage: "global",
-	},
-	{
 		id: "rate-limit-tracking",
 		category: "agents",
 		titleKey: "settings.rateLimitTracking",
@@ -598,8 +589,9 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	// Which traffic presentation was last picked. A view mode chosen on the surface
 	// itself (like the diff viewer's modes), not a settings row.
 	"agentTrafficExperiment",
-	// Legacy low-battery keys from the default-on era. Never read; kept on disk only
-	// so an older co-installed build keeps its own opt-out and announce flag.
+	// Legacy keys of the removed low-battery feature; kept on disk only so an older
+	// co-installed build keeps its own state. No settings row.
+	"lowBatteryEnabled",
 	"lowBatteryDisabled",
 	"lowBatteryAnnounced",
 	// Edited inside the terminal-shell-prompt entry, which is registered by `shellPrompt`.

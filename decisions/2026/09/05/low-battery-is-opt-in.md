@@ -1,5 +1,7 @@
 # low-battery is opt-in, and an unchosen setting touches nothing on disk
 
+> Superseded on 2026-10-07 by `decisions/2026/10/07/remove-low-battery.md`: the feature was removed; only a one-time startup cleanup remains.
+
 ## Context
 
 `decisions/2026/08/29/ship-low-battery-from-a-build-time-pull.md` shipped the

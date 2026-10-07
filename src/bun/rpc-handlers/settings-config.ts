@@ -1,7 +1,6 @@
 import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
 import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
 import type { AgentCheckResult, AgentModelAvailability, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
@@ -33,10 +32,7 @@ import { agentBinaryPathOverride, isExecutableFile } from "../executable";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
-import type { LowBatteryStatus } from "../../shared/low-battery";
-import { installAgentSkills } from "../agent-skills";
 
-import { forceSelectLowBatteryStyle, lowBatteryStatus } from "../low-battery";
 import { writeShellInit } from "../shell-init";
 import { previewShellPrompt } from "../shell-prompt-preview";
 
@@ -300,20 +296,6 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	if (stored.openArtifactsInPopup !== next.openArtifactsInPopup) {
 		const { noteArtifactPopupPreference } = await import("../artifact-freeze-recovery");
 		noteArtifactPopupPreference(next.openArtifactsInPopup);
-	}
-	// Apply the low-battery toggle straight away — a switch that only takes effect
-	// after an app restart does not mean what its label says. Flipping it off is a
-	// real uninstall of what dev3 wrote, so it must not wait either.
-	if ((stored.lowBatteryEnabled === true) !== (next.lowBatteryEnabled === true)) {
-		try {
-			// The installer owns both halves: the skill/style files and the always-on
-			// line inside dev3's managed block in ~/.agents/AGENTS.md. An explicit
-			// false here is a real uninstall, which is why the flag is passed, not
-			// left undefined.
-			await installAgentSkills({ lowBattery: next.lowBatteryEnabled === true });
-		} catch (err) {
-			log.warn("Failed to apply the low-battery toggle (non-fatal)", { error: String(err) });
-		}
 	}
 	// Start or stop the freeze collector with the switch, not at the next launch:
 	// a diagnostic you turn on while the app misbehaves is worth nothing tomorrow,
@@ -750,19 +732,6 @@ async function setFeatureFlags(params: { flags: Record<string, boolean> }): Prom
 	cacheFeatureFlags(params.flags);
 }
 
-async function getLowBatteryStatus(): Promise<LowBatteryStatus> {
-	const settings = await loadSettings();
-	return lowBatteryStatus(homedir(), settings.lowBatteryEnabled === true);
-}
-
-/** The user kept their own output style and then asked for low-battery anyway.
- *  Only this path overwrites `outputStyle` — the installer never does. */
-async function selectLowBatteryStyle(): Promise<LowBatteryStatus> {
-	log.info("→ selectLowBatteryStyle");
-	forceSelectLowBatteryStyle(homedir());
-	return getLowBatteryStatus();
-}
-
 /** Read side for Debug -> Feature Flags: what bun actually gates code on. */
 async function getFeatureFlags(): Promise<Record<string, boolean>> {
 	return getAllFeatureFlags();
@@ -789,8 +758,6 @@ export const settingsConfigHandlers = {
 	getShellAvailability,
 	previewShellPrompt: (params: { source: string; columns?: number }) => previewShellPrompt(params.source, params.columns),
 	saveGlobalSettings,
-	getLowBatteryStatus,
-	selectLowBatteryStyle,
 	toggleFavoriteAgent,
 	installDev3Cli,
 	getAgents,

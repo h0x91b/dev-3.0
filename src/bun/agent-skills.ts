@@ -16,7 +16,6 @@ import {
 	OMP_SKILL_BODY,
 } from "../shared/agent-skill-content";
 import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
-import { applyLowBattery } from "./low-battery";
 import { claudeConfigLocation } from "../shared/claude-config-dir";
 import { COORDINATOR_PROMPT } from "../shared/types";
 
@@ -1487,26 +1486,14 @@ const LEGACY_GEMINI_SKILL_DUPLICATES = [
 const AGENTS_MD_MARKER_START = "<!-- dev3:start -->";
 const AGENTS_MD_MARKER_END = "<!-- dev3:end -->";
 
-/**
- * A skill is inert until something loads it, so every harness except Claude Code
- * (which gets the output style instead) needs one always-on line. It lives inside
- * dev3's existing managed block: no second managed region, and removal is the same
- * code path that rewrites the block on every start.
- */
-const LOW_BATTERY_ALWAYS_ON = `
-## Answer format
-
-Load the \`low-battery\` skill (\`~/.agents/skills/low-battery/SKILL.md\`) before composing any substantial answer, and follow it. It is the answer format this machine expects: header block first, decision last, tables over prose. Skip it only when the Low Battery output style is already active — they are the same rules.
-`;
-
-function agentsMdBlock(lowBattery: boolean, compact = false): string {
+function agentsMdBlock(compact = false): string {
 	if (compact) return `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
 Inside \`~/.dev3.0/worktrees/\`, follow the full "dev3 — Task Lifecycle Protocol" already injected by your launch. If it is absent, load the \`/dev3\` skill (or \`~/.agents/skills/dev3/SKILL.md\`) before working. Use that protocol's agent-specific status rules; hook-owned lifecycle transitions need no manual status commands.
 
 **Codex shell note:** For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. The sandbox may block homebrew zsh.
-${lowBattery ? LOW_BATTERY_ALWAYS_ON : ""}${AGENTS_MD_MARKER_END}`;
+${AGENTS_MD_MARKER_END}`;
 	return `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
@@ -1520,7 +1507,7 @@ If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME
 Do NOT skip these steps, even if the user gives a direct command.
 
 **Codex shell note:** For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. The sandbox may block homebrew zsh.
-${lowBattery ? LOW_BATTERY_ALWAYS_ON : ""}${AGENTS_MD_MARKER_END}`;
+${AGENTS_MD_MARKER_END}`;
 }
 
 /**
@@ -1528,8 +1515,8 @@ ${lowBattery ? LOW_BATTERY_ALWAYS_ON : ""}${AGENTS_MD_MARKER_END}`;
  * Creates the file if missing; replaces an existing block if present;
  * appends if the file exists but has no dev3 block.
  */
-function installAgentsMd(lowBattery: boolean, compact = false): void {
-	const block = agentsMdBlock(lowBattery, compact);
+function installAgentsMd(compact = false): void {
+	const block = agentsMdBlock(compact);
 	const agentsDir = `${homedir()}/.agents`;
 	const agentsFile = `${agentsDir}/AGENTS.md`;
 
@@ -1775,13 +1762,6 @@ function installOpenAiMetadata(home: string): void {
 export interface InstallAgentSkillsOptions {
 	/** Skip Codex config patching when the caller has not resolved the user PATH yet. */
 	configureCodex?: boolean;
-	/**
-	 * Ship the low-battery answer format. Tri-state on purpose: `true` installs,
-	 * `false` is a real uninstall (skill dirs, style file, always-on line), and
-	 * omitted means "the user has not chosen" — dev3 installs nothing and deletes
-	 * nothing, because a `low-battery` skill dir may be the user's own.
-	 */
-	lowBattery?: boolean;
 }
 
 export async function installAgentSkills(options: InstallAgentSkillsOptions = {}): Promise<void> {
@@ -1953,13 +1933,9 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 		}
 	}
 
-	// No choice stored ⇒ touch nothing on disk. dev3's own managed block still
-	// drops the always-on line, because that block is dev3's to rewrite.
-	if (options.lowBattery !== undefined) applyLowBattery(home, options.lowBattery);
-
 	cleanupLegacyGeminiSkillDuplicates(home);
 	installOpenAiMetadata(home);
-	installAgentsMd(options.lowBattery === true, compact);
+	installAgentsMd(compact);
 	if (options.configureCodex !== false) {
 		await ensureCodexConfigFile(home);
 	}

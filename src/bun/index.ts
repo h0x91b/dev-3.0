@@ -49,6 +49,7 @@ import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { killModelSidecarNow } from "./model-sidecar";
 import { installAgentSkills } from "./agent-skills";
+import { retireLowBattery } from "./low-battery";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { ensureCodexConfigFile } from "./codex-config";
 import { ensureWindowsShortcuts } from "./windows-shortcuts";
@@ -186,7 +187,8 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
-	await installAgentSkills({ configureCodex: false, lowBattery: loadSettingsSync().lowBatteryEnabled });
+	await installAgentSkills({ configureCodex: false });
+	await retireLowBattery(homedir());
 
 	// Append ~/.dev3.0/bin to the user's shell rc files (idempotent).
 	// This makes `dev3` available in all terminals, not just worktree tmux

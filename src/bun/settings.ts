@@ -201,12 +201,9 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
 		// Default-off experimental toggle — only an explicit true is a stored opt-in.
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
-		// Default-off feature — no key at all means off, so nothing is installed and
-		// no output style is touched until the user opts in. Both booleans are kept:
-		// an explicit false is the user saying "off", not the absence of a choice.
+		// Legacy keys of the removed low-battery feature — passed through so an older
+		// co-installed build keeps its own state; `retireLowBattery` reads the first.
 		lowBatteryEnabled: typeof d.lowBatteryEnabled === "boolean" ? d.lowBatteryEnabled : undefined,
-		// Legacy keys, never read by this version — passed through so an older
-		// co-installed build keeps its own opt-out and announce flag.
 		lowBatteryDisabled: d.lowBatteryDisabled === true ? true : undefined,
 		lowBatteryAnnounced: d.lowBatteryAnnounced === true ? true : undefined,
 		// Bring-your-own-tunnel config; kept only when it names a runnable custom command.

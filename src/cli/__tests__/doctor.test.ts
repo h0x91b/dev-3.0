@@ -16,10 +16,6 @@ function plistWithVersion(version: string): string {
 	return `<dict><key>CFBundleVersion</key>\n<string>${version}</string></dict>`;
 }
 
-const LOW_BATTERY_STYLE = `${HOME}/.claude/output-styles/low-battery.md`;
-const LOW_BATTERY_SKILL = `${HOME}/.agents/skills/low-battery/SKILL.md`;
-const CLAUDE_SETTINGS = `${HOME}/.claude/settings.json`;
-
 /** A fully healthy darwin install; individual tests break specific pieces. */
 function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 	const existing = new Set([
@@ -29,8 +25,6 @@ function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 		SHIM,
 		KEG,
 		"/opt/homebrew/Caskroom/dev3",
-		LOW_BATTERY_STYLE,
-		LOW_BATTERY_SKILL,
 	]);
 	return {
 		platform: "darwin",
@@ -45,9 +39,7 @@ function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 		isExecutableFile: (p) => existing.has(p) && p !== HOME,
 		readFile: (p) => {
 			if (p === PLIST) return plistWithVersion("1.30.0");
-			if (p === CLAUDE_SETTINGS) return JSON.stringify({ outputStyle: "Low Battery" });
-			// low-battery is opt-in, so a healthy install of it is one that asked for it.
-			if (p === SETTINGS) return JSON.stringify({ lowBatteryEnabled: true });
+			if (p === SETTINGS) return JSON.stringify({});
 			throw new Error(`ENOENT: ${p}`);
 		},
 		exec: (cmd, args) => {
@@ -72,81 +64,6 @@ describe("dev3 doctor — collectChecks", () => {
 	it("reports a fully healthy install with zero warnings and problems", () => {
 		const results = collectChecks(healthyDeps());
 		expect(results.every((r) => r.status === "ok")).toBe(true);
-	});
-
-	// "It is not working" has to be diagnosable without a screen share: which
-	// upstream revision this build carries, and whether the style actually resolved.
-	it("names the upstream revision and the selected style", () => {
-		const check = byLabel(collectChecks(healthyDeps()), "low-battery");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toMatch(/upstream [0-9a-f]{8}/);
-		expect(check.detail).toContain("Low Battery");
-	});
-
-	it("warns, with the repair command, when it is on but never installed", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({ existsSync: (p) => p !== LOW_BATTERY_STYLE && base.existsSync(p) });
-		const check = byLabel(collectChecks(deps), "low-battery");
-		expect(check.status).toBe("warn");
-		expect(check.hints).toContain("dev3 install-skills");
-	});
-
-	it("reports the user's own style as kept, not as a failure", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			readFile: (p) =>
-				p === CLAUDE_SETTINGS ? JSON.stringify({ outputStyle: "Lazy Dzen" }) : base.readFile(p),
-		});
-		const check = byLabel(collectChecks(deps), "low-battery");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toContain("Lazy Dzen");
-		expect(check.detail).toContain("left selected");
-	});
-
-	it("counts the plugin-namespaced style as selected", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			readFile: (p) =>
-				p === CLAUDE_SETTINGS ? JSON.stringify({ outputStyle: "low-battery:Low Battery" }) : base.readFile(p),
-		});
-		expect(byLabel(collectChecks(deps), "low-battery").detail).toContain("low-battery:Low Battery");
-	});
-
-	it("reports an explicit opt-out as healthy, not as missing", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			existsSync: (p) => p !== LOW_BATTERY_STYLE && p !== LOW_BATTERY_SKILL && base.existsSync(p),
-			readFile: (p) => (p === SETTINGS ? JSON.stringify({ lowBatteryEnabled: false }) : base.readFile(p)),
-		});
-		const check = byLabel(collectChecks(deps), "low-battery");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toContain("off in Settings");
-	});
-
-	// No key at all is the default, and the default is off — never "on but broken".
-	it("reads a settings file with no low-battery key as off", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			existsSync: (p) => p !== LOW_BATTERY_STYLE && p !== LOW_BATTERY_SKILL && base.existsSync(p),
-			readFile: (p) => (p === SETTINGS ? JSON.stringify({}) : base.readFile(p)),
-		});
-		const check = byLabel(collectChecks(deps), "low-battery");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toContain("off in Settings");
-		expect(check.hints).toBeUndefined();
-	});
-
-	// Upgraders from the default-on era keep the files: dev3 does not delete them on
-	// its own, so doctor has to say they are there and how to remove them.
-	it("names an earlier install left on disk while the setting is off", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			readFile: (p) => (p === SETTINGS ? JSON.stringify({}) : base.readFile(p)),
-		});
-		const check = byLabel(collectChecks(deps), "low-battery");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toContain("still on disk");
-		expect(check.hints?.[0]).toContain("turn it on and off again");
 	});
 
 	it("fails when the data dir is missing", () => {

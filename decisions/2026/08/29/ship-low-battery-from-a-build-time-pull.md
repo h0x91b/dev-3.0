@@ -1,5 +1,7 @@
 # Ship low-battery by pulling it from upstream at build time
 
+> Superseded on 2026-10-07 by `decisions/2026/10/07/remove-low-battery.md`: the feature was removed; only a one-time startup cleanup remains.
+
 > Partly superseded on 2026-09-05 by `decisions/2026/09/05/low-battery-is-opt-in.md`:
 > low-battery is no longer on by default. Everything below about the build-time pull,
 > the install mechanics and the `outputStyle` rules still holds; every claim that dev3

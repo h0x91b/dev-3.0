@@ -17,9 +17,7 @@ import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage, AgentMessageOrigin } from "./agent-message-log";
 import type { NotificationLogPage } from "./notification-log";
-import type { LowBatteryStatus } from "./low-battery";
 import type { TaskPeekSnapshot } from "./task-peek";
-export type { LowBatteryStatus, OutputStyleOutcome } from "./low-battery";
 
 // ---- Changelog ----
 
@@ -1451,17 +1449,11 @@ export interface GlobalSettings {
 	 */
 	agentTrafficExperiment?: AgentTrafficExperiment;
 	/**
-	 * Turn on the `low-battery` answer format dev3 ships (header block first,
-	 * decision last, tables over prose). Absent ⇒ off: dev3 installs nothing and
-	 * touches no output style until the user asks. Turning it off again is a real
-	 * uninstall of what dev3 wrote, never of the user's own style or skills.
+	 * Legacy keys of the removed low-battery feature. `lowBatteryEnabled: true` proves
+	 * dev3 installed its files, so startup removes them and stores `false`; the rest is
+	 * kept on disk so an older co-installed build keeps its own opt-out.
 	 */
 	lowBatteryEnabled?: boolean;
-	/**
-	 * Legacy keys from when low-battery shipped on by default. Never read — kept on
-	 * disk so an older co-installed build still sees its own opt-out and its own
-	 * "already announced" flag instead of starting over.
-	 */
 	lowBatteryDisabled?: boolean;
 	lowBatteryAnnounced?: boolean;
 	playSoundOnTaskComplete?: boolean;
@@ -5146,20 +5138,6 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
-			};
-			/** What the low-battery answer format is doing right now: whether it is on,
-			 *  which upstream revision this build carries, and — the part the settings
-			 *  row has to say out loud — whether the user's own output style was left
-			 *  selected instead. */
-			getLowBatteryStatus: {
-				params: void;
-				response: LowBatteryStatus;
-			};
-			/** Select the low-battery output style for a user who kept their own and
-			 *  then asked for it anyway. The one-click switch under the settings row. */
-			selectLowBatteryStyle: {
-				params: void;
-				response: LowBatteryStatus;
 			};
 			/** Toggle an (agentId, configId) pair in the global favorites list —
 			 *  add it (with LFU-then-LRU eviction once MAX_FAVORITES is reached) or

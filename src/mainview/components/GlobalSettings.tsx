@@ -41,7 +41,6 @@ import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
-import LowBatterySettingsSection from "./global-settings/LowBatterySettingsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
@@ -667,15 +666,6 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
-	const handleLowBatteryToggle = useCallback(
-		(enabled: boolean) => {
-			// Stored as an opt-IN, and the explicit `false` is kept: "I turned it off"
-			// is a choice, and it is what makes the next start uninstall what dev3 wrote.
-			persistSettingChange({ lowBatteryEnabled: enabled });
-		},
-		[persistSettingChange],
-	);
-
 	const handleTelemetryToggle = useCallback(
 		(disabled: boolean) => {
 			// Silence the live channels before anything else, so the write that
@@ -1008,11 +998,6 @@ function GlobalSettings({
 							onGlobalSettingsChange={setGlobalSettings}
 							focusPreset={focusPreset}
 							onFocusPresetHandled={clearFocusPreset}
-						/>
-						<LowBatterySettingsSection
-							t={t}
-							globalSettings={globalSettings}
-							onToggle={handleLowBatteryToggle}
 						/>
 						<AgentRateLimitSettingsSection
 							t={t}

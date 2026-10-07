@@ -150,11 +150,10 @@ describe("saveSettings", () => {
 	});
 
 	/**
-	 * low-battery is opt-in: absent means off. Both booleans are stored — an explicit
-	 * `false` is the user saying "off", which is what makes the next start uninstall
-	 * what dev3 wrote, and it must not collapse into "never chose".
+	 * Legacy key of the removed low-battery feature: `true` is the proof startup needs
+	 * to delete dev3's files, and the `false` it stores afterwards must survive.
 	 */
-	it("defaults lowBatteryEnabled to off and keeps both explicit choices", async () => {
+	it("passes the legacy lowBatteryEnabled key through in both polarities", async () => {
 		expect((await loadSettings()).lowBatteryEnabled).toBeUndefined();
 
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ lowBatteryEnabled: true }), null, 2), "utf-8");

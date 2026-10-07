@@ -4,8 +4,6 @@ import { spawnSync } from "node:child_process";
 import { VENDORED_TMUX_PATHS } from "../../bun/rpc-handlers/shared-pure";
 import { resolveSocketPath } from "../context";
 import { BUILD_VERSION } from "../../shared/build-info.generated";
-import { LOW_BATTERY_REVISION } from "../../shared/low-battery-content.generated";
-import { isLowBatteryStyle, LOW_BATTERY_STYLE_FILE } from "../../shared/low-battery";
 import {
 	CLI_EXIT_CODE_DOCTOR_PROBLEMS,
 	CLI_EXIT_CODE_PRUNE_INCOMPLETE,
@@ -448,76 +446,6 @@ function checkHomebrew(deps: DoctorDeps, appVersion?: string, bundleExists?: boo
 	return results;
 }
 
-/**
- * "The low-battery format is not working" without a screen share. Names the upstream
- * revision this build carries and whether the style dev3 wrote actually resolves —
- * an `outputStyle` naming a style Claude Code cannot find fails silently.
- */
-function checkLowBattery(deps: DoctorDeps): CheckResult {
-	const label = "low-battery";
-	const enabled = (() => {
-		try {
-			return (JSON.parse(deps.readFile(`${deps.home}/.dev3.0/settings.json`)) as { lowBatteryEnabled?: unknown })
-				.lowBatteryEnabled === true;
-		} catch {
-			return false; // absent or unreadable settings ⇒ the default, which is off
-		}
-	})();
-	const revision = LOW_BATTERY_REVISION.slice(0, 8);
-
-	const styleFile = `${deps.home}/.claude/output-styles/${LOW_BATTERY_STYLE_FILE}`;
-	const skillFile = `${deps.home}/.agents/skills/low-battery/SKILL.md`;
-
-	if (!enabled) {
-		// A build from the default-on era may have left files behind. dev3 does not
-		// delete them on its own — an untouched `low-battery` dir may be the user's.
-		const leftovers = deps.existsSync(styleFile) || deps.existsSync(skillFile);
-		return {
-			label,
-			status: "ok",
-			detail: leftovers
-				? `off in Settings, but an earlier install is still on disk (build carries upstream ${revision})`
-				: `off in Settings (build carries upstream ${revision})`,
-			hints: leftovers
-				? ["Settings → Agents → Low-battery answer format: turn it on and off again to remove what dev3 wrote."]
-				: undefined,
-		};
-	}
-
-	const missing = [
-		deps.existsSync(styleFile) ? null : styleFile,
-		deps.existsSync(skillFile) ? null : skillFile,
-	].filter((p): p is string => p !== null);
-	if (missing.length > 0) {
-		return {
-			label,
-			status: "warn",
-			detail: `on, but not installed: ${missing.join(", ")}`,
-			hints: ["dev3 install-skills"],
-		};
-	}
-
-	let selected = "";
-	try {
-		const raw = JSON.parse(deps.readFile(`${deps.home}/.claude/settings.json`)) as { outputStyle?: unknown };
-		selected = typeof raw.outputStyle === "string" ? raw.outputStyle.trim() : "";
-	} catch {
-		// absent settings.json — reported as "not selected" below
-	}
-
-	if (isLowBatteryStyle(selected)) {
-		return { label, status: "ok", detail: `upstream ${revision}, Claude Code style “${selected}” selected` };
-	}
-	return {
-		label,
-		status: "ok",
-		detail: selected
-			? `upstream ${revision}, skill installed; your own Claude Code style “${selected}” left selected`
-			: `upstream ${revision}, skill installed; no Claude Code output style selected`,
-		hints: ["Settings → Agents → Low-battery answer format to switch the Claude Code style."],
-	};
-}
-
 /** Run every check. Pure with respect to `deps` — no printing, no exiting. */
 export function collectChecks(deps: DoctorDeps): CheckResult[] {
 	const results: CheckResult[] = [];
@@ -529,7 +457,6 @@ export function collectChecks(deps: DoctorDeps): CheckResult[] {
 	results.push(checkTmuxSetting(deps));
 	results.push(checkTmuxShim(deps));
 	results.push(checkTmuxBinary(deps));
-	results.push(checkLowBattery(deps));
 	results.push(...checkHomebrew(deps, app.appVersion, Boolean(app.bundlePath)));
 	const repoAccess = deps.repoAccess ? checkRepositoryAccess(deps.repoAccess) : null;
 	if (repoAccess) results.push(repoAccess);
