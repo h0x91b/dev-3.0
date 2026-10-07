@@ -19,7 +19,7 @@ import {
 
 const FACTS: WindowsDownloadFacts = {
 	zipName: "stable-win-x64-dev-3.0.zip",
-	zipUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/v1.45.0/stable-win-x64-dev-3.0.zip",
+	zipUrl: "https://releases.h0x91b.com/dev-3.0/v1.45.0/stable-win-x64-dev-3.0.zip",
 	zipBytes: 417_000_000,
 	bundleRoot: "dev-3.0",
 	launcherRelative: "bin/launcher.exe",

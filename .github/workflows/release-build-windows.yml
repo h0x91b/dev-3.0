@@ -179,8 +179,9 @@ jobs:
           DEV3_RELEASE_CHANNEL: ${{ inputs.channel }}
           DEV3_RELEASE_ARCH: ${{ inputs.arch }}
           # Makes the release-notes fragment link the VERSIONED copy of the zip instead of the
-          # bucket root, which the next build of the same channel overwrites.
-          DEV3_RELEASE_TAG: ${{ inputs.tag }}
+          # bucket root, which the next build of the same channel overwrites. Canary has no
+          # versioned Windows copy, so its run summary links the root.
+          DEV3_RELEASE_TAG: ${{ inputs.channel != 'canary' && inputs.tag || '' }}
         run: bun scripts/package-windows-launched-tree.ts
 
       # The Windows section of the release body, rendered from THIS job's launch proof by the
@@ -208,7 +209,11 @@ jobs:
           AWS_REGION: eu-west-1
         run: |
           TAG="${{ inputs.tag }}"
-          aws s3 sync "./artifacts-win-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          # No canary archive on Windows: the only thing `dev3 update` reads from a canary archive is a
+          # CLI tarball, and Windows ships none. Stable keeps its versioned copy for the release notes.
+          if [ "${{ inputs.channel }}" != "canary" ]; then
+            aws s3 sync "./artifacts-win-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          fi
           # THE MANIFEST GOES LAST, AND IT IS THE ONLY FILE CLIENTS DISCOVER BUILDS THROUGH.
           # Measured on run 31091740061: one sync of the whole directory uploaded
           # `*-update.json` FIRST on 4 of 4 platforms, advertising a tarball not yet at the root

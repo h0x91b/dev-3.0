@@ -9,8 +9,7 @@ import {
 	CLI_EXIT_CODE_GUI_DEPS_MISSING,
 	CLI_EXIT_CODE_USAGE_ERROR,
 } from "../../shared/cli-exit-codes";
-
-const BUNDLE_URL_BASE = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
+import { RELEASE_BASE_URL } from "../../shared/release-feed";
 
 /**
  * Linux GUI-bundle arch slug. The compiled `dev3` binary reports the arch it was
@@ -24,7 +23,7 @@ function linuxBundleArch(): "x64" | "arm64" {
 }
 
 function defaultBundleUrl(): string {
-	return `${BUNDLE_URL_BASE}/stable-linux-${linuxBundleArch()}-dev-3.0.tar.zst`;
+	return `${RELEASE_BASE_URL}/stable-linux-${linuxBundleArch()}-dev-3.0.tar.zst`;
 }
 
 function buildGuiHelp(): string {
@@ -40,7 +39,7 @@ What it does:
           prints how to install it via Homebrew Cask.
 
   Linux — runs the Electrobun launcher from ~/.dev3.0/gui/dev-3.0/.
-          On the first run the bundle is downloaded from S3 (~88 MB),
+          On the first run the bundle is downloaded from the release feed (~88 MB),
           extracted, and registered as an XDG desktop entry. The CLI then
           probes runtime libraries (libwebkit2gtk-4.1, libgtk-3, libcairo2,
           libayatana-appindicator3, librsvg2). If any are missing, it prints
@@ -54,7 +53,7 @@ Flags:
   --help, -h    Show this help.
 
 Environment:
-  DEV3_GUI_BUNDLE_URL   Override the S3 bundle URL (Linux first install only).
+  DEV3_GUI_BUNDLE_URL   Override the bundle URL (Linux first install only).
                         Defaults to:
                           ${url}
   DEV3_GUI_BUNDLE_PATH  Override the install location of the Linux bundle.

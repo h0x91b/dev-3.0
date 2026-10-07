@@ -90,7 +90,7 @@ describe("detectInstallMethod", () => {
 describe("tarballUrl", () => {
 	it("uses the release TAG directory on stable", () => {
 		expect(tarballUrl({ channel: "stable", platform: "darwin", arch: "arm64", version: "1.45.2" }))
-			.toBe("https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/v1.45.2/dev3-cli-macos-arm64.tar.gz");
+			.toBe("https://releases.h0x91b.com/dev-3.0/v1.45.2/dev3-cli-macos-arm64.tar.gz");
 	});
 
 	it("uses the COMMIT directory on canary, because canary has no tag", () => {
@@ -100,7 +100,7 @@ describe("tarballUrl", () => {
 			arch: "x64",
 			version: "1.45.2+canary.abc12345",
 			sha: "abc12345def",
-		})).toBe("https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/abc12345def/dev3-cli-linux-x64.tar.gz");
+		})).toBe("https://releases.h0x91b.com/dev-3.0/abc12345def/dev3-cli-linux-x64.tar.gz");
 	});
 
 	it("strips the build-metadata suffix out of a stable directory name", () => {

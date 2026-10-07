@@ -13,6 +13,7 @@
  * the GUI cannot run brew. Neither side is a fallback for the other.
  */
 
+import { RELEASE_BASE_URL } from "./release-feed";
 import { coreVersion, type UpdateChannel } from "./update-channel";
 
 /** Where the running binary came from. Decides what an update is even allowed to do. */
@@ -27,9 +28,6 @@ export type InstallMethod =
 	| "path-copy"
 	/** `bun run …` from a checkout — no installed artifact to replace. */
 	| "source";
-
-/** Bucket where every published CLI tarball lives, one directory per release. */
-export const RELEASE_BASE_URL = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
 /** Homebrew formula AND cask are both named `dev3` in the `h0x91b/dev3` tap. */
 export const BREW_PACKAGE = "dev3";

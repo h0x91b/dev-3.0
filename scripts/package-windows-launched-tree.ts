@@ -23,9 +23,9 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { RELEASE_BASE_URL } from "../src/shared/release-feed";
 import { renderWindowsReleaseNotes, renderWindowsRunSummary } from "./windows-release-notes";
 
-const BUCKET_BASE = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
 type LaunchProof = {
 	retainedUnpackDir?: unknown;
@@ -123,7 +123,7 @@ console.log(`Staged ${zipName} (${(zipBytes / 1024 / 1024).toFixed(1)} MB)`);
 const releaseTag = process.env.DEV3_RELEASE_TAG;
 const facts = {
 	zipName,
-	zipUrl: releaseTag ? `${BUCKET_BASE}/${releaseTag}/${zipName}` : `${BUCKET_BASE}/${zipName}`,
+	zipUrl: releaseTag ? `${RELEASE_BASE_URL}/${releaseTag}/${zipName}` : `${RELEASE_BASE_URL}/${zipName}`,
 	zipBytes,
 	bundleRoot,
 	launcherRelative,

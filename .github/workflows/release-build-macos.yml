@@ -314,7 +314,14 @@ jobs:
           AWS_REGION: eu-west-1
         run: |
           TAG="${{ inputs.tag }}"
-          aws s3 sync "./artifacts-macos-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          # The canary archive keeps only what `dev3 update` reads from it (tarballUrl() in
+          # src/shared/self-update.ts); the desktop feed is the bucket root, humans use the GitHub pre-release.
+          if [ "${{ inputs.channel }}" = "canary" ]; then
+            aws s3 sync "./artifacts-macos-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/" \
+              --exclude "*" --include "dev3-cli-*.tar.gz"
+          else
+            aws s3 sync "./artifacts-macos-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          fi
           # THE MANIFEST GOES LAST, AND IT IS THE ONLY FILE CLIENTS DISCOVER BUILDS THROUGH.
           # One sync of the whole directory uploaded `*-update.json` FIRST on 4 of 4 platforms
           # (measured on run 31091740061), leaving a 2.25-2.99s window in which the manifest

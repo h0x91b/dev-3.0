@@ -1,0 +1,1 @@
+Updates, the Homebrew formula and release-note download links now go through the `releases.h0x91b.com` CloudFront CDN instead of the S3 bucket directly; builds installed before this keep working against S3. Canary builds also stop archiving desktop bundles per commit and keep only the CLI tarballs `dev3 update` reads.

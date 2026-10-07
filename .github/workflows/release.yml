@@ -220,7 +220,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ needs.prepare.outputs.tag }}"
-          S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/$TAG"
+          RELEASE_BASE="https://releases.h0x91b.com/dev-3.0/$TAG"
 
           # Full "what's new" (Features → Fixes → Refactors) for the release
           # window. Empty output (no entries) simply omits the section.
@@ -235,14 +235,14 @@ jobs:
             # macOS Apple Silicon
             if ls all-artifacts/*macos-arm64*.dmg 1>/dev/null 2>&1; then
               echo "### macOS (Apple Silicon)"
-              echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($S3_BASE/stable-macos-arm64-dev-3.0.dmg)"
+              echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($RELEASE_BASE/stable-macos-arm64-dev-3.0.dmg)"
               echo ""
             fi
 
             # macOS Intel
             if ls all-artifacts/*macos-x64*.dmg 1>/dev/null 2>&1; then
               echo "### macOS (Intel)"
-              echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($S3_BASE/stable-macos-x64-dev-3.0.dmg)"
+              echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($RELEASE_BASE/stable-macos-x64-dev-3.0.dmg)"
               echo ""
             fi
 
@@ -259,7 +259,7 @@ jobs:
             # Linux (x64)
             if ls all-artifacts/*linux-x64*.tar.zst 1>/dev/null 2>&1; then
               echo "### Linux (x64)"
-              echo "- [\`stable-linux-x64-dev-3.0.tar.zst\`]($S3_BASE/stable-linux-x64-dev-3.0.tar.zst)"
+              echo "- [\`stable-linux-x64-dev-3.0.tar.zst\`]($RELEASE_BASE/stable-linux-x64-dev-3.0.tar.zst)"
               echo ""
             fi
 
@@ -267,7 +267,7 @@ jobs:
             # Electrobun arm64 runtime ships, but the CLI tarball still publishes.
             if ls all-artifacts/*linux-arm64*.tar.zst 1>/dev/null 2>&1; then
               echo "### Linux (arm64)"
-              echo "- [\`stable-linux-arm64-dev-3.0.tar.zst\`]($S3_BASE/stable-linux-arm64-dev-3.0.tar.zst)"
+              echo "- [\`stable-linux-arm64-dev-3.0.tar.zst\`]($RELEASE_BASE/stable-linux-arm64-dev-3.0.tar.zst)"
               echo ""
             fi
 
@@ -280,7 +280,7 @@ jobs:
               # be skipped or it ships as a dead download. windows-release-notes.md is prose the
               # Windows job hands to this workflow, not a published file.
               [ "$name" = "windows-release-notes.md" ] && continue
-              echo "- [\`$name\`]($S3_BASE/$name)"
+              echo "- [\`$name\`]($RELEASE_BASE/$name)"
             done
           } >> /tmp/release-notes.md
 
@@ -424,7 +424,7 @@ jobs:
         run: |
           TAG="${{ needs.prepare.outputs.tag }}"
           VERSION="${TAG#v}"
-          S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/$TAG"
+          RELEASE_BASE="https://releases.h0x91b.com/dev-3.0/$TAG"
 
           MACOS_ARM64="all-artifacts/dev3-cli-macos-arm64.tar.gz"
           MACOS_X64="all-artifacts/dev3-cli-macos-x64.tar.gz"
@@ -453,7 +453,7 @@ jobs:
           if [ -f "$LINUX_ARM64" ]; then
             LINUX_ARM64_SHA=$(shasum -a 256 "$LINUX_ARM64" | awk '{print $1}')
             echo "Formula includes linux-arm64: sha256=$LINUX_ARM64_SHA"
-            LINUX_ARM_BLOCK=$(printf 'on_arm do\n        url "%s/dev3-cli-linux-arm64.tar.gz"\n        sha256 "%s"\n      end' "$S3_BASE" "$LINUX_ARM64_SHA")
+            LINUX_ARM_BLOCK=$(printf 'on_arm do\n        url "%s/dev3-cli-linux-arm64.tar.gz"\n        sha256 "%s"\n      end' "$RELEASE_BASE" "$LINUX_ARM64_SHA")
           else
             echo "::warning::linux-arm64 CLI tarball missing — Formula will omit the Linux arm64 bottle"
           fi
@@ -471,18 +471,18 @@ jobs:
 
             on_macos do
               on_arm do
-                url "${S3_BASE}/dev3-cli-macos-arm64.tar.gz"
+                url "${RELEASE_BASE}/dev3-cli-macos-arm64.tar.gz"
                 sha256 "${MACOS_ARM64_SHA}"
               end
               on_intel do
-                url "${S3_BASE}/dev3-cli-macos-x64.tar.gz"
+                url "${RELEASE_BASE}/dev3-cli-macos-x64.tar.gz"
                 sha256 "${MACOS_X64_SHA}"
               end
             end
 
             on_linux do
               on_intel do
-                url "${S3_BASE}/dev3-cli-linux-x64.tar.gz"
+                url "${RELEASE_BASE}/dev3-cli-linux-x64.tar.gz"
                 sha256 "${LINUX_X64_SHA}"
               end
               ${LINUX_ARM_BLOCK}
