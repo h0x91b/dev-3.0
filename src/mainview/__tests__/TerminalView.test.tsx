@@ -61,6 +61,7 @@ const {
 		attachCustomKeyEventHandler: vi.fn(),
 		attachCustomWheelEventHandler: vi.fn(),
 		hasMouseTracking: vi.fn(() => false),
+		hasBracketedPaste: vi.fn(() => false),
 		scrollToBottom: vi.fn(),
 		hasSelection: vi.fn(() => false),
 		isAlternateScreen: vi.fn(() => false),
@@ -1484,6 +1485,93 @@ describe("TerminalView – paste routing", () => {
 			expect(mockedUploadFileBase64).toHaveBeenCalled();
 		});
 		expect(mockPaste).not.toHaveBeenCalled();
+	});
+});
+
+// h0x91b/dev-3.0#1924: a remounted or reset ghostty has DEC 2004 off while tmux's
+// attach — which turned it on once — lives on. The protocol half is proven against
+// real tmux in paste-after-remount-e2e.test.ts; this pins which stream gets it.
+describe("TerminalView – paste keeps brackets on a tmux stream after remount", () => {
+	const BRACKETED = "\x1b[200~a\rb\x1b[201~";
+
+	async function renderWithHandle() {
+		let handle: TerminalHandle | null = null;
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onReady={(h) => { handle = h; }} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const terminal = result.container.querySelector('[data-terminal="true"]')!;
+		return { handle: handle!, terminal };
+	}
+
+	function deliver(data: string) {
+		act(() => { lastWebSocket?.onmessage?.({ data } as MessageEvent); });
+	}
+
+	beforeEach(() => {
+		mockPaste.mockClear();
+		mockInput.mockClear();
+		mockTermInstance.hasBracketedPaste.mockReturnValue(false);
+	});
+
+	afterEach(() => {
+		mockTermInstance.hasBracketedPaste.mockReturnValue(false);
+		vi.useRealTimers();
+	});
+
+	it("a clipboard paste on a tmux stream goes out bracketed although ghostty lost 2004", async () => {
+		const { terminal } = await renderWithHandle();
+		deliver("tmux redraw");
+		dispatchPaste(terminal, "a\nb");
+		expect(mockInput).toHaveBeenCalledWith(BRACKETED, true);
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("the imperative paste and submit take the same bracketed path, with one immediate Enter", async () => {
+		const { handle } = await renderWithHandle();
+		deliver("tmux redraw");
+		vi.useFakeTimers();
+		handle.paste("a\rb");
+		expect(mockInput).toHaveBeenLastCalledWith(BRACKETED, true);
+		const ws = lastWebSocket!;
+		ws.send.mockClear();
+		handle.submit("a\rb");
+		expect(mockInput).toHaveBeenLastCalledWith(BRACKETED, true);
+		expect(ws.send.mock.calls).toEqual([["\r"]]);
+		vi.advanceTimersByTime(1_000);
+		expect(ws.send.mock.calls).toEqual([["\r"]]);
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("leaves the wrapping to ghostty while its own 2004 is still on", async () => {
+		const { terminal } = await renderWithHandle();
+		deliver("tmux redraw");
+		mockTermInstance.hasBracketedPaste.mockReturnValue(true);
+		dispatchPaste(terminal, "a\nb");
+		expect(mockPaste).toHaveBeenCalledWith("a\rb");
+		expect(mockInput).not.toHaveBeenCalled();
+	});
+
+	it("a native stream is not treated as tmux: ghostty decides, no forced brackets", async () => {
+		const { terminal } = await renderWithHandle();
+		deliver(`\x1b_dev3nt;${JSON.stringify({ v: 1, t: "o", seq: 1 })}\x1b\\native output`);
+		dispatchPaste(terminal, "a\nb");
+		expect(mockPaste).toHaveBeenCalledWith("a\rb");
+		expect(mockInput).not.toHaveBeenCalled();
+	});
+
+	it("before the socket delivered anything, ghostty still decides", async () => {
+		const { terminal } = await renderWithHandle();
+		dispatchPaste(terminal, "a\nb");
+		expect(mockPaste).toHaveBeenCalledWith("a\rb");
+		expect(mockInput).not.toHaveBeenCalled();
 	});
 });
 

@@ -22,7 +22,7 @@ processes:
 | `vitest.config.cli.ts` | CLI (`src/cli/`) | `bun run test:cli` |
 
 ```bash
-bun run test          # mainview + bun + cli in parallel, minus 3 slow e2e files (~6s)
+bun run test          # mainview + bun + cli in parallel, minus 8 slow e2e files (~6s)
 bun run test:full     # everything incl. slow e2e (~42s) — CI/PR only
 bun run test:watch    # watch mode
 ```

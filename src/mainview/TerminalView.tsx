@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+import { pasteIntoTerminal, terminalBracketsPaste } from "./terminal-paste";
 import { debugLog } from "./debug-log";
 import { encodeResizeSequence } from "../shared/resize-protocol";
 import {
@@ -222,7 +223,7 @@ export function clearStaleSelectionOnWrite(term: {
 
 export interface TerminalHandle {
 	sendInput: (data: string) => void;
-	/** Paste text through ghostty — wraps in bracketed-paste (DEC 2004) only if the app enabled it. */
+	/** Paste text as one bracketed paste (DEC 2004) when the app asked for it — see pasteIntoTerminal(). */
 	paste: (data: string) => void;
 	/** Paste text and submit once, settling unbracketed paste bursts first. */
 	submit: (data: string) => void;
@@ -314,6 +315,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
 	const nativeRoleRef = useRef<NativeStreamRole | null>(null);
+	/** The socket delivered bare (unframed) output, which only a tmux session sends. */
+	const tmuxStreamRef = useRef(false);
 	/** The PTY's size, which an observer renders at instead of its container's. */
 	const ptyGeometryRef = useRef<{ cols: number; rows: number } | null>(null);
 	/** Set by the terminal-setup effect; re-runs the fit after geometry or role changes. */
@@ -632,6 +635,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// One screen reset per Terminal instance. A rebuild re-runs this effect and
 		// therefore earns a fresh one; a reconnect does not.
 		let screenResetForThisTerminal = false;
+		tmuxStreamRef.current = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
 		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1306,25 +1310,24 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 										wsRef.current.send(data);
 									}
 								},
-								// ghostty's paste() wraps in \x1b[200~…\x1b[201~ only when the
-								// running app enabled DEC 2004 and routes through onData → WS.
+								// Bracketed per pasteIntoTerminal(), routed through onData → WS.
 								// Text typed while the pane sits in tmux copy-mode would be eaten as
 								// copy-mode keys, so a pending scroll-up is cleared first (async only
 								// when there is something to clear — the common path stays sync).
 								paste: (data: string) => {
-									const run = () => { try { term.paste(data); } catch { /* disposed */ } };
+									const run = () => { try { pasteIntoTerminal(term, data, tmuxStreamRef.current); } catch { /* disposed */ } };
 									if (copyModePending()) void exitCopyModeIfNeeded().then(run);
 									else run();
 								},
 								submit: (data: string) => {
 									const run = () => submitPastedText(data, {
-										paste: (value) => term.paste(value),
+										paste: (value) => pasteIntoTerminal(term, value, tmuxStreamRef.current),
 										sendInput: (value) => {
 											if (wsRef.current?.readyState === WebSocket.OPEN) {
 												wsRef.current.send(value);
 											}
 										},
-										hasBracketedPaste: () => term.hasBracketedPaste(),
+										hasBracketedPaste: () => terminalBracketsPaste(term, tmuxStreamRef.current),
 									});
 									if (copyModePending()) void exitCopyModeIfNeeded().then(run);
 									else run();
@@ -1905,6 +1908,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							handleNativeFrame(native.header, native.payload);
 							return;
 						}
+						tmuxStreamRef.current = true;
 						const cleaned = event.data.replace(OSC52_RE, "");
 						if (cleaned) {
 							noteSocketBytes(cleaned.length);
@@ -1913,6 +1917,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						}
 					} else {
 						// Binary data — decode, then write on the same path as text
+						tmuxStreamRef.current = true;
 						const str = new TextDecoder().decode(new Uint8Array(event.data));
 						if (str) {
 							noteSocketBytes(str.length);
@@ -2426,7 +2431,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	}, []);
 
 	// Intercept ALL paste events: images / large text blocks are saved to disk and
-	// their path injected into the PTY; ordinary text goes through term.paste()
+	// their path injected into the PTY; ordinary text goes through pasteIntoTerminal()
 	// (bracketed, CR-normalized) — never ghostty's raw container handler.
 	useEffect(() => {
 		const container = containerRef.current;
@@ -2522,7 +2527,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			try {
-				term.paste(normalizePastedText(text));
+				pasteIntoTerminal(term, normalizePastedText(text), tmuxStreamRef.current);
 			} catch {
 				// Terminal disposed mid-paste — nothing to do.
 			}
