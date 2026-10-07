@@ -158,8 +158,8 @@ systemctl --user edit dev3-remote.service
 ```
 
 `install-service` writes `DEV3_TELEMETRY=off` from your shell into the unit and prints it under
-"Carried from this shell into the unit". `--no-start` keeps the service stopped until the drop-in
-below exists.
+"Carried from this shell into the unit"; a later `install-service` from a shell without it keeps
+the value. `--no-start` keeps the service stopped until the drop-in below exists.
 
 Put this in the drop-in that `systemctl --user edit` opens:
 

@@ -127,7 +127,10 @@ from your shell into the unit as `Environment=` lines and prints what it carried
 DEV3_TELEMETRY=off dev3 remote install-service --port 3017
 ```
 
-To change a carried value later, set it and run `install-service` again.
+To change a carried value later, set it and run `install-service` again. A variable this shell
+does not set keeps the value the previous unit carried, so re-running it from a fresh shell (to
+change the port, say) does not drop a telemetry opt-out. To remove a carried variable, run
+`dev3 remote uninstall-service` first.
 
 **Keep agents alive across restarts (optional, `--no-tunnel` only).** Agent terminals run in a
 tmux server that dev3 starts, so they belong to the unit's cgroup, and systemd's default

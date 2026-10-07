@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import type { ParsedArgs } from "../args";
 import { exitError, exitUsage } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
@@ -135,7 +136,10 @@ export const SERVICE_ENV_KEYS = [
 
 export type ServiceEnv = Array<[string, string]>;
 
-/** The allowlisted variables that are set and non-empty, in allowlist order. */
+/**
+ * The allowlisted variables that are set and non-empty, in allowlist order.
+ * `DEV3_HOME` is made absolute: systemd runs the unit from `~`, not from this shell's cwd.
+ */
 export function collectServiceEnv(env: Readonly<Record<string, string | undefined>>): ServiceEnv {
 	const out: ServiceEnv = [];
 	for (const key of SERVICE_ENV_KEYS) {
@@ -144,9 +148,50 @@ export function collectServiceEnv(env: Readonly<Record<string, string | undefine
 		if (/[\x00-\x1f\x7f]/.test(value)) {
 			exitUsage(`$${key} contains a control character and cannot be written into a systemd unit`);
 		}
-		out.push([key, value]);
+		out.push([key, key === "DEV3_HOME" ? resolve(value) : value]);
 	}
 	return out;
+}
+
+/** The allowlisted `Environment=` values a previously written unit carried. Inverse of renderEnvironmentLine. */
+export function parseUnitServiceEnv(unit: string): ServiceEnv {
+	const found = new Map<string, string>();
+	for (const line of unit.split("\n")) {
+		const m = /^Environment="(.*)"$/.exec(line.trim());
+		if (!m) continue;
+		const pair = m[1].replace(/\\(["\\])|%%/g, (_whole, ch: string | undefined) => ch ?? "%");
+		const eq = pair.indexOf("=");
+		if (eq <= 0) continue;
+		found.set(pair.slice(0, eq), pair.slice(eq + 1));
+	}
+	return SERVICE_ENV_KEYS.flatMap((key): ServiceEnv => (found.has(key) ? [[key, found.get(key)!]] : []));
+}
+
+/**
+ * Shell values win; a key the shell does not set keeps the value the previous unit carried.
+ * Without this, re-running install-service from a fresh shell (say, to change the port)
+ * would silently drop `DEV3_TELEMETRY=off` and turn telemetry back on.
+ */
+export function mergeServiceEnv(fromShell: ServiceEnv, fromPreviousUnit: ServiceEnv): { env: ServiceEnv; kept: ServiceEnv } {
+	const shell = new Map(fromShell);
+	const previous = new Map(fromPreviousUnit);
+	const env: ServiceEnv = [];
+	const kept: ServiceEnv = [];
+	for (const key of SERVICE_ENV_KEYS) {
+		const value = shell.get(key) ?? previous.get(key);
+		if (value === undefined) continue;
+		env.push([key, value]);
+		if (!shell.has(key)) kept.push([key, value]);
+	}
+	return { env, kept };
+}
+
+function readExistingUnit(path: string): string {
+	try {
+		return readFileSync(path, "utf-8");
+	} catch {
+		return "";
+	}
 }
 
 /** One `Environment=` line, quoted so spaces, quotes, backslashes and `%` survive systemd parsing. */
@@ -201,21 +246,30 @@ export async function installRemoteService(args: ParsedArgs): Promise<void> {
 	const binPath = resolveDev3Binary();
 	const execArgs = buildExecStartArgs(args);
 	const noPort = !execArgs.includes("--port");
-	const serviceEnv = collectServiceEnv(process.env);
+	const fromShell = collectServiceEnv(process.env);
 
 	const dir = userUnitDir();
 	mkdirSync(dir, { recursive: true });
 	const path = unitPath();
+	const { env: serviceEnv, kept } = mergeServiceEnv(fromShell, parseUnitServiceEnv(readExistingUnit(path)));
 	writeFileSync(path, renderUnitFile(binPath, execArgs, serviceEnv));
 	process.stdout.write(`Wrote systemd unit: ${path}\n`);
 	process.stdout.write(`  ExecStart=${[binPath, ...execArgs].join(" ")}\n`);
-	if (serviceEnv.length > 0) {
+	if (fromShell.length > 0) {
 		process.stdout.write(`  Carried from this shell into the unit:\n`);
-		for (const [key, value] of serviceEnv) process.stdout.write(`    ${key}=${value}\n`);
-	} else {
+		for (const [key, value] of fromShell) process.stdout.write(`    ${key}=${value}\n`);
+	}
+	if (kept.length > 0) {
+		process.stdout.write(`  Kept from the previous unit (not set in this shell):\n`);
+		for (const [key, value] of kept) process.stdout.write(`    ${key}=${value}\n`);
+	}
+	if (serviceEnv.length === 0) {
 		process.stdout.write(`  No environment carried (none of ${SERVICE_ENV_KEYS.join(", ")} is set).\n`);
 	}
-	process.stdout.write(`  To change it, set the variables and re-run \`dev3 remote install-service\`.\n`);
+	process.stdout.write(
+		`  To change a value, set it and re-run \`dev3 remote install-service\`;\n` +
+		`  to drop one, run \`dev3 remote uninstall-service\` first.\n`,
+	);
 	if (noPort) {
 		process.stdout.write(
 			`  ⚠ No --port given — the server picks a random port each start, which makes\n` +

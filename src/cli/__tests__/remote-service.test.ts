@@ -4,6 +4,7 @@ vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
 	writeFileSync: vi.fn(),
+	readFileSync: vi.fn(() => { throw new Error("ENOENT"); }),
 	unlinkSync: vi.fn(),
 	realpathSync: vi.fn((p: string) => p),
 }));
@@ -14,12 +15,14 @@ vi.mock("node:child_process", () => ({
 import {
 	buildExecStartArgs,
 	collectServiceEnv,
+	mergeServiceEnv,
+	parseUnitServiceEnv,
 	renderUnitFile,
 	SERVICE_ENV_KEYS,
 	installRemoteService,
 	uninstallRemoteService,
 } from "../commands/remote-service";
-import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { ParsedArgs } from "../args";
 import { MIN_REMOTE_STATIC_CODE_LENGTH } from "../../shared/remote-static-code";
@@ -187,6 +190,10 @@ describe("collectServiceEnv", () => {
 		expect(env).toEqual([["DEV3_TELEMETRY", "off"], ["DO_NOT_TRACK", "1"]]);
 	});
 
+	it("makes a relative DEV3_HOME absolute (systemd runs the unit from ~, not this cwd)", () => {
+		expect(collectServiceEnv({ DEV3_HOME: "rel/home" })).toEqual([["DEV3_HOME", `${process.cwd()}/rel/home`]]);
+	});
+
 	it("rejects a value with a newline (would split the unit line)", () => {
 		expect(() => collectServiceEnv({ DEV3_HOME: "/a\nExecStartPre=/bin/evil" })).toThrow("__exit__");
 		expect(stderrText()).toContain("control character");
@@ -212,7 +219,38 @@ describe("renderUnitFile environment", () => {
 	});
 });
 
+describe("parseUnitServiceEnv", () => {
+	it("round-trips what renderUnitFile wrote, escapes included", () => {
+		const env: Array<[string, string]> = [["DEV3_TELEMETRY", "off"], ["DEV3_HOME", '/srv/a b/"q"\\x%h']];
+		expect(parseUnitServiceEnv(renderUnitFile("/bin/dev3", [], env))).toEqual(env);
+	});
+
+	it("ignores keys outside the allowlist, e.g. a hand-edited unit", () => {
+		expect(parseUnitServiceEnv('[Service]\nEnvironment="PATH=/x"\nEnvironment="DO_NOT_TRACK=1"\n')).toEqual([["DO_NOT_TRACK", "1"]]);
+	});
+});
+
+describe("mergeServiceEnv", () => {
+	it("prefers the shell and keeps previous values the shell does not set", () => {
+		const { env, kept } = mergeServiceEnv(
+			[["DEV3_LOG_LEVEL", "debug"]],
+			[["DEV3_TELEMETRY", "off"], ["DEV3_LOG_LEVEL", "info"]],
+		);
+		expect(env).toEqual([["DEV3_TELEMETRY", "off"], ["DEV3_LOG_LEVEL", "debug"]]);
+		expect(kept).toEqual([["DEV3_TELEMETRY", "off"]]);
+	});
+});
+
 describe("installRemoteService", () => {
+	it("keeps DEV3_TELEMETRY=off from the previous unit when re-run from a shell without it", async () => {
+		setPlatform("linux");
+		vi.mocked(readFileSync).mockReturnValueOnce(renderUnitFile("/bin/dev3", [], [["DEV3_TELEMETRY", "off"]]));
+		await installRemoteService(args({ port: "4000" }));
+		expect(String(vi.mocked(writeFileSync).mock.calls[0][1])).toContain('Environment="DEV3_TELEMETRY=off"');
+		expect(stdoutText()).toContain("Kept from the previous unit");
+		expect(stdoutText()).not.toContain("No environment carried");
+	});
+
 	it("carries DEV3_TELEMETRY from the shell into the unit and says so", async () => {
 		setPlatform("linux");
 		process.env.DEV3_TELEMETRY = "off";
