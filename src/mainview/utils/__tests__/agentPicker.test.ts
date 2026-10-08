@@ -223,6 +223,65 @@ describe("buildPickerGroups", () => {
 		expect(groups.find((g) => g.configs.some((c) => c.id === "plain"))?.unavailable).toBe(true);
 	});
 
+	describe("newest model first", () => {
+		const codexDefaults = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		// The reporter's agents.json: an older layout, with the GPT-6.1 Sol presets a
+		// later release added appended to the tail by mergeWithDefaults.
+		const fossil: CodingAgent = {
+			...codexDefaults,
+			configurations: [
+				...codexDefaults.configurations.filter((c) => c.model !== "gpt-6.1-sol"),
+				...codexDefaults.configurations.filter((c) => c.model === "gpt-6.1-sol"),
+			],
+		};
+
+		it("curates the Codex lineup newest generation first", () => {
+			expect(buildPickerGroups(codexDefaults).map((g) => g.label)).toEqual([
+				"GPT-6.1 Sol",
+				"GPT-6 Astra",
+				"GPT-6 Sol",
+				"GPT-6 Luna",
+				"GPT-5.6 Luna",
+				"GPT-5.6 Sol",
+				"GPT-5.6 Terra",
+				"GPT-5.5",
+			]);
+		});
+
+		it("ignores the stored order a release appended new presets to", () => {
+			expect(fossil.configurations[fossil.configurations.length - 1].model).toBe("gpt-6.1-sol");
+			const groups = buildPickerGroups(fossil);
+			expect(groups.map((g) => g.label)).toEqual(buildPickerGroups(codexDefaults).map((g) => g.label));
+			for (const [index, group] of groups.entries()) {
+				expect(group.configs.map((c) => c.id)).toEqual(buildPickerGroups(codexDefaults)[index].configs.map((c) => c.id));
+			}
+		});
+
+		it("keeps availability per group and never drops or invents a preset", () => {
+			const groups = buildPickerGroups(fossil, new Set(["gpt-5.5"]));
+			expect(groups.filter((g) => g.unavailable).map((g) => g.label)).toEqual(["GPT-5.5"]);
+			const ids = groups.flatMap((g) => g.configs.map((c) => c.id));
+			expect([...ids].sort()).toEqual(fossil.configurations.map((c) => c.id).sort());
+			expect(groupLabelForConfig(fossil, "codex-default")).toBe("GPT-6 Astra");
+		});
+
+		it("puts presets dev3 does not ship after the curated ones, in stored order", () => {
+			const agent: CodingAgent = {
+				...codexDefaults,
+				configurations: [
+					{ id: "mine-new", name: "Mine", model: "gpt-7-experimental" },
+					{ id: "mine-sol", name: "My Sol", model: "gpt-6.1-sol" },
+					...fossil.configurations,
+					{ id: "mine-other", name: "Other", model: "some-local-model" },
+				],
+			};
+			const groups = buildPickerGroups(agent);
+			expect(groups[0].label).toBe("GPT-6.1 Sol");
+			expect(groups[0].configs[groups[0].configs.length - 1].id).toBe("mine-sol");
+			expect(groups.slice(-2).map((g) => g.configs[0].id)).toEqual(["mine-new", "mine-other"]);
+		});
+	});
+
 	it("puts model-less custom configs under a single agent-default group", () => {
 		const custom: CodingAgent = {
 			id: "custom",

@@ -1200,7 +1200,7 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		});
 	});
 
-	it("upgrades the Luna-era Codex default to the current default and puts it first", () => {
+	it("upgrades the Luna-era Codex default to the current default and leads the Astra rows with it", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const stored: CodingAgent[] = [{
 			...codex,
@@ -1215,9 +1215,9 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		}];
 		const updated = applyLayoutResync(mergeWithDefaults(stored))
 			.find((agent) => agent.id === "builtin-codex")!;
-		expect(updated.configurations[0].id).toBe(updated.defaultConfigId);
-		expect(updated.configurations[0].model).toBe("gpt-6-astra");
-		expect(updated.configurations[0].additionalArgs).toContain('model_reasoning_effort="medium"');
+		const firstAstra = updated.configurations.find((config) => config.model === "gpt-6-astra")!;
+		expect(firstAstra.id).toBe(updated.defaultConfigId);
+		expect(firstAstra.additionalArgs).toContain('model_reasoning_effort="medium"');
 		expect(updated.configurations.find((config) => config.id === "codex-5.6-luna-xhigh-bypass")?.model)
 			.toBe("gpt-5.6-luna");
 	});
@@ -1238,11 +1238,12 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		}];
 		const updated = applyLayoutResync(mergeWithDefaults(stored))
 			.find((agent) => agent.id === "builtin-codex")!;
-		expect(updated.configurations[0].id).toBe(updated.defaultConfigId);
-		expect(updated.configurations[0]).toMatchObject({
-			model: "gpt-6-astra", groupLabel: "GPT-6 Astra", name: "GPT-6 Astra Bypass [Medium] — Default",
+		const firstAstra = updated.configurations.find((config) => config.model === "gpt-6-astra")!;
+		expect(firstAstra.id).toBe(updated.defaultConfigId);
+		expect(firstAstra).toMatchObject({
+			groupLabel: "GPT-6 Astra", name: "GPT-6 Astra Bypass [Medium] — Default",
 		});
-		expect(updated.configurations[0].additionalArgs).toContain('model_reasoning_effort="medium"');
+		expect(firstAstra.additionalArgs).toContain('model_reasoning_effort="medium"');
 		expect(updated.configurations.some((config) => config.id === "codex-6-astra-medium-bypass")).toBe(false);
 		// An explicit Sol pick keeps its model and the user's own override.
 		expect(updated.configurations.find((config) => config.id === "codex-6-sol-high-bypass"))
@@ -1267,7 +1268,7 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 
 	it("adds GPT-6.1 Sol presets to an existing Codex configuration", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
-		const stored = [{ ...codex, configurations: [codex.configurations[0]] }];
+		const stored = [{ ...codex, configurations: codex.configurations.filter((config) => config.id === "codex-default") }];
 		const updated = mergeWithDefaults(stored).find((agent) => agent.id === "builtin-codex")!;
 		expect(updated.configurations.some((config) => config.id === "codex-6.1-sol-medium-bypass")).toBe(true);
 		expect(updated.defaultConfigId).toBe("codex-default");

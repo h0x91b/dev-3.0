@@ -1,5 +1,5 @@
 import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
-import { DEPRECATED_DEFAULT_CONFIG_REMAP } from "../../shared/types";
+import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../../shared/types";
 import { orderFavorites } from "../../shared/favorites";
 import { modelRolesForAgent, type CatalogProviderKind } from "../../shared/model-catalog";
 import { unconnectedRecommendations, type RecommendedModel } from "../../shared/recommended-models";
@@ -222,9 +222,25 @@ function isRoutedConfig(config: AgentConfiguration): boolean {
 	return (!!config.modelRoles && Object.keys(config.modelRoles).length > 0) || config.requiresPxpipeProxy === true;
 }
 
+const curatedRankByAgent = new Map<string, Map<string, number>>();
+
+/** Each built-in preset's index in DEFAULT_AGENTS, which is curated newest model
+ *  first. Stored order can't be trusted for this: merging appends every preset a
+ *  release adds to the tail of the user's agents.json. */
+function curatedPresetRank(agentId: string): Map<string, number> {
+	let rank = curatedRankByAgent.get(agentId);
+	if (!rank) {
+		const def = DEFAULT_AGENTS.find((a) => a.id === agentId);
+		rank = new Map((def?.configurations ?? []).map((c, index) => [c.id, index]));
+		curatedRankByAgent.set(agentId, rank);
+	}
+	return rank;
+}
+
 /** Group an agent's configurations by model into ordered picker groups.
- *  First-seen order is preserved for both groups and configs within a group,
- *  so the curated DEFAULT_AGENTS ordering carries through.
+ *  Groups and the configs inside them follow the curated DEFAULT_AGENTS order
+ *  (newest model first). Presets dev3 does not ship have no known recency, so
+ *  they follow every built-in one in their stored order (the sort is stable).
  *
  *  `unavailableModels` (raw preset `model` slugs the account cannot select, from
  *  the `getAgentAvailableModels` probe) marks a group `unavailable` when every one
@@ -235,9 +251,12 @@ export function buildPickerGroups(
 	unavailableModels?: ReadonlySet<string> | null,
 ): PickerGroup[] {
 	if (!agent) return [];
+	const rank = curatedPresetRank(agent.id);
+	const rankOf = (config: AgentConfiguration) => rank.get(config.id) ?? Number.MAX_SAFE_INTEGER;
+	const curated = [...agent.configurations].sort((a, b) => rankOf(a) - rankOf(b));
 	const order: string[] = [];
 	const byLabel = new Map<string, AgentConfiguration[]>();
-	for (const config of agent.configurations) {
+	for (const config of curated) {
 		const label = getModelGroupLabel(config);
 		let bucket = byLabel.get(label);
 		if (!bucket) {

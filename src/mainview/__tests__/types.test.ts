@@ -465,14 +465,14 @@ describe("DEFAULT_AGENTS", () => {
 		expect(cfg!.additionalArgs).not.toContain('default_permissions="dev3"');
 	});
 
-	it("leads with the GPT-6 tiers, Astra first, ahead of the GPT-5.x tiers", () => {
+	it("leads with the newest generation, GPT-6.1 Sol, then the GPT-6 tiers ahead of GPT-5.x", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const modelOrder = codex!.configurations
 			.map((config) => config.model)
 			.filter((model, index, models) => model != null && models.indexOf(model) === index);
-		expect(modelOrder).toEqual(["gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
+		expect(modelOrder).toEqual(["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
 
 		const modesFor = (model: string) => codex!.configurations
 			.filter((config) => config.model === model)

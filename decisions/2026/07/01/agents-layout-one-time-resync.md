@@ -1,3 +1,5 @@
+> Superseded in part on 2026-10-08 by `decisions/2026/10/08/picker-orders-models-by-curated-declaration.md`: drag-to-reorder is gone and the launch picker no longer follows stored preset order.
+
 # 096: One-time resync of built-in agent preset order
 
 ## Context

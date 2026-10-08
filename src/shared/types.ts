@@ -963,6 +963,15 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
+			// Newest generation first: the picker lists model groups in this order.
+			// --- GPT-6.1 Sol ---
+			...createCodexReasoningPresets(
+				"gpt-6.1-sol",
+				"GPT-6.1 Sol",
+				"codex-6.1-sol",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
 			// --- GPT-6 Astra (default: Sol is rejected under a ChatGPT-account login) ---
 			{
 				id: "codex-default",
@@ -978,13 +987,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				"GPT-6 Astra",
 				"codex-6-astra",
 				["low", "high", "xhigh", "max", "ultra"],
-				["medium", "low", "high", "xhigh", "max", "ultra"],
-			),
-			...createCodexReasoningPresets(
-				"gpt-6.1-sol",
-				"GPT-6.1 Sol",
-				"codex-6.1-sol",
-				["medium", "low", "high", "xhigh", "max", "ultra"],
 				["medium", "low", "high", "xhigh", "max", "ultra"],
 			),
 			// --- GPT-6 Sol (frontier coding and agentic workflows) ---
@@ -1135,11 +1137,11 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "cursor-gpt", name: "GPT-5.6 Sol X-High", model: "gpt-5.6-sol-xhigh" },
 			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.6 Sol", model: "gpt-5.6-sol-xhigh", permissionMode: "bypassPermissions" },
 			{ id: "cursor-grok-4-6", name: "Grok 4.6 Fast", model: "cursor-grok-4.6-high-fast" },
-			{ id: "cursor-gemini", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash-high" },
 			// Cursor docs list Gemini 3.8 Flash, but no `cursor-agent models` dump
 			// we can attribute spells its slug out — this one follows the verified
 			// 3.7 shape. Requested explicitly; treat as unverified.
 			{ id: "cursor-gemini-3-8", name: "Gemini 3.8 Flash", model: "gemini-3.8-flash-high" },
+			{ id: "cursor-gemini", name: "Gemini 3.7 Flash", model: "gemini-3.7-flash-high" },
 			{ id: "cursor-composer-2-5", name: "Composer 2.5", model: "composer-2.5" },
 		],
 		defaultConfigId: "cursor-default",
