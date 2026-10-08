@@ -3,7 +3,7 @@ import { act, fireEvent, render as rtlRender, screen, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../i18n";
 import { createPortal } from "react-dom";
-import { setToastSuppressed, taskToastContext, ToastHost, toast, usePinnedToastSlot } from "../toast";
+import { _setToastArmDelayForTests, setToastSuppressed, taskToastContext, ToastHost, toast, usePinnedToastSlot } from "../toast";
 
 /** `ToastHost` localizes its dismiss label, so every render needs the provider. */
 function render(ui: ReactElement) {
@@ -826,4 +826,137 @@ describe("ToastHost — the pinned slot owns the corner with the toasts", () => 
 		expect(pinned.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
+});
+
+describe("toast stack stability", () => {
+	// The reported "sometimes it opens an artifact": the old agent toast was removed
+	// and the new one appended, so the toast below slid up into the slot the pointer
+	// was aimed at.
+	it("puts a newer agent message in its predecessor's slot, not at the bottom", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.agent("First agent message", { durationMs: 60_000 });
+			toast.info("Artifact shared", { durationMs: 60_000, onClick: () => {} });
+			toast.agent("Second agent message", { durationMs: 60_000 });
+		});
+		expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([
+			expect.stringContaining("Second agent message"),
+			expect.stringContaining("Artifact shared"),
+		]);
+	});
+
+	it("keeps every other toast when an agent message replaces another at full capacity", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.agent("First agent message", { durationMs: 60_000 });
+			for (let i = 0; i < 4; i++) toast.info(`Info ${i}`, { durationMs: 60_000 });
+			toast.agent("Second agent message", { durationMs: 60_000 });
+		});
+		expect(screen.getAllByRole("alert")).toHaveLength(5);
+		expect(screen.getAllByRole("alert")[0]).toHaveTextContent("Second agent message");
+		for (let i = 0; i < 4; i++) expect(screen.getByText(`Info ${i}`)).toBeInTheDocument();
+	});
+});
+
+describe("toast arming against stray clicks", () => {
+	let now = 1_000_000;
+
+	beforeEach(() => {
+		now = 1_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		_setToastArmDelayForTests();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	function raiseClickable() {
+		const card = vi.fn();
+		const link = vi.fn();
+		const action = vi.fn();
+		act(() => {
+			toast.agent("Status update", {
+				durationMs: 60_000,
+				clickLabel: "Open sender",
+				onClick: card,
+				contextParts: [{ lead: "#7", label: "Sender", ariaLabel: "Open sender task #7", onClick: link }, "→", "#42"],
+				actions: [{ label: "#42", ariaLabel: "Recipient #42", onClick: action }],
+			});
+		});
+		return { card, link, action };
+	}
+
+	it("ignores a pointer click pressed right after the toast appeared, on every destination", async () => {
+		render(<ToastHost />);
+		const { card, link, action } = raiseClickable();
+		now += 100;
+
+		await userEvent.click(screen.getByRole("button", { name: /^Open sender:/ }));
+		await userEvent.click(screen.getByRole("button", { name: "Open sender task #7" }));
+		await userEvent.click(screen.getByRole("button", { name: "Recipient #42" }));
+
+		expect(card).not.toHaveBeenCalled();
+		expect(link).not.toHaveBeenCalled();
+		expect(action).not.toHaveBeenCalled();
+		// Nothing was chosen, so nothing was answered: the toast stays.
+		expect(screen.getByRole("alert")).toBeInTheDocument();
+	});
+
+	it("runs a deliberate pointer click once the toast has settled", async () => {
+		render(<ToastHost />);
+		const { card } = raiseClickable();
+		now += 700;
+
+		await userEvent.click(screen.getByRole("button", { name: /^Open sender:/ }));
+
+		expect(card).toHaveBeenCalledOnce();
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	});
+
+	it("never delays keyboard activation", async () => {
+		render(<ToastHost />);
+		const { action } = raiseClickable();
+
+		screen.getByRole("button", { name: "Recipient #42" }).focus();
+		await userEvent.keyboard("{Enter}");
+
+		expect(action).toHaveBeenCalledOnce();
+	});
+
+	it("dismisses at once — closing navigates nowhere, so it needs no guard", async () => {
+		render(<ToastHost />);
+		const { card, link, action } = raiseClickable();
+
+		await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+		expect(card).not.toHaveBeenCalled();
+		expect(link).not.toHaveBeenCalled();
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it("re-arms a toast that slid into a new slot under the pointer", async () => {
+		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+			const index = Array.from(document.querySelectorAll("[data-toast-id]")).indexOf(this);
+			return { top: Math.max(0, index) * 120, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+		});
+		const below = vi.fn();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Above", { durationMs: 60_000 });
+			toast.info("Below", { durationMs: 60_000, onClick: below });
+		});
+		now += 5_000;
+		await userEvent.click(within(screen.getAllByRole("alert")[0]!).getByRole("button", { name: "Dismiss" }));
+
+		// "Below" just moved up into the slot the pointer was on.
+		now += 100;
+		await userEvent.click(screen.getByRole("button", { name: /Below/ }));
+		expect(below).not.toHaveBeenCalled();
+
+		now += 700;
+		await userEvent.click(screen.getByRole("button", { name: /Below/ }));
+		expect(below).toHaveBeenCalledOnce();
+	});
 });

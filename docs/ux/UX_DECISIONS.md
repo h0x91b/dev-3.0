@@ -10,9 +10,11 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
-## 2026-10-02 — The agent-message toast names every destination
+## 2026-10-08 — Agent toast card opens the sender; toasts ignore stray clicks
 
-Bible §5.7: both names link to their task, plus Sender/Traffic/Recipient actions; the card still opens traffic. Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md.
+Bible §5.7: card → sender (inert without one), traffic only via its action; any toast ignores pointer navigation for 600 ms after appearing or moving, and a replacing agent toast keeps its slot. Why: decisions/2026/10/08/agent-message-toast-card-opens-the-sender.md.
+
+2026-10-02 — Agent toast names every destination (card → traffic, superseded 2026-10-08). Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md.
 
 ## 2026-09-25 — Clips play inside the image viewer
 

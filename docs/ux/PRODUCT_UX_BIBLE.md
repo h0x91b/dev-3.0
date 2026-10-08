@@ -368,8 +368,9 @@ Rules:
 - **Origin is resolved centrally, not composed per call site.** A caller passes one token — `taskId`, `projectId`, or `source` — and `ToastHost` composes the line and the default click target through a resolver injected by `App.tsx` (areas need no state and are localized in the host). The toast module stays free of app-state imports; ~180 call sites stay one field long; a future toast is correct by default. Explicitly passed `context`/`onClick` always win.
 - **`contextDetail`** appends one more segment after the resolved origin (`dev-3.0 · Nightly digest`) when the toast is about a named thing inside that scope.
 - **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it is being sent to.
+- **Pointer clicks arm 600 ms after a toast appears/moves** (keys exempt); a replacement keeps its slot.
 
-- **One documented exception to "one origin" and "one click target": agent-to-agent traffic.** A `dev3 message` has a sender AND a receiver: the source line is the pair `#7 Coordinator → #42 Receiver`, each an underlined link (`#seq` never truncates; project names only across boards), plus one row: sent `#7` · `Agent traffic` · inbox `#42`. The card click stays agent traffic (receiver without the beta); links and actions sit above it, never nested. Violet `agent` is identity, not severity. Silent for human or failed sends.
+- **Documented exception to one origin / one click target: agent-to-agent traffic.** Source line `#7 Coordinator → #42 Receiver`, each an underlined link (`#seq` never truncates; projects named only across boards), plus one row: sent `#7` · `Agent traffic` · inbox `#42`. Card → **sender** (inert if unknown); traffic only via its action; links/actions never nested. Violet = identity; silent for human/failed sends.
 
 Evidence: `toast.tsx`, `App.tsx` (`ToastHost` mount, `openTaskFromNotification`).
 

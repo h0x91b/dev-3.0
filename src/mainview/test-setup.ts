@@ -1,12 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 import { createElement } from "react";
-import { _resetPendingToastsForTests } from "./toast";
+import { _resetPendingToastsForTests, _setToastArmDelayForTests } from "./toast";
 import { storageIsWritable } from "./utils/storage";
 
 // Toasts raised without a mounted host are queued for the next host (see toast.tsx),
 // so drop the queue between tests instead of leaking them into the next render.
 afterEach(() => {
 	_resetPendingToastsForTests();
+});
+
+// Tests click a toast the instant it mounts; the arming guard is covered in toast.test.tsx.
+beforeEach(() => {
+	_setToastArmDelayForTests(0);
 });
 
 // NOTE on transport detection in tests: happy-dom has no `__electrobunWebviewId`,

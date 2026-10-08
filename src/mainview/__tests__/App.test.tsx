@@ -1621,9 +1621,13 @@ describe("App keyboard shortcuts", () => {
 			});
 		}
 
-		/** The whole-card button with the beta on: its name says where it goes. */
+		/** The whole-card button: its name says it opens the sender. */
 		function toastButton() {
-			return screen.findByRole("button", { name: `Open agent traffic: ${CARD}` });
+			return screen.findByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` });
+		}
+
+		function trafficAction() {
+			return screen.findByRole("button", { name: "Agent traffic" });
 		}
 
 		/** Answer the click-time lookup of a toast's end, per project. */
@@ -1666,27 +1670,49 @@ describe("App keyboard shortcuts", () => {
 			});
 		}
 
-		it("names both sides and clicks through to the receiving task", async () => {
+		it("names both sides and the card opens the sending task with the beta off", async () => {
 			await renderWithBoard();
 			disableTrafficBeta();
 			dispatchAgentMessage();
 
 			expect(screen.getByRole("button", { name: "Open sender task #7 Coordinator" })).toBeInTheDocument();
 			expect(screen.getByRole("button", { name: "Open recipient task #42 Receiver" })).toBeInTheDocument();
-			await userEvent.click(
-				await screen.findByRole("button", { name: `Open recipient task #42 Receiver: ${CARD}` }),
-			);
+			await userEvent.click(await toastButton());
 			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
 			});
 		});
 
-		it("opens the traffic screen instead of the task when the beta is on", async () => {
+		// The reported bug: the card opened agent traffic, and a toast raised over an
+		// artifact turned every stray click into a trip there. The card now opens the
+		// sender; traffic is only its own labelled action.
+		it("the card opens the sender, exactly once, and never traffic with the beta on", async () => {
+			mockBoards({ p1: [{ id: "t-sender", status: "in-progress" }, { id: "t-receiver", status: "in-progress" }] });
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+			const trafficOpens = vi.fn();
+			window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+
+			await userEvent.click(await toastButton());
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
+			});
+			window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+			expect(trafficOpens).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+			expect(api.request.getTasks).toHaveBeenCalledTimes(1);
+			expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p1" });
+			expect(screen.queryByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` })).toBeNull();
+		});
+
+		it("the traffic action opens the traffic screen as a route that Back leaves", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage();
 
-			await userEvent.click(await toastButton());
+			await userEvent.click(await trafficAction());
 
 			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
 			// It is a route, not an overlay: the app header and Back come with it.
@@ -1709,7 +1735,7 @@ describe("App keyboard shortcuts", () => {
 			enableTrafficBeta();
 			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2" });
 
-			await userEvent.click(await toastButton());
+			await userEvent.click(await trafficAction());
 
 			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
 		});
@@ -1721,7 +1747,7 @@ describe("App keyboard shortcuts", () => {
 			enableTrafficBeta();
 			dispatchAgentMessage();
 
-			await userEvent.click(await toastButton());
+			await userEvent.click(await trafficAction());
 
 			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
 		});
@@ -1734,7 +1760,7 @@ describe("App keyboard shortcuts", () => {
 			enableTrafficBeta();
 			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2", taskId: "t-receiver" });
 
-			await userEvent.click(await toastButton());
+			await userEvent.click(await trafficAction());
 
 			const view = await screen.findByTestId("agent-traffic-screen");
 			expect(view).toHaveAttribute("data-focus-task-id", "t-receiver");
@@ -1752,33 +1778,33 @@ describe("App keyboard shortcuts", () => {
 			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-focus-task-id", "");
 		});
 
-		// The card's name says where it goes, so the destination is fixed when the
-		// toast is raised: a beta switched on later must not make the label lie.
-		it("keeps the destination its label names when the beta is switched on mid-toast", async () => {
+		// The row is fixed when the toast is raised: a beta switched on later adds no
+		// traffic action, and the card still opens the sender its label names.
+		it("keeps the sender as the card's destination when the beta is switched on mid-toast", async () => {
 			await renderWithBoard();
 			disableTrafficBeta();
 			dispatchAgentMessage();
 			enableTrafficBeta();
 
-			await userEvent.click(await screen.findByRole("button", { name: `Open recipient task #42 Receiver: ${CARD}` }));
+			await userEvent.click(await toastButton());
 
 			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
 			});
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 			expect(screen.queryByRole("button", { name: "Agent traffic" })).toBeNull();
 		});
 
-		// Switched OFF mid-toast, there is no traffic screen left to open: the click
-		// falls back to the receiver, as the card always has without the beta.
-		it("falls back to the receiver when the beta is switched off mid-toast", async () => {
+		// Switched OFF mid-toast, there is no traffic screen left to open: the traffic
+		// action falls back to the receiver, where the text landed.
+		it("the traffic action falls back to the receiver when the beta is switched off mid-toast", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage();
-			const card = await toastButton();
+			const action = await trafficAction();
 			disableTrafficBeta();
 
-			await userEvent.click(card);
+			await userEvent.click(action);
 
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
@@ -1831,14 +1857,14 @@ describe("App keyboard shortcuts", () => {
 			expect(trafficOpens).not.toHaveBeenCalled();
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 			// Acting is answering: the toast goes.
-			expect(screen.queryByRole("button", { name: `Open agent traffic: ${CARD}` })).toBeNull();
+			expect(screen.queryByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` })).toBeNull();
 		});
 
 		it("draws both task names in the header as underlined links that keep the number", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage({ fromTitle: "A very long sender title that will not fit in one line of a toast" });
-			await screen.findByRole("button", { name: /^Open agent traffic: #7 A very long/ });
+			await screen.findByRole("button", { name: /^Open sender task #7 A very long.*: #7 A very long/ });
 
 			const header = document.querySelector("[data-toast-context]") as HTMLElement;
 			const links = Array.from(header.querySelectorAll("button"));
@@ -1891,10 +1917,28 @@ describe("App keyboard shortcuts", () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage({ fromVariantIndex: 2, toVariantIndex: 1 });
-			await screen.findByRole("button", { name: /^Open agent traffic: #7-2 Coordinator → #42-1 Receiver/ });
+			await screen.findByRole("button", { name: /^Open sender task #7-2 Coordinator: #7-2 Coordinator → #42-1 Receiver/ });
 
 			expect(screen.getByRole("button", { name: "Sender #7-2" })).toBeInTheDocument();
 			expect(screen.getByRole("button", { name: "Recipient #42-1" })).toBeInTheDocument();
+		});
+
+		// A sender deleted while its toast was up: the card says so and goes nowhere
+		// else — not the recipient, not traffic.
+		it("the card says a deleted sender is gone instead of opening anything else", async () => {
+			mockBoards({ p1: [{ id: "t-receiver", status: "in-progress" }] });
+			await renderWithBoard();
+			enableTrafficBeta();
+			dispatchAgentMessage();
+			const trafficOpens = vi.fn();
+			window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+
+			await userEvent.click(await toastButton());
+
+			expect(await screen.findByText("Task #7 no longer exists")).toBeInTheDocument();
+			window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+			expect(trafficOpens).not.toHaveBeenCalled();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
 		});
 
 		it("says a deleted task is gone instead of opening an empty screen", async () => {
@@ -1925,15 +1969,29 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
 		});
 
-		// A record queued before the sender id existed: no link to a task we cannot name.
-		it("keeps the sender as plain text when the payload has no sender id", async () => {
+		// A record queued before the sender id existed: no link to a task we cannot
+		// name, and the card is inert rather than guessing — not the recipient (which
+		// the host would resolve from a task id), not traffic.
+		it("keeps the sender as plain text and the card inert when the payload has no sender id", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage({ fromTaskId: undefined });
-			await toastButton();
+			await trafficAction();
 
 			expect(screen.queryByRole("button", { name: /Open sender task/ })).toBeNull();
 			expect(document.querySelector("[data-toast-context]")).toHaveTextContent("#7 Coordinator");
+			const toastRoot = document.querySelector("[data-toast-id]") as HTMLElement;
+			expect(within(toastRoot).queryByRole("button", { name: /check the payload/ })).toBeNull();
+			const trafficOpens = vi.fn();
+			window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+
+			await userEvent.click(within(toastRoot).getByText("check the payload"));
+
+			window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+			expect(trafficOpens).not.toHaveBeenCalled();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-detail-id", "");
+			expect(document.querySelector("[data-toast-id]")).not.toBeNull();
 		});
 
 		it("dismisses without navigating anywhere", async () => {
@@ -1945,7 +2003,7 @@ describe("App keyboard shortcuts", () => {
 			const toastRoot = (await toastButton()).closest("[data-toast-id]") as HTMLElement;
 			await userEvent.click(within(toastRoot).getByRole("button", { name: "Dismiss" }));
 
-			expect(screen.queryByRole("button", { name: `Open agent traffic: ${CARD}` })).toBeNull();
+			expect(screen.queryByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` })).toBeNull();
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
 		});
@@ -1964,7 +2022,7 @@ describe("App keyboard shortcuts", () => {
 				"Sender #7",
 				null,
 				"Recipient #42",
-				`Open agent traffic: ${CARD}`,
+				`Open sender task #7 Coordinator: ${CARD}`,
 				"Dismiss",
 			]);
 			expect(Array.from(toastRoot.querySelectorAll("[data-toast-actions] button")).map((b) => b.textContent)).toEqual([
@@ -1991,7 +2049,7 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
 			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
 
-			await userEvent.click(await toastButton());
+			await userEvent.click(await trafficAction());
 
 			expect(screen.getAllByTestId("agent-traffic-screen")).toHaveLength(1);
 
@@ -2003,7 +2061,7 @@ describe("App keyboard shortcuts", () => {
 
 		// Keyboard parity: the toast's hit area is a real button, and Enter on it
 		// must reach the same destination a pointer click does.
-		it("opens the traffic screen from the keyboard too", async () => {
+		it("opens the sender from the keyboard too", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage();
@@ -2011,7 +2069,10 @@ describe("App keyboard shortcuts", () => {
 			(await toastButton()).focus();
 			await userEvent.keyboard("{Enter}");
 
-			expect(screen.getByTestId("agent-traffic-screen")).toBeInTheDocument();
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
+			});
+			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 		});
 
 		// An ordinary `dev3 notify` toast is not traffic — the beta must not steal

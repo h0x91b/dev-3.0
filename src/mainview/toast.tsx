@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
@@ -453,24 +453,28 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 			const area = entry.source ? tRef.current(`toast.source.${entry.source}` as TranslationKey) : undefined;
 			const resolvedContext = joinContext(resolved?.context ?? area, entry.contextDetail);
 
+			const incoming: RenderedToast = {
+				entry,
+				paused: !activeRef.current,
+				// Whatever the call site passed explicitly always wins — a toast about
+				// a shared image opens the lightbox, not the task.
+				context: entry.context ?? resolvedContext,
+				onClick: entry.onClick ?? resolved?.onClick,
+			};
 			const superseded = supersededAgentToasts(toastsRef.current, entry);
 			superseded.forEach(({ entry: supersededEntry }) => clearRuntime(supersededEntry.id));
-			const previous = toastsRef.current.filter((view) => !superseded.includes(view));
+			// A newer agent message takes its predecessor's slot instead of joining the
+			// bottom: removing it there slid the toast below up under a pointer aimed at
+			// the agent toast, and the click opened that one (an artifact, typically).
+			const replacing = superseded[superseded.length - 1];
+			const previous = toastsRef.current
+				.filter((view) => view === replacing || !superseded.includes(view))
+				.map((view) => (view === replacing ? incoming : view));
 			const capacity = maxVisibleToastsRef.current;
-			const evictedCount = Math.max(0, previous.length - capacity + 1);
+			const evictedCount = replacing ? 0 : Math.max(0, previous.length - capacity + 1);
 			const evicted = previous.slice(0, evictedCount);
 			evicted.forEach(({ entry: evictedEntry }) => clearRuntime(evictedEntry.id));
-			const next = [
-				...previous.slice(evictedCount),
-				{
-					entry,
-					paused: !activeRef.current,
-					// Whatever the call site passed explicitly always wins — a toast about
-					// a shared image opens the lightbox, not the task.
-					context: entry.context ?? resolvedContext,
-					onClick: entry.onClick ?? resolved?.onClick,
-				},
-			];
+			const next = replacing ? previous : [...previous.slice(evictedCount), incoming];
 			publish(next);
 
 			for (const { entry: evictedEntry } of evicted) {
@@ -548,6 +552,19 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 
 /** Movement before a press counts as a swipe, not a tap. */
 const SWIPE_DECIDE_PX = 8;
+/**
+ * A toast ignores pointer clicks pressed this soon after it appeared or moved: the
+ * press was aimed at whatever sat there before (an artifact, the toast above).
+ * Keyboard activation is always deliberate and never waits.
+ */
+const TOAST_ARM_MS = 600;
+let armDelayMs = TOAST_ARM_MS;
+
+/** The renderer test setup clicks toasts the instant they mount; the guard has its own tests. */
+export function _setToastArmDelayForTests(ms: number = TOAST_ARM_MS): void {
+	armDelayMs = ms;
+}
+
 /** Minimum rightward distance that dismisses (adaptive floor for narrow toasts). */
 const SWIPE_COMMIT_MIN_PX = 72;
 /** …or this fraction of the toast's own width, whichever is larger. */
@@ -580,6 +597,27 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 	const dragXRef = useRef(0);
 	const widthRef = useRef(0);
 	const draggedRef = useRef(false);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const armedAtRef = useRef(0);
+	const lastTopRef = useRef<number | null>(null);
+	const pressedAtRef = useRef(0);
+
+	// Every stack change re-renders every card, so this sees each move: a card that
+	// arrives or slides into a new slot re-arms, because a pointer already on its
+	// way was aimed at what used to be there.
+	useLayoutEffect(() => {
+		const top = rootRef.current?.getBoundingClientRect().top ?? 0;
+		if (top !== lastTopRef.current) {
+			lastTopRef.current = top;
+			armedAtRef.current = Date.now();
+		}
+	});
+
+	/** Navigation only: a pointer press that landed before the card settled is not a choice. */
+	function pressIsPremature(event: React.MouseEvent): boolean {
+		if (event.detail === 0) return false;
+		return pressedAtRef.current - armedAtRef.current < armDelayMs;
+	}
 
 	function beginSwipe(e: React.PointerEvent) {
 		if (pointerIdRef.current !== null) return; // ignore additional pointers (multi-touch)
@@ -652,9 +690,13 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 
 	return (
 		<div
+			ref={rootRef}
 			className="pointer-events-auto animate-slide-in-right"
 			role="alert"
 			data-toast-id={entry.id}
+			onPointerDownCapture={() => {
+				pressedAtRef.current = Date.now();
+			}}
 			onMouseEnter={() => onInteraction(entry.id, "hovered", true)}
 			onMouseLeave={() => onInteraction(entry.id, "hovered", false)}
 			onFocusCapture={() => onInteraction(entry.id, "focused", true)}
@@ -685,8 +727,8 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 					{entry.contextParts ? (
 						<ToastContextLinks
 							parts={entry.contextParts}
-							onNavigate={(link) => {
-								if (suppressIfDragged()) return;
+							onNavigate={(link, event) => {
+								if (suppressIfDragged() || pressIsPremature(event)) return;
 								link.onClick();
 								onDismiss(entry.id);
 							}}
@@ -705,8 +747,8 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 						<ToastActions
 							actions={entry.actions}
 							tint={v}
-							onRun={(action) => {
-								if (suppressIfDragged()) return;
+							onRun={(action, event) => {
+								if (suppressIfDragged() || pressIsPremature(event)) return;
 								action.onClick();
 								onDismiss(entry.id);
 							}}
@@ -723,8 +765,8 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 						// Pointer press must not focus the toast: WebKit then paints the
 						// keyboard focus ring around a toast nobody tabbed to.
 						onMouseDown={(event) => event.preventDefault()}
-						onClick={() => {
-							if (suppressIfDragged()) return;
+						onClick={(event) => {
+							if (suppressIfDragged() || pressIsPremature(event)) return;
 							onClick();
 							onDismiss(entry.id);
 						}}
@@ -774,7 +816,13 @@ const innerControlPointerProps = {
  * The source line as links. Raised above the card's whole-card button rather than
  * nested in it, so each link is its own target and its click never reaches the card.
  */
-function ToastContextLinks({ parts, onNavigate }: { parts: ToastContextPart[]; onNavigate: (link: ToastLink) => void }) {
+function ToastContextLinks({
+	parts,
+	onNavigate,
+}: {
+	parts: ToastContextPart[];
+	onNavigate: (link: ToastLink, event: React.MouseEvent) => void;
+}) {
 	// A separator travels with the link after it, so a wrap never strands a lone "→".
 	const groups: Array<{ separator?: string; link?: ToastLink; text?: string }> = [];
 	for (let i = 0; i < parts.length; i++) {
@@ -796,7 +844,7 @@ function ToastContextLinks({ parts, onNavigate }: { parts: ToastContextPart[]; o
 						<button
 							type="button"
 							{...innerControlPointerProps}
-							onClick={() => onNavigate(group.link!)}
+							onClick={(event) => onNavigate(group.link!, event)}
 							aria-label={group.link.ariaLabel}
 							className="flex min-w-0 max-w-full items-baseline gap-1 rounded-sm text-left text-fg-3 underline decoration-fg-muted/60 underline-offset-2 transition-colors hover:text-fg hover:decoration-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/60"
 						>
@@ -818,7 +866,7 @@ function ToastActions({
 }: {
 	actions: ToastAction[];
 	tint: { text: string };
-	onRun: (action: ToastAction) => void;
+	onRun: (action: ToastAction, event: React.MouseEvent) => void;
 }) {
 	// One row, always: wrapping made the toast a line taller. Only a `shrink`
 	// action gives up width, by truncating its own label.
@@ -829,7 +877,7 @@ function ToastActions({
 					key={action.label}
 					type="button"
 					{...innerControlPointerProps}
-					onClick={() => onRun(action)}
+					onClick={(event) => onRun(action, event)}
 					aria-label={action.ariaLabel}
 					title={action.ariaLabel}
 					className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/60 ${

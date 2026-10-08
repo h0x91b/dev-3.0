@@ -1,5 +1,7 @@
 # The agent-message toast names every destination
 
+> Superseded in part on 2026-10-08 by `decisions/2026/10/08/agent-message-toast-card-opens-the-sender.md`: the card now opens the sender (inert without one); agent traffic is only its own action.
+
 ## Context
 
 The violet `dev3 message` toast was one invisible whole-card button. With the traffic beta on it opened Agent traffic focused on the receiver; users expected the sender and could not tell where a click would go. The payload carried no sender task id at all (`fromSeq` only), so the sender was unreachable from the renderer.
