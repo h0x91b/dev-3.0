@@ -8,7 +8,9 @@
 // liveness pings, when to re-open the socket and when to escalate to a full
 // webview reload. Kept pure so it can be unit-tested without Electrobun.
 
-export type WatchdogAction = "none" | "reinit" | "reload";
+// "recovered" = the first live ping after a socket re-init. Pushes sent while the
+// bridge was down are gone, so the caller re-asks for anything still pending.
+export type WatchdogAction = "none" | "reinit" | "reload" | "recovered";
 
 export interface WatchdogConfig {
 	/** Consecutive failed pings before any recovery is attempted. */
@@ -50,10 +52,11 @@ export function decidePingOutcome(
 	cfg: WatchdogConfig = DEFAULT_WATCHDOG_CONFIG,
 ): WatchdogAction {
 	if (ok) {
+		const recovered = state.reinitsSinceSuccess > 0;
 		state.everAlive = true;
 		state.consecutiveFailures = 0;
 		state.reinitsSinceSuccess = 0;
-		return "none";
+		return recovered ? "recovered" : "none";
 	}
 
 	state.consecutiveFailures += 1;

@@ -4038,6 +4038,34 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 
+		// h0x91b/dev-3.0#1669: the dialog must not depend on which task is open. A
+		// cross-project target is asked about while an unrelated task is focused,
+		// and approving it must not pull the user off the task they are on.
+		it("asks about a cross-project target while an unrelated task is focused, and keeps the user there", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t-other" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCancellationRequested("req-c-cross", "t-target", "p2");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
+					requestId: "req-c-cross",
+					approved: true,
+				});
+			});
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t-target", projectId: "p2" });
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+		});
+
 		// The push is one-shot and fire-and-forget: a transport that was down when
 		// the agent asked drops it silently, and the client that comes back has no
 		// reason to know it missed anything. It re-asks on every reconnect — the

@@ -1,15 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { defineRPCMock, adjustZoomMock, applyZoomMock } = vi.hoisted(() => ({
+const { defineRPCMock, adjustZoomMock, applyZoomMock, pingMock, initSocketToBunMock } = vi.hoisted(() => ({
 	defineRPCMock: vi.fn(),
 	adjustZoomMock: vi.fn(),
 	applyZoomMock: vi.fn(),
+	pingMock: vi.fn(),
+	initSocketToBunMock: vi.fn(),
 }));
 
 vi.mock("electrobun/view", () => {
 	class ElectroviewMock {
 		static defineRPC = defineRPCMock;
-		rpc = { request: {} };
+		rpc = { request: { ping: pingMock } };
+		bunSocket = { close: vi.fn() };
+		initSocketToBun = initSocketToBunMock;
 
 		constructor(_options: unknown) {}
 	}
@@ -65,6 +69,35 @@ describe("Electrobun RPC transport", () => {
 
 		window.removeEventListener("rpc:qrTokenConsumed", qrTokenConsumedListener);
 		window.removeEventListener("rpc:osc52Clipboard", osc52ClipboardListener);
+	});
+
+	// h0x91b/dev-3.0#1669: a re-opened bridge lost every push sent while it was
+	// dead, so the first live ping afterwards must announce the reconnect — that
+	// is what replays pending approval dialogs.
+	it("announces a reconnect once a re-initialised bridge answers a ping", async () => {
+		vi.useFakeTimers();
+		pingMock.mockReset().mockResolvedValue(undefined);
+		initSocketToBunMock.mockReset();
+		const states: string[] = [];
+		const onStatus = (e: Event) => states.push((e as CustomEvent).detail.state);
+		window.addEventListener("dev3:rpcStatus", onStatus);
+		try {
+			await import("../rpc");
+			await vi.advanceTimersByTimeAsync(30_000); // alive
+			states.length = 0;
+
+			pingMock.mockReturnValue(new Promise(() => {})); // bridge dies
+			await vi.advanceTimersByTimeAsync(30_000 + 30_000 + 4_000); // two pings time out
+			expect(initSocketToBunMock).toHaveBeenCalledTimes(1);
+			expect(states).toEqual([]);
+
+			pingMock.mockResolvedValue(undefined); // the re-opened socket answers
+			await vi.advanceTimersByTimeAsync(2_000); // the quick probe, not the 30s tick
+			expect(states).toEqual(["connected"]);
+		} finally {
+			window.removeEventListener("dev3:rpcStatus", onStatus);
+			vi.useRealTimers();
+		}
 	});
 
 	it("registers no openTaskFromNotification handler — OS notification clicks never navigate", async () => {

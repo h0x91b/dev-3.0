@@ -219,6 +219,7 @@ function enrichRequest(rawRequest: RequestProxy): RequestProxy {
 const PING_TIMEOUT_MS = 4_000;
 const PING_INTERVAL_MS = 30_000;
 const RELOAD_MIN_GAP_MS = 30_000;
+const REINIT_PROBE_DELAY_MS = 1_500;
 
 // Guard against reload loops: if a previous watchdog reload happened very
 // recently (same browser session), skip another one and let socket re-init try.
@@ -312,9 +313,16 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 					// leaves no trace on the side that keeps the logs, and a frozen UI is
 					// indistinguishable from an idle one (seq 1407).
 					reportWatchdogAction(rawRequest, "reinit");
+					// Probe again soon instead of on the next 30s tick: the replay of
+					// pending approval dialogs waits for that first live ping.
+					setTimeout(() => void check(), REINIT_PROBE_DELAY_MS);
 				} catch (err) {
 					console.error("[rpc-watchdog] socket re-init failed", err);
 				}
+			} else if (action === "recovered") {
+				// The old socket took every push sent while it was dead with it. Announce
+				// the reconnect so pending approval requests are replayed (h0x91b/dev-3.0#1669).
+				setRpcState("connected");
 			} else if (action === "reload") {
 				console.warn("[rpc-watchdog] bridge still dead after re-init — reloading webview");
 				recordDiagnostic({

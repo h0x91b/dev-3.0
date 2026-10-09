@@ -48,13 +48,21 @@ describe("decidePingOutcome", () => {
 		decidePingOutcome(s, true, 0, cfg);
 		decidePingOutcome(s, false, 100, cfg);
 		expect(decidePingOutcome(s, false, 200, cfg)).toBe("reinit");
-		// Bridge recovers.
-		expect(decidePingOutcome(s, true, 300, cfg)).toBe("none");
+		// Bridge recovers — reported once, so pushes lost while it was down get replayed.
+		expect(decidePingOutcome(s, true, 300, cfg)).toBe("recovered");
+		expect(decidePingOutcome(s, true, 400, cfg)).toBe("none");
 		expect(s.reinitsSinceSuccess).toBe(0);
 		expect(s.consecutiveFailures).toBe(0);
 		// Next failure cycle starts fresh with reinit again, not reload.
 		decidePingOutcome(s, false, 20_000, cfg);
 		expect(decidePingOutcome(s, false, 20_100, cfg)).toBe("reinit");
+	});
+
+	it("does not report a recovery for a ping that succeeds after failures without a re-init", () => {
+		const s = createWatchdogState();
+		decidePingOutcome(s, true, 0, cfg);
+		decidePingOutcome(s, false, 100, cfg); // below threshold — the socket was never replaced
+		expect(decidePingOutcome(s, true, 200, cfg)).toBe("none");
 	});
 
 	it("exposes sane defaults", () => {

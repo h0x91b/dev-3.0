@@ -1,5 +1,8 @@
 # Re-push an agent approval request on every attempt
 
+> Partly superseded on 2026-10-10 by `decisions/2026/10/10/desktop-bridge-reinit-replays-pending-approvals.md`:
+> Decision 2 only ever fired for the browser transport — the desktop bridge never emitted `connected` after a watchdog re-init.
+
 ## Context
 
 `dev3 task move --status cancelled` (and `completed`, and an agent-initiated
