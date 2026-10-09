@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, hasGitWorkflow } from "../../shared/types";
 import type { ScheduleMode } from "../../shared/schedule";
 import { launchFailureHintKey } from "../../shared/launch-failure";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -466,15 +466,16 @@ function LaunchVariantsModal({
 				{/* Footer — wraps on a phone-width viewport instead of squeezing the
 				    labels into one-word-per-line columns. */}
 				<div className="px-6 py-4 border-t border-edge flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-					{/* Available on every board kind, virtual included: a variant is its
-					    own task, and `git.virtualWorkDir` keys the operation folder on
-					    the task id, so parallel operations cannot collide. */}
-					<button
-						onClick={addVariant}
-						className={`text-accent hover:text-accent-emphasis text-sm font-medium whitespace-nowrap ${pressClass}`}
-					>
-						{t("launch.addVariant")}
-					</button>
+					{/* Virtual boards keep variants: `git.virtualWorkDir` keys each folder on
+					    the task id. A gitless project would run them all in its one folder. */}
+					{project.kind === "virtual" || hasGitWorkflow(project) ? (
+						<button
+							onClick={addVariant}
+							className={`text-accent hover:text-accent-emphasis text-sm font-medium whitespace-nowrap ${pressClass}`}
+						>
+							{t("launch.addVariant")}
+						</button>
+					) : <span />}
 
 					<div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
 						<button

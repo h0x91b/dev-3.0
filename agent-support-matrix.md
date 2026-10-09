@@ -78,11 +78,14 @@ Injected per-worktree at task launch.
 
 Injected into `.claude/settings.local.json`, together with dev3's `Bash(dev3:*)` permission and the launch's `permissions.defaultMode`. A committed `.claude/settings.json` is never written. When `.claude/` or `settings.local.json` is a symlink that leads outside the worktree (or nowhere), dev3 writes nothing there and logs a warning: the task then gets no status hooks. Links that stay inside the worktree are fine. The same rule covers `.codex/hooks.json` and the MCP pre-approval. See `decisions/2026/10/01/worktree-agent-config-local-only-no-symlinks.md`.
 
+In a folder dev3 does not own (a project with its git workflow off), nothing is written into the folder: the hooks, Bash rules and mode are merged with dev3's managed settings into one file under `<dev3 home>/data/agent-hooks/` and passed with `--settings`, which Claude also forwards to teammates. Codex gets no `.codex/hooks.json` there either. See `decisions/2026/10/04/gitless-claude-hooks-via-settings-flag.md`.
+
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
 | `SessionStart` (`startup\|clear\|compact`) | none | `dev3 hook claude-session-start` answers with the task's 5 newest notes as `hookSpecificOutput.additionalContext` (bounded, see `src/shared/recent-notes-context.ts`). `resume`/`fork` are skipped: that transcript already holds a block. Quiet and exit 0 when offline or there are no notes |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working. A **second** entry on the same event, `dev3 hook claude-prompt`, reads the payload's `prompt` and `prompt_id` and reports the submission for Agent traffic; the status-move entry above is untouched, so recording can never cost a task its board position |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
+| `PreToolUse` (`Edit\|Write\|MultiEdit\|NotebookEdit`, shared folders only) | none | `dev3 hook claude-claim` claims the file for this task. When another live task in the same folder holds it, the edit is denied with the holder's seq, title and a ready `dev3 message` command. Allows the edit when the app is offline. See `decisions/2026/10/04/advisory-file-leases-in-shared-folders.md`. Claude only: Codex, Copilot and omp do not claim files yet |
 | `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |
 | `PermissionRequest` | → `user-questions` | Agent needs user approval for a tool call |
 | `Stop` | → `review-by-user` | Agent finished its turn |

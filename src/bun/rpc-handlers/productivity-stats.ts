@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { ProductivityStatEvent, ProductivityStats, Project, Task } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, hasGitWorkflow } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import { log } from "./shared";
@@ -45,7 +45,7 @@ export function toStatEvent(
 /** True for a non-virtual task whose live worktree should be diffed for current LOC. */
 function shouldComputeLiveDiff(project: Project, task: Task): boolean {
 	return (
-		project.kind !== "virtual" &&
+		hasGitWorkflow(project) &&
 		!task.completedDiffStats &&
 		!!task.worktreePath &&
 		task.status !== "completed" &&

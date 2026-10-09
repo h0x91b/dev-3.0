@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
+import { hasGitWorkflow } from "../../../shared/types";
 import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
@@ -73,7 +74,7 @@ export default function TaskGitActionsSheet({
 	// Git mutations only make sense on a real, active worktree. Virtual boards have
 	// no git domain at all (Bible §3) — the caller already gates on kind, but keep
 	// the component self-contained.
-	if (project.kind === "virtual" || !isTaskActive || !task.worktreePath) {
+	if (!hasGitWorkflow(project) || !isTaskActive || !task.worktreePath) {
 		return null;
 	}
 

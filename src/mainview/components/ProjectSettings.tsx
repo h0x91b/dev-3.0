@@ -4,7 +4,7 @@ import { confirm } from "../confirm";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, DevServerConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { DEV_SERVER_NAME_PATTERN } from "../../shared/dev-servers";
-import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
+import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, PROJECT_NAME_MAX_LENGTH, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
 import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -17,6 +17,7 @@ import AutomationsPanel from "./AutomationsPanel";
 import ColorSwatchPicker from "./ColorSwatchPicker";
 import SettingsSection from "./global-settings/SettingsSection";
 import ProjectSpacesField from "./ProjectSpacesField";
+import ToggleSwitch from "./ToggleSwitch";
 import ImportConversationsModal from "./ImportConversationsModal";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
@@ -78,45 +79,6 @@ function WarningNote({ children }: { children: ReactNode }) {
 			<span className="mt-0.5 flex-shrink-0 text-warning-strong text-base">&#9888;</span>
 			<p className="text-fg-2 text-xs leading-relaxed">{children}</p>
 		</div>
-	);
-}
-
-/**
- * The screen's only switch. Kept local (rather than reusing
- * global-settings/SettingsToggle) because these switches sit right-aligned
- * against a label+description block instead of carrying their own text.
- */
-function ToggleSwitch({
-	checked,
-	ariaLabel,
-	onToggle,
-	size = "md",
-}: {
-	checked: boolean;
-	ariaLabel: string;
-	onToggle: () => void;
-	size?: "sm" | "md";
-}) {
-	const track = size === "sm" ? "w-8 h-5" : "w-10 h-6";
-	const knob = size === "sm" ? "w-4 h-4" : "w-5 h-5";
-	const shift = size === "sm" ? "translate-x-3" : "translate-x-4";
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={checked}
-			aria-label={ariaLabel}
-			onClick={onToggle}
-			className={`relative flex-shrink-0 rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-base ${track} ${
-				checked ? "bg-accent" : "bg-edge-active"
-			}`}
-		>
-			<span
-				className={`absolute top-0.5 left-0.5 rounded-full bg-white shadow transition-transform duration-150 ease-out ${knob} ${
-					checked ? shift : "translate-x-0"
-				}`}
-			/>
-		</button>
 	);
 }
 
@@ -1456,7 +1418,9 @@ function ProjectSettings({
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
 		project?.kind === "virtual"
 			? (initialTab === "automations" ? "automations" : "global")
-			: (initialTab ?? "global"),
+			: initialTab === "worktree" && project && !hasGitWorkflow(project)
+				? "global"
+				: (initialTab ?? "global"),
 	);
 	// The "automations-tab" control (§5.10, typically via the Simplify View
 	// preset) hides this tab; never strand the user on it.
@@ -1739,6 +1703,24 @@ function ProjectSettings({
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 			return false;
+		}
+	}
+
+	async function handleToggleGitWorkflow(next: boolean) {
+		if (!project) return;
+		const blocker = gitWorkflowSwitchBlocker(project, tasks);
+		if (blocker?.reason === "live-tasks") {
+			toast.error(t.plural("projectSettings.gitWorkflowBlocked", blocker.count), { projectId });
+			return;
+		}
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, gitWorkflow: next });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			// Retrying cannot fix a folder without git, so say what will.
+			toast.error(String(err).includes(GIT_WORKFLOW_NOT_A_REPO_ERROR)
+				? t("projectSettings.gitWorkflowNotRepo")
+				: t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 	}
 
@@ -2113,14 +2095,15 @@ function ProjectSettings({
 							{/* Operations boards have no git repo — the Project/Worktree config
 							    tabs are git-only, so hide them and keep just the Board tab. */}
 							{project.kind !== "virtual" && (
-								<>
-									<button type="button" {...tabButtonProps("project")}>
-										{t("projectSettings.tabProject")}
-									</button>
-									<button type="button" {...tabButtonProps("worktree")}>
-										{t("projectSettings.tabWorktree")}
-									</button>
-								</>
+								<button type="button" {...tabButtonProps("project")}>
+									{t("projectSettings.tabProject")}
+								</button>
+							)}
+							{/* Worktree settings mean nothing once the git workflow is off. */}
+							{hasGitWorkflow(project) && (
+								<button type="button" {...tabButtonProps("worktree")}>
+									{t("projectSettings.tabWorktree")}
+								</button>
 							)}
 							{!automationsTabHidden && (
 								<button type="button" {...tabButtonProps("automations")}>
@@ -2237,7 +2220,7 @@ function ProjectSettings({
 							<ProjectSpacesField projectId={project.id} />
 							</SettingsSection>
 
-							{project.kind !== "virtual" && (
+							{hasGitWorkflow(project) && (
 								<SettingsSection
 									title={t("projectSettings.importConversations")}
 									description={t("projectSettings.importConversationsDesc")}
@@ -2249,6 +2232,31 @@ function ProjectSettings({
 								>
 									{t("projectSettings.importConversationsBtn")}
 								</button>
+								</SettingsSection>
+							)}
+
+							{project.kind !== "virtual" && (
+								<SettingsSection
+									title={t("projectSettings.groupGitWorkflow")}
+									description={t("projectSettings.groupGitWorkflowDesc")}
+								>
+								<div className="flex items-center justify-between gap-4">
+									<div>
+										<span className="block text-fg text-sm font-semibold mb-1">
+											{t("projectSettings.gitWorkflow")}
+										</span>
+										<p className="text-fg-3 text-sm">
+											{hasGitWorkflow(project)
+												? t("projectSettings.gitWorkflowOnHint")
+												: t("projectSettings.gitWorkflowOffHint")}
+										</p>
+									</div>
+									<ToggleSwitch
+										checked={hasGitWorkflow(project)}
+										ariaLabel={t("projectSettings.gitWorkflow")}
+										onToggle={() => void handleToggleGitWorkflow(!hasGitWorkflow(project))}
+									/>
+								</div>
 								</SettingsSection>
 							)}
 
@@ -2531,7 +2539,7 @@ function ProjectSettings({
 					))}
 
 					{/* ======== Worktree tab ======== */}
-					{activeTab === "worktree" && project.kind !== "virtual" && (
+					{activeTab === "worktree" && hasGitWorkflow(project) && (
 						<div className="space-y-7" data-help-id="project-settings.worktree">
 							{/* The tab stays visible and explains itself: a tab that vanishes
 							    when a setting flips reads as a bug, not as a consequence. */}

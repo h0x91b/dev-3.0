@@ -436,6 +436,11 @@ describe("LaunchVariantsModal", () => {
 
 			expect(getHarnessButtons()).toHaveLength(2);
 		});
+
+		it("hides Add Variant when the git workflow is off: every variant would share one folder", () => {
+			renderModal(makeProject({ gitWorkflow: false }));
+			expect(screen.queryByText("+ Add variant")).not.toBeInTheDocument();
+		});
 	});
 
 	describe("launch action", () => {

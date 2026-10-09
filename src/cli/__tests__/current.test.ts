@@ -125,6 +125,19 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
+		it("tells the agent of a gitless task there is no branch or PR, and names its folder", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
+			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, branchName: null, worktreePath: "/work/customer-x" }));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "Customer X", path: "/work/customer-x", gitWorkflow: false });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Git workflow:");
+			expect(stdoutOutput).toContain("no worktree, branch or PR");
+			expect(stdoutOutput).toContain("Folder:");
+			expect(stdoutOutput).not.toContain("Worktree:");
+		});
+
 		it("shows custom title from live task data when present", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",

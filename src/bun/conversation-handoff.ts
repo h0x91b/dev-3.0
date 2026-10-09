@@ -28,8 +28,8 @@ export interface PreparedHandoff extends HandoffPreview {
 }
 
 /** Where a task's handoff files live: beside its dumps, in the durable container. */
-function handoffDir(worktreePath: string): string {
-	return conversationDumpDir(dirname(worktreePath));
+function handoffDir(worktreePath: string, containerDir?: string): string {
+	return conversationDumpDir(containerDir ?? dirname(worktreePath));
 }
 
 /** Long enough for a multi-GB rollout under memory pressure, short of the 2-minute RPC timeout. */
@@ -47,39 +47,46 @@ const previewCache = new Map<string, CachedPreview>();
 /** One scan per worktree at a time: reopening the dialog joins the running one. */
 const previewsInFlight = new Map<string, Promise<HandoffPreview | null>>();
 
-function rememberPreview(worktreePath: string, entry: CachedPreview): void {
-	previewCache.delete(worktreePath);
-	previewCache.set(worktreePath, entry);
+function rememberPreview(key: string, entry: CachedPreview): void {
+	previewCache.delete(key);
+	previewCache.set(key, entry);
 	if (previewCache.size > PREVIEW_CACHE_LIMIT) previewCache.delete(previewCache.keys().next().value as string);
 }
 
-async function scanPreview(worktreePath: string, home: string): Promise<HandoffPreview | null> {
-	const cached = previewCache.get(worktreePath);
+async function scanPreview(key: string, worktreePath: string, home: string, sessionIds: string[] | null): Promise<HandoffPreview | null> {
+	const cached = previewCache.get(key);
 	const result = await runHandoffJob(
-		{ kind: "preview", worktreePath, home, known: cached?.fingerprint ?? null },
+		{ kind: "preview", worktreePath, home, known: cached?.fingerprint ?? null, sessionIds },
 		{ timeoutMs: PREVIEW_TIMEOUT_MS },
 	);
 	if (result.kind === "unchanged" && cached) return cached.preview;
 	if (result.kind === "preview") {
-		rememberPreview(worktreePath, { fingerprint: result.fingerprint, preview: result.preview });
+		rememberPreview(key, { fingerprint: result.fingerprint, preview: result.preview });
 		return result.preview;
 	}
-	previewCache.delete(worktreePath);
+	previewCache.delete(key);
 	return null;
 }
 
 /**
  * The conversation a handoff would retell: the task's most recently written
  * transcript. Null when the task has no worktree, or nothing parseable ran in it.
- * The parse runs in the handoff worker, never on the host thread.
+ * The parse runs in the handoff worker, never on the host thread. In a folder
+ * other tasks share, `sessionIds` keeps the scan to this task's own sessions.
  */
-export function previewTaskHandoff(task: Task, options: { home?: string } = {}): Promise<HandoffPreview | null> {
+export function previewTaskHandoff(
+	task: Task,
+	options: { home?: string; sessionIds?: string[] | null } = {},
+): Promise<HandoffPreview | null> {
 	const worktreePath = task.worktreePath;
 	if (!worktreePath) return Promise.resolve(null);
-	const running = previewsInFlight.get(worktreePath);
+	// Keyed by task too: tasks sharing one folder must not share a preview.
+	const key = `${task.id}\0${worktreePath}`;
+	const running = previewsInFlight.get(key);
 	if (running) return running;
-	const scan = scanPreview(worktreePath, options.home ?? homedir()).finally(() => previewsInFlight.delete(worktreePath));
-	previewsInFlight.set(worktreePath, scan);
+	const scan = scanPreview(key, worktreePath, options.home ?? homedir(), options.sessionIds ?? null)
+		.finally(() => previewsInFlight.delete(key));
+	previewsInFlight.set(key, scan);
 	return scan;
 }
 
@@ -97,17 +104,30 @@ export function _resetHandoffPreviewCacheForTests(): void {
  */
 export async function prepareTaskHandoff(
 	task: Task,
-	options: { home?: string; target?: RenderTarget } = {},
+	options: {
+		home?: string;
+		target?: RenderTarget;
+		/** The task's container when its folder is not a managed worktree, so its parent is not. */
+		containerDir?: string;
+		/** This task's own sessions when its folder is shared (`task-sessions.ts`). */
+		sessionIds?: string[] | null;
+	} = {},
 ): Promise<PreparedHandoff | null> {
 	if (!task.worktreePath) return null;
 	const result = await runHandoffJob(
-		{ kind: "render", worktreePath: task.worktreePath, home: options.home ?? homedir(), target: options.target ?? "claude" },
+		{
+			kind: "render",
+			worktreePath: task.worktreePath,
+			home: options.home ?? homedir(),
+			target: options.target ?? "claude",
+			sessionIds: options.sessionIds ?? null,
+		},
 		{ timeoutMs: RENDER_TIMEOUT_MS },
 	);
 	if (result.kind !== "render") return null;
 
 	const { preview, text } = result;
-	const dir = handoffDir(task.worktreePath);
+	const dir = handoffDir(task.worktreePath, options.containerDir);
 	mkdirSync(dir, { recursive: true });
 	const path = `${dir}/handoff-${preview.source}-${preview.sessionId ?? "no-session"}.md`;
 	await atomicWriteFile(path, text);

@@ -8,12 +8,13 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(async () => ({ id: "project-1", autoReviewEnabled: false })),
 }));
 vi.mock("../../shared/agent-hooks", () => ({
+	isDev3OwnedFolder: vi.fn(() => true),
 	writeClaudeHooks: vi.fn(() => ({ written: false, skippedSymlink: null })),
 }));
 
 import { findConfig, getAllAgents } from "../agents";
 import { getProject } from "../data";
-import { writeClaudeHooks } from "../../shared/agent-hooks";
+import { isDev3OwnedFolder, writeClaudeHooks } from "../../shared/agent-hooks";
 import { refreshClaudeHooksForTask } from "../agent-hooks-refresh";
 import type { CodingAgent, Project, Task } from "../../shared/types";
 
@@ -35,6 +36,7 @@ beforeEach(() => {
 	vi.mocked(findConfig).mockReturnValue(undefined);
 	vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: false } as Project);
 	vi.mocked(writeClaudeHooks).mockReturnValue({ written: false, skippedSymlink: null });
+	vi.mocked(isDev3OwnedFolder).mockReturnValue(true);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -43,6 +45,12 @@ describe("refreshClaudeHooksForTask", () => {
 	it("re-installs the hooks for a Claude task", async () => {
 		await refreshClaudeHooksForTask(task());
 		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+	});
+
+	it("leaves a folder dev3 does not own alone: its hooks travel in --settings", async () => {
+		vi.mocked(isDev3OwnedFolder).mockReturnValue(false);
+		await refreshClaudeHooksForTask(task({ worktreePath: "/home/me/notes" }));
+		expect(writeClaudeHooks).not.toHaveBeenCalled();
 	});
 
 	it("carries the project's auto-review setting into the Stop target", async () => {

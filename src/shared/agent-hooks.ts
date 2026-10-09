@@ -2,12 +2,14 @@
  * Hook-building logic shared between the backend (bun/) and CLI.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 import { type HookCliDialect, hookCliDialect } from "./dev3-cli-path";
 import { symlinkOnWritePath } from "./symlink-write-guard";
+import { resolveDev3Home } from "./dev3-home";
 
 /** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
 const DEFAULT_DIALECT = hookCliDialect();
@@ -331,6 +333,13 @@ export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
 /** `resume` is left out: the resumed transcript already holds the block it was given. */
 export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
 /**
+ * Claims the file an edit tool is about to write, in a folder other tasks share
+ * (`src/shared/file-leases.ts`). Its own entry: the deny it may print must not
+ * ride on the status move, whose output Claude ignores.
+ */
+export const CLAUDE_CLAIM_HOOK_SUBCOMMAND = "hook claude-claim";
+export const CLAUDE_CLAIM_MATCHER = "Edit|Write|MultiEdit|NotebookEdit";
+/**
  * The lifecycle events dev3 turns into board status moves. Codex emits these
  * names verbatim; Copilot's adapter maps its own camelCase names onto them and
  * the omp status extension translates its events the same way
@@ -488,8 +497,45 @@ function mergeHookMaps(
 	return { ...settings, hooks: merged };
 }
 
+/**
+ * True when `folder` is a working directory dev3 created and removes with the
+ * task (a worktree or an ops folder). Anywhere else - a gitless project folder,
+ * a chosen ops folder - the hooks outlive the task and must stay inert.
+ */
+export function isDev3OwnedFolder(folder: string, env: Record<string, string | undefined> = process.env): boolean {
+	const normalize = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+	const target = normalize(folder);
+	const home = normalize(resolveDev3Home(env));
+	return [`${home}/worktrees/`, `${home}/ops/`].some((root) => target.startsWith(root));
+}
+
+/**
+ * Skip the hook outside a dev3 pane. A plain `claude` session in a folder that
+ * keeps these hooks has no task to move, and the CLI would print its usage error
+ * on every event. Windows keeps the bare command: no POSIX shell to test the env.
+ */
+function withTaskEnvGuard(command: string, dialect: HookCliDialect): string {
+	if (!dialect.posixShell) return command;
+	return `[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || ${command}`;
+}
+
 export function buildClaudeHooks(
-	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect },
+	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect; requireTaskEnv?: boolean; fileLeases?: boolean },
+): HookMap {
+	const hooks = buildUnguardedClaudeHooks(options);
+	if (!options?.requireTaskEnv) return hooks;
+	const dialect = options.dialect ?? DEFAULT_DIALECT;
+	return Object.fromEntries(Object.entries(hooks).map(([event, groups]) => [
+		event,
+		groups.map((group) => ({
+			...group,
+			hooks: group.hooks.map((hook) => ({ ...hook, command: withTaskEnvGuard(hook.command, dialect) })),
+		})),
+	]));
+}
+
+function buildUnguardedClaudeHooks(
+	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect; fileLeases?: boolean },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const dialect = options?.dialect ?? DEFAULT_DIALECT;
@@ -527,6 +573,12 @@ export function buildClaudeHooks(
 		],
 		PreToolUse: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
+			...(options?.fileLeases
+				? [{
+					matcher: CLAUDE_CLAIM_MATCHER,
+					hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_CLAIM_HOOK_SUBCOMMAND}`, timeout: 5 }],
+				}]
+				: []),
 		],
 		PostToolUse: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
@@ -677,7 +729,7 @@ export function ensureDefaultMode(
 
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
-	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect },
+	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect; requireTaskEnv?: boolean; fileLeases?: boolean },
 ): Record<string, unknown> {
 	return mergeHookMaps(existing, buildClaudeHooks(options));
 }
@@ -733,6 +785,7 @@ export interface ClaudeHooksWriteResult {
  * Everything dev3 adds goes to settings.local.json, never a committed
  * settings.json, and nothing is written when the path crosses a symlink: a repo
  * that links its settings into a shared kit would otherwise have the kit edited.
+ * Outside a dev3-owned folder every hook is env-guarded (`isDev3OwnedFolder`).
  *
  * `written` reports whether anything changed on disk. Callers that re-assert the
  * hooks periodically (see `agent-hooks-refresh.ts`) lean on the no-write path:
@@ -751,12 +804,55 @@ export function writeClaudeHooks(
 	mkdirSync(claudeDir, { recursive: true });
 	const previous = readSettingsFile(hooksPath);
 
-	let updated = ensureDevPermission(mergeClaudeHooks(previous, options));
+	const requireTaskEnv = !isDev3OwnedFolder(worktreePath);
+	let updated = ensureDevPermission(mergeClaudeHooks(previous, { ...options, requireTaskEnv, fileLeases: requireTaskEnv }));
 	// "default" is Claude's baseline, so writing it would be a no-op.
 	if (options?.permissionMode && options.permissionMode !== "default") {
 		updated = ensureDefaultMode(updated, options.permissionMode);
 	}
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
+}
+
+/**
+ * Claude settings for a task in a folder dev3 does not own: dev3's managed
+ * `--settings` content plus its hooks, Bash rules and permission mode. Only a
+ * dev3 launch loads this file (Claude relaunches teammates with the same flag),
+ * so the hooks need no env guard and nothing is left in the user's folder.
+ */
+export function buildClaudeFlagSettings(
+	managed: Record<string, unknown>,
+	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode; dialect?: HookCliDialect },
+): Record<string, unknown> {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
+	let settings = ensureDevPermission(
+		{ ...asRecord(managed), hooks: buildClaudeHooks({ stopTarget: options?.stopTarget, dialect, fileLeases: true }) },
+		dialect,
+	);
+	if (options?.permissionMode && options.permissionMode !== "default") {
+		settings = ensureDefaultMode(settings, options.permissionMode);
+	}
+	return settings;
+}
+
+/**
+ * Write `buildClaudeFlagSettings` next to the omp extension and return its path.
+ * The name carries a hash of the content, so concurrent launches with different
+ * stop targets or modes never overwrite a file another Claude is reading.
+ */
+export function writeClaudeFlagSettings(
+	managedSettingsFile: string,
+	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode; dev3Home?: string },
+): string {
+	const body = JSON.stringify(buildClaudeFlagSettings(readSettingsFile(managedSettingsFile), options), null, 2) + "\n";
+	const hash = createHash("sha256").update(body).digest("hex").slice(0, 12);
+	const dir = join(options?.dev3Home ?? resolveDev3Home(), "data", "agent-hooks");
+	const path = join(dir, `claude-folder-settings-${hash}.json`);
+	if (existsSync(path)) return path;
+	mkdirSync(dir, { recursive: true });
+	const temp = `${path}.${process.pid}.tmp`;
+	writeFileSync(temp, body, "utf-8");
+	renameSync(temp, path);
+	return path;
 }
 
 /**

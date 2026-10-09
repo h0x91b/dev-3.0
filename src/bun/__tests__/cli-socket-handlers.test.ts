@@ -29,6 +29,8 @@ vi.mock("../data", () => ({
 	updateProjectWith: vi.fn(),
 }));
 
+vi.mock("../task-sessions", () => ({ rememberTaskSession: vi.fn() }));
+
 vi.mock("../git", () => ({
 	createWorktree: vi.fn(),
 	removeWorktree: vi.fn(),
@@ -231,6 +233,7 @@ vi.mock("node:fs", () => ({
 
 import * as data from "../data";
 import * as git from "../git";
+import { rememberTaskSession } from "../task-sessions";
 import * as pty from "../pty-server";
 import { activateTask, createTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { appendNotificationLog } from "../notification-log";
@@ -861,6 +864,25 @@ describe("task.agentHook", () => {
 		}));
 
 		expect((response.data as Task).status).toBe("review-by-ai");
+	});
+
+	it("remembers the reported session id, so a shared folder can tell this task's transcripts apart", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "PostToolUse",
+			sessionId: "11111111-1111-4111-8111-111111111111",
+		}));
+
+		expect(rememberTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({ id: project.id }),
+			expect.objectContaining({ id: task.id }),
+			"11111111-1111-4111-8111-111111111111",
+		);
 	});
 
 	it("moves a normal Stop directly to review-by-user", async () => {

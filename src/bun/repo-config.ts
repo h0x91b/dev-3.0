@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
-import { DEV3_REPO_CONFIG_KEYS, remapColumnAgents, repoConfigEnabled } from "../shared/types";
+import { DEV3_REPO_CONFIG_KEYS, hasGitWorkflow, remapColumnAgents, repoConfigEnabled } from "../shared/types";
 import { sanitizeEnvMap } from "../shared/env-text";
 import { createLogger } from "./logger";
 import * as git from "./git";
@@ -281,7 +281,8 @@ async function applyConfigCascade(
 	} else if (resolved.defaultCompareRef === undefined) {
 		// A deleted project folder (or any git/spawn failure) must not reject — one broken
 		// project would otherwise blow up the whole project list (Promise.all in getProjects).
-		if (!existsSync(compareRefBasePath)) {
+		// Without the git workflow nothing is ever compared, and the folder may not be a repo.
+		if (!existsSync(compareRefBasePath) || !hasGitWorkflow(project)) {
 			resolved.defaultCompareRef = resolved.defaultBaseBranch;
 		} else {
 			try {

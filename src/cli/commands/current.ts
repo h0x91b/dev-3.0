@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, getTaskTitle } from "../../shared/types";
+import { STATUS_LABELS, getTaskTitle, hasGitWorkflow } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
@@ -82,8 +82,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
-				if (task.branchName) fields.push(["Branch:", task.branchName]);
-				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
+				fields.push(...workspaceFields(project, task.worktreePath, task.branchName));
 				fields.push(...spaceFields(context.projectId));
 
 				printDetail(fields);
@@ -144,9 +143,11 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 		if (displayTitle) fields.push(["Title:", `${displayTitle}${titleMarker}`]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
 		const worktreePath = task.worktreePath as string | undefined;
-		const offlineBranch = (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
-		if (offlineBranch) fields.push(["Branch:", offlineBranch]);
-		if (worktreePath) fields.push(["Worktree:", worktreePath]);
+		const gitless = isGitlessProject(project);
+		const offlineBranch = gitless
+			? null
+			: (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
+		fields.push(...workspaceFields(project, worktreePath, offlineBranch));
 		fields.push(...spaceFields(context.projectId));
 
 		fields.push(["", ""]);
@@ -191,4 +192,30 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 	printCustomColumns(project);
 
 	process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
+}
+
+/** A git project with its git workflow switched off. Operations boards say so on their own. */
+function isGitlessProject(project: ProjectDirect | null): boolean {
+	return !!project && project.kind !== "virtual" && !hasGitWorkflow(project);
+}
+
+/**
+ * Where the task works. A gitless task runs in the user's own project folder, so
+ * its agent is told there is no branch to rename, no PR to open and no worktree
+ * that completion would destroy.
+ */
+function workspaceFields(
+	project: ProjectDirect | null,
+	worktreePath: string | null | undefined,
+	branchName: string | null | undefined,
+): Array<[string, string]> {
+	if (isGitlessProject(project)) {
+		const fields: Array<[string, string]> = [["Git workflow:", "off - no worktree, branch or PR; completion keeps every file"]];
+		if (worktreePath) fields.push(["Folder:", worktreePath]);
+		return fields;
+	}
+	const fields: Array<[string, string]> = [];
+	if (branchName) fields.push(["Branch:", branchName]);
+	if (worktreePath) fields.push(["Worktree:", worktreePath]);
+	return fields;
 }

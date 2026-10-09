@@ -9,9 +9,11 @@ import {
 	type TaskConversationView,
 	type TurnLike,
 } from "../shared/task-conversation-model";
-import { taskDir, virtualWorkDir } from "./git";
+import { taskDir } from "./git";
+import { folderWorkDir } from "./task-folder";
 import { transcriptFilesForWorktree } from "./conversation-search";
-import { conversationDumpDir, parseTranscriptFile } from "./conversation-parse";
+import { conversationDumpDir, parseTranscriptFile, transcriptInSessions } from "./conversation-parse";
+import { taskSessionIds } from "./task-sessions";
 import { createLogger } from "./logger";
 
 /**
@@ -54,8 +56,7 @@ interface LoadedConversation {
 
 /** Where this task's files live, whether or not it still has a worktree. */
 function taskWorkingDir(project: Project, task: Task): string {
-	if (project.kind === "virtual") return task.opsWorkDir?.trim() || virtualWorkDir(project, task);
-	return task.worktreePath ?? `${taskDir(project, task)}/worktree`;
+	return folderWorkDir(project, task) ?? task.worktreePath ?? `${taskDir(project, task)}/worktree`;
 }
 
 function statOf(path: string): { mtime: string | null; bytes: number } {
@@ -84,7 +85,7 @@ function sessionIdFromName(fileName: string, source: string): string | null {
 }
 
 /** Native transcripts on disk for this task's working directory — named, not parsed. */
-function liveSessions(workingDir: string): SessionRef[] {
+function liveSessions(workingDir: string, sessionIds: readonly string[] | null): SessionRef[] {
 	let files: { kind: string; path: string }[];
 	try {
 		// A worktree that is gone is the normal case for a completed task.
@@ -95,7 +96,7 @@ function liveSessions(workingDir: string): SessionRef[] {
 	}
 	const sessions: SessionRef[] = [];
 	for (const file of files) {
-		if (!PARSEABLE_KINDS.has(file.kind)) continue;
+		if (!PARSEABLE_KINDS.has(file.kind) || !transcriptInSessions(file.path, sessionIds)) continue;
 		const source = file.kind as ConversationSource;
 		const name = file.path.slice(file.path.lastIndexOf("/") + 1);
 		const { mtime, bytes } = statOf(file.path);
@@ -174,7 +175,8 @@ function sortKey(info: TaskConversationSessionInfo): number {
  * transcript wins over its own archived copy: same conversation, more of it.
  */
 export function taskConversationSessions(project: Project, task: Task): SessionRef[] {
-	const live = liveSessions(taskWorkingDir(project, task));
+	const workingDir = taskWorkingDir(project, task);
+	const live = liveSessions(workingDir, taskSessionIds(project, task, workingDir));
 	const liveIds = new Set(live.map((session) => session.info.sessionId).filter(Boolean));
 	const archived = archivedSessions(project, task).filter(
 		(session) => !session.info.sessionId || !liveIds.has(session.info.sessionId),

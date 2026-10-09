@@ -149,6 +149,30 @@ describe("AddProjectModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("offers a folder that is not a git repository as a project with the git workflow off", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		mockedOpenFolderPickerMulti.mockResolvedValue(["/work/customer-x"]);
+		mockedApi.request.addProject
+			.mockResolvedValueOnce({ ok: false as const, error: "Selected folder is not a git repository", notGitRepo: true as const })
+			.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, path: "/work/customer-x", gitWorkflow: false } });
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Browse..."));
+
+		// Not a dead end: the folder waits for an answer instead of an error.
+		expect(screen.getByText("1 folder is not a git repository:")).toBeInTheDocument();
+		expect(screen.queryByText(/Selected folder is not a git repository/)).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+
+		await user.click(screen.getByText("Add with Git workflow off"));
+
+		expect(mockedApi.request.addProject).toHaveBeenLastCalledWith({ path: "/work/customer-x", gitWorkflow: false });
+		expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: expect.objectContaining({ gitWorkflow: false }) });
+		expect(onClose).toHaveBeenCalled();
+	});
+
 	it("opens folder picker and adds multiple projects at once", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();
@@ -480,6 +504,61 @@ describe("AddProjectModal", () => {
 
 			expect(screen.queryByText(baseClaim)).not.toBeInTheDocument();
 			expect(screen.queryByText(branchClaim)).not.toBeInTheDocument();
+		});
+
+		it("says tasks share the folder once the git workflow is off", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			await user.click(screen.getByRole("switch", { name: "Git workflow" }));
+
+			expect(screen.queryByText(baseClaim)).not.toBeInTheDocument();
+			expect(screen.queryByText(branchClaim)).not.toBeInTheDocument();
+			expect(screen.getByText(/Tasks run directly in this folder/)).toBeInTheDocument();
+			expect(screen.getByText(/All tasks share the folder/)).toBeInTheDocument();
+		});
+	});
+
+	describe("git workflow switch", () => {
+		it("is on by default", () => {
+			renderModal();
+			expect(screen.getByRole("switch", { name: "Git workflow" })).toHaveAttribute("aria-checked", "true");
+		});
+
+		it("off: hides Clone and New, which only make git repositories", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			await user.click(screen.getByText("Clone from URL"));
+			await user.click(screen.getByRole("switch", { name: "Git workflow" }));
+
+			expect(screen.queryByText("Clone from URL")).not.toBeInTheDocument();
+			expect(screen.queryByText("New")).not.toBeInTheDocument();
+			expect(screen.queryByText("Clone")).not.toBeInTheDocument();
+			expect(screen.getByText("Browse...")).toBeInTheDocument();
+		});
+
+		it("off: adds every picked folder with the git workflow off and offers no conversation import", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const onGitProjectsAdded = vi.fn();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/docs-repo", "/work/notes"]);
+			mockedApi.request.addProject
+				.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, id: "a", path: "/work/docs-repo", gitWorkflow: false } })
+				.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, id: "b", path: "/work/notes", gitWorkflow: false } });
+
+			render(
+				<I18nProvider>
+					<AddProjectModal dispatch={dispatch} onClose={onClose} onGitProjectsAdded={onGitProjectsAdded} />
+				</I18nProvider>,
+			);
+			await user.click(screen.getByRole("switch", { name: "Git workflow" }));
+			await user.click(screen.getByText("Browse..."));
+
+			expect(mockedApi.request.addProject).toHaveBeenNthCalledWith(1, { path: "/work/docs-repo", gitWorkflow: false });
+			expect(mockedApi.request.addProject).toHaveBeenNthCalledWith(2, { path: "/work/notes", gitWorkflow: false });
+			expect(dispatch).toHaveBeenCalledTimes(2);
+			expect(onGitProjectsAdded).not.toHaveBeenCalled();
+			expect(onClose).toHaveBeenCalled();
 		});
 	});
 });

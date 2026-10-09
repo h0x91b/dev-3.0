@@ -16,20 +16,24 @@ import { setupAgentHooks } from "../agent-hooks";
 
 let tmp: string;
 let worktree: string;
+const originalDev3Home = process.env.DEV3_HOME;
 
 beforeEach(() => {
 	tmp = mkdtempSync(join(tmpdir(), "dev3-codex-symlink-"));
-	worktree = join(tmp, "wt");
-	mkdirSync(worktree);
+	process.env.DEV3_HOME = tmp;
+	worktree = join(tmp, "worktrees", "proj", "abcd1234", "worktree");
+	mkdirSync(worktree, { recursive: true });
 });
 
 afterEach(() => {
+	if (originalDev3Home === undefined) delete process.env.DEV3_HOME;
+	else process.env.DEV3_HOME = originalDev3Home;
 	rmSync(tmp, { recursive: true, force: true });
 });
 
 describe("setupAgentHooks for codex", () => {
 	it("returns the trust bypass when dev3 wrote the hooks", async () => {
-		expect(await setupAgentHooks(worktree, "codex")).toBe("--dangerously-bypass-hook-trust");
+		expect(await setupAgentHooks(worktree, "codex")).toEqual({ flag: "--dangerously-bypass-hook-trust" });
 	});
 
 	it("does not bypass hook trust when .codex links outside the worktree", async () => {

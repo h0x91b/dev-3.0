@@ -32,7 +32,7 @@ afterEach(() => {
 
 describe("setupAgentHooks for omp", () => {
 	it("writes the status extension under the dev3 home and returns the --hook flag", async () => {
-		const flag = await setupAgentHooks(worktree, "omp");
+		const flag = (await setupAgentHooks(worktree, "omp"))?.flag;
 		const expected = join(tempHome, "data", "agent-hooks", "omp-status.ts");
 		expect(flag).toBe(`--hook ${expected}`);
 		expect(existsSync(expected)).toBe(true);
@@ -41,7 +41,7 @@ describe("setupAgentHooks for omp", () => {
 	});
 
 	it("resolves a wrapper script through the declared family", async () => {
-		const flag = await setupAgentHooks(worktree, "/opt/bin/my-omp-wrapper", { family: "omp" });
+		const flag = (await setupAgentHooks(worktree, "/opt/bin/my-omp-wrapper", { family: "omp" }))?.flag;
 		expect(flag?.startsWith("--hook ")).toBe(true);
 	});
 

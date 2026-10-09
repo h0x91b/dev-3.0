@@ -11,7 +11,13 @@
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
-import { writeClaudeHooks, writeCodexHooks, writeCopilotHooks } from "../shared/agent-hooks";
+import {
+	isDev3OwnedFolder,
+	writeClaudeFlagSettings,
+	writeClaudeHooks,
+	writeCodexHooks,
+	writeCopilotHooks,
+} from "../shared/agent-hooks";
 import { quoteIfUnsafe } from "../shared/agent-adapters/shell";
 import { writeOmpStatusExtension } from "../shared/omp-status-extension";
 import { resolveCopilotHome } from "./copilot-config";
@@ -44,13 +50,27 @@ export function __resetCodexHookTrustBypassCache(): void {
 }
 
 /**
+ * What a launch command needs after hook setup: `flag` is spliced in after the
+ * binary; `claudeSettingsFile` replaces the `--settings` file the command already
+ * passes. Null when the command stays as it is.
+ */
+export interface AgentHookLaunch {
+	flag?: string;
+	claudeSettingsFile?: string;
+}
+
+/**
  * Set up agent-native hooks in the worktree, driven by the agent adapter's
  * declarative hooksSpec (decision 124). The adapter decides *which* hooks (data);
- * this executor performs the I/O. Returns an extra launch flag to splice into the
- * command, or null when there is nothing to add.
+ * this executor performs the I/O.
+ *
+ * In a folder dev3 does not own (a project with its git workflow off), Claude's
+ * hooks travel in a `--settings` file built from `options.claudeSettingsFile`,
+ * the managed file the command passes, so nothing is written into the folder.
+ * Codex's hooks already come from `config.toml`, so its folder file is skipped.
  *
  * `options.family` is which CLI this command actually is, which beats the
- * command-name guess — without it a wrapper script silently got no hooks.
+ * command-name guess - without it a wrapper script silently got no hooks.
  */
 export async function setupAgentHooks(
 	worktreePath: string,
@@ -59,8 +79,9 @@ export async function setupAgentHooks(
 		stopTarget?: TaskStatus;
 		permissionMode?: PermissionMode;
 		family?: AgentFamily;
+		claudeSettingsFile?: string;
 	},
-): Promise<string | null> {
+): Promise<AgentHookLaunch | null> {
 	const spec = getAgentAdapter(baseCommand, options?.family).hooksSpec(options);
 	if (!spec) {
 		// The one silent failure class worth a log line: no hooks means the task
@@ -74,6 +95,14 @@ export async function setupAgentHooks(
 	}
 
 	if (spec.kind === "claude") {
+		if (options?.claudeSettingsFile && !isDev3OwnedFolder(worktreePath)) {
+			const claudeSettingsFile = writeClaudeFlagSettings(options.claudeSettingsFile, {
+				stopTarget: spec.stopTarget,
+				permissionMode: spec.permissionMode,
+			});
+			log.info("Claude hooks passed with --settings; nothing written to the folder", { worktreePath, claudeSettingsFile });
+			return { claudeSettingsFile };
+		}
 		const { skippedSymlink } = writeClaudeHooks(worktreePath, {
 			stopTarget: spec.stopTarget,
 			permissionMode: spec.permissionMode,
@@ -111,11 +140,12 @@ export async function setupAgentHooks(
 		// which launches without the flag and logs it.
 		const path = writeOmpStatusExtension();
 		log.info("omp status extension active", { worktreePath, path });
-		return `--hook ${quoteIfUnsafe(path)}`;
+		return { flag: `--hook ${quoteIfUnsafe(path)}` };
 	}
 
-	// spec.kind === "codex"
-	const codexSymlink = writeCodexHooks(worktreePath);
+	// spec.kind === "codex". The live hooks come from config.toml; in a folder dev3
+	// does not own this file would only outlive the task as unguarded project hooks.
+	const codexSymlink = isDev3OwnedFolder(worktreePath) ? writeCodexHooks(worktreePath) : null;
 	if (codexSymlink) {
 		// No trust bypass either: whatever hooks sit behind the link are not dev3's.
 		log.warn("Codex hooks not written: hooks path is a symlink", { worktreePath, symlink: codexSymlink });
@@ -129,5 +159,5 @@ export async function setupAgentHooks(
 		return null;
 	}
 	log.info("Codex hook files prepared; a fresh Codex process is required to load changes", { worktreePath });
-	return CODEX_HOOK_TRUST_BYPASS_FLAG;
+	return { flag: CODEX_HOOK_TRUST_BYPASS_FLAG };
 }

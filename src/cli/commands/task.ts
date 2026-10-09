@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, hasGitWorkflow, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
@@ -9,7 +9,7 @@ import { sendRequest } from "../socket-client";
 import { DESTRUCTIVE_APPROVAL_TARGET, isAgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, resolveProjectId, type CliContext } from "../context";
+import { expandShortId, readProjectDirect, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
@@ -485,6 +485,8 @@ interface DestructiveApprovalSpec {
 	declinedHint: string;
 	declinedCode: number;
 	failed: string;
+	/** The task runs in its project folder, which approval keeps. */
+	keepsFolder?: boolean;
 }
 
 const COMPLETION_APPROVAL: DestructiveApprovalSpec = {
@@ -525,6 +527,34 @@ const RESET_APPROVAL: DestructiveApprovalSpec = {
 	declinedCode: CLI_EXIT_CODE_RESET_DECLINED,
 	failed: "Failed to request the task reset",
 };
+
+/**
+ * A task in a project with its git workflow off runs in the user's own folder,
+ * and completing, cancelling or resetting it keeps every file there. Its agent
+ * must not be told a worktree is about to be destroyed.
+ */
+const FOLDER_APPROVAL_TEXT: Record<DestructiveApprovalKind, Partial<DestructiveApprovalSpec>> = {
+	complete: {
+		intro: "Completing a task closes its terminal session, so it requires user approval. Its project folder keeps every file.",
+		lateOther: "if the user approves later, that task completes and its terminal session closes; the folder keeps every file. This session is not the target.",
+	},
+	cancel: {
+		intro: "Cancelling a task stops its agent and closes its terminal session, so it requires user approval. Its project folder keeps every file.",
+		lateOther: "if the user approves later, that task is cancelled and its terminal session closes; the folder keeps every file. This session is not the target.",
+	},
+	reset: {
+		intro: "Moving an active task to To Do resets it - the agent is stopped and its terminal session closes; the card stays in To Do for a fresh start, and the project folder keeps every file. That requires user approval.",
+		lateOther: "if the user approves later, that task is reset and its terminal session closes; the folder keeps every file. This session is not the target.",
+		declinedHint: "The user declined - nothing was stopped: the task keeps its status and session.\nAsk the user what they want before requesting it again.",
+	},
+};
+
+/** The approval wording for this task's project: worktree or kept folder. */
+function approvalSpecFor(spec: DestructiveApprovalSpec, projectId: string | undefined): DestructiveApprovalSpec {
+	const project = projectId ? readProjectDirect(projectId) : null;
+	const keepsFolder = !!project && project.kind !== "virtual" && !hasGitWorkflow(project);
+	return keepsFolder ? { ...spec, ...FOLDER_APPROVAL_TEXT[spec.kind], keepsFolder } : spec;
+}
 
 // After the socket drops mid-wait, how long the CLI keeps trying to reach the
 // same app again (a dev-server restart takes a few seconds), and how often.
@@ -636,9 +666,13 @@ async function waitForDestructiveApproval(
 function reportApproved(spec: DestructiveApprovalSpec, taskRef: string, task: Task | undefined, ownSession: boolean, context: CliContext | null): void {
 	process.stdout.write(
 		`User approved — task ${(task?.id ?? taskRef).slice(0, 8)} moved to ${spec.label}.\n` +
-		(task?.id === context?.taskId || (!task && ownSession)
-			? "This worktree and terminal session are being destroyed now.\n"
-			: "Its worktree and terminal session are being destroyed now; this session is unaffected.\n"),
+		(spec.keepsFolder
+			? (task?.id === context?.taskId || (!task && ownSession)
+				? "This terminal session is closing now. The project folder keeps every file.\n"
+				: "Its terminal session is closing now; the project folder keeps every file. This session is unaffected.\n")
+			: task?.id === context?.taskId || (!task && ownSession)
+				? "This worktree and terminal session are being destroyed now.\n"
+				: "Its worktree and terminal session are being destroyed now; this session is unaffected.\n"),
 	);
 }
 
@@ -706,7 +740,7 @@ function reportApprovalStatus(
  * agent must be able to tell apart.
  */
 async function requestDestructiveApproval(
-	spec: DestructiveApprovalSpec,
+	baseSpec: DestructiveApprovalSpec,
 	taskId: string,
 	args: ParsedArgs,
 	socketPath: string,
@@ -716,6 +750,7 @@ async function requestDestructiveApproval(
 	const params: Record<string, unknown> = { taskId };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
+	const spec = approvalSpecFor(baseSpec, projectId);
 	const ownSession = targetsOwnSession(taskId, args, context);
 
 	process.stderr.write(`${spec.intro}\nWaiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n`);

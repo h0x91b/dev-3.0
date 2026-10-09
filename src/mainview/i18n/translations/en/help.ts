@@ -188,7 +188,7 @@ const help = {
 		"N variants means N independent agents solving the same task in parallel, each in its own worktree and branch. Compare the results, keep the best one — the rest are cancelled.",
 	"help.modal.addProject.title": "Add a project",
 	"help.modal.addProject.body":
-		"Point dev3 at a local git repo, clone a remote first, or create an Operations board — a virtual project whose tasks run agents in managed folders, without git.",
+		"Point dev3 at a local git repo, clone a remote first, or create an Operations board — a virtual project whose tasks run agents in managed folders, without git. Switch Git workflow off to add any folder whose tasks run in it directly.",
 	"help.modal.importConversations.title": "Import conversations",
 	"help.modal.importConversations.body":
 		"Claude Code and Codex conversations that ran in this project's folder outside dev3 become ordinary tasks: a title, a retelling of the conversation as the description, and the `imported` label. Claude names its own conversations; a Codex one is named after the first request. Work from the last week keeps a worktree; older work lands in Completed.",

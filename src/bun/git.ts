@@ -3132,6 +3132,12 @@ export async function removeWorktree(
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
 	const targetPath = task.worktreePath;
+	// The project's own checkout is never a task worktree: removing it would take
+	// the user's folder and its branch with it.
+	if (canonicalWorktreePath(targetPath) === canonicalWorktreePath(project.path)) {
+		log.warn("Refusing to remove the project folder as a worktree", { path: targetPath, taskId: task.id });
+		return none;
+	}
 	const worktreeDirPresent = existsSync(targetPath);
 	const registration = (await listWorktreeRegistrations(project.path))
 		.find((candidate) => canonicalWorktreePath(candidate.path) === canonicalWorktreePath(targetPath));

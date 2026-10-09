@@ -39,6 +39,7 @@ import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleOmpHook } from "./commands/omp-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
@@ -298,6 +299,15 @@ async function main(): Promise<void> {
 		// never blocks or fails the prompt — the status move is a separate entry
 		// on the same event.
 		return await handleClaudePrompt(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "claude-claim") {
+		// Internal: Claude Code's PreToolUse on its edit tools in a shared folder.
+		// Denies the edit only when another live task holds the file.
+		return await handleClaudeClaim(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

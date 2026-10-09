@@ -21,7 +21,7 @@
 import type { AgentFamily, Task } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
-import { writeClaudeHooks } from "../shared/agent-hooks";
+import { isDev3OwnedFolder, writeClaudeHooks } from "../shared/agent-hooks";
 import { findConfig, getAllAgents } from "./agents";
 import { getProject } from "./data";
 
@@ -45,7 +45,9 @@ async function resolveTaskAgentHooks(
  */
 export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 	try {
-		if (!task.worktreePath) return;
+		// A folder dev3 does not own gets its hooks through `--settings`, which no
+		// rewrite of the folder's settings file can drop.
+		if (!task.worktreePath || !isDev3OwnedFolder(task.worktreePath)) return;
 
 		const resolved = await resolveTaskAgentHooks(task);
 		if (!resolved) return;

@@ -4,6 +4,8 @@ import type { AgentFamily, ColumnAgentConfig, DevServerEntry, DevServerStatus, P
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
+import { folderWorkDir } from "../task-folder";
+import { taskSessionIds } from "../task-sessions";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { codexAccountIdForHome } from "../agent-accounts";
@@ -35,6 +37,8 @@ import { getUserShell } from "../shell-env";
 import { agentBinaryPathOverride } from "../executable";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
+import { CLAUDE_STATUSLINE_SETTINGS_PATH } from "../rate-limit-monitor";
+import { quoteIfUnsafe } from "../../shared/agent-adapters/shell";
 import { resolveResumableSessionId } from "../agent-transcripts";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
 import {
@@ -851,15 +855,26 @@ async function applyAgentHooksToCommand(
 	},
 ): Promise<string> {
 	try {
-		const hookFlag = await setupAgentHooks(worktreePath, baseCommand, options);
-		if (!hookFlag) return command;
+		const managedArg = `--settings ${quoteIfUnsafe(CLAUDE_STATUSLINE_SETTINGS_PATH)}`;
+		const passesManaged = command.includes(managedArg);
+		const launch = await setupAgentHooks(worktreePath, baseCommand, {
+			...options,
+			...(passesManaged ? { claudeSettingsFile: CLAUDE_STATUSLINE_SETTINGS_PATH } : {}),
+		});
+		let next = command;
+		if (launch?.claudeSettingsFile) {
+			const swapped = `--settings ${quoteIfUnsafe(launch.claudeSettingsFile)}`;
+			next = next.replace(managedArg, () => swapped);
+		}
+		const hookFlag = launch?.flag;
+		if (!hookFlag) return next;
 		// Codex gets a bare flag by design: its hook definitions live in the user's
 		// config.toml, because the payload that used to travel here as
 		// `-c hooks={...}` never survived the Windows command line. omp gets
 		// `--hook <path>` — one short path to the generated extension.
-		const firstSeparator = command.search(/\s/);
-		if (firstSeparator < 0) return `${command} ${hookFlag}`;
-		return `${command.slice(0, firstSeparator)} ${hookFlag}${command.slice(firstSeparator)}`;
+		const firstSeparator = next.search(/\s/);
+		if (firstSeparator < 0) return `${next} ${hookFlag}`;
+		return `${next.slice(0, firstSeparator)} ${hookFlag}${next.slice(firstSeparator)}`;
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,
@@ -3294,7 +3309,12 @@ async function spawnAgentInTask(params: {
 	// Written BEFORE the split on purpose: a conversation that cannot be retold
 	// must fail with no pane opened, rather than leave a bare agent standing where
 	// the user asked for a takeover.
-	const handoff = params.handoff ? await prepareTaskHandoff(task) : null;
+	const handoff = params.handoff
+		? await prepareTaskHandoff(task, {
+			...(folderWorkDir(project, task) ? { containerDir: git.taskDir(project, task) } : {}),
+			sessionIds: taskSessionIds(project, task, task.worktreePath),
+		})
+		: null;
 	if (params.handoff && !handoff) {
 		throw new Error("Nothing to hand over: no parseable agent transcript has been written for this task yet.");
 	}
@@ -3474,7 +3494,7 @@ async function previewTaskHandoffHandler(params: { taskId: string; projectId: st
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	try {
-		return await previewTaskHandoff(task);
+		return await previewTaskHandoff(task, { sessionIds: taskSessionIds(project, task, task.worktreePath) });
 	} catch (error) {
 		log.warn("previewTaskHandoff failed; offering no handoff", { taskId: params.taskId.slice(0, 8), error: String(error) });
 		return null;

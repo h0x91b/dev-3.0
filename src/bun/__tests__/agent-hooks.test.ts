@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import {
 	buildClaudeHooks,
@@ -10,7 +11,7 @@ import {
 	writeClaudeHooks,
 	writeCodexHooks,
 } from "../agent-hooks";
-import type { MatcherGroup } from "../../shared/agent-hooks";
+import { isDev3OwnedFolder, type MatcherGroup } from "../../shared/agent-hooks";
 import { getPrimaryStopTarget, isStatusGuardBlocked, type TaskStatus } from "../../shared/types";
 import {
 	CODEX_DEV3_HOOK_COMMAND,
@@ -1352,7 +1353,8 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		writeClaudeHooks(tmp);
 
 		const content = read();
-		expect(content.hooks.PreToolUse).toHaveLength(1);
+		// The status move, plus the file claim a folder outside the dev3 home gets.
+		expect(content.hooks.PreToolUse).toHaveLength(2);
 		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
 	});
 
@@ -1478,4 +1480,88 @@ describe("getAgentHookTargetStatus on a To Do task", () => {
 			expect(getAgentHookTargetStatus(event, "todo", false)).toBeNull();
 		},
 	);
+});
+
+describe("Claude hooks outside a dev3-owned folder", () => {
+	const posix = hookCliDialect({ platform: "darwin" });
+	let tmp: string;
+	let savedHome: string | undefined;
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-hooks-folder-"));
+		savedHome = process.env.DEV3_HOME;
+		process.env.DEV3_HOME = join(tmp, "dev3home");
+	});
+
+	afterEach(() => {
+		if (savedHome === undefined) delete process.env.DEV3_HOME;
+		else process.env.DEV3_HOME = savedHome;
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	function readCommands(folder: string): string[] {
+		const settings = JSON.parse(readFileSync(join(folder, ".claude", "settings.local.json"), "utf-8"));
+		return everyCommand(settings.hooks);
+	}
+
+	it("owns worktree and ops folders only, never their roots or a project folder", () => {
+		const home = process.env.DEV3_HOME!;
+		expect(isDev3OwnedFolder(`${home}/worktrees/slug/id/worktree`)).toBe(true);
+		expect(isDev3OwnedFolder(`${home}/ops/slug/id/work`)).toBe(true);
+		expect(isDev3OwnedFolder(`${home}/worktrees`)).toBe(false);
+		expect(isDev3OwnedFolder("/mnt/e/Projects/photos")).toBe(false);
+	});
+
+	it("guards every command written into a project folder", () => {
+		const folder = join(tmp, "project");
+		mkdirSync(folder);
+		writeClaudeHooks(folder);
+		const commands = readCommands(folder);
+		expect(commands.length).toBeGreaterThan(0);
+		for (const command of commands) expect(command.startsWith('[ -z "$DEV3_TASK_ID" ] || ')).toBe(true);
+	});
+
+	it("leaves worktree hooks unguarded", () => {
+		const folder = join(process.env.DEV3_HOME!, "worktrees", "slug", "id", "worktree");
+		mkdirSync(folder, { recursive: true });
+		writeClaudeHooks(folder);
+		for (const command of readCommands(folder)) expect(command).not.toContain("DEV3_TASK_ID");
+	});
+
+	it("replaces stale unguarded dev3 hooks instead of stacking guarded ones beside them", () => {
+		const folder = join(tmp, "project");
+		mkdirSync(join(folder, ".claude"), { recursive: true });
+		writeFileSync(join(folder, ".claude", "settings.local.json"), JSON.stringify({ hooks: buildClaudeHooks() }));
+		writeClaudeHooks(folder);
+		const settings = JSON.parse(readFileSync(join(folder, ".claude", "settings.local.json"), "utf-8"));
+		expect(settings.hooks).toEqual(buildClaudeHooks({ requireTaskEnv: true, fileLeases: true }));
+	});
+
+	it("keeps Windows commands bare", () => {
+		const windows = hookCliDialect({ platform: "win32" });
+		expect(buildClaudeHooks({ dialect: windows, requireTaskEnv: true })).toEqual(buildClaudeHooks({ dialect: windows }));
+	});
+
+	describe("in a real shell", () => {
+		function runGuarded(taskId: string | undefined, exitCode: number): { status: number | null; ran: boolean } {
+			const marker = join(tmp, "ran");
+			const fake = join(tmp, "dev3");
+			writeFileSync(fake, `#!/bin/sh\ntouch "${marker}"\nexit ${exitCode}\n`, { mode: 0o755 });
+			const command = buildClaudeHooks({ dialect: { ...posix, cli: fake }, requireTaskEnv: true })
+				.PermissionRequest[0].hooks[0].command;
+			const env: Record<string, string> = { PATH: process.env.PATH ?? "" };
+			if (taskId) env.DEV3_TASK_ID = taskId;
+			const result = spawnSync("sh", ["-c", command], { env });
+			return { status: result.status, ran: existsSync(marker) };
+		}
+
+		it("skips the CLI and exits 0 outside a dev3 pane", () => {
+			expect(runGuarded(undefined, 1)).toEqual({ status: 0, ran: false });
+		});
+
+		it("runs the CLI inside a pane and still tolerates only the app-offline exit", () => {
+			expect(runGuarded("task-1", 2)).toEqual({ status: 0, ran: true });
+			expect(runGuarded("task-1", 1).status).toBe(1);
+		});
+	});
 });

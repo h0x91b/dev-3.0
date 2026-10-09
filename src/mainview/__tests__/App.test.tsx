@@ -4014,6 +4014,23 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 		});
 
+		it("says the folder is kept, not deleted, when the project's git workflow is off", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", gitWorkflow: false },
+			]);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			await fireAgentCancellationRequested("req-c9", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({ requestId: "req-c9", approved: false });
+			});
+			const opts = vi.mocked(confirm).mock.calls[0][0];
+			expect(opts.message).toContain("The working folder and its files are kept.");
+			expect(opts.confirmLabel).toBe("Cancel task");
+		});
+
 		it("responds with approved:false and stays in place when declined", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },

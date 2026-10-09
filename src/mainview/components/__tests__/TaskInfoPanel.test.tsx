@@ -4073,6 +4073,17 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
 	});
 
+	it("says the git workflow is off, and shows no branch, on a gitless project", async () => {
+		await act(async () => {
+			renderPanel(
+				makeTask({ status: "in-progress", branchName: "dev3/should-not-show", worktreePath: "/tmp/customer-x" }),
+				{ project: { ...project, gitWorkflow: false } },
+			);
+		});
+		expect(screen.getByText("Git workflow is off for this project")).toBeInTheDocument();
+		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
+	});
+
 	it("still shows the git bar (branch name) for a git task", async () => {
 		await act(async () => {
 			renderPanel(makeTask({ branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));

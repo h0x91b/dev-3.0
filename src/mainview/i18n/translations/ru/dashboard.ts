@@ -81,7 +81,7 @@ const dashboard = {
 	"ops.badgeSystem": "Система",
 	"ops.gitUnavailable": "Git недоступен в операциях",
 	"ops.tileSubtitle": "Задачи с кодом · без git",
-	"ops.create.typeGit": "Git-репозиторий",
+	"ops.create.typeGit": "Папка",
 	"ops.create.typeOps": "Операции",
 	"ops.create.nameLabel": "Название доски",
 	"ops.create.namePlaceholder": "Операции",

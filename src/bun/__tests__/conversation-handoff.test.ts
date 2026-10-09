@@ -119,6 +119,36 @@ describe("previewTaskHandoff", () => {
 	});
 });
 
+describe("handoff in a folder other tasks share", () => {
+	const MINE = "11111111-1111-4111-8111-111111111111";
+	const THEIRS = "22222222-2222-4222-8222-222222222222";
+
+	beforeEach(() => {
+		seed(`${MINE}.jsonl`, transcript("MY WORK", MINE), 1_500);
+		seed(`${THEIRS}.jsonl`, transcript("NEIGHBOUR WORK", THEIRS), 3_000);
+	});
+
+	it("previews this task's own newest session, not a neighbour's newer one", async () => {
+		expect(await previewTaskHandoff(task, { home, sessionIds: [MINE] })).toMatchObject({ sessionId: MINE });
+	});
+
+	it("never serves one task's cached preview to another task in the same folder", async () => {
+		const other = { ...task, id: "t2" } as Task;
+		expect(await previewTaskHandoff(task, { home, sessionIds: [MINE] })).toMatchObject({ sessionId: MINE });
+		expect(await previewTaskHandoff(other, { home, sessionIds: [THEIRS] })).toMatchObject({ sessionId: THEIRS });
+	});
+
+	it("retells only this task's session", async () => {
+		const prepared = await prepareTaskHandoff(task, { home, sessionIds: [MINE] });
+		expect(prepared?.sessionId).toBe(MINE);
+		expect(readFileSync(prepared!.path, "utf-8")).not.toContain("NEIGHBOUR WORK");
+	});
+
+	it("offers nothing when none of the folder's sessions is this task's", async () => {
+		expect(await previewTaskHandoff(task, { home, sessionIds: [] })).toBeNull();
+	});
+});
+
 describe("prepareTaskHandoff", () => {
 	it("writes the retelling beside the task's dumps, not inside the worktree", async () => {
 		const prepared = await prepareTaskHandoff(task, { home });
