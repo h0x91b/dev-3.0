@@ -55,6 +55,17 @@ describe("createDeepLinkProvider", () => {
 		expect(onActivate).toHaveBeenCalledWith(TASK_URL, expect.anything());
 	});
 
+	it("linkAt returns the deep link under a cell, nothing beside it", () => {
+		const provider = createDeepLinkProvider({
+			term: makeTerm([{ spec: `see ${TASK_URL} now`, cols: 80 }]),
+			onActivate: vi.fn(),
+		});
+		expect(provider.linkAt(0, 4)).toBe(TASK_URL);
+		expect(provider.linkAt(0, 4 + TASK_URL.length - 1)).toBe(TASK_URL);
+		expect(provider.linkAt(0, 3)).toBeUndefined();
+		expect(provider.linkAt(0, 4 + TASK_URL.length)).toBeUndefined();
+	});
+
 	it("stitches a link wrapped across two rows into one target", () => {
 		const provider = createDeepLinkProvider({
 			term: makeTerm([

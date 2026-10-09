@@ -303,6 +303,23 @@ describe("createFilePathLinkProvider", () => {
 		provider.dispose();
 	});
 
+	it("linkAt hit-tests a resolved path by cell, with its line, for the touch sheet", async () => {
+		const target: ResolvedTerminalPath = { path: "/wt/a/b.md", kind: "file" };
+		const provider = createFilePathLinkProvider({
+			term: makeTerm([{ spec: "open a/b.md:7 now", cols: 30 }]),
+			resolvePaths: async () => ({ "a/b.md": target }),
+			onActivate: vi.fn(),
+		});
+		// Nothing cached yet: answers from the cache only, never waits.
+		expect(provider.linkAt(0, 5)).toBeUndefined();
+		await settle();
+		expect(provider.linkAt(0, 5)).toEqual({ target, line: 7 });
+		expect(provider.linkAt(0, 12)).toEqual({ target, line: 7 });
+		expect(provider.linkAt(0, 4)).toBeUndefined();
+		expect(provider.linkAt(0, 14)).toBeUndefined();
+		provider.dispose();
+	});
+
 	it("linksForRows batches the whole viewport and skips sibling rows of one logical line", async () => {
 		const resolvePaths = vi.fn(async (paths: string[]) => {
 			const out: Record<string, ResolvedTerminalPath | null> = {};

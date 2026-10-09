@@ -368,6 +368,8 @@ export interface FilePathLinkProvider extends ILinkProvider {
 	 * for one batched background resolve.
 	 */
 	linksForRows(ys: number[]): BufferRange[];
+	/** The resolved path under cell (y, x), from the resolve cache only — the touch link sheet's feed. */
+	linkAt(y: number, x: number): { target: ResolvedTerminalPath; line?: number } | undefined;
 	dispose(): void;
 }
 
@@ -532,6 +534,14 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 			}
 			return ranges;
 		},
+		linkAt(y, x) {
+			try {
+				const hit = computeLinks(y).find(({ segments }) => segments.some((range) => covers(range, y, x)));
+				return hit ? { target: hit.target, line: hit.candidate.line } : undefined;
+			} catch {
+				return undefined;
+			}
+		},
 		dispose() {
 			disposed = true;
 			clearTimeout(flushTimer);
@@ -539,4 +549,9 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 			cache.clear();
 		},
 	};
+}
+
+/** Whether a single-row link segment covers cell (y, x). */
+export function covers(range: BufferRange, y: number, x: number): boolean {
+	return range.start.y === y && x >= range.start.x && x <= range.end.x;
 }

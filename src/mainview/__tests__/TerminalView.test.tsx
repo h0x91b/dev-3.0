@@ -977,6 +977,47 @@ describe("TerminalView – scrolled-into-history signal (touch scroll-to-latest)
 	});
 });
 
+describe("TerminalView – hidden textarea focus keeper (browser mode)", () => {
+	async function mountWithTextarea() {
+		mockTermInstance.open.mockImplementationOnce((el: HTMLElement) => {
+			el.appendChild(document.createElement("textarea"));
+		});
+		const result = await renderAndSetup();
+		const textarea = result.container.querySelector('[data-terminal="true"] textarea') as HTMLTextAreaElement;
+		expect(textarea).toBeTruthy();
+		return { ...result, textarea };
+	}
+
+	it("takes focus back when it falls to <body>", async () => {
+		const { textarea } = await mountWithTextarea();
+		textarea.focus();
+		textarea.blur();
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 80));
+		});
+		expect(document.activeElement).toBe(textarea);
+	});
+
+	it("leaves focus inside a modal that took it (the terminal link sheet)", async () => {
+		const { textarea } = await mountWithTextarea();
+		const dialog = document.createElement("div");
+		dialog.setAttribute("role", "dialog");
+		dialog.setAttribute("aria-modal", "true");
+		const button = document.createElement("button");
+		dialog.appendChild(button);
+		document.body.appendChild(dialog);
+		textarea.focus();
+		// What Chromium reports during the blur of a focus move into a dialog.
+		textarea.blur();
+		button.focus();
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 80));
+		});
+		expect(document.activeElement).toBe(button);
+		dialog.remove();
+	});
+});
+
 describe("TerminalView – tmux copy-mode focus recovery", () => {
 	afterEach(() => {
 		mockTermInstance.hasMouseTracking.mockReturnValue(false);

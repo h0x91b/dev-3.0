@@ -14,7 +14,7 @@ export interface TerminalCell {
  * grid. Same math ghostty-web's own click handler uses, shared by the OSC 8
  * hover tooltip and the OSC 8 click so both read the same cell.
  */
-export function cellFromMouseEvent(term: Terminal, event: MouseEvent): TerminalCell | undefined {
+export function cellFromMouseEvent(term: Terminal, event: Pick<MouseEvent, "clientX" | "clientY">): TerminalCell | undefined {
 	const renderer = term.renderer;
 	const canvas = renderer?.getCanvas();
 	if (!renderer || !canvas || !renderer.charWidth || !renderer.charHeight) return undefined;

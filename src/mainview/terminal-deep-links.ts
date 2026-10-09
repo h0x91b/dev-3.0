@@ -1,6 +1,6 @@
 import type { ILink, ILinkProvider, Terminal } from "ghostty-web";
 import { findDeepLinksInText } from "../shared/deep-link";
-import { createRowCache, getLogicalLines, mapRangeToBuffer, type BufferRange, type RowCache } from "./terminal-file-links";
+import { covers, createRowCache, getLogicalLines, mapRangeToBuffer, type BufferRange, type RowCache } from "./terminal-file-links";
 
 /**
  * Turns a bare `dev3://…` link in terminal output into a Cmd/Ctrl+Click link.
@@ -21,6 +21,8 @@ export interface DeepLinkProviderOptions {
 export interface DeepLinkProvider extends ILinkProvider {
 	/** Link ranges for a set of absolute buffer rows — the underline overlay's feed. */
 	linksForRows(ys: number[]): BufferRange[];
+	/** The deep link under cell (y, x) — the touch link sheet's feed. */
+	linkAt(y: number, x: number): string | undefined;
 }
 
 interface RowLink {
@@ -78,6 +80,13 @@ export function createDeepLinkProvider(options: DeepLinkProviderOptions): DeepLi
 				}
 			}
 			return ranges;
+		},
+		linkAt(y, x) {
+			try {
+				return computeLinks(y).find(({ segments }) => segments.some((range) => covers(range, y, x)))?.uri;
+			} catch {
+				return undefined;
+			}
 		},
 		dispose() {},
 	};

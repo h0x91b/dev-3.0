@@ -57,6 +57,8 @@ import { cellFromMouseEvent } from "./terminal-cell-hit";
 import { installOsc8HoverTooltip, type Osc8HoverHandle } from "./terminal-osc8-hover";
 import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
 import { activateTerminalPath, activateOsc8Uri, activateDeepLinkUri } from "./terminal-path-open";
+import { installTouchLinkTap, osc8TouchLink, plainUrlAt, type TouchLink, type TouchLinkSource } from "./terminal-touch-links";
+import TerminalLinkSheet from "./components/TerminalLinkSheet";
 import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
@@ -290,6 +292,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
+	// The link a touch user tapped — rendered as the Open / Copy sheet.
+	const [touchLink, setTouchLink] = useState<TouchLink | null>(null);
 	// The pane the search resolved to, and its %-rect over the terminal canvas —
 	// drawn as a frame so a multi-pane layout shows WHICH pane is being searched.
 	const [searchPaneId, setSearchPaneId] = useState<string | null>(null);
@@ -884,6 +888,36 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// are in-app targets the user should see without hunting for them.
 				linksForRows: (ys) => [...filePathLinks!.linksForRows(ys), ...(deepLinks?.linksForRows(ys) ?? [])],
 			});
+			// Touch has no Cmd/Ctrl, so every provider above is a dead link on a
+			// phone: a tap on any of them opens the Open / Copy sheet instead. Same
+			// activations as the modifier click, in the same precedence.
+			const linkCtx = () => ({ t: tRef.current, taskId, projectId });
+			const touchLinkSources: TouchLinkSource[] = [
+				(y, x) => {
+					const hit = osc8Provider.linkAt(y, x);
+					return hit && osc8TouchLink(hit.uri, () => void activateOsc8Uri(hit.uri, linkCtx()));
+				},
+				(y, x) => {
+					const uri = deepLinks?.linkAt(y, x);
+					return uri ? { kind: "app", target: uri, open: () => void activateDeepLinkUri(uri, linkCtx()) } : undefined;
+				},
+				(y, x) => {
+					const url = plainUrlAt(term.buffer.active.getLine(y) ?? undefined, x);
+					return url ? { kind: "web", target: url, open: () => void window.open(url, "_blank", "noopener,noreferrer") } : undefined;
+				},
+				(y, x) => {
+					const hit = filePathLinks?.linkAt(y, x);
+					return hit
+						? { kind: "file", target: hit.target.path, open: () => void activateTerminalPath(hit.target, tRef.current, hit.line, taskId) }
+						: undefined;
+				},
+			];
+			termSubs.push(installTouchLinkTap({
+				container: containerRef.current,
+				sources: touchLinkSources,
+				cellAt: (point) => cellFromMouseEvent(term, point),
+				onLink: setTouchLink,
+			}));
 
 			// ghostty marks the container contenteditable="true", so ANY focus on
 			// it (term.focus() after fit, ghostty's own canvas mousedown →
@@ -929,6 +963,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						if (!active || active === document.body) {
 							setTimeout(() => {
 								if (disposed || touchComposeModeRef.current) return;
+								// During `blur` Chromium reports <body> even when focus is moving
+								// into a dialog (the terminal link sheet), so look again: a modal
+								// that took focus keeps it, and restores it here when it closes.
+								if (document.activeElement?.closest('[aria-modal="true"]')) return;
 								hiddenTextarea.focus();
 							}, 50);
 						}
@@ -2645,6 +2683,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					data-testid="terminal-search-pane-frame"
 				/>
 			)}
+			<TerminalLinkSheet link={touchLink} onClose={() => setTouchLink(null)} taskId={taskId} />
 			{searchOpen && (
 				<TerminalSearchBar
 					ref={searchBarRef}
