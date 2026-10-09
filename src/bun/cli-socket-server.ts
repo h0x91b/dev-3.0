@@ -2507,8 +2507,9 @@ const handlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params);
 		const worktreePath = typeof params.worktreePath === "string" && params.worktreePath ? params.worktreePath : undefined;
 		// Imported here, not at module scope: only this rarely-used route needs it.
-		const { ensureArtifactTemplate } = await import("./artifact-template");
-		return { dir: ensureArtifactTemplate(project, task, { worktreePath }), taskId: task.id, projectId: project.id };
+		const { provisionArtifactStarter } = await import("./artifact-template");
+		const { dir, mode } = provisionArtifactStarter(project, task, { worktreePath });
+		return { dir, mode, taskId: task.id, projectId: project.id };
 	},
 
 	// UI control: report what the app is currently showing, so the agent can decide

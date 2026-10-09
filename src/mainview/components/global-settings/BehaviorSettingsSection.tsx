@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type AutoApproveHms, type GlobalSettings, autoApproveMinutesFromHms, splitAutoApproveHms } from "../../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type ArtifactTemplateMode, type AutoApproveHms, type GlobalSettings, autoApproveMinutesFromHms, splitAutoApproveHms } from "../../../shared/types";
 import type { TFunction, TranslationKey } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
 import SettingsToggle from "./SettingsToggle";
+import ArtifactTemplateFolderField from "./ArtifactTemplateFolderField";
 
 const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
 
@@ -88,6 +89,13 @@ function AutoApproveDelayEntry({
 	);
 }
 
+/** One label per mode, shared with Project Settings' select. */
+export const ARTIFACT_TEMPLATE_MODE_LABELS: Record<ArtifactTemplateMode, TranslationKey> = {
+	on: "settings.artifactTemplateOn",
+	off: "settings.artifactTemplateOff",
+	custom: "settings.artifactTemplateCustom",
+};
+
 interface BehaviorSettingsSectionProps {
 	t: TFunction;
 	globalSettings: GlobalSettings;
@@ -95,8 +103,9 @@ interface BehaviorSettingsSectionProps {
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
 	/** True = centred popup, false = the docked right-hand artifact panel. */
 	onOpenArtifactsInPopupToggle: (enabled: boolean) => void;
-	/** True = the dev3 starter (default), false = free-form HTML artifacts. */
-	onArtifactTemplateToggle: (enabled: boolean) => void;
+	onArtifactTemplateChange: (mode: ArtifactTemplateMode) => void;
+	/** Blank string = the default `~/.dev3.0` folder. */
+	onArtifactTemplatePathChange: (path: string) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
@@ -120,7 +129,8 @@ export default function BehaviorSettingsSection({
 	tipsResetDone,
 	onDefaultDiffViewModeChange,
 	onOpenArtifactsInPopupToggle,
-	onArtifactTemplateToggle,
+	onArtifactTemplateChange,
+	onArtifactTemplatePathChange,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
@@ -330,13 +340,33 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.artifactTemplateDesc")}
 				</p>
-				<SettingsToggle
-					checked={globalSettings.artifactTemplate !== "off"}
-					ariaLabel={t("settings.artifactTemplate")}
-					onLabel={t("settings.on")}
-					offLabel={t("settings.off")}
-					onToggle={() => onArtifactTemplateToggle(globalSettings.artifactTemplate === "off")}
-				/>
+				<div role="radiogroup" aria-label={t("settings.artifactTemplate")} className="flex flex-col gap-3 sm:flex-row">
+					{(["on", "off", "custom"] as const).map((mode) => {
+						const active = (globalSettings.artifactTemplate ?? "on") === mode;
+						return (
+							<button
+								key={mode}
+								type="button"
+								role="radio"
+								aria-checked={active}
+								onClick={() => onArtifactTemplateChange(mode)}
+								className={`px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+									active ? "border-accent bg-accent/10 text-accent" : "border-edge bg-raised text-fg hover:border-edge-active"
+								}`}
+							>
+								{t(ARTIFACT_TEMPLATE_MODE_LABELS[mode])}
+							</button>
+						);
+					})}
+				</div>
+				{globalSettings.artifactTemplate === "custom" && (
+					<div className="mt-4">
+						<ArtifactTemplateFolderField
+							value={globalSettings.artifactTemplatePath ?? ""}
+							onChange={onArtifactTemplatePathChange}
+						/>
+					</div>
+				)}
 			</div>
 			</SettingsEntry>
 

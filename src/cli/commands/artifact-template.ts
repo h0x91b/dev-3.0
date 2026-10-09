@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import type { ParsedArgs } from "../args";
@@ -34,10 +34,16 @@ export async function handleArtifactTemplate(args: ParsedArgs, socketPath: strin
 
 	const response = await sendRequest(socketPath, "artifact.template-dir", params);
 	if (!response.ok) exitError(response.error || "Failed to provision the dev3 artifact starter");
-	const sourceDir = (response.data as { dir: string }).dir;
+	const { dir: sourceDir, mode } = response.data as { dir: string; mode?: string };
 
 	const target = resolvePath(process.cwd(), TARGET_DIR_NAME);
 	mkdirSync(target, { recursive: true });
+	// The user's own template has no fixed file list: copy whatever it holds.
+	if (mode === "custom") {
+		cpSync(sourceDir, target, { recursive: true, force: true });
+		process.stdout.write(`${target}\n`);
+		return;
+	}
 	for (const name of ARTIFACT_TEMPLATE_FILES) {
 		const source = join(sourceDir, name);
 		if (!existsSync(source)) exitError(`The dev3 artifact starter is incomplete — ${name} is missing from ${sourceDir}`);

@@ -6,6 +6,10 @@ import { DEFAULT_PR_REVIEW_PROMPT } from "../../../../shared/types";
 import { I18nProvider, type TFunction } from "../../../i18n";
 import BehaviorSettingsSection from "../BehaviorSettingsSection";
 
+vi.mock("../../../rpc", () => ({
+	api: { request: { prepareCustomArtifactTemplate: vi.fn().mockResolvedValue({ path: "/home/.dev3.0/artifact-template-custom", exists: true, seeded: false }), openFolder: vi.fn() } },
+}));
+
 // Stub translator: keys straight through. The built-in review prompt is no longer
 // a translation — one English constant serves both the create flow and the CLI —
 // so "reset to default" has to restore exactly that constant.
@@ -23,7 +27,7 @@ function renderSection(
 	const onReviewModePromptChange = vi.fn();
 	const onPrOriginTaskLinkToggle = vi.fn();
 	const onOpenArtifactsInPopupToggle = vi.fn();
-	const onArtifactTemplateToggle = vi.fn();
+	const onArtifactTemplateChange = vi.fn();
 	render(
 		<I18nProvider>
 			<BehaviorSettingsSection
@@ -32,7 +36,8 @@ function renderSection(
 				tipsResetDone={false}
 				onDefaultDiffViewModeChange={vi.fn()}
 				onOpenArtifactsInPopupToggle={onOpenArtifactsInPopupToggle}
-				onArtifactTemplateToggle={onArtifactTemplateToggle}
+				onArtifactTemplateChange={onArtifactTemplateChange}
+				onArtifactTemplatePathChange={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
@@ -48,7 +53,7 @@ function renderSection(
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateToggle };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateChange };
 }
 
 describe("BehaviorSettingsSection — review prompt", () => {
@@ -158,22 +163,27 @@ describe("BehaviorSettingsSection — artifact popup toggle", () => {
 	});
 });
 
-describe("BehaviorSettingsSection — artifact template toggle", () => {
-	function templateSwitch() {
-		return screen.getByRole("switch", { name: "settings.artifactTemplate" });
+describe("BehaviorSettingsSection — artifact template mode", () => {
+	function mode(label: string) {
+		return screen.getByRole("radio", { name: label });
 	}
 
-	it("is on by default and turning it off reports false", async () => {
-		const { onArtifactTemplateToggle } = renderSection();
-		expect(templateSwitch()).toHaveAttribute("aria-checked", "true");
-		await userEvent.click(templateSwitch());
-		expect(onArtifactTemplateToggle).toHaveBeenCalledWith(false);
+	it("selects the dev3 template by default and hides the folder", async () => {
+		const { onArtifactTemplateChange } = renderSection();
+		expect(mode("settings.artifactTemplateOn")).toHaveAttribute("aria-checked", "true");
+		expect(screen.queryByLabelText("Template folder")).not.toBeInTheDocument();
+		await userEvent.click(mode("settings.artifactTemplateCustom"));
+		expect(onArtifactTemplateChange).toHaveBeenCalledWith("custom");
 	});
 
-	it("reflects a stored opt-out and turning it back on reports true", async () => {
-		const { onArtifactTemplateToggle } = renderSection({ artifactTemplate: "off" });
-		expect(templateSwitch()).toHaveAttribute("aria-checked", "false");
-		await userEvent.click(templateSwitch());
-		expect(onArtifactTemplateToggle).toHaveBeenCalledWith(true);
+	it("shows the folder field only for My template", () => {
+		renderSection({ artifactTemplate: "custom", artifactTemplatePath: "/tmp/my-template" });
+		expect(mode("settings.artifactTemplateCustom")).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByLabelText("Template folder")).toHaveValue("/tmp/my-template");
+	});
+
+	it("reads a stored free-form choice", () => {
+		renderSection({ artifactTemplate: "off" });
+		expect(mode("settings.artifactTemplateOff")).toHaveAttribute("aria-checked", "true");
 	});
 });

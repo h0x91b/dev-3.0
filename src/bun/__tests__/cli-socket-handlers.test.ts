@@ -256,7 +256,7 @@ vi.mock("../window-manager", () => ({
 }));
 
 vi.mock("../artifact-template", () => ({
-	ensureArtifactTemplate: vi.fn(() => "/wt-container/artifact-template-v1"),
+	provisionArtifactStarter: vi.fn(() => ({ dir: "/wt-container/artifact-template-v1", mode: "on" })),
 }));
 
 vi.mock("../task-pane-runs", () => ({
@@ -2331,7 +2331,7 @@ describe("artifact.template-dir", () => {
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		const { ensureArtifactTemplate } = await import("../artifact-template");
+		const { provisionArtifactStarter } = await import("../artifact-template");
 
 		const resp = await handleRequest(makeRequest("artifact.template-dir", {
 			taskId: task.id,
@@ -2340,8 +2340,8 @@ describe("artifact.template-dir", () => {
 		}));
 
 		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ dir: "/wt-container/artifact-template-v1", taskId: task.id });
-		expect(ensureArtifactTemplate).toHaveBeenCalledWith(project, task, { worktreePath: "/wt-container/worktree" });
+		expect(resp.data).toMatchObject({ dir: "/wt-container/artifact-template-v1", mode: "on", taskId: task.id });
+		expect(provisionArtifactStarter).toHaveBeenCalledWith(project, task, { worktreePath: "/wt-container/worktree" });
 	});
 
 	it("reports the provisioning failure instead of inventing a path", async () => {
@@ -2349,8 +2349,8 @@ describe("artifact.template-dir", () => {
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		const { ensureArtifactTemplate } = await import("../artifact-template");
-		vi.mocked(ensureArtifactTemplate).mockImplementationOnce(() => {
+		const { provisionArtifactStarter } = await import("../artifact-template");
+		vi.mocked(provisionArtifactStarter).mockImplementationOnce(() => {
 			throw new Error("Bundled dev3 artifact template not found");
 		});
 

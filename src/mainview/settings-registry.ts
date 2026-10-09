@@ -605,6 +605,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"lowBatteryAnnounced",
 	// Edited inside the terminal-shell-prompt entry, which is registered by `shellPrompt`.
 	"shellPromptCustom",
+	// Edited inside the artifact-template entry, which is registered by `artifactTemplate`.
+	"artifactTemplatePath",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 /** Runtime list used by the registry integrity test; the type check catches schema drift. */
@@ -640,6 +642,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"defaultDiffViewMode",
 	"openArtifactsInPopup",
 	"artifactTemplate",
+	"artifactTemplatePath",
 	"remoteSilentUpdate",
 	"preventSleepWhileRunning",
 	"skipQuitDialog",

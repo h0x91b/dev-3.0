@@ -11,12 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_SHARED_ARTIFACT_HTML_BYTES, type Project, type Task } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_HTML_BYTES, resolveArtifactTemplate, type Project, type Task } from "../../shared/types";
 import { ARTIFACT_TEMPLATE_FILES, ARTIFACT_TEMPLATE_VERSION } from "../../shared/artifact-template";
 import {
 	artifactTemplateDir,
-	artifactTemplateModeEnv,
 	ensureArtifactTemplate,
+	provisionArtifactStarter,
+	seedCustomArtifactTemplate,
 	ensureArtifactTemplateEnv,
 } from "../artifact-template";
 
@@ -130,14 +131,73 @@ describe("artifact template provisioning", () => {
 		expect(ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath)).toEqual({});
 	});
 
-	// Default on adds nothing, so a launch with the template on keeps today's env.
-	it("signals DEV3_ARTIFACT_TEMPLATE=off only when the resolved setting is off", () => {
-		const repo = project("/repo");
-		expect(artifactTemplateModeEnv(repo, {})).toEqual({});
-		expect(artifactTemplateModeEnv(repo, null)).toEqual({});
-		expect(artifactTemplateModeEnv(repo, { artifactTemplate: "off" })).toEqual({ DEV3_ARTIFACT_TEMPLATE: "off" });
-		expect(artifactTemplateModeEnv({ ...repo, artifactTemplate: "off" }, {})).toEqual({ DEV3_ARTIFACT_TEMPLATE: "off" });
-		expect(artifactTemplateModeEnv({ ...repo, artifactTemplate: "on" }, { artifactTemplate: "off" })).toEqual({});
+	it("resolves the project override, then the global setting, then the dev3 template", () => {
+		expect(resolveArtifactTemplate({}, null)).toEqual({ mode: "on" });
+		expect(resolveArtifactTemplate({}, { artifactTemplate: "off" })).toEqual({ mode: "off" });
+		expect(resolveArtifactTemplate({ artifactTemplate: "on" }, { artifactTemplate: "off" })).toEqual({ mode: "on" });
+		// A custom project without its own folder uses the global one; blank = the default.
+		expect(resolveArtifactTemplate({ artifactTemplate: "custom" }, { artifactTemplatePath: "/g" })).toEqual({ mode: "custom", path: "/g" });
+		expect(resolveArtifactTemplate({ artifactTemplate: "custom", artifactTemplatePath: "/p" }, { artifactTemplatePath: "/g" })).toEqual({ mode: "custom", path: "/p" });
+		expect(resolveArtifactTemplate({}, { artifactTemplate: "custom", artifactTemplatePath: " " })).toEqual({ mode: "custom", path: undefined });
+		// A project folder only counts while the project itself picks My template.
+		expect(resolveArtifactTemplate({ artifactTemplatePath: "/p" }, { artifactTemplate: "custom", artifactTemplatePath: "/g" })).toEqual({ mode: "custom", path: "/g" });
+	});
+
+	it("seeds an empty folder with the dev3 template and never touches one with files", () => {
+		const empty = join(tempDir("dev3-custom-seed-"), "mine");
+		expect(seedCustomArtifactTemplate(empty)).toEqual({ dir: empty, seeded: true });
+		for (const file of ARTIFACT_TEMPLATE_FILES) expect(existsSync(join(empty, file))).toBe(true);
+		expect(readFileSync(join(empty, "CUSTOMIZE.md"), "utf8")).toContain("AUTHORING.md");
+
+		writeFileSync(join(empty, "index.html"), "<p>mine</p>");
+		expect(seedCustomArtifactTemplate(empty).seeded).toBe(false);
+		expect(readFileSync(join(empty, "index.html"), "utf8")).toBe("<p>mine</p>");
+	});
+
+	it("gives a custom task a private copy of the user's folder, minus dotfiles and the human note", () => {
+		const root = tempDir("dev3-custom-copy-");
+		const mine = join(root, "my-template");
+		mkdirSync(join(mine, ".git"), { recursive: true });
+		mkdirSync(join(mine, "assets"), { recursive: true });
+		writeFileSync(join(mine, "index.html"), "<p>mine</p>");
+		writeFileSync(join(mine, "AUTHORING.md"), "my rules");
+		writeFileSync(join(mine, "assets", "logo.png"), "png");
+		writeFileSync(join(mine, "CUSTOMIZE.md"), "for humans");
+		const worktreePath = join(root, "task-container", "worktree");
+
+		const starter = provisionArtifactStarter({ ...project("/repo"), artifactTemplate: "custom", artifactTemplatePath: mine }, task(), { worktreePath, settings: null });
+
+		expect(starter.mode).toBe("custom");
+		expect(starter.dir).toBe(join(root, "task-container", "artifact-template-custom"));
+		expect(readdirSync(starter.dir).sort()).toEqual(["AUTHORING.md", "assets", "index.html"]);
+		expect(readFileSync(join(starter.dir, "assets", "logo.png"), "utf8")).toBe("png");
+
+		// A re-provision replaces the copy, so a file removed from the folder disappears.
+		rmSync(join(mine, "assets"), { recursive: true });
+		provisionArtifactStarter({ ...project("/repo"), artifactTemplate: "custom", artifactTemplatePath: mine }, task(), { worktreePath, settings: null });
+		expect(existsSync(join(starter.dir, "assets"))).toBe(false);
+	});
+
+	it("falls back to the dev3 template when the configured folder is missing, without creating it", () => {
+		const root = tempDir("dev3-custom-missing-");
+		const missing = join(root, "typo");
+		const worktreePath = join(root, "task-container", "worktree");
+		const starter = provisionArtifactStarter({ ...project("/repo"), artifactTemplate: "custom", artifactTemplatePath: missing }, task(), { worktreePath, settings: null });
+		expect(starter.mode).toBe("on");
+		expect(existsSync(join(starter.dir, "AUTHORING.md"))).toBe(true);
+		expect(existsSync(missing)).toBe(false);
+	});
+
+	it("names the mode in the launch env only when it is not the dev3 template", () => {
+		const root = tempDir("dev3-custom-env-");
+		const mine = join(root, "mine");
+		mkdirSync(mine);
+		writeFileSync(join(mine, "index.html"), "<p>mine</p>");
+		const worktreePath = join(root, "task-container", "worktree");
+		const env = ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "custom", artifactTemplatePath: mine }, task(), worktreePath);
+		expect(env.DEV3_ARTIFACT_TEMPLATE).toBe("custom");
+		expect(readFileSync(join(env.DEV3_ARTIFACT_TEMPLATE_DIR, "index.html"), "utf8")).toBe("<p>mine</p>");
+		expect(ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "on" }, task(), worktreePath)).not.toHaveProperty("DEV3_ARTIFACT_TEMPLATE");
 	});
 
 	it("still provisions the starter when the template is off, so one artifact can ask for it", () => {

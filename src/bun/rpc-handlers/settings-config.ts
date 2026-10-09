@@ -142,6 +142,9 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.artifactTemplate !== undefined
 			? { artifactTemplate: params.artifactTemplate === "inherit" ? undefined : params.artifactTemplate }
 			: {}),
+		...(params.artifactTemplatePath !== undefined
+			? { artifactTemplatePath: params.artifactTemplatePath.trim() || undefined }
+			: {}),
 	};
 	const saved = await data.updateProject(params.projectId, updates);
 	// Return the RESOLVED project: the caller renders what will actually run,
@@ -150,6 +153,13 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 	getPushMessage()?.("projectUpdated", { project: updated });
 	log.info("← updateProjectSettings done");
 	return updated;
+}
+
+async function prepareCustomArtifactTemplate(params: { path?: string; seed?: boolean }): Promise<{ path: string; exists: boolean; seeded: boolean }> {
+	const { customArtifactTemplateDir, seedCustomArtifactTemplate } = await import("../artifact-template");
+	const path = customArtifactTemplateDir(params.path);
+	const seeded = params.seed ? seedCustomArtifactTemplate(path).seeded : false;
+	return { path, exists: existsSync(path), seeded };
 }
 
 async function saveRepoConfig(params: { projectId: string; worktreePath?: string; autoCommit?: boolean } & Dev3RepoConfig): Promise<void> {
@@ -753,6 +763,7 @@ export const settingsConfigHandlers = {
 	getProjectConfigs,
 	getProjectConfigFiles,
 	updateProjectSettings,
+	prepareCustomArtifactTemplate,
 	saveRepoConfig,
 	saveLocalConfig,
 	getRepoConfigSources,

@@ -215,15 +215,19 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).openArtifactsInPopup).toBe(false);
 	});
 
-	// Default-on: only an explicit "off" is stored, anything else reads as the template.
-	it("keeps only an explicit artifactTemplate opt-out", async () => {
+	// The dev3 template is the default, so only the two other modes are stored.
+	it("keeps only the non-default artifactTemplate modes and a non-blank folder", async () => {
 		expect((await loadSettings()).artifactTemplate).toBeUndefined();
 
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ artifactTemplate: "off" }), null, 2), "utf-8");
-		expect((await loadSettings()).artifactTemplate).toBe("off");
+		for (const mode of ["off", "custom"] as const) {
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ artifactTemplate: mode }), null, 2), "utf-8");
+			expect((await loadSettings()).artifactTemplate).toBe(mode);
+		}
 
-		writeFileSync(settingsPath, JSON.stringify({ ...makeSettings(), artifactTemplate: "on" }, null, 2), "utf-8");
-		expect((await loadSettings()).artifactTemplate).toBeUndefined();
+		writeFileSync(settingsPath, JSON.stringify({ ...makeSettings(), artifactTemplate: "on", artifactTemplatePath: "  " }, null, 2), "utf-8");
+		const loaded = await loadSettings();
+		expect(loaded.artifactTemplate).toBeUndefined();
+		expect(loaded.artifactTemplatePath).toBeUndefined();
 	});
 
 	// The default-on era's opt-out key. It is never consulted now (its meaning, off,
@@ -342,7 +346,8 @@ describe("saveSettings", () => {
 			// on platforms the canary feed publishes for.
 			updateChannel: "canary",
 			openArtifactsInPopup: true,
-			artifactTemplate: "off",
+			artifactTemplate: "custom",
+			artifactTemplatePath: "/Users/me/my-template",
 			terminalPathOpenMode: "reveal",
 			terminalShell: "sh",
 			dimInactivePanes: false,

@@ -6,7 +6,7 @@ import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, DevS
 import { DEV_SERVER_NAME_PATTERN } from "../../shared/dev-servers";
 import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt } from "../../shared/types";
+import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -16,6 +16,8 @@ import AgentConfigPicker from "./AgentConfigPicker";
 import AutomationsPanel from "./AutomationsPanel";
 import ColorSwatchPicker from "./ColorSwatchPicker";
 import SettingsSection from "./global-settings/SettingsSection";
+import ArtifactTemplateFolderField from "./global-settings/ArtifactTemplateFolderField";
+import { ARTIFACT_TEMPLATE_MODE_LABELS } from "./global-settings/BehaviorSettingsSection";
 import ProjectSpacesField from "./ProjectSpacesField";
 import ImportConversationsModal from "./ImportConversationsModal";
 import { matchesBranchQuery } from "./BranchSelector";
@@ -1559,7 +1561,7 @@ function ProjectSettings({
 	const [globalCoordinatorPrompt, setGlobalCoordinatorPrompt] = useState<string | undefined>(undefined);
 	const [globalReviewModePrompt, setGlobalReviewModePrompt] = useState<string | undefined>(undefined);
 	const inheritedReviewModePrompt = resolvePresetPrompt(undefined, globalReviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
-	const [globalArtifactTemplate, setGlobalArtifactTemplate] = useState<"on" | "off">("on");
+	const [globalArtifactTemplate, setGlobalArtifactTemplate] = useState<ResolvedArtifactTemplate>({ mode: "on" });
 	const inheritedCoordinatorPrompt = resolvePresetPrompt(undefined, globalCoordinatorPrompt, COORDINATOR_PROMPT);
 
 	// Load available agents
@@ -1744,9 +1746,13 @@ function ProjectSettings({
 		}
 	}
 
-	async function handleArtifactTemplateChange(next: "on" | "off" | "inherit") {
+	async function handleArtifactTemplateChange(next: Pick<ProjectSettingsUpdate, "artifactTemplate" | "artifactTemplatePath">) {
 		try {
-			const updated = await api.request.updateProjectSettings({ projectId, artifactTemplate: next });
+			const updated = await api.request.updateProjectSettings({ projectId, ...next });
+			if (next.artifactTemplate === "custom") {
+				const path = updated.artifactTemplatePath || globalArtifactTemplate.path;
+				api.request.prepareCustomArtifactTemplate({ path, seed: true }).catch(() => {});
+			}
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
@@ -2271,19 +2277,26 @@ function ProjectSettings({
 								id="project-artifact-template"
 								aria-label={t("projectSettings.artifactTemplate")}
 								value={project.artifactTemplate ?? "inherit"}
-								onChange={(e) => void handleArtifactTemplateChange(e.target.value as "on" | "off" | "inherit")}
+								onChange={(e) => void handleArtifactTemplateChange({ artifactTemplate: e.target.value as ArtifactTemplateMode | "inherit" })}
 								className="w-full sm:w-auto px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
 							>
 								<option value="inherit">
-									{t("projectSettings.artifactTemplateInherit", {
-										value: globalArtifactTemplate === "off"
-											? t("projectSettings.artifactTemplateOff")
-											: t("projectSettings.artifactTemplateOn"),
-									})}
+									{t("projectSettings.artifactTemplateInherit", { value: t(ARTIFACT_TEMPLATE_MODE_LABELS[globalArtifactTemplate.mode]) })}
 								</option>
-								<option value="on">{t("projectSettings.artifactTemplateOn")}</option>
-								<option value="off">{t("projectSettings.artifactTemplateOff")}</option>
+								{(["on", "off", "custom"] as const).map((mode) => (
+									<option key={mode} value={mode}>{t(ARTIFACT_TEMPLATE_MODE_LABELS[mode])}</option>
+								))}
 							</select>
+							{project.artifactTemplate === "custom" && (
+								<div className="mt-4">
+									<ArtifactTemplateFolderField
+										value={project.artifactTemplatePath ?? ""}
+										placeholderPath={globalArtifactTemplate.path}
+										projectId={projectId}
+										onChange={(path) => void handleArtifactTemplateChange({ artifactTemplatePath: path })}
+									/>
+								</div>
+							)}
 							</SettingsSection>
 
 							<SettingsSection

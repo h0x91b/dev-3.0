@@ -136,3 +136,21 @@ describe("dev3 artifact-template", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+describe("dev3 artifact-template — My template", () => {
+	it("copies every file of a custom starter, not just the dev3 file list", async () => {
+		const source = join(tempRoot(), "artifact-template-custom");
+		mkdirSync(join(source, "assets"), { recursive: true });
+		writeFileSync(join(source, "index.html"), "<p>mine</p>");
+		writeFileSync(join(source, "assets", "brand.svg"), "<svg/>");
+		const cwd = inWorktree();
+		mockSend.mockResolvedValueOnce({ id: "test-id", ok: true, data: { dir: source, mode: "custom", taskId: TASK_ID, projectId: "proj-001" } });
+
+		await handleArtifactTemplate(args(), SOCKET, CTX);
+
+		const target = join(cwd, "dev3-artifact-report");
+		expect(readdirSync(target).sort()).toEqual(["assets", "index.html"]);
+		expect(readFileSync(join(target, "assets", "brand.svg"), "utf8")).toBe("<svg/>");
+		expect(stdoutOutput.trim()).toBe(target);
+	});
+});

@@ -33,6 +33,7 @@ vi.mock("../../rpc", () => ({
 			getProjects: vi.fn().mockResolvedValue([]),
 			getAgents: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			prepareCustomArtifactTemplate: vi.fn().mockResolvedValue({ path: "/home/.dev3.0/artifact-template-custom", exists: true, seeded: false }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 		},
 	},
@@ -1224,6 +1225,13 @@ describe("dev servers editor", () => {
 			expect(select.value).toBe("off");
 			await user.selectOptions(select, "inherit");
 			expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", artifactTemplate: "inherit" });
+		});
+
+		it("offers My template and shows the folder field once a project picks it", async () => {
+			await renderProjectSettings(mockProject, { artifactTemplate: "custom", artifactTemplatePath: "/tmp/tpl" });
+			const select = screen.getByLabelText("Artifact template") as HTMLSelectElement;
+			expect(within(select).getByRole("option", { name: "My template" })).toBeInTheDocument();
+			expect(screen.getByLabelText("Template folder")).toHaveValue("/tmp/tpl");
 		});
 	});
 });

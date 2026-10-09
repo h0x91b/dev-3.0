@@ -1041,6 +1041,7 @@ ${ARTIFACT_AUTHORING_STEPS}
 | Situation | Do |
 |---|---|
 | \`$DEV3_ARTIFACT_TEMPLATE_DIR\` is set | \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\` |
+| \`$DEV3_ARTIFACT_TEMPLATE=custom\` | The same copy, but the starter is the user's own folder ("My template"). Its \`AUTHORING.md\` replaces this skill's notes on the dev3 shell, tokens and contract; the file list may differ |
 | It is unset (older session, a shell that never inherited it) | \`dev3 artifact-template\` — provisions the starter, copies it into \`./dev3-artifact-report\`, prints the path |
 | You already have an edited copy | Keep working in it. Re-running \`dev3 artifact-template\` copies every starter file over it, \`index.html\` and \`report.js\` included, and your edits are gone |
 

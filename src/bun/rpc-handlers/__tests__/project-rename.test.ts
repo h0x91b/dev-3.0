@@ -130,4 +130,11 @@ describe("updateProjectSettings — artifact template override", () => {
 		const [, updates] = mocks.updateProject.mock.calls[0];
 		expect(updates).toHaveProperty("artifactTemplate", undefined);
 	});
+
+	it("stores a trimmed custom folder and clears a blank one", async () => {
+		await updateProjectSettings({ projectId: "p1", artifactTemplate: "custom", artifactTemplatePath: "  /Users/me/tpl  " });
+		expect(mocks.updateProject).toHaveBeenLastCalledWith("p1", expect.objectContaining({ artifactTemplate: "custom", artifactTemplatePath: "/Users/me/tpl" }));
+		await updateProjectSettings({ projectId: "p1", artifactTemplatePath: " " });
+		expect(mocks.updateProject.mock.lastCall?.[1]).toHaveProperty("artifactTemplatePath", undefined);
+	});
 });
