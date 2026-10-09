@@ -1512,6 +1512,12 @@ export interface GlobalSettings {
 	 */
 	openArtifactsInPopup?: boolean;
 	/**
+	 * Whether agents build human-facing reports from the dev3 artifact starter.
+	 * Absent = on (the starter and its contract). `"off"` reaches launched agents
+	 * as `DEV3_ARTIFACT_TEMPLATE=off`: free-form HTML. A project may override it.
+	 */
+	artifactTemplate?: "off";
+	/**
 	 * Let a headless `dev3 remote` box install updates on its own once browser and
 	 * terminal activity are quiet. Default ON — the whole point is that nobody
 	 * ever goes back to a terminal to type `brew upgrade`. Helper restarts preserve
@@ -2016,6 +2022,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	reviewModePrompt?: string;
 	/** Blank string clears the project override and falls back to global. */
 	coordinatorPrompt?: string;
+	/** `"inherit"` clears the project override and falls back to global. */
+	artifactTemplate?: "on" | "off" | "inherit";
 }
 
 export interface Project {
@@ -2093,6 +2101,8 @@ export interface Project {
 	 * the global setting, then the built-in. See resolvePresetPrompt.
 	 */
 	coordinatorPrompt?: string;
+	/** Project override of {@link GlobalSettings.artifactTemplate}. Absent = follow the global setting. */
+	artifactTemplate?: "on" | "off";
 	/**
 	 * When dev3 offered to import this project's outside-dev3 agent conversations
 	 * on its own. Set once, whatever the answer was — the unprompted offer is
@@ -2120,6 +2130,14 @@ export interface Project {
  */
 export function repoConfigEnabled(project: Pick<Project, "useRepoConfig">): boolean {
 	return project.useRepoConfig !== false;
+}
+
+/** The artifact template in effect for a project: its override, then the global setting, then on. */
+export function resolveArtifactTemplate(
+	project: Pick<Project, "artifactTemplate">,
+	settings: Pick<GlobalSettings, "artifactTemplate"> | null | undefined,
+): "on" | "off" {
+	return project.artifactTemplate ?? settings?.artifactTemplate ?? "on";
 }
 
 /**

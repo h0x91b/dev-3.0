@@ -166,6 +166,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "artifact-template",
+		category: "tasks",
+		titleKey: "settings.artifactTemplate",
+		descriptionKey: "settings.artifactTemplateDesc",
+		anchor: "artifact-template",
+		globalField: "artifactTemplate",
+		storage: "global",
+	},
+	{
 		id: "default-diff-view",
 		category: "tasks",
 		titleKey: "settings.defaultDiffViewMode",
@@ -630,6 +639,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"terminalPathOpenMode",
 	"defaultDiffViewMode",
 	"openArtifactsInPopup",
+	"artifactTemplate",
 	"remoteSilentUpdate",
 	"preventSleepWhileRunning",
 	"skipQuitDialog",

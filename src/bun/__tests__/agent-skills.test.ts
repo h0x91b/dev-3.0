@@ -104,7 +104,7 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("## dev3 HTML artifacts");
 			expect(skill).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
 			expect(skill).toContain('cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report');
-			expect(skill).toContain("The layout is fixed; do not spend a turn listing or rediscovering it");
+			expect(skill).toContain("Fixed layout: `AUTHORING.md` is the card");
 			for (const file of ARTIFACT_TEMPLATE_FILES) {
 				expect(skill).toContain(`\`${file}\``);
 			}
@@ -783,7 +783,16 @@ describe("dev3-artifact skill content", () => {
 			expect(text).not.toMatch(/ask which (wins|requirement takes priority)/);
 			expect(text).not.toContain("conflicts with the template");
 		}
-		expect(getArtifactSkillContent()).toContain("(an explicit ask for Markdown, plain text or no HTML skips it)");
+		expect(getArtifactSkillContent()).toContain("(an explicit ask for Markdown, plain text or no HTML skips it; with the template off it makes a free-form page)");
+	});
+
+	// #1848: the user's setting (or one request) opts out of the starter, not only out of HTML.
+	it("lets the template setting or a per-artifact ask switch to free-form HTML", () => {
+		for (const text of [getArtifactSkillContent(), CLAUDE_SKILL_BODY, getCodexSkillContent(), OMP_SKILL_BODY, getGenericSkillContent()]) {
+			expect(text).toContain("`$DEV3_ARTIFACT_TEMPLATE=off` or asking for a page without the dev3 template → free-form HTML");
+			expect(text).toContain("Asking for the template wins.");
+			expect(text).toContain('A template report needs its `data-dev3-artifact-template="v1"`');
+		}
 	});
 
 	it("warns that re-running the starter command overwrites an edited copy", () => {

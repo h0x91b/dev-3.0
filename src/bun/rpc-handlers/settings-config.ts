@@ -139,6 +139,9 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.coordinatorPrompt !== undefined
 			? { coordinatorPrompt: params.coordinatorPrompt.trim() ? params.coordinatorPrompt : undefined }
 			: {}),
+		...(params.artifactTemplate !== undefined
+			? { artifactTemplate: params.artifactTemplate === "inherit" ? undefined : params.artifactTemplate }
+			: {}),
 	};
 	const saved = await data.updateProject(params.projectId, updates);
 	// Return the RESOLVED project: the caller renders what will actually run,

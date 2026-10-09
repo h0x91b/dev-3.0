@@ -215,6 +215,17 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).openArtifactsInPopup).toBe(false);
 	});
 
+	// Default-on: only an explicit "off" is stored, anything else reads as the template.
+	it("keeps only an explicit artifactTemplate opt-out", async () => {
+		expect((await loadSettings()).artifactTemplate).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ artifactTemplate: "off" }), null, 2), "utf-8");
+		expect((await loadSettings()).artifactTemplate).toBe("off");
+
+		writeFileSync(settingsPath, JSON.stringify({ ...makeSettings(), artifactTemplate: "on" }, null, 2), "utf-8");
+		expect((await loadSettings()).artifactTemplate).toBeUndefined();
+	});
+
 	// The default-on era's opt-out key. It is never consulted now (its meaning, off,
 	// is the new default anyway) but it stays on disk for an older co-installed build.
 	it("leaves a legacy lowBatteryDisabled key alone and does not read it as a choice", async () => {
@@ -331,6 +342,7 @@ describe("saveSettings", () => {
 			// on platforms the canary feed publishes for.
 			updateChannel: "canary",
 			openArtifactsInPopup: true,
+			artifactTemplate: "off",
 			terminalPathOpenMode: "reveal",
 			terminalShell: "sh",
 			dimInactivePanes: false,

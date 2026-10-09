@@ -47,6 +47,16 @@ function artifact(id: string): SharedArtifact {
 }
 
 describe("injectArtifactThemeContract", () => {
+	// The contract lands after the page's own <style>, so only zero specificity lets
+	// a free-form page's html/body rules win over the dev3 fallback.
+	it("keeps every injected selector at zero specificity", () => {
+		const injected = injectArtifactThemeContract("<html><head><style>html{background:#fdf6e3}</style></head><body></body></html>");
+		const css = injected.slice(injected.indexOf("<style data-dev3-artifact-shell>"), injected.indexOf("</style>", injected.indexOf("data-dev3-artifact-shell")));
+		const selectors = css.replace(/^<style[^>]*>/, "").replace(/@media\([^)]*\)\{/g, "").split("}").map((rule) => rule.split("{")[0].trim()).filter(Boolean);
+		expect(selectors.length).toBeGreaterThan(5);
+		for (const selector of selectors) expect(selector).toMatch(/^:where\(.*\)$/);
+	});
+
 	it("injects the stable dark/light token contract exactly once", () => {
 		const source = "<!doctype html><html><head><title>X</title></head><body><main>Hi</main></body></html>";
 		const once = injectArtifactThemeContract(source);

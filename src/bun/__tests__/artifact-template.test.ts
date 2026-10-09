@@ -15,6 +15,7 @@ import { MAX_SHARED_ARTIFACT_HTML_BYTES, type Project, type Task } from "../../s
 import { ARTIFACT_TEMPLATE_FILES, ARTIFACT_TEMPLATE_VERSION } from "../../shared/artifact-template";
 import {
 	artifactTemplateDir,
+	artifactTemplateModeEnv,
 	ensureArtifactTemplate,
 	ensureArtifactTemplateEnv,
 } from "../artifact-template";
@@ -127,6 +128,25 @@ describe("artifact template provisioning", () => {
 
 		expect(() => ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath)).not.toThrow();
 		expect(ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath)).toEqual({});
+	});
+
+	// Default on adds nothing, so a launch with the template on keeps today's env.
+	it("signals DEV3_ARTIFACT_TEMPLATE=off only when the resolved setting is off", () => {
+		const repo = project("/repo");
+		expect(artifactTemplateModeEnv(repo, {})).toEqual({});
+		expect(artifactTemplateModeEnv(repo, null)).toEqual({});
+		expect(artifactTemplateModeEnv(repo, { artifactTemplate: "off" })).toEqual({ DEV3_ARTIFACT_TEMPLATE: "off" });
+		expect(artifactTemplateModeEnv({ ...repo, artifactTemplate: "off" }, {})).toEqual({ DEV3_ARTIFACT_TEMPLATE: "off" });
+		expect(artifactTemplateModeEnv({ ...repo, artifactTemplate: "on" }, { artifactTemplate: "off" })).toEqual({});
+	});
+
+	it("still provisions the starter when the template is off, so one artifact can ask for it", () => {
+		const root = tempDir("dev3-artifact-off-");
+		const worktreePath = join(root, "task-container", "worktree");
+		mkdirSync(worktreePath, { recursive: true });
+		const env = ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "off" }, task(), worktreePath);
+		expect(env.DEV3_ARTIFACT_TEMPLATE).toBe("off");
+		expect(existsSync(join(env.DEV3_ARTIFACT_TEMPLATE_DIR, "AUTHORING.md"))).toBe(true);
 	});
 
 	it("fails loudly when the bundled starter is incomplete", () => {

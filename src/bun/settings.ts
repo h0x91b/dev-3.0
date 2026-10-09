@@ -165,6 +165,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// Both booleans are kept — an explicit false is the user choosing the panel,
 		// not the absence of a choice.
 		openArtifactsInPopup: typeof d.openArtifactsInPopup === "boolean" ? d.openArtifactsInPopup : undefined,
+		// Default-on: only an explicit "off" is a stored opt-out.
+		artifactTemplate: d.artifactTemplate === "off" ? "off" : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		remoteSilentUpdate: d.remoteSilentUpdate === false ? false : undefined,
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,

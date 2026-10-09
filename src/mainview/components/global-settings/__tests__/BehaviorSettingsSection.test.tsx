@@ -23,6 +23,7 @@ function renderSection(
 	const onReviewModePromptChange = vi.fn();
 	const onPrOriginTaskLinkToggle = vi.fn();
 	const onOpenArtifactsInPopupToggle = vi.fn();
+	const onArtifactTemplateToggle = vi.fn();
 	render(
 		<I18nProvider>
 			<BehaviorSettingsSection
@@ -31,6 +32,7 @@ function renderSection(
 				tipsResetDone={false}
 				onDefaultDiffViewModeChange={vi.fn()}
 				onOpenArtifactsInPopupToggle={onOpenArtifactsInPopupToggle}
+				onArtifactTemplateToggle={onArtifactTemplateToggle}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
@@ -46,7 +48,7 @@ function renderSection(
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateToggle };
 }
 
 describe("BehaviorSettingsSection — review prompt", () => {
@@ -153,5 +155,25 @@ describe("BehaviorSettingsSection — artifact popup toggle", () => {
 	it("reads off for a stored explicit false", () => {
 		renderSection({ openArtifactsInPopup: false });
 		expect(popupSwitch()).toHaveAttribute("aria-checked", "false");
+	});
+});
+
+describe("BehaviorSettingsSection — artifact template toggle", () => {
+	function templateSwitch() {
+		return screen.getByRole("switch", { name: "settings.artifactTemplate" });
+	}
+
+	it("is on by default and turning it off reports false", async () => {
+		const { onArtifactTemplateToggle } = renderSection();
+		expect(templateSwitch()).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(templateSwitch());
+		expect(onArtifactTemplateToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("reflects a stored opt-out and turning it back on reports true", async () => {
+		const { onArtifactTemplateToggle } = renderSection({ artifactTemplate: "off" });
+		expect(templateSwitch()).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(templateSwitch());
+		expect(onArtifactTemplateToggle).toHaveBeenCalledWith(true);
 	});
 });

@@ -1205,4 +1205,25 @@ describe("dev servers editor", () => {
 		});
 	});
 });
+
+	describe("artifact template override", () => {
+		it("follows the global setting by default and names its current value", async () => {
+			(api.request.getGlobalSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ artifactTemplate: "off" });
+			await renderProjectSettings();
+			const select = screen.getByLabelText("Artifact template") as HTMLSelectElement;
+			expect(select.value).toBe("inherit");
+			expect(within(select).getByRole("option", { name: "Global default (Free-form HTML)" })).toBeInTheDocument();
+		});
+
+		it("saves only the override, and Global default clears it", async () => {
+			const user = userEvent.setup();
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			await renderProjectSettings(mockProject, { artifactTemplate: "off" });
+			const select = screen.getByLabelText("Artifact template") as HTMLSelectElement;
+			expect(select.value).toBe("off");
+			await user.selectOptions(select, "inherit");
+			expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", artifactTemplate: "inherit" });
+		});
+	});
 });

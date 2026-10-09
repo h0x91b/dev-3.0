@@ -95,6 +95,8 @@ interface BehaviorSettingsSectionProps {
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
 	/** True = centred popup, false = the docked right-hand artifact panel. */
 	onOpenArtifactsInPopupToggle: (enabled: boolean) => void;
+	/** True = the dev3 starter (default), false = free-form HTML artifacts. */
+	onArtifactTemplateToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
@@ -118,6 +120,7 @@ export default function BehaviorSettingsSection({
 	tipsResetDone,
 	onDefaultDiffViewModeChange,
 	onOpenArtifactsInPopupToggle,
+	onArtifactTemplateToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
@@ -315,6 +318,24 @@ export default function BehaviorSettingsSection({
 					onLabel={t("settings.on")}
 					offLabel={t("settings.off")}
 					onToggle={() => onOpenArtifactsInPopupToggle(globalSettings.openArtifactsInPopup !== true)}
+				/>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="artifact-template">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.artifactTemplate")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.artifactTemplateDesc")}
+				</p>
+				<SettingsToggle
+					checked={globalSettings.artifactTemplate !== "off"}
+					ariaLabel={t("settings.artifactTemplate")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={() => onArtifactTemplateToggle(globalSettings.artifactTemplate === "off")}
 				/>
 			</div>
 			</SettingsEntry>

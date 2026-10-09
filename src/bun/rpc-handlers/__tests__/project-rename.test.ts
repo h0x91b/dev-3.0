@@ -118,3 +118,16 @@ describe("updateProjectSettings — rename", () => {
 		expect(updates).toMatchObject({ sensitive: true });
 	});
 });
+
+describe("updateProjectSettings — artifact template override", () => {
+	it("stores an explicit override on the project record", async () => {
+		await updateProjectSettings({ projectId: "p1", artifactTemplate: "off" });
+		expect(mocks.updateProject).toHaveBeenCalledWith("p1", expect.objectContaining({ artifactTemplate: "off" }));
+	});
+
+	it("drops the field on inherit so the global setting takes over again", async () => {
+		await updateProjectSettings({ projectId: "p1", artifactTemplate: "inherit" });
+		const [, updates] = mocks.updateProject.mock.calls[0];
+		expect(updates).toHaveProperty("artifactTemplate", undefined);
+	});
+});

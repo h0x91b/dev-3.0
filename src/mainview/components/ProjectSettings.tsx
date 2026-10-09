@@ -6,7 +6,7 @@ import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, DevS
 import { DEV_SERVER_NAME_PATTERN } from "../../shared/dev-servers";
 import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName, repoConfigEnabled } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
+import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -1559,6 +1559,7 @@ function ProjectSettings({
 	const [globalCoordinatorPrompt, setGlobalCoordinatorPrompt] = useState<string | undefined>(undefined);
 	const [globalReviewModePrompt, setGlobalReviewModePrompt] = useState<string | undefined>(undefined);
 	const inheritedReviewModePrompt = resolvePresetPrompt(undefined, globalReviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
+	const [globalArtifactTemplate, setGlobalArtifactTemplate] = useState<"on" | "off">("on");
 	const inheritedCoordinatorPrompt = resolvePresetPrompt(undefined, globalCoordinatorPrompt, COORDINATOR_PROMPT);
 
 	// Load available agents
@@ -1567,6 +1568,7 @@ function ProjectSettings({
 		api.request.getGlobalSettings().then((s) => {
 			setGlobalReviewModePrompt(s.reviewModePrompt);
 			setGlobalCoordinatorPrompt(s.coordinatorPrompt);
+			setGlobalArtifactTemplate(resolveArtifactTemplate({}, s));
 		}).catch(() => {});
 	}, []);
 
@@ -1739,6 +1741,15 @@ function ProjectSettings({
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 			return false;
+		}
+	}
+
+	async function handleArtifactTemplateChange(next: "on" | "off" | "inherit") {
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, artifactTemplate: next });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 	}
 
@@ -2251,6 +2262,29 @@ function ProjectSettings({
 								</button>
 								</SettingsSection>
 							)}
+
+							<SettingsSection
+								title={t("projectSettings.artifactTemplate")}
+								description={t("projectSettings.artifactTemplateDesc")}
+							>
+							<select
+								id="project-artifact-template"
+								aria-label={t("projectSettings.artifactTemplate")}
+								value={project.artifactTemplate ?? "inherit"}
+								onChange={(e) => void handleArtifactTemplateChange(e.target.value as "on" | "off" | "inherit")}
+								className="w-full sm:w-auto px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+							>
+								<option value="inherit">
+									{t("projectSettings.artifactTemplateInherit", {
+										value: globalArtifactTemplate === "off"
+											? t("projectSettings.artifactTemplateOff")
+											: t("projectSettings.artifactTemplateOn"),
+									})}
+								</option>
+								<option value="on">{t("projectSettings.artifactTemplateOn")}</option>
+								<option value="off">{t("projectSettings.artifactTemplateOff")}</option>
+							</select>
+							</SettingsSection>
 
 							<SettingsSection
 								title={t("projectSettings.groupPrivacy")}

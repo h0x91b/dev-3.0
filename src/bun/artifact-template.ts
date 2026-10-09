@@ -7,8 +7,9 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ARTIFACT_TEMPLATE_FILES, artifactTemplateDirName } from "../shared/artifact-template";
-import type { Project, Task } from "../shared/types";
+import { resolveArtifactTemplate, type GlobalSettings, type Project, type Task } from "../shared/types";
 import { createLogger } from "./logger";
+import { loadSettingsSync } from "./settings";
 
 const log = createLogger("artifact-template");
 
@@ -81,19 +82,32 @@ export function ensureArtifactTemplate(
 	return targetDir;
 }
 
+/**
+ * `DEV3_ARTIFACT_TEMPLATE=off` when the user turned the starter off for this
+ * project; nothing when it is on, so a default launch keeps today's env. The
+ * starter is still provisioned either way — "use the template for this one" works.
+ */
+export function artifactTemplateModeEnv(
+	project: Project,
+	settings: Pick<GlobalSettings, "artifactTemplate"> | null = loadSettingsSync(),
+): Record<string, string> {
+	return resolveArtifactTemplate(project, settings) === "off" ? { DEV3_ARTIFACT_TEMPLATE: "off" } : {};
+}
+
 export function ensureArtifactTemplateEnv(project: Project, task: Task, worktreePath: string): Record<string, string> {
+	const modeEnv = artifactTemplateModeEnv(project);
 	// Best-effort: the starter is only needed when the agent builds a dev3 HTML
 	// artifact (a minority of tasks). A missing/broken bundle — e.g. a brew
 	// install whose formula didn't ship artifact-template — must degrade the
 	// feature, not block the task launch. Launched agents are told to report the
 	// missing var, so an empty env is a safe, self-describing fallback.
 	try {
-		return { DEV3_ARTIFACT_TEMPLATE_DIR: ensureArtifactTemplate(project, task, { worktreePath }) };
+		return { ...modeEnv, DEV3_ARTIFACT_TEMPLATE_DIR: ensureArtifactTemplate(project, task, { worktreePath }) };
 	} catch (err) {
 		log.warn("Artifact template unavailable — launching without DEV3_ARTIFACT_TEMPLATE_DIR", {
 			taskId: task.id.slice(0, 8),
 			error: String(err),
 		});
-		return {};
+		return modeEnv;
 	}
 }

@@ -193,18 +193,19 @@ export const ARTIFACT_FORMAT_RULES = `Any report a human reads defaults to the d
 
 - **Copy the starter and publish its directory.** Prose or lists are fine; charts are optional.
 - An explicit ask for Markdown, plain text or no HTML overrides the default: write that, publish the \`.md\`/\`.txt\` directly (no template CSS), and do not ask to choose again. A \`.md\` report path in a brief says where to save it, not how to show it.
+- \`$DEV3_ARTIFACT_TEMPLATE=off\` or asking for a page without the dev3 template → free-form HTML: no starter or contract; publish your own \`.html\`/directory. Asking for the template wins.
 `;
 
 /** How to make and publish one. Shared verbatim by the protocol and the `dev3-artifact` skill. */
-export const ARTIFACT_AUTHORING_STEPS = `\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the pristine starter; never edit it. If unset, \`dev3 artifact-template\` creates \`./dev3-artifact-report\` instead. The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the card, \`REFERENCE.md\` has optional depth, \`index.html\` + \`report.js\` are editable, \`app.css\` + \`app.js\` are the shell, \`dev3-icon.png\` is the brand asset.
+export const ARTIFACT_AUTHORING_STEPS = `\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the pristine starter; never edit it. If unset, \`dev3 artifact-template\` creates \`./dev3-artifact-report\` instead. Fixed layout: \`AUTHORING.md\` is the card, \`REFERENCE.md\` has optional depth, \`index.html\` + \`report.js\` are editable, \`app.css\` + \`app.js\` are the shell, \`dev3-icon.png\` is the brand asset.
 
 1. \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\`.
-2. Read the copied \`AUTHORING.md\`; edit \`index.html\` and \`report.js\`. Do not read the shell files for ordinary reports. Open \`REFERENCE.md\` sections only as needed. Keep data local; CDN libraries and live fetch are supported.
-3. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` bundles assets (16 MB each, 48 MB total); extras go after \`--assets\`. Completion requires the template's \`data-dev3-artifact-template="v1"\`, shell and brand asset, not merely a published \`.md\`.
+2. Read the copied \`AUTHORING.md\`; edit \`index.html\` and \`report.js\`. Do not read the shell files for ordinary reports. Open \`REFERENCE.md\` sections only as needed. Keep data local; CDN libraries and live fetch work.
+3. \`dev3 show-artifact ./dev3-artifact-report --title "Report title"\` bundles its assets; extras go after \`--assets\`. A template report needs its \`data-dev3-artifact-template="v1"\`, shell and brand asset.
 
 Publish directly: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish lists exceptions.
 
-The same \`--title\` or stable \`--artifact-id <slug>\` adds a VERSION. Never invent \`report-v2.html\`; \`--new\` is for a different report. Outside dev3, \`/dev3-share-artifact\` inlines the files and publishes a gist with a checked preview URL.
+The same \`--title\` or stable \`--artifact-id <slug>\` adds a VERSION. Never invent \`report-v2.html\`; \`--new\` is for a different report. A link outside dev3: \`/dev3-share-artifact\` (gist).
 `;
 
 const SKILL_ARTIFACTS = `

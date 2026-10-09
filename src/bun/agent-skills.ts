@@ -1015,7 +1015,7 @@ const ASK_DEV3_OPENAI_YAML = `interface:
 // this file adds only what the protocol leaves to a pointer.
 
 const ARTIFACT_SKILL_DESCRIPTION =
-	"Make, publish and revise a dev3 HTML artifact: copy the task's artifact starter, follow its AUTHORING.md, edit index.html and report.js, then publish or add a version with dev3 show-artifact. Use it inside a dev3 task whenever a human will read the result — a report, summary, daily brief, review readout, dashboard, comparison or analysis page — even when the user only says 'write it up', 'make a report' or 'show me', or names a .md path for where to save it (an explicit ask for Markdown, plain text or no HTML skips it); also to update an artifact already published. Not for Claude Artifacts, CI/build artifacts or package outputs. Sharing a report as a link outside the app is /dev3-share-artifact.";
+	"Make, publish and revise a dev3 HTML artifact: copy the task's artifact starter, follow its AUTHORING.md, edit index.html and report.js, then publish or add a version with dev3 show-artifact. Use it inside a dev3 task whenever a human will read the result — a report, summary, daily brief, review readout, dashboard, comparison or analysis page — even when the user only says 'write it up', 'make a report' or 'show me', or names a .md path for where to save it (an explicit ask for Markdown, plain text or no HTML skips it; with the template off it makes a free-form page); also to update an artifact already published. Not for Claude Artifacts, CI/build artifacts or package outputs. Sharing a report as a link outside the app is /dev3-share-artifact.";
 
 const ARTIFACT_SKILL_CONTENT = `---
 name: dev3-artifact
@@ -1044,7 +1044,7 @@ ${ARTIFACT_AUTHORING_STEPS}
 | It is unset (older session, a shell that never inherited it) | \`dev3 artifact-template\` — provisions the starter, copies it into \`./dev3-artifact-report\`, prints the path |
 | You already have an edited copy | Keep working in it. Re-running \`dev3 artifact-template\` copies every starter file over it, \`index.html\` and \`report.js\` included, and your edits are gone |
 
-Never edit the pristine starter itself, and never swap in another template.
+Never edit the pristine starter itself, and never swap in another template. Free-form HTML (the template is off, or the user asked for a page without it) skips the starter entirely: write your own page and publish it with \`dev3 show-artifact <file.html | dir>\`.
 
 ## Writing it
 

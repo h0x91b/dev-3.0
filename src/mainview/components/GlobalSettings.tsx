@@ -515,6 +515,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleArtifactTemplateToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ artifactTemplate: enabled ? undefined : "off" },
+				{ tracking: { setting: "artifact_template", value: enabled ? "on" : "off" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleDefaultDiffViewModeChange = useCallback(
 		(mode: "split" | "unified" | "auto") => {
 			persistSettingChange(
@@ -933,6 +943,7 @@ function GlobalSettings({
 						tipsResetDone={tipsResetDone}
 						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
 						onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
+						onArtifactTemplateToggle={handleArtifactTemplateToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
