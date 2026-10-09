@@ -4,7 +4,7 @@ import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
 import { composeWindowTitle } from "./app-utils";
-import { loadWindowStates, saveWindowStates, resolveRestoreFrame, displayContaining, offscreenFrameClamp, type DisplayLike, type Rect, type WindowState } from "./window-state";
+import { loadWindowStates, saveWindowStates, resolveRestoreFrame, displayContaining, offscreenFrameClamp, nativeFrameToGlobal, globalFrameToNative, type DisplayLike, type Rect, type WindowState } from "./window-state";
 import { isFreshStartMode } from "./fresh-start";
 import { isQuitConfirmed } from "./quit-manager";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
@@ -33,14 +33,27 @@ let seq = 0;
 // them all back (otherwise they jump to a centered cascade on relaunch).
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+// On macOS Electrobun's getFrame/setFrame use a y that disagrees with the Screen
+// API on any screen taller or shorter than the primary (#1872). Every frame read
+// or written here goes through these two, so the rest of the file stays global.
+function readFrame(win: BrowserWindow, displays: DisplayLike[]): Rect {
+	const native = win.getFrame();
+	return process.platform === "darwin" ? nativeFrameToGlobal(native, displays) : native;
+}
+
+function writeFrame(win: BrowserWindow, frame: Rect, displays: DisplayLike[]): void {
+	const native = process.platform === "darwin" ? globalFrameToNative(frame, win.getFrame(), displays) : frame;
+	win.setFrame(native.x, native.y, native.width, native.height);
+}
+
 function entryState(entry: WindowEntry): WindowState | null {
 	try {
 		const win = entry.window;
 		const fullscreen = win.isFullScreen();
-		const frame = win.getFrame();
+		const displays = Screen.getAllDisplays();
+		const frame = readFrame(win, displays);
 		if (!fullscreen) entry.lastWindowedFrame = frame;
 		const windowed = entry.lastWindowedFrame ?? frame;
-		const displays = Screen.getAllDisplays();
 		const disp = displayContaining(fullscreen ? frame : windowed, displays) ?? Screen.getPrimaryDisplay();
 		return { frame: windowed, fullscreen, displayId: disp.id, displayBounds: disp.bounds };
 	} catch (err) {
@@ -105,7 +118,7 @@ export function handleDisplayConfigurationChange(reason: string, displays: Displ
 	for (const entry of windows) {
 		const win = entry.window;
 		try {
-			const frame = win.getFrame();
+			const frame = readFrame(win, displays);
 			const fullscreen = win.isFullScreen();
 			const host = displayContaining(frame, displays);
 			log.info("Display configuration changed", {
@@ -126,7 +139,7 @@ export function handleDisplayConfigurationChange(reason: string, displays: Displ
 				to: `${pullBack.frame.width}x${pullBack.frame.height}+${pullBack.frame.x}+${pullBack.frame.y}`,
 				display: pullBack.display.id,
 			});
-			win.setFrame(pullBack.frame.x, pullBack.frame.y, pullBack.frame.width, pullBack.frame.height);
+			writeFrame(win, pullBack.frame, displays);
 		} catch (err) {
 			log.warn("Display change handling failed for one window", { id: entry.id, error: String(err) });
 		}
@@ -335,7 +348,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 			nudged = true;
 			if (needsFrameApply) {
 				try {
-					win.setFrame(frame.x, frame.y, frame.width, frame.height);
+					writeFrame(win, frame, Screen.getAllDisplays());
 				} catch (err) {
 					log.warn("Applying the window frame failed", { error: String(err) });
 				}

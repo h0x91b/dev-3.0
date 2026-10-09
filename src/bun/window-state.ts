@@ -164,6 +164,58 @@ export function offscreenFrameClamp(
 	return { frame: clamped, display: host };
 }
 
+function largestOverlap(frame: Rect, displays: DisplayLike[]): { display: DisplayLike | null; area: number } {
+	let display: DisplayLike | null = null;
+	let area = 0;
+	for (const d of displays) {
+		const a = intersectionArea(frame, d.bounds);
+		if (a > area) {
+			area = a;
+			display = d;
+		}
+	}
+	return { display, area };
+}
+
+/**
+ * How far Electrobun's macOS `getFrame()` y sits below the global top-left y the
+ * Screen API and window events use (decisions/2026/10/09/macos-window-frame-own-screen-flip.md).
+ * getFrame/setFrame flip against the height of the window's OWN screen, the rest
+ * against the primary's, so on a screen of another height they disagree by the
+ * difference. The native side never says which screen it used: we pick the one
+ * whose flip would put the window mostly on that same screen, as NSWindow.screen does.
+ */
+export function nativeFrameYOffset(nativeFrame: Rect, displays: DisplayLike[]): number {
+	const primary = displays.find((d) => d.isPrimary) ?? displays.find((d) => d.bounds.x === 0 && d.bounds.y === 0);
+	if (!primary) return 0;
+	let best = 0;
+	let bestArea = 0;
+	for (const d of displays) {
+		const offset = d.bounds.height - primary.bounds.height;
+		const host = largestOverlap({ ...nativeFrame, y: nativeFrame.y - offset }, displays);
+		if (host.display === d && host.area > bestArea) {
+			best = offset;
+			bestArea = host.area;
+		}
+	}
+	// On no screen under any reading: macOS falls back to the main screen, and so do we.
+	return best;
+}
+
+/** A macOS `getFrame()` result in the global coordinates the Screen API reports. */
+export function nativeFrameToGlobal(nativeFrame: Rect, displays: DisplayLike[]): Rect {
+	return { ...nativeFrame, y: nativeFrame.y - nativeFrameYOffset(nativeFrame, displays) };
+}
+
+/**
+ * The `setFrame()` argument that lands a window on `target` (global coordinates).
+ * setFrame flips against the screen the window is on BEFORE the move, so the
+ * offset comes from its current native frame, not from the target.
+ */
+export function globalFrameToNative(target: Rect, currentNativeFrame: Rect, displays: DisplayLike[]): Rect {
+	return { ...target, y: target.y + nativeFrameYOffset(currentNativeFrame, displays) };
+}
+
 /**
  * Resolve a restorable frame for the saved state against the *current* displays.
  * Returns null when the saved screen is gone (e.g. laptop undocked) so the caller

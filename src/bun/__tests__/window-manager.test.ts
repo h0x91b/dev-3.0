@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Shared registry populated by the mocked BrowserWindow constructor.
 // Tests peek at it to trigger focus/close handlers on individual windows.
@@ -342,6 +342,32 @@ describe("handleDisplayConfigurationChange", () => {
 
 		expect(() => handleDisplayConfigurationChange("displays", shrunkDisplay)).not.toThrow();
 		expect(healthy.setFrame).toHaveBeenCalledWith(0, 0, 1280, 720);
+	});
+
+	describe("on macOS, with a screen taller than the primary (#1872)", () => {
+		// Electrobun's getFrame/setFrame flip y against the window's own screen,
+		// the Screen API against the primary: on this portrait screen they differ by 1120.
+		const primary = { id: 1, bounds: { x: 0, y: 0, width: 2560, height: 1440 }, isPrimary: true };
+		const portrait = { id: 2, bounds: { x: 2560, y: -560, width: 1440, height: 2560 } };
+		const realPlatform = process.platform;
+		beforeEach(() => Object.defineProperty(process, "platform", { value: "darwin" }));
+		afterEach(() => Object.defineProperty(process, "platform", { value: realPlatform }));
+
+		it("leaves a window on the lower half of the portrait screen where the user put it", () => {
+			const win = spawnWithFrame({ x: 2560, y: 720 + 1120, width: 1440, height: 1280 });
+
+			handleDisplayConfigurationChange("wake", [primary, portrait]);
+
+			expect(win.setFrame).not.toHaveBeenCalled();
+		});
+
+		it("still pulls back a window hanging off the bottom of the portrait screen, in native coordinates", () => {
+			const win = spawnWithFrame({ x: 2560, y: 1600 + 1120, width: 1440, height: 1280 });
+
+			handleDisplayConfigurationChange("displays", [primary, portrait]);
+
+			expect(win.setFrame).toHaveBeenCalledWith(2560, 720 + 1120, 1440, 1280);
+		});
 	});
 
 	it("handles a wake the same way, so a layout that flipped and flipped back is still checked", () => {

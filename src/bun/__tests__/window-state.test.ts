@@ -8,6 +8,10 @@ import {
 	saveWindowStates,
 	displayContaining,
 	resolveRestoreFrame,
+	offscreenFrameClamp,
+	nativeFrameYOffset,
+	nativeFrameToGlobal,
+	globalFrameToNative,
 	type WindowState,
 	type DisplayLike,
 } from "../window-state";
@@ -137,5 +141,57 @@ describe("resolveRestoreFrame", () => {
 		expect(f.height).toBe(1080);
 		expect(f.x).toBe(0);
 		expect(f.y).toBe(0);
+	});
+});
+
+// #1872: landscape 2560x1440 primary plus a 1440x2560 portrait screen to its
+// right, in the global top-left coordinates Electrobun's Screen API reports.
+// Electrobun's macOS getFrame flips y against the portrait screen's own height,
+// so a window there reads 2560 - 1440 = 1120 px lower than it really is.
+describe("macOS native frame translation", () => {
+	const primary: DisplayLike = { id: 1, bounds: { x: 0, y: 0, width: 2560, height: 1440 }, isPrimary: true };
+	const portrait: DisplayLike = { id: 2, bounds: { x: 2560, y: -560, width: 1440, height: 2560 } };
+	const layout = [primary, portrait];
+	const lowerHalf = { x: 2560, y: 720, width: 1440, height: 1280 };
+	const lowerHalfNative = { ...lowerHalf, y: lowerHalf.y + 1120 };
+
+	it("reads a window on the portrait screen back at its real position", () => {
+		expect(nativeFrameYOffset(lowerHalfNative, layout)).toBe(1120);
+		expect(nativeFrameToGlobal(lowerHalfNative, layout)).toEqual(lowerHalf);
+	});
+
+	it("leaves the lower-half window alone once translated — the raw read looked offscreen", () => {
+		expect(offscreenFrameClamp(lowerHalfNative, layout)).not.toBeNull();
+		expect(offscreenFrameClamp(nativeFrameToGlobal(lowerHalfNative, layout), layout)).toBeNull();
+	});
+
+	it("writes a target with the offset of the screen the window is on now", () => {
+		expect(globalFrameToNative(lowerHalf, lowerHalfNative, layout)).toEqual(lowerHalfNative);
+		const onPrimary = { x: 100, y: 100, width: 800, height: 600 };
+		// setFrame flips against the CURRENT screen: a window still on the primary needs no offset.
+		expect(globalFrameToNative(lowerHalf, onPrimary, layout)).toEqual(lowerHalf);
+	});
+
+	it("is the identity for a window on the primary screen", () => {
+		const frame = { x: 200, y: 50, width: 1600, height: 1000 };
+		expect(nativeFrameToGlobal(frame, layout)).toEqual(frame);
+	});
+
+	it("is the identity when every screen shares the primary's height", () => {
+		const twins: DisplayLike[] = [primary, { id: 3, bounds: { x: 2560, y: 0, width: 2560, height: 1440 } }];
+		const frame = { x: 3000, y: 300, width: 1200, height: 900 };
+		expect(nativeFrameToGlobal(frame, twins)).toEqual(frame);
+	});
+
+	it("handles a portrait screen on the left whose top is above the primary", () => {
+		const left: DisplayLike = { id: 4, bounds: { x: -1440, y: -1120, width: 1440, height: 2560 } };
+		const global = { x: -1440, y: 140, width: 1440, height: 1300 };
+		const native = { ...global, y: global.y + 1120 };
+		expect(nativeFrameToGlobal(native, [primary, left])).toEqual(global);
+	});
+
+	it("falls back to the primary's reading for a window on no screen at all", () => {
+		const lost = { x: 9000, y: 9000, width: 800, height: 600 };
+		expect(nativeFrameYOffset(lost, layout)).toBe(0);
 	});
 });

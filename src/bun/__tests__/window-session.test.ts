@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 
 // Multi-window session persistence: every open window is remembered, a window
 // closed on purpose is forgotten, and a quit teardown is not mistaken for one.
@@ -109,6 +109,12 @@ function domReady(win: FakeWindow): void {
 function savedSession(): WindowState[] {
 	return loadWindowSession();
 }
+
+// The fake window reports frames in global coordinates, which Electrobun does
+// only off macOS; the macOS translation has its own tests in window-manager.test.ts.
+const realPlatform = process.platform;
+beforeAll(() => Object.defineProperty(process, "platform", { value: "linux" }));
+afterAll(() => Object.defineProperty(process, "platform", { value: realPlatform }));
 
 beforeEach(() => {
 	createdWindows.length = 0;

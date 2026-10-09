@@ -1,5 +1,7 @@
 # Display-configuration polling and the live frame clamp
 
+> Amended on 2026-10-09 by `decisions/2026/10/09/macos-window-frame-own-screen-flip.md`: on macOS the clamp compared a frame flipped against the window's own screen with display bounds flipped against the primary, and moved on-screen windows on taller/shorter screens. `wake` also fires on timer stalls without any sleep.
+
 ## Context
 
 Two field reports: after a monitor resolution change the app showed a black
