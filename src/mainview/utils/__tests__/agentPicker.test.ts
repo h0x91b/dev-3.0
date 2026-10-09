@@ -235,12 +235,12 @@ describe("buildPickerGroups", () => {
 			],
 		};
 
-		it("curates the Codex lineup newest generation first", () => {
+		it("lists Codex by release date, same-day models in curated order", () => {
 			expect(buildPickerGroups(codexDefaults).map((g) => g.label)).toEqual([
 				"GPT-6.1 Sol",
-				"GPT-6 Astra",
 				"GPT-6 Sol",
 				"GPT-6 Luna",
+				"GPT-6 Astra",
 				"GPT-5.6 Luna",
 				"GPT-5.6 Sol",
 				"GPT-5.6 Terra",
@@ -263,6 +263,27 @@ describe("buildPickerGroups", () => {
 			const ids = groups.flatMap((g) => g.configs.map((c) => c.id));
 			expect([...ids].sort()).toEqual(fossil.configurations.map((c) => c.id).sort());
 			expect(groupLabelForConfig(fossil, "codex-default")).toBe("GPT-6 Astra");
+		});
+
+		it("puts the newest Claude model on top and the proxy-gated group last", () => {
+			const claudeDefaults = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+			expect(buildPickerGroups(claudeDefaults).map((g) => g.label)).toEqual([
+				"Haiku 5.5",
+				"Sonnet 5.5",
+				"Opus 5.5",
+				"Fable 5.1",
+				"Opus 5",
+				"Sonnet 5",
+				"Fable 5",
+				"Opus 4.8",
+				"Opus 4.7",
+				"Fable 5 (cost trick)",
+			]);
+		});
+
+		it("keeps Copilot's Auto, which is not a model, above every dated model", () => {
+			const copilot = DEFAULT_AGENTS.find((a) => a.id === "builtin-copilot")!;
+			expect(buildPickerGroups(copilot)[0].label).toBe("Auto");
 		});
 
 		it("puts presets dev3 does not ship after the curated ones, in stored order", () => {
@@ -387,6 +408,7 @@ describe("MODEL_GROUP_LABELS", () => {
 		expect(MODEL_GROUP_LABELS["claude-opus-4-8[1m]"]).toBe("Opus 4.8");
 		expect(MODEL_GROUP_LABELS["claude-sonnet-5-5"]).toBe("Sonnet 5.5");
 		expect(MODEL_GROUP_LABELS["claude-sonnet-5"]).toBe("Sonnet 5");
+		expect(MODEL_GROUP_LABELS["claude-haiku-5-5"]).toBe("Haiku 5.5");
 		expect(MODEL_GROUP_LABELS["claude-opus-4-7[1m]"]).toBe("Opus 4.7");
 	});
 });

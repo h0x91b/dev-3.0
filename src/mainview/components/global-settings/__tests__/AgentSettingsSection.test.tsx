@@ -239,7 +239,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		const user = userEvent.setup();
 		renderSection();
 		// Claude's presets are grouped by model, labelled by the launch picker's mode leaf.
-		await user.click(screen.getAllByRole("option", { name: /Auto · Medium/ })[0]);
+		await user.click(presetRow("claude-auto-fable51-medium")!);
 		expect(screen.getByDisplayValue("Auto (Fable 5.1, Medium)")).toBeTruthy();
 		expect(screen.getByText("settings.commandPreview")).toBeTruthy();
 	});
@@ -259,9 +259,9 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 	});
 });
 
-/** Select the Nth preset row for the active agent (rows carry the mode leaf label). */
-async function openPreset(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
-	await user.click(screen.getAllByRole("option", { name: label })[0]);
+/** Select one preset's row by id — list position follows release dates, so it moves. */
+async function openPreset(user: ReturnType<typeof userEvent.setup>, configId: string) {
+	await user.click(presetRow(configId)!);
 }
 
 describe("AgentSettingsSection — preset library", () => {
@@ -286,7 +286,7 @@ describe("AgentSettingsSection — preset library", () => {
 	it("duplicating a preset inserts a copy right after it and selects it", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		await user.click(screen.getByRole("button", { name: "settings.duplicatePreset" }));
 
 		const configs = lastClaude(onAgentsChange).configurations;
@@ -298,7 +298,7 @@ describe("AgentSettingsSection — preset library", () => {
 	it("Make default writes defaultConfigId for the selected preset", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · High/);
+		await openPreset(user, "claude-auto-fable51-high");
 		await user.click(screen.getByRole("button", { name: "settings.setDefaultConfig" }));
 		expect(lastClaude(onAgentsChange).defaultConfigId).toBe("claude-auto-fable51-high");
 	});
@@ -306,7 +306,7 @@ describe("AgentSettingsSection — preset library", () => {
 	it("deleting a preset asks first and only then removes it", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		await user.click(screen.getByRole("button", { name: "settings.deleteConfig" }));
 
 		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
@@ -319,7 +319,7 @@ describe("AgentSettingsSection — preset library", () => {
 		vi.mocked(confirm).mockResolvedValueOnce(false);
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		await user.click(screen.getByRole("button", { name: "settings.deleteConfig" }));
 		expect(onAgentsChange).not.toHaveBeenCalled();
 	});
@@ -339,7 +339,7 @@ describe("AgentSettingsSection — preset library", () => {
 				/>
 			</I18nProvider>,
 		);
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		await user.click(screen.getByRole("button", { name: "settings.favoriteAdd" }));
 		expect(api.request.toggleFavoriteAgent).toHaveBeenCalledWith({
 			agentId: "builtin-claude",
@@ -367,7 +367,7 @@ describe("AgentSettingsSection — preset library", () => {
 				/>
 			</I18nProvider>,
 		);
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		const toggle = screen.getByRole("button", { name: "settings.favoriteRemove" });
 		expect(toggle).toHaveAttribute("aria-pressed", "true");
 		expect(screen.queryByRole("button", { name: "settings.favoriteAdd" })).toBeNull();
@@ -376,7 +376,7 @@ describe("AgentSettingsSection — preset library", () => {
 	it("an enum field takes a value the app never shipped", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 
 		// The reasoning-effort combobox: type a level dev3 has no option for.
 		await user.click(screen.getByLabelText("settings.configEffort"));
@@ -468,7 +468,7 @@ describe("AgentSettingsSection — preset fields", () => {
 	it("writes the permission mode picked from the list", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 
 		await user.click(screen.getByLabelText("settings.configPermissionMode"));
 		await user.click(screen.getByRole("option", { name: "settings.permPlan" }));
@@ -479,7 +479,7 @@ describe("AgentSettingsSection — preset fields", () => {
 	it("takes a typed budget and stores it as a number", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 
 		await user.click(screen.getByLabelText("settings.configMaxBudget"));
 		await user.type(screen.getByRole("combobox", { name: "settings.budgetFilterHint" }), "5.5{Enter}");
@@ -490,7 +490,7 @@ describe("AgentSettingsSection — preset fields", () => {
 	it("keeps prompt, args and env vars collapsed under Advanced", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 
 		// <details> keeps its children in the DOM, so "collapsed" is the open flag.
 		const advanced = screen.getByText("settings.presetAdvanced").closest("details")!;
@@ -508,7 +508,7 @@ describe("AgentSettingsSection — preset fields", () => {
 	it("does not autocapitalize the base command override", async () => {
 		const user = userEvent.setup();
 		renderSection();
-		await openPreset(user, /Auto · Medium/);
+		await openPreset(user, "claude-auto-fable51-medium");
 		await user.click(screen.getByText("settings.presetAdvanced"));
 
 		const override = screen

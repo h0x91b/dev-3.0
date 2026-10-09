@@ -887,6 +887,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-auto-sonnet5-medium", name: "Auto (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-sonnet55-xhigh", name: "Auto (Sonnet 5.5, X-High)", model: "claude-sonnet-5-5", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-sonnet5-xhigh", name: "Auto (Sonnet 5, X-High)", model: "claude-sonnet-5", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-haiku55", name: "Auto (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus47", name: "Auto (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			// --- Bypass (same model order as Auto) ---
 			{ id: "claude-bypass-fable51-medium", name: "Bypass (Fable 5.1, Medium)", model: "claude-fable-5-1[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -907,6 +908,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-bypass-sonnet5-medium", name: "Bypass (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-sonnet55-xhigh", name: "Bypass (Sonnet 5.5, X-High)", model: "claude-sonnet-5-5", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-sonnet5-xhigh", name: "Bypass (Sonnet 5, X-High)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-haiku55", name: "Bypass (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-opus47", name: "Bypass (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			// --- Default (Claude's normal permission mode). No hard bypass flag:
 			//     the adapter injects --allow-dangerously-skip-permissions so bypass
@@ -921,6 +923,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			{ id: "claude-default-sonnet55", name: "Default (Sonnet 5.5)", model: "claude-sonnet-5-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-default-sonnet5", name: "Default (Sonnet 5)", model: "claude-sonnet-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
+			{ id: "claude-default-haiku55", name: "Default (Haiku 5.5)", model: "claude-haiku-5-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Plan ---
 			// Plan mode: the allow-bypass flag is now injected by the claude adapter
 			// for every session, so it is not repeated here (single source).
@@ -931,6 +934,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-sonnet55", name: "Plan (Sonnet 5.5)", model: "claude-sonnet-5-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-sonnet5", name: "Plan (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-plan-haiku55", name: "Plan (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Accept Edits ---
 			{ id: "claude-approvals-fable51", name: "Accept Edits (Fable 5.1)", model: "claude-fable-5-1[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
@@ -939,6 +943,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-sonnet55", name: "Accept Edits (Sonnet 5.5)", model: "claude-sonnet-5-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-sonnet5", name: "Accept Edits (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-approvals-haiku55", name: "Accept Edits (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Experimental: token-saving image proxy (opt-in, disabled until enabled in Settings) ---
 			// Its own Model group ("Fable 5 (cost trick)"). Fable 5 does not behave under
 			// --permission-mode auto, so the cost-saving experiment offers Bypass and Default

@@ -306,13 +306,13 @@ describe("LaunchVariantsModal", () => {
 			expect(options).toEqual(["Claude", "Codex", "Gemini"]);
 		});
 
-		it("model dropdown lists Claude's model groups (first-seen order)", async () => {
+		it("model dropdown lists Claude's model groups newest release first", async () => {
 			const user = userEvent.setup();
 			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 			const options = await getDropdownOptions(user, getModelButtons()[0]);
 			// The last row is not a model: connecting a provider of your own is one
 			// click from every launch surface, whether or not anything is offered.
-			expect(options).toEqual(["Sonnet 5", "Opus 4.8", "Fable 5", "+ Connect a provider…"]);
+			expect(options).toEqual(["Sonnet 5", "Fable 5", "Opus 4.8", "+ Connect a provider…"]);
 		});
 
 		it("mode dropdown shows a single-preset group (Sonnet 5)", async () => {
