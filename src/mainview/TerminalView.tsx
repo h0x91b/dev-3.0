@@ -964,9 +964,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							setTimeout(() => {
 								if (disposed || touchComposeModeRef.current) return;
 								// During `blur` Chromium reports <body> even when focus is moving
-								// into a dialog (the terminal link sheet), so look again: a modal
+								// into a dialog (the terminal link sheet), so look again: a dialog
 								// that took focus keeps it, and restores it here when it closes.
-								if (document.activeElement?.closest('[aria-modal="true"]')) return;
+								if (document.activeElement?.closest('[role="dialog"]')) return;
 								hiddenTextarea.focus();
 							}, 50);
 						}
