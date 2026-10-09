@@ -26,7 +26,7 @@ import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "./cli-exit-codes";
  * replaced rather than softened.
  */
 export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
-	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later.`;
+	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later.`;
 
 	if (!deepLinkSchemeRegistered(platform)) {
 		return `${command} **It adds no origin-task footer here — and nor do you:** \`dev3://\` opens the app on macOS only, so it would be a dead link in a public PR.`;
@@ -254,7 +254,7 @@ dev3 pane close <run-id>                       # close that pane (kills the comm
 
 The outcome line distinguishes **still running** from **finished, exit code N** — never read a quiet tail as finished. Runs are non-interactive: stdin is closed. The canonical dev server is \`dev3 dev-server start\`, not a pane run.
 
-**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run as you go, and again before ending a turn, so \`dev3 pane list\` shows only work still needed. The auto-close timer is a backstop for abandoned panes, not a substitute: exit 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes so the user still sees it. Closing destroys nothing — the output stays in the run's log.
+**Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run, and again before ending a turn. Auto-close (exit 0 after ${PANE_RUN_AUTO_CLOSE_SECONDS}s, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} min) is only a backstop. Closing destroys nothing — the output stays in the run's log.
 
 Reading the SCREEN of a pane you did not start ("look at the error on the right") is a different thing and **tmux-only today**: \`dev3 peek --pane <N>\` returns a tail on tmux, only the pane summary on native. On tmux you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load \`/dev3-tmux\`. On native those commands do not exist.
 `;
@@ -274,7 +274,7 @@ const SKILL_PEEK = `
 
 Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek none.
 
-Read the tail yourself; peek deliberately does not classify state. \`last output unknown\` means the backend cannot say — never assume silence. On tmux the ages are per WINDOW, not per pane. A task with no live terminal is a successful answer naming the reason (draft, hibernated, not running), while \`could not read the terminal\` means the read failed and tells you NOTHING about progress. Native-backend tasks answer exactly that today (\`not-enabled\`), so the tail is a tmux-task tool for now; the pane summary works everywhere.
+Read the tail yourself; peek deliberately does not classify state. \`last output unknown\` means the backend cannot say — never assume silence. On tmux the ages are per WINDOW, not per pane. A task with no live terminal is a successful answer naming the reason (draft, hibernated, not running), while \`could not read the terminal\` means the read failed and tells you NOTHING about progress. Native-backend tasks answer that today (\`not-enabled\`); the pane summary works everywhere.
 `;
 
 const SKILL_ASK_TO_LAUNCH = `

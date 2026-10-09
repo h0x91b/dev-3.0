@@ -26,6 +26,7 @@ export const CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED = 24;
 export const CLI_EXIT_CODE_APPROVAL_STILL_PENDING = 25;
 export const CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN = 26;
 export const CLI_EXIT_CODE_RESET_DECLINED = 27;
+export const CLI_EXIT_CODE_GH_TLS_UNVERIFIED = 28;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -190,5 +191,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_RESET_DECLINED,
 		description:
 			"`dev3 task move --status todo` on a task that needs a reset (it is active or still owns a worktree) asked the user for approval and it was NOT granted: the user declined, or the task's run ended before anyone answered (the request is then voided, never approved). This request stopped or deleted NOTHING. After a decline the task keeps its status, worktree and session; after a void, whatever ended the run (a completion, cancellation or another reset) may have removed its worktree. Distinct from exits 6 and 22: a reset keeps the card but throws the run away, and an agent must be able to tell that refusal apart from a refused completion or cancellation.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_GH_TLS_UNVERIFIED",
+		code: CLI_EXIT_CODE_GH_TLS_UNVERIFIED,
+		description:
+			"A `dev3 pr` subcommand (`create`, `auto-merge`) found `gh` unable to verify GitHub's TLS certificate, so NOTHING was pushed and no pull request was opened or changed. This is NOT a credential failure: do not re-run `gh auth login` or switch accounts. `x509: OSStatus -26276` on macOS means an agent sandbox blocks the trustd check Go programs such as gh rely on (curl and git are unaffected); the remedy is the user's call — approving that one command outside the sandbox through the agent's own permission prompt, or opting into Claude Code's `sandbox.enableWeakerNetworkIsolation` at its documented security cost. Any other certificate error points at a proxy or custom CA. Distinct from exit 23 so an agent never answers a blocked TLS check with a login prompt.",
 	},
 ] as const;

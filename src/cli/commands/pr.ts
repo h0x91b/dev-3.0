@@ -6,7 +6,7 @@ import { readProjectDirect, readTaskDirect, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { DEV3_HOME } from "../../bun/paths";
 import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shared/deep-link";
-import { CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_GH_TLS_UNVERIFIED, CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
 
 const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
        dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]`;
@@ -67,7 +67,8 @@ export const realPrDeps: PrDeps = {
  *
  * It is `gh` end to end and deliberately so: `gh` is the only forge client dev3
  * speaks, and an unauthenticated `gh` is refused up front (exit 23) rather than
- * discovered halfway through, after the branch was already pushed.
+ * discovered halfway through, after the branch was already pushed. A `gh` whose
+ * TLS check is blocked (an agent sandbox) is refused up front too, as exit 28.
  */
 export async function handlePr(
 	subcommand: string | undefined,
@@ -107,7 +108,7 @@ async function setAutoMerge(args: ParsedArgs, context: CliContext | null, deps: 
 	if (res.status !== 0) {
 		exitError(
 			off ? "gh could not clear auto-merge" : `gh could not enable auto-merge (${strategy})`,
-			res.stderr.trim() || res.stdout.trim(),
+			ghFailureDetail(res),
 		);
 	}
 
@@ -154,7 +155,10 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 
 	const created = deps.run("gh", ghArgs, cwd);
 	if (created.status !== 0) {
-		exitError("gh pr create failed", created.stderr.trim() || created.stdout.trim());
+		exitError(
+			"gh pr create failed",
+			ghFailureDetail(created, `The branch ${branch} is already pushed; check whether the pull request exists before retrying.`),
+		);
 	}
 
 	const url = prUrl(created.stdout);
@@ -171,7 +175,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	if (merged.status !== 0) {
 		exitError(
 			`The pull request was created but auto-merge (${mergeMethod}) could not be enabled`,
-			merged.stderr.trim() || merged.stdout.trim(),
+			ghFailureDetail(merged),
 		);
 	}
 	process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
@@ -247,7 +251,8 @@ export function withProjectGitHubAccount(deps: PrDeps, context: CliContext | nul
 /**
  * Refuse before anything is pushed when `gh` is missing or logged out — the one
  * precondition the command has. Exit 23 so a caller can tell "authenticate
- * first" from a pull request that genuinely failed to open.
+ * first" from a pull request that genuinely failed to open, and exit 28 when the
+ * real cause is a blocked TLS check, so nobody is sent to re-login for it.
  */
 function requireAuthenticatedGh(deps: PrDeps): void {
 	const version = deps.run("gh", ["--version"], deps.cwd);
@@ -259,13 +264,55 @@ function requireAuthenticatedGh(deps: PrDeps): void {
 		);
 	}
 	const auth = deps.run("gh", ["auth", "status"], deps.cwd);
-	if (auth.status !== 0) {
+	if (auth.status === 0) return;
+
+	// `gh auth status` reports a token it could not VERIFY as "invalid", and under
+	// an agent sandbox that verification dies in TLS. One read-only call tells a
+	// blocked certificate check apart from credentials that are really bad.
+	const probe = isTlsVerificationFailure(ghOutput(auth)) ? null : deps.run("gh", ["api", "user", "--jq", ".login"], deps.cwd);
+	if (!probe || isTlsVerificationFailure(ghOutput(probe))) {
 		exitError(
-			"`gh` is not authenticated",
-			`Run \`gh auth login\` first, then try again.\n${auth.stderr.trim() || auth.stdout.trim()}`,
-			CLI_EXIT_CODE_GH_UNAVAILABLE,
+			"`gh` could not verify GitHub's TLS certificate — nothing was pushed",
+			`${GH_TLS_HINT}\n${ghOutput(probe ?? auth)}`,
+			CLI_EXIT_CODE_GH_TLS_UNVERIFIED,
 		);
 	}
+	if (probe.status === 0) return;
+	exitError(
+		"`gh` is not authenticated",
+		`Run \`gh auth login\` first, then try again.\n${ghOutput(auth)}`,
+		CLI_EXIT_CODE_GH_UNAVAILABLE,
+	);
+}
+
+/**
+ * Go's TLS stack on macOS asks `trustd` to verify certificates; an agent sandbox
+ * that blocks that Mach service makes every Go binary (gh, terraform) fail with
+ * OSStatus -26276 while curl and git still work. See h0x91b/dev-3.0#1925.
+ */
+const TLS_VERIFICATION_FAILURE = /tls: failed to verify certificate|x509: OSStatus -26276/;
+
+export const GH_TLS_HINT = [
+	"This is NOT a credential problem: do not run `gh auth login` or switch accounts.",
+	"`x509: OSStatus -26276` means an agent sandbox is blocking macOS certificate checks (trustd) for Go programs such as gh.",
+	"Ask the user to approve running this one command outside the sandbox, through the agent's own permission prompt — never bypass a denial.",
+	"The user may instead choose to set Claude Code's sandbox.enableWeakerNetworkIsolation, which allows trustd at a documented security cost.",
+	"Any other certificate error points at a proxy or a custom CA.",
+].join("\n");
+
+function isTlsVerificationFailure(output: string): boolean {
+	return TLS_VERIFICATION_FAILURE.test(output);
+}
+
+function ghOutput(res: PrCommandResult): string {
+	return res.stderr.trim() || res.stdout.trim();
+}
+
+/** A failed gh call's detail, with the TLS explanation when that is what failed. */
+function ghFailureDetail(res: PrCommandResult, afterTls = ""): string {
+	const output = ghOutput(res);
+	if (!isTlsVerificationFailure(output)) return output;
+	return [GH_TLS_HINT, afterTls, output].filter(Boolean).join("\n");
 }
 
 function currentBranch(cwd: string, deps: PrDeps): string {

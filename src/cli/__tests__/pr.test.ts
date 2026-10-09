@@ -38,6 +38,9 @@ function ctx(overrides: Partial<CliContext> = {}): CliContext {
 const ok = (stdout = ""): PrCommandResult => ({ status: 0, stdout, stderr: "" });
 const fail = (stderr: string): PrCommandResult => ({ status: 1, stdout: "", stderr });
 
+const LOGGED_OUT_PROBE = "To get started with GitHub CLI, please run:  gh auth login";
+const SANDBOX_TLS = 'Get "https://api.github.com/user": tls: failed to verify certificate: x509: OSStatus -26276';
+
 interface Call {
 	command: string;
 	args: string[];
@@ -157,7 +160,7 @@ describe("dev3 pr create — gh must be installed and logged in", () => {
 	});
 
 	it("exits 23 and pushes nothing when gh is not authenticated", async () => {
-		const { deps: d, calls } = deps({ "gh auth status": fail("You are not logged into any GitHub hosts") });
+		const { deps: d, calls } = deps({ "gh auth status": fail("You are not logged into any GitHub hosts"), "gh api user": fail(LOGGED_OUT_PROBE) });
 
 		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_23");
 
@@ -167,11 +170,87 @@ describe("dev3 pr create — gh must be installed and logged in", () => {
 	});
 
 	it("checks auth before touching git at all", async () => {
-		const { deps: d, calls } = deps({ "gh auth status": fail("logged out") });
+		const { deps: d, calls } = deps({ "gh auth status": fail("logged out"), "gh api user": fail(LOGGED_OUT_PROBE) });
 
 		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_23");
 
 		expect(calls.every((c) => c.command === "gh")).toBe(true);
+	});
+});
+
+// h0x91b/dev-3.0#1925: under an agent sandbox Go's TLS check fails, and `gh auth
+// status` words that as an invalid token. Re-login advice there is a dead end.
+describe("dev3 pr create — a blocked TLS check is not a logout", () => {
+	it("exits 28, pushes nothing and never sends the agent to re-login when auth status shows the TLS error", async () => {
+		const { deps: d, calls } = deps({ "gh auth status": fail(SANDBOX_TLS) });
+
+		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_28");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(ran(calls, "gh", ["api", "user"])).toBeUndefined();
+		expect(stderrOutput).toContain("NOT a credential problem");
+		expect(stderrOutput).not.toContain("Run `gh auth login`");
+	});
+
+	it("exits 28 when auth status calls the token invalid but a read-only probe hits the TLS error", async () => {
+		const { deps: d, calls } = deps({
+			"gh auth status": fail("X Failed to log in to github.com account octo (keyring)\n- The token in keyring is invalid."),
+			"gh api user": fail(SANDBOX_TLS),
+		});
+
+		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_28");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(ran(calls, "gh", ["api", "user"])?.args).toEqual(["api", "user", "--jq", ".login"]);
+		expect(stderrOutput).toContain("OSStatus -26276");
+		expect(stderrOutput).not.toContain("Run `gh auth login`");
+	});
+
+	it("still exits 23 for credentials GitHub really rejects", async () => {
+		const { deps: d, calls } = deps({
+			"gh auth status": fail("The token in keyring is invalid."),
+			"gh api user": fail("gh: Bad credentials (HTTP 401)"),
+		});
+
+		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_23");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(stderrOutput).toContain("Run `gh auth login`");
+	});
+
+	it("goes ahead when auth status fails but an authenticated call succeeds", async () => {
+		const { deps: d, calls } = deps({ "gh auth status": fail("The token in keyring is invalid."), "gh api user": ok("octo\n") });
+
+		await handlePr("create", args({ title: "T" }), null, d);
+
+		expect(ran(calls, "gh", ["pr", "create"])).toBeDefined();
+	});
+
+	it("explains a TLS failure of gh pr create itself and says the branch is already pushed", async () => {
+		const { deps: d, calls } = deps({ "gh pr create": fail(SANDBOX_TLS) });
+
+		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
+
+		expect(calls.filter((c) => c.command === "gh" && c.args[1] === "create")).toHaveLength(1);
+		expect(stderrOutput).toContain("already pushed");
+		expect(stderrOutput).toContain("NOT a credential problem");
+	});
+
+	it("leaves an ordinary gh pr create failure untouched", async () => {
+		const { deps: d } = deps({ "gh pr create": fail("a pull request for branch already exists") });
+
+		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
+
+		expect(stderrOutput).toContain("already exists");
+		expect(stderrOutput).not.toContain("credential");
+	});
+
+	it("auto-merge refuses a blocked TLS check with exit 28 too", async () => {
+		const { deps: d, calls } = deps({ "gh auth status": fail(SANDBOX_TLS) });
+
+		await expect(handlePr("auto-merge", args(), null, d)).rejects.toThrow("EXIT_28");
+
+		expect(ran(calls, "gh", ["pr", "merge"])).toBeUndefined();
 	});
 });
 
@@ -352,7 +431,7 @@ describe("dev3 pr auto-merge", () => {
 	});
 
 	it("needs an authenticated gh too", async () => {
-		const { deps: d, calls } = deps({ "gh auth status": fail("logged out") });
+		const { deps: d, calls } = deps({ "gh auth status": fail("logged out"), "gh api user": fail(LOGGED_OUT_PROBE) });
 
 		await expect(handlePr("auto-merge", args(), null, d)).rejects.toThrow("EXIT_23");
 
