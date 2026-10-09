@@ -149,7 +149,7 @@ describe("dev3 peek", () => {
 	});
 
 	it("rejects unknown flags", async () => {
-		await expect(handlePeek(args({ follow: "" }), SOCKET, CTX)).rejects.toThrow(/EXIT_3/);
+		await expect(handlePeek(args({ watch: "true" }), SOCKET, CTX)).rejects.toThrow(/EXIT_3/);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -188,5 +188,145 @@ describe("dev3 peek", () => {
 
 		await expect(handlePeek(args({ task: "seq:99" }), SOCKET, CTX)).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found: seq:99");
+	});
+});
+
+describe("dev3 peek --follow", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** Serve `screens` one per sample, then Ctrl-C during the sample after them (which is dropped). */
+	function serveScreens(screens: string[]): void {
+		let call = 0;
+		mockSend.mockImplementation(async () => {
+			const text = screens[Math.min(call, screens.length - 1)];
+			call++;
+			if (call > screens.length) process.emit("SIGINT");
+			return okResp(snapshot({ tail: { paneIndex: 1, paneId: "%1", lines: 1, text } }));
+		});
+	}
+
+	async function followFor(flags: Record<string, string>, samples: number, intervalMs: number): Promise<void> {
+		const run = handlePeek(args(flags), SOCKET, CTX);
+		for (let i = 1; i < samples; i++) await vi.advanceTimersByTimeAsync(intervalMs);
+		await run;
+	}
+
+	it("emits the first snapshot at once and then only changed ones, as NDJSON", async () => {
+		serveScreens(["building 1/3", "building 1/3", "building 2/3", "building 2/3", "done"]);
+
+		await followFor({ follow: "true", interval: "5", json: "true" }, 6, 5000);
+
+		const lines = stdoutOutput.trimEnd().split("\n");
+		expect(lines.map((l) => (JSON.parse(l) as TaskPeekSnapshot).tail?.text)).toEqual(["building 1/3", "building 2/3", "done"]);
+		expect(mockSend).toHaveBeenCalledTimes(6);
+		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	it("samples no faster than the interval however often the pane redraws", async () => {
+		let redraws = 0;
+		mockSend.mockImplementation(async () => okResp(snapshot({ tail: { paneIndex: 1, paneId: "%1", lines: 1, text: `spinner ${redraws++}` } })));
+
+		const run = handlePeek(args({ follow: "true", interval: "10", json: "true" }), SOCKET, CTX);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(9_999);
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(mockSend).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(mockSend).toHaveBeenCalledTimes(5);
+		process.emit("SIGINT");
+		await run;
+
+		expect(stdoutOutput.trimEnd().split("\n")).toHaveLength(5);
+	});
+
+	it("ignores pane ages and observedAt when deciding whether the screen changed", async () => {
+		let call = 0;
+		mockSend.mockImplementation(async () => {
+			call++;
+			if (call === 3) process.emit("SIGINT");
+			const at = new Date(Date.now() + call * 1000).toISOString();
+			return okResp(snapshot({ observedAt: at, panes: [{ index: 1, paneId: "%1", label: "claude", alive: true, focused: true, lastOutputAt: at, lastOutputAgeMs: call, granularity: "window" }] }));
+		});
+
+		await followFor({ follow: "true", interval: "1", json: "true" }, 3, 1000);
+
+		expect(stdoutOutput.trimEnd().split("\n")).toHaveLength(1);
+	});
+
+	it("forwards --lines and --pane on every sample", async () => {
+		serveScreens(["a", "b"]);
+
+		await followFor({ follow: "true", interval: "1", lines: "7", pane: "2" }, 3, 1000);
+
+		for (const call of mockSend.mock.calls) expect(call[2]).toMatchObject({ pane: "2", lines: 7 });
+	});
+
+	it("prints one rendered snapshot per change without --json", async () => {
+		serveScreens(["first screen", "second screen"]);
+
+		await followFor({ follow: "true", interval: "1" }, 3, 1000);
+
+		expect(stdoutOutput.match(/^Task 42 · /gm)).toHaveLength(2);
+		expect(stdoutOutput).toContain("first screen");
+		expect(stdoutOutput).toContain("second screen");
+	});
+
+	it("prints the unsupported snapshot and exits 29 when the backend publishes no screen", async () => {
+		mockSend.mockResolvedValue(okResp(snapshot({
+			backend: "native",
+			tail: null,
+			unavailable: { kind: "read-failed", detail: "not-enabled: the host publishes no capture artifact" },
+		})));
+
+		await expect(handlePeek(args({ follow: "true", json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_29");
+
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect((JSON.parse(stdoutOutput) as TaskPeekSnapshot).unavailable?.detail).toContain("not-enabled");
+		expect(stderrOutput).toContain("--follow needs a pane");
+	});
+
+	it("keeps following through a session that is not there yet, emitting when it appears", async () => {
+		let call = 0;
+		mockSend.mockImplementation(async () => {
+			call++;
+			if (call === 3) process.emit("SIGINT");
+			return okResp(call === 1
+				? snapshot({ sessionPresent: false, panes: [], tail: null, unavailable: { kind: "no-session", detail: "not running" } })
+				: snapshot());
+		});
+
+		await followFor({ follow: "true", interval: "1", json: "true" }, 3, 1000);
+
+		const emitted = stdoutOutput.trimEnd().split("\n").map((l) => JSON.parse(l) as TaskPeekSnapshot);
+		expect(emitted.map((s) => s.sessionPresent)).toEqual([false, true]);
+	});
+
+	it("removes its signal handlers after Ctrl-C", async () => {
+		const before = process.listenerCount("SIGINT");
+		serveScreens(["only"]);
+
+		await followFor({ follow: "true", interval: "1" }, 2, 1000);
+
+		expect(process.listenerCount("SIGINT")).toBe(before);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it.each([
+		[{ interval: "5" }, "--interval only applies with --follow"],
+		[{ follow: "30" }, "--follow takes no value"],
+		[{ follow: "true", interval: "0" }, "--interval must be"],
+		[{ follow: "true", interval: "3601" }, "--interval must be"],
+		[{ follow: "true", interval: "1.5" }, "--interval must be"],
+	])("rejects %o before touching the app", async (flags, message) => {
+		await expect(handlePeek(args(flags), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain(message);
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

@@ -114,7 +114,7 @@ Commands:
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image, video and audio file under it
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
-  dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane
+  dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json] [--follow [--interval <s>]]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane; --follow re-prints only changed screens
   dev3 pane list [--json]                Which terminal backend you are on, which panes exist, which one is yours
   dev3 pane run "<command>" [--below] [--label <name>]  Run a command in a neighbouring pane of your own terminal
   dev3 pane logs <run-id> [--lines <N>]  That run's outcome (running / exit code) + the tail of what it printed

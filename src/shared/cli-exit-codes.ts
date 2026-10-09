@@ -27,6 +27,7 @@ export const CLI_EXIT_CODE_APPROVAL_STILL_PENDING = 25;
 export const CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN = 26;
 export const CLI_EXIT_CODE_RESET_DECLINED = 27;
 export const CLI_EXIT_CODE_GH_TLS_UNVERIFIED = 28;
+export const CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED = 29;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -197,5 +198,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_GH_TLS_UNVERIFIED,
 		description:
 			"A `dev3 pr` subcommand (`create`, `auto-merge`) found `gh` unable to verify GitHub's TLS certificate, so NOTHING was pushed and no pull request was opened or changed. This is NOT a credential failure: do not re-run `gh auth login` or switch accounts. `x509: OSStatus -26276` on macOS means an agent sandbox blocks the trustd check Go programs such as gh rely on (curl and git are unaffected); the remedy is the user's call — approving that one command outside the sandbox through the agent's own permission prompt, or opting into Claude Code's `sandbox.enableWeakerNetworkIsolation` at its documented security cost. Any other certificate error points at a proxy or custom CA. Distinct from exit 23 so an agent never answers a blocked TLS check with a login prompt.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED",
+		code: CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED,
+		description:
+			"`dev3 peek --follow` was aimed at a pane whose backend publishes no screen text (the native backend answers `not-enabled` today). The one snapshot it could take — pane summary plus the explicit `could not read the terminal` line — is printed first, then the follow ends instead of sampling a screen it can never read. Distinct from code `1` so a watcher can tell \"this backend cannot be followed\" from a failed request.",
 	},
 ] as const;
