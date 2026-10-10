@@ -13,6 +13,7 @@ import {
 	ALT_CLICK_PANE_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	SEARCH_STATE_FORMAT,
+	PANE_SPLIT_LAYOUT_FORMAT,
 } from "../formats";
 
 describe("tmuxFormat builder", () => {
@@ -53,6 +54,15 @@ describe("tmuxFormat builder", () => {
 });
 
 describe("format declarations", () => {
+	it("PANE_SPLIT_LAYOUT_FORMAT carries window, cells, agent tag and a tab-safe launch command", () => {
+		expect(PANE_SPLIT_LAYOUT_FORMAT.formatString).toBe(
+			"#{window_id}\t#{pane_id}\t#{pane_width}\t#{pane_height}\t#{pane_dead}\t#{@dev3_agent}\t#{pane_start_command}",
+		);
+		expect(PANE_SPLIT_LAYOUT_FORMAT.parse("@1\t%3\t150\t40\t0\t\t'dev3' 'a\tb'\n")).toEqual([
+			{ windowId: "@1", paneId: "%3", width: 150, height: 40, dead: false, agentTag: "", startCommand: "'dev3' 'a\tb'" },
+		]);
+	});
+
 	it("PANE_ID_FORMAT is the bare pane id", () => {
 		expect(PANE_ID_FORMAT.formatString).toBe("#{pane_id}");
 		expect(PANE_ID_FORMAT.parse("%0\n%12\n")).toEqual([{ paneId: "%0" }, { paneId: "%12" }]);

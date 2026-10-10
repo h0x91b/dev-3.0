@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handlePane } from "../commands/pane";
+import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../../shared/cli-exit-codes";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { CliResponse } from "../../shared/types";
@@ -144,7 +145,8 @@ describe("dev3 pane run", () => {
 			taskId: TASK_ID,
 			projectId: "proj-001",
 			command: "bun run build",
-			placement: "right",
+			placement: "auto",
+			selfPaneId: undefined,
 			label: undefined,
 		});
 		expect(stdoutOutput).toContain("dev3 pane logs run-0123456789ab");
@@ -158,6 +160,15 @@ describe("dev3 pane run", () => {
 			"pane.run",
 			expect.objectContaining({ placement: "below", label: "Build" }),
 		);
+	});
+
+	it("exits with the no-room code, and the message without its wire prefix, when nothing fits", async () => {
+		mockSend.mockResolvedValue({ id: "test-id", ok: false, error: "DEV3_PANE_NO_ROOM: no room for another pane — too small" });
+		await expect(handlePane("run", args({}, ["bun run build"]), SOCKET, CTX)).rejects.toThrow(
+			`EXIT_${CLI_EXIT_CODE_PANE_NO_ROOM}`,
+		);
+		expect(stderrOutput).toContain("no room for another pane");
+		expect(stderrOutput).not.toContain("DEV3_PANE_NO_ROOM");
 	});
 
 	it("refuses to run with no command instead of opening an empty pane", async () => {

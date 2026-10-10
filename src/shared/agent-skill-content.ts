@@ -248,7 +248,7 @@ const SKILL_PANES = `
 
 \`\`\`bash
 dev3 pane list                                 # which backend you are on — never assume, tmux is absent on Windows
-dev3 pane run "npm run watch" --label Watch    # opens a pane to your right, prints a run id
+dev3 pane run "npm run watch" --label Watch    # opens a pane beside yours, prints a run id
 dev3 pane logs <run-id> [--lines 400]          # outcome + tail (1..2000, default 200)
 dev3 pane close <run-id>                       # close that pane (kills the command)
 \`\`\`

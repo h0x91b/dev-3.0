@@ -1,0 +1,3 @@
+Short: Pane runs no longer shrink to strips
+
+`dev3 pane run` now picks where each new pane goes instead of halving the newest one to the right: the first run takes the right half of your pane, each later run halves the biggest of dev3's own output panes in whichever direction leaves the roomier shape, and your agent pane, other agents and panes you opened are never resized. When nothing can be halved into two usable 40x8 panes, a tmux task opens the run in a new `Runs` window (without switching to it) and fills that window the same way; a native task refuses with exit 30 instead of opening a sliver.

@@ -9,6 +9,7 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
+import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -803,7 +804,12 @@ const COMMANDS: CommandHelp[] = [
 				summary: "Open a pane next to yours, run the command there, and mirror its output to a log.",
 				details: [
 					"Put flags AFTER the command so the command is not read as a flag value.",
-					"--below          Split below instead of to the right.",
+					"Placement is automatic: the first run takes the right half of your pane; each later run",
+					"halves the biggest of dev3's own output panes, side by side or stacked, whichever shape",
+					"is roomier. Your pane, other agents and panes you opened are never resized.",
+					"When nothing can be halved into two panes of at least 40x8, tmux opens the run in a new",
+					`\`Runs\` window (not switched to); native, which has no windows, exits ${CLI_EXIT_CODE_PANE_NO_ROOM} and opens nothing.`,
+					"--below          Only stack vertically (never side by side).",
 					"--label <name>   Short human label for the pane (letters, digits, space, . _ -).",
 					"The command runs through the platform's own shell (sh -c on POSIX, Windows PowerShell",
 					"on Windows) with the task's worktree as cwd and the task's lifecycle env.",

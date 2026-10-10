@@ -506,6 +506,37 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 }
 
 /**
+ * tmux only: open the pane as a NEW WINDOW of the task session, without switching
+ * to it — the overflow for a run when no window has room for another usable pane.
+ * The native backend has no windows; asking it throws instead of guessing.
+ */
+export async function openTaskPaneWindow(spec: TaskPaneLaunch & { windowName: string }): Promise<AuxPaneHandle> {
+	const { task, socket, title } = spec;
+	if (backendOf(task) === "native") throw new Error("the native terminal backend has no windows to open");
+	const env = { [TASK_SEQ_ENV]: taskSeqLabel(task), ...spec.env };
+	try {
+		const { paneId, stderr } = await tmux.newWindow({
+			target: `${taskSessionName(task.id)}:`,
+			name: spec.windowName,
+			detached: true,
+			printPaneId: true,
+			env,
+			cwd: spec.cwd,
+			command: spec.tmuxCommand,
+			socket,
+		});
+		if (stderr.trim()) log.warn("openTaskPaneWindow tmux stderr", { stderr: stderr.trim() });
+		// `select-pane -T` only titles the pane; it does not switch the current window.
+		if (paneId && title) await tmux.selectPane(paneId, { socket, title }).catch(() => {});
+		log.info("Opened a tmux task window", { taskId: task.id.slice(0, 8), paneId });
+		return { backend: "tmux", paneId: paneId ?? "" };
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		throw new Error(`tmux new-window failed (exit ${err.exitCode}): ${err.stderr || "unknown error"}`);
+	}
+}
+
+/**
  * Close one pane the caller opened, on whichever backend it lives, and PROVE it
  * is gone. Deliberately not best-effort: the caller undoing a half-finished
  * launch has to be able to say whether the panes really went away, and a

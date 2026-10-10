@@ -215,6 +215,20 @@ export const PANE_GEOMETRY_FORMAT = tmuxFormat()
 	.build();
 
 /**
+ * Every pane of a session with its window, cell geometry, agent tag and launch
+ * command — what `dev3 pane run` needs to pick which pane to split (seq 2124).
+ */
+export const PANE_SPLIT_LAYOUT_FORMAT = tmuxFormat()
+	.string("windowId", "window_id")
+	.string("paneId", "pane_id")
+	.number("width", "pane_width")
+	.number("height", "pane_height")
+	.flag("dead", "pane_dead")
+	.string("agentTag", "@dev3_agent")
+	.tail("startCommand", "pane_start_command")
+	.build();
+
+/**
  * Everything a read-only pane capture must report about a pane, in one sweep. No free-text
  * field, so there is no tail slot: a capture deliberately carries no title, command, or any
  * other process fact.

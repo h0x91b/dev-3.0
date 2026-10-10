@@ -33,8 +33,14 @@ export const PANE_RUN_COMMAND_MAX_LENGTH = 4000;
 /** Longest label accepted. Labels are cosmetic; a long one is a mistake, not a need. */
 export const PANE_RUN_LABEL_MAX_LENGTH = 40;
 
-/** Where the new pane lands relative to the agent's own pane. */
-export type PaneRunPlacement = "right" | "below";
+/**
+ * `auto` lets dev3 pick the pane and orientation (`src/shared/pane-split-plan.ts`);
+ * `below` allows vertical splits only. There is deliberately no forced `right`.
+ */
+export type PaneRunPlacement = "auto" | "below";
+
+/** Prefix of the error a refused, no-room run carries across the CLI socket. */
+export const PANE_RUN_NO_ROOM_CODE = "DEV3_PANE_NO_ROOM";
 
 /** How long a SUCCESSFUL run's pane stays on screen before it closes itself. */
 export const PANE_RUN_AUTO_CLOSE_SECONDS = 10;
