@@ -32,12 +32,16 @@ focus, which the user does not consider an input.
 2. **Eligible space**: dev3's own output panes only — pane runs, dev servers, git panes, setup re-runs
    — in the main pane's tmux window. Column agents, other agents and user panes are never split.
 3. **First pane**: no eligible pane yet → halve the main pane, right if both halves fit, else below.
-4. **Later panes**: every eligible pane × allowed orientation, 50/50. Feasible only if both halves are
-   ≥ 40×8. Score = the worse half's `min(cols×24, rows×80)` — how many 80×24 terminals its tightest
-   dimension holds. Ties: bigger pane, then right before below, then older pane.
-5. **No room**: refuse with `DEV3_PANE_NO_ROOM` / exit 29 and open nothing. The main pane is never the
-   fallback. `--below` limits orientations to vertical; there is no forced "right" (an old CLI's
-   `"right"` is read as auto).
+4. **Later panes**: halve the BIGGEST eligible pane (by cells) that can be halved 50/50 into two panes
+   ≥ 40×8. Both halves have equal area either way, so the orientation is chosen by shape: the worse
+   half's `min(cols×24, rows×80)` — how many 80×24 terminals its tightest dimension holds. Ties: right
+   before below, then the older pane. Area first is the user's call: predictable ("the biggest pane,
+   in half") beats a shape score that could prefer a smaller pane.
+5. **No room (tmux)**: open the run in a new detached `Runs` window of the task session; later runs
+   first halve panes in any window holding only dev3 output, then open another window. Recognised by
+   content, not remembered. **No room (native)**: no windows exist, so refuse with
+   `DEV3_PANE_NO_ROOM` / exit 30. The main pane is never the fallback on either backend. `--below`
+   limits orientations to vertical; there is no forced "right" (an old CLI's `"right"` is auto).
 6. A layout that cannot be read keeps the legacy split (logged) rather than failing the run.
 
 ## Risks
@@ -52,5 +56,7 @@ focus, which the user does not consider an input.
 - **Global tiled layout** (`select-layout tiled`, SplitTree presets) — rejected: rearranges the agent.
 - **Always split the largest pane along its longer side** (BSP/dwindle) — simpler, but "longer side"
   in cells is wrong (cols always win) and it ignores the minimum of the smaller half.
-- **Fallback to a new tmux window** — tmux-only and invisible to the user watching; **degrading below
-  the minimum** — recreates the strip. Both left for a product decision if refusal proves too strict.
+- **Refusing on tmux too** — the first cut; replaced by the overflow window once the user confirmed
+  the UI shows tmux windows well. **Degrading below the minimum** — recreates the strip.
+- **Score first, area as a tie-break** — the first cut; it chose the biggest pane in every measured run
+  anyway, but could pick a smaller, better-shaped pane in edge cases (240×10 vs 70×30).

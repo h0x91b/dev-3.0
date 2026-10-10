@@ -11,7 +11,7 @@
 
 import type { Task } from "../shared/types";
 import { createSplitTree, getPaneRects, listPaneIds, restoreSplitTree, type SplitOrientation } from "../shared/split-tree";
-import { planPaneSplit, type PaneSplitCandidate, type PaneSplitPlan } from "../shared/pane-split-plan";
+import { planAuxiliarySplit, planPaneSplit, type PaneSplitCandidate, type PaneSplitPlan } from "../shared/pane-split-plan";
 import { auxPurposeOfCommand } from "./task-aux-panes";
 import { nativeTaskPaneCommands, nativeTaskPanesState } from "./native-task-panes";
 import { PANE_RUN_VERB } from "./pane-run-store";
@@ -28,6 +28,8 @@ export interface PaneRunSplitTarget {
 export type PaneRunSplitDecision =
 	| { kind: "split"; target: PaneRunSplitTarget }
 	| { kind: "no-room"; plan: Extract<PaneSplitPlan, { kind: "no-room" }> }
+	/** tmux only: no window has room, so the run gets a window of its own. */
+	| { kind: "new-window"; plan: Extract<PaneSplitPlan, { kind: "no-room" }> }
 	/** The layout could not be read; the caller keeps the legacy split. */
 	| { kind: "unplanned"; reason: string };
 
@@ -105,14 +107,23 @@ async function decideTmux({ task, socket, selfPaneId, below }: PaneRunPlacementR
 		.filter((row) => aux.has(row.paneId) && !row.dead && row.windowId === main.windowId)
 		.map((row) => ({ paneId: row.paneId, cols: row.width, rows: row.height, order: tmuxPaneOrdinal(row.paneId) }));
 
-	return decision(
-		planPaneSplit({
-			main: { paneId: main.paneId, cols: main.width, rows: main.height, order: tmuxPaneOrdinal(main.paneId) },
-			auxiliary: candidates,
-			orientations: orientationsFor(below),
-			separator: 1,
-		}),
-	);
+	const inMainWindow = planPaneSplit({
+		main: { paneId: main.paneId, cols: main.width, rows: main.height, order: tmuxPaneOrdinal(main.paneId) },
+		auxiliary: candidates,
+		orientations: orientationsFor(below),
+		separator: 1,
+	});
+	if (inMainWindow.kind === "split") return decision(inMainWindow);
+
+	// Overflow: a window holding nothing but dev3 output is a window dev3 opened for
+	// it, so its panes are fair game. A window with any other pane in it is not.
+	const windowsWithOthers = new Set(rows.filter((row) => !aux.has(row.paneId)).map((row) => row.windowId));
+	const overflow: PaneSplitCandidate[] = rows
+		.filter((row) => aux.has(row.paneId) && !row.dead && row.windowId !== main.windowId && !windowsWithOthers.has(row.windowId))
+		.map((row) => ({ paneId: row.paneId, cols: row.width, rows: row.height, order: tmuxPaneOrdinal(row.paneId) }));
+	const inOverflow = planAuxiliarySplit(overflow, orientationsFor(below), 1);
+	if (inOverflow.kind === "split") return decision(inOverflow);
+	return { kind: "new-window", plan: inMainWindow };
 }
 
 async function decideNative({ task, selfPaneId, below }: PaneRunPlacementRequest): Promise<PaneRunSplitDecision> {

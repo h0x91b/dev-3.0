@@ -205,9 +205,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED,
 		description:
 			"`dev3 peek --follow` was aimed at a pane whose backend publishes no screen text (the native backend answers `not-enabled` today). The one snapshot it could take — pane summary plus the explicit `could not read the terminal` line — is printed first, then the follow ends instead of sampling a screen it can never read. Distinct from code `1` so a watcher can tell \"this backend cannot be followed\" from a failed request.",
+	},
+	{
 		constant: "CLI_EXIT_CODE_PANE_NO_ROOM",
 		code: CLI_EXIT_CODE_PANE_NO_ROOM,
 		description:
-			"`dev3 pane run` found no pane it could split without leaving one below the usable minimum (40 columns by 8 rows), so NOTHING was opened and nothing on screen changed. The protected main pane is never split again to make room. Close a finished run (`dev3 pane close <run-id>`), enlarge the window, or run the command inline. Distinct from exit 1 so an agent can fall back to running the command itself instead of retrying.",
+			"`dev3 pane run` on the native terminal backend (the only one on Windows) found no pane it could split without leaving one below the usable minimum (40 columns by 8 rows), so NOTHING was opened and nothing on screen changed. The protected main pane is never split again to make room; tmux tasks never get this code, because there the run opens in a new `Runs` window instead. Close a finished run (`dev3 pane close <run-id>`), enlarge the window, or run the command inline. Distinct from exit 1 so an agent can fall back to running the command itself instead of retrying.",
 	},
 ] as const;

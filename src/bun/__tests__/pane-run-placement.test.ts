@@ -112,10 +112,33 @@ describe("decidePaneRunSplit on tmux", () => {
 		expect(decision).toMatchObject({ target: { paneId: "%0", plan: { splitsMain: true } } });
 	});
 
-	it("reports no room instead of splitting the agent again", async () => {
+	it("asks for a new window instead of splitting the agent again when the main window is full", async () => {
 		mocks.tmuxListPanes.mockResolvedValue([row("%0", 49, 30, "claude"), row("%1", 50, 14, RUN(1)), row("%2", 50, 15, RUN(2))]);
 		const decision = await decidePaneRunSplit({ task: TMUX_TASK, socket: "dev3", selfPaneId: "%0", below: false });
-		expect(decision.kind).toBe("no-room");
+		expect(decision.kind).toBe("new-window");
+	});
+
+	it("fills a window dev3 opened for output before opening another one", async () => {
+		mocks.tmuxListPanes.mockResolvedValue([
+			row("%0", 49, 30, "claude"),
+			row("%1", 50, 14, RUN(1)),
+			row("%2", 50, 15, RUN(2)),
+			row("%5", 110, 32, RUN(3), { windowId: "@2" }),
+		]);
+		const decision = await decidePaneRunSplit({ task: TMUX_TASK, socket: "dev3", selfPaneId: "%0", below: false });
+		expect(decision).toMatchObject({ kind: "split", target: { paneId: "%5", orientation: "horizontal" } });
+	});
+
+	it("never overflows into a window that holds anything besides dev3 output", async () => {
+		mocks.tmuxListPanes.mockResolvedValue([
+			row("%0", 49, 30, "claude"),
+			row("%1", 50, 14, RUN(1)),
+			row("%2", 50, 15, RUN(2)),
+			row("%5", 110, 32, RUN(3), { windowId: "@2" }),
+			row("%6", 110, 32, "zsh", { windowId: "@2" }),
+		]);
+		const decision = await decidePaneRunSplit({ task: TMUX_TASK, socket: "dev3", selfPaneId: "%0", below: false });
+		expect(decision.kind).toBe("new-window");
 	});
 
 	it("says the layout is unknown when the session cannot be listed", async () => {
@@ -164,6 +187,18 @@ describe("decidePaneRunSplit on native", () => {
 		mocks.nativeTaskPaneCommands.mockResolvedValue([{ paneId: "pane-1", command: ["claude"] }]);
 		const decision = await decidePaneRunSplit({ task: NATIVE_TASK, socket: "dev3", selfPaneId: null, below: false });
 		expect(decision).toMatchObject({ target: { paneId: "pane-1", orientation: "horizontal", plan: { splitsMain: true } } });
+	});
+
+	it("reports no room on native, which has no windows to overflow into", async () => {
+		mocks.nativeTaskPanesState.mockResolvedValue({
+			taskId: NATIVE_TASK.id,
+			activePaneId: "pane-1",
+			layout: serializeSplitTree(createSplitTree()),
+			panes: [{ paneId: "pane-1", cols: 60, rows: 12, alive: true }],
+		});
+		mocks.nativeTaskPaneCommands.mockResolvedValue([{ paneId: "pane-1", command: ["claude"] }]);
+		const decision = await decidePaneRunSplit({ task: NATIVE_TASK, socket: "dev3", selfPaneId: null, below: false });
+		expect(decision.kind).toBe("no-room");
 	});
 
 	it("says the layout is unknown when the pane set cannot be read", async () => {

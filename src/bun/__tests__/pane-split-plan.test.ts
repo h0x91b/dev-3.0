@@ -119,6 +119,27 @@ describe("planPaneSplit", () => {
 		expect(plans.every((plan) => plan.kind === "split" && plan.orientation === "vertical")).toBe(true);
 	});
 
+	it("halves the biggest pane even when a smaller one has the nicer shape", () => {
+		const main = { paneId: "main", cols: 100, rows: 50, order: 0 };
+		const flat = { paneId: "flat", cols: 240, rows: 10, order: 1 };
+		const roomy = { paneId: "roomy", cols: 70, rows: 30, order: 2 };
+		// 240x10 (2400 cells) beats 70x30 (2100) — split side by side, the only way that fits.
+		expect(planPaneSplit(request(main, [roomy, flat]))).toMatchObject({ paneId: "flat", orientation: "horizontal" });
+	});
+
+	it("moves on to the next biggest pane when the biggest cannot be halved into two usable panes", () => {
+		const main = { paneId: "main", cols: 100, rows: 50, order: 0 };
+		const strip = { paneId: "strip", cols: 300, rows: 9, order: 1 };
+		const ok = { paneId: "ok", cols: 90, rows: 20, order: 2 };
+		expect(planPaneSplit(request(main, [strip, ok]))).toMatchObject({ paneId: "strip", orientation: "horizontal" });
+		const tooThin = { paneId: "thin", cols: 79, rows: 30, order: 3 };
+		const fine = { paneId: "fine", cols: 82, rows: 20, order: 4 };
+		// 79x30 halves into 39 cols or 14|15 rows — rows fit, so it is still the one split.
+		expect(planPaneSplit(request(main, [tooThin, fine]))).toMatchObject({ paneId: "thin", orientation: "vertical" });
+		const dead = { paneId: "dead", cols: 79, rows: 15, order: 5 };
+		expect(planPaneSplit(request(main, [dead, { paneId: "next", cols: 82, rows: 14, order: 6 }]))).toMatchObject({ paneId: "next" });
+	});
+
 	it("breaks a tie by the bigger pane, then right before below, then the older pane", () => {
 		const main = { paneId: "main", cols: 100, rows: 50, order: 0 };
 		// Same size, same score: the older one wins, whatever order they are listed in.

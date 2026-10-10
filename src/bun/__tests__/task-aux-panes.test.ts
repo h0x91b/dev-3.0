@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 	// tmux singleton — every method is a spy so "no tmux happened" is provable.
 	tmuxListPanes: vi.fn(),
 	tmuxSplitWindow: vi.fn(),
+	tmuxNewWindow: vi.fn(),
 	tmuxSelectPane: vi.fn(),
 	tmuxKillPane: vi.fn(),
 	// native-task-panes
@@ -33,7 +34,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 /** Every tmux method the module could possibly reach. */
-const TMUX_METHODS = [mocks.tmuxListPanes, mocks.tmuxSplitWindow, mocks.tmuxSelectPane, mocks.tmuxKillPane];
+const TMUX_METHODS = [mocks.tmuxListPanes, mocks.tmuxSplitWindow, mocks.tmuxNewWindow, mocks.tmuxSelectPane, mocks.tmuxKillPane];
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -49,6 +50,7 @@ vi.mock("../tmux", () => ({
 	tmux: {
 		listPanes: mocks.tmuxListPanes,
 		splitWindow: mocks.tmuxSplitWindow,
+		newWindow: mocks.tmuxNewWindow,
 		selectPane: mocks.tmuxSelectPane,
 		killPane: mocks.tmuxKillPane,
 	},
@@ -77,6 +79,7 @@ import {
 	findAuxPane,
 	nativeAuxPaneShellPid,
 	openAuxPane,
+	openTaskPaneWindow,
 	splitTaskPane,
 } from "../task-aux-panes";
 import { spawn } from "../spawn";
@@ -595,6 +598,24 @@ describe("closeAuxPane", () => {
 });
 
 // ── Focus ordering (tmux) ─────────────────────────────────────────────────────
+
+describe("openTaskPaneWindow", () => {
+	it("opens a detached window in the task session with the task's env, then titles the pane", async () => {
+		mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%12", stderr: "" });
+		mocks.tmuxSelectPane.mockResolvedValue(undefined);
+		const handle = await openTaskPaneWindow({ ...spec(tmuxTask, { title: "Build" }), windowName: "Runs" });
+		expect(handle).toEqual({ backend: "tmux", paneId: "%12" });
+		expect(mocks.tmuxNewWindow).toHaveBeenCalledWith(
+			expect.objectContaining({ target: `${SESSION}:`, name: "Runs", detached: true, env: expect.objectContaining({ DEV3_TASK_ID: TASK_ID }) }),
+		);
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%12", expect.objectContaining({ title: "Build" }));
+	});
+
+	it("refuses on native, which has no windows, and never reaches tmux", async () => {
+		await expect(openTaskPaneWindow({ ...spec(nativeTask), windowName: "Runs" })).rejects.toThrow(/no windows/);
+		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
+	});
+});
 
 describe("splitTaskPane focus ordering (tmux)", () => {
 	it("finishes titling the new pane before returning, so a caller's own focus wins", async () => {

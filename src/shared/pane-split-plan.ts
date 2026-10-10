@@ -2,9 +2,9 @@
  * Where a `dev3 pane run` pane goes (seq 2124). Pure: no node/Bun imports.
  *
  * The rule, in one breath: the FIRST auxiliary pane takes half of the protected
- * main pane; every later one halves the existing auxiliary pane, in the
- * orientation, that leaves the tightest of the two resulting panes the most
- * usable. The main pane is never split again, and nothing outside the chosen
+ * main pane; every later one halves the BIGGEST auxiliary pane that can still be
+ * halved into two usable panes, in the orientation that leaves the tightest half
+ * the most usable. The main pane is never split again, and nothing outside the chosen
  * pane changes size. Why this scoring and not area or raw cells:
  * `decisions/2026/10/10/adaptive-pane-run-split.md`.
  */
@@ -96,15 +96,19 @@ function optionFor(candidate: PaneSplitCandidate, orientation: SplitOrientation,
 	};
 }
 
-/** Higher score, then the bigger pane, then right before below, then the older pane. */
+/**
+ * The biggest pane first — that is the rule, not a tie-break. Within one pane both
+ * halves have the same area either way, so the orientation is chosen by shape
+ * (score); then right before below, then the older pane.
+ */
 function better(
 	a: { option: PaneSplitOption; candidate: PaneSplitCandidate },
 	b: { option: PaneSplitOption; candidate: PaneSplitCandidate },
 ): boolean {
-	if (a.option.score !== b.option.score) return a.option.score > b.option.score;
 	const areaA = a.candidate.cols * a.candidate.rows;
 	const areaB = b.candidate.cols * b.candidate.rows;
 	if (areaA !== areaB) return areaA > areaB;
+	if (a.option.score !== b.option.score) return a.option.score > b.option.score;
 	if (a.option.orientation !== b.option.orientation) return a.option.orientation === "horizontal";
 	return a.candidate.order < b.candidate.order;
 }
@@ -123,12 +127,25 @@ export function planPaneSplit(request: PaneSplitRequest): PaneSplitPlan {
 		return { kind: "no-room", closest: options[0] ?? null };
 	}
 
+	return planAuxiliarySplit(auxiliary, request.orientations, separator);
+}
+
+/**
+ * Halve the biggest of `auxiliary` that still makes two usable panes. Used on its
+ * own for space with no main pane in it — a tmux window dev3 opened for output.
+ */
+export function planAuxiliarySplit(
+	auxiliary: PaneSplitCandidate[],
+	allowed: readonly SplitOrientation[],
+	separator: number,
+): PaneSplitPlan {
+	const orientations = (["horizontal", "vertical"] as const).filter((o) => allowed.includes(o));
 	let best: { option: PaneSplitOption; candidate: PaneSplitCandidate } | null = null;
 	let closest: { option: PaneSplitOption; candidate: PaneSplitCandidate } | null = null;
 	for (const candidate of auxiliary) {
 		for (const orientation of orientations) {
 			const entry = { option: optionFor(candidate, orientation, separator), candidate };
-			if (!closest || better(entry, closest)) closest = entry;
+			if (!closest || entry.option.score > closest.option.score) closest = entry;
 			if (!fits(entry.option.kept) || !fits(entry.option.added)) continue;
 			if (!best || better(entry, best)) best = entry;
 		}

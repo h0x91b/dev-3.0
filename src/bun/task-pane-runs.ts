@@ -53,7 +53,7 @@ import {
 	paneRunSpecPath,
 	paneRunStatusPath,
 } from "./pane-run-store";
-import { closeTaskPane, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "./task-aux-panes";
+import { closeTaskPane, openTaskPaneWindow, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "./task-aux-panes";
 import { decidePaneRunSplit } from "./pane-run-placement";
 import { describeNoRoom } from "../shared/pane-split-plan";
 import { nativeTaskPaneCommands, nativeTaskPanesState } from "./native-task-panes";
@@ -71,9 +71,13 @@ export class PaneRunError extends Error {
 	}
 }
 
+/** The name of a tmux window dev3 opens for runs once no window has room. */
+export const PANE_RUN_WINDOW_NAME = "Runs";
+
 /**
- * No pane could be split without leaving one below the usable minimum, and the
- * protected main pane is never the fallback. Nothing was opened.
+ * No pane could be split without leaving one below the usable minimum, the
+ * backend has no windows to overflow into (native), and the protected main pane
+ * is never the fallback. Nothing was opened.
  */
 export class PaneRunNoRoomError extends PaneRunError {
 	constructor(detail: string) {
@@ -168,9 +172,9 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 	let handle: AuxPaneHandle;
 	try {
 		const where = await placePaneRun(spec);
-		handle = await splitTaskPane({
+		const launch = {
 			task: spec.task,
-			...where,
+			placement: where.placement,
 			size: "50%",
 			cwd: spec.cwd,
 			env: spec.env,
@@ -181,11 +185,18 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 			// the auxiliary panes use with their script paths).
 			tmuxCommand: [cli, ...argv].map(posixQuote).join(" "),
 			nativeLaunch: { executable: cli, argv },
-			// Native hands input focus back to the pane that had it, so a run an agent
-			// started does not take its keyboard (tmux behaves as it does for every
-			// other dev3 pane: the new pane becomes active).
-			restoreFocus: true,
-		});
+		};
+		handle = where.newWindow
+			? await openTaskPaneWindow({ ...launch, windowName: PANE_RUN_WINDOW_NAME })
+			: await splitTaskPane({
+					...launch,
+					tmuxTarget: where.tmuxTarget,
+					nativeAnchor: where.nativeAnchor,
+					// Native hands input focus back to the pane that had it, so a run an agent
+					// started does not take its keyboard (tmux behaves as it does for every
+					// other dev3 pane: the new pane becomes active).
+					restoreFocus: true,
+				});
 	} catch (err) {
 		// No pane means no run. A spec left behind would show up as a phantom run with
 		// an unknowable outcome in every later `dev3 pane list`.
@@ -210,7 +221,7 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
  */
 async function placePaneRun(
 	spec: StartPaneRunSpec,
-): Promise<{ placement: AuxPanePlacement; tmuxTarget?: string; nativeAnchor?: string }> {
+): Promise<{ placement: AuxPanePlacement; tmuxTarget?: string; nativeAnchor?: string; newWindow?: true }> {
 	const below = spec.placement === "below";
 	const decision = await decidePaneRunSplit({
 		task: spec.task,
@@ -219,6 +230,13 @@ async function placePaneRun(
 		below,
 	});
 	if (decision.kind === "no-room") throw new PaneRunNoRoomError(describeNoRoom(decision.plan));
+	if (decision.kind === "new-window") {
+		log.info("Pane run placement: no window has room, opening a new one", {
+			taskId: spec.task.id.slice(0, 8),
+			why: describeNoRoom(decision.plan),
+		});
+		return { placement: below ? "below" : "right", newWindow: true };
+	}
 	if (decision.kind === "unplanned") {
 		log.warn("Pane run placement fell back to the default split", { taskId: spec.task.id.slice(0, 8), reason: decision.reason });
 		return { placement: below ? "below" : "right" };

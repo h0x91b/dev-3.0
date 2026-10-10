@@ -27,6 +27,7 @@ const { FakeTmuxError } = vi.hoisted(() => ({
 
 const mocks = vi.hoisted(() => ({
 	splitTaskPane: vi.fn(),
+	openTaskPaneWindow: vi.fn(),
 	closeTaskPane: vi.fn(),
 	tmuxListPanes: vi.fn(),
 	nativeTaskPaneCommands: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("../logger", () => ({
 
 vi.mock("../task-aux-panes", () => ({
 	splitTaskPane: mocks.splitTaskPane,
+	openTaskPaneWindow: mocks.openTaskPaneWindow,
 	closeTaskPane: mocks.closeTaskPane,
 }));
 
@@ -165,6 +167,17 @@ describe("startPaneRun", () => {
 		expect(splitSpec().placement).toBe("right");
 		expect(splitSpec().nativeAnchor).toBeUndefined();
 		expect(splitSpec().tmuxTarget).toBeUndefined();
+	});
+
+	it("opens a new window when no window has room, and never splits for it", async () => {
+		mocks.decidePaneRunSplit.mockResolvedValue({ kind: "new-window", plan: { kind: "no-room", closest: null } });
+		mocks.openTaskPaneWindow.mockResolvedValue({ backend: "tmux", paneId: "%9" });
+		const started = await startPaneRun({ task: TMUX_TASK, command: "sleep 1", placement: "auto", cwd: "/wt", env: {} });
+		expect(started.paneId).toBe("%9");
+		expect(mocks.splitTaskPane).not.toHaveBeenCalled();
+		const spec = mocks.openTaskPaneWindow.mock.calls[0][0] as Record<string, unknown>;
+		expect(spec.windowName).toBe("Runs");
+		expect(String(spec.tmuxCommand)).toContain(started.runId);
 	});
 
 	it("refuses a run with no room, opens nothing and leaves no spec behind", async () => {

@@ -397,14 +397,22 @@ export class TmuxClient {
 		target: string;
 		/** `-n`: window name. */
 		name?: string;
+		/** `-d`: open it without making it the current window. */
+		detached?: boolean;
 		printPaneId?: boolean;
+		/** `-e KEY=VAL` env entries visible to the new pane. */
+		env?: Record<string, string>;
 		cwd?: string;
 		command?: string;
 	} & SocketOpt): Promise<{ paneId: string | null; stderr: string }> {
 		this.assertPaneCwd(opts.cwd);
 		const args = ["new-window"];
+		if (opts.detached) args.push("-d");
 		if (opts.name) args.push("-n", opts.name);
 		if (opts.printPaneId) args.push("-P", "-F", PANE_ID_FORMAT.formatString);
+		for (const [key, value] of Object.entries(opts.env ?? {})) {
+			args.push("-e", `${key}=${value}`);
+		}
 		args.push("-t", opts.target);
 		if (opts.cwd) args.push("-c", opts.cwd);
 		if (opts.command) args.push(opts.command);

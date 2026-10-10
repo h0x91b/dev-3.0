@@ -274,6 +274,15 @@ describe("splitWindow / newWindow", () => {
 			"-P", "-F", "#{pane_id}", "-t", "dev3-abc:", "-c", "/wt", "cmd",
 		]);
 	});
+
+	it("newWindow opens detached with env entries when asked", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%4\n" });
+		await client.newWindow({ target: "dev3-abc:", name: "Runs", detached: true, printPaneId: true, env: { DEV3_TASK_SEQ: "7" }, command: "cmd" });
+		expect(argvOf(spawnFn)).toEqual([
+			"tmux", "-L", "dev3", "new-window", "-d", "-n", "Runs",
+			"-P", "-F", "#{pane_id}", "-e", "DEV3_TASK_SEQ=7", "-t", "dev3-abc:", "cmd",
+		]);
+	});
 });
 
 describe("newSessionDetached", () => {
