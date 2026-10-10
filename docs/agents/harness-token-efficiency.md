@@ -1,6 +1,6 @@
 # Harness token efficiency audit
 
-Status: measurement foundation and one opt-in experiment; no demonstrated reduction in cost per completed task yet. Baseline captured on 2026-09-25. The production prompt and model selection remain unchanged by default.
+Status: measurement foundation and opt-in experiments; no demonstrated reduction in cost per completed task yet. Baseline captured on 2026-09-25. The production prompt and model selection remain unchanged by default.
 
 ## Ownership map
 
@@ -97,6 +97,19 @@ Prompt diff ledger (covers all changed text; unchanged full protocol is kept):
 | Injected `CODEX_SKILL_BODY`, other family bodies, model/effort settings | Keep, byte-identical | No model behavior/default changes without an evaluation |
 
 To try it after building this branch's CLI, run `DEV3_COMPACT_AGENT_SKILLS=1 dev3 install-skills` in an isolated evaluation installation. Check that the selected `SKILL.md` is short and its installed fallback (for example `~/.agents/skills/dev3/PROTOCOL.md`) is complete; test both dev3-launched and standalone sessions. For a persistent experiment, start the app with the same flag: app startup and settings-triggered reinstalls otherwise restore the default. To roll back, run `DEV3_COMPACT_AGENT_SKILLS=0 dev3 install-skills` and start fresh sessions. Removing the flag alone does not rewrite files already installed. No live installation was changed during this audit.
+
+## Lean protocol experiment
+
+`DEV3_LEAN_PROTOCOL=1` on the server process changes what each launch injects, which `DEV3_COMPACT_AGENT_SKILLS` leaves byte-identical. The launcher writes the full family body to `~/.dev3.0/data/agent-prompts/<command>.md`, then injects the lean body plus a closing section that names that file and `dev3 --help`. The lean body keeps existing sections verbatim: header, Bug Hunter isolation, session start, branch naming, title/labels/priority/type, status with the completion gate, overview, scratch tasks and the Codex shell note. Claude, omp, Codex, Cursor and OpenCode are affected. Gemini and custom agents inject no protocol either way. Copilot still gets the full body: its `sessionStart` hook answers from the `dev3` CLI process (`src/cli/commands/copilot-hook.ts`), which does not read the server flag.
+
+| Family | Full bytes | Lean bytes, with reference | Removed |
+| --- | ---: | ---: | ---: |
+| Claude | 27,207 | 9,028 | 67% |
+| Codex | 27,974 | 9,795 | 65% |
+| omp | 27,732 | 9,553 | 66% |
+| Generic (Cursor, OpenCode) | 27,776 | 9,597 | 65% |
+
+Lean byte counts use a 44-byte example path; the real path changes them by a few bytes. The flag is read per launch, so restart the server with it set and start fresh sessions; unset it to roll back. The evaluation plan below applies unchanged: lean text is not proof of equal task quality. Rationale: `decisions/2026/10/02/lean-protocol-opt-in.md`.
 
 ## Run the local task audit
 

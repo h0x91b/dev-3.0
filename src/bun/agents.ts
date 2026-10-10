@@ -24,6 +24,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
+import { leanProtocolReference } from "../shared/agent-skill-content";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
 export { claudeModelFamily } from "../shared/agent-accounts";
@@ -535,6 +536,7 @@ export async function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
+	const leanBody = options?.skipSystemPrompt ? undefined : leanProtocolBody(adapter);
 	const adapterOptions: AdapterLaunchOptions = {
 		resume: options?.resume,
 		sessionId: options?.sessionId,
@@ -552,7 +554,8 @@ export async function resolveAgentCommand(
 		// The protocol reaches Claude as a file on every platform: Windows cannot
 		// carry it on the command line, and POSIX argv is what `pkill -f` matches
 		// against. Resolved here because writing one is impure and adapters are not.
-		systemPromptFile: options?.skipSystemPrompt ? undefined : systemPromptFileFor(adapter),
+		systemPromptFile: options?.skipSystemPrompt ? undefined : systemPromptFileFor(adapter, leanBody),
+		protocolBody: leanBody,
 	};
 
 	// The adapter returns argv with the binary first; only the boundary knows the
@@ -583,10 +586,22 @@ export async function resolveAgentCommand(
  */
 const SYSTEM_PROMPT_FILE_COMMANDS = new Set(["claude", "omp"]);
 
-function systemPromptFileFor(adapter: { command: string; skillBody?: string }): string | undefined {
+function systemPromptFileFor(adapter: { command: string; skillBody?: string }, leanBody?: string): string | undefined {
 	if (!SYSTEM_PROMPT_FILE_COMMANDS.has(adapter.command) || !adapter.skillBody) return undefined;
+	if (leanBody) return ensureAgentSystemPromptFile(`${adapter.command}-lean`, leanBody);
 	// Named per agent so two bodies never share a file. Claude keeps its own name.
 	return ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
+}
+
+/**
+ * The lean protocol for this launch, or undefined for the full one (the default).
+ * An installation-wide experiment read at launch, like DEV3_COMPACT_AGENT_SKILLS:
+ * the full body is written to its own file first, so the lean one can name it.
+ */
+function leanProtocolBody(adapter: { command: string; skillBody: string; leanSkillBody?: string }): string | undefined {
+	if (process.env.DEV3_LEAN_PROTOCOL !== "1" || !adapter.leanSkillBody) return undefined;
+	const fullProtocolPath = ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
+	return adapter.leanSkillBody + leanProtocolReference(fullProtocolPath);
 }
 
 /** Every raw arg a launch adds beyond the preset's own: the selected backend's

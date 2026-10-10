@@ -203,6 +203,8 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Four
 - **omp variant** — full body with the same hook-aware status section as Codex's, without the Codex shell note. The same body reaches omp as a file through `--append-system-prompt`; the skill file is the fallback for sessions started outside the dev3 launcher
 - **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
+With `DEV3_LEAN_PROTOCOL=1` on the server, the injected copy for Claude, Codex, omp, Cursor and OpenCode is a lean body: the session-start, status, completion and overview sections plus the path of the full body on disk. Copilot's hook-delivered copy stays full. See `decisions/2026/10/02/lean-protocol-opt-in.md`.
+
 All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval. They also treat an unqualified interactive artifact/report/dashboard request as a likely dev3 HTML artifact while preserving explicit Claude Artifact and build/package meanings. Each receives the same fixed six-file starter map, exact copy command, two-file edit boundary, and `dev3 show-artifact --assets` publish command.
 
 ### dev3-project-config (project configuration)
