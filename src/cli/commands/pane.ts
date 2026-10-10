@@ -3,7 +3,9 @@ import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../../shared/cli-exit-codes";
 import {
+	PANE_RUN_NO_ROOM_CODE,
 	PANE_RUN_TAIL_MAX_LINES,
 	renderPaneRunListing,
 	renderPaneRunLog,
@@ -13,7 +15,7 @@ import {
 
 const USAGE = `Usage:
   dev3 pane list [--task <id>] [--project <id>] [--json]      Which backend you are on, which panes exist, which one is yours
-  dev3 pane run "<command>" [--below] [--label <name>]        Run a command in a neighbouring pane; prints the run id
+  dev3 pane run "<command>" [--below] [--label <name>]        Run a command in a neighbouring pane (--below: stack vertically only); prints the run id
   dev3 pane logs <run-id> [--lines <N>] [--json]              The run's outcome + the tail of what it printed
   dev3 pane close <run-id>                                    Close the run's pane (kills the command)`;
 
@@ -77,10 +79,16 @@ export async function handlePane(
 			const resp = await sendRequest(socketPath, "pane.run", {
 				...taskTarget(args, context),
 				command,
-				placement: "below" in args.flags ? "below" : "right",
+				placement: "below" in args.flags ? "below" : "auto",
+				selfPaneId: selfPaneId() ?? undefined,
 				label: args.flags.label,
 			});
-			if (!resp.ok) exitError(resp.error || "Failed to start the pane run");
+			if (!resp.ok) {
+				const error = resp.error || "Failed to start the pane run";
+				const noRoom = error.indexOf(`${PANE_RUN_NO_ROOM_CODE}: `);
+				if (noRoom >= 0) exitError(error.slice(noRoom + PANE_RUN_NO_ROOM_CODE.length + 2), undefined, CLI_EXIT_CODE_PANE_NO_ROOM);
+				exitError(error);
+			}
 			const started = resp.data as { runId: string; paneId: string; backend: string; logPath: string };
 			if ("json" in args.flags) {
 				process.stdout.write(`${JSON.stringify(started, null, 2)}\n`);

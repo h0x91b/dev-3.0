@@ -9,6 +9,7 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
+import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -803,7 +804,11 @@ const COMMANDS: CommandHelp[] = [
 				summary: "Open a pane next to yours, run the command there, and mirror its output to a log.",
 				details: [
 					"Put flags AFTER the command so the command is not read as a flag value.",
-					"--below          Split below instead of to the right.",
+					"Placement is automatic: the first run takes the right half of your pane; later runs",
+					"split dev3's own output panes only, picking the pane and direction that leave the",
+					"roomiest result. Your pane, other agents and panes you opened are never resized.",
+					"--below          Only stack vertically (never side by side).",
+					`Exit ${CLI_EXIT_CODE_PANE_NO_ROOM} when no pane can be split without leaving one under 40x8 — nothing opens.`,
 					"--label <name>   Short human label for the pane (letters, digits, space, . _ -).",
 					"The command runs through the platform's own shell (sh -c on POSIX, Windows PowerShell",
 					"on Windows) with the task's worktree as cwd and the task's lifecycle env.",

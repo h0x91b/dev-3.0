@@ -1206,7 +1206,9 @@ const handlers: Record<string, Handler> = {
 		return await startPaneRun({
 			task,
 			command: String(params.command ?? ""),
-			placement: params.placement === "below" ? "below" : "right",
+			// An older CLI sends "right" for "no flag" — that, like anything unknown, is auto.
+			placement: params.placement === "below" ? "below" : "auto",
+			selfPaneId: params.selfPaneId === undefined ? null : String(params.selfPaneId),
 			label: params.label === undefined ? undefined : String(params.label),
 			cwd,
 			env: buildTaskLifecycleEnv(project, task, cwd),

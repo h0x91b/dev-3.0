@@ -36,6 +36,7 @@ import {
 	decodePaneRunStatus,
 	isPaneRunId,
 	isPaneRunLabel,
+	PANE_RUN_NO_ROOM_CODE,
 	paneRunCommandProblem,
 	paneRunTail,
 	type PaneRunListing,
@@ -52,7 +53,9 @@ import {
 	paneRunSpecPath,
 	paneRunStatusPath,
 } from "./pane-run-store";
-import { closeTaskPane, splitTaskPane, type AuxPaneHandle } from "./task-aux-panes";
+import { closeTaskPane, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "./task-aux-panes";
+import { decidePaneRunSplit } from "./pane-run-placement";
+import { describeNoRoom } from "../shared/pane-split-plan";
 import { nativeTaskPaneCommands, nativeTaskPanesState } from "./native-task-panes";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { DEFAULT_TMUX_SOCKET, PANE_START_COMMAND_FORMAT, taskSessionName, tmux, TmuxError } from "./tmux";
@@ -68,10 +71,23 @@ export class PaneRunError extends Error {
 	}
 }
 
+/**
+ * No pane could be split without leaving one below the usable minimum, and the
+ * protected main pane is never the fallback. Nothing was opened.
+ */
+export class PaneRunNoRoomError extends PaneRunError {
+	constructor(detail: string) {
+		super(`${PANE_RUN_NO_ROOM_CODE}: no room for another pane — ${detail}. Close a finished run (\`dev3 pane close <run-id>\`), enlarge the window, or run the command inline`);
+		this.name = "PaneRunNoRoomError";
+	}
+}
+
 export interface StartPaneRunSpec {
 	task: Task;
 	command: string;
 	placement: PaneRunPlacement;
+	/** The pane the CLI was called from — the main pane the split must protect. */
+	selfPaneId?: string | null;
 	label?: string;
 	/** Working directory for the command — the task worktree, resolved by the caller. */
 	cwd: string;
@@ -151,10 +167,11 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 	const argv = [PANE_RUN_VERB, dir, runId];
 	let handle: AuxPaneHandle;
 	try {
+		const where = await placePaneRun(spec);
 		handle = await splitTaskPane({
 			task: spec.task,
-			placement: spec.placement,
-			size: "40%",
+			...where,
+			size: "50%",
 			cwd: spec.cwd,
 			env: spec.env,
 			socket: socketOf(spec.task),
@@ -183,6 +200,41 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 		backend: handle.backend,
 		logPath: paneRunLogPath(dir, runId),
 		command: spec.command,
+	};
+}
+
+/**
+ * Which pane to split and which way. A layout that cannot be read keeps the old
+ * behaviour (split whatever the backend splits by default) rather than failing a
+ * run over a placement nicety; a layout with no room refuses the run.
+ */
+async function placePaneRun(
+	spec: StartPaneRunSpec,
+): Promise<{ placement: AuxPanePlacement; tmuxTarget?: string; nativeAnchor?: string }> {
+	const below = spec.placement === "below";
+	const decision = await decidePaneRunSplit({
+		task: spec.task,
+		socket: socketOf(spec.task),
+		selfPaneId: spec.selfPaneId ?? null,
+		below,
+	});
+	if (decision.kind === "no-room") throw new PaneRunNoRoomError(describeNoRoom(decision.plan));
+	if (decision.kind === "unplanned") {
+		log.warn("Pane run placement fell back to the default split", { taskId: spec.task.id.slice(0, 8), reason: decision.reason });
+		return { placement: below ? "below" : "right" };
+	}
+	const { target } = decision;
+	log.info("Pane run placement", {
+		taskId: spec.task.id.slice(0, 8),
+		paneId: target.paneId,
+		orientation: target.orientation,
+		splitsMain: target.plan.splitsMain,
+		added: `${target.plan.added.cols}x${target.plan.added.rows}`,
+	});
+	return {
+		placement: target.orientation === "horizontal" ? "right" : "below",
+		tmuxTarget: target.paneId,
+		nativeAnchor: target.paneId,
 	};
 }
 

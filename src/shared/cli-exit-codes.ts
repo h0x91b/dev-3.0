@@ -28,6 +28,7 @@ export const CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN = 26;
 export const CLI_EXIT_CODE_RESET_DECLINED = 27;
 export const CLI_EXIT_CODE_GH_TLS_UNVERIFIED = 28;
 export const CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED = 29;
+export const CLI_EXIT_CODE_PANE_NO_ROOM = 30;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -204,5 +205,9 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED,
 		description:
 			"`dev3 peek --follow` was aimed at a pane whose backend publishes no screen text (the native backend answers `not-enabled` today). The one snapshot it could take — pane summary plus the explicit `could not read the terminal` line — is printed first, then the follow ends instead of sampling a screen it can never read. Distinct from code `1` so a watcher can tell \"this backend cannot be followed\" from a failed request.",
+		constant: "CLI_EXIT_CODE_PANE_NO_ROOM",
+		code: CLI_EXIT_CODE_PANE_NO_ROOM,
+		description:
+			"`dev3 pane run` found no pane it could split without leaving one below the usable minimum (40 columns by 8 rows), so NOTHING was opened and nothing on screen changed. The protected main pane is never split again to make room. Close a finished run (`dev3 pane close <run-id>`), enlarge the window, or run the command inline. Distinct from exit 1 so an agent can fall back to running the command itself instead of retrying.",
 	},
 ] as const;

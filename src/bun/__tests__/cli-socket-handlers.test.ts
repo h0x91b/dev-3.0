@@ -602,9 +602,11 @@ describe("pane.* — the CLI's own pane surface", () => {
 		expect(resp.data).toMatchObject({ runId: "run-0123456789ab" });
 	});
 
-	it("defaults an unknown placement to the pane on the right rather than guessing", async () => {
+	it("reads an unknown placement — and an older CLI's \"right\" — as auto, and passes the caller's pane", async () => {
 		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "sideways" }));
-		expect(vi.mocked(startPaneRun).mock.calls[0][0].placement).toBe("right");
+		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "right", selfPaneId: "%3" }));
+		expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({ placement: "auto", selfPaneId: null });
+		expect(vi.mocked(startPaneRun).mock.calls[1][0]).toMatchObject({ placement: "auto", selfPaneId: "%3" });
 	});
 
 	it("refuses to split a task with no worktree instead of running the command somewhere else", async () => {
