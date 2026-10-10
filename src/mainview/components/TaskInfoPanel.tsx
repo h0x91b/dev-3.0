@@ -1672,7 +1672,7 @@ function TaskInfoPanel({
 						</div>
 						<div className="flex-1" />
 						<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser compact={tight} />
+							<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser compact={tight} />
 							{project.kind !== "virtual" && (
 								<>
 									{!scriptsRunnerHidden && (
@@ -1748,7 +1748,7 @@ function TaskInfoPanel({
 							</div>
 							<div className="flex-1" />
 							<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} compact={tight} />
+								<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser={false} compact={tight} />
 								{project.kind !== "virtual" && (
 									<>
 										{!scriptsRunnerHidden && (

@@ -20,6 +20,7 @@ import diagnostics from "./en/diagnostics";
 import nativePaneLab from "./en/nativePaneLab";
 import panes from "./en/panes";
 import tour from "./en/tour";
+import fileExplorer from "./en/fileExplorer";
 
 const en = {
 	...common,
@@ -44,6 +45,7 @@ const en = {
 	...nativePaneLab,
 	...panes,
 	...tour,
+	...fileExplorer,
 } as const;
 
 export type TranslationKey = keyof typeof en;

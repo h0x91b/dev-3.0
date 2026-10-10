@@ -1,8 +1,6 @@
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { toast } from "../../toast";
-import { createPortal } from "react-dom";
-import type { Project, Task } from "../../../shared/types";
-import { api } from "../../rpc";
+import type { Task } from "../../../shared/types";
+import { toggleFileExplorer, useFileExplorerPrefs } from "../../file-explorer-prefs";
 import { useT } from "../../i18n";
 import OpenInMenu from "../OpenInMenu";
 import Tooltip from "../Tooltip";
@@ -10,22 +8,18 @@ import { OpenInIcon, FileTreeIcon } from "../TaskIcons";
 
 interface TaskOpenInProps {
 	task: Task;
-	project: Project;
 	isTaskActive: boolean;
 	showFileBrowser?: boolean;
 	/** Icon-only rendering for a bar that is short on width. */
 	compact?: boolean;
 }
 
-export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowser = true, compact = false }: TaskOpenInProps) {
+export default function TaskOpenIn({ task, isTaskActive, showFileBrowser = true, compact = false }: TaskOpenInProps) {
 	const t = useT();
 	const openInBtnRef = useRef<HTMLButtonElement>(null);
 	const [openInMenuOpen, setOpenInMenuOpen] = useState(false);
 	const [openInMenuPos, setOpenInMenuPos] = useState({ top: 0, left: 0 });
-	const [yaziInstallPopup, setYaziInstallPopup] = useState(false);
-	const [yaziCopied, setYaziCopied] = useState(false);
-	const [yaziInstallCmd, setYaziInstallCmd] = useState("");
-	const [yaziLinuxHint, setYaziLinuxHint] = useState(false);
+	const explorerShown = useFileExplorerPrefs().mode !== "hidden";
 
 	function handleOpenInClick(event: ReactMouseEvent<HTMLButtonElement>) {
 		event.stopPropagation();
@@ -34,23 +28,6 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 			setOpenInMenuPos({ top: rect.bottom + 4, left: rect.left });
 		}
 		setOpenInMenuOpen(true);
-	}
-
-	async function handleFileBrowser() {
-		if (!isTaskActive) {
-			return;
-		}
-
-		try {
-			const result = await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
-			if (result && (result as { notInstalled?: boolean }).notInstalled) {
-				setYaziInstallCmd((result as { installCommand?: string }).installCommand ?? "");
-				setYaziLinuxHint(!!(result as { linuxHint?: boolean }).linuxHint);
-				setYaziInstallPopup(true);
-			}
-		} catch (err) {
-			toast.error(t("infoPanel.fileBrowserFailed", { error: String(err) }), { taskId: task.id });
-		}
 	}
 
 	if (!isTaskActive || !task.worktreePath) {
@@ -84,68 +61,16 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 				<div className="relative flex-shrink-0">
 					<Tooltip content={t("header.fileBrowser")} detail={t("ttip.openIn.fileBrowser")}>
 						<button
-							onClick={handleFileBrowser}
-							disabled={!isTaskActive}
-							className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-								!isTaskActive
-									? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
-									: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
+							onClick={toggleFileExplorer}
+							className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 border border-edge hover:bg-elevated ${
+								explorerShown ? "text-accent hover:text-accent-emphasis" : "text-fg-3 hover:text-fg"
 							}`}
 							aria-label={t("header.fileBrowser")}
+							aria-pressed={explorerShown}
 						>
 							<FileTreeIcon className="w-[1.125rem] h-[1.125rem]" />
 						</button>
 					</Tooltip>
-					{yaziInstallPopup && createPortal(
-						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setYaziInstallPopup(false)}>
-							<div
-								className="bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-5 max-w-lg w-full mx-4"
-								onClick={(event) => event.stopPropagation()}
-							>
-								<div className="text-sm font-semibold text-fg mb-2">{t("fileBrowser.notInstalledTitle")}</div>
-								<p className="text-fg-3 text-xs mb-3">{t("fileBrowser.notInstalledDesc")}</p>
-								{yaziLinuxHint && <p className="text-fg-3 text-xs mb-2">{t("fileBrowser.linuxBrewHint")}</p>}
-								<div className="flex items-center gap-2 mb-3">
-									<code className="flex-1 text-warning-strong bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all">
-										{yaziInstallCmd}
-									</code>
-									<Tooltip content={t("openIn.copyPath")} detail={t("ttip.infoPanel.copyPath")}>
-									<button
-										onClick={() => {
-											navigator.clipboard.writeText(yaziInstallCmd);
-											setYaziCopied(true);
-											setTimeout(() => setYaziCopied(false), 2000);
-										}}
-										className="p-2 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
-										aria-label={t("openIn.copyPath")}
-									>
-										{yaziCopied ? (
-											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-												<polyline points="20 6 9 17 4 12" />
-											</svg>
-										) : (
-											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-												<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-												<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-											</svg>
-										)}
-									</button>
-									</Tooltip>
-								</div>
-								{yaziCopied && <p className="text-success text-xs mb-3">{t("requirements.copied")}</p>}
-								<p className="text-fg-muted text-xs mb-3">{t("fileBrowser.clickAgainHint")}</p>
-								<div className="flex justify-end">
-									<button
-										onClick={() => setYaziInstallPopup(false)}
-										className="px-4 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover transition-colors"
-									>
-										OK
-									</button>
-								</div>
-							</div>
-						</div>,
-						document.body,
-					)}
 				</div>
 			)}
 		</>

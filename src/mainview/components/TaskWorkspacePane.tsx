@@ -11,6 +11,8 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { getArtifactDock, setArtifactDock } from "../utils/artifact-dock";
 import { useT } from "../i18n";
+import FileExplorerFrame from "./FileExplorerFrame";
+import { useYaziLauncher } from "./task-info-panel/useYaziLauncher";
 
 const DEFAULT_ARTIFACT_WIDTH = 560;
 const MIN_ARTIFACT_WIDTH = 360;
@@ -74,6 +76,7 @@ function TaskWorkspacePane({
 	const project = projects.find((item) => item.id === projectId);
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const yazi = useYaziLauncher(task, project);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	const inlineDiffWasOpenRef = useRef(false);
 	const [artifactWidth, setArtifactWidth] = useState(initialArtifactWidth);
@@ -258,16 +261,25 @@ function TaskWorkspacePane({
 				   then remounts again once the new url arrives — producing
 				   the "clean of screen of the task we leave" flicker. */}
 				<div className="flex min-w-0 min-h-0 flex-1 flex-col">
-					<TaskTerminal
-						key={taskId}
+					<FileExplorerFrame
 						projectId={projectId}
 						taskId={taskId}
-						tasks={tasks}
-						projects={projects}
-						navigate={navigate}
-						dispatch={dispatch}
-						hideInfoPanel
-					/>
+						rootLabel={task?.branchName ?? task?.title ?? ""}
+						enabled={!immersive && !isNarrow && !!task?.worktreePath}
+						onOpenYazi={task && task.terminalBackend !== "native" ? yazi.launch : undefined}
+					>
+						<TaskTerminal
+							key={taskId}
+							projectId={projectId}
+							taskId={taskId}
+							tasks={tasks}
+							projects={projects}
+							navigate={navigate}
+							dispatch={dispatch}
+							hideInfoPanel
+						/>
+					</FileExplorerFrame>
+					{yazi.dialog}
 				</div>
 				{showArtifact && (
 					<>

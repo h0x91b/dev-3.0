@@ -25,6 +25,7 @@ this page and the website all read from it.
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
+| Show or hide the file explorer | ⇧⌘E | Ctrl+Shift+B |
 | Find in the focused terminal | ⌘F | Ctrl+Shift+F |
 | Find in an HTML artifact | ⌘F | Ctrl+F |
 | Find in an open file preview | ⌘F | Ctrl+F |

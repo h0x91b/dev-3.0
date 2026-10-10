@@ -207,6 +207,12 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "open-in", primary: [mod("KeyO")], descKey: "keymap.shortcut.openIn", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", primary: [mod("Slash")], descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
 	{ id: "agent-traffic-log", primary: [mod("KeyM", "Shift")], descKey: "keymap.shortcut.agentTrafficLog", category: "view" },
+	// VS Code's ⇧⌘E on macOS. Off macOS Ctrl+Shift+E already splits a terminal pane,
+	// so the explorer takes Ctrl+Shift+B there.
+	{
+		id: "toggle-file-explorer", category: "view", descKey: "keymap.shortcut.toggleFileExplorer",
+		primary: [{ code: "KeyE", mods: ["Mod", "Shift"], platform: "mac" }, { code: "KeyB", mods: ["Ctrl", "Shift"], platform: "other" }],
+	},
 	// Space is a `RESERVED_CODE`, so it can never be a dispatched binding — the
 	// traffic view hand-writes it and skips every context that owns the key. Listed
 	// here so the overlay and the docs still print it.

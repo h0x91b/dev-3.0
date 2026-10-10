@@ -459,6 +459,7 @@ const common = {
 	"command.tmuxCheatSheet": "Mostrar referencia de tmux",
 	"command.keyboardShortcuts": "Atajos de teclado",
 	"command.agentTrafficLog": "Tráfico de agentes",
+	"command.toggleFileExplorer": "Mostrar u ocultar el explorador",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",

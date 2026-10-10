@@ -109,7 +109,7 @@ export const tooltips = {
 
 	// Open in / files
 	"ttip.openIn.menu": "Abre el worktree de esta tarea en tu editor, terminal, gestor de archivos o en GitHub.",
-	"ttip.openIn.fileBrowser": "Explora los archivos del worktree en un gestor de archivos de terminal (yazi), en un panel junto al agente.",
+	"ttip.openIn.fileBrowser": "Muestra los archivos del worktree en un panel lateral. Fíjalo o deja que se oculte solo.",
 
 	// Scripts / dev server / ports / images
 	"ttip.scripts.run": "Ejecuta un script de package.json o un target de Makefile de este worktree en un panel tmux — ves la salida en vivo.",

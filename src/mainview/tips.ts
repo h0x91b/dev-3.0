@@ -295,9 +295,9 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "yazi-file-browser",
-		titleKey: "tip.yaziFileBrowser.title",
-		bodyKey: "tip.yaziFileBrowser.body",
+		id: "file-explorer-insert-path",
+		titleKey: "tip.fileExplorerInsertPath.title",
+		bodyKey: "tip.fileExplorerInsertPath.body",
 		icon: "", // nf-fa-folder_open
 		score: 3,
 		contexts: ["terminal"],
