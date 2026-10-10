@@ -257,10 +257,11 @@ set -g status-position top
 set -g status-right "${PANE_ID_BADGE}"
 set -g status-left ""
 
-# A + button right after the last tab opens a window like Cmd+T: same cwd rule.
+# A + button right after the last tab opens a window like Cmd+T: same cwd rule, and
+# it selects the new (last) window, since new-window itself stays in the background.
 # Any other click keeps tmux's default (switch to the clicked tab).
 set -g 'status-format[0]' '${STATUS_FORMAT}'
-bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},${NEW_WINDOW_STATUS_RANGE}}' 'new-window -c "${PANE_CWD_FORMAT}"' 'switch-client -t ='
+bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},${NEW_WINDOW_STATUS_RANGE}}' 'new-window -c "${PANE_CWD_FORMAT}" ; select-window -t "{end}"' 'switch-client -t ='
 
 # The bar stays visible with a single window too. Earlier configs hid it through
 # these hooks, and re-sourcing never drops a hook on a live server — unset them.

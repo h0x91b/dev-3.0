@@ -8,7 +8,7 @@ import { notifyTmuxWindowsChanged, setWindowNavStyle } from "../../terminal-wind
 import type { TmuxWindowEntry } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn() } },
+	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn(), tmuxNewWindow: vi.fn() } },
 }));
 vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 import { confirm } from "../../confirm";
@@ -48,6 +48,7 @@ describe("TerminalWindowNav", () => {
 		navigate().mockReset();
 		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
 		vi.mocked(confirm).mockReset();
+		vi.mocked(api.request.tmuxNewWindow).mockReset().mockResolvedValue(undefined as never);
 		mounts.count = 0;
 		localStorage.clear();
 	});
@@ -270,5 +271,16 @@ describe("TerminalWindowNav", () => {
 		expect(screen.queryByRole("menu")).toBeNull();
 		expect(tab).toHaveFocus();
 		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
+	});
+
+	it.each(["rail", "tabs"] as const)("%s: the + after the last tab opens a new window, even with one window", async (style) => {
+		act(() => setWindowNavStyle(style));
+		respond([win(1, "Fix auth", { home: true, active: true })]);
+		renderNav();
+		const plus = await screen.findByRole("button", { name: "New window" });
+		expect(screen.getByRole("tablist")).not.toContainElement(plus);
+		await userEvent.click(plus);
+		expect(api.request.tmuxNewWindow).toHaveBeenCalledWith({ taskId: "task-1" });
+		await waitFor(() => expect(navigate().mock.calls.length).toBeGreaterThan(1));
 	});
 });

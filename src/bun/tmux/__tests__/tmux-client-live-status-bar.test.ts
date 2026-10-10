@@ -134,6 +134,17 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		expect(binding).toContain('select-window -t "{end}"');
 	});
 
+	it("the bar's + lands on the window it creates, like ⌃B c", () => {
+		const binding = tmux("list-keys", "-T", "root", "MouseDown1Status");
+		expect(binding).toContain("new-window -c");
+		expect(binding).toContain('select-window -t \\"{end}\\"');
+		// The + branch exactly as bound, run against a session: the new window ends up active.
+		tmux("new-session", "-d", "-s", "plus", "sh");
+		tmux("if-shell", "-F", "1", 'new-window -t "=plus:" sh ; select-window -t "=plus:{end}"', "");
+		const last = tmux("list-windows", "-t", "=plus", "-F", "#{window_active}").split("\n").pop();
+		expect(last).toBe("1");
+	});
+
 	it("shows only the focused pane's id beside the tabs", () => {
 		expect(tmux("show-options", "-gv", "status-left")).toBe("");
 		const right = tmux("show-options", "-gv", "status-right");

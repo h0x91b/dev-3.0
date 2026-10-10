@@ -72,7 +72,7 @@ describe("buildThemeConfig", () => {
 		expect(STATUS_FORMAT.lastIndexOf("#[nolist]", button)).toBeGreaterThan(list);
 		expect(button).toBeLessThan(STATUS_FORMAT.indexOf("align=right"));
 		expect(config).toContain(
-			`bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},${NEW_WINDOW_STATUS_RANGE}}' 'new-window -c "${PANE_CWD_FORMAT}"' 'switch-client -t ='`,
+			`bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},${NEW_WINDOW_STATUS_RANGE}}' 'new-window -c "${PANE_CWD_FORMAT}" ; select-window -t "{end}"' 'switch-client -t ='`,
 		);
 	});
 

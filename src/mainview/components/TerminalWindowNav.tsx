@@ -4,7 +4,7 @@ import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
 import { useTmuxWindows } from "../hooks/useTmuxWindows";
 import { requestTaskTerminalFocus } from "../terminal-focus-request";
-import { closeTmuxWindow, useWindowNavStyle, type WindowNavStyle } from "../terminal-window-nav";
+import { closeTmuxWindow, openTmuxWindow, useWindowNavStyle, type WindowNavStyle } from "../terminal-window-nav";
 import { toast } from "../toast";
 import Tooltip from "./Tooltip";
 
@@ -56,6 +56,7 @@ export default function TerminalWindowNav({
 					agentWaiting={taskStatus === "user-questions"}
 					onSelect={select}
 					onClose={close}
+					onNew={() => void openTmuxWindow(taskId).then(() => requestTaskTerminalFocus(taskId))}
 					homeTitle={taskTitle}
 					t={t}
 				/>
@@ -90,6 +91,7 @@ function WindowList({
 	agentWaiting,
 	onSelect,
 	onClose,
+	onNew,
 	homeTitle,
 	t,
 }: {
@@ -100,6 +102,7 @@ function WindowList({
 	agentWaiting: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
 	onClose: (w: TmuxWindowEntry) => void;
+	onNew: () => void;
 	homeTitle?: string;
 	t: TFunction;
 }) {
@@ -157,17 +160,20 @@ function WindowList({
 
 	return (
 		<div
-			ref={listRef}
-			role="tablist"
-			aria-label={t("windowPager.role")}
-			aria-orientation={rail ? "vertical" : "horizontal"}
-			onKeyDown={onKeyDown}
 			data-window-nav={style}
 			className={
 				rail
 					? "flex-shrink-0 w-7 flex flex-col gap-0.5 py-1.5 pl-1 overflow-y-auto overflow-x-hidden bg-raised border-r border-edge window-nav-scroll"
 					: "flex-shrink-0 flex items-end gap-0.5 px-1.5 pt-1 overflow-x-auto overflow-y-hidden bg-raised border-b border-edge window-nav-scroll"
 			}
+		>
+		<div
+			ref={listRef}
+			role="tablist"
+			aria-label={t("windowPager.role")}
+			aria-orientation={rail ? "vertical" : "horizontal"}
+			onKeyDown={onKeyDown}
+			className={rail ? "flex flex-col gap-0.5" : "flex items-end gap-0.5"}
 		>
 			{windows.map((w) => {
 				const isUnseen = unseen.has(w.windowId);
@@ -219,6 +225,21 @@ function WindowList({
 				);
 			})}
 			{menu && <WindowMenu state={menu} onSelect={onSelect} onClose={onClose} onDismiss={() => setMenu(null)} t={t} />}
+		</div>
+			{/* Right after the last tab, like the tmux bar's own +; it lands on the new window. */}
+			<Tooltip content={t("tmux.newWindowDesc")} placement={rail ? "right" : "bottom"}>
+				<button
+					type="button"
+					aria-label={t("tmux.newWindowDesc")}
+					data-window-new=""
+					onClick={onNew}
+					className={`flex-shrink-0 flex items-center justify-center text-fg-3 hover:text-fg hover:bg-elevated transition-[background-color,color,scale] duration-150 active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+						rail ? "w-full h-7 rounded-l-md" : "w-7 h-7 rounded-t-md"
+					}`}
+				>
+					<span aria-hidden="true" className="text-sm leading-none">+</span>
+				</button>
+			</Tooltip>
 		</div>
 	);
 }
