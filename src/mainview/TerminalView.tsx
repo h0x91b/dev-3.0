@@ -959,17 +959,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						// Compose mode owns the keyboard: re-grabbing focus here would
 						// re-summon the OSK right after the composer closes.
 						if (touchComposeModeRef.current) return;
-						const active = document.activeElement;
-						if (!active || active === document.body) {
-							setTimeout(() => {
-								if (disposed || touchComposeModeRef.current) return;
-								// During `blur` Chromium reports <body> even when focus is moving
-								// into a dialog (the terminal link sheet), so look again: a dialog
-								// that took focus keeps it, and restores it here when it closes.
-								if (document.activeElement?.closest('[role="dialog"]')) return;
-								hiddenTextarea.focus();
-							}, 50);
-						}
+						// During blur, activeElement is still body, so judge where focus went
+						// once it has settled - else a menu or input that took it loses it again.
+						// A dialog that took focus (the terminal link sheet) restores it on close.
+						setTimeout(() => {
+							if (disposed || touchComposeModeRef.current) return;
+							const active = document.activeElement;
+							if (active && active !== document.body) return;
+							hiddenTextarea.focus();
+						}, 50);
 					});
 
 					// Mobile keyboards use IME composition for letters, but

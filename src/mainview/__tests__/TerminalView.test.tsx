@@ -977,42 +977,54 @@ describe("TerminalView – scrolled-into-history signal (touch scroll-to-latest)
 	});
 });
 
-describe("TerminalView – hidden textarea focus keeper (browser mode)", () => {
-	async function mountWithTextarea() {
+describe("TerminalView – hidden textarea keeps focus only when nothing else takes it", () => {
+	async function renderWithTextarea() {
 		mockTermInstance.open.mockImplementationOnce((el: HTMLElement) => {
 			el.appendChild(document.createElement("textarea"));
 		});
 		const result = await renderAndSetup();
 		const textarea = result.container.querySelector('[data-terminal="true"] textarea') as HTMLTextAreaElement;
 		expect(textarea).toBeTruthy();
+		textarea.focus();
 		return { ...result, textarea };
 	}
+	const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 80)));
 
-	it("takes focus back when it falls to <body>", async () => {
-		const { textarea } = await mountWithTextarea();
-		textarea.focus();
+	it("leaves focus on the element that took it, so a context menu stays open", async () => {
+		const { textarea } = await renderWithTextarea();
+		const menuItem = document.createElement("button");
+		document.body.appendChild(menuItem);
+
+		menuItem.focus();
+		await settle();
+
+		expect(document.activeElement).toBe(menuItem);
+		expect(document.activeElement).not.toBe(textarea);
+		menuItem.remove();
+	});
+
+	it("takes focus back when it falls to the page body", async () => {
+		const { textarea } = await renderWithTextarea();
+
 		textarea.blur();
-		await act(async () => {
-			await new Promise((resolve) => setTimeout(resolve, 80));
-		});
+		await settle();
+
 		expect(document.activeElement).toBe(textarea);
 	});
 
 	it("leaves focus inside a modal that took it (the terminal link sheet)", async () => {
-		const { textarea } = await mountWithTextarea();
+		const { textarea } = await renderWithTextarea();
 		const dialog = document.createElement("div");
 		dialog.setAttribute("role", "dialog");
 		dialog.setAttribute("aria-modal", "true");
 		const button = document.createElement("button");
 		dialog.appendChild(button);
 		document.body.appendChild(dialog);
-		textarea.focus();
 		// What Chromium reports during the blur of a focus move into a dialog.
 		textarea.blur();
 		button.focus();
-		await act(async () => {
-			await new Promise((resolve) => setTimeout(resolve, 80));
-		});
+		await settle();
+
 		expect(document.activeElement).toBe(button);
 		dialog.remove();
 	});

@@ -1,5 +1,7 @@
 # Touch taps on terminal links open an Open / Copy sheet
 
+> Partly superseded on 2026-10-10 by `decisions/2026/10/08/terminal-refocus-only-when-focus-falls-to-body.md`: the focus keeper now leaves focus on any element that took it, not only inside a `role="dialog"`.
+
 ## Context
 Every terminal link provider (OSC 8, ghostty's plain-URL regex, `dev3://`, file paths) activates only on `ctrlKey || metaKey`, which a touch screen never sets (h0x91b/dev-3.0#1811). Worse, in touch compose mode the container's capture-phase blocker stops `touchend`, so a tap reached nothing at all.
 
