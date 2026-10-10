@@ -3206,7 +3206,7 @@ export function taskSharedMedia(task: Pick<Task, "sharedImages" | "sharedVideos"
 export const MAX_SHARED_IMAGES_PER_CALL = 20;
 
 /** Maximum accepted HTML source size for `dev3 show-artifact` (bytes). */
-export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_SHARED_ARTIFACT_HTML_BYTES = 50 * 1024 * 1024;
 
 /**
  * Video extensions a bundled artifact clip may use (lowercase, no dot). MP4 and

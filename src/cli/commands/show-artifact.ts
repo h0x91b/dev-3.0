@@ -112,7 +112,8 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 	const sourceExt = extname(htmlPath).toLowerCase();
 	if (sourceExt !== ".html" && !TEXT_EXTS.has(sourceExt)) exitUsage(`Artifact must be an .html, .md or .txt file: ${html}`);
 	if (TEXT_EXTS.has(sourceExt) && assets.length) exitUsage("A Markdown or text artifact takes no --assets — publish an .html report to bundle files.");
-	if (statSync(htmlPath).size > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage("Artifact file is too large (max 5 MB)");
+	const htmlBytes = statSync(htmlPath).size;
+	if (htmlBytes > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage(`Artifact file is too large: ${html} is ${mb(htmlBytes)} (max ${mb(MAX_SHARED_ARTIFACT_HTML_BYTES)})`);
 	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets: ${assets.length} (max ${MAX_SHARED_ARTIFACT_ASSETS}). Publish the .html file with an explicit --assets list.`);
 
 	let mediaBytes = 0;
