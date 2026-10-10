@@ -666,7 +666,9 @@ async function columnAgentConfig(
 ): Promise<{ config: ColumnAgentConfig; paneTitle: string; onExitCommand?: string } | null> {
 	if (!task.worktreePath) return null;
 	if (column.status === "review-by-ai" && column.customColumnId === null) {
-		const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+		// Project Settings saves this into the main checkout's .dev3 files, so a
+		// worktree-only read would launch a stale config (#1940).
+		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
 		if (resolved.builtinColumnAgents && !resolved.builtinColumnAgents["review-by-ai"]) return null;
 		const configured = resolved.builtinColumnAgents?.["review-by-ai"];
 		return {
