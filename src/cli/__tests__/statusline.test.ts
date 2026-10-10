@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { claudeDumpFilePaths, configDirDumpName, resolveOriginalStatusLine } from "../commands/statusline";
+import { claudeDumpFilePaths, configDirDumpName, resolveOriginalStatusLine, sessionDumpFilePath } from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -112,5 +112,17 @@ describe("claudeDumpFilePaths", () => {
 		expect(configDirDumpName("/a/.claude")).toBe(configDirDumpName("/a/.claude"));
 		expect(configDirDumpName("/a/.claude")).not.toBe(configDirDumpName("/b/.claude"));
 		expect(configDirDumpName("/a/.claude")).toMatch(/^[0-9a-f]{16}$/);
+	});
+});
+
+describe("sessionDumpFilePath", () => {
+	it("writes one dump per dev3 task under sessions/", () => {
+		expect(sessionDumpFilePath("9994e79b-4c1b", "/base")).toBe(join("/base", "sessions", "9994e79b-4c1b.json"));
+	});
+
+	it("writes nothing outside a task or for an unsafe id", () => {
+		expect(sessionDumpFilePath(undefined, "/base")).toBeNull();
+		expect(sessionDumpFilePath("  ", "/base")).toBeNull();
+		expect(sessionDumpFilePath("../escape", "/base")).toBeNull();
 	});
 });

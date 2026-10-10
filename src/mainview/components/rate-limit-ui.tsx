@@ -277,7 +277,7 @@ export function CapturedAgeSuffix({ capturedAt, now }: { capturedAt: number; now
 }
 
 /** Compact age like "12m" or "3h" for the staleness note. */
-function formatAge(ms: number): string {
+export function formatAge(ms: number): string {
 	const mins = Math.round(ms / 60000);
 	if (mins < 60) return `${mins}m`;
 	const hours = Math.floor(mins / 60);

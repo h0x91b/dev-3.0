@@ -182,6 +182,11 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "view-stats":
 			navigate(ctx, { screen: "stats" });
 			break;
+		case "view-sessions": {
+			const projectId = currentProjectId(state);
+			navigate(ctx, projectId ? { screen: "sessions", scopeProjectId: projectId } : { screen: "sessions" });
+			break;
+		}
 		case "open-settings":
 			navigate(ctx, { screen: "settings" });
 			return;
@@ -479,7 +484,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"toggle-streamer-mode",
 	"about", "hard-refresh",
 	// View / navigation
-	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
+	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "view-sessions", "open-settings",
 	// The traffic log is a renderer overlay, so it works in a browser tab too — it
 	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
 	"view-agent-traffic-log",

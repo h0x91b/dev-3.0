@@ -371,4 +371,64 @@ describe("AgentUsagePanel", () => {
 		renderPanel();
 		expect(screen.getAllByRole("radio").some((r) => r.textContent?.includes("Default login (/home/me/.claude)"))).toBe(true);
 	});
+
+	it("counts only the current project's sessions, every session outside a project, and opens the full list", async () => {
+		const now = Date.now();
+		const session = (taskId: string, taskTitle: string, projectId: string, contextPercent: number) => ({
+			taskId,
+			taskTitle,
+			taskSeq: 1,
+			projectName: projectId,
+			projectId,
+			capturedAt: now,
+			model: null,
+			effort: null,
+			sessionName: null,
+			thinking: null,
+			contextPercent,
+			contextWindowSize: null,
+			totalTokens: null,
+			cacheReadTokens: null,
+			cacheWriteTokens: null,
+			turnInputTokens: null,
+			turnOutputTokens: null,
+			cache: null,
+			costUsd: null,
+			durationMs: null,
+			apiDurationMs: null,
+			linesAdded: null,
+			linesRemoved: null,
+		});
+		const withSessions = {
+			...report(),
+			sessions: [session("t1", "Alpha task", "p1", 91), session("t2", "Beta task", "p2", 92)],
+		} as AgentRateLimitsReport;
+		const onOpenSessions = vi.fn();
+		const view = render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={withSessions}
+					accounts={accounts()}
+					projectId="p1"
+					interactive={false}
+					onOpenSettings={() => {}}
+					onOpenSessions={onOpenSessions}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.getByText("1 session")).toBeTruthy();
+		expect(screen.getByText(/Alpha task/)).toBeTruthy();
+		expect(screen.queryByText(/Beta task/)).toBeNull();
+		// A navigation, so it works before the dwell arms the account rows.
+		await userEvent.click(screen.getByRole("button", { name: "All sessions" }));
+		expect(onOpenSessions).toHaveBeenCalledTimes(1);
+		view.unmount();
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={withSessions} accounts={accounts()} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+		expect(screen.getByText("2 sessions")).toBeTruthy();
+		expect(screen.getByText(/Beta task/)).toBeTruthy();
+	});
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useT } from "../i18n";
+import { useAgentRateLimitsReport } from "../hooks/useAgentRateLimitsReport";
 import { useHeaderFlyout } from "../hooks/useHeaderFlyout";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import BottomSheet from "./BottomSheet";
@@ -39,12 +40,20 @@ const PANEL_WIDTH = 26 * 16;
  * must not be one stray click away from a panel the pointer passed through.
  * Codex monthly credits come from a cached app-server account read; all other
  * data comes from local files — see rate-limit-monitor.ts.
- * Inside a project only that project's Claude login counts; with none in scope
- * (dashboard, settings) every login does.
+ * Inside a project only that project's Claude login and its tasks' sessions
+ * count; with none in scope (dashboard, settings) every login and session does.
  */
-function RateLimitIndicator({ compact = false, projectId = null }: { compact?: boolean; projectId?: string | null }) {
+function RateLimitIndicator({
+	compact = false,
+	projectId = null,
+	onOpenSessions,
+}: {
+	compact?: boolean;
+	projectId?: string | null;
+	onOpenSessions?: () => void;
+}) {
 	const t = useT();
-	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
+	const report = useAgentRateLimitsReport();
 	const [accounts, setAccounts] = useState<AgentAccountsState | null>(null);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Same open/pin/position machinery as the memory-headroom readout: hover drops
@@ -53,17 +62,6 @@ function RateLimitIndicator({ compact = false, projectId = null }: { compact?: b
 	// Re-read on every open: a project's pin lives in its config files, which
 	// change without any push.
 	const pinnedLogins = usePinnedClaudeLogins(flyout.open);
-
-	useEffect(() => {
-		api.request.getAgentRateLimits().then(setReport).catch(() => {
-			// backend not ready — stay hidden until the first push arrives
-		});
-		function onUpdate(e: Event) {
-			setReport((e as CustomEvent).detail as AgentRateLimitsReport);
-		}
-		window.addEventListener("rpc:agentRateLimitsUpdated", onUpdate);
-		return () => window.removeEventListener("rpc:agentRateLimitsUpdated", onUpdate);
-	}, []);
 
 	useEffect(() => {
 		function reload() {
@@ -124,6 +122,7 @@ function RateLimitIndicator({ compact = false, projectId = null }: { compact?: b
 			accounts={accounts}
 			pinnedLogins={scope ? pinnedLogins.filter((login) => login.configDir === scope.configDir) : pinnedLogins}
 			projectPinned={!!scope?.configDir}
+			projectId={projectId}
 			// A sheet is opened deliberately and has no hover state to pass through;
 			// the desktop flyout has to be pinned first.
 			interactive={isNarrow || flyout.pinned}
@@ -131,6 +130,13 @@ function RateLimitIndicator({ compact = false, projectId = null }: { compact?: b
 				flyout.close();
 				openAccountsSettings();
 			}}
+			onOpenSessions={
+				onOpenSessions &&
+				(() => {
+					flyout.close();
+					onOpenSessions();
+				})
+			}
 		/>
 	);
 
