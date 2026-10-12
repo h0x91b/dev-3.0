@@ -34,7 +34,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
 import { isTouchPrimary } from "../utils/platform";
 import type { TaskPaneState } from "../../shared/task-panes";
-import { getPaneRects, restoreSplitTree, serializeSplitTree, setSplitRatio } from "../../shared/split-tree";
+import { focusPane, getPaneRects, restoreSplitTree, serializeSplitTree, setSplitRatio, type SplitDirection } from "../../shared/split-tree";
 import NativePaneDividers from "./NativePaneDividers";
 import { publishNativePaneFocus } from "../native-pane-focus";
 import { fetchPaneState, runPaneAction, subscribePaneState } from "../pane-state-bus";
@@ -903,6 +903,16 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			setFocusedPaneWriterAttached(stored?.writerAttached);
 		}
 
+		// The keyboard twin of a click: walk the tree from the pane the user is in.
+		// A zoomed layout shows one pane, so there is no neighbour to move to.
+		function handleFocusDirection(fromPaneId: string, direction: SplitDirection) {
+			if (!parsedTree || nativePaneState?.zoomedPaneId) return;
+			const target = focusPane({ ...parsedTree, activePaneId: fromPaneId }, direction).activePaneId;
+			if (target === fromPaneId) return;
+			handleFocusPane(target);
+			paneHandlesRef.current.get(target)?.focus();
+		}
+
 		// A drag commits once, on release. Paint the new ratio locally first so the
 		// panes do not sit at the old size until the round-trip lands; the server's
 		// reply (which owns the persisted tree) then replaces it.
@@ -960,6 +970,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							}}
 							onNativeStatus={makePaneNativeStatusHandler(paneId)}
 							onSessionLost={() => markPaneGone(paneId)}
+							onFocusDirection={(direction) => handleFocusDirection(paneId, direction)}
 							touchComposeMode={touchInput && !rawMode}
 							onScrolledIntoHistory={scrollSignalFor(paneId)}
 						/>
@@ -993,6 +1004,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					}}
 					onNativeStatus={focusPaneId ? makePaneNativeStatusHandler(focusPaneId) : undefined}
 					onSessionLost={focusPaneId ? () => markPaneGone(focusPaneId) : undefined}
+					onFocusDirection={focusPaneId ? (direction) => handleFocusDirection(focusPaneId, direction) : undefined}
 					touchComposeMode={touchInput && !rawMode}
 					onScrolledIntoHistory={focusPaneId ? scrollSignalFor(focusPaneId) : undefined}
 				/>

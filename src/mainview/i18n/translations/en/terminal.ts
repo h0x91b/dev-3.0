@@ -118,6 +118,7 @@ const terminal = {
 	"tmux.layoutMainVDesc": "Main + right",
 	"tmux.layoutMenuTitle": "tmux layouts",
 	"tmux.closePaneDesc": "Close pane",
+	"tmux.prefixDesc": "Send the tmux prefix (⌃B)",
 	"tmux.closePaneEofDesc": "Close pane (exit shell)",
 	"tmux.pickPaneHint": "Click a pane to close it",
 	"tmux.pickPaneCancel": "Esc to cancel",

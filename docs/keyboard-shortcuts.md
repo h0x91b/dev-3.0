@@ -33,6 +33,8 @@ this page and the website all read from it.
 | Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
 | Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |
 | Close pane / new tmux window | ⌘W / ⌘T | Ctrl+Shift+W / Ctrl+Shift+T |
+| Focus the pane left / right / up / down | ⌘⌥← / ⌘⌥→ / ⌘⌥↑ / ⌘⌥↓ | Ctrl+Alt+← / → / ↑ / ↓ |
+| Send the tmux prefix (⌃B) — rebind it to ⌘A to make ⌘A your prefix | ⌘B | Ctrl+Shift+B |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
 | Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
@@ -58,10 +60,10 @@ then `D`/`P`, or the breadcrumb to leave a task.
 Two rules shape the keymap there, and both are enforced in
 [`src/mainview/keymap.ts`](../src/mainview/keymap.ts):
 
-- **The browser keeps some combos** — ⌘W, ⌘T, ⌘N, ⌘1–9, ⌘0, ⇧⌘J, F11, zoom, refresh — and a page
+- **The browser keeps some combos** — ⌘W, ⌘T, ⌘N, ⌘1–9, ⌘0, ⇧⌘J, ⌘⌥←/→, F11, zoom, refresh — and a page
   cannot cancel them. Those bindings do not fire in remote; the panel shows the alternative instead
-  (`G` then `1–9` for projects, `G` then `0` for Operations, `C` for a new task, `⌃B x` / `⌃B c` for
-  panes, ⇧⌘K then `Tab` for Go to task). **⇧⌘Space always opens the Command Palette**, and every action is a command — so nothing is
+  (`G` then `1–9` for projects, `G` then `0` for Operations, `C` for a new task, `⌃B x` / `⌃B c` /
+  `⌥⇧←/→` for panes, ⇧⌘K then `Tab` for Go to task). **⇧⌘Space always opens the Command Palette**, and every action is a command — so nothing is
   out of reach even where a combo is lost.
 - **The shell keeps `Ctrl`** — on Windows and Linux the app modifier is Ctrl, and `^D`, `^W`, `^K`,
   `^[` belong to whatever runs in the terminal. No app shortcut fires while a terminal has focus
@@ -81,4 +83,8 @@ defined in [`src/bun/tmux/config.ts`](../src/bun/tmux/config.ts). The one prefix
 **⌥⇧ + arrows** (Alt+Shift), which selects the pane in that direction; plain **⌥ + arrows** and
 **Ctrl + arrows** are deliberately left alone so the shell and agent TUIs keep word motion. A task on the **native**
 backend has no tmux and therefore no `⌃B` prefix; its panes are driven from the app's own
-controls (and, for agents, `dev3 pane`).
+controls (and, for agents, `dev3 pane`). The pane-focus shortcuts above work on both backends.
+
+tmux never sees ⌘, so it cannot be a tmux prefix. The **Send the tmux prefix** shortcut is the
+way around it: it types ⌃B into a focused tmux terminal, and only there — rebind it to ⌘A and ⌘A
+is your prefix in the terminal while staying Select All in every text field.

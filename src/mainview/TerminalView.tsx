@@ -42,6 +42,7 @@ import { installNativeTerminalText, prepareTerminalFontRasterizer } from "./term
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer, WHEEL_DRAIN_INTERVAL_MS } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
+import type { SplitDirection } from "../shared/split-tree";
 import { matchesShortcut } from "./keymap";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
@@ -272,12 +273,27 @@ interface TerminalViewProps {
 	 * click already leaves copy-mode) costs no tmux calls at all.
 	 */
 	onScrolledIntoHistory?: (scrolledUp: boolean) => void;
+	/**
+	 * Native backend only: move focus to the neighbouring pane. Native focus is
+	 * client-local, so the host moves it; without this the server's tmux pane moves.
+	 */
+	onFocusDirection?: (direction: SplitDirection) => void;
 }
+
+/** tmux's default prefix, ⌃B — the dev3 server never changes it (tmux/config.ts). */
+const TMUX_PREFIX = "\x02";
+
+const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
+	["pane-focus-left", "left"],
+	["pane-focus-right", "right"],
+	["pane-focus-up", "up"],
+	["pane-focus-down", "down"],
+];
 
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -328,6 +344,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	/** Re-fit on a settled layout — see the assignment for why two frames are needed. */
 	const refitAfterLayoutRef = useRef<(() => void) | null>(null);
 	const onNativeStatusRef = useRef(onNativeStatus);
+	const onFocusDirectionRef = useRef(onFocusDirection);
+	onFocusDirectionRef.current = onFocusDirection;
 	onNativeStatusRef.current = onNativeStatus;
 	const onSessionLostRef = useRef(onSessionLost);
 	onSessionLostRef.current = onSessionLost;
@@ -2285,7 +2303,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		return () => window.removeEventListener("keydown", handleTerminalCopyShortcut, { capture: true });
 	}, [taskId]);
 
-	// Pane shortcuts (⌘D / ⌘⇧D / ⌘W / ⌘T), rebindable via the keymap registry.
+	// Pane shortcuts (⌘D / ⌘⇧D / ⌘W / ⌘T / ⌘⌥+arrows / tmux prefix), rebindable via the keymap registry.
 	// Capture phase so ghostty-web can't swallow the events, and gated on focus
 	// being inside THIS terminal — these combos are only ours while a terminal has
 	// focus, which is what lets them share keys with app-level shortcuts.
@@ -2317,6 +2335,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			else if (matchesShortcut(e, "pane-swap-prev", ctx)) pane({ kind: "swapStep", step: "prev" });
 			else if (matchesShortcut(e, "tmux-new-window", ctx)) {
 				fire(() => void api.request.tmuxNewWindow({ taskId }).catch(() => {}));
+			}
+			// Only a tmux session has a prefix; on native the key stays with the page.
+			else if (tmuxStreamRef.current && matchesShortcut(e, "tmux-prefix", ctx)) {
+				fire(() => {
+					if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(TMUX_PREFIX);
+				});
+			}
+			else {
+				const direction = PANE_FOCUS_SHORTCUTS.find(([id]) => matchesShortcut(e, id, ctx))?.[1];
+				if (!direction) return;
+				const moveNative = onFocusDirectionRef.current;
+				if (moveNative) fire(() => moveNative(direction));
+				else pane({ kind: "focusDirection", direction });
 			}
 		}
 		window.addEventListener("keydown", handleKeydown, { capture: true });

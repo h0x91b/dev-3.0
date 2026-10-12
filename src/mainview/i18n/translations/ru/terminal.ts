@@ -122,6 +122,7 @@ const terminal = {
 	"tmux.layoutMainVDesc": "Главная + право",
 	"tmux.layoutMenuTitle": "Раскладки tmux",
 	"tmux.closePaneDesc": "Закрыть панель",
+	"tmux.prefixDesc": "Отправить префикс tmux (⌃B)",
 	"tmux.closePaneEofDesc": "Закрыть панель (выход из shell)",
 	"tmux.pickPaneHint": "Нажмите на панель, чтобы закрыть её",
 	"tmux.pickPaneCancel": "Esc — отмена",

@@ -118,6 +118,7 @@ const terminal = {
 	"tmux.layoutMainVDesc": "Principal + derecha",
 	"tmux.layoutMenuTitle": "Distribuciones tmux",
 	"tmux.closePaneDesc": "Cerrar panel",
+	"tmux.prefixDesc": "Enviar el prefijo de tmux (⌃B)",
 	"tmux.closePaneEofDesc": "Cerrar panel (salir del shell)",
 	"tmux.pickPaneHint": "Haz clic en un panel para cerrarlo",
 	"tmux.pickPaneCancel": "Esc para cancelar",

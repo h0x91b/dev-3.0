@@ -11,6 +11,7 @@ import {
 } from "../terminal-bidi/flag";
 import { isBidiRenderInstalled, uninstallBidiRender } from "../terminal-bidi/proxy";
 import { applyTerminalFontFamily, applyTerminalFontSize } from "../terminal-font";
+import { setShortcutOverrides } from "../keymap-store";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
@@ -643,6 +644,94 @@ describe("TerminalView – keymap shortcuts", () => {
 		});
 		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "swapStep", step: "prev" } });
 		target.remove();
+	});
+
+	it("Cmd+Opt+arrows move tmux pane focus in that direction", async () => {
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		try {
+			await renderAndSetup();
+			const target = focusInsideTerminal();
+			const directions = [["ArrowLeft", "left"], ["ArrowRight", "right"], ["ArrowUp", "up"], ["ArrowDown", "down"]] as const;
+			for (const [code, direction] of directions) {
+				mockedTaskPaneAction.mockClear();
+				await act(async () => {
+					window.dispatchEvent(new KeyboardEvent("keydown", { code, metaKey: true, altKey: true, bubbles: true }));
+				});
+				expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "focusDirection", direction } });
+			}
+			target.remove();
+		} finally {
+			Reflect.deleteProperty(window, "__electrobunWebviewId");
+		}
+	});
+
+	it("a native host moves pane focus itself instead of asking the server", async () => {
+		const onFocusDirection = vi.fn();
+		await act(async () => {
+			render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onFocusDirection={onFocusDirection} /></I18nProvider>);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowUp", metaKey: true, altKey: true, bubbles: true }));
+		});
+
+		expect(onFocusDirection).toHaveBeenCalledWith("up");
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
+		target.remove();
+	});
+
+	it("Cmd+B types the tmux prefix into a tmux session", async () => {
+		await renderAndSetup();
+		act(() => { lastWebSocket?.onmessage?.({ data: "$ " } as MessageEvent); });
+		const target = focusInsideTerminal();
+		lastWebSocket!.send.mockClear();
+
+		const event = new KeyboardEvent("keydown", { code: "KeyB", metaKey: true, bubbles: true, cancelable: true });
+		await act(async () => { window.dispatchEvent(event); });
+
+		expect(lastWebSocket!.send).toHaveBeenCalledWith("\x02");
+		expect(event.defaultPrevented).toBe(true);
+		target.remove();
+	});
+
+	it("the tmux prefix is left alone before any tmux output — a native session has no prefix", async () => {
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+		lastWebSocket!.send.mockClear();
+
+		const event = new KeyboardEvent("keydown", { code: "KeyB", metaKey: true, bubbles: true, cancelable: true });
+		await act(async () => { window.dispatchEvent(event); });
+
+		expect(lastWebSocket!.send).not.toHaveBeenCalled();
+		expect(event.defaultPrevented).toBe(false);
+		target.remove();
+	});
+
+	it("a rebound tmux prefix fires on the new combo only", async () => {
+		setShortcutOverrides({ "tmux-prefix": { primary: "Mod+KeyA" } });
+		try {
+			await renderAndSetup();
+			act(() => { lastWebSocket?.onmessage?.({ data: "$ " } as MessageEvent); });
+			const target = focusInsideTerminal();
+			lastWebSocket!.send.mockClear();
+
+			await act(async () => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyB", metaKey: true, bubbles: true }));
+			});
+			expect(lastWebSocket!.send).not.toHaveBeenCalled();
+
+			await act(async () => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA", metaKey: true, bubbles: true }));
+			});
+			expect(lastWebSocket!.send).toHaveBeenCalledWith("\x02");
+			target.remove();
+		} finally {
+			setShortcutOverrides({});
+		}
 	});
 
 	it("plain Enter and plain Cmd+, are left alone — they are the shell's and Settings'", async () => {

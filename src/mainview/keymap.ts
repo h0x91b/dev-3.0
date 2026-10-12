@@ -30,10 +30,10 @@ import { isTerminalFocus, isTypingContext } from "./utils/typing-context";
  * `alias`. The user sets each on its own, so "the second way to press it" is a
  * first-class thing rather than an extra element in a list.
  *
- * Terminal/tmux PREFIX bindings (⌃B …, and the prefix-free ⌥+arrows) are NOT here
+ * Terminal/tmux PREFIX bindings (⌃B …, and the prefix-free ⌥⇧+arrows) are NOT here
  * — tmux owns them (`src/bun/tmux/config.ts`) and the modal's Terminal tab shows
  * them. The ⌘-key pane shortcuts below ARE here: the renderer dispatches those,
- * so they are ours to rebind.
+ * so they are ours to rebind — `tmux-prefix` included, which types ⌃B for you.
  */
 
 export type ShortcutCategory = "navigation" | "create" | "view" | "terminal" | "app";
@@ -240,8 +240,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	},
 	// Pane control, formerly the opt-in "iTerm2 compatibility" preset and now just
 	// how dev3 works. `terminal` group: they only fire while a terminal has focus,
-	// so they may share a combo with an app-level shortcut. Pane *navigation* is
-	// deliberately absent — tmux already binds ⌥+arrows prefix-free (tmux/config.ts).
+	// so they may share a combo with an app-level shortcut.
 	//
 	// Platform-split on purpose. `Mod` is ⌘ on macOS, where the shell wants none of
 	// it — but Ctrl elsewhere, where ⌘D/⌘W/⌘T would land as ^D (end-of-file), ^W
@@ -284,6 +283,27 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{
 		id: "pane-swap-next", category: "terminal", conflictGroup: "terminal", descKey: "panes.swapNext",
 		primary: [{ code: "Period", mods: ["Mod", "Shift"], platform: "mac" }, { code: "Period", mods: ["Ctrl", "Shift"], platform: "other" }],
+	},
+	// ⌘⌥+arrows is iTerm2's pane navigation; off macOS the same keys read Ctrl+Alt,
+	// which no shell treats as a control character. tmux's own ⌥⇧+arrows still work.
+	// ⌘⌥←/→ is Chrome's tab switch on macOS, which a page cannot cancel.
+	{
+		id: "pane-focus-left", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusLeft",
+		primary: [{ code: "ArrowLeft", mods: ["Mod", "Alt"], platform: "mac", desktopOnly: true }, { code: "ArrowLeft", mods: ["Ctrl", "Alt"], platform: "other" }],
+		remoteDisplay: { mac: "⌥⇧←", other: "Ctrl+Alt+←" },
+	},
+	{
+		id: "pane-focus-right", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusRight",
+		primary: [{ code: "ArrowRight", mods: ["Mod", "Alt"], platform: "mac", desktopOnly: true }, { code: "ArrowRight", mods: ["Ctrl", "Alt"], platform: "other" }],
+		remoteDisplay: { mac: "⌥⇧→", other: "Ctrl+Alt+→" },
+	},
+	{ id: "pane-focus-up", primary: [mod("ArrowUp", "Alt")], descKey: "panes.focusUp", category: "terminal", conflictGroup: "terminal" },
+	{ id: "pane-focus-down", primary: [mod("ArrowDown", "Alt")], descKey: "panes.focusDown", category: "terminal", conflictGroup: "terminal" },
+	// Types tmux's ⌃B prefix, so it can live on a ⌘ key tmux itself can never see.
+	// Terminal-scoped: rebound to ⌘A it stays Select All in every text field.
+	{
+		id: "tmux-prefix", category: "terminal", conflictGroup: "terminal", descKey: "tmux.prefixDesc",
+		primary: [{ code: "KeyB", mods: ["Mod"], platform: "mac" }, { code: "KeyB", mods: ["Ctrl", "Shift"], platform: "other" }],
 	},
 	{
 		id: "tmux-new-window", category: "terminal", conflictGroup: "terminal", descKey: "cheatSheet.newWindow",

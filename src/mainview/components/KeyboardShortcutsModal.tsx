@@ -66,7 +66,7 @@ function buildAppSections(t: T, mac: boolean, remote: boolean): Section[] {
 
 /**
  * The Terminal tab: tmux's own prefix-keyed bindings (from `src/bun/tmux/config.ts`),
- * led by dev3's ⌘-key pane shortcuts. Those four live in the keymap registry, so
+ * led by dev3's ⌘-key pane shortcuts. Those live in the keymap registry, so
  * they render whatever the user rebound them to — and they lead because they are
  * what someone opening this from the terminal toolbar is looking for.
  */
@@ -77,8 +77,13 @@ function buildTmuxSections(t: T, mac: boolean, remote: boolean): Section[] {
 		"pane-zoom",
 		"pane-swap-prev",
 		"pane-swap-next",
+		"pane-focus-left",
+		"pane-focus-right",
+		"pane-focus-up",
+		"pane-focus-down",
 		"pane-close",
 		"tmux-new-window",
+		"tmux-prefix",
 	];
 	const paneRows = paneIds
 		.map((id) => shortcutById(id))
