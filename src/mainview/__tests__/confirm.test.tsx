@@ -563,3 +563,47 @@ describe("overlapping confirms", () => {
 		expect(screen.queryByText("Answered elsewhere")).not.toBeInTheDocument();
 	});
 });
+
+describe("confirm service — keyboardChoice", () => {
+	async function ask(keyboardChoice: boolean) {
+		renderHost();
+		let result!: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Close pane 2?", message: "M", confirmLabel: "Close pane", danger: true, keyboardChoice });
+		});
+		await screen.findByText("Close pane 2?");
+		return () => result;
+	}
+
+	function press(key: string) {
+		act(() => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+		});
+	}
+
+	it.each([["Enter", true], ["y", true], ["Y", true], ["Escape", false], ["n", false]])("%s answers %s", async (key, expected) => {
+		const result = await ask(true);
+		press(key);
+		await expect(result()).resolves.toBe(expected);
+	});
+
+	it("shows which key answers on each button", async () => {
+		await ask(true);
+		expect(screen.getByRole("button", { name: /Close pane/ })).toHaveTextContent("↵");
+		expect(screen.getByRole("button", { name: /Cancel/ })).toHaveTextContent("Esc");
+	});
+
+	it("ignores other keys", async () => {
+		await ask(true);
+		press("x");
+		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
+	});
+
+	it("leaves an ordinary dialog to its buttons", async () => {
+		await ask(false);
+		press("Enter");
+		press("y");
+		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Close pane" })).not.toHaveTextContent("↵");
+	});
+});

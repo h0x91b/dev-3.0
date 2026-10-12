@@ -202,7 +202,7 @@ const settings = {
 	"settings.paneTitles": "Barras de título de los paneles",
 	"settings.paneTitlesDesc": "Muestra sobre cada panel una barra con su número, resaltado en el panel activo, y lo que se ejecuta en él. Cada panel pierde una fila. Solo en terminales tmux.",
 	"settings.confirmClosePane": "Confirmar antes de cerrar un panel",
-	"settings.confirmClosePaneDesc": "Pregunta antes de que el atajo de cerrar panel cierre una división. El selector Cerrar panel nunca pregunta: elegir el panel ya es la confirmación.",
+	"settings.confirmClosePaneDesc": "Pregunta antes de que el atajo de cerrar panel cierre una división: Enter o Y para cerrar, Esc o N para cancelar. El selector Cerrar panel nunca pregunta: elegir el panel ya es la confirmación.",
 	"settings.terminalPathOpenMode": "Acción al hacer clic en una ruta",
 	"settings.terminalPathOpenModeDesc": "Qué hace ⌘-clic (Ctrl en Linux) sobre una ruta de archivo en la salida del terminal. Las sesiones remotas en el navegador siempre muestran la vista previa en dev3.",
 	"settings.terminalPathOpenModePreview": "Vista previa en dev3",

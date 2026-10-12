@@ -319,13 +319,21 @@ export const TMUX_PANE_TITLES_OPTION = "@dev3_pane_titles";
 
 /**
  * Pane label: the title a program set, else `folder │ command` — a plain shell's
- * title is just the hostname, which says nothing. Styles inside the conditional use
- * spaces, not commas, because a comma would end the branch.
+ * title is just the hostname, which says nothing.
  */
 const PANE_BORDER_LABEL = "#{?#{||:#{||:#{==:#{pane_title},},#{==:#{pane_title},#{host}}},#{==:#{pane_title},#{host_short}}},#{b:pane_current_path} │ #{pane_current_command},#{pane_title}}";
-export const PANE_BORDER_FORMAT = "#{?pane_active,"
-	+ "#[fg=#{@thm_crust} bg=#{@thm_green}] #{pane_index} #[fg=#{@thm_green} bg=#{@thm_surface_0}] #{?window_zoomed_flag,󰁌 ,}" + PANE_BORDER_LABEL + " #[default],"
-	+ "#[fg=#{@thm_crust} bg=#{@thm_overlay_2}] #{pane_index} #[fg=#{@thm_fg} bg=#{@thm_surface_0}] " + PANE_BORDER_LABEL + " #[default]}";
+
+/**
+ * One slanted tab per pane, cut like the window tabs (themes.ts `tabCaps`): green
+ * while focused, grey otherwise. Styles inside a conditional use spaces, not commas,
+ * because a comma would end the branch; caps take only a foreground so they sit on
+ * whatever background the border has.
+ */
+function paneTitleTab(fill: string, text: string, bold: boolean, zoomMarker: string): string {
+	return `#[fg=#{${fill}}]\uE0BA#[fg=#{${text}} bg=#{${fill}}${bold ? " bold" : ""}] #{pane_index} ${zoomMarker}${PANE_BORDER_LABEL} #[default]#[fg=#{${fill}}]\uE0BC#[default]`;
+}
+
+export const PANE_BORDER_FORMAT = `#{?pane_active,${paneTitleTab("@thm_green", "@thm_crust", true, "#{?window_zoomed_flag,󰁌 ,}")},${paneTitleTab("@thm_surface_1", "@thm_subtext_0", false, "")}}`;
 
 /**
  * Title bars above each pane (Settings → Terminal → Pane title bars). Seeded like

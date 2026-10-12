@@ -25,6 +25,7 @@ export async function closeFocusedPane(taskId: string): Promise<void> {
 			message: translate("tmux.closePaneAskMessage"),
 			confirmLabel: translate("tmux.closePaneConfirmLabel"),
 			danger: true,
+			keyboardChoice: true,
 		});
 		if (!accepted) return;
 	}

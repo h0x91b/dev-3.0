@@ -49,7 +49,7 @@ describe("closeFocusedPane", () => {
 		mockedState.mockResolvedValue(paneState("tmux", ["%1", "%2"], "%2"));
 		mockedConfirm.mockResolvedValue(true);
 		await closeFocusedPane("t1");
-		expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Close pane 2?", danger: true }));
+		expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Close pane 2?", danger: true, keyboardChoice: true }));
 		expect(mockedAction).toHaveBeenCalled();
 	});
 

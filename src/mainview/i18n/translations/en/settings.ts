@@ -202,7 +202,7 @@ const settings = {
 	"settings.paneTitles": "Pane title bars",
 	"settings.paneTitlesDesc": "Show a title bar above every split with its number, highlighted on the focused pane, and what runs in it. Each pane gives up one row. tmux terminals only.",
 	"settings.confirmClosePane": "Confirm before closing a pane",
-	"settings.confirmClosePaneDesc": "Ask before the close-pane shortcut closes a split. The Close Pane picker never asks — picking the pane is the confirmation.",
+	"settings.confirmClosePaneDesc": "Ask before the close-pane shortcut closes a split; answer with Enter or Y, or cancel with Esc or N. The Close Pane picker never asks — picking the pane is the confirmation.",
 	"settings.terminalPathOpenMode": "File path click action",
 	"settings.terminalPathOpenModeDesc": "What ⌘-clicking (Ctrl on Linux) a file path in terminal output does. Remote browser sessions always preview in dev3.",
 	"settings.terminalPathOpenModePreview": "Preview in dev3",
