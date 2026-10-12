@@ -103,6 +103,29 @@ describe("AgentLaunchRequestModal", () => {
 		expect(onRespond).toHaveBeenCalledWith(true, { variants: [{ agentId: "builtin-claude", configId: "claude-plan", accountId: null }] });
 	});
 
+	it("shows a resume request as the saved panes, with no agent choice, and answers without one", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({
+			canAddVariants: false,
+			resume: { panes: [
+				{ agentId: "builtin-claude", configId: "claude-plan", sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b" },
+				{ agentId: "builtin-claude", configId: "claude-auto", sessionId: null },
+			] },
+		}));
+		expect(await screen.findByRole("heading", { name: "Agent wants to resume this task's saved session" })).toBeInTheDocument();
+		await waitFor(() => expect(screen.getByText("· Opus · plan")).toBeInTheDocument());
+		expect(screen.getByText("Conversation 1160218f")).toBeInTheDocument();
+		expect(screen.getByText("No saved conversation id — the agent opens its latest")).toBeInTheDocument();
+		expect(screen.queryByTestId("agent-config-picker")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("agent-launch-add-variant")).not.toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toHaveTextContent("Resume");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, undefined);
+		expect(api.request.updateAgentLaunchChoice).not.toHaveBeenCalled();
+	});
+
 	it("names the asking task and the task to be launched", async () => {
 		renderModal();
 

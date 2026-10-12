@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { assertTaskWorkspacePresent, worktreeAccessState } from "../task-workspace-guard";
-import type { AgentFamily, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
+import type { AgentFamily, CodingAgent, ColumnAgentConfig, DevServerEntry, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo, WorktreeAccessState } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -81,6 +81,7 @@ import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { agentPromptMayHaveLanded, type AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import { handoffPrompt, prepareTaskHandoff, previewTaskHandoff } from "../conversation-handoff";
 import type { HandoffPreview, SpawnAgentResult } from "../../shared/conversation-handoff-model";
+import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../shared/agent-resume";
 import {
 	auxPaneAlive,
 	auxPaneTitle,
@@ -2160,9 +2161,9 @@ async function markTerminalAttached(project: Project, task: Task): Promise<void>
  * Resume pointer for one pane, healed against the transcripts on disk. A stored
  * id whose transcript is gone would kill the pane on `--resume`; the newest
  * surviving conversation for that worktree is the right thing to reopen instead
- * (decision 189). Returns null to let the agent pick its own latest session.
+ * (decision 189). A null id lets the agent pick its own latest session.
  */
-function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string): string | null {
+function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string): { sessionId: string | null; mode: ResumePaneMode } {
 	const target = resolveResumableSessionId(
 		pane.agentCmd,
 		task.worktreePath ?? "",
@@ -2179,11 +2180,12 @@ function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string):
 			using: target.sessionId ?? "agent-latest",
 		});
 	}
-	return target.sessionId;
+	const mode: ResumePaneMode = !target.sessionId ? "agent-latest" : target.substituted ? "substituted" : target.verified ? "exact" : "unverified";
+	return { sessionId: target.sessionId, mode };
 }
 
 /** The stored panes, or — when there are none — the lost Codex conversation resumeTask would reopen. Never persisted here. */
-async function sessionStateOrLostCodexPane(project: Project | null, task: Task): Promise<Task["sessionState"] | null> {
+export async function sessionStateOrLostCodexPane(project: Project | null, task: Task): Promise<Task["sessionState"] | null> {
 	if (task.sessionState?.panes?.length) return task.sessionState;
 	if (!project || !task.worktreePath) return null;
 	try {
@@ -2233,12 +2235,72 @@ async function lostCodexMainPane(project: Project, task: Task): Promise<PaneSess
 	return { ...pane, sessionId };
 }
 
+/** Same harness the relaunch resolves: the pane's agent record first, its own snapshot only without one. */
+function paneHarnessCanResume(pane: PaneSessionEntry, allAgents: CodingAgent[]): boolean {
+	const agent = pane.agentId ? allAgents.find((entry) => entry.id === pane.agentId) : undefined;
+	if (!agent) return getAgentAdapter(pane.agentCmd, pane.agentFamily ?? undefined).supportsResume;
+	const config = agents.findConfig(agent, pane.configId);
+	return getAgentAdapter(config?.baseCommandOverride || agent.baseCommand, agent.agentFamily).supportsResume;
+}
+
+/** A resume asked to refuse rather than guess (`dev3 agent resume`) found nothing safe to reopen. Nothing was launched. */
+export class ResumeUnavailableError extends Error {
+	constructor(readonly reason: ResumeUnavailableReason, message: string, readonly panes?: ResumePaneReport[]) {
+		super(message);
+	}
+}
+
+export interface ResumeTaskOptions {
+	/** Report a live terminal instead of tearing it down to relaunch. */
+	refuseLive?: boolean;
+	/** Refuse when any pane has no conversation id and would fall back to the harness's own latest. */
+	requireSessionIds?: boolean;
+	/** Refuse when any pane runs a harness that cannot resume and would start over from the description. */
+	refuseFresh?: boolean;
+}
+
+export type ResumeTaskSessionOutcome =
+	| { kind: "resumed"; url: string; result: TaskResumeResult }
+	| { kind: "already-running"; backend: "tmux" | "native" };
+
+const resumeFlights = new Map<string, Promise<ResumeTaskSessionOutcome>>();
+
+/** The backend is the ground truth: this process may not hold a handle to a session that is alive. */
+export async function taskTerminalAlive(task: Task): Promise<boolean> {
+	return taskTerminalBackendIdentity(task) === "native"
+		? nativeTaskPanesAlive(task.id)
+		: pty.tmuxSessionExists(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
+}
+
+/**
+ * The Resume Session path, shared by the terminal's button and `dev3 agent resume`.
+ * One resume per task at a time: a second caller (a click while the CLI resumes,
+ * a CLI retry) joins the first instead of tearing its fresh session down.
+ */
+export function resumeTaskSession(taskId: string, opts: ResumeTaskOptions = {}): Promise<ResumeTaskSessionOutcome> {
+	const inFlight = resumeFlights.get(taskId);
+	if (inFlight) return inFlight;
+	const run = performTaskResume(taskId, opts).finally(() => resumeFlights.delete(taskId));
+	resumeFlights.set(taskId, run);
+	return run;
+}
+
 async function resumeTask(params: { taskId: string }): Promise<string> {
+	const outcome = await resumeTaskSession(params.taskId);
+	return outcome.kind === "resumed" ? outcome.url : `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+}
+
+async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promise<ResumeTaskSessionOutcome> {
+	const params = { taskId };
 	log.info("→ resumeTask", { taskId: params.taskId.slice(0, 8) });
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
 	if (!task || !project || !task.worktreePath) {
 		throw new Error(`Cannot resume: task ${params.taskId} not found or has no worktree`);
 	}
+	if (opts.refuseLive && await taskTerminalAlive(task)) {
+		return { kind: "already-running", backend: taskTerminalBackendIdentity(task) };
+	}
+	const woke = task.hibernated === true;
 	const resolvedProject = project.kind === "virtual"
 		? project
 		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
@@ -2246,7 +2308,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	const lost = stored.length ? null : await lostCodexMainPane(resolvedProject, task);
 	const panes = lost ? [lost] : [...stored];
 	if (!panes.length) {
-		throw new Error(`Cannot resume: task ${params.taskId} has no stored pane sessions`);
+		throw new ResumeUnavailableError("no-saved-session", `Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
 	if (lost) task.sessionState = { panes };
 	// Every Codex pane is chosen from one snapshot and claimed before anything
@@ -2260,6 +2322,40 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	// launchTaskPty rewrites pane[0] and copies the rest from here, so it must
 	// carry the claimed ids, not the snapshot's.
 	if (codexChoices.size) task.sessionState = { panes };
+	const allAgents = await agents.getAllAgents();
+	const targets = panes.map((pane, i) => {
+		const target = resolveResumeTarget(task, pane, i === 0 ? "main" : `pane ${i}`);
+		// The launch is unchanged; only the report admits that this harness starts over.
+		if (!paneHarnessCanResume(pane, allAgents)) return { ...target, mode: "fresh" as const };
+		// The selection engine chose a Codex id from the transcripts it read.
+		return codexChoices.has(i) && target.sessionId ? { ...target, mode: "exact" as const } : target;
+	});
+	const reports: ResumePaneReport[] = panes.map((pane, i) => ({
+		index: i,
+		agentId: pane.agentId,
+		configId: pane.configId,
+		accountId: pane.accountId ?? null,
+		agentFamily: pane.agentFamily ?? null,
+		storedSessionId: stored[i]?.sessionId ?? null,
+		sessionId: targets[i].mode === "fresh" ? null : targets[i].sessionId,
+		mode: targets[i].mode,
+		status: "skipped",
+		paneId: null,
+	}));
+	if (opts.refuseFresh && targets.some((target) => target.mode === "fresh")) {
+		throw new ResumeUnavailableError(
+			"harness-cannot-resume",
+			"A saved pane runs an agent CLI dev3 cannot resume, so it would start over from the task description. Use Resume Session or Start Fresh in the app if that is what you want.",
+			reports,
+		);
+	}
+	if (opts.requireSessionIds && targets.some((target) => target.mode === "agent-latest")) {
+		throw new ResumeUnavailableError(
+			"session-id-unknown",
+			"No conversation id is known for every saved pane, so the harness would pick its own latest and may start a new conversation.",
+			reports,
+		);
+	}
 	await wakeIfHibernated(project, task);
 
 	// Destroy any dead session in memory
@@ -2269,7 +2365,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	// Launch main pane (panes[0]) with resume
 	const main = panes[0];
-	const mainResume = resolveResumeTarget(task, main, "main");
+	const mainResume = targets[0].sessionId;
 	await launchTaskPty(
 		resolvedProject,
 		task,
@@ -2280,10 +2376,15 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		true,
 		{ sessionId: mainResume ?? undefined, accountId: main.accountId, codexHome: codexHomes.get(0) },
 	);
+	reports[0].status = "resumed";
+	const backend = taskTerminalBackendIdentity(task);
+	if (panes.length > 1 && backend !== "tmux") {
+		for (const report of reports.slice(1)) report.detail = "The native terminal backend restores only the main pane; this one stays saved.";
+	}
 
 	// Resume extra panes (panes[1..]) via split-window.
 	// Wait for the tmux session to be ready before splitting.
-	if (panes.length > 1 && taskTerminalBackendIdentity(task) === "tmux") {
+	if (panes.length > 1 && backend === "tmux") {
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const maxWaitMs = 3000;
 		const pollMs = 100;
@@ -2294,6 +2395,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		}
 		if (!(await pty.tmuxSessionExists(params.taskId, socket))) {
 			log.warn("Tmux session not ready after wait — skipping extra pane resume", { taskId: params.taskId.slice(0, 8) });
+			for (const report of reports.slice(1)) report.detail = "The tmux session was not ready in time; this pane stays saved.";
 		} else {
 			const ctx: agents.TemplateContext = {
 				taskTitle: task.title,
@@ -2306,7 +2408,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
-					const paneResume = resolveResumeTarget(task, pane, `pane ${i}`);
+					const paneResume = targets[i].sessionId;
 					const codexHome = codexHomes.get(i);
 					const accountId = codexHome ? codexAccountIdForHome(codexHome) ?? null : pane.accountId;
 					const cmdOpts: agents.CommandOptions = { resume: true, accountId };
@@ -2343,9 +2445,11 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId });
+					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
 					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
+					reports[i] = { ...reports[i], status: "failed", detail: String(err) };
 				}
 			}
 			// Update pane IDs in sessionState (pane IDs change across tmux server restarts)
@@ -2366,9 +2470,30 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	await markTerminalAttached(project, task);
 
+	try {
+		const mainPaneId = (await data.getTask(project, params.taskId)).sessionState?.panes?.[0]?.paneId ?? null;
+		reports[0] = { ...reports[0], paneId: mainPaneId };
+	} catch (err) {
+		log.warn("Could not read the main pane id after resume (non-fatal)", { error: String(err) });
+	}
+	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
+
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
 	log.info("← resumeTask", { url });
-	return url;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	return {
+		kind: "resumed",
+		url,
+		result: {
+			taskId: task.id,
+			seq: task.seq,
+			projectId: project.id,
+			backend,
+			...(backend === "tmux" ? { tmux: { socket, session: taskSessionName(task.id) } } : {}),
+			woke,
+			panes: reports,
+		},
+	};
 }
 
 async function restartTask(params: { taskId: string }): Promise<string> {

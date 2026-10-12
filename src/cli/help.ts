@@ -9,7 +9,7 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
-import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -79,6 +79,28 @@ const COMMANDS: CommandHelp[] = [
 					"The configured launch auto-approval policy applies; decline exits 10.",
 					"Outside a task worktree, runs directly as a user-initiated launch.",
 					"The target terminal must already be running; no task or worktree is created.",
+					"A task whose terminal is gone (after a restart) needs agent resume first.",
+				],
+			},
+			{
+				name: "resume",
+				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--json]",
+				summary: "Resume a task's saved agent session when its terminal is gone — the app's Resume Session.",
+				details: [
+					"Same path as the Resume Session button: same worktree, branch, files and conversations,",
+					"each saved pane under its saved agent, config and account. Never a fresh session or a reset.",
+					"Restores every saved pane; the result lists each one with the conversation id it resumed",
+					"and how it was chosen (exact, substituted = newest surviving transcript, unverified).",
+					`A pane whose agent CLI cannot resume would start over; that always exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
+					"The native backend restores only the main pane; extra panes are reported as skipped.",
+					"A hibernated task is woken, same as Wake & resume.",
+					`--allow-agent-latest  Resume a pane with no saved conversation id anyway: its harness picks`,
+					`                      its own latest and may start a new conversation. Otherwise exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
+					"--json          Print the outcome: backend, tmux session, and per pane its ids and status.",
+					`Already running exits ${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} and touches nothing; nothing to resume exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
+					`From another task's worktree, asks the user to approve in the app; decline exits ${CLI_EXIT_CODE_LAUNCH_DECLINED}.`,
+					"Outside a task worktree, runs directly, as if the user had clicked the button.",
+					"A retry while the dialog is open joins it; it never resumes twice.",
 				],
 			},
 		],

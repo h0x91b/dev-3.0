@@ -290,7 +290,7 @@ It **inherits your priority** unless it has its own; only the user may change th
 
 Use it only for work that belongs in its own session — never to escape your scope, never several at once: each interrupts the user.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID. \`dev3 agent list\` gives \`--agent\` / \`--config\` preset IDs; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task, not the pane.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID. \`dev3 agent list\` gives \`--agent\` / \`--config\` preset IDs; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task, not the pane. Terminal gone → \`dev3 agent resume\` first.
 
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; from a worktree it arrives labeled as agent traffic carrying the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 

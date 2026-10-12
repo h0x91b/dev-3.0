@@ -1,6 +1,7 @@
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import type { SpawnAgentResult } from "../../shared/conversation-handoff-model";
-import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
+import type { CliResumeOutcome, ResumePaneReport } from "../../shared/agent-resume";
+import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
@@ -26,7 +27,8 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		}
 		return;
 	}
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]");
+	if (subcommand === "resume") return handleResume(args, socketPath, context);
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]");
 	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -60,4 +62,61 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	// The agent is already running here; a missing pane id must not read as a failure worth retrying.
 	if (!result.spawn) return exitError("Unexpected response to agent spawn");
 	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId || "(id unknown)"} (${result.spawn.backend}).\n`);
+}
+
+function describePane(pane: ResumePaneReport): string {
+	const who = `${pane.agentId ?? "default agent"}${pane.configId ? ` / ${pane.configId}` : ""}`;
+	const conversation = pane.mode === "fresh" ? "cannot resume — would start over" : pane.sessionId ? `conversation ${pane.sessionId} (${pane.mode})` : "harness's own latest conversation";
+	const where = pane.status === "resumed" ? `pane ${pane.paneId ?? "(id not captured yet)"}` : pane.detail ? `${pane.status}: ${pane.detail}` : "not resumed";
+	return `  #${pane.index}${pane.index === 0 ? " main " : " extra"}  ${who}  ${conversation}  ${where}\n`;
+}
+
+/** Same managed path as the terminal's Resume Session button — never a fresh session, a reset or a new worktree. */
+async function handleResume(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "json"]);
+	if (args.positional.length) return exitUsage("agent resume takes flags, not positional arguments");
+	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
+	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
+	const json = "json" in args.flags;
+	const projectId = resolveProjectId(args.flags.project, context);
+	const params = {
+		taskId: expandShortId(rawTask, context),
+		...(projectId ? { projectId } : {}),
+		...(context?.taskId ? { sourceTaskId: context.taskId } : {}),
+		allowAgentLatest: "allow-agent-latest" in args.flags,
+	};
+	let resp;
+	try {
+		resp = await sendRequest(socketPath, "agent.resume", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			return exitError("Timed out waiting for the resume", "The approval dialog may still be open and a later approval still resumes the task. Running the same command again waits on that same request.");
+		}
+		throw err;
+	}
+	if (!resp.ok) return exitError(resp.error || "Failed to resume the task");
+	const result = resp.data as CliResumeOutcome;
+	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+	switch (result.outcome) {
+		case "resumed": {
+			const { resume } = result;
+			if (!json) {
+				const session = resume.tmux ? ` (tmux session ${resume.tmux.session})` : "";
+				process.stdout.write(`Resumed task #${resume.seq} on ${resume.backend}${session}${resume.woke ? ", woken from hibernation" : ""}:\n`);
+				for (const pane of resume.panes) process.stdout.write(describePane(pane));
+			}
+			return;
+		}
+		case "already-running":
+			return exitError(`Task #${result.seq} already has a running terminal (${result.backend}) — nothing was resumed`, "Use dev3 peek to look at it, or dev3 agent spawn to add an agent.", CLI_EXIT_CODE_RESUME_ALREADY_RUNNING);
+		case "unavailable": {
+			const panes = (result.panes ?? []).map((pane) => describePane(pane).trim());
+			const hint = result.reason === "session-id-unknown"
+				? [...panes, "Pass --allow-agent-latest to resume each harness's own latest conversation anyway."].join("\n")
+				: panes.length ? panes.join("\n") : undefined;
+			return exitError(`Cannot resume task #${result.seq}: ${result.message}`, hint, CLI_EXIT_CODE_RESUME_UNAVAILABLE);
+		}
+		case "declined":
+			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the resume request", "Nothing was resumed.", CLI_EXIT_CODE_LAUNCH_DECLINED);
+	}
 }

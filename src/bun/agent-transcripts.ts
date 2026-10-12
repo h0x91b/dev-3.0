@@ -23,6 +23,8 @@ export interface ResumeTarget {
 	sessionId: string | null;
 	/** The stored id had no transcript, so this replaces it (worth logging). */
 	substituted: boolean;
+	/** A transcript for `sessionId` was actually found on disk. False when the store could not be read. */
+	verified: boolean;
 }
 
 /**
@@ -72,11 +74,11 @@ export function resolveResumableSessionId(
 ): ResumeTarget {
 	const stored = storedSessionId ?? null;
 	const store = storeFor(agentCmd, worktreePath, home, family);
-	if (!store || !store.dirs.some((dir) => existsSync(dir))) return { sessionId: stored, substituted: false };
-	if (!stored) return { sessionId: null, substituted: false };
+	if (!store || !store.dirs.some((dir) => existsSync(dir))) return { sessionId: stored, substituted: false, verified: false };
+	if (!stored) return { sessionId: null, substituted: false, verified: false };
 
 	const ids = sessionIdsNewestFirst(store.dirs, store.ext);
-	if (ids.includes(stored)) return { sessionId: stored, substituted: false };
+	if (ids.includes(stored)) return { sessionId: stored, substituted: false, verified: true };
 
 	// A conversation that began elsewhere never migrates into this worktree's
 	// store: a resume appends to the original file and only stamps the new cwd
@@ -87,11 +89,11 @@ export function resolveResumableSessionId(
 	if (originCwd) {
 		const origin = storeFor(agentCmd, originCwd, home, family);
 		if (origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored)) {
-			return { sessionId: stored, substituted: false };
+			return { sessionId: stored, substituted: false, verified: true };
 		}
 	}
 
-	return { sessionId: ids[0] ?? null, substituted: true };
+	return { sessionId: ids[0] ?? null, substituted: true, verified: ids.length > 0 };
 }
 
 /** Session ids across all store dirs, newest transcript first. */

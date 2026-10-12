@@ -35,6 +35,12 @@ const common = {
 
 	// Агент просит запустить другую задачу (или одноразовый scratch)
 	"agentLaunch.titleSpawn": "Агент хочет добавить агента в эту задачу",
+	"agentLaunch.titleResume": "Агент хочет возобновить сохранённую сессию задачи",
+	"agentLaunch.resumeNote": "Откроет сохранённые разговоры, каждый со своим агентом, пресетом и аккаунтом.",
+	"agentLaunch.resumeConversation": "Разговор {id}",
+	"agentLaunch.resumeLatest": "Нет сохранённого id разговора — агент откроет свой последний",
+	"agentLaunch.resume": "Возобновить",
+	"agentLaunch.resuming": "Возобновляю…",
 	"agentLaunch.initialPrompt": "Начальные инструкции",
 	"agentLaunch.spawnHandoff": "Новый агент также получит последний разговор этой задачи.",
 	"agentLaunch.title": "Агент хочет запустить эту задачу",
@@ -49,6 +55,7 @@ const common = {
 	"agentLaunch.launching": "Запускаю…",
 	"agentLaunch.decline": "Отказать",
 	"agentLaunch.autoApproveIn": "Запустится сам через {time}",
+	"agentLaunch.autoResumeIn": "Возобновится само через {time}",
 	"agentLaunch.autoApproveHeld": "Ждёт вашего ответа",
 
 	// Навигация в стиле Vimium

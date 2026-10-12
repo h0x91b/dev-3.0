@@ -401,6 +401,28 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		setHibernated(true);
 	}, [task?.hibernated, task?.sessionState]);
 
+	// `dev3 agent resume` brings the session back behind a recovery screen still on
+	// display; offering Resume again there would tear the fresh session down.
+	useEffect(() => {
+		if (!recoverable && error?.kind !== "session-ended") return;
+		if (restarting) return;
+		function onResumed(e: Event) {
+			if ((e as CustomEvent<{ taskId: string }>).detail?.taskId !== taskId) return;
+			setRecoverable(null);
+			setHibernated(false);
+			setError(null);
+			if (isNative) {
+				void fetchPaneState(taskId);
+				return;
+			}
+			api.request.getPtyUrl({ taskId })
+				.then((result) => { if ("url" in result) setPtyUrl(result.url); })
+				.catch(() => { void classifyAndSetError(); });
+		}
+		window.addEventListener("rpc:taskTerminalResumed", onResumed);
+		return () => window.removeEventListener("rpc:taskTerminalResumed", onResumed);
+	}, [taskId, recoverable, error?.kind, restarting, isNative]);
+
 	// For getPtyUrl success + broken session: listen for ptyDied.
 	useEffect(() => {
 		function onPtyDied(e: Event) {

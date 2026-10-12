@@ -8,12 +8,12 @@ vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ defaultAgentI
 vi.mock("../data", () => ({ getTask: vi.fn() }));
 vi.mock("../agent-accounts", () => ({ listAgentAccounts: vi.fn(async () => ({ codex: { accounts: [{ id: "slot-1" }] } })) }));
 vi.mock("../rpc-handlers/settings-config", () => ({ settingsConfigHandlers: { checkAgentAvailability: vi.fn(async () => [{ agentId: "agent-1", installed: true }]) } }));
-vi.mock("../rpc-handlers/tmux-pty", () => ({ tmuxPtyHandlers: { spawnAgentInTask: vi.fn() } }));
+vi.mock("../rpc-handlers/tmux-pty", () => ({ tmuxPtyHandlers: { spawnAgentInTask: vi.fn() }, taskTerminalAlive: vi.fn(async () => true) }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: vi.fn() }));
 import { listCliAgents, spawnCliAgent, validateLaunchSuggestion } from "../cli-agent-spawn";
 import { getAllAgents } from "../agents";
 import { getTask } from "../data";
-import { tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
+import { taskTerminalAlive, tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
 import { settingsConfigHandlers } from "../rpc-handlers/settings-config";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { listAgentAccounts } from "../agent-accounts";
@@ -36,6 +36,12 @@ async function answer(approved: boolean, launch?: any) {
 	resolveAgentRequest(push.mock.calls[0][1].requestId, { approved, launch });
 }
 describe("managed CLI agent spawning", () => {
+	it("refuses a task whose terminal is gone before asking anybody, pointing at agent resume", async () => {
+		vi.mocked(taskTerminalAlive).mockResolvedValueOnce(false);
+		await expect(spawnCliAgent(options())).rejects.toThrow("dev3 agent resume");
+		expect(push).not.toHaveBeenCalled();
+		expect(tmuxPtyHandlers.spawnAgentInTask).not.toHaveBeenCalled();
+	});
 	it("uses the global preset and default account rather than the target task's account", async () => {
 		const pending = spawnCliAgent({ ...options(), task: { ...task, accountId: "task-account" }, choice: { agentId: null, configId: null } });
 		await answer(true);

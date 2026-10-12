@@ -8,7 +8,7 @@ import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { settingsConfigHandlers } from "./rpc-handlers/settings-config";
-import { tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
+import { taskTerminalAlive, tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
 import { agentKey } from "../shared/agent-adapters/families";
 
 interface SpawnOptions {
@@ -64,13 +64,15 @@ export async function validateLaunchSuggestion(choice: Pick<LaunchVariant, "agen
 	return validateChoice({ agentId: choice.agentId, configId: choice.configId });
 }
 
-function assertRunning(task: Task): void {
+async function assertRunning(task: Task): Promise<void> {
 	if (!task.worktreePath || task.hibernated || task.draft || !ACTIVE_STATUSES.includes(task.status)) throw new Error("The target task must have a running terminal and worktree — start or wake it first.");
+	// An active card can outlive its terminal (a machine restart); asking first would approve a split that cannot happen.
+	if (!(await taskTerminalAlive(task))) throw new Error("The target task's terminal is not running — resume it first with `dev3 agent resume`.");
 }
 
 async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 	const { project, task, requester, prompt, handoff } = opts;
-	assertRunning(task);
+	await assertRunning(task);
 	// Account overrides belong to the human approval response, never the caller.
 	let choice = await validateChoice({ agentId: opts.choice.agentId, configId: opts.choice.configId });
 	if (requester) {
@@ -97,7 +99,7 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 		}
 	}
 	const current = await getTask(project, task.id);
-	assertRunning(current);
+	await assertRunning(current);
 	if (current.worktreePath !== task.worktreePath || current.lifecycleStartedAt !== task.lifecycleStartedAt) throw new Error("The target task's run changed while waiting — no agent was started.");
 	const spawn = await tmuxPtyHandlers.spawnAgentInTask({ taskId: task.id, projectId: project.id, ...choice, prompt, handoff });
 	return { approved: true, spawn };

@@ -403,6 +403,28 @@ describe("TaskTerminal", () => {
 			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
 		});
 
+		it("leaves the recovery screen when the session is resumed elsewhere (dev3 agent resume)", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			await act(async () => {
+				renderTerminal();
+			});
+			await waitFor(() => expect(screen.getByText("Resume Session")).toBeInTheDocument());
+
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:9999?session=t1" });
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskTerminalResumed", { detail: { taskId: "other", projectId: "p1" } }));
+			});
+			expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskTerminalResumed", { detail: { taskId: "t1", projectId: "p1" } }));
+			});
+			await waitFor(() => expect(screen.queryByText("Resume Session")).not.toBeInTheDocument());
+			expect(mockedApi.request.resumeTask).not.toHaveBeenCalled();
+		});
+
 		it("shows the exact resume failure instead of hiding it behind session-ended", async () => {
 			const user = userEvent.setup();
 			const message = "Codex conversation was not found in the available account stores.";

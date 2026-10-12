@@ -1084,6 +1084,17 @@ const handlers: Record<string, Handler> = {
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
 		});
 	},
+	"agent.resume": async (params) => {
+		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
+			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness, config and account.`);
+		}
+		const { project, task } = await requirePaneTask(params);
+		const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId : "";
+		const requester = sourceId ? await resolveTaskAcrossProjects(sourceId) : null;
+		if (sourceId && !requester) throw new Error("Unknown requesting task — cannot attribute the resume request.");
+		const { resumeCliAgent } = await import("./cli-agent-resume");
+		return resumeCliAgent({ project, task, requester: requester?.task ?? null, allowAgentLatest: params.allowAgentLatest === true });
+	},
 	// Cross-instance notification: another dev-3.0 instance changed data.
 	// Re-read from disk and push to local renderer only (no re-broadcast).
 	"_notify": async (params) => {

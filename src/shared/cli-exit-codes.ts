@@ -29,6 +29,8 @@ export const CLI_EXIT_CODE_RESET_DECLINED = 27;
 export const CLI_EXIT_CODE_GH_TLS_UNVERIFIED = 28;
 export const CLI_EXIT_CODE_PEEK_FOLLOW_UNSUPPORTED = 29;
 export const CLI_EXIT_CODE_PANE_NO_ROOM = 30;
+export const CLI_EXIT_CODE_RESUME_ALREADY_RUNNING = 31;
+export const CLI_EXIT_CODE_RESUME_UNAVAILABLE = 32;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -90,7 +92,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_LAUNCH_DECLINED",
 		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
 		description:
-			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was.",
+			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`), to add an agent (`dev3 agent spawn`) or to resume a saved session (`dev3 agent resume`), and the user declined the approval dialog — or, for spawn and resume, the target task's run ended before anyone answered. Nothing was launched and the target task stays where it was.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",
@@ -211,5 +213,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PANE_NO_ROOM,
 		description:
 			"`dev3 pane run` on the native terminal backend (the only one on Windows) found no pane it could split without leaving one below the usable minimum (40 columns by 8 rows), so NOTHING was opened and nothing on screen changed. The protected main pane is never split again to make room; tmux tasks never get this code, because there the run opens in a new `Runs` window instead. Close a finished run (`dev3 pane close <run-id>`), enlarge the window, or run the command inline. Distinct from exit 1 so an agent can fall back to running the command itself instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_RESUME_ALREADY_RUNNING",
+		code: CLI_EXIT_CODE_RESUME_ALREADY_RUNNING,
+		description:
+			"`dev3 agent resume` found the task's terminal already running, so NOTHING was resumed, restarted or torn down — the live session is left exactly as it was. With `--json` the result still names the backend. Use `dev3 peek` to look at it or `dev3 agent spawn` to add an agent. Distinct from exit 1 so a coordinator recovering many tasks can treat this one as already done.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_RESUME_UNAVAILABLE",
+		code: CLI_EXIT_CODE_RESUME_UNAVAILABLE,
+		description:
+			"`dev3 agent resume` found nothing it can safely resume, and NOTHING was launched: the task is a draft or not active, it has no worktree, it has no saved agent session, a saved pane runs an agent CLI dev3 cannot resume (it would start over from the task description; `--allow-agent-latest` does not change that), or (without `--allow-agent-latest`) a saved pane has no conversation id, so its harness would pick its own latest conversation and might start a new one. With `--json` the result carries a `reason` (`draft`, `not-active`, `no-worktree`, `no-saved-session`, `harness-cannot-resume`, `session-id-unknown`). It never falls back to a fresh session; Start Fresh stays an explicit choice in the app. Distinct from exit 1, which means a resume was attempted and failed.",
 	},
 ] as const;

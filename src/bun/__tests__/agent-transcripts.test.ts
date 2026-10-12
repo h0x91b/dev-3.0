@@ -54,6 +54,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("claude", WORKTREE, "1160218f-85f5-4a45-8032-ced3af5a532b", home)).toEqual({
 			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
 			substituted: false,
+			verified: true,
 		});
 	});
 
@@ -66,6 +67,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
 			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
 			substituted: true,
+			verified: true,
 		});
 	});
 
@@ -75,6 +77,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
 			sessionId: null,
 			substituted: true,
+			verified: false,
 		});
 	});
 
@@ -83,6 +86,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
 			sessionId: "125a4c8c-b567-4d24-991b-8732e82878c8",
 			substituted: false,
+			verified: false,
 		});
 	});
 
@@ -92,6 +96,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("codex", WORKTREE, "some-codex-session", home)).toEqual({
 			sessionId: "some-codex-session",
 			substituted: false,
+			verified: false,
 		});
 	});
 
@@ -101,6 +106,7 @@ describe("resolveResumableSessionId", () => {
 		expect(resolveResumableSessionId("claude", WORKTREE, null, home)).toEqual({
 			sessionId: null,
 			substituted: false,
+			verified: false,
 		});
 	});
 
@@ -114,7 +120,7 @@ describe("resolveResumableSessionId", () => {
 
 		expect(
 			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
-		).toEqual({ sessionId: "elsewhere-1", substituted: false });
+		).toEqual({ sessionId: "elsewhere-1", substituted: false, verified: true });
 	});
 
 	it("does not let a later local session hijack an id from the origin store", () => {
@@ -124,7 +130,7 @@ describe("resolveResumableSessionId", () => {
 
 		expect(
 			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
-		).toEqual({ sessionId: "elsewhere-1", substituted: false });
+		).toEqual({ sessionId: "elsewhere-1", substituted: false, verified: true });
 	});
 
 	it("still heals when the origin store has lost the conversation too", () => {
@@ -133,7 +139,7 @@ describe("resolveResumableSessionId", () => {
 
 		expect(
 			resolveResumableSessionId("claude", WORKTREE, "gone", home, undefined, "/Users/dev/code/my-app"),
-		).toEqual({ sessionId: "survivor", substituted: true });
+		).toEqual({ sessionId: "survivor", substituted: true, verified: true });
 	});
 });
 

@@ -4,6 +4,7 @@ import type { ConversationMatch } from "./conversation-search-core";
 import type { ImportConversationsResult, ImportableConversationView } from "./conversation-import-model";
 import type { HandoffPreview, SpawnAgentResult } from "./conversation-handoff-model";
 import type { TaskConversationView } from "./task-conversation-model";
+import type { ResumeDialogPane } from "./agent-resume";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type {
 	AgentAccount,
@@ -3525,6 +3526,8 @@ export interface AgentCancellationRequest {
 export interface AgentLaunchRequest {
 	/** CLI +Agent request: one pane, not a task/variant launch. */
 	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean };
+	/** `dev3 agent resume`: restore these saved panes exactly — the dialog offers no agent choice. */
+	resume?: { panes: ResumeDialogPane[] };
 	/**
 	 * Agent/config the requesting agent suggested with `--agent`/`--config`,
 	 * already validated. Only preselects the picker — the user still decides.
@@ -6676,6 +6679,8 @@ export type AppRPCSchema = {
 			spacesUpdated: { file: SpacesFile };
 			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };
+			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */
+			taskTerminalResumed: { taskId: string; projectId: string };
 			projectPtyDied: { projectId: string };
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
