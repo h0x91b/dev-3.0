@@ -35,6 +35,9 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+const writeClipboardText = vi.hoisted(() => vi.fn(async (_text: string) => "clipboard" as const));
+vi.mock("../../utils/clipboard-write", () => ({ writeClipboardText }));
+
 import { api } from "../../rpc";
 
 installImmediateIntersectionObserver();
@@ -58,6 +61,8 @@ async function pressFind(user: ReturnType<typeof userEvent.setup>) {
 describe("FilePreviewModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.removeItem("dev3-file-preview-wrap");
+		localStorage.removeItem("dev3-file-preview-expanded");
 		mermaid.render.mockResolvedValue({
 			svg: '<svg data-testid="rendered-mermaid"></svg>',
 			diagramType: "flowchart-v2",
@@ -131,6 +136,74 @@ describe("FilePreviewModal", () => {
 		expect(screen.getByText("one").parentElement?.className).not.toContain("bg-accent/10");
 		// No markdown toggle for non-markdown files.
 		expect(screen.queryByRole("button", { name: "Raw" })).not.toBeInTheDocument();
+	});
+
+	it("soft-wraps source lines by default and copies the file unchanged either way", async () => {
+		const user = userEvent.setup();
+		const longLine = `const value = "${"x".repeat(300)}";`;
+		readFilePreview.mockResolvedValue({ kind: "text", content: `${longLine}\nnext`, truncated: false, size: 320 });
+		renderModal("/wt/src/long.ts");
+		await waitFor(() => expect(screen.getByText(longLine)).toBeInTheDocument());
+
+		const wrap = screen.getByRole("button", { name: "Wrap lines" });
+		expect(wrap).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByText(longLine).className).toContain("whitespace-pre-wrap");
+
+		await user.click(wrap);
+		expect(wrap).toHaveAttribute("aria-pressed", "false");
+		expect(screen.getByText(longLine).className).toMatch(/(^|\s)whitespace-pre(\s|$)/);
+		expect(localStorage.getItem("dev3-file-preview-wrap")).toBe("0");
+
+		await user.click(screen.getByText("Copy content"));
+		expect(writeClipboardText).toHaveBeenCalledWith(`${longLine}\nnext`);
+	});
+
+	it("remembers the wrap choice for the next preview", async () => {
+		localStorage.setItem("dev3-file-preview-wrap", "0");
+		readFilePreview.mockResolvedValue({ kind: "text", content: "one", truncated: false, size: 3 });
+		renderModal("/wt/src/a.ts");
+		await waitFor(() => expect(screen.getByText("one")).toBeInTheDocument());
+		expect(screen.getByRole("button", { name: "Wrap lines" })).toHaveAttribute("aria-pressed", "false");
+		expect(screen.getByTestId("file-preview-code")).toHaveAttribute("data-wrap", "false");
+	});
+
+	it("offers line wrapping only while markdown shows its source", async () => {
+		const user = userEvent.setup();
+		readFilePreview.mockResolvedValue({ kind: "text", content: "# Title\nbody", truncated: false, size: 12 });
+		renderModal("/wt/docs/guide.md");
+		await waitFor(() => expect(screen.getByRole("heading", { name: "Title", level: 1 })).toBeInTheDocument());
+		expect(screen.queryByRole("button", { name: "Wrap lines" })).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Raw" }));
+		expect(screen.getByRole("button", { name: "Wrap lines" })).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("button", { name: "Rendered" })).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("expands to the viewport and back, remembers it, and Escape still closes", async () => {
+		const user = userEvent.setup();
+		readFilePreview.mockResolvedValue({ kind: "text", content: "# Title\nbody", truncated: false, size: 12 });
+		const { onClose, unmount } = renderModal("/wt/docs/guide.md");
+		await waitFor(() => expect(screen.getByRole("heading", { name: "Title", level: 1 })).toBeInTheDocument());
+		const dialog = screen.getByRole("dialog");
+		expect(dialog).toHaveAttribute("data-expanded", "false");
+
+		await user.click(screen.getByRole("button", { name: "Expand preview" }));
+		expect(dialog).toHaveAttribute("data-expanded", "true");
+		expect(dialog.className).toContain("w-[calc(100vw-2rem)]");
+		expect(screen.getByTestId("markdown-document").className).toContain("max-w-[120ch]");
+		const restore = screen.getByRole("button", { name: "Restore preview size" });
+		expect(restore).toHaveAttribute("aria-pressed", "true");
+		expect(localStorage.getItem("dev3-file-preview-expanded")).toBe("1");
+
+		await user.keyboard("{Escape}");
+		expect(onClose).toHaveBeenCalledTimes(1);
+		unmount();
+
+		renderModal("/wt/docs/guide.md");
+		await waitFor(() => expect(screen.getByRole("dialog")).toHaveAttribute("data-expanded", "true"));
+		await user.click(screen.getByRole("button", { name: "Restore preview size" }));
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-expanded", "false");
+		expect(screen.getByTestId("markdown-document").className).toContain("max-w-[80ch]");
 	});
 
 	describe("find in file (Cmd/Ctrl+F)", () => {

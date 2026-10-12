@@ -563,6 +563,23 @@
 	background: rgb(var(--text-primary) / 0.05);
 }
 
+/* File preview: `overflow-wrap: anywhere` above shrinks a cell's min-content to
+   one character, so auto table layout crushed columns until "Q1" split in two.
+   Cells break only between words; Streamdown's own wrapper scrolls the rest. */
+.dev3-file-preview-md .dev3-md-doc table {
+	display: table;
+	width: auto;
+	max-width: none;
+}
+.dev3-file-preview-md .dev3-md-doc th,
+.dev3-file-preview-md .dev3-md-doc td {
+	overflow-wrap: break-word;
+	min-width: 4.5rem;
+}
+.dev3-file-preview-md .dev3-md-doc th {
+	white-space: nowrap;
+}
+
 /* ---- Markdown rich diff (.dev3-md-diff) ----
    Rendered markdown where every block carries its change state: added blocks sit
    on a green wash, removed blocks on a red one, unchanged blocks stay plain. */

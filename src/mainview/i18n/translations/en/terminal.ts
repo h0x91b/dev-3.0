@@ -297,6 +297,10 @@ const terminal = {
 	"terminal.filePreviewRendered": "Rendered",
 	"terminal.filePreviewSearch": "Find in file",
 	"terminal.filePreviewRaw": "Raw",
+	"terminal.filePreviewWrap": "Wrap lines",
+	"terminal.filePreviewWrapHint": "Wrap long lines to fit the window. The file and copied text are unchanged.",
+	"terminal.filePreviewExpand": "Expand preview",
+	"terminal.filePreviewRestore": "Restore preview size",
 	"terminal.rendererCrashed": "The terminal renderer crashed and could not restart itself. Click to reload the window — your session keeps running.",
 	// TerminalPerfOverlay (View → Debug). Metric names inside the HUD name code —
 	// `fps`, `render`, `write`, `p50` — and stay untranslated like terminal output.
