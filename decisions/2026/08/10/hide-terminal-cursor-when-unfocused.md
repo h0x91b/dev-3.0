@@ -1,5 +1,7 @@
 # Hide the terminal cursor while input goes elsewhere
 
+> Superseded in part on 2026-10-12 by `decisions/2026/10/12/draw-the-terminal-cursor-only-when-it-changes.md`: the gate no longer relies on the vendor's per-frame cursor-row repaint — it suppresses that repaint and repaints only on frames where the drawn cursor changes.
+
 ## Context
 
 ghostty-web blinks the cursor forever, regardless of focus. Reading an artifact and

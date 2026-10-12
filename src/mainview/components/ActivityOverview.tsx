@@ -830,7 +830,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										}`}
 									>
 										{/* Both glyphs stay mounted and cross-fade — a hard swap on a
-										    14px target reads as a flicker. */}
+										    14px target reads as a flicker. The hidden spinner must not spin
+										    (issue #1949). */}
 										<span className="relative flex h-4 w-4 items-center justify-center rounded-md">
 											<span
 												className={`absolute inset-0 h-4 w-4 rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}

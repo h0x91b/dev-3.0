@@ -785,6 +785,8 @@ describe("ActivityOverview row complete action", () => {
 		expect(
 			screen.getByLabelText(`Move to Completed — ${getTaskTitle(mockTask)}`),
 		).toBeInTheDocument();
+		// The hidden pending spinner must not run an infinite animation (issue #1949).
+		expect(screen.getByTestId("activity-row-complete").querySelector(".animate-spin")).toBeNull();
 	});
 
 	it("completes through the shared confirmed move and drops the row", async () => {

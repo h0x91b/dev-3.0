@@ -183,7 +183,8 @@ export default function TaskCardRail({
 						}`}
 					>
 						{/* Both glyphs stay mounted and cross-fade — a hard swap on a
-						    12px target reads as a flicker. */}
+						    12px target reads as a flicker. The hidden spinner must not spin:
+						    on WebKitGTK it repainted every frame (issue #1949). */}
 						<span className="relative flex h-3.5 w-3.5 items-center justify-center">
 							<span
 								className={`absolute inset-0 h-3.5 w-3.5 rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}

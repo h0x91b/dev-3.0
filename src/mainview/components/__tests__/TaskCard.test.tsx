@@ -519,16 +519,21 @@ describe("TaskCard", () => {
 			mockedConfirmTaskCompletion.mockReturnValue(new Promise<boolean>((resolve) => { decide = resolve; }));
 
 			renderCard(task);
+			const spinning = () => screen.getByTestId("task-card-quick-complete").querySelector(".animate-spin");
+			// Hidden until pending, and not spinning while hidden (issue #1949).
+			expect(spinning()).toBeNull();
 
 			await user.click(screen.getByTestId("task-card-quick-complete"));
 
 			// The pending state must be visible before the dialog resolves — a slow
 			// git check must never look like a dead click.
 			expect(screen.getByTestId("task-card-quick-complete")).toBeDisabled();
+			expect(spinning()).not.toBeNull();
 
 			await act(async () => { decide(false); });
 
 			expect(screen.getByTestId("task-card-quick-complete")).toBeEnabled();
+			expect(spinning()).toBeNull();
 		});
 
 		it("does not move the task when the quick-complete confirmation is declined", async () => {

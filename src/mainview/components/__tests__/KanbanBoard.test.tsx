@@ -497,6 +497,8 @@ describe("tip rotation", () => {
 		);
 
 		const bar = await renderForRotation();
+		// Stepped, not a per-frame scaleX — and it still ends, which is what rotates (issue #1949).
+		expect(bar.style.animationTimingFunction).toMatch(/^steps\(/);
 
 		// First rotation: the progress animation completes.
 		await act(async () => { fireEvent.animationEnd(bar, { animationName: "tip-progress" }); });

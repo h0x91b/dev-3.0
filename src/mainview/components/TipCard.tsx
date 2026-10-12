@@ -6,6 +6,9 @@ import { useT } from "../i18n";
 import { api } from "../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 
+/** One step a second: a smooth scaleX repainted every frame on WebKitGTK (issue #1949). */
+export const PROGRESS_TIMING = `steps(${Math.round(ROTATION_INTERVAL_MS / 1000)}, end)`;
+
 interface TipCardProps {
 	tip: Tip;
 	tipState: TipState;
@@ -117,7 +120,7 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 					style={{
 						animationName: "tip-progress",
 						animationDuration: `${ROTATION_INTERVAL_MS}ms`,
-						animationTimingFunction: "linear",
+						animationTimingFunction: PROGRESS_TIMING,
 						animationFillMode: "forwards",
 						animationPlayState: paused ? "paused" : "running",
 					}}
