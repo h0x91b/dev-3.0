@@ -1,5 +1,7 @@
 # Terminal takes focus back only when it falls to the page body
 
+> Superseded on 2026-10-12 by `decisions/2026/10/12/terminal-refocus-reclaims-its-own-container.md`: focus resting on the terminal's own container also counts as "nothing else took it".
+
 ## Context
 
 In browser mode the terminal's hidden textarea re-focuses itself 50 ms after a blur, to keep the mobile keyboard up (`TerminalView.tsx`, the `blur` listener on `hiddenTextarea`). The guard meant to skip this when another element takes focus read `document.activeElement` inside the `blur` event, where it is still `body`. So the guard never fired, and the textarea stole focus from everything. A context menu treats focus leaving it as dismissal (`useOverlayLayer`), so the sidebar's right-click menu closed about 50 ms after it opened.

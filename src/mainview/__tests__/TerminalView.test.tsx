@@ -995,18 +995,33 @@ describe("TerminalView – hidden textarea keeps focus only when nothing else ta
 		const menuItem = document.createElement("button");
 		document.body.appendChild(menuItem);
 
-		menuItem.focus();
-		await settle();
+		try {
+			menuItem.focus();
+			await settle();
 
-		expect(document.activeElement).toBe(menuItem);
-		expect(document.activeElement).not.toBe(textarea);
-		menuItem.remove();
+			expect(document.activeElement).toBe(menuItem);
+			expect(document.activeElement).not.toBe(textarea);
+		} finally {
+			menuItem.remove();
+		}
 	});
 
 	it("takes focus back when it falls to the page body", async () => {
 		const { textarea } = await renderWithTextarea();
 
 		textarea.blur();
+		await settle();
+
+		expect(document.activeElement).toBe(textarea);
+	});
+
+	it("takes focus back from its own container, whose inputmode=none would hide the keyboard", async () => {
+		const { textarea } = await renderWithTextarea();
+		const terminalContainer = textarea.parentElement as HTMLElement;
+		expect(terminalContainer.getAttribute("inputmode")).toBe("none");
+		terminalContainer.tabIndex = 0;
+
+		terminalContainer.focus();
 		await settle();
 
 		expect(document.activeElement).toBe(textarea);

@@ -952,7 +952,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 				// In browser mode, keep the textarea focused to prevent
 				// the mobile keyboard from dismissing. Re-focus on blur
-				// unless another input element actually needs focus.
+				// unless focus settled on something outside the terminal.
 				if (!isElectrobun) {
 					hiddenTextarea.addEventListener("blur", () => {
 						if (disposed) return;
@@ -962,10 +962,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						// During blur, activeElement is still body, so judge where focus went
 						// once it has settled - else a menu or input that took it loses it again.
 						// A dialog that took focus (the terminal link sheet) restores it on close.
+						// The container is the terminal itself (term.focus(), a canvas click), and
+						// its inputmode="none" would hide the on-screen keyboard - take focus back.
 						setTimeout(() => {
 							if (disposed || touchComposeModeRef.current) return;
 							const active = document.activeElement;
-							if (active && active !== document.body) return;
+							if (active && active !== document.body && active !== containerRef.current) return;
 							hiddenTextarea.focus();
 						}, 50);
 					});
