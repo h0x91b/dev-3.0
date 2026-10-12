@@ -10878,8 +10878,13 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		(statSync as any).mockImplementation(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 }));
 	});
 
-	it("hands the newest transcript to one stale pane and starts the other fresh", async () => {
+	it("resumes each pane's own conversation and starts a pane that has none fresh", async () => {
+		// The old per-pane healing sent both dead panes to NEWEST, i.e. pane 1's conversation.
 		seedStore([NEWEST, MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
 
 		await handlers.resumeTask({ taskId: "task-1" });
 
@@ -10897,9 +10902,10 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 
 		await handlers.resumeTask({ taskId: "task-1" });
 
-		const fresh = (agents.resolveCommandForAgent as any).mock.calls[2][3].sessionId;
+		const fresh = (agents.resolveCommandForAgent as any).mock.calls[1][3].sessionId;
+		const fresh2 = (agents.resolveCommandForAgent as any).mock.calls[2][3].sessionId;
 		const last = (data.updateTask as any).mock.calls.filter((call: any[]) => call[2]?.sessionState).at(-1)[2];
-		expect(last.sessionState.panes.slice(1).map((p: any) => [p.paneId, p.sessionId])).toEqual([["%2", NEWEST], ["%3", fresh]]);
+		expect(last.sessionState.panes.slice(1).map((p: any) => [p.paneId, p.sessionId])).toEqual([["%2", fresh], ["%3", fresh2]]);
 	});
 });
 

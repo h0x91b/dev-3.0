@@ -38,6 +38,10 @@ export interface ResumeCandidate {
 	/** The directory whose store holds this pane's conversation, when it is not
 	 *  the task's own. Checked before healing. */
 	sessionOriginCwd?: string | null;
+	/** May take over the newest unclaimed transcript when its own is gone. Only the
+	 *  main pane: an extra pane with no conversation of its own was, now that hooks
+	 *  keep the ids current, almost always never prompted, so it starts fresh. */
+	adoptsOrphan?: boolean;
 }
 
 /**
@@ -74,10 +78,10 @@ export function listResumableSessionIds(
  * the store, so no two panes are handed the same conversation.
  *
  * A pane keeps its stored id when that id has a transcript and no earlier pane
- * claimed it. Every other pane gets the newest transcript nobody claimed, and
- * `startFresh` when none is left. Healing each pane on its own gave every stale
- * pane the same newest transcript (h0x91b/dev-3.0#1950). A pane whose store
- * cannot be checked passes its stored id through untouched.
+ * claimed it. A pane that `adoptsOrphan` otherwise gets the newest transcript
+ * nobody claimed; every other pane gets `startFresh`. Healing each pane on its
+ * own gave every stale pane the same newest transcript (h0x91b/dev-3.0#1950). A
+ * pane whose store cannot be checked passes its stored id through untouched.
  */
 export function resolveResumableSessionIds(
 	worktreePath: string,
@@ -111,7 +115,7 @@ export function resolveResumableSessionIds(
 	});
 
 	for (const { index, ids } of unresolved) {
-		const next = ids.find((id) => !claimed.has(id)) ?? null;
+		const next = panes[index].adoptsOrphan ? ids.find((id) => !claimed.has(id)) ?? null : null;
 		if (next) claimed.add(next);
 		targets[index] = { sessionId: next, substituted: panes[index].sessionId != null, startFresh: next === null, verified: next !== null };
 	}

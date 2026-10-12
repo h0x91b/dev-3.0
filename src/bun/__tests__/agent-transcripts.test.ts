@@ -47,13 +47,14 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-/** Resolve a single pane — the one-pane task every older caller had. */
+/** Resolve a single main pane — the one-pane task every older caller had. */
 function resolveOne(agentCmd: string, sessionId: string | null, originCwd?: string) {
-	return resolveResumableSessionIds(WORKTREE, [{ agentCmd, sessionId, sessionOriginCwd: originCwd }], home)[0];
+	return resolveResumableSessionIds(WORKTREE, [{ agentCmd, sessionId, sessionOriginCwd: originCwd, adoptsOrphan: true }], home)[0];
 }
 
+/** A main pane followed by extra panes, as resumeTask passes them. */
 function claudePanes(...sessionIds: (string | null)[]) {
-	return sessionIds.map((sessionId) => ({ agentCmd: "claude", sessionId }));
+	return sessionIds.map((sessionId, i) => ({ agentCmd: "claude", sessionId, adoptsOrphan: i === 0 }));
 }
 
 describe("resolveResumableSessionIds — one pane", () => {
@@ -155,15 +156,15 @@ describe("resolveResumableSessionIds — one pane", () => {
 
 describe("resolveResumableSessionIds — several panes (#1950)", () => {
 	it("never hands two stale panes the same newest transcript", () => {
-		// Healing each pane on its own gave both stale panes "newest", so they
+		// Healing each pane on its own gave every stale pane "newest", so they
 		// reopened one conversation side by side.
 		seedTranscript("pane-a", 30);
 		seedTranscript("newest", 0);
-		seedTranscript("older", 600);
 
-		const ids = resolveResumableSessionIds(WORKTREE, claudePanes("pane-a", "dead-1", "dead-2"), home).map((t) => t.sessionId);
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("dead-main", "pane-a", "dead-extra"), home);
 
-		expect(ids).toEqual(["pane-a", "newest", "older"]);
+		expect(targets.map((t) => t.sessionId)).toEqual(["newest", "pane-a", null]);
+		expect(targets[2].startFresh).toBe(true);
 	});
 
 	it("lets a pane keep its own conversation even when it is not the newest one", () => {
@@ -177,30 +178,32 @@ describe("resolveResumableSessionIds — several panes (#1950)", () => {
 		expect(targets[1].substituted).toBe(false);
 	});
 
-	it("starts a pane fresh when every transcript already belongs to another pane", () => {
-		seedTranscript("pane-a", 0);
-		seedTranscript("pane-b", 10);
+	it("starts a never-prompted extra pane fresh rather than adopting an abandoned conversation", () => {
+		// "pre-clear" is what a `/clear` left behind in another pane; reopening it
+		// here would show this pane a conversation it never had.
+		seedTranscript("main", 30);
+		seedTranscript("pre-clear", 0);
 
-		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("pane-a", "pane-b", "never-prompted"), home);
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("main", "never-prompted"), home);
 
-		expect(targets[2]).toEqual({ sessionId: null, substituted: true, startFresh: true, verified: false });
+		expect(targets[1]).toEqual({ sessionId: null, substituted: true, startFresh: true, verified: false });
 	});
 
 	it("splits panes that already collapsed onto one id", () => {
 		// The old bug persisted the shared id, so both panes now point at one live transcript.
 		seedTranscript("shared", 0);
-		seedTranscript("pane-b-real", 60);
 
-		const ids = resolveResumableSessionIds(WORKTREE, claudePanes("shared", "shared"), home).map((t) => t.sessionId);
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("shared", "shared"), home);
 
-		expect(ids).toEqual(["shared", "pane-b-real"]);
+		expect(targets.map((t) => t.sessionId)).toEqual(["shared", null]);
+		expect(targets[1].startFresh).toBe(true);
 	});
 
 	it("leaves panes of an unverifiable agent out of the claims", () => {
 		seedTranscript("pane-a", 0);
 
 		const targets = resolveResumableSessionIds(WORKTREE, [
-			{ agentCmd: "codex", sessionId: "codex-rollout" },
+			{ agentCmd: "codex", sessionId: "codex-rollout", adoptsOrphan: true },
 			{ agentCmd: "claude", sessionId: "pane-a" },
 		], home);
 

@@ -2162,7 +2162,7 @@ async function markTerminalAttached(project: Project, task: Task): Promise<void>
  * pass so no two panes reopen the same conversation (decision 189, #1950).
  */
 function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode }[] {
-	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes);
+	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes.map((pane, i) => ({ ...pane, adoptsOrphan: i === 0 })));
 	return targets.map((target, i) => {
 		if (target.substituted || target.startFresh) {
 			log.warn("Stored session id is not resumable for this pane — resuming another conversation instead", {
