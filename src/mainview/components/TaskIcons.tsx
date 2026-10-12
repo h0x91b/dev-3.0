@@ -17,9 +17,10 @@ import type { SVGProps } from "react";
  * open-in arrow launches out of its box, the file / port trees wire themselves
  * up, the scripts ƒ writes itself, the images sun rises at golden hour, the
  * settings gear ratchets, the fullscreen arrows burst out (or dive back in),
- * the panel chevron dips with a ghost echo. Idle rendering is pixel-identical
- * to the static icon. Glyphs shared with other surfaces (`EyeIcon`, on the
- * Active Tasks rows) ship static — they have no `.task-anim` host.
+ * the panel chevron dips with a ghost echo, the show/hide eye blinks or
+ * squeezes shut under a redrawn slash. Idle rendering is pixel-identical to the
+ * static icon; a glyph only animates inside a `.task-anim` host, so the same
+ * `EyeIcon` stays still as a read-only "hidden" badge.
  */
 
 interface TaskIconProps {
@@ -309,12 +310,36 @@ export function PanelChevronIcon({ className, direction = "down" }: TaskIconProp
 	);
 }
 
+// 16 — Run / start: the triangle lunges forward, an outline echo shoots ahead.
+// Centred on the viewBox so it sits flush against a label.
+export function PlayIcon({ className }: TaskIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M7 5.5v13l10.5-6.5z" fill="currentColor" className="th-play" />
+			<path d="M7 5.5v13l10.5-6.5z" className="th-play-ghost" opacity="0" />
+		</svg>
+	);
+}
+
+// 17 — Set up (dev server without a script): the arrow lunges toward the setup.
+export function SetupArrowIcon({ className }: TaskIconProps) {
+	return (
+		<svg {...svgBase(className, 1.5)}>
+			<path d="M5 12h14M12 5l7 7-7 7" className="th-play" />
+		</svg>
+	);
+}
+
+// 15 — Eye (show / hide toggle): the open eye blinks awake and its pupil
+// focuses; the struck-out eye squeezes shut while its slash redraws.
 export function EyeIcon({ className, off = false }: TaskIconProps & { off?: boolean }) {
 	return (
 		<svg {...svgBase(className)}>
-			<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
-			<circle cx="12" cy="12" r="2.8" />
-			{off && <path d="M4 20 20 4" />}
+			<g className={off ? "th-eye-shut" : "th-eye"}>
+				<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+				<circle cx="12" cy="12" r="2.8" className={off ? undefined : "th-eye-pupil"} />
+			</g>
+			{off && <path d="M4 20 20 4" pathLength={1} className="th-draw th-eye-slash" />}
 		</svg>
 	);
 }

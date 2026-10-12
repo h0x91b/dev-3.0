@@ -25,6 +25,7 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
 import Select from "./Select";
 import MemoryPressureBanner from "./MemoryPressureBanner";
+import { PlayIcon } from "./TaskIcons";
 
 /** "draft" parks the task as an unfinished draft; the rest are the launch exits. */
 type SubmitMode = "save" | "run" | "scratch" | "draft";
@@ -1037,11 +1038,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 										data-tour-anchor="create-task.run"
 										onClick={handleCreateAndRun}
 										disabled={!description.trim() || creating}
-										className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+										className="task-anim px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 									>
-										<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-											<path d="M8 5v14l11-7z" />
-										</svg>
+										<PlayIcon className="w-3 h-3" />
 										{t("createTask.createAndRun")}
 									</button>
 								)}

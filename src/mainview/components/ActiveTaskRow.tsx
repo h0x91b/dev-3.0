@@ -281,7 +281,7 @@ export default function ActiveTaskRow({
 						// width-gated rule would only ever hide it. Where a hover pointer
 						// exists the row reveals it; where none does it stays put and
 						// grows a 44px hit area (the 24px glyph is the bare WCAG floor).
-						className="absolute right-2 top-2 z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-raised text-fg-3 transition-[opacity,color,background-color,transform] duration-150 ease-out hover:bg-elevated hover:text-fg motion-safe:active:scale-[0.96] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:none)]:before:absolute [@media(hover:none)]:before:-inset-2.5 [@media(hover:none)]:before:content-['']"
+						className="task-anim absolute right-2 top-2 z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-raised text-fg-3 transition-[opacity,color,background-color,transform] duration-150 ease-out hover:bg-elevated hover:text-fg motion-safe:active:scale-[0.96] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:none)]:before:absolute [@media(hover:none)]:before:-inset-2.5 [@media(hover:none)]:before:content-['']"
 						aria-label={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}
 						data-testid={`sidebar-task-hidden-toggle-${task.id}`}
 					>

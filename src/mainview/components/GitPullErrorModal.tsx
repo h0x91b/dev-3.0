@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { RescanIcon } from "./HeaderIcons";
 
 interface GitPullErrorModalProps {
 	branch: string;
@@ -88,15 +89,9 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 						onClick={onRetry}
 						disabled={retrying}
 						data-testid="git-pull-error-retry"
-						className="px-4 py-2 text-sm font-medium text-white bg-accent-fill hover:bg-accent-fill-hover rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+						className={`header-anim px-4 py-2 text-sm font-medium text-white bg-accent-fill hover:bg-accent-fill-hover rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2${retrying ? " hdr-rescan-busy" : ""}`}
 					>
-						<span
-							className={`text-base leading-none${retrying ? " animate-spin inline-block" : ""}`}
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							aria-hidden="true"
-						>
-							{"\u{F0450}"}
-						</span>
+						<RescanIcon className="w-4 h-4 flex-shrink-0" />
 						{retrying ? t("kanban.gitPullInProgress") : t("kanban.gitPullErrorRetry")}
 					</button>
 				</div>

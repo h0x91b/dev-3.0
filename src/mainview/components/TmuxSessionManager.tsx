@@ -12,6 +12,7 @@ import { formatBytes } from "../utils/formatBytes";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import { computeMenuFlyoutPosition, MENU_FLYOUT_CLOSE_MS, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import Tooltip from "./Tooltip";
+import { RescanIcon, TmuxSessionsIcon } from "./HeaderIcons";
 
 interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
@@ -346,14 +347,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	const count = sessions.length;
 	const sortedSessions = sortSessions(sessions, sortKey);
 
-	const glyph = (
-		<span
-			className="text-lg leading-none"
-			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-		>
-			{"\u{EBC8}"}
-		</span>
-	);
+	const glyph = <TmuxSessionsIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />;
 
 	const countBadge = count > 0 ? (
 		<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-dense font-bold bg-accent/20 text-accent rounded-full px-1">
@@ -382,7 +376,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 		<button
 			ref={buttonRef}
 			onClick={togglePopover}
-			className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
+			className={`header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
 			aria-label={t("tmuxSessions.title")}
 		>
 			{glyph}
@@ -430,22 +424,10 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 								<button
 									onClick={handleRefresh}
 									disabled={refreshing}
-									className="text-fg-3 hover:text-fg hover:bg-elevated p-1 rounded transition-colors disabled:opacity-40"
+									className={`header-anim text-fg-3 hover:text-fg hover:bg-elevated p-1 rounded transition-colors disabled:opacity-40${refreshing ? " hdr-rescan-busy" : ""}`}
 									aria-label={t("tmuxSessions.refresh")}
 								>
-									<svg
-										className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`}
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-3.36M20 15a9 9 0 01-14.13 3.36"
-											strokeWidth={2}
-											strokeLinecap="round"
-											strokeLinejoin="round"
-										/>
-									</svg>
+									<RescanIcon className="w-3.5 h-3.5" />
 								</button>
 								</Tooltip>
 								{count > 0 && (

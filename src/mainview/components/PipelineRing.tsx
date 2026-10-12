@@ -4,11 +4,12 @@ import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
 import { PIPELINE_STAGES, getPipelineIndex, isSideBranch } from "./StatusPipeline";
 
-/** The pipeline's "you are done" glyph, shared by every quick-complete affordance. */
+/** The pipeline's "you are done" glyph, shared by every quick-complete affordance.
+ *  Inside a `.task-anim` host the tick redraws itself on hover/focus. */
 export function CompleteCheckIcon({ className }: { className?: string }) {
 	return (
-		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-			<path d="M20 6 9 17l-5-5" />
+		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<path d="M20 6 9 17l-5-5" pathLength={1} className="th-draw th-check" />
 		</svg>
 	);
 }

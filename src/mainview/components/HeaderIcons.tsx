@@ -136,6 +136,21 @@ export function ProjectTerminalIcon({ className }: HeaderIconProps) {
 	);
 }
 
+// 08b — Tmux sessions: a stack of terminals; the sheets fan apart as if being
+// flipped through, and the front prompt retypes itself.
+export function TmuxSessionsIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M7.5 6V5a2 2 0 0 1 2-2H19a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-1.5" className="hdr hdr-ts-back" />
+			<g className="hdr hdr-ts-front">
+				<rect x="3" y="7" width="14.5" height="13" rx="2" />
+				<path d="m6.2 11.6 2.3 2.1-2.3 2.1" pathLength={1} className="hdr-draw hdr-pt-prompt" />
+				<path d="M10.8 16.3h3.2" />
+			</g>
+		</svg>
+	);
+}
+
 // 09 — Pull: the arrow drops out of the cloud, the cloud bobs.
 export function PullIcon({ className }: HeaderIconProps) {
 	return (

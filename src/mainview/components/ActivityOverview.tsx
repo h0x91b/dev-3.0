@@ -27,6 +27,7 @@ import HelpSpot from "./HelpSpot";
 import PriorityBadge from "./PriorityBadge";
 import Tooltip from "./Tooltip";
 import { CompleteCheckIcon } from "./PipelineRing";
+import { StatsIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -824,7 +825,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										onClick={() => void completeTask(task, project)}
 										disabled={completing}
 										aria-label={`${t("pipeline.completeTooltip")} — ${getTaskTitle(task)}`}
-										className={`flex flex-shrink-0 items-center justify-center self-stretch pr-1 md:pr-2 text-success transition-[opacity,background-color,transform] duration-150 ease-out hover:bg-success/10 motion-safe:active:scale-[0.96] ${narrow ? "w-11" : "w-9"} ${
+										className={`task-anim flex flex-shrink-0 items-center justify-center self-stretch pr-1 md:pr-2 text-success transition-[opacity,background-color,transform] duration-150 ease-out hover:bg-success/10 motion-safe:active:scale-[0.96] ${narrow ? "w-11" : "w-9"} ${
 											completing ? "opacity-100" : "md:opacity-0 md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100"
 										}`}
 									>
@@ -832,7 +833,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										    14px target reads as a flicker. */}
 										<span className="relative flex h-4 w-4 items-center justify-center rounded-md">
 											<span
-												className={`absolute inset-0 h-4 w-4 animate-spin rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
+												className={`absolute inset-0 h-4 w-4 rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
 											/>
 											<CompleteCheckIcon
 												className={`absolute inset-0 h-4 w-4 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`}
@@ -952,9 +953,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					data-hint-id="dashboard-stats"
 					data-help-id="dashboard.stats-entry"
 					onClick={() => navigate({ screen: "stats" })}
-					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-3 md:px-5 py-4 transition-[background-color,border-color] text-left"
+					className="header-anim group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-3 md:px-5 py-4 transition-[background-color,border-color] text-left"
 				>
-					<span aria-hidden="true" className="text-accent text-3xl leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
+					<StatsIcon className="w-[1.875rem] h-[1.875rem] text-accent shrink-0" />
 					<div className="flex-1 min-w-0">
 						<div className="text-fg font-semibold">{t("stats.cardTitle")}</div>
 						<div className="text-fg-3 text-xs mt-0.5 truncate">{t("stats.cardSubtitle")}</div>

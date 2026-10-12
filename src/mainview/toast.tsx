@@ -880,7 +880,7 @@ function ToastActions({
 					onClick={(event) => onRun(action, event)}
 					aria-label={action.ariaLabel}
 					title={action.ariaLabel}
-					className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/60 ${
+					className={`header-anim inline-flex min-h-7 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/60 ${
 						action.shrink ? "min-w-0" : "flex-none"
 					} ${
 						action.emphasis

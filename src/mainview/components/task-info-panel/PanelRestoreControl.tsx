@@ -71,7 +71,7 @@ export default function PanelRestoreControl({ entries }: { entries: PanelHideabl
 					aria-label={t("infoPanel.restoreHidden")}
 					aria-haspopup="menu"
 					aria-expanded={open}
-					className="flex flex-shrink-0 items-center justify-center w-7 h-7 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated-hover transition-colors"
+					className="task-anim flex flex-shrink-0 items-center justify-center w-7 h-7 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated-hover transition-colors"
 				>
 					<EyeIcon off className="w-[1.05rem] h-[1.05rem]" />
 				</button>

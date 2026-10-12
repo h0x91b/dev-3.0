@@ -679,7 +679,7 @@ function TaskInfoPanel({
 		<button
 			type="button"
 			ref={diffFilesTriggerRef}
-			className={`inline-flex items-center gap-1.5 px-2 py-1 text-micro font-mono text-fg-2 cursor-pointer transition-colors hover:bg-elevated-hover ${showTestsSegment ? "rounded-l-lg" : "rounded-lg"}`}
+			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 text-micro font-mono text-fg-2 cursor-pointer transition-colors hover:bg-elevated-hover ${showTestsSegment ? "rounded-l-lg" : "rounded-lg"}`}
 			onClick={() => openBranchDiff()}
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
@@ -687,7 +687,7 @@ function TaskInfoPanel({
 			aria-label={diffBadgeAriaLabel}
 			data-testid="diff-summary-badge"
 		>
-			<span className="text-fg-muted text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			<ShowDiffIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0 text-fg-muted" />
 			<span>{t.plural("infoPanel.diffFileCount", visibleDiffFiles)}</span>
 			<span className="text-success">+{visibleDiffInsertions}</span>
 			<span className="text-danger">−{visibleDiffDeletions}</span>
@@ -734,11 +734,11 @@ function TaskInfoPanel({
 			onClick={() => openDiffWhereTheChangesAre(hasCommittedDiff)}
 			aria-label={t("infoPanel.showDiff")}
 			title={diffBadgeTitle}
-			className={`flex-shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-edge bg-elevated px-2 min-w-[2.75rem] min-h-[2.75rem] text-micro font-mono text-fg-2 transition-colors hover:bg-elevated-hover ${
+			className={`git-anim flex-shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-edge bg-elevated px-2 min-w-[2.75rem] min-h-[2.75rem] text-micro font-mono text-fg-2 transition-colors hover:bg-elevated-hover ${
 				hasCommittedDiff ? "[@container(min-width:400px)]:hidden" : ""
 			}`}
 		>
-			<span className="text-fg-muted text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			<ShowDiffIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0 text-fg-muted" />
 			{/* The numbers go before the chip does. A 390px bar already carrying a
 			    variant switcher, status, priority, images and artifacts has ~44px
 			    left — a square and nothing more — while a dirty "+4000 −2000" needs
@@ -920,7 +920,7 @@ function TaskInfoPanel({
 							onClick={handleQuickComplete}
 							disabled={quickCompleting}
 							aria-label={t("pipeline.completeTooltip")}
-							className={`flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 text-success transition-[color,background-color,opacity] ${
+							className={`task-anim flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 text-success transition-[color,background-color,opacity] ${
 								quickCompleting ? "bg-success/25 opacity-100" : "opacity-75 hover:bg-success/20 hover:opacity-100"
 							}`}
 						>
@@ -1179,7 +1179,7 @@ function TaskInfoPanel({
 										<button
 											type="button"
 											onClick={ownForeignCode}
-											className="task-anim flex-shrink-0 rounded border border-edge px-1.5 py-0.5 text-dense text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+											className="flex-shrink-0 rounded border border-edge px-1.5 py-0.5 text-dense text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
 										>
 											{t("infoPanel.foreignCodeOwn")}
 										</button>

@@ -36,7 +36,7 @@ export function HideRowButton({ id }: { id: HideableControlId }) {
 				hideControl(id);
 			}}
 			aria-label={t("hideableControls.hide")}
-			className="flex-shrink-0 p-1.5 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-colors"
+			className="task-anim flex-shrink-0 p-1.5 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-colors"
 		>
 			<EyeIcon off className="w-4 h-4" />
 		</button>

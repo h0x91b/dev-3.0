@@ -750,7 +750,7 @@ function ActiveTasksSidebar({
 									? t.plural("sidebar.hiddenAttentionCount", hiddenAttentionCount)
 									: t("sidebar.showHiddenTasks")
 							}
-							className={`relative shrink-0 ${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(showHidden)}`}
+							className={`task-anim relative shrink-0 ${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(showHidden)}`}
 							data-testid="sidebar-show-hidden"
 							data-help-id="sidebar.show-hidden"
 						>

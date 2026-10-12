@@ -23,6 +23,7 @@ import ImportConversationsModal from "./ImportConversationsModal";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
+import { BackIcon } from "./HeaderIcons";
 
 const CONFIG_BOOLEAN_DEFAULTS = {
 	autoReviewEnabled: false,
@@ -2113,9 +2114,9 @@ function ProjectSettings({
 							<button
 								type="button"
 								onClick={() => _navigate({ screen: "project", projectId, activeTaskId: initialWorktreeTaskId })}
-								className="flex items-center gap-1.5 text-fg-3 hover:text-fg-2 text-sm transition-colors -mt-1 -mb-3"
+								className="header-anim flex items-center gap-1.5 text-fg-3 hover:text-fg-2 text-sm transition-colors -mt-1 -mb-3"
 							>
-								<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0141}"}</span>
+								<BackIcon className="w-3.5 h-3.5 flex-shrink-0" />
 								<span className="truncate max-w-xs">{getTaskTitle(backTask)}</span>
 							</button>
 						) : null;

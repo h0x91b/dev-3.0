@@ -8,6 +8,7 @@ import ExtraKeyBar from "./ExtraKeyBar";
 import ScrollToLatestButton from "./ScrollToLatestButton";
 import TerminalComposer, { type TerminalComposerApi } from "./TerminalComposer";
 import { isTouchPrimary } from "../utils/platform";
+import { BackIcon } from "./HeaderIcons";
 
 interface ProjectTerminalProps {
 	projectId: string;
@@ -121,11 +122,9 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 			<div className="flex items-center justify-between px-4 py-1.5 border-b border-edge flex-shrink-0 bg-raised" data-collapse-on-compose>
 				<button
 					onClick={onBack}
-					className="flex items-center gap-1.5 text-fg-3 hover:text-fg transition-colors text-sm"
+					className="header-anim flex items-center gap-1.5 text-fg-3 hover:text-fg transition-colors text-sm"
 				>
-					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-					</svg>
+					<BackIcon className="w-3.5 h-3.5" />
 					<span>{t("projectTerminal.backToBoard")}</span>
 				</button>
 				<div className="flex items-center gap-3">

@@ -1108,7 +1108,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<Tooltip content={t("update.readyTooltip", { version: updateVersion })} detail={t("ttip.header.updateReady")}>
 							<button
 								onClick={() => setShowUpdateDropdown((v) => !v)}
-								className="header-anim flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors animate-pulse"
+								className="header-anim flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors motion-safe:animate-pulse"
 								aria-label={t("update.readyTooltip", { version: updateVersion })}
 							>
 								<UpdateReadyIcon className="w-4 h-4" />

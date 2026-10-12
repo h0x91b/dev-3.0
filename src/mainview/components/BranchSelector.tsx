@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
+import { RescanIcon } from "./HeaderIcons";
 
 export interface BranchInfo {
 	name: string;
@@ -280,11 +281,9 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 							type="button"
 							onClick={handleResolvePr}
 							disabled={resolvingPr}
-							className="px-3 py-2 bg-accent/15 border border-accent/40 rounded-xl text-accent text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
+							className={`header-anim px-3 py-2 bg-accent/15 border border-accent/40 rounded-xl text-accent text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5${resolvingPr ? " hdr-rescan-busy" : ""}`}
 						>
-							<svg className={`w-3.5 h-3.5 ${resolvingPr ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-							</svg>
+							<RescanIcon className="w-3.5 h-3.5" />
 							{resolvingPr ? t("createTask.prResolving") : t("createTask.branchResolvePr")}
 						</button>
 					) : (
@@ -292,11 +291,9 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview,
 							type="button"
 							onClick={handleFetchBranches}
 							disabled={fetchingBranches}
-							className="px-3 py-2 bg-elevated border border-edge-active rounded-xl text-fg-2 text-xs font-medium hover:bg-elevated-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
+							className={`header-anim px-3 py-2 bg-elevated border border-edge-active rounded-xl text-fg-2 text-xs font-medium hover:bg-elevated-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5${fetchingBranches ? " hdr-rescan-busy" : ""}`}
 						>
-							<svg className={`w-3.5 h-3.5 ${fetchingBranches ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-							</svg>
+							<RescanIcon className="w-3.5 h-3.5" />
 							{fetchingBranches ? t("createTask.branchFetching") : t("createTask.branchFetch")}
 						</button>
 					)}

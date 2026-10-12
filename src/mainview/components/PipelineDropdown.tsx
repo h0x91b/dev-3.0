@@ -46,7 +46,7 @@ export function PipelineMenuAction({
 		<div className={touch ? "px-1" : "px-3"}>
 			<button
 				onClick={onClick}
-				className={`flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg ${
+				className={`task-anim flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg ${
 					touch ? "min-h-[2.75rem] px-2 py-2.5 text-base" : "px-1.5 py-1.5 text-base-sm"
 				}`}
 			>
@@ -146,7 +146,7 @@ export default function PipelineDropdown({
 							<button
 								onClick={canTransition ? () => onMove(stage) : undefined}
 								disabled={!canTransition}
-								className={`flex flex-1 items-center gap-2 text-left ${touch ? "min-h-[2.75rem] py-2.5 pl-2" : "py-1.5 pl-1.5"} pr-3 ${rowText} rounded-md transition-colors ${
+								className={`task-anim flex flex-1 items-center gap-2 text-left ${touch ? "min-h-[2.75rem] py-2.5 pl-2" : "py-1.5 pl-1.5"} pr-3 ${rowText} rounded-md transition-colors ${
 									isCurrentStage
 										? "text-fg font-semibold cursor-default"
 										: canTransition

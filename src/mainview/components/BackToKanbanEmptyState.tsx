@@ -1,4 +1,5 @@
 import { useT } from "../i18n";
+import { BackIcon } from "./HeaderIcons";
 
 interface BackToKanbanEmptyStateProps {
 	/** Headline explaining why this pane has nothing to show. */
@@ -29,11 +30,9 @@ function BackToKanbanEmptyState({ message, hint, onBack, testId }: BackToKanbanE
 			<button
 				type="button"
 				onClick={onBack}
-				className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-raised text-fg-3 hover:text-fg hover:bg-raised-hover hover:border-edge-active transition-colors text-sm"
+				className="header-anim flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-raised text-fg-3 hover:text-fg hover:bg-raised-hover hover:border-edge-active transition-colors text-sm"
 			>
-				<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-				</svg>
+				<BackIcon className="w-3.5 h-3.5" />
 				<span>{t("project.backToKanban")}</span>
 			</button>
 		</div>

@@ -918,9 +918,9 @@ html[data-composer-focused] [data-collapse-on-compose] {
 /* ---- Animated tmux icons ---------------------------------------------------
    The hand-drawn tmux glyphs (TmuxIcons.tsx) act out their operation when the
    hosting control — any element with .tmux-anim (toolbar button, layout menu
-   row, un-zoom badge, mobile sheet row) — is hovered. Pure CSS, loops while
-   hovered, pixel-identical to the static glyph when idle.
-   Animated design reference: design/tmux-icons-animated.html. */
+   row, un-zoom badge, mobile sheet row) — is hovered or keyboard-focused. Pure
+   CSS, pixel-identical to the static glyph when idle; loop vs play-once rules
+   are in "Icon act" after the last family. */
 
 /* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
 svg .tmx { transform-box: view-box; }
@@ -949,12 +949,12 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	82% { opacity: .18; }
 	100% { opacity: 0; }
 }
-.tmux-anim:hover .tmx-sh-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-sh-plus { transform-origin: 12px 17px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-sh-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-sv-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-sv-plus { transform-origin: 18px 12px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-sv-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sh-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sh-plus { transform-origin: 12px 17px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sh-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sv-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sv-plus { transform-origin: 18px 12px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-sv-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
 
 /* -- Cycle layout: the two panes trade places while the arrows orbit -- */
 @keyframes tmx-cy-left {
@@ -979,9 +979,9 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	56% { transform: rotate(180deg); }
 	92%, 100% { transform: rotate(360deg); }
 }
-.tmux-anim:hover .tmx-cy-left { animation: tmx-cy-left 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-cy-right { animation: tmx-cy-right 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-cy-orbit { transform-origin: 12px 12px; animation: tmx-cy-orbit 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-cy-left { animation: tmx-cy-left 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-cy-right { animation: tmx-cy-right 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-cy-orbit { transform-origin: 12px 12px; animation: tmx-cy-orbit 2.6s ease-in-out infinite; }
 
 /* -- Zoom: the magnifier leans in over the split for a closer look -- */
 @keyframes tmx-z-lens {
@@ -990,7 +990,7 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	58% { transform: scale(1.18) translate(-.8px, -.6px); }
 	88%, 100% { transform: scale(1) translate(0, 0); }
 }
-.tmux-anim:hover .tmx-z-lens { transform-origin: 14.5px 10.5px; animation: tmx-z-lens 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-z-lens { transform-origin: 14.5px 10.5px; animation: tmx-z-lens 2.4s ease-in-out infinite; }
 
 /* -- Close pane: the X is slashed on, the pane shudders and blinks out -- */
 @keyframes tmx-k-x1 {
@@ -1018,10 +1018,10 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	92% { opacity: .08; }
 	100% { opacity: 1; }
 }
-.tmux-anim:hover .tmx-k-x1 { animation: tmx-k-x1 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-k-x2 { animation: tmx-k-x2 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-k-shake { animation: tmx-k-shake 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-k-die { animation: tmx-k-die 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-k-x1 { animation: tmx-k-x1 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-k-x2 { animation: tmx-k-x2 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-k-shake { animation: tmx-k-shake 2.4s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-k-die { animation: tmx-k-die 2.4s ease-in-out infinite; }
 
 /* -- tmux hints: a sonar ring pings outward from the info glyph -- */
 @keyframes tmx-i-pulse {
@@ -1035,8 +1035,8 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	62% { transform: scale(1.45); opacity: 0; }
 	100% { transform: scale(1.45); opacity: 0; }
 }
-.tmux-anim:hover .tmx-i-glyph { transform-origin: 8px 8px; animation: tmx-i-pulse 2.2s ease-in-out infinite; }
-.tmux-anim:hover .tmx-i-ring { transform-origin: 8px 8px; animation: tmx-i-ring 2.2s ease-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-i-glyph { transform-origin: 8px 8px; animation: tmx-i-pulse 2.2s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-i-ring { transform-origin: 8px 8px; animation: tmx-i-ring 2.2s ease-out infinite; }
 
 /* -- Layout presets: dividers draw in, panes light up in tmux order -- */
 @keyframes tmx-l-d1 { 0%, 6% { stroke-dashoffset: 1; } 26% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
@@ -1047,30 +1047,30 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 @keyframes tmx-l-f4 { 0%, 72% { opacity: 0; } 80% { opacity: .35; } 88% { opacity: .12; } 100% { opacity: 0; } }
 @keyframes tmx-l-main { 0%, 44% { opacity: 0; } 56% { opacity: .35; } 74% { opacity: .16; } 88% { opacity: .16; } 100% { opacity: 0; } }
 @keyframes tmx-l-sub { 0%, 60% { opacity: 0; } 70% { opacity: .14; } 88% { opacity: .14; } 100% { opacity: 0; } }
-.tmux-anim:hover .tmx-lt-v { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-lt-h { animation: tmx-l-d2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-lt-q1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-lt-q2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-lt-q3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-lt-q4 { animation: tmx-l-f4 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-eh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-eh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-eh-r1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-eh-r2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-eh-r3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-ev-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-ev-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-ev-c1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-ev-c2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-ev-c3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mh-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mh-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mv-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mv-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mv-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mv-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-v { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-h { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-q1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-q2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-q3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-lt-q4 { animation: tmx-l-f4 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-eh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-eh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-eh-r1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-eh-r2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-eh-r3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-ev-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-ev-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-ev-c1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-ev-c2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-ev-c3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mh-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mh-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mv-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mv-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mv-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mv-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
 
 /* -- New window: a fresh window pops into existence -- */
 @keyframes tmx-nw-pop {
@@ -1097,23 +1097,23 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	82% { opacity: .18; }
 	100% { opacity: 0; }
 }
-.tmux-anim:hover .tmx-nw-pop { transform-origin: 12px 12px; animation: tmx-nw-pop 2.6s cubic-bezier(.34, 1.4, .64, 1) infinite; }
-.tmux-anim:hover .tmx-nw-tab { animation: tmx-nw-tab 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-nw-plus { transform-origin: 12px 15px; animation: tmx-nw-plus 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-nw-bar { animation: tmx-nw-bar 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-nw-pop { transform-origin: 12px 12px; animation: tmx-nw-pop 2.6s cubic-bezier(.34, 1.4, .64, 1) infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-nw-tab { animation: tmx-nw-tab 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-nw-plus { transform-origin: 12px 15px; animation: tmx-nw-plus 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-nw-bar { animation: tmx-nw-bar 2.6s ease-in-out infinite; }
 
 /* -- Panes & windows (mobile manage): focus hops between panes -- */
 @keyframes tmx-mg-left { 0%, 30% { opacity: 0; } 40% { opacity: .32; } 52% { opacity: 0; } 100% { opacity: 0; } }
 @keyframes tmx-mg-right { 0%, 54% { opacity: 0; } 64% { opacity: .32; } 76% { opacity: 0; } 100% { opacity: 0; } }
 @keyframes tmx-mg-back { 0%, 78% { opacity: 0; } 86% { opacity: .32; } 96% { opacity: 0; } 100% { opacity: 0; } }
-.tmux-anim:hover .tmx-mg-line { animation: tmx-l-d1 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mg-left { animation: tmx-mg-left 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mg-right { animation: tmx-mg-right 2.6s ease-in-out infinite; }
-.tmux-anim:hover .tmx-mg-back { animation: tmx-mg-back 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mg-line { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mg-left { animation: tmx-mg-left 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mg-right { animation: tmx-mg-right 2.6s ease-in-out infinite; }
+.tmux-anim:is(:hover, :focus-visible) .tmx-mg-back { animation: tmx-mg-back 2.6s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-	.tmux-anim:hover [class^="tmx-"],
-	.tmux-anim:hover [class*=" tmx-"] {
+	.tmux-anim:is(:hover, :focus-visible) [class^="tmx-"],
+	.tmux-anim:is(:hover, :focus-visible) [class*=" tmx-"] {
 		animation: none;
 	}
 }
@@ -1121,9 +1121,8 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* ---- Animated git-action icons --------------------------------------------
    The hand-drawn git glyphs (GitIcons.tsx) act out their operation when the
    hosting control — any element with .git-anim (a git-row button or the diff
-   include-tests toggle) — is hovered. Pure CSS, loops while hovered,
-   pixel-identical to the static glyph when idle.
-   Animated design reference: design/tmux-icons-animated.html (Git actions). */
+   include-tests toggles, the diff badges) — is hovered or keyboard-focused.
+   Pure CSS, pixel-identical to the static glyph when idle. */
 
 /* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
 svg .gtx { transform-box: view-box; }
@@ -1150,9 +1149,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	78% { opacity: .25; }
 	100% { opacity: .25; }
 }
-.git-anim:hover .gtx-gd-add { animation: gtx-gd-add 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gd-plus { transform-origin: 7px 9px; animation: gtx-gd-plus 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gd-del { animation: gtx-gd-del 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gd-add { animation: gtx-gd-add 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gd-plus { transform-origin: 7px 9px; animation: gtx-gd-plus 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gd-del { animation: gtx-gd-del 2.4s ease-in-out infinite; }
 
 /* -- Commit (commit node): the new commit dot lands, a ring expands out of it -- */
 @keyframes gtx-gk-dot {
@@ -1165,8 +1164,8 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	38% { opacity: .55; }
 	72%, 100% { transform: scale(2); opacity: 0; }
 }
-.git-anim:hover .gtx-gk-dot { transform-origin: 12px 12px; animation: gtx-gk-dot 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gk-ring { transform-origin: 12px 12px; animation: gtx-gk-ring 2.4s ease-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gk-dot { transform-origin: 12px 12px; animation: gtx-gk-dot 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gk-ring { transform-origin: 12px 12px; animation: gtx-gk-ring 2.4s ease-out infinite; }
 
 /* -- Rebase (replant): rail marches, the commit rides it up, the tip pulses -- */
 @keyframes gtx-gr-ants { to { stroke-dashoffset: -23; } }
@@ -1186,9 +1185,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	54% { transform: scale(1.45); }
 	66%, 100% { transform: scale(1); }
 }
-.git-anim:hover .gtx-gr-ants { animation: gtx-gr-ants 1.6s linear infinite; }
-.git-anim:hover .gtx-gr-dot { animation: gtx-gr-dot 2.6s ease-in-out infinite; }
-.git-anim:hover .gtx-gr-land { transform-origin: 6px 5px; animation: gtx-gr-land 2.6s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gr-ants { animation: gtx-gr-ants 1.6s linear infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gr-dot { animation: gtx-gr-dot 2.6s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gr-land { transform-origin: 6px 5px; animation: gtx-gr-land 2.6s ease-in-out infinite; }
 
 /* -- Push (cloud): the arrow launches up and vanishes, the cloud gulps -- */
 @keyframes gtx-gp-arrow {
@@ -1204,8 +1203,8 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	48% { transform: scale(1.09); }
 	62%, 100% { transform: scale(1); }
 }
-.git-anim:hover .gtx-gp-arrow { animation: gtx-gp-arrow 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gp-cloud { transform-origin: 11.5px 11px; animation: gtx-gp-cloud 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gp-arrow { animation: gtx-gp-arrow 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gp-cloud { transform-origin: 11.5px 11px; animation: gtx-gp-cloud 2.4s ease-in-out infinite; }
 
 /* -- Create PR (sparkle): branch curve draws over, dot lands, sparkle twinkles -- */
 @keyframes gtx-gc-curve {
@@ -1224,9 +1223,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { transform: scale(.55) rotate(-12deg); opacity: .55; }
 	65% { transform: scale(1.2) rotate(8deg); opacity: 1; }
 }
-.git-anim:hover .gtx-gc-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gc-dot { transform-origin: 15.5px 18.5px; animation: gtx-gc-dot 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gc-spark { transform-origin: 19.7px 5.6px; animation: gtx-gc-spark 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gc-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gc-dot { transform-origin: 15.5px 18.5px; animation: gtx-gc-dot 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gc-spark { transform-origin: 19.7px 5.6px; animation: gtx-gc-spark 2.4s ease-in-out infinite; }
 
 /* -- PR + auto-merge (lightning): curve draws, the bolt strikes and crackles -- */
 @keyframes gtx-gl-bolt {
@@ -1240,8 +1239,8 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	76%, 96% { opacity: 1; }
 	100% { transform: scale(1); opacity: 1; }
 }
-.git-anim:hover .gtx-gl-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gl-bolt { transform-origin: 16.8px 15.4px; animation: gtx-gl-bolt 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gl-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gl-bolt { transform-origin: 16.8px 15.4px; animation: gtx-gl-bolt 2.4s ease-in-out infinite; }
 
 /* -- Merge (classic): branch flows into the base, merge commit pops in -- */
 @keyframes gtx-gm-dot {
@@ -1250,8 +1249,8 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	64% { transform: scale(1); }
 	100% { transform: scale(1); opacity: 1; }
 }
-.git-anim:hover .gtx-gm-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gm-dot { transform-origin: 17px 14px; animation: gtx-gm-dot 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gm-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gm-dot { transform-origin: 17px 14px; animation: gtx-gm-dot 2.4s ease-in-out infinite; }
 
 /* -- Include tests (boiling flask): liquid sloshes, bubbles rise out -- */
 @keyframes gtx-tf-b1 {
@@ -1271,9 +1270,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	30% { transform: translateY(-1px); }
 	60% { transform: translateY(.4px); }
 }
-.git-anim:hover .gtx-tf-b1 { animation: gtx-tf-b1 2.2s ease-out infinite; }
-.git-anim:hover .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
-.git-anim:hover .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-tf-b1 { animation: gtx-tf-b1 2.2s ease-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
 
 /* -- Branch chip: the fork draws out of the trunk, its tip commit pops in -- */
 @keyframes gtx-gb-fork {
@@ -1285,12 +1284,12 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	58% { transform: scale(1.4); opacity: 1; }
 	70%, 100% { transform: scale(1); opacity: 1; }
 }
-.git-anim:hover .gtx-gb-fork { animation: gtx-gb-fork 2.4s ease-in-out infinite; }
-.git-anim:hover .gtx-gb-tip { transform-origin: 17px 9.5px; animation: gtx-gb-tip 2.4s ease-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gb-fork { animation: gtx-gb-fork 2.4s ease-in-out infinite; }
+.git-anim:is(:hover, :focus-visible) .gtx-gb-tip { transform-origin: 17px 9.5px; animation: gtx-gb-tip 2.4s ease-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-	.git-anim:hover [class^="gtx-"],
-	.git-anim:hover [class*=" gtx-"] {
+	.git-anim:is(:hover, :focus-visible) [class^="gtx-"],
+	.git-anim:is(:hover, :focus-visible) [class*=" gtx-"] {
 		animation: none;
 	}
 }
@@ -1298,10 +1297,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* ---- Animated header-row icons --------------------------------------------
    The hand-drawn header glyphs (HeaderIcons.tsx) act out their operation when
    the hosting control — any element with .header-anim (a header-row button,
-   the prevent-sleep toggle, the git-pull button) — is hovered. The Remote Access
-   QR glyph also loops while the Remote Access tunnel is active. Pure CSS, pixel-identical
-   to the static icon when idle otherwise.
-   Animated design reference: design/tmux-icons-animated.html (Top header row). */
+   the prevent-sleep toggle, the git-pull button, every refresh / back button)
+   — is hovered or keyboard-focused. The Remote Access QR glyph also loops while
+   the tunnel is active. Pure CSS, pixel-identical to the static icon when idle. */
 
 /* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
 svg .hdr { transform-box: view-box; }
@@ -1331,10 +1329,10 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { transform: translateX(4.5px); opacity: .5; }
 	75%, 100% { transform: translateX(6px); opacity: 0; }
 }
-.header-anim:hover .hdr-back { animation: hdr-back 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-back-ghost { animation: hdr-back-ghost 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-fwd { animation: hdr-fwd 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-fwd-ghost { animation: hdr-fwd-ghost 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-back { animation: hdr-back 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-back-ghost { animation: hdr-back-ghost 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-fwd { animation: hdr-fwd 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-fwd-ghost { animation: hdr-fwd-ghost 2.4s ease-in-out infinite; }
 
 /* -- Home: the prompt types itself, the cursor blinks -- */
 @keyframes hdr-home-prompt { 0%, 8% { stroke-dashoffset: 1; } 35% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
@@ -1345,8 +1343,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	80%, 95% { opacity: 1; }
 	100% { opacity: 0; }
 }
-.header-anim:hover .hdr-home-prompt { animation: hdr-home-prompt 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-home-cursor { animation: hdr-home-cursor 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-home-prompt { animation: hdr-home-prompt 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-home-cursor { animation: hdr-home-cursor 2.4s steps(1) infinite; }
 
 /* -- Dropdown: the chevron dips, a ghost drips down -- */
 @keyframes hdr-dd {
@@ -1360,8 +1358,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { transform: translateY(3.5px); opacity: .45; }
 	75%, 100% { transform: translateY(5px); opacity: 0; }
 }
-.header-anim:hover .hdr-dd { animation: hdr-dd 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-dd-ghost { animation: hdr-dd-ghost 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-dd { animation: hdr-dd 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-dd-ghost { animation: hdr-dd-ghost 2.4s ease-in-out infinite; }
 
 /* -- Sleep z's: the z's drift upward one after another, like a snore -- */
 @keyframes hdr-zfloat {
@@ -1370,8 +1368,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	70% { transform: translateY(0); opacity: 1; }
 	100% { transform: translateY(0); opacity: 1; }
 }
-.header-anim:hover .hdr-z1 { animation: hdr-zfloat 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-z2 { animation: hdr-zfloat 2.4s ease-in-out .45s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-z1 { animation: hdr-zfloat 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-z2 { animation: hdr-zfloat 2.4s ease-in-out .45s infinite; }
 
 /* -- Awake eye: a quick double blink, then the pupil re-dilates -- */
 @keyframes hdr-eye-blink {
@@ -1386,8 +1384,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	62% { transform: scale(.72); }
 	78%, 100% { transform: scale(1); }
 }
-.header-anim:hover .hdr-eye { transform-origin: 12px 12px; animation: hdr-eye-blink 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-eye-pupil { transform-origin: 12px 12px; animation: hdr-eye-pupil 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-eye { transform-origin: 12px 12px; animation: hdr-eye-blink 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-eye-pupil { transform-origin: 12px 12px; animation: hdr-eye-pupil 2.4s ease-in-out infinite; }
 
 /* -- Lock: the shackle tugs but snaps shut, the keyhole blinks "no" -- */
 @keyframes hdr-shackle {
@@ -1404,8 +1402,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	78% { opacity: .2; }
 	84%, 100% { opacity: 1; }
 }
-.header-anim:hover .hdr-shackle { animation: hdr-shackle 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-keyhole { animation: hdr-keyhole 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-shackle { animation: hdr-shackle 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-keyhole { animation: hdr-keyhole 2.4s steps(1) infinite; }
 
 /* -- Quick Shell: the bolt double-flashes, the prompt nudges along -- */
 @keyframes hdr-bolt {
@@ -1420,8 +1418,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	60% { transform: translateX(1.6px); }
 	75%, 100% { transform: translateX(0); }
 }
-.header-anim:hover .hdr-bolt { transform-origin: 12.5px 12px; animation: hdr-bolt 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-qs-prompt { animation: hdr-qs-prompt 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-bolt { transform-origin: 12.5px 12px; animation: hdr-bolt 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qs-prompt { animation: hdr-qs-prompt 2.4s ease-in-out infinite; }
 
 /* -- Project Terminal: title-bar dots pulse, prompt types, cursor blinks -- */
 @keyframes hdr-pt-dot { 0%, 10% { opacity: .35; } 25% { opacity: 1; } 40%, 100% { opacity: .35; } }
@@ -1433,10 +1431,38 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	86%, 96% { opacity: 1; }
 	100% { opacity: 0; }
 }
-.header-anim:hover .hdr-ptd1 { animation: hdr-pt-dot 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-ptd2 { animation: hdr-pt-dot 2.4s ease-in-out .2s infinite; }
-.header-anim:hover .hdr-pt-prompt { animation: hdr-pt-prompt 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-pt-cursor { animation: hdr-pt-cursor 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-ptd1 { animation: hdr-pt-dot 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-ptd2 { animation: hdr-pt-dot 2.4s ease-in-out .2s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-pt-prompt { animation: hdr-pt-prompt 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-pt-cursor { animation: hdr-pt-cursor 2.4s steps(1) infinite; }
+
+/* -- Space: the stacked sheets lift apart, then settle back into one board -- */
+@keyframes hdr-sp-top {
+	0%, 12% { transform: translateY(0); }
+	40%, 58% { transform: translateY(-1.8px); }
+	86%, 100% { transform: translateY(0); }
+}
+@keyframes hdr-sp-mid {
+	0%, 18% { transform: translateY(0); }
+	46%, 60% { transform: translateY(-.8px); }
+	88%, 100% { transform: translateY(0); }
+}
+.header-anim:is(:hover, :focus-visible) .hdr-sp-top { animation: hdr-sp-top 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-sp-mid { animation: hdr-sp-mid 2.4s ease-in-out infinite; }
+
+/* -- Tmux sessions: the stacked sheets fan apart and settle, the prompt retypes -- */
+@keyframes hdr-ts-back {
+	0%, 12% { transform: translate(0, 0); }
+	38%, 56% { transform: translate(1.3px, -1.3px); }
+	84%, 100% { transform: translate(0, 0); }
+}
+@keyframes hdr-ts-front {
+	0%, 12% { transform: translate(0, 0); }
+	38%, 56% { transform: translate(-.7px, .7px); }
+	84%, 100% { transform: translate(0, 0); }
+}
+.header-anim:is(:hover, :focus-visible) .hdr-ts-back { animation: hdr-ts-back 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-ts-front { animation: hdr-ts-front 2.4s ease-in-out infinite; }
 
 /* -- Agent traffic: dots travel the wires, the middle one against the flow -- */
 @keyframes hdr-wire-out {
@@ -1457,15 +1483,15 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	35% { transform: scale(1.14); }
 	100% { transform: scale(1); }
 }
-.header-anim:hover .hdr-wire-1 { animation: hdr-wire-out 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-wire-2 { animation: hdr-wire-back 2.4s ease-in-out .35s infinite; }
-.header-anim:hover .hdr-wire-3 { animation: hdr-wire-out 2.4s ease-in-out .7s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-wire-1 { animation: hdr-wire-out 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-wire-2 { animation: hdr-wire-back 2.4s ease-in-out .35s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-wire-3 { animation: hdr-wire-out 2.4s ease-in-out .7s infinite; }
 .hdr-wire-arrive { animation: hdr-wire-arrive .55s cubic-bezier(0.2, 0, 0, 1); }
 
 @media (prefers-reduced-motion: reduce) {
-	.header-anim:hover .hdr-wire-1,
-	.header-anim:hover .hdr-wire-2,
-	.header-anim:hover .hdr-wire-3,
+	.header-anim:is(:hover, :focus-visible) .hdr-wire-1,
+	.header-anim:is(:hover, :focus-visible) .hdr-wire-2,
+	.header-anim:is(:hover, :focus-visible) .hdr-wire-3,
 	.hdr-wire-arrive { animation: none; }
 }
 
@@ -1487,13 +1513,13 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { transform: translateY(-.9px); }
 	80%, 100% { transform: translateY(0); }
 }
-.header-anim:hover .hdr-pull-arrow { animation: hdr-pull-arrow 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-up-arrow { animation: hdr-up-arrow 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-cloud-bob { animation: hdr-cloud-bob 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-pull-arrow { animation: hdr-pull-arrow 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-up-arrow { animation: hdr-up-arrow 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-cloud-bob { animation: hdr-cloud-bob 2.4s ease-in-out infinite; }
 
 /* -- Success: the check draws itself -- */
 @keyframes hdr-check { 0%, 10% { stroke-dashoffset: 1; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
-.header-anim:hover .hdr-check { animation: hdr-check 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-check { animation: hdr-check 2.4s ease-in-out infinite; }
 
 /* -- Alert: the triangle quakes, the bang blinks -- */
 @keyframes hdr-quake {
@@ -1511,16 +1537,16 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { opacity: .15; }
 	55%, 100% { opacity: 1; }
 }
-.header-anim:hover .hdr-quake { transform-origin: 12px 14px; animation: hdr-quake 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-bang { animation: hdr-bang 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-quake { transform-origin: 12px 14px; animation: hdr-quake 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-bang { animation: hdr-bang 2.4s steps(1) infinite; }
 
 /* -- QR: the inner marks flicker like a scan pass -- */
 @keyframes hdr-qr-blink { 0%, 100% { opacity: .3; } 15% { opacity: 1; } 30% { opacity: .3; } }
-.header-anim:hover .hdr-qr1 { animation: hdr-qr-blink 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-qr2 { animation: hdr-qr-blink 2.4s ease-in-out .3s infinite; }
-.header-anim:hover .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
-.header-anim:hover .hdr-qr4 { animation: hdr-qr-blink 2.4s ease-in-out .9s infinite; }
-.header-anim:hover .hdr-qr5 { animation: hdr-qr-blink 2.4s ease-in-out 1.2s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qr1 { animation: hdr-qr-blink 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qr2 { animation: hdr-qr-blink 2.4s ease-in-out .3s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qr4 { animation: hdr-qr-blink 2.4s ease-in-out .9s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-qr5 { animation: hdr-qr-blink 2.4s ease-in-out 1.2s infinite; }
 .header-anim.remote-access-active .hdr-qr1 { animation: hdr-qr-blink 2.4s ease-in-out infinite; }
 .header-anim.remote-access-active .hdr-qr2 { animation: hdr-qr-blink 2.4s ease-in-out .3s infinite; }
 .header-anim.remote-access-active .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
@@ -1536,7 +1562,7 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	78% { transform: rotate(28deg); }
 	92%, 100% { transform: rotate(0deg); }
 }
-.header-anim:hover .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
 
 /* -- GitHub: the octocat takes a polite bow -- */
 @keyframes hdr-gh {
@@ -1546,7 +1572,7 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	75% { transform: rotate(-3deg); }
 	90%, 100% { transform: rotate(0deg); }
 }
-.header-anim:hover .hdr-gh { transform-origin: 12px 12px; animation: hdr-gh 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-gh { transform-origin: 12px 12px; animation: hdr-gh 2.4s ease-in-out infinite; }
 
 /* -- Bug: antennae twitch, the whole bug wiggles -- */
 @keyframes hdr-bug-body {
@@ -1562,25 +1588,25 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	34% { transform: rotate(6deg); }
 	46%, 100% { transform: rotate(0deg); }
 }
-.header-anim:hover .hdr-bug-body { transform-origin: 12px 14px; animation: hdr-bug-body 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-ant-l { transform-origin: 9.9px 3.9px; animation: hdr-ant 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-ant-r { transform-origin: 14.1px 3.9px; animation: hdr-ant 2.4s ease-in-out .25s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-bug-body { transform-origin: 12px 14px; animation: hdr-bug-body 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-ant-l { transform-origin: 9.9px 3.9px; animation: hdr-ant 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-ant-r { transform-origin: 14.1px 3.9px; animation: hdr-ant 2.4s ease-in-out .25s infinite; }
 
 /* -- Changelog: new entries write themselves onto the list -- */
 @keyframes hdr-cl-line1 { 0%, 15% { stroke-dashoffset: 1; } 40% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes hdr-cl-line2 { 0%, 35% { stroke-dashoffset: 1; } 60% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes hdr-cl-dot1 { 0%, 10% { opacity: 0; } 20%, 100% { opacity: 1; } }
 @keyframes hdr-cl-dot2 { 0%, 30% { opacity: 0; } 42%, 100% { opacity: 1; } }
-.header-anim:hover .hdr-cl-line1 { animation: hdr-cl-line1 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-cl-line2 { animation: hdr-cl-line2 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-cl-dot1 { animation: hdr-cl-dot1 2.4s steps(1) infinite; }
-.header-anim:hover .hdr-cl-dot2 { animation: hdr-cl-dot2 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-cl-line1 { animation: hdr-cl-line1 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-cl-line2 { animation: hdr-cl-line2 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-cl-dot1 { animation: hdr-cl-dot1 2.4s steps(1) infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-cl-dot2 { animation: hdr-cl-dot2 2.4s steps(1) infinite; }
 
 /* -- Kebab: the dots do the wave -- */
 @keyframes hdr-kb { 0%, 10%, 40%, 100% { transform: translateY(0); } 22% { transform: translateY(-2.2px); } }
-.header-anim:hover .hdr-kb1 { animation: hdr-kb 2s ease-in-out infinite; }
-.header-anim:hover .hdr-kb2 { animation: hdr-kb 2s ease-in-out .15s infinite; }
-.header-anim:hover .hdr-kb3 { animation: hdr-kb 2s ease-in-out .3s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-kb1 { animation: hdr-kb 2s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-kb2 { animation: hdr-kb 2s ease-in-out .15s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-kb3 { animation: hdr-kb 2s ease-in-out .3s infinite; }
 
 /* -- Wrench: two ratchet turns on the bolt -- */
 @keyframes hdr-wrench {
@@ -1590,15 +1616,15 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	60% { transform: rotate(-24deg); }
 	78%, 100% { transform: rotate(0deg); }
 }
-.header-anim:hover .hdr-wrench { transform-origin: 17px 7px; animation: hdr-wrench 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-wrench { transform-origin: 17px 7px; animation: hdr-wrench 2.4s ease-in-out infinite; }
 
 /* -- Sliders: the knobs seek their new mix -- */
 @keyframes hdr-sl1 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-5px); } 60% { transform: translateY(-5px); } 88%, 100% { transform: translateY(0); } }
 @keyframes hdr-sl2 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(6px); } 60% { transform: translateY(6px); } 88%, 100% { transform: translateY(0); } }
 @keyframes hdr-sl3 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-3.5px); } 60% { transform: translateY(-3.5px); } 88%, 100% { transform: translateY(0); } }
-.header-anim:hover .hdr-sl1 { animation: hdr-sl1 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-sl2 { animation: hdr-sl2 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-sl3 { animation: hdr-sl3 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-sl1 { animation: hdr-sl1 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-sl2 { animation: hdr-sl2 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-sl3 { animation: hdr-sl3 2.4s ease-in-out infinite; }
 
 /* -- Help mode: the "?" redraws its curve, the dot drops in, the ring breathes -- */
 @keyframes hdr-help-q { 0%, 12% { stroke-dashoffset: 1; } 55%, 100% { stroke-dashoffset: 0; } }
@@ -1612,15 +1638,18 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	55% { transform: scale(1.06); }
 	80%, 100% { transform: scale(1); }
 }
-.header-anim:hover .hdr-help-q { animation: hdr-help-q 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-help-dot { animation: hdr-help-dot 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-help-ring { transform-origin: 12px 12px; animation: hdr-help-ring 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-help-q { animation: hdr-help-q 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-help-dot { animation: hdr-help-dot 2.4s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-help-ring { transform-origin: 12px 12px; animation: hdr-help-ring 2.4s ease-in-out infinite; }
 
-/* -- Rescan: a turn on hover, and a continuous one while the scan runs -- */
+/* -- Rescan / refresh / retry: a turn on hover, a continuous one while it runs -- */
 @keyframes hdr-rescan { 0%, 20% { transform: rotate(0deg); } 80%, 100% { transform: rotate(360deg); } }
 @keyframes hdr-rescan-spin { to { transform: rotate(360deg); } }
-.header-anim:hover .hdr-rescan { transform-origin: 12px 12px; animation: hdr-rescan 2.4s ease-in-out infinite; }
-.hdr-rescan-busy .hdr-rescan { transform-origin: 12px 12px; animation: hdr-rescan-spin 1s linear infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-rescan { transform-origin: 12px 12px; animation: hdr-rescan 2.4s ease-in-out infinite; }
+/* Busy outranks the hover act: a pointer resting on a running refresh must not
+   swap the steady spin for the eased hover turn. */
+.hdr-rescan-busy .hdr-rescan,
+.header-anim.hdr-rescan-busy:is(:hover, :focus-visible) .hdr-rescan { transform-origin: 12px 12px; animation: hdr-rescan-spin 1s linear infinite; }
 
 /* The memory-headroom level is live data, not a hover flourish: it eases between
    polls so the bar visibly drifts instead of jumping, and holds still under
@@ -1631,8 +1660,8 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.header-anim:hover [class^="hdr-"],
-	.header-anim:hover [class*=" hdr-"],
+	.header-anim:is(:hover, :focus-visible) [class^="hdr-"],
+	.header-anim:is(:hover, :focus-visible) [class*=" hdr-"],
 	.header-anim.remote-access-active [class^="hdr-"],
 	.header-anim.remote-access-active [class*=" hdr-"] {
 		animation: none;
@@ -1646,9 +1675,9 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* ---- Animated task-header icons -------------------------------------------
    The hand-drawn task glyphs (TaskIcons.tsx) act out their operation when the
    hosting control — any element with .task-anim (a task-header button in
-   TaskInfoPanel or its sub-panels) — is hovered. Pure CSS, loops while hovered,
-   pixel-identical to the static icon when idle.
-   Animated design reference: design/tmux-icons-animated.html (Task header row). */
+   TaskInfoPanel or its sub-panels, and the same actions on cards and menus) —
+   is hovered or keyboard-focused. Pure CSS, pixel-identical to the static icon
+   when idle. */
 
 /* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
 svg [class^="th-"], svg [class*=" th-"] { transform-box: view-box; }
@@ -1669,9 +1698,9 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	35% { opacity: 1; }
 	60%, 100% { opacity: .2; }
 }
-.task-anim:hover .th-bell { transform-origin: 12px 4.5px; animation: th-bell 2.4s ease-in-out infinite; }
-.task-anim:hover .th-wave-l { animation: th-wave 2.4s ease-in-out infinite; }
-.task-anim:hover .th-wave-r { animation: th-wave 2.4s ease-in-out .15s infinite; }
+.task-anim:is(:hover, :focus-visible) .th-bell { transform-origin: 12px 4.5px; animation: th-bell 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-wave-l { animation: th-wave 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-wave-r { animation: th-wave 2.4s ease-in-out .15s infinite; }
 
 /* -- Watch (off): a hopeful little nudge, "poke me" -- */
 @keyframes th-bell-nudge {
@@ -1681,7 +1710,7 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	70% { transform: rotate(2deg); }
 	80%, 100% { transform: rotate(0deg); }
 }
-.task-anim:hover .th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
 
 /* -- Completion owner: the person steps forward and signs off. -- */
 @keyframes th-owner-person {
@@ -1701,10 +1730,10 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* Idle hides the badge whole, not only its tick: the difference between "dev3
    completes this" and "you do" has to be a shape you can read without hovering. */
 .th-owner-badge-idle, .th-owner-check-idle { opacity: 0; transition: opacity .15s ease-out; }
-.task-anim:hover .th-owner-person { animation: th-owner-person 2.4s ease-in-out infinite; }
-.task-anim:hover .th-owner-badge { transform-origin: 17.2px 16.8px; animation: th-owner-badge 2.4s ease-in-out infinite; }
-.task-anim:hover .th-owner-check { animation: th-owner-check 2.4s ease-in-out infinite; }
-.task-anim:hover .th-owner-badge-idle, .task-anim:hover .th-owner-check-idle { opacity: 1; }
+.task-anim:is(:hover, :focus-visible) .th-owner-person { animation: th-owner-person 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-owner-badge { transform-origin: 17.2px 16.8px; animation: th-owner-badge 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-owner-check { animation: th-owner-check 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-owner-badge-idle, .task-anim:is(:hover, :focus-visible) .th-owner-check-idle { opacity: 1; }
 
 /* -- Find bugs: the lens bears down and thickens as it focuses, the caught bug
    thrashes to get out. The one button whose whole point is "something is wrong
@@ -1724,8 +1753,8 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	72% { transform: rotate(5deg) translate(.4px, -.2px); }
 	86%, 100% { transform: rotate(0deg) translate(0, 0); }
 }
-.task-anim:hover .th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
-.task-anim:hover .th-fb-bug { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fb-bug { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
 
 /* -- Add agent: the head tilts hello, eyes blink, the antenna pings -- */
 @keyframes th-ro-blink {
@@ -1746,9 +1775,9 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	60% { transform: rotate(2.5deg); }
 	80%, 100% { transform: rotate(0deg); }
 }
-.task-anim:hover .th-ro-eye { animation: th-ro-blink 2.4s steps(1) infinite; }
-.task-anim:hover .th-ro-ping { transform-origin: 12px 4.3px; animation: th-ro-ping 2.4s ease-out infinite; }
-.task-anim:hover .th-ro-head { transform-origin: 12px 13.5px; animation: th-ro-head 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ro-eye { animation: th-ro-blink 2.4s steps(1) infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ro-ping { transform-origin: 12px 4.3px; animation: th-ro-ping 2.4s ease-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ro-head { transform-origin: 12px 13.5px; animation: th-ro-head 2.4s ease-in-out infinite; }
 
 /* -- Open in…: the arrow launches out of the box, the box recoils -- */
 @keyframes th-oi-arrow {
@@ -1762,34 +1791,34 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	40% { transform: translate(-.4px, .4px); }
 	70%, 100% { transform: translate(0, 0); }
 }
-.task-anim:hover .th-oi-arrow { animation: th-oi-arrow 2.4s ease-in-out infinite; }
-.task-anim:hover .th-oi-box { animation: th-oi-box 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-oi-arrow { animation: th-oi-arrow 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-oi-box { animation: th-oi-box 2.4s ease-in-out infinite; }
 
 /* -- File tree: connectors wire up, child folders pop into place -- */
 @keyframes th-ft-branch { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-ft-trunk { 0%, 20% { stroke-dashoffset: 1; } 48% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-ft-c1 { 0%, 26% { opacity: 0; transform: scale(.6); } 38%, 100% { opacity: 1; transform: scale(1); } }
 @keyframes th-ft-c2 { 0%, 44% { opacity: 0; transform: scale(.6); } 56%, 100% { opacity: 1; transform: scale(1); } }
-.task-anim:hover .th-ft-branch { animation: th-ft-branch 2.4s ease-in-out infinite; }
-.task-anim:hover .th-ft-trunk { animation: th-ft-trunk 2.4s ease-in-out infinite; }
-.task-anim:hover .th-ft-c1 { transform-origin: 17.25px 11.5px; animation: th-ft-c1 2.4s ease-out infinite; }
-.task-anim:hover .th-ft-c2 { transform-origin: 17.25px 19px; animation: th-ft-c2 2.4s ease-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ft-branch { animation: th-ft-branch 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ft-trunk { animation: th-ft-trunk 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ft-c1 { transform-origin: 17.25px 11.5px; animation: th-ft-c1 2.4s ease-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ft-c2 { transform-origin: 17.25px 19px; animation: th-ft-c2 2.4s ease-out infinite; }
 
 /* -- Scripts: the ƒ writes itself, crossbar last -- */
 @keyframes th-fn-stroke { 0%, 8% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-fn-bar { 0%, 50% { stroke-dashoffset: 1; } 72% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
-.task-anim:hover .th-fn-stroke { animation: th-fn-stroke 2.4s ease-in-out infinite; }
-.task-anim:hover .th-fn-bar { animation: th-fn-bar 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fn-stroke { animation: th-fn-stroke 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fn-bar { animation: th-fn-bar 2.4s ease-in-out infinite; }
 
 /* -- Ports: the wiring connects, then both endpoints come online -- */
 @keyframes th-po-link1 { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-po-link2 { 0%, 25% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-po-c1 { 0%, 40% { opacity: .35; } 58%, 100% { opacity: 1; } }
 @keyframes th-po-c2 { 0%, 50% { opacity: .35; } 68%, 100% { opacity: 1; } }
-.task-anim:hover .th-po-link1 { animation: th-po-link1 2.4s ease-in-out infinite; }
-.task-anim:hover .th-po-link2 { animation: th-po-link2 2.4s ease-in-out infinite; }
-.task-anim:hover .th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
-.task-anim:hover .th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-po-link1 { animation: th-po-link1 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-po-link2 { animation: th-po-link2 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
 
 /* -- Images: golden hour — the sun rises and swells, the ridges draw themselves -- */
 @keyframes th-im-sun {
@@ -1799,9 +1828,9 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 @keyframes th-im-m1 { 0%, 10% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 @keyframes th-im-m2 { 0%, 28% { stroke-dashoffset: 1; } 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
-.task-anim:hover .th-im-sun { transform-origin: 9px 9.8px; animation: th-im-sun 2.4s ease-in-out infinite; }
-.task-anim:hover .th-im-m1 { animation: th-im-m1 2.4s ease-in-out infinite; }
-.task-anim:hover .th-im-m2 { animation: th-im-m2 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-im-sun { transform-origin: 9px 9.8px; animation: th-im-sun 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-im-m1 { animation: th-im-m1 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-im-m2 { animation: th-im-m2 2.4s ease-in-out infinite; }
 
 /* -- Worktree settings: one ratchet turn forward, then wind back -- */
 @keyframes th-gear {
@@ -1810,17 +1839,13 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	58% { transform: rotate(42deg); }
 	90%, 100% { transform: rotate(0deg); }
 }
-.task-anim:hover .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
 
 /* -- Full screen: the arrows fly along their diagonals and settle -- */
-@keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
 @keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
-@keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
 @keyframes th-fs-sw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, 1.6px); } }
-.task-anim:hover .th-fs-nw { animation: th-fs-nw 2.4s ease-in-out infinite; }
-.task-anim:hover .th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
-.task-anim:hover .th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
-.task-anim:hover .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
 
 /* -- Sidebar panel toggle: the pane fades toward its post-click state -- */
 @keyframes th-panel-hide {
@@ -1833,8 +1858,8 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45%, 62% { opacity: .85; }
 	88%, 100% { opacity: 0; }
 }
-.task-anim:hover .th-panel-hide { animation: th-panel-hide 2.4s ease-in-out infinite; }
-.task-anim:hover .th-panel-show { animation: th-panel-show 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-panel-hide { animation: th-panel-hide 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-panel-show { animation: th-panel-show 2.4s ease-in-out infinite; }
 
 /* -- Panel chevron: it dips in its pointing direction, a ghost drips after -- */
 @keyframes th-col {
@@ -1859,10 +1884,10 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	45% { transform: translateY(-3.2px); opacity: .45; }
 	75%, 100% { transform: translateY(-4.6px); opacity: 0; }
 }
-.task-anim:hover .th-col { animation: th-col 2.4s ease-in-out infinite; }
-.task-anim:hover .th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
-.task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
-.task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-col { animation: th-col 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
 
 /* -- Send later: the hands sweep a whole turn ahead, then the bells ring -- */
 @keyframes th-sl-hands {
@@ -1883,9 +1908,9 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	86% { transform: rotate(4deg); }
 	94%, 100% { transform: rotate(0deg); }
 }
-.task-anim:hover .th-sl-hands { transform-origin: 12px 13px; animation: th-sl-hands 2.4s cubic-bezier(.4, 0, .2, 1) infinite; }
-.task-anim:hover .th-sl-bell-l { transform-origin: 5px 3px; animation: th-sl-bell-l 2.4s ease-in-out infinite; }
-.task-anim:hover .th-sl-bell-r { transform-origin: 19px 3px; animation: th-sl-bell-r 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-sl-hands { transform-origin: 12px 13px; animation: th-sl-hands 2.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+.task-anim:is(:hover, :focus-visible) .th-sl-bell-l { transform-origin: 5px 3px; animation: th-sl-bell-l 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-sl-bell-r { transform-origin: 19px 3px; animation: th-sl-bell-r 2.4s ease-in-out infinite; }
 
 /* -- Hibernate: the skull sinks and dims as the session powers down, the
    crossbones fold in after it and everything comes back untouched -- */
@@ -1904,19 +1929,64 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	46%, 68% { transform: rotate(-8deg); }
 	94%, 100% { transform: rotate(0deg); }
 }
-.task-anim:hover .th-hb-skull { transform-origin: 12px 9px; animation: th-hb-skull 2.4s ease-in-out infinite; }
-.task-anim:hover .th-hb-bone-a { transform-origin: 12px 16.8px; animation: th-hb-bone-a 2.4s ease-in-out infinite; }
-.task-anim:hover .th-hb-bone-b { transform-origin: 12px 16.8px; animation: th-hb-bone-b 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-hb-skull { transform-origin: 12px 9px; animation: th-hb-skull 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-hb-bone-a { transform-origin: 12px 16.8px; animation: th-hb-bone-a 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-hb-bone-b { transform-origin: 12px 16.8px; animation: th-hb-bone-b 2.4s ease-in-out infinite; }
 
 /* -- Artifacts: the brackets open up, the slash writes itself, the tab dot blinks -- */
 @keyframes th-ar-lt { 0%, 15%, 85%, 100% { transform: translateX(0); } 40%, 60% { transform: translateX(-1.1px); } }
 @keyframes th-ar-rt { 0%, 15%, 85%, 100% { transform: translateX(0); } 40%, 60% { transform: translateX(1.1px); } }
 @keyframes th-ar-slash { 0%, 18% { stroke-dashoffset: 1; } 52%, 100% { stroke-dashoffset: 0; } }
 @keyframes th-ar-dot { 0%, 55% { opacity: 1; } 62%, 70% { opacity: .2; } 78%, 100% { opacity: 1; } }
-.task-anim:hover .th-ar-lt { animation: th-ar-lt 2.4s ease-in-out infinite; }
-.task-anim:hover .th-ar-rt { animation: th-ar-rt 2.4s ease-in-out infinite; }
-.task-anim:hover .th-ar-slash { animation: th-ar-slash 2.4s ease-in-out infinite; }
-.task-anim:hover .th-ar-dot { animation: th-ar-dot 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ar-lt { animation: th-ar-lt 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ar-rt { animation: th-ar-rt 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ar-slash { animation: th-ar-slash 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-ar-dot { animation: th-ar-dot 2.4s ease-in-out infinite; }
+
+/* -- Show / hide eye: the open eye blinks awake and its pupil focuses; the
+      struck-out eye squeezes shut while its slash redraws -- */
+@keyframes th-eye-blink {
+	0%, 18% { transform: scaleY(1); }
+	26% { transform: scaleY(.12); }
+	34% { transform: scaleY(1); }
+	42% { transform: scaleY(.12); }
+	50%, 100% { transform: scaleY(1); }
+}
+@keyframes th-eye-pupil {
+	0%, 50% { transform: scale(1); }
+	62% { transform: scale(.72); }
+	78%, 100% { transform: scale(1); }
+}
+@keyframes th-eye-shut {
+	0%, 12% { transform: scaleY(1); }
+	38%, 62% { transform: scaleY(.18); }
+	88%, 100% { transform: scaleY(1); }
+}
+@keyframes th-eye-slash { 0%, 12% { stroke-dashoffset: 1; } 42%, 100% { stroke-dashoffset: 0; } }
+.task-anim:is(:hover, :focus-visible) .th-eye { transform-origin: 12px 12px; animation: th-eye-blink 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-eye-pupil { transform-origin: 12px 12px; animation: th-eye-pupil 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-eye-shut { transform-origin: 12px 12px; animation: th-eye-shut 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-eye-slash { animation: th-eye-slash 2.4s ease-in-out infinite; }
+
+/* -- Run / start: the triangle lunges forward, an outline echo shoots ahead -- */
+@keyframes th-play {
+	0%, 12% { transform: translateX(0); }
+	38% { transform: translateX(2.6px); }
+	62% { transform: translateX(-.4px); }
+	88%, 100% { transform: translateX(0); }
+}
+/* Viewbox units: the Run glyph renders at 12px, so the lunge is sized to read there. */
+@keyframes th-play-ghost {
+	0%, 20% { transform: translateX(0); opacity: 0; }
+	45% { transform: translateX(4px); opacity: .45; }
+	75%, 100% { transform: translateX(6.2px); opacity: 0; }
+}
+.task-anim:is(:hover, :focus-visible) .th-play { animation: th-play 2.4s ease-in-out infinite; }
+.task-anim:is(:hover, :focus-visible) .th-play-ghost { animation: th-play-ghost 2.4s ease-in-out infinite; }
+
+/* -- Complete: the tick redraws itself -- */
+@keyframes th-check { 0%, 10% { stroke-dashoffset: 1; } 50%, 100% { stroke-dashoffset: 0; } }
+.task-anim:is(:hover, :focus-visible) .th-check { animation: th-check 2.4s ease-in-out infinite; }
 
 /* Fresh task-bound images/artifacts keep gently nudging until their viewer opens.
    Communicates ongoing unread state — intentionally infinite. */
@@ -1933,10 +2003,32 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.task-anim:hover [class^="th-"],
-	.task-anim:hover [class*=" th-"],
+	.task-anim:is(:hover, :focus-visible) [class^="th-"],
+	.task-anim:is(:hover, :focus-visible) [class*=" th-"],
 	.task-shared-unread-icon {
 		animation: none;
+	}
+}
+
+/* ---- Icon act: loop under a resting cursor, play once otherwise -----------
+   Keyboard focus can sit on a control indefinitely, and a tap on a touch screen
+   leaves :hover stuck until the next tap elsewhere, so neither may run the act
+   forever. Only a real hovering pointer loops. State-driven loops (the active
+   Remote Access QR, the busy rescan) are untouched. Both overrides must stay
+   authored after every family block: the :hover one ties on specificity. */
+.tmux-anim:focus-visible:not(:hover) :is([class^="tmx-"], [class*=" tmx-"]),
+.git-anim:focus-visible:not(:hover) :is([class^="gtx-"], [class*=" gtx-"]),
+.header-anim:not(.remote-access-active, .hdr-rescan-busy):focus-visible:not(:hover) :is([class^="hdr-"], [class*=" hdr-"]),
+.task-anim:focus-visible:not(:hover) :is([class^="th-"], [class*=" th-"]) {
+	animation-iteration-count: 1;
+}
+
+@media (hover: none) {
+	.tmux-anim:hover :is([class^="tmx-"], [class*=" tmx-"]),
+	.git-anim:hover :is([class^="gtx-"], [class*=" gtx-"]),
+	.header-anim:not(.remote-access-active, .hdr-rescan-busy):hover :is([class^="hdr-"], [class*=" hdr-"]),
+	.task-anim:hover :is([class^="th-"], [class*=" th-"]) {
+		animation-iteration-count: 1;
 	}
 }
 

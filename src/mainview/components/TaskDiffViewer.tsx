@@ -50,6 +50,8 @@ import {
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
+import { BackIcon } from "./HeaderIcons";
+import { EyeIcon, FileTreeIcon } from "./TaskIcons";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 import "./TaskDiffViewer.css";
 
@@ -1690,15 +1692,9 @@ function TaskDiffFileSection({
 						aria-pressed={mdPreview}
 						aria-label={t("infoPanel.diffMdPreviewFile", { file: file.displayPath })}
 						title={t("infoPanel.diffMdPreviewFile", { file: file.displayPath })}
-						className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${mdPreview ? "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}
+						className={`task-anim inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${mdPreview ? "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}
 					>
-						<span
-							aria-hidden="true"
-							className="text-sm-plus leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{"\uF06E"}
-						</span>
+						<EyeIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0" />
 						<span>{t("infoPanel.diffMdPreview")}</span>
 					</button>
 				)}
@@ -3329,7 +3325,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	function renderTestsToggle() {
 		return (
 			<label
-				className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-micro font-mono cursor-pointer transition-colors ${
+				className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-micro font-mono cursor-pointer transition-colors ${
 					includeTests
 						? "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
 						: "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
@@ -3347,12 +3343,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					aria-label={t("infoPanel.diffIncludeTestsAria")}
 				/>
 				<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
-				<span
-					className="text-sm-plus leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{"\u{F0668}"}
-				</span>
+				<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0" off={!includeTests} />
 			</label>
 		);
 	}
@@ -3371,7 +3362,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					title={hiddenTestCount > 0 || includeTests
 						? t("infoPanel.diffIncludeTestsTooltip")
 						: t("infoPanel.diffIncludeTestsTooltipNoTests")}
-					className={`flex shrink-0 items-center justify-center self-stretch rounded-r-md px-1.5 transition-colors ${
+					className={`git-anim flex shrink-0 items-center justify-center self-stretch rounded-r-md px-1.5 transition-colors ${
 						includeTests ? "text-fg-3 hover:bg-elevated-hover hover:text-fg-2" : "bg-accent/10 text-accent hover:bg-accent/20"
 					}`}
 				>
@@ -3641,9 +3632,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					<button
 						onClick={requestClose}
 						title={t("infoPanel.backToTerminal")}
-						className="inline-flex shrink-0 items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
+						aria-label={t("infoPanel.backToTerminal")}
+						className="header-anim inline-flex shrink-0 items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
 					>
-						<span className="text-base-sm leading-none">{"\u2190"}</span>
+						<BackIcon className="w-4 h-4 flex-shrink-0" />
 						<span className="hidden [@container(min-width:900px)]:inline">{t("infoPanel.backToTerminal")}</span>
 					</button>
 					<div className="min-w-0 flex-1 pr-2">
@@ -3694,15 +3686,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						aria-label={t("infoPanel.diffFilesExpand")}
 						title={t("infoPanel.diffFilesExpand")}
 						data-testid="diff-files-expand-strip"
-						className="group flex w-7 shrink-0 flex-col items-center gap-2 border-r border-edge bg-raised/35 py-2 text-fg-3 transition-colors hover:bg-raised/60 hover:text-fg"
+						className="task-anim group flex w-7 shrink-0 flex-col items-center gap-2 border-r border-edge bg-raised/35 py-2 text-fg-3 transition-colors hover:bg-raised/60 hover:text-fg"
 					>
-						<span
-							aria-hidden="true"
-							className="text-base leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{"\u{F0645}"}
-						</span>
+						<FileTreeIcon className="w-4 h-4 flex-shrink-0" />
 						<span
 							aria-hidden="true"
 							className="text-sm-plus leading-none"

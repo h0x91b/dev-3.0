@@ -24,6 +24,8 @@ export function _resetDevServerPollRegistry(): void {
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useViewportClamp } from "../../hooks/useViewportClamp";
+import { RescanIcon } from "../HeaderIcons";
+import { PlayIcon, SetupArrowIcon } from "../TaskIcons";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
 import RemoteBetaWarning from "./RemoteBetaWarning";
@@ -86,12 +88,9 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 			</div>
 			<button
 				onClick={onRestart}
-				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+				className="header-anim w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 			>
-				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-						d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-				</svg>
+				<RescanIcon className="w-4 h-4 flex-shrink-0" />
 				{t("header.devServerRestart")}
 			</button>
 			<button
@@ -570,18 +569,10 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		);
 	} else if (hasDevScript && isTaskActive) {
 		// Stopped (or not-yet-resolved): a "start" play affordance.
-		devServerIcon = (
-			<svg className="w-[1.125rem] h-[1.125rem]" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-				<path d="M8 5v14l11-7z" />
-			</svg>
-		);
+		devServerIcon = <PlayIcon className="w-[1.125rem] h-[1.125rem]" />;
 	} else {
 		// No-script / inactive: the original neutral arrow.
-		devServerIcon = (
-			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M12 5l7 7-7 7" />
-			</svg>
-		);
+		devServerIcon = <SetupArrowIcon className="w-[1.125rem] h-[1.125rem]" />;
 	}
 
 	// All hooks above have already run — safe to bail on JSX only. Only the
@@ -594,7 +585,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 				<button
 					ref={devServerBtnRef}
 					onClick={handleDevServer}
-					className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
+					className={`task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
 					aria-label={devServerTitle}
 					aria-busy={isStarting}
 					data-tour-anchor="task.dev-server"

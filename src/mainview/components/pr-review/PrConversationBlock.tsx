@@ -2,13 +2,13 @@ import { useState } from "react";
 import type { PRReviewThread, TaskPRCommentsPayload } from "../../../shared/types";
 import { useT } from "../../i18n";
 import HelpSpot from "../HelpSpot";
+import { RescanIcon } from "../HeaderIcons";
 import { CommentMarkdown } from "./markdown";
 import { formatCommentTimestamp, GithubThreadView, type ThreadSendState } from "./GithubThreadView";
 
 const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
 const GITHUB_GLYPH = "\uf09b";
 const EXTERNAL_LINK_GLYPH = "\uf08e";
-const REFRESH_GLYPH = "\uf021";
 
 export interface GithubThreadActions {
 	exportSelection: Record<string, boolean>;
@@ -118,15 +118,9 @@ export function PrConversationBlock({
 					aria-label={t("infoPanel.prRefresh")}
 					title={t("infoPanel.prRefresh")}
 					data-testid="pr-comments-refresh"
-					className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+					className={`header-anim inline-flex h-6 w-6 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted${refreshing ? " hdr-rescan-busy" : ""}`}
 				>
-					<span
-						aria-hidden="true"
-						className={`text-xs leading-none${refreshing ? " animate-spin" : ""}`}
-						style={{ fontFamily: NERD_FONT }}
-					>
-						{REFRESH_GLYPH}
-					</span>
+					<RescanIcon className="w-3.5 h-3.5" />
 				</button>
 
 				{payload && (

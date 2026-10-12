@@ -28,6 +28,7 @@ import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
 import { prDisplayState, prStateTone } from "../utils/prStateTone";
+import { PlayIcon } from "./TaskIcons";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -666,12 +667,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								<button
 									onClick={handleRun}
 									disabled={deleting || moving}
-									className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
+									className="task-anim flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
 									title={t("task.run")}
 								>
-									<svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-										<path d="M8 5v14l11-7z" />
-									</svg>
+									<PlayIcon className="h-3.5 w-3.5" />
 									{t("task.run")}
 								</button>
 							)}

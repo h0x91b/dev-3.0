@@ -1,0 +1,3 @@
+Short: Icons animate on keyboard focus too
+
+Every animated toolbar icon now also acts out its operation when a control gets keyboard focus, and plays once on focus or a touch tap, so it never loops forever. Only a resting mouse pointer loops it. Icons that were static or broken next to animated neighbours now animate too: the diff-toolbar tests flask, the tmux sessions button, space buttons, show/hide eyes, the dev-server start, Run buttons, quick-complete ticks, watch bells and open-in on task cards, every refresh and back button, and the diff badge. The idle quick-complete spinners on cards no longer keep running while invisible.

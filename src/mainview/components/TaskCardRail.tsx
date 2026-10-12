@@ -178,7 +178,7 @@ export default function TaskCardRail({
 						onClick={onComplete}
 						disabled={completing}
 						aria-label={t("pipeline.completeTooltip")}
-						className={`flex w-full flex-shrink-0 items-center justify-center rounded-bl-[0.6875rem] text-success transition-[opacity,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${touch ? "h-11" : "h-7"} ${
+						className={`task-anim flex w-full flex-shrink-0 items-center justify-center rounded-bl-[0.6875rem] text-success transition-[opacity,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${touch ? "h-11" : "h-7"} ${
 							completing ? "bg-success/25 opacity-100" : "opacity-70 hover:bg-success/20 hover:opacity-100"
 						}`}
 					>
@@ -186,7 +186,7 @@ export default function TaskCardRail({
 						    12px target reads as a flicker. */}
 						<span className="relative flex h-3.5 w-3.5 items-center justify-center">
 							<span
-								className={`absolute inset-0 h-3.5 w-3.5 animate-spin rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
+								className={`absolute inset-0 h-3.5 w-3.5 rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
 							/>
 							<CompleteCheckIcon
 								className={`absolute inset-0 h-3.5 w-3.5 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`}

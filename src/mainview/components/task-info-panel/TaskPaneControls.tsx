@@ -472,7 +472,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 										setLayoutVisible(false);
 										void handleAction(action)(event);
 									}}
-									className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+									className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
 								>
 									<span className="text-xs flex-1 text-fg-2">{t(descKey)}</span>
 									<kbd className="font-mono text-dense text-fg-muted flex-shrink-0">

@@ -21,6 +21,7 @@ import AgentConfigPicker, {
 } from "./AgentConfigPicker";
 import SchedulePicker from "./SchedulePicker";
 import MemoryPressureBanner from "./MemoryPressureBanner";
+import { SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
 
 interface VariantRow {
 	agentId: string | null;
@@ -329,16 +330,14 @@ function LaunchVariantsModal({
 						>
 							<button
 								onClick={() => setWatched(!watched)}
-								className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
+								className={`task-anim flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
 									watched
 										? "text-accent bg-accent/10 border border-accent/25"
 										: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 								}`}
 								aria-label={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 							>
-								<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{watched ? "\u{F009A}" : "\u{F0F1C}"}
-								</span>
+								{watched ? <WatchingIcon className="w-4 h-4 flex-shrink-0" /> : <WatchIcon className="w-4 h-4 flex-shrink-0" />}
 								<span className="text-xs font-medium">
 									{watched ? t("task.watching") : t("task.watch")}
 								</span>
@@ -488,17 +487,14 @@ function LaunchVariantsModal({
 							<button
 								onClick={() => setScheduleOpen((v) => !v)}
 								disabled={launching}
-								className={`text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 border whitespace-nowrap ${pressClass} ${
+								className={`task-anim text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 border whitespace-nowrap ${pressClass} ${
 									scheduleOpen
 										? "text-accent border-accent/40 bg-accent/10"
 										: "text-fg-3 hover:text-fg border-transparent"
 								}`}
 								title={t("launch.startInHint")}
 							>
-								<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-									<circle cx="12" cy="12" r="9" />
-									<path d="M12 7v5l3 2" />
-								</svg>
+								<SendLaterIcon className="w-3.5 h-3.5" />
 								{t("launch.startIn")}
 							</button>
 						)}

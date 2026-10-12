@@ -100,7 +100,7 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 							<button
 								key={artifact.id}
 								type="button"
-								className={`${CARD} flex w-full items-center gap-3 px-3 py-2.5`}
+								className={`${CARD} task-anim flex w-full items-center gap-3 px-3 py-2.5`}
 								data-testid="shared-artifact-link"
 								aria-label={t("infoPanel.openSharedArtifact", { name: artifact.title || artifact.name })}
 								onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {

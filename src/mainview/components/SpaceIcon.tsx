@@ -4,6 +4,7 @@
  * it stays three strokes down to 14px. Deliberately not a folder (that is a
  * project), not a 2x2 grid (that is a layout toggle), not a tag (those are task
  * labels) — each of those spends a meaning dev3 already uses elsewhere.
+ * Inside a `.header-anim` host the sheets lift apart and settle back.
  */
 function SpaceIcon({ className = "w-4 h-4" }: { className?: string }) {
 	return (
@@ -18,8 +19,8 @@ function SpaceIcon({ className = "w-4 h-4" }: { className?: string }) {
 			aria-hidden="true"
 			focusable="false"
 		>
-			<path d="M12 3.2 20.5 7.6 12 12 3.5 7.6z" />
-			<path d="M3.5 12 12 16.4 20.5 12" />
+			<path d="M12 3.2 20.5 7.6 12 12 3.5 7.6z" className="hdr hdr-sp-top" />
+			<path d="M3.5 12 12 16.4 20.5 12" className="hdr hdr-sp-mid" />
 			<path d="M3.5 16.4 12 20.8 20.5 16.4" />
 		</svg>
 	);
