@@ -12,6 +12,7 @@ Measured on Claude Code 2.1.296. `--resume X` keeps appending to `X.jsonl`. Afte
 
 - **Capture.** `dev3 hook claude-prompt` (`src/cli/commands/claude-prompt.ts`) sends `$TMUX_PANE` unless the entrypoint is something other than `cli`. `task.promptSubmitted` passes it to `capturePaneSession`, which for Claude uses `placeRecordedPaneSession`: only the entry recorded for that exact pane moves. A pane dev3 never recorded, such as an agent-team teammate or a Claude started by hand, is ignored rather than adopted.
 - **Resume.** `resolveResumableSessionIds` (`src/bun/agent-transcripts.ts`) resolves every pane from one snapshot and claims each valid id once. Only the main pane (`adoptsOrphan`) still heals a lost id to the newest unclaimed transcript, the rescue the superseded record exists for. An extra pane whose own conversation is gone gets `startFresh`: `resumeTask` launches it with a new `--session-id` instead of `--continue`, and saves the id each extra pane resumed.
+- **Reporting.** `ResumePaneMode` (`src/shared/agent-resume.ts`) gains `fresh-session` for that pane, and `dev3 agent resume` resumes it even in its strict default. `requireSessionIds` refuses `agent-latest` because the harness would pick a conversation of its own choosing — possibly another pane's; a `fresh-session` pane is handed an id dev3 minted, so there is nothing to guess and nothing to collide with.
 
 ## Risks
 

@@ -10897,6 +10897,27 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		expect([MAIN, NEWEST]).not.toContain(options[2].sessionId);
 	});
 
+	it("reports a pane that started over as `fresh-session`, and resumes it for the CLI too", async () => {
+		// `dev3 agent resume` refuses `agent-latest` because the harness would pick
+		// somebody's conversation; this pane is handed one dev3 minted, so it is safe.
+		const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+		seedStore([NEWEST, MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
+
+		const outcome = await resumeTaskSession("task-1", { requireSessionIds: true });
+
+		expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [
+			expect.objectContaining({ index: 0, mode: "exact", sessionId: MAIN }),
+			expect.objectContaining({ index: 1, mode: "exact", sessionId: NEWEST }),
+			expect.objectContaining({ index: 2, mode: "fresh-session", storedSessionId: "never-prompted", status: "resumed" }),
+		] } });
+		const minted = (agents.resolveCommandForAgent as any).mock.calls[2][3].sessionId;
+		expect((outcome as { result: { panes: { sessionId: string | null }[] } }).result.panes[2].sessionId).toBe(minted);
+	});
+
 	it("persists the id each extra pane actually resumed", async () => {
 		seedStore([NEWEST, MAIN]);
 
