@@ -111,17 +111,16 @@ describe("groupTasksIntoTiers — non-actionable statuses", () => {
 // ============================================================
 
 describe("groupTasksIntoTiers — priority banding within a tier", () => {
-	it("sorts strictly by priority band P0 → P4 across merged statuses in NEEDS YOU", () => {
+	it("sorts by priority band P0 → P4 among the non-question statuses in NEEDS YOU", () => {
 		const tasks = [
 			makeTask({ id: "p2-review", status: "review-by-user", priority: "P2" }),
-			makeTask({ id: "p0-question", status: "user-questions", priority: "P0" }),
+			makeTask({ id: "p0-pr", status: "review-by-colleague", priority: "P0" }),
 			makeTask({ id: "p4-review", status: "review-by-user", priority: "P4" }),
-			makeTask({ id: "p1-question", status: "user-questions", priority: "P1" }),
+			makeTask({ id: "p1-review", status: "review-by-user", priority: "P1" }),
 		];
 		const tiers = groupTasksIntoTiers(tasks, ctx());
 		expect(kinds(tiers)).toEqual(["needs-you"]);
-		// A P0 question sits above a P2 review regardless of status.
-		expect(ids(tiers[0].tasks)).toEqual(["p0-question", "p1-question", "p2-review", "p4-review"]);
+		expect(ids(tiers[0].tasks)).toEqual(["p0-pr", "p1-review", "p2-review", "p4-review"]);
 	});
 
 	it("undefined priority bands as the default P3", () => {
@@ -317,5 +316,115 @@ describe("groupTasksIntoTiers — in-band order", () => {
 	it("seq breaks the final tie", () => {
 		const tasks = [t("b", "P1", "2025-01-01T00:00:00Z", 9), t("a", "P1", "2025-01-01T00:00:00Z", 5)];
 		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["a", "b"]);
+	});
+});
+
+// ============================================================
+// Has Questions leads NEEDS YOU
+// ============================================================
+
+describe("groupTasksIntoTiers — user-questions lead NEEDS YOU", () => {
+	const question = (id: string, extra: Partial<Task> = {}) => makeTask({ id, status: "user-questions", ...extra });
+	const review = (id: string, extra: Partial<Task> = {}) => makeTask({ id, status: "review-by-user", ...extra });
+
+	it("puts a P4 question above P0 reviews and PR reviews", () => {
+		const tasks = [
+			review("p0-review", { priority: "P0" }),
+			makeTask({ id: "p0-pr", status: "review-by-colleague", priority: "P0" }),
+			question("p4-question", { priority: "P4" }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p4-question", "p0-review", "p0-pr"]);
+	});
+
+	it("beats recency in both sort directions", () => {
+		const tasks = [
+			review("old-review", { statusEnteredAt: "2025-01-01T00:00:00Z" }),
+			question("mid-question", { statusEnteredAt: "2025-02-01T00:00:00Z" }),
+			review("new-review", { statusEnteredAt: "2025-03-01T00:00:00Z" }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "oldest-first" }))[0].tasks)).toEqual([
+			"mid-question",
+			"old-review",
+			"new-review",
+		]);
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "newest-first" }))[0].tasks)).toEqual([
+			"mid-question",
+			"new-review",
+			"old-review",
+		]);
+	});
+
+	it("ranks below live coordinators, whatever their status, priority or age", () => {
+		const tasks = [
+			question("p0-question", { priority: "P0", statusEnteredAt: "2025-01-01T00:00:00Z" }),
+			review("p4-coordinator", { taskType: "coordinator", priority: "P4", statusEnteredAt: "2025-03-01T00:00:00Z" }),
+			review("p0-review", { priority: "P0" }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p4-coordinator", "p0-question", "p0-review"]);
+	});
+
+	it("outranks a parked coordinator, which loses its lift", () => {
+		const tasks = [review("parked", { taskType: "coordinator", hibernated: true }), question("question"), review("review")];
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["question", "review", "parked"]);
+	});
+
+	it("keeps several coordinators in their usual band → clock order", () => {
+		const tasks = [
+			question("question"),
+			question("p2-coord-asking", { taskType: "coordinator", priority: "P2" }),
+			review("p1-coord", { taskType: "coordinator", priority: "P1" }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p1-coord", "p2-coord-asking", "question"]);
+	});
+
+	it("keeps the usual band → clock → seq order among several questions", () => {
+		const tasks = [
+			question("p2-old", { priority: "P2", statusEnteredAt: "2025-01-01T00:00:00Z", seq: 1 }),
+			review("p0-review", { priority: "P0" }),
+			question("p1", { priority: "P1", statusEnteredAt: "2025-03-01T00:00:00Z", seq: 2 }),
+			question("p2-new-b", { priority: "P2", statusEnteredAt: "2025-02-01T00:00:00Z", seq: 9 }),
+			question("p2-new-a", { priority: "P2", statusEnteredAt: "2025-02-01T00:00:00Z", seq: 5 }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "oldest-first" }))[0].tasks)).toEqual([
+			"p1",
+			"p2-old",
+			"p2-new-a",
+			"p2-new-b",
+			"p0-review",
+		]);
+	});
+
+	it("moves a task to the top on entering Has Questions and back on leaving it", () => {
+		const others = [review("p0-review", { priority: "P0" }), review("p1-review", { priority: "P1" })];
+		const before = review("mover", { priority: "P3" });
+		expect(ids(groupTasksIntoTiers([...others, before], ctx())[0].tasks)).toEqual(["p0-review", "p1-review", "mover"]);
+		const asking = { ...before, status: "user-questions" as TaskStatus };
+		expect(ids(groupTasksIntoTiers([...others, asking], ctx())[0].tasks)).toEqual(["mover", "p0-review", "p1-review"]);
+		const working = { ...asking, status: "in-progress" as TaskStatus };
+		const tiers = groupTasksIntoTiers([...others, working], ctx());
+		expect(kinds(tiers)).toEqual(["needs-you", "waiting"]);
+		expect(ids(tiers[0].tasks)).toEqual(["p0-review", "p1-review"]);
+		expect(ids(tiers[1].tasks)).toEqual(["mover"]);
+	});
+
+	it("applies across projects in space/global scope and never touches stored state", () => {
+		const tasks = [
+			review("a-review", { projectId: "a", priority: "P0" }),
+			question("b-question", { projectId: "b", priority: "P4" }),
+			review("c-review", { projectId: "c", priority: "P1" }),
+		];
+		const snapshot = JSON.parse(JSON.stringify(tasks));
+		for (const scope of ["space", "global"] as const) {
+			expect(ids(groupTasksIntoTiers(tasks, ctx({ scope }))[0].tasks)).toEqual(["b-question", "a-review", "c-review"]);
+		}
+		expect(tasks).toEqual(snapshot);
+	});
+
+	it("leaves a question parked in a custom column inside that column", () => {
+		const tasks = [review("review"), question("held", { customColumnId: "hold" })];
+		const tiers = groupTasksIntoTiers(tasks, ctx({ orderedCustomColumns: [{ projectId: "p1", columnId: "hold" }] }));
+		expect(kinds(tiers)).toEqual(["needs-you", "custom"]);
+		expect(ids(tiers[0].tasks)).toEqual(["review"]);
+		expect(ids(tiers[1].tasks)).toEqual(["held"]);
 	});
 });

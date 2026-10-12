@@ -1,3 +1,5 @@
+> Partly superseded on 2026-10-12 by `decisions/2026/10/12/has-questions-leads-needs-you.md`: inside NEEDS YOU live coordinators, then `user-questions` tasks, now precede the priority sort.
+
 # 124 — Active Tasks sidebar: readiness tiers + visible priority
 
 ## Context
