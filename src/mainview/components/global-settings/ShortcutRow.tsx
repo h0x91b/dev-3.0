@@ -171,6 +171,10 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 	// fullscreen. Refusing it outright would be us guessing at their intent.
 	const browserTaken = remote && candidate ? isBrowserReserved(candidate) : false;
 
+	// Only worth a line when the browser really differs — a hint repeating the combo is noise.
+	const browserKeys = remote && spec.remoteDisplay ? shortcutKeysForMode(spec, mac, true) : null;
+	const browserDiffers = browserKeys !== null && browserKeys !== shortcutKeysForMode(spec, mac, false);
+
 	const meta = recording
 		? rejected
 			? { text: t("keymap.edit.rejectedReserved"), danger: true }
@@ -181,8 +185,8 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 					: { text: t("keymap.edit.recordingHint"), danger: false }
 		: spec.scope === "desktop"
 			? { text: t("keymap.edit.desktopOnly"), danger: false }
-			: remote && spec.remoteDisplay
-				? { text: t("keymap.edit.inBrowser", { keys: shortcutKeysForMode(spec, mac, true) }), danger: false }
+			: browserDiffers
+				? { text: t("keymap.edit.inBrowser", { keys: browserKeys }), danger: false }
 				: null;
 
 	/**

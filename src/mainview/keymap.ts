@@ -9,7 +9,7 @@ import {
 	type Binding,
 	type MatchContext,
 } from "./keymap-bindings";
-import { isKeymapCapturing, resolvedSlot } from "./keymap-store";
+import { hasOverride, isKeymapCapturing, resolvedSlot } from "./keymap-store";
 import { isKeyboardLocked } from "./keyboard-lock";
 import { isMac, isRemote } from "./utils/platform";
 import { isTerminalFocus, isTypingContext } from "./utils/typing-context";
@@ -372,11 +372,14 @@ export function shortcutKeysFor(spec: ShortcutSpec, mac: boolean = isMac()): str
  * the browser owns are dropped from the rendered list.
  */
 export function shortcutKeysForMode(spec: ShortcutSpec, mac: boolean, remote: boolean): string {
-	if (remote && spec.remoteDisplay) return mac ? spec.remoteDisplay.mac : spec.remoteDisplay.other;
+	const remoteText = remote && spec.remoteDisplay ? (mac ? spec.remoteDisplay.mac : spec.remoteDisplay.other) : null;
+	// The alternative describes the defaults; a user's own combo fires in the browser.
+	if (remoteText && !hasOverride(spec.id)) return remoteText;
 	const bindings = bindingsFor(spec).filter(
 		(b) => (!b.platform || (b.platform === "mac") === mac) && !(remote && b.desktopOnly),
 	);
 	if (bindings.length > 0) return formatBindings(bindings, mac);
+	if (remoteText) return remoteText;
 	return spec.display ? (mac ? spec.display.mac : spec.display.other) : "";
 }
 
