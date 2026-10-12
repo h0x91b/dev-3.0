@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildClaudeManagedSettings, findLatestCodexRollout, readClaudeSnapshot, readCodexSnapshot } from "../rate-limit-monitor";
+import { isRateLimitSnapshotRecent } from "../../shared/rate-limits";
 
 let tmp: string;
 
@@ -74,6 +75,33 @@ describe("readClaudeSnapshot", () => {
 		const dump = join(tmp, "claude.json");
 		writeFileSync(dump, JSON.stringify({ capturedAt: 1, payload: { rate_limits: { five_hour: { used_percentage: 1 } } } }));
 		expect(readClaudeSnapshot(dump)?.configDir).toBeUndefined();
+	});
+
+	it("keeps each account's own reading apart when one plan reports no limits (h0x91b/dev-3.0#1948)", () => {
+		const enterprise = join(tmp, "ent.json");
+		const personal = join(tmp, "max.json");
+		writeFileSync(
+			enterprise,
+			JSON.stringify({ capturedAt: 1_783_200_000_000, accountId: "ent", payload: { cost: { total_cost_usd: 1.309, total_api_duration_ms: 812_000 } } }),
+		);
+		writeFileSync(
+			personal,
+			JSON.stringify({ capturedAt: 1_783_100_000_000, accountId: "max", payload: { rate_limits: { five_hour: { used_percentage: 34 } } } }),
+		);
+		const ent = readClaudeSnapshot(enterprise, "ent");
+		expect(ent).toMatchObject({ accountId: "ent", capturedAt: 1_783_200_000_000, windows: [] });
+		const max = readClaudeSnapshot(personal, "max");
+		expect(max).toMatchObject({ accountId: "max", capturedAt: 1_783_100_000_000 });
+		expect(max!.windows[0].usedPercent).toBe(34);
+	});
+
+	it("drops a stale limit-less reading once it leaves the activity window", () => {
+		const dump = join(tmp, "claude.json");
+		const capturedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
+		writeFileSync(dump, JSON.stringify({ capturedAt, payload: { cost: { total_cost_usd: 3 } } }));
+		const snap = readClaudeSnapshot(dump)!;
+		expect(snap.capturedAt).toBe(capturedAt);
+		expect(isRateLimitSnapshotRecent(snap, Date.now())).toBe(false);
 	});
 
 	it("returns null for a missing file", () => {

@@ -5,6 +5,7 @@ import {
 	rateLimitLoginKey,
 	formatResetDelta,
 	formatStatusLineSegment,
+	hasReportedLimits,
 	isRateLimitSnapshotRecent,
 	isUnlimitedRateLimitSnapshot,
 	latestRateLimitSnapshot,
@@ -53,6 +54,78 @@ describe("parseClaudeStatusLinePayload", () => {
 		const snap = parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 3 } } }, NOW);
 		expect(snap!.windows).toHaveLength(1);
 		expect(snap!.windows[0].resetsAt).toBeNull();
+	});
+
+	// h0x91b/dev-3.0#1948: an Enterprise session sends cost but never rate_limits.
+	it("turns a cost-only payload after an API response into a live reading with no limits", () => {
+		const snap = parseClaudeStatusLinePayload(
+			{ cost: { total_cost_usd: 1.309, total_duration_ms: 15_474_770, total_api_duration_ms: 812_000 } },
+			NOW,
+		);
+		expect(snap).not.toBeNull();
+		expect(snap!.capturedAt).toBe(NOW);
+		expect(snap!.windows).toEqual([]);
+		expect(hasReportedLimits(snap!)).toBe(false);
+		// Session cost is never turned into a quota, a budget or a percentage.
+		expect(snap!.monthlyCredits).toBeNull();
+		expect(snap!.creditsBalance).toBeNull();
+		expect(snap!.spendLimit).toBeUndefined();
+		expect(formatStatusLineSegment(snap, NOW)).toBe("");
+	});
+
+	it("says nothing about limits before the session's first API response", () => {
+		// Pro/Max sessions also lack rate_limits until the first response.
+		expect(parseClaudeStatusLinePayload({ cost: { total_cost_usd: 0, total_api_duration_ms: 0 } }, NOW)).toBeNull();
+		expect(parseClaudeStatusLinePayload({ rate_limits: null, cost: { total_cost_usd: 0 } }, NOW)).toBeNull();
+	});
+
+	it("parses a Claude apps gateway spend limit with its dollars", () => {
+		const snap = parseClaudeStatusLinePayload(
+			{
+				rate_limits: {
+					spend_limit: { used_percentage: 62.8, resets_at: 1_783_508_400, used_usd: 314.12, limit_usd: 500, period: "monthly" },
+				},
+			},
+			NOW,
+		);
+		expect(snap!.windows).toEqual([{ id: "spend_limit", usedPercent: 62.8, resetsAt: 1_783_508_400_000, windowMinutes: null }]);
+		expect(snap!.spendLimit).toEqual({ usedUsd: 314.12, limitUsd: 500, period: "monthly" });
+		expect(hasReportedLimits(snap!)).toBe(true);
+		expect(windowLabel(snap!.windows[0])).toBe("spend");
+	});
+
+	it("keeps a spend limit whose dollars have not arrived yet without inventing them", () => {
+		const snap = parseClaudeStatusLinePayload(
+			{ rate_limits: { spend_limit: { used_percentage: 40, resets_at: 1_783_508_400, period: "fortnightly" } } },
+			NOW,
+		);
+		expect(snap!.windows[0].usedPercent).toBe(40);
+		expect(snap!.spendLimit).toEqual({ usedUsd: null, limitUsd: null, period: null });
+	});
+
+	it("keeps the timed windows in the pill when a spend limit rides along", () => {
+		const snap = parseClaudeStatusLinePayload(
+			{
+				rate_limits: {
+					five_hour: { used_percentage: 10 },
+					seven_day: { used_percentage: 20 },
+					spend_limit: { used_percentage: 99 },
+				},
+			},
+			NOW,
+		)!;
+		expect(headerPillWindows(snap).map((w) => w.id)).toEqual(["five_hour", "seven_day"]);
+		const spendOnly = parseClaudeStatusLinePayload({ rate_limits: { spend_limit: { used_percentage: 99 } } }, NOW)!;
+		expect(headerPillWindows(spendOnly).map((w) => w.id)).toEqual(["spend_limit"]);
+	});
+});
+
+describe("latestRateLimitSnapshot with limit-less readings", () => {
+	it("skips a newer reading that reported no limits", () => {
+		const limits = { ...parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 34 } } }, NOW)!, accountId: "max" };
+		const costOnly = { ...parseClaudeStatusLinePayload({ cost: { total_cost_usd: 2 } }, NOW + 60_000)!, accountId: "ent" };
+		expect(latestRateLimitSnapshot({ snapshots: [limits, costOnly], generatedAt: NOW })?.accountId).toBe("max");
+		expect(latestRateLimitSnapshot({ snapshots: [costOnly], generatedAt: NOW })).toBeNull();
 	});
 });
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAccountIdentity, AgentAccountKind, AgentAccountsState, PinnedClaudeLogin } from "../../shared/agent-accounts";
 import { shortClaudeConfigDir } from "../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
-import { findRateLimitSnapshot, isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
+import { findRateLimitSnapshot, hasReportedLimits, isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, type TFunction } from "../i18n";
@@ -12,6 +12,7 @@ import {
 	AccountCardHeader,
 	AccountQuotaLines,
 	CapturedAgeSuffix,
+	LimitsNotReported,
 	SOURCE_NAMES,
 	type AccountLine,
 	hasQuotaLines,
@@ -246,7 +247,7 @@ function UsageRowCard({
 				{/* An account with nothing to plot says so on its headline instead of
 				    spending a whole second line on three muted words. */}
 				{!row.snap ? <span className="text-fg-muted text-micro shrink-0">{t("rateLimits.noRecentData")}</span> : null}
-				{row.snap && !hasQuotaLines(row.snap) ? (
+				{row.snap && hasReportedLimits(row.snap) && !hasQuotaLines(row.snap) ? (
 					<span className="shrink-0 tabular-nums">
 						<CapturedAgeSuffix capturedAt={row.snap.capturedAt} now={now} />
 					</span>
@@ -259,6 +260,11 @@ function UsageRowCard({
 				</div>
 			) : null}
 			{row.snap && hasQuotaLines(row.snap) ? <AccountQuotaLines snap={row.snap} now={now} /> : null}
+			{/* Its own line, not a headline suffix: the sentence is long enough to
+			    squeeze the account's email down to "dev@…". */}
+			{row.snap && !hasReportedLimits(row.snap) ? (
+				<LimitsNotReported capturedAt={row.snap.capturedAt} now={now} className="text-fg-3 tabular-nums" />
+			) : null}
 		</button>
 	);
 }

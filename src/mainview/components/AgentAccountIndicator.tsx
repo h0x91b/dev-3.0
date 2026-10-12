@@ -11,20 +11,26 @@ import type {
 } from "../../shared/agent-accounts";
 import { shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
-import type { AgentRateLimitSnapshot, AgentRateLimitsReport, ClaudeLoginScope } from "../../shared/rate-limits";
+import type {
+	AgentRateLimitSnapshot,
+	AgentRateLimitsReport,
+	ClaudeLoginScope,
+	RateLimitWindow,
+	SpendLimit,
+} from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
 	findRateLimitSnapshot,
 	formatResetDelta,
+	hasReportedLimits,
 	isUnlimitedRateLimitSnapshot,
-	windowLabel,
 } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
-import { CapturedAgeSuffix, UsageBar, severityText } from "./rate-limit-ui";
+import { CapturedAgeSuffix, LimitsNotReported, UsageBar, severityText, useSpendLimitDetail, useWindowLabel } from "./rate-limit-ui";
 
 /** Fired on window after any account mutation (switch from this popover,
  *  add/remove/switch in Settings → Agent Accounts), so every mounted listener
@@ -176,7 +182,8 @@ function useAgentRateLimits(enabled: boolean): AgentRateLimitsReport | null {
 interface RowUsage {
 	/** null = OAuth account with no reading in the 7-day activity window. */
 	snap: AgentRateLimitSnapshot | null;
-	state: "used" | "unlimited" | "none";
+	/** "unreported": a live reading from a plan that reports no limits. */
+	state: "used" | "unlimited" | "unreported" | "none";
 }
 
 interface QuotaLine {
@@ -184,19 +191,30 @@ interface QuotaLine {
 	label: string;
 	usedPercent: number;
 	resetsAt: number | null;
+	detail?: string | null;
 }
 
-function quotaLines(snap: AgentRateLimitSnapshot, monthlyLabel: string): QuotaLine[] {
+function quotaLines(
+	snap: AgentRateLimitSnapshot,
+	labelOf: (win: RateLimitWindow) => string,
+	spendDetail: (spend: SpendLimit | null | undefined) => string | null,
+): QuotaLine[] {
 	const monthly = snap.monthlyCredits;
 	// Same de-dup as AccountCard: the monthly_credits window mirrors
 	// snap.monthlyCredits, which gets its own line.
 	const lines: QuotaLine[] = snap.windows
 		.filter((win) => !(win.id === "monthly_credits" && monthly))
-		.map((win) => ({ key: win.id, label: windowLabel(win), usedPercent: win.usedPercent, resetsAt: win.resetsAt }));
+		.map((win) => ({
+			key: win.id,
+			label: labelOf(win),
+			usedPercent: win.usedPercent,
+			resetsAt: win.resetsAt,
+			detail: win.id === "spend_limit" ? spendDetail(snap.spendLimit) : null,
+		}));
 	if (monthly) {
 		lines.push({
 			key: "monthly",
-			label: monthlyLabel,
+			label: labelOf({ id: "monthly_credits", usedPercent: 0, resetsAt: null, windowMinutes: null }),
 			usedPercent: Math.max(0, 100 - monthly.remainingPercent),
 			resetsAt: monthly.resetsAt,
 		});
@@ -221,8 +239,10 @@ function RowHeadline({ usage }: { usage: RowUsage }) {
  *  behind a per-row toggle made every open cost a click (decision: inline). */
 function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 	const t = useT();
+	const labelOf = useWindowLabel();
+	const spendDetail = useSpendLimitDetail();
 	if (!usage.snap || usage.state !== "used") return null;
-	const lines = quotaLines(usage.snap, t("rateLimits.monthlyLabel"));
+	const lines = quotaLines(usage.snap, labelOf, spendDetail);
 	if (lines.length === 0) return null;
 	const exhausted = lines.some((line) => line.usedPercent >= RATE_LIMIT_DANGER_PERCENT);
 	const lastKey = lines[lines.length - 1]?.key;
@@ -232,7 +252,8 @@ function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 				const percent = Math.round(line.usedPercent);
 				const reset = formatResetDelta(line.resetsAt, now);
 				return (
-					<span key={line.key} className="mt-1 flex items-center gap-1.5">
+					<span key={line.key} className="mt-1 block">
+					<span className="flex items-center gap-1.5">
 						<span className="min-w-[1.5rem] shrink-0 text-xs text-fg-3 tabular-nums whitespace-nowrap">{line.label}</span>
 						<UsageBar percent={line.usedPercent} className="h-1 min-w-[3rem] flex-1" />
 						<span className="shrink-0 text-xs tabular-nums whitespace-nowrap">
@@ -244,6 +265,8 @@ function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 							    and a separate line per account doubled the block's height. */}
 							{line.key === lastKey && <CapturedAgeSuffix capturedAt={usage.snap!.capturedAt} now={now} />}
 						</span>
+					</span>
+					{line.detail && <span className="block text-xs text-fg-muted">{line.detail}</span>}
 					</span>
 				);
 			})}
@@ -442,6 +465,9 @@ function SwitcherPopover({
 									{row.usage && row.usage.state === "none" ? (
 										<span className="mt-1 block text-xs text-fg-3">{t("rateLimits.noRecentData")}</span>
 									) : null}
+									{row.usage?.snap && row.usage.state === "unreported" ? (
+										<LimitsNotReported capturedAt={row.usage.snap.capturedAt} now={now} className="mt-1 block text-xs text-fg-3" />
+									) : null}
 									{row.usage ? <RowQuota usage={row.usage} now={now} /> : null}
 								</span>
 								{row.isActive ? (
@@ -610,6 +636,7 @@ export default function AgentAccountIndicator({
 		const snap = findRateLimitSnapshot(report, kind, accountId, configDir);
 		if (!snap) return { snap: null, state: "none" };
 		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, state: "unlimited" };
+		if (!hasReportedLimits(snap)) return { snap, state: "unreported" };
 		return { snap, state: snap.windows.length > 0 || snap.monthlyCredits ? "used" : "none" };
 	};
 

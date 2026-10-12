@@ -136,6 +136,32 @@ describe("RateLimitIndicator", () => {
 		expect(getIndicator().className).toContain("text-fg-3");
 	});
 
+	it("keeps another account's limits on the pill when the newest reading reported none", async () => {
+		const now = Date.now();
+		const limits = report(42).snapshots[0];
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{ ...limits, accountId: "max", capturedAt: now - 60_000, activeAt: now - 60_000 },
+				{ source: "claude", accountId: "ent", capturedAt: now, activeAt: now, windows: [], creditsBalance: null, monthlyCredits: null, planType: null },
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+		expect(screen.getByText("42%")).toBeTruthy();
+	});
+
+	it("stays hidden when the only reading reported no limits", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [{ source: "claude", capturedAt: now, windows: [], creditsBalance: null, monthlyCredits: null, planType: null }],
+		});
+		const { container } = renderIndicator();
+		await act(async () => {});
+		expect(container.querySelector("button")).toBeNull();
+	});
+
 	it("shows unlimited latest accounts as 0% used", async () => {
 		const now = Date.now();
 		mockedGet.mockResolvedValue({

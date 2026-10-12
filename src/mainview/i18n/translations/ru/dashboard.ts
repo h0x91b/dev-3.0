@@ -176,6 +176,14 @@ const dashboard = {
 	"rateLimits.capturedNow": "снято только что",
 	"rateLimits.capturedAgeNow": "только что",
 	"rateLimits.noRecentData": "нет свежих данных",
+	"rateLimits.spendLabel": "траты",
+	"rateLimits.spendUsage": "~{used} из {limit} лимита",
+	"rateLimits.spendUsageDaily": "~{used} из {limit} дневного лимита",
+	"rateLimits.spendUsageWeekly": "~{used} из {limit} недельного лимита",
+	"rateLimits.spendUsageMonthly": "~{used} из {limit} месячного лимита",
+	"rateLimits.claudeLimitsNotReported": "лимиты не сообщаются",
+	"rateLimits.claudeLimitsNotReportedHint":
+		"Claude Code сообщает лимиты только для планов Pro и Max или за шлюзом Claude apps с лимитами трат. Для других планов запустите /usage в Claude Code.",
 	"rateLimits.quotaExhausted": "Лимит исчерпан — запуск будет падать до сброса.",
 
 	// Remote Access QR Modal

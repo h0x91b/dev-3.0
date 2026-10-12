@@ -16,12 +16,11 @@ import {
 	isUnlimitedRateLimitSnapshot,
 	latestRateLimitSnapshot,
 	scopeRateLimitSnapshots,
-	windowLabel,
 	worstSnapshotWindow,
 } from "../../shared/rate-limits";
 import type { AgentAccountsState } from "../../shared/agent-accounts";
 import { AGENT_ACCOUNTS_CHANGED_EVENT, useClaudeLoginScope, usePinnedClaudeLogins } from "./AgentAccountIndicator";
-import { SOURCE_NAMES, severityFill } from "./rate-limit-ui";
+import { SOURCE_NAMES, severityFill, useWindowLabel } from "./rate-limit-ui";
 import AgentUsagePanel from "./AgentUsagePanel";
 
 /** Panel width in px — wide enough for a "label · bar · % · reset" line. */
@@ -82,6 +81,7 @@ function RateLimitIndicator({ compact = false, projectId = null }: { compact?: b
 
 	// Re-resolved on every open, like the pinned logins: the pin lives in config files.
 	const scope = useClaudeLoginScope(projectId, accounts, flyout.open);
+	const labelOf = useWindowLabel();
 	const scoped: AgentRateLimitsReport | null = report
 		? { ...report, snapshots: scopeRateLimitSnapshots(report.snapshots, scope) }
 		: null;
@@ -96,8 +96,6 @@ function RateLimitIndicator({ compact = false, projectId = null }: { compact?: b
 	const warn = !danger && percent >= RATE_LIMIT_WARN_PERCENT;
 
 	const latestReset = formatResetDelta(latestWindow?.resetsAt ?? null, now);
-	const labelOf = (w: NonNullable<typeof latestWindow>) =>
-		w.id === "monthly_credits" ? t("rateLimits.monthlyLabel") : windowLabel(w);
 	const latestLabel = latestWindow ? labelOf(latestWindow) : null;
 	// Every window spelled out: the 5h one tracks the session, the 7d one the week.
 	// The colour still follows the fullest, so a red week cannot hide behind the hour.

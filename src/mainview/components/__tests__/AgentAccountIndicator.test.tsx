@@ -405,6 +405,48 @@ describe("AgentAccountIndicator", () => {
 		expect(screen.getByText("no recent data")).toBeTruthy();
 	});
 
+	it("tells a live limit-less account apart from one with no data (h0x91b/dev-3.0#1948)", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({ accountId: null, capturedAt: Date.now() - 3 * 60 * 1000 }),
+				makeSnapshot({
+					accountId: "cl-1",
+					windows: [{ id: "five_hour", usedPercent: 34, resetsAt: null, windowMinutes: 300 }],
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		const note = await screen.findByText("no usage limits reported");
+		expect(note.textContent).toContain("3m");
+		expect(note.getAttribute("title")).toContain("/usage");
+		expect(screen.queryByText("no recent data")).toBeNull();
+		// Exactly one bar line: the personal account's, none for the limit-less one.
+		expect(screen.getAllByText(/% used$/)).toHaveLength(1);
+		expect(screen.getByText("34% used")).toBeTruthy();
+	});
+
+	it("shows a gateway spend limit without inventing missing dollars", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({
+					accountId: null,
+					windows: [{ id: "spend_limit", usedPercent: 40, resetsAt: null, windowMinutes: null }],
+					spendLimit: { usedUsd: null, limitUsd: null, period: "monthly" },
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(await screen.findByText("40% used")).toBeTruthy();
+		expect(screen.getByText("spend")).toBeTruthy();
+		expect(screen.queryByText(/monthly limit/)).toBeNull();
+	});
+
 	it("shows reset countdowns and the captured note inline", async () => {
 		mockedApi.request.getAgentRateLimits.mockResolvedValue(
 			makeReport([

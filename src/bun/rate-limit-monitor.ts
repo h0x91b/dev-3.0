@@ -357,7 +357,7 @@ function reportKey(report: AgentRateLimitsReport): string {
 	return report.snapshots
 		.map(
 			(s) =>
-				`${rateLimitLoginKey(s)}:${s.capturedAt}:${s.activeAt ?? ""}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}`,
+				`${rateLimitLoginKey(s)}:${s.capturedAt}:${s.activeAt ?? ""}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}:${s.spendLimit ? `${s.spendLimit.usedUsd}/${s.spendLimit.limitUsd}/${s.spendLimit.period}` : ""}`,
 		)
 		.join("|");
 }

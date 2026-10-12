@@ -4,7 +4,9 @@
  *
  * Data sources:
  * - Claude Code: the statusLine stdin JSON carries `rate_limits.{five_hour,seven_day}`
- *   with `used_percentage` + `resets_at` (unix seconds). dev3 injects a statusLine
+ *   (Pro/Max) and `rate_limits.spend_limit` (behind a Claude apps gateway) with
+ *   `used_percentage` + `resets_at` (unix seconds). Other plans (Enterprise, API)
+ *   get no `rate_limits` at all — a reading then says "no limits reported". dev3 injects a statusLine
  *   wrapper (`dev3 statusline`) via `--settings` that dumps that JSON to
  *   `~/.dev3.0/data/rate-limits/claude.json` and additive per-account files.
  * - Codex: rollout files under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
@@ -37,6 +39,14 @@ export interface MonthlyCreditLimit {
 	resetsAt: number | null;
 }
 
+/** Claude apps gateway spend limit dollars; Claude Code fetches them on a slower
+ *  schedule than the percentage, so each may be absent. Estimates, not a bill. */
+export interface SpendLimit {
+	usedUsd: number | null;
+	limitUsd: number | null;
+	period: "daily" | "weekly" | "monthly" | null;
+}
+
 export interface AgentRateLimitSnapshot {
 	source: RateLimitSource;
 	/** Managed account id that produced this snapshot; null is the system login.
@@ -58,6 +68,8 @@ export interface AgentRateLimitSnapshot {
 	monthlyCredits: MonthlyCreditLimit | null;
 	/** Codex plan type, e.g. "enterprise_cbp_usage_based". */
 	planType: string | null;
+	/** Claude only: dollars behind the `spend_limit` window, when reported. */
+	spendLimit?: SpendLimit | null;
 }
 
 export interface AgentRateLimitsReport {
@@ -105,10 +117,19 @@ export function findRateLimitSnapshot(
 	);
 }
 
-/** The account snapshot with the newest provider activity signal. */
+/** Whether a reading carries any limit at all. A Claude session on a plan that
+ *  gets no `rate_limits` still yields a reading — proof the account is live —
+ *  but it must never be drawn as a quota. */
+export function hasReportedLimits(snapshot: AgentRateLimitSnapshot): boolean {
+	return snapshot.windows.length > 0 || snapshot.monthlyCredits != null || snapshot.creditsBalance != null;
+}
+
+/** The newest account snapshot that reported limits; limit-less readings are skipped
+ *  so they cannot blank the header pill another account's limits feed. */
 export function latestRateLimitSnapshot(report: AgentRateLimitsReport): AgentRateLimitSnapshot | null {
 	let latest: AgentRateLimitSnapshot | null = null;
 	for (const snapshot of report.snapshots) {
+		if (!hasReportedLimits(snapshot)) continue;
 		if (!latest || rateLimitActivityAt(snapshot) > rateLimitActivityAt(latest)) {
 			latest = snapshot;
 		}
@@ -143,10 +164,13 @@ export function worstSnapshotWindow(snapshot: AgentRateLimitSnapshot): RateLimit
 	return worst;
 }
 
+/** Budget-style windows: no fixed length, so the pill only spells them out alone. */
+const BUDGET_WINDOW_IDS = new Set(["monthly_credits", "spend_limit"]);
+
 /** The windows the header pill spells out, shortest first ("5h 7% · 7d 55%").
- *  Monthly credits only appear when the account has no timed window. */
+ *  Monthly credits and spend limits only appear when the account has no timed window. */
 export function headerPillWindows(snapshot: AgentRateLimitSnapshot): RateLimitWindow[] {
-	const timed = snapshot.windows.filter((w) => w.id !== "monthly_credits");
+	const timed = snapshot.windows.filter((w) => !BUDGET_WINDOW_IDS.has(w.id));
 	return [...(timed.length ? timed : snapshot.windows)].sort(
 		(a, b) => (a.windowMinutes ?? Number.POSITIVE_INFINITY) - (b.windowMinutes ?? Number.POSITIVE_INFINITY),
 	);
@@ -182,6 +206,8 @@ export function windowLabel(w: RateLimitWindow): string {
 			return "7d";
 		case "monthly_credits":
 			return "monthly credits";
+		case "spend_limit":
+			return "spend";
 	}
 	if (w.windowMinutes != null) {
 		const mins = w.windowMinutes;
@@ -208,18 +234,31 @@ export function formatResetDelta(resetsAt: number | null, nowMs: number): string
 	return h > 0 ? `${days}d${h}h` : `${days}d`;
 }
 
+function parseSpendPeriod(v: unknown): SpendLimit["period"] {
+	return v === "daily" || v === "weekly" || v === "monthly" ? v : null;
+}
+
+/** Claude Code sends `rate_limits` only after a session's first API response, so a
+ *  limit-less payload proves "this plan reports none" only once a response happened. */
+function claudeSessionHasResponded(root: Record<string, unknown> | null): boolean {
+	const cost = asRecord(root?.cost);
+	return (asFiniteNumber(cost?.total_api_duration_ms) ?? 0) > 0 || (asFiniteNumber(cost?.total_cost_usd) ?? 0) > 0;
+}
+
 /**
  * Parse the Claude Code statusLine stdin payload into a snapshot.
- * Returns null when the payload carries no usable `rate_limits` object
- * (older Claude Code versions don't send it).
+ * A payload with no limit window after the session's first API response yields a
+ * snapshot with no windows: the account is live but its plan reports no limits.
+ * Null when nothing can be said — not JSON, or no response yet.
  */
 export function parseClaudeStatusLinePayload(payload: unknown, capturedAt: number): AgentRateLimitSnapshot | null {
 	const root = asRecord(payload);
-	const rateLimits = asRecord(root?.rate_limits);
-	if (!rateLimits) return null;
+	if (!root) return null;
+	const rateLimits = asRecord(root.rate_limits) ?? {};
 
 	const windows: RateLimitWindow[] = [];
-	for (const id of ["five_hour", "seven_day"]) {
+	let spendLimit: SpendLimit | null = null;
+	for (const id of ["five_hour", "seven_day", "spend_limit"]) {
 		const win = asRecord(rateLimits[id]);
 		const usedPercent = asFiniteNumber(win?.used_percentage);
 		if (win && usedPercent != null) {
@@ -228,12 +267,28 @@ export function parseClaudeStatusLinePayload(payload: unknown, capturedAt: numbe
 				id,
 				usedPercent,
 				resetsAt: resetsAtSec != null ? resetsAtSec * 1000 : null,
-				windowMinutes: id === "five_hour" ? 300 : 10080,
+				windowMinutes: id === "five_hour" ? 300 : id === "seven_day" ? 10080 : null,
 			});
+			if (id === "spend_limit") {
+				spendLimit = {
+					usedUsd: asFiniteNumber(win.used_usd),
+					limitUsd: asFiniteNumber(win.limit_usd),
+					period: parseSpendPeriod(win.period),
+				};
+			}
 		}
 	}
-	if (windows.length === 0) return null;
-	return { source: "claude", capturedAt, activeAt: capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
+	if (windows.length === 0 && !claudeSessionHasResponded(root)) return null;
+	return {
+		source: "claude",
+		capturedAt,
+		activeAt: capturedAt,
+		windows,
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+		...(spendLimit ? { spendLimit } : {}),
+	};
 }
 
 /**

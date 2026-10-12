@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useLocale, useT } from "../i18n";
-import type { AgentRateLimitSnapshot, RateLimitSource, RateLimitWindow } from "../../shared/rate-limits";
+import type { AgentRateLimitSnapshot, RateLimitSource, RateLimitWindow, SpendLimit } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
 	RATE_LIMIT_WARN_PERCENT,
@@ -81,6 +81,51 @@ export function resolveAccount(
 		};
 	}
 	return null;
+}
+
+/** Localized window label: budget windows get words, timed ones keep "5h"/"7d". */
+export function useWindowLabel(): (window: RateLimitWindow) => string {
+	const t = useT();
+	return (window) =>
+		window.id === "monthly_credits"
+			? t("rateLimits.monthlyLabel")
+			: window.id === "spend_limit"
+				? t("rateLimits.spendLabel")
+				: windowLabel(window);
+}
+
+/** "~$314.12 of $500 monthly limit" — null until Claude Code has fetched both dollar
+ *  amounts, so a percentage never gets a made-up denominator. */
+export function useSpendLimitDetail(): (spend: SpendLimit | null | undefined) => string | null {
+	const t = useT();
+	const [locale] = useLocale();
+	const usd = new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+	return (spend) => {
+		if (!spend || spend.usedUsd == null || spend.limitUsd == null) return null;
+		const vars = { used: usd.format(spend.usedUsd), limit: usd.format(spend.limitUsd) };
+		switch (spend.period) {
+			case "daily":
+				return t("rateLimits.spendUsageDaily", vars);
+			case "weekly":
+				return t("rateLimits.spendUsageWeekly", vars);
+			case "monthly":
+				return t("rateLimits.spendUsageMonthly", vars);
+			default:
+				return t("rateLimits.spendUsage", vars);
+		}
+	};
+}
+
+/** A live Claude reading whose plan reports no limits: say so, with its age, and
+ *  never draw a bar. */
+export function LimitsNotReported({ capturedAt, now, className }: { capturedAt: number; now: number; className: string }) {
+	const t = useT();
+	return (
+		<span className={className} title={t("rateLimits.claudeLimitsNotReportedHint")}>
+			{t("rateLimits.claudeLimitsNotReported")}
+			<CapturedAgeSuffix capturedAt={capturedAt} now={now} />
+		</span>
+	);
 }
 
 export function severityFill(percent: number): string {
@@ -207,6 +252,8 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 	const t = useT();
 	const [locale] = useLocale();
 	const unlimited = isUnlimitedRateLimitSnapshot(snap);
+	const labelOf = useWindowLabel();
+	const spendDetail = useSpendLimitDetail();
 	const numberFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 });
 	const monthly = snap.monthlyCredits;
 	// The monthly_credits window mirrors snap.monthlyCredits; the dedicated row
@@ -221,7 +268,8 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 			{windows.map((win, index) => (
 				<WindowBarRow
 					key={win.id}
-					label={windowLabel(win)}
+					label={labelOf(win)}
+					detail={win.id === "spend_limit" ? (spendDetail(snap.spendLimit) ?? undefined) : undefined}
 					usedPercent={win.usedPercent}
 					resetsAt={win.resetsAt}
 					now={now}

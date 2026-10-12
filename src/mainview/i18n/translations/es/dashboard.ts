@@ -158,6 +158,14 @@ const dashboard = {
 	"rateLimits.capturedNow": "capturado ahora mismo",
 	"rateLimits.capturedAgeNow": "ahora mismo",
 	"rateLimits.noRecentData": "sin datos recientes",
+	"rateLimits.spendLabel": "gasto",
+	"rateLimits.spendUsage": "~{used} de {limit} de límite",
+	"rateLimits.spendUsageDaily": "~{used} de {limit} de límite diario",
+	"rateLimits.spendUsageWeekly": "~{used} de {limit} de límite semanal",
+	"rateLimits.spendUsageMonthly": "~{used} de {limit} de límite mensual",
+	"rateLimits.claudeLimitsNotReported": "no se informan límites de uso",
+	"rateLimits.claudeLimitsNotReportedHint":
+		"Claude Code informa límites de uso solo en los planes Pro y Max, o detrás de un gateway de Claude apps con límites de gasto. En otros planes, ejecuta /usage en Claude Code.",
 	"rateLimits.quotaExhausted": "Sin cuota disponible — este lanzamiento fallará hasta que se restablezca.",
 
 	// Remote Access QR Modal

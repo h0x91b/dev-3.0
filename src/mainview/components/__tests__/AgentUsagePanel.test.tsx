@@ -106,6 +106,58 @@ describe("AgentUsagePanel", () => {
 		expect(screen.getAllByText("no recent data").length).toBeGreaterThan(0);
 	});
 
+	it("says a live account reported no limits instead of 'no recent data' (h0x91b/dev-3.0#1948)", () => {
+		const now = Date.now();
+		const base = report();
+		const withEnterprise: AgentRateLimitsReport = {
+			...base,
+			snapshots: [
+				...base.snapshots,
+				{ source: "claude", accountId: "home", capturedAt: now - 3 * 60_000, windows: [], creditsBalance: null, monthlyCredits: null, planType: null },
+			],
+		};
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={withEnterprise} accounts={accounts()} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+		const home = screen.getByText("Home Claude").closest("button")!;
+		expect(home.textContent).toContain("no usage limits reported");
+		expect(home.textContent).toContain("3m");
+		expect(home.textContent).not.toContain("no recent data");
+		expect(home.textContent).not.toContain("% used");
+		// The personal account's own limits are untouched.
+		expect(screen.getByText("Work Claude").closest("button")!.textContent).toContain("42% used");
+	});
+
+	it("shows a gateway spend limit with its dollars", () => {
+		const now = Date.now();
+		const spend: AgentRateLimitsReport = {
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "claude",
+					accountId: "work",
+					capturedAt: now,
+					windows: [{ id: "spend_limit", usedPercent: 62.8, resetsAt: now + 86_400_000, windowMinutes: null }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+					spendLimit: { usedUsd: 314.12, limitUsd: 500, period: "monthly" },
+				},
+			],
+		};
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={spend} accounts={accounts()} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+		const work = screen.getByText("Work Claude").closest("button")!;
+		expect(work.textContent).toContain("spend");
+		expect(work.textContent).toContain("63% used");
+		expect(work.textContent).toContain("~$314.12 of $500.00 monthly limit");
+	});
+
 	it("marks the current default and leaves it inert", async () => {
 		renderPanel();
 		const radios = screen.getAllByRole("radio");
