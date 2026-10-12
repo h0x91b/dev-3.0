@@ -299,8 +299,6 @@ const terminal = {
 	"terminal.filePreviewRaw": "Sin formato",
 	"terminal.filePreviewWrap": "Ajustar líneas",
 	"terminal.filePreviewWrapHint": "Ajusta las líneas largas al ancho de la ventana. El archivo y el texto copiado no cambian.",
-	"terminal.filePreviewExpand": "Ampliar vista previa",
-	"terminal.filePreviewRestore": "Restaurar tamaño",
 	"terminal.rendererCrashed": "El renderizador del terminal falló y no pudo reiniciarse solo. Haz clic para recargar la ventana — tu sesión sigue activa.",
 	"terminal.perf.title": "Rendimiento del terminal",
 	"terminal.perf.close": "Cerrar el panel de rendimiento",

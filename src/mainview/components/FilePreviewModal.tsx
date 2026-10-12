@@ -58,7 +58,6 @@ function middleTruncate(text: string, max: number): string {
 }
 
 const WRAP_KEY = "dev3-file-preview-wrap";
-const EXPANDED_KEY = "dev3-file-preview-expanded";
 
 /** Per-viewer view preference; storage can be missing or throw (private windows). */
 function readFlag(key: string, fallback: boolean): boolean {
@@ -104,7 +103,6 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const [preview, setPreview] = useState<FilePreviewResult | null>(null);
 	const [showRaw, setShowRaw] = useState(false);
 	const [wrapLines, toggleWrapLines] = usePersistedFlag(WRAP_KEY, true);
-	const [expanded, toggleExpanded] = usePersistedFlag(EXPANDED_KEY, false);
 	const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
 	const highlightRef = useRef<HTMLDivElement | null>(null);
 	const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -329,7 +327,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						{isRenderable && !showRaw ? (
 							<MarkdownDocument
 								body={toRenderableMarkdown(preview.content, path)}
-								className={`dev3-file-preview-md mx-auto ${expanded ? "max-w-[120ch]" : "max-w-[80ch]"}`}
+								className="dev3-file-preview-md"
 								imageBaseDir={dirName || null}
 							/>
 						) : (
@@ -412,6 +410,8 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	}
 
 	const fileMissing = preview?.kind === "not-found";
+	// Content takes the screen; a one-line notice (binary, missing, too large) stays a small dialog.
+	const fillsScreen = !preview || preview.kind === "text" || preview.kind === "image";
 
 	return (
 		<div
@@ -426,11 +426,9 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 				aria-modal="true"
 				aria-labelledby="file-preview-title"
 				tabIndex={-1}
-				data-expanded={expanded ? "true" : "false"}
-				className={`bg-overlay border border-edge rounded-2xl shadow-2xl ${
-					expanded
-						? "w-[calc(100vw-2rem)] h-[calc(100dvh-2rem)]"
-						: `${showAside ? "w-[min(80rem,92vw)]" : "w-[min(56rem,92vw)]"} max-h-[85vh]`
+				data-size={fillsScreen ? "screen" : "compact"}
+				className={`bg-overlay border border-edge rounded-2xl shadow-2xl w-[calc(100vw-2rem)] sm:w-[calc(100vw-4rem)] ${
+					fillsScreen ? "h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-4rem)]" : "max-w-xl"
 				} flex flex-col outline-none`}
 			>
 				<div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b border-edge">
@@ -497,17 +495,6 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						</button>
 					)}
 					</div>
-					<button
-						type="button"
-						data-testid="file-preview-expand"
-						onClick={toggleExpanded}
-						aria-pressed={expanded}
-						aria-label={expanded ? t("terminal.filePreviewRestore") : t("terminal.filePreviewExpand")}
-						title={expanded ? t("terminal.filePreviewRestore") : t("terminal.filePreviewExpand")}
-						className="shrink-0 w-7 h-7 hidden sm:flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
-					>
-						<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: ICON_FONT }}>{expanded ? "\uf066" : "\uf065"}</span>
-					</button>
 					<button
 						type="button"
 						onClick={onClose}

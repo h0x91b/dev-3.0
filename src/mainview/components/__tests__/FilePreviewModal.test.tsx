@@ -67,7 +67,6 @@ describe("FilePreviewModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.removeItem("dev3-file-preview-wrap");
-		localStorage.removeItem("dev3-file-preview-expanded");
 		mermaid.render.mockResolvedValue({
 			svg: '<svg data-testid="rendered-mermaid"></svg>',
 			diagramType: "flowchart-v2",
@@ -234,31 +233,23 @@ describe("FilePreviewModal", () => {
 		expect(screen.getByRole("button", { name: "Rendered" })).toHaveAttribute("aria-pressed", "false");
 	});
 
-	it("expands to the viewport and back, remembers it, and Escape still closes", async () => {
-		const user = userEvent.setup();
+	it("fills the screen for a file and keeps a notice compact", async () => {
 		readFilePreview.mockResolvedValue({ kind: "text", content: "# Title\nbody", truncated: false, size: 12 });
-		const { onClose, unmount } = renderModal("/wt/docs/guide.md");
+		const { unmount } = renderModal("/wt/docs/guide.md");
 		await waitFor(() => expect(screen.getByRole("heading", { name: "Title", level: 1 })).toBeInTheDocument());
 		const dialog = screen.getByRole("dialog");
-		expect(dialog).toHaveAttribute("data-expanded", "false");
-
-		await user.click(screen.getByRole("button", { name: "Expand preview" }));
-		expect(dialog).toHaveAttribute("data-expanded", "true");
-		expect(dialog.className).toContain("w-[calc(100vw-2rem)]");
-		expect(screen.getByTestId("markdown-document").className).toContain("max-w-[120ch]");
-		const restore = screen.getByRole("button", { name: "Restore preview size" });
-		expect(restore).toHaveAttribute("aria-pressed", "true");
-		expect(localStorage.getItem("dev3-file-preview-expanded")).toBe("1");
-
-		await user.keyboard("{Escape}");
-		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(dialog).toHaveAttribute("data-size", "screen");
+		expect(dialog.className).toContain("sm:w-[calc(100vw-4rem)]");
+		expect(dialog.className).toContain("sm:h-[calc(100dvh-4rem)]");
+		// The document uses the whole dialog width — no centred reading column.
+		expect(screen.getByTestId("markdown-document").className).not.toMatch(/max-w-/);
 		unmount();
 
-		renderModal("/wt/docs/guide.md");
-		await waitFor(() => expect(screen.getByRole("dialog")).toHaveAttribute("data-expanded", "true"));
-		await user.click(screen.getByRole("button", { name: "Restore preview size" }));
-		expect(screen.getByRole("dialog")).toHaveAttribute("data-expanded", "false");
-		expect(screen.getByTestId("markdown-document").className).toContain("max-w-[80ch]");
+		readFilePreview.mockResolvedValue({ kind: "binary", size: 2048 });
+		renderModal("/wt/bin/tool");
+		await waitFor(() => expect(screen.getByText(/Binary file/)).toBeInTheDocument());
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "compact");
+		expect(screen.getByRole("dialog").className).toContain("max-w-xl");
 	});
 
 	describe("find in file (Cmd/Ctrl+F)", () => {
