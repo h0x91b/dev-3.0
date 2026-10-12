@@ -45,6 +45,7 @@ import {
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
 	TMUX_PANE_DIMMING_OPTION,
+	TMUX_PANE_TITLES_OPTION,
 	parseWindowLayout,
 	PANE_ID_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
@@ -66,11 +67,11 @@ const log = createLogger("pty");
  * and re-applies every setting that depends on them.
  */
 /**
- * `paneDimming` is an explicit toggle: it overrides the server-wide choice
- * before the config is re-sourced. Without it the server keeps whatever the last
- * toggle — from this or another dev3 instance — set.
+ * `paneDimming` and `paneTitles` are explicit toggles: each overrides the
+ * server-wide choice before the config is re-sourced. Without one the server keeps
+ * whatever the last toggle — from this or another dev3 instance — set.
  */
-export async function applyTmuxTheme(theme: "dark" | "light", opts: { paneDimming?: boolean } = {}): Promise<void> {
+export async function applyTmuxTheme(theme: "dark" | "light", opts: { paneDimming?: boolean; paneTitles?: boolean } = {}): Promise<void> {
 	const configPath = setActiveTmuxTheme(theme);
 	// Source the themed config on every known socket (typically just "dev3")
 	const sockets = new Set<string>();
@@ -85,8 +86,11 @@ export async function applyTmuxTheme(theme: "dark" | "light", opts: { paneDimmin
 				if (opts.paneDimming !== undefined) {
 					await tmux.setGlobalOption(TMUX_PANE_DIMMING_OPTION, opts.paneDimming ? "on" : "off", { socket, bestEffort: true });
 				}
+				if (opts.paneTitles !== undefined) {
+					await tmux.setGlobalOption(TMUX_PANE_TITLES_OPTION, opts.paneTitles ? "on" : "off", { socket, bestEffort: true });
+				}
 				await tmux.sourceFile(configPath, { socket, bestEffort: true });
-				log.info("tmux theme applied", { theme, socket, configPath, paneDimming: opts.paneDimming });
+				log.info("tmux theme applied", { theme, socket, configPath, paneDimming: opts.paneDimming, paneTitles: opts.paneTitles });
 			} catch (err) {
 				log.warn("Failed to apply tmux theme", { theme, socket, error: String(err) });
 			}

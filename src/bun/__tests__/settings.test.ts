@@ -351,6 +351,8 @@ describe("saveSettings", () => {
 			terminalPathOpenMode: "reveal",
 			terminalShell: "sh",
 			dimInactivePanes: false,
+			paneTitles: true,
+			confirmClosePane: true,
 			shellPrompt: "minimal",
 			shellPromptCustom: "PROMPT='> '",
 			theme: "light",

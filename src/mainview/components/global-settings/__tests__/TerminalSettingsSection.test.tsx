@@ -49,6 +49,10 @@ function Harness(props: {
 			onTerminalPathOpenModeChange={vi.fn()}
 			onTerminalShellChange={props.onTerminalShellChange}
 			onDimInactivePanesToggle={vi.fn()}
+			paneTitles={undefined}
+			confirmClosePane={undefined}
+			onPaneTitlesToggle={vi.fn()}
+			onConfirmClosePaneToggle={vi.fn()}
 			shellPrompt={undefined}
 			shellPromptCustom={undefined}
 			onShellPromptChange={vi.fn()}
@@ -140,7 +144,48 @@ describe("TerminalSettingsSection — pane dimming", () => {
 	});
 });
 
-function DimHarness({ value, onToggle }: { value: boolean | undefined; onToggle: (enabled: boolean) => void }) {
+describe("TerminalSettingsSection — pane title bars and close confirmation", () => {
+	it("both start off and switch on", async () => {
+		const onPaneTitlesToggle = vi.fn();
+		const onConfirmClosePaneToggle = vi.fn();
+		render(
+			<I18nProvider>
+				<DimHarness value={undefined} onToggle={vi.fn()} onPaneTitlesToggle={onPaneTitlesToggle} onConfirmClosePaneToggle={onConfirmClosePaneToggle} />
+			</I18nProvider>,
+		);
+		const titles = screen.getByRole("switch", { name: "Pane title bars" });
+		const confirmClose = screen.getByRole("switch", { name: "Confirm before closing a pane" });
+		expect(titles).toHaveAttribute("aria-checked", "false");
+		expect(confirmClose).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(titles);
+		await userEvent.click(confirmClose);
+		expect(onPaneTitlesToggle).toHaveBeenCalledWith(true);
+		expect(onConfirmClosePaneToggle).toHaveBeenCalledWith(true);
+	});
+
+	it("switch back off", async () => {
+		const onPaneTitlesToggle = vi.fn();
+		const onConfirmClosePaneToggle = vi.fn();
+		render(
+			<I18nProvider>
+				<DimHarness value={undefined} onToggle={vi.fn()} paneTitles onPaneTitlesToggle={onPaneTitlesToggle} confirmClosePane onConfirmClosePaneToggle={onConfirmClosePaneToggle} />
+			</I18nProvider>,
+		);
+		await userEvent.click(screen.getByRole("switch", { name: "Pane title bars" }));
+		await userEvent.click(screen.getByRole("switch", { name: "Confirm before closing a pane" }));
+		expect(onPaneTitlesToggle).toHaveBeenCalledWith(false);
+		expect(onConfirmClosePaneToggle).toHaveBeenCalledWith(false);
+	});
+});
+
+function DimHarness({ value, onToggle, paneTitles, onPaneTitlesToggle, confirmClosePane, onConfirmClosePaneToggle }: {
+	value: boolean | undefined;
+	onToggle: (enabled: boolean) => void;
+	paneTitles?: boolean;
+	onPaneTitlesToggle?: (enabled: boolean) => void;
+	confirmClosePane?: boolean;
+	onConfirmClosePaneToggle?: (enabled: boolean) => void;
+}) {
 	const t = useT();
 	return (
 		<TerminalSettingsSection
@@ -158,6 +203,10 @@ function DimHarness({ value, onToggle }: { value: boolean | undefined; onToggle:
 			onTerminalPathOpenModeChange={vi.fn()}
 			onTerminalShellChange={vi.fn()}
 			onDimInactivePanesToggle={onToggle}
+			paneTitles={paneTitles}
+			confirmClosePane={confirmClosePane}
+			onPaneTitlesToggle={onPaneTitlesToggle ?? vi.fn()}
+			onConfirmClosePaneToggle={onConfirmClosePaneToggle ?? vi.fn()}
 			shellPrompt={undefined}
 			shellPromptCustom={undefined}
 			onShellPromptChange={vi.fn()}
@@ -195,6 +244,10 @@ function renderFontSection(family = "", size = DEFAULT_TERMINAL_FONT_SIZE) {
 				onTerminalPathOpenModeChange={vi.fn()}
 				onTerminalShellChange={vi.fn()}
 				onDimInactivePanesToggle={vi.fn()}
+				paneTitles={undefined}
+				confirmClosePane={undefined}
+				onPaneTitlesToggle={vi.fn()}
+				onConfirmClosePaneToggle={vi.fn()}
 				shellPrompt={undefined}
 				shellPromptCustom={undefined}
 				onShellPromptChange={vi.fn()}

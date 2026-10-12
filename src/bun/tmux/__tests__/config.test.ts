@@ -15,8 +15,10 @@ import {
 	buildThemeConfig,
 	PANE_CWD_FORMAT,
 	setTmuxPaneDimming,
+	setTmuxPaneTitles,
 	tmuxConfigPath,
 	TMUX_PANE_DIMMING_OPTION,
+	TMUX_PANE_TITLES_OPTION,
 	tmuxClientCwd,
 	writeTmuxConfigs,
 } from "../config";
@@ -186,6 +188,20 @@ describe("buildThemeConfig", () => {
 		}
 		setTmuxPaneDimming(true);
 		writeTmuxConfigs();
+	});
+
+	it("names and seeds a title-bar variant without renaming the existing files", () => {
+		expect(tmuxConfigPath("dark", true)).toBe(tmuxConfigPath("dark", true, false));
+		expect(tmuxConfigPath("dark", true, true)).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark-dimmed-titled.conf`);
+		writeTmuxConfigs();
+		expect(readFileSync(tmuxConfigPath("light", false, true), "utf-8")).toContain(`set -goq ${TMUX_PANE_TITLES_OPTION} on`);
+		expect(readFileSync(tmuxConfigPath("light", false, false), "utf-8")).toContain(`set -goq ${TMUX_PANE_TITLES_OPTION} off`);
+		try {
+			setTmuxPaneTitles(true);
+			expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("dark", true, true));
+		} finally {
+			setTmuxPaneTitles(false);
+		}
 	});
 
 	// The regression: a second dev3 process imports this module with the default

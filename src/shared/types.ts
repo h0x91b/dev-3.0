@@ -1555,6 +1555,17 @@ export interface GlobalSettings {
 	 */
 	dimInactivePanes?: boolean;
 	/**
+	 * A title bar above every tmux pane: its number (green while focused), a zoom
+	 * marker, and the title a program set or `folder │ command`. Costs each pane one
+	 * row, so default off. tmux backend only.
+	 */
+	paneTitles?: boolean;
+	/**
+	 * Ask "Close pane N?" before the close-pane shortcut kills a pane. Default off.
+	 * The Close Pane picker never asks: picking the pane is the confirmation.
+	 */
+	confirmClosePane?: boolean;
+	/**
 	 * Prompt style for zsh shell panes: a `SHELL_PROMPT_STYLES` id, `"custom"`
 	 * (zsh code in `shellPromptCustom`) or `"own"` (keep the user's `.zshrc`
 	 * prompt). Undefined ⇒ the default style. Applies to newly opened panes.

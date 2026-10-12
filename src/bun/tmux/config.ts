@@ -54,13 +54,13 @@ export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{sess
 export const TMUX_LAST_AGENT_PANE_OPTION = "@dev3_last_agent_pane";
 
 /**
- * The themed config for one theme and one default dimming choice. The choice is
- * part of the NAME: every dev3 process on the machine writes these shared files
- * at import, and a name that ignored it let another process's default overwrite
- * the file this app later sources into the shared server.
+ * The themed config for one theme and one default dimming and title-bar choice.
+ * The choices are part of the NAME: every dev3 process on the machine writes these
+ * shared files at import, and a name that ignored them let another process's
+ * default overwrite the file this app later sources into the shared server.
  */
-export function tmuxConfigPath(theme: "dark" | "light", dimmed: boolean): string {
-	return dev3TempPath(`dev3-tmux-${theme}-${dimmed ? "dimmed" : "undimmed"}.conf`);
+export function tmuxConfigPath(theme: "dark" | "light", dimmed: boolean, titled = false): string {
+	return dev3TempPath(`dev3-tmux-${theme}-${dimmed ? "dimmed" : "undimmed"}${titled ? "-titled" : ""}.conf`);
 }
 
 let activeTheme: "dark" | "light" = "dark";
@@ -74,9 +74,12 @@ let activeTheme: "dark" | "light" = "dark";
  */
 let dimInactivePanes = true;
 
-/** The config this process sources: its active theme and its own preference. */
+/** The `paneTitles` preference, held here for the same reason as `dimInactivePanes`. */
+let paneTitles = false;
+
+/** The config this process sources: its active theme and its own preferences. */
 export function activeTmuxConfigPath(): string {
-	return tmuxConfigPath(activeTheme, dimInactivePanes);
+	return tmuxConfigPath(activeTheme, dimInactivePanes, paneTitles);
 }
 
 /** Switch the active themed config and return its path. */
@@ -308,7 +311,39 @@ function paneDimConfig(defaultDimmed: boolean): string {
 	].join("\n");
 }
 
-export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true): string {
+/**
+ * Server-global user option holding the pane-title-bar choice (`on`/`off`), shared
+ * across dev3 instances exactly like {@link TMUX_PANE_DIMMING_OPTION}.
+ */
+export const TMUX_PANE_TITLES_OPTION = "@dev3_pane_titles";
+
+/**
+ * Pane label: the title a program set, else `folder │ command` — a plain shell's
+ * title is just the hostname, which says nothing. Styles inside the conditional use
+ * spaces, not commas, because a comma would end the branch.
+ */
+const PANE_BORDER_LABEL = "#{?#{||:#{||:#{==:#{pane_title},},#{==:#{pane_title},#{host}}},#{==:#{pane_title},#{host_short}}},#{b:pane_current_path} │ #{pane_current_command},#{pane_title}}";
+export const PANE_BORDER_FORMAT = "#{?pane_active,"
+	+ "#[fg=#{@thm_crust} bg=#{@thm_green}] #{pane_index} #[fg=#{@thm_green} bg=#{@thm_surface_0}] #{?window_zoomed_flag,󰁌 ,}" + PANE_BORDER_LABEL + " #[default],"
+	+ "#[fg=#{@thm_crust} bg=#{@thm_overlay_2}] #{pane_index} #[fg=#{@thm_fg} bg=#{@thm_surface_0}] " + PANE_BORDER_LABEL + " #[default]}";
+
+/**
+ * Title bars above each pane (Settings → Terminal → Pane title bars). Seeded like
+ * the dimming option, then `pane-border-status` follows the option on every source;
+ * the `off` branch is what turns the bars off on a live server.
+ */
+function paneTitlesConfig(defaultOn: boolean): string {
+	return [
+		"",
+		"# Pane title bars (Settings → Terminal → Pane title bars)",
+		`set -goq ${TMUX_PANE_TITLES_OPTION} ${defaultOn ? "on" : "off"}`,
+		`set -wg pane-border-format "${PANE_BORDER_FORMAT}"`,
+		`if -F "#{==:#{${TMUX_PANE_TITLES_OPTION}},on}" "set -wg pane-border-status top" "set -wg pane-border-status off"`,
+		"",
+	].join("\n");
+}
+
+export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true, paneTitles = false): string {
 	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
 	return [
 		`# dev3 tmux config — Catppuccin ${flavor}`,
@@ -318,6 +353,7 @@ export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = t
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		paneDimConfig(dimInactivePanes),
+		paneTitlesConfig(paneTitles),
 		TMUX_CONFIG_FUNCTIONAL,
 		shellEnvConfig(),
 		TMUX_STATUS_BAR,
@@ -328,16 +364,28 @@ export function setTmuxPaneDimming(enabled: boolean): void {
 	dimInactivePanes = enabled;
 }
 
+export function setTmuxPaneTitles(enabled: boolean): void {
+	paneTitles = enabled;
+}
+
+/** Hand the saved pane preferences to this module at boot, before any pane spawns. */
+export function applySavedTmuxPanePreferences(settings: { dimInactivePanes?: boolean; paneTitles?: boolean }): void {
+	setTmuxPaneDimming(settings.dimInactivePanes !== false);
+	setTmuxPaneTitles(settings.paneTitles === true);
+}
+
 /**
  * Rewrite every themed config — both themes, both dimming variants. Called at
  * startup, and again when a setting the config embeds changes: the shell (baked
- * into `default-shell`) and whether inactive panes are dimmed.
+ * into `default-shell`), whether inactive panes are dimmed, and pane title bars.
  */
 export function writeTmuxConfigs(): void {
 	writeShellInit();
 	for (const dimmed of [true, false]) {
-		writeFileSync(tmuxConfigPath("dark", dimmed), buildThemeConfig("mocha", dimmed));
-		writeFileSync(tmuxConfigPath("light", dimmed), buildThemeConfig("latte", dimmed));
+		for (const titled of [false, true]) {
+			writeFileSync(tmuxConfigPath("dark", dimmed, titled), buildThemeConfig("mocha", dimmed, titled));
+			writeFileSync(tmuxConfigPath("light", dimmed, titled), buildThemeConfig("latte", dimmed, titled));
+		}
 	}
 }
 

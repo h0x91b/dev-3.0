@@ -24,6 +24,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
+import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
 import { ensureDev3CliSymlink } from "./cli-self-install";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
@@ -293,7 +294,9 @@ setPushMessage((name, payload) => {
 
 // Initialize the backend gate before remote pollers and CLI requests can raise
 // agent notifications for a browser session.
-setFocusMode((await loadSettings()).focusMode === true);
+const startupSettings = await loadSettings();
+setFocusMode(startupSettings.focusMode === true);
+applySavedTmuxPanePreferences(startupSettings);
 
 // Port-tunnels module needs the same broadcast hook for `exposedPortsChanged`
 // events so connected browsers see new public URLs appear in real time.

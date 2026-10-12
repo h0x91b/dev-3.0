@@ -78,6 +78,7 @@ export {
 	PANE_CWD_FORMAT,
 	TMUX_LAST_AGENT_PANE_OPTION,
 	TMUX_PANE_DIMMING_OPTION,
+	TMUX_PANE_TITLES_OPTION,
 	tmuxConfigPath,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,

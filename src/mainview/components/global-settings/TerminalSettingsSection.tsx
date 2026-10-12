@@ -47,12 +47,16 @@ export default function TerminalSettingsSection({
 	terminalShell,
 	shellAvailability,
 	dimInactivePanes,
+	paneTitles,
+	confirmClosePane,
 	shellPrompt,
 	shellPromptCustom,
 	onNewTaskTerminalBackendChange,
 	onTerminalPathOpenModeChange,
 	onTerminalShellChange,
 	onDimInactivePanesToggle,
+	onPaneTitlesToggle,
+	onConfirmClosePaneToggle,
 	onShellPromptChange,
 	onShellPromptCustomSave,
 }: {
@@ -66,12 +70,16 @@ export default function TerminalSettingsSection({
 	terminalShell: ShellFlavor | undefined;
 	shellAvailability: ShellAvailability | null;
 	dimInactivePanes: boolean | undefined;
+	paneTitles: boolean | undefined;
+	confirmClosePane: boolean | undefined;
 	shellPrompt: string | undefined;
 	shellPromptCustom: string | undefined;
 	onNewTaskTerminalBackendChange: (backend: TerminalBackendIdentity) => void;
 	onTerminalPathOpenModeChange: (mode: TerminalPathOpenMode) => void;
 	onTerminalShellChange: (shell: ShellFlavor | undefined) => void;
 	onDimInactivePanesToggle: (enabled: boolean) => void;
+	onPaneTitlesToggle: (enabled: boolean) => void;
+	onConfirmClosePaneToggle: (enabled: boolean) => void;
 	onShellPromptChange: (choice: string) => void;
 	onShellPromptCustomSave: (source: string) => void;
 }) {
@@ -117,6 +125,34 @@ export default function TerminalSettingsSection({
 						onLabel={t("settings.on")}
 						offLabel={t("settings.off")}
 						onToggle={() => onDimInactivePanesToggle(dimInactivePanes === false)}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="terminal-pane-titles">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.paneTitles")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.paneTitlesDesc")}</p>
+					<SettingsToggle
+						checked={paneTitles === true}
+						ariaLabel={t("settings.paneTitles")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onPaneTitlesToggle(paneTitles !== true)}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="terminal-confirm-close-pane">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.confirmClosePane")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.confirmClosePaneDesc")}</p>
+					<SettingsToggle
+						checked={confirmClosePane === true}
+						ariaLabel={t("settings.confirmClosePane")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onConfirmClosePaneToggle(confirmClosePane !== true)}
 					/>
 				</div>
 			</SettingsEntry>

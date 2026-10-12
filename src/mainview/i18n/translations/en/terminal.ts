@@ -139,6 +139,8 @@ const terminal = {
 	"tmux.closePaneConfirmTitle": "Close the last pane?",
 	"tmux.closePaneConfirmMessage": "This is the only remaining pane — closing it will tear down the whole tmux session and terminate the agent. Are you sure?",
 	"tmux.closePaneConfirmLabel": "Close pane",
+	"tmux.closePaneAskTitle": "Close pane {index}?",
+	"tmux.closePaneAskMessage": "The pane and whatever is running in it will be closed.",
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
 

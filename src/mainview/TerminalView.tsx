@@ -45,6 +45,7 @@ import { createWheelPacer, WHEEL_DRAIN_INTERVAL_MS } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
 import type { SplitDirection } from "../shared/split-tree";
 import { matchesShortcut } from "./keymap";
+import { closeFocusedPane } from "./close-pane-shortcut";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
@@ -2328,7 +2329,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			const pane = (action: TaskPaneAction) =>
 				fire(() => void api.request.taskPaneAction({ taskId, action }).catch(() => {}));
 
-			if (matchesShortcut(e, "pane-close", ctx)) pane({ kind: "close" });
+			if (matchesShortcut(e, "pane-close", ctx)) fire(() => void closeFocusedPane(taskId).catch(() => {}));
 			else if (matchesShortcut(e, "pane-split-vertical", ctx)) pane({ kind: "splitV" });
 			else if (matchesShortcut(e, "pane-split-horizontal", ctx)) pane({ kind: "splitH" });
 			else if (matchesShortcut(e, "pane-zoom", ctx)) pane({ kind: "zoom", mode: "toggle" });

@@ -15,7 +15,7 @@ import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { tmux } from "../tmux";
-import { setTmuxPaneDimming, writeTmuxConfigs } from "../tmux/config";
+import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, saveSettings } from "../settings";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -261,15 +261,19 @@ function getShellAvailability(): ShellAvailability {
  */
 async function applyTmuxConfigChange(
 	theme: "dark" | "light",
-	options: { refreshShell: boolean; dimInactivePanes: boolean; dimChanged: boolean },
+	options: { refreshShell: boolean; dimInactivePanes: boolean; dimChanged: boolean; paneTitles: boolean; titlesChanged: boolean },
 ): Promise<void> {
 	try {
 		if (options.refreshShell) process.env.SHELL = getUserShell();
 		setTmuxPaneDimming(options.dimInactivePanes);
+		setTmuxPaneTitles(options.paneTitles);
 		writeTmuxConfigs();
 		// Only a real toggle overrides the server-wide choice; a shell change must
-		// not undo a dimming choice another dev3 instance made since.
-		await pty.applyTmuxTheme(theme, options.dimChanged ? { paneDimming: options.dimInactivePanes } : {});
+		// not undo a dimming or title choice another dev3 instance made since.
+		await pty.applyTmuxTheme(theme, {
+			...(options.dimChanged ? { paneDimming: options.dimInactivePanes } : {}),
+			...(options.titlesChanged ? { paneTitles: options.paneTitles } : {}),
+		});
 	} catch (err) {
 		log.warn("Failed to push the settings change into tmux (non-fatal)", { error: String(err) });
 	}
@@ -338,11 +342,14 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	}
 	const shellChanged = stored.terminalShell !== next.terminalShell;
 	const dimChanged = (stored.dimInactivePanes !== false) !== (next.dimInactivePanes !== false);
-	if (process.platform !== "win32" && (shellChanged || dimChanged)) {
+	const titlesChanged = (stored.paneTitles === true) !== (next.paneTitles === true);
+	if (process.platform !== "win32" && (shellChanged || dimChanged || titlesChanged)) {
 		await applyTmuxConfigChange(next.resolvedTheme ?? getCurrentUiTheme(), {
 			refreshShell: shellChanged,
 			dimInactivePanes: next.dimInactivePanes !== false,
 			dimChanged,
+			paneTitles: next.paneTitles === true,
+			titlesChanged,
 		});
 	}
 	getPushMessage()?.("globalSettingsUpdated", next);

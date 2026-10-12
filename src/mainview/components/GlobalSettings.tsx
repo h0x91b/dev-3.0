@@ -566,6 +566,26 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handlePaneTitlesToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ paneTitles: enabled },
+				{ tracking: { setting: "pane_titles", value: enabled ? "on" : "off" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
+	const handleConfirmClosePaneToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ confirmClosePane: enabled },
+				{ tracking: { setting: "confirm_close_pane", value: enabled ? "on" : "off" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleDimInactivePanesToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -998,6 +1018,8 @@ function GlobalSettings({
 						terminalShell={globalSettings.terminalShell}
 						shellAvailability={shellAvailability}
 						dimInactivePanes={globalSettings.dimInactivePanes}
+						paneTitles={globalSettings.paneTitles}
+						confirmClosePane={globalSettings.confirmClosePane}
 						shellPrompt={globalSettings.shellPrompt}
 						shellPromptCustom={globalSettings.shellPromptCustom}
 						onShellPromptChange={handleShellPromptChange}
@@ -1006,6 +1028,8 @@ function GlobalSettings({
 						onTerminalPathOpenModeChange={handleTerminalPathOpenModeChange}
 						onTerminalShellChange={handleTerminalShellChange}
 						onDimInactivePanesToggle={handleDimInactivePanesToggle}
+						onPaneTitlesToggle={handlePaneTitlesToggle}
+						onConfirmClosePaneToggle={handleConfirmClosePaneToggle}
 					/>
 				);
 			case "agents":

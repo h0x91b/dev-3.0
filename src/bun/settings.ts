@@ -181,6 +181,9 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 				: undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		dimInactivePanes: d.dimInactivePanes === false ? false : undefined,
+		// Default-off toggles — only an explicit true is stored.
+		paneTitles: d.paneTitles === true ? true : undefined,
+		confirmClosePane: d.confirmClosePane === true ? true : undefined,
 		shellPrompt: typeof d.shellPrompt === "string" && d.shellPrompt ? d.shellPrompt : undefined,
 		shellPromptCustom: typeof d.shellPromptCustom === "string" && d.shellPromptCustom ? d.shellPromptCustom : undefined,
 		focusMode: d.focusMode === true ? true : undefined,
