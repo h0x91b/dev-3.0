@@ -16,6 +16,10 @@ import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { MarkdownDocument } from "./pr-review/markdown";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
+import { useResolvedTheme } from "../hooks/useResolvedTheme";
+import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
+// Token colours for both themes — the diff viewer's own stylesheet, scoped to its wrapper class.
+import "@git-diff-view/react/styles/diff-view-pure.css";
 
 interface FilePreviewModalProps {
 	path: string;
@@ -204,10 +208,16 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		? ""
 		: anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}–${anchor.endLine}`;
 	const showAside = canComment && (pending !== null || pendingRegion !== null || fileComments.length > 0 || commentMode);
+	const theme = useResolvedTheme();
+	const syntaxLines = useSyntaxLines(
+		preview?.kind === "text" ? preview.content : null,
+		path,
+		!isRenderableDocPath(path) || showRaw,
+	);
 	// Re-search whenever the body is replaced: the async load landing, and the
 	// raw/rendered toggle, both swap the text the ranges point into.
 	const find = useFindInElement(bodyRef, {
-		contentKey: `${preview?.kind ?? "loading"}:${showRaw}:${wrapLines}`,
+		contentKey: `${preview?.kind ?? "loading"}:${showRaw}:${wrapLines}:${syntaxLines ? "syntax" : "plain"}`,
 		onOpen: focusFindInput,
 	});
 
@@ -252,12 +262,22 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const dirName = slash > 0 ? path.slice(0, slash) : "";
 	const showsCode = textContent !== null && (!isRenderable || showRaw);
 
+	function renderTokens(tokens: SyntaxToken[]) {
+		return tokens.map((token, i) => (token.className ? <span key={i} className={token.className}>{token.text}</span> : token.text));
+	}
+
 	function renderCode(content: string) {
 		const lines = content.split("\n");
 		// The span is border-box, so its `pr-3` has to be added on top of the digits.
 		const gutterWidth = `calc(${String(lines.length).length}ch + 0.75rem)`;
 		return (
-			<div className="font-mono text-xs leading-relaxed" data-testid="file-preview-code" data-wrap={wrapLines ? "true" : "false"}>
+			<div
+				className={`font-mono text-xs leading-relaxed${syntaxLines ? " diff-tailwindcss-wrapper" : ""}`}
+				data-testid="file-preview-code"
+				data-wrap={wrapLines ? "true" : "false"}
+				data-syntax={syntaxLines ? "true" : "false"}
+				data-theme={syntaxLines ? theme : undefined}
+			>
 				{lines.map((text, i) => {
 					const isTarget = line !== undefined && i + 1 === line;
 					const commented = commentedLines.has(i + 1);
@@ -275,7 +295,9 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 							>
 								{i + 1}
 							</span>
-							<span className={wrapLines ? "min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-fg" : "whitespace-pre text-fg"}>{text}</span>
+							<span className={`${wrapLines ? "min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre"} text-fg${syntaxLines ? " diff-line-syntax-raw" : ""}`}>
+								{syntaxLines?.has(i + 1) ? renderTokens(syntaxLines.get(i + 1)!) : text}
+							</span>
 						</div>
 					);
 				})}

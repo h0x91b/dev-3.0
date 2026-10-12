@@ -1,3 +1,3 @@
-Short: Wider file preview, readable tables and wrapped source
+Short: Highlighted, wrapped, wider file previews
 
-The file preview opened from a terminal path now has an Expand button that grows it to the whole window, keeps Markdown table columns at least a word wide (wide tables scroll sideways instead of splitting words letter by letter), and soft-wraps long lines in Raw/source view behind a remembered "Wrap lines" toggle — the file and copied content stay unchanged.
+The file preview opened from a terminal path now syntax-highlights source by file type (the same highlighter and colours as the diff viewer, plain text for unknown types), soft-wraps long lines behind a visible, remembered "Wrap lines" toggle, has an Expand button that grows it to the whole window, and keeps Markdown table columns at least a word wide instead of splitting words letter by letter — the file and copied content stay unchanged.
