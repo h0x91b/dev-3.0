@@ -599,6 +599,25 @@ describe("confirm service — keyboardChoice", () => {
 		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
 	});
 
+	// The browser turns Enter on a focused button into that button's click; the
+	// dialog must not answer `true` over the top of it.
+	it("leaves Enter to a button the user tabbed onto", async () => {
+		const result = await ask(true);
+		const cancel = screen.getByRole("button", { name: /Cancel/ });
+		act(() => { cancel.focus(); });
+		press("Enter");
+		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
+		await act(async () => { cancel.click(); });
+		await expect(result()).resolves.toBe(false);
+	});
+
+	it("still answers yes on Y while a button holds focus", async () => {
+		const result = await ask(true);
+		act(() => { screen.getByRole("button", { name: /Cancel/ }).focus(); });
+		press("y");
+		await expect(result()).resolves.toBe(true);
+	});
+
 	it("leaves an ordinary dialog to its buttons", async () => {
 		await ask(false);
 		press("Enter");

@@ -280,6 +280,9 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 			const key = e.key.toLowerCase();
 			const answer = key === "enter" || key === "y" ? true : key === "escape" || key === "n" ? false : null;
 			if (answer === null || (answer && gateActive)) return;
+			// Enter on a focused button is that button's. Someone who tabbed to Cancel
+			// and pressed it must get Cancel, not the destructive default.
+			if (key === "enter" && document.activeElement?.tagName === "BUTTON") return;
 			e.preventDefault();
 			e.stopPropagation();
 			close(answer);
