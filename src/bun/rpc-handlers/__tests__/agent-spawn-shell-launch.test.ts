@@ -58,7 +58,7 @@ vi.mock("../../agents", () => ({
 vi.mock("../../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn(() => ({})) }));
 vi.mock("../../agent-hooks", () => ({ setupAgentHooks: vi.fn(async () => null) }));
-vi.mock("../../agent-transcripts", () => ({ resolveResumableSessionId: vi.fn() }));
+vi.mock("../../agent-transcripts", () => ({ resolveResumableSessionIds: vi.fn() }));
 vi.mock("../../agent-prompt", () => ({ markAgentPane: vi.fn() }));
 vi.mock("../../settings", () => ({ loadSettings: vi.fn(), recordFavoriteUsages: vi.fn() }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));

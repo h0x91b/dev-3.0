@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listResumableSessionIds, resolveResumableSessionId } from "../agent-transcripts";
+import { listResumableSessionIds, resolveResumableSessionIds } from "../agent-transcripts";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
 
 const WORKTREE = "/Users/dev/.dev3.0/ops/operations/7d8312c0/work";
@@ -47,13 +47,23 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-describe("resolveResumableSessionId", () => {
+/** Resolve a single pane — the one-pane task every older caller had. */
+function resolveOne(agentCmd: string, sessionId: string | null, originCwd?: string) {
+	return resolveResumableSessionIds(WORKTREE, [{ agentCmd, sessionId, sessionOriginCwd: originCwd }], home)[0];
+}
+
+function claudePanes(...sessionIds: (string | null)[]) {
+	return sessionIds.map((sessionId) => ({ agentCmd: "claude", sessionId }));
+}
+
+describe("resolveResumableSessionIds — one pane", () => {
 	it("keeps a stored id that still has a transcript", () => {
 		seedTranscript("1160218f-85f5-4a45-8032-ced3af5a532b", 0);
 
-		expect(resolveResumableSessionId("claude", WORKTREE, "1160218f-85f5-4a45-8032-ced3af5a532b", home)).toEqual({
+		expect(resolveOne("claude", "1160218f-85f5-4a45-8032-ced3af5a532b")).toEqual({
 			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
 			substituted: false,
+			startFresh: false,
 			verified: true,
 		});
 	});
@@ -64,28 +74,31 @@ describe("resolveResumableSessionId", () => {
 		seedTranscript("1160218f-85f5-4a45-8032-ced3af5a532b", 0);
 		seedTranscript("aefa0626-853c-49c9-97bf-bd0e88ed89e7", 3600);
 
-		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
+		expect(resolveOne("claude", "125a4c8c-b567-4d24-991b-8732e82878c8")).toEqual({
 			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
 			substituted: true,
+			startFresh: false,
 			verified: true,
 		});
 	});
 
-	it("drops a dead id to agent-latest when the store holds no transcripts", () => {
+	it("has nothing to resume when the store holds no transcripts", () => {
 		mkdirSync(transcriptDir(), { recursive: true });
 
-		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
+		expect(resolveOne("claude", "125a4c8c-b567-4d24-991b-8732e82878c8")).toEqual({
 			sessionId: null,
 			substituted: true,
+			startFresh: true,
 			verified: false,
 		});
 	});
 
 	it("passes the stored id through untouched when the store dir does not exist", () => {
 		// Unverifiable — a missing dir must never downgrade a resume that would work.
-		expect(resolveResumableSessionId("claude", WORKTREE, "125a4c8c-b567-4d24-991b-8732e82878c8", home)).toEqual({
+		expect(resolveOne("claude", "125a4c8c-b567-4d24-991b-8732e82878c8")).toEqual({
 			sessionId: "125a4c8c-b567-4d24-991b-8732e82878c8",
 			substituted: false,
+			startFresh: false,
 			verified: false,
 		});
 	});
@@ -93,20 +106,23 @@ describe("resolveResumableSessionId", () => {
 	it("passes the stored id through for agents with no filename-keyed store", () => {
 		seedTranscript("1160218f-85f5-4a45-8032-ced3af5a532b", 0);
 
-		expect(resolveResumableSessionId("codex", WORKTREE, "some-codex-session", home)).toEqual({
+		expect(resolveOne("codex", "some-codex-session")).toEqual({
 			sessionId: "some-codex-session",
 			substituted: false,
+			startFresh: false,
 			verified: false,
 		});
 	});
 
-	it("leaves a null stored id alone so the agent picks its own latest", () => {
+	it("gives a pane with no stored id the newest transcript, as the agent's own latest would", () => {
 		seedTranscript("1160218f-85f5-4a45-8032-ced3af5a532b", 0);
 
-		expect(resolveResumableSessionId("claude", WORKTREE, null, home)).toEqual({
-			sessionId: null,
+		// Verified, unlike the `--continue` this replaces: the transcript was read off disk.
+		expect(resolveOne("claude", null)).toEqual({
+			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
 			substituted: false,
-			verified: false,
+			startFresh: false,
+			verified: true,
 		});
 	});
 
@@ -118,9 +134,7 @@ describe("resolveResumableSessionId", () => {
 		seedEmptyWorktreeStore();
 		seedTranscriptFor(origin, "elsewhere-1");
 
-		expect(
-			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
-		).toEqual({ sessionId: "elsewhere-1", substituted: false, verified: true });
+		expect(resolveOne("claude", "elsewhere-1", origin)).toEqual({ sessionId: "elsewhere-1", substituted: false, startFresh: false, verified: true });
 	});
 
 	it("does not let a later local session hijack an id from the origin store", () => {
@@ -128,18 +142,69 @@ describe("resolveResumableSessionId", () => {
 		seedTranscript("local-session", 10);
 		seedTranscriptFor(origin, "elsewhere-1");
 
-		expect(
-			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
-		).toEqual({ sessionId: "elsewhere-1", substituted: false, verified: true });
+		expect(resolveOne("claude", "elsewhere-1", origin)).toEqual({ sessionId: "elsewhere-1", substituted: false, startFresh: false, verified: true });
 	});
 
 	it("still heals when the origin store has lost the conversation too", () => {
 		seedTranscript("survivor", 10);
 		seedEmptyWorktreeStore();
 
-		expect(
-			resolveResumableSessionId("claude", WORKTREE, "gone", home, undefined, "/Users/dev/code/my-app"),
-		).toEqual({ sessionId: "survivor", substituted: true, verified: true });
+		expect(resolveOne("claude", "gone", "/Users/dev/code/my-app")).toEqual({ sessionId: "survivor", substituted: true, startFresh: false, verified: true });
+	});
+});
+
+describe("resolveResumableSessionIds — several panes (#1950)", () => {
+	it("never hands two stale panes the same newest transcript", () => {
+		// Healing each pane on its own gave both stale panes "newest", so they
+		// reopened one conversation side by side.
+		seedTranscript("pane-a", 30);
+		seedTranscript("newest", 0);
+		seedTranscript("older", 600);
+
+		const ids = resolveResumableSessionIds(WORKTREE, claudePanes("pane-a", "dead-1", "dead-2"), home).map((t) => t.sessionId);
+
+		expect(ids).toEqual(["pane-a", "newest", "older"]);
+	});
+
+	it("lets a pane keep its own conversation even when it is not the newest one", () => {
+		seedTranscript("pane-a", 0);
+		seedTranscript("pane-b", 600);
+
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("dead", "pane-b"), home);
+
+		// The stale main pane must not take pane-b's conversation just because it comes first.
+		expect(targets.map((t) => t.sessionId)).toEqual(["pane-a", "pane-b"]);
+		expect(targets[1].substituted).toBe(false);
+	});
+
+	it("starts a pane fresh when every transcript already belongs to another pane", () => {
+		seedTranscript("pane-a", 0);
+		seedTranscript("pane-b", 10);
+
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("pane-a", "pane-b", "never-prompted"), home);
+
+		expect(targets[2]).toEqual({ sessionId: null, substituted: true, startFresh: true, verified: false });
+	});
+
+	it("splits panes that already collapsed onto one id", () => {
+		// The old bug persisted the shared id, so both panes now point at one live transcript.
+		seedTranscript("shared", 0);
+		seedTranscript("pane-b-real", 60);
+
+		const ids = resolveResumableSessionIds(WORKTREE, claudePanes("shared", "shared"), home).map((t) => t.sessionId);
+
+		expect(ids).toEqual(["shared", "pane-b-real"]);
+	});
+
+	it("leaves panes of an unverifiable agent out of the claims", () => {
+		seedTranscript("pane-a", 0);
+
+		const targets = resolveResumableSessionIds(WORKTREE, [
+			{ agentCmd: "codex", sessionId: "codex-rollout" },
+			{ agentCmd: "claude", sessionId: "pane-a" },
+		], home);
+
+		expect(targets.map((t) => t.sessionId)).toEqual(["codex-rollout", "pane-a"]);
 	});
 });
 

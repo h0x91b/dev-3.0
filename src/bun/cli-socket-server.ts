@@ -48,7 +48,7 @@ import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import * as agents from "./agents";
 import { agentKey } from "../shared/agent-adapters/families";
-import { placePaneSession, placeUnaddressedPaneSession, type SessionPane } from "./pane-session-capture";
+import { placePaneSession, placeRecordedPaneSession, placeUnaddressedPaneSession, type SessionPane } from "./pane-session-capture";
 import { isInteractiveCodexConversation } from "./codex-resume-home";
 import { configuredCodexHomes } from "./codex-task-selection";
 import { addVent } from "./vents";
@@ -885,7 +885,9 @@ async function paneSessionAlreadyRecorded(
  * resumed in a new pane); else the lone null-paneId entry (the main pane,
  * persisted before its paneId is known); else — only when no entry is left at all
  * and the reporting CLI is the task's own agent — a new main entry. Anything else
- * is ambiguous and skipped. A no-op once the id is already recorded.
+ * is ambiguous and skipped. A no-op once the id is already recorded. Claude
+ * takes a launch id, so only its recorded panes follow their own conversation
+ * (`/clear`, `/resume`); see {@link placeRecordedPaneSession}.
  *
  * The steady state is exactly that no-op — Codex fires this hook continuously for
  * the whole life of a session — so it is answered from the cached read BEFORE
@@ -906,12 +908,14 @@ async function capturePaneSession(
 		// A `codex exec` or subagent in the pane fires the same hooks; only the
 		// user's own conversation, once its rollout exists, may become the pane's.
 		if (harness === "codex" && !(await isInteractiveCodexConversation(sessionId, await taskCodexHomes(project, cached)))) return;
-		const mainEntry = cached.sessionState?.panes?.length ? null : await ownAgentPaneEntry(cached, harness);
+		const mainEntry = harness === "claude" || cached.sessionState?.panes?.length ? null : await ownAgentPaneEntry(cached, harness);
 		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
 			const panes = current.sessionState?.panes ?? [];
-			const nextPanes = paneId
-				? placePaneSession(panes, paneId, sessionId, mainEntry)
-				: placeUnaddressedPaneSession(panes, sessionId, mainEntry);
+			const nextPanes = harness === "claude"
+				? (paneId ? placeRecordedPaneSession(panes, paneId, sessionId) : null)
+				: paneId
+					? placePaneSession(panes, paneId, sessionId, mainEntry)
+					: placeUnaddressedPaneSession(panes, sessionId, mainEntry);
 			if (!nextPanes) return { updates: {}, result: { changed: false } };
 			return { updates: { sessionState: { panes: nextPanes } }, result: { changed: true } };
 		});
@@ -2082,14 +2086,20 @@ const handlers: Record<string, Handler> = {
 		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
 			? params.harness
 			: "claude";
+		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		const outcome = recordTerminalPromptSubmission({
 			project,
 			task,
 			harness,
 			prompt: typeof params.prompt === "string" ? params.prompt : "",
-			sessionId: typeof params.sessionId === "string" ? params.sessionId : null,
+			sessionId,
 			submissionId: typeof params.submissionId === "string" ? params.submissionId : null,
 		});
+		// Claude starts a new conversation on `/clear` and switches on `/resume`;
+		// the pane's resume pointer follows whichever one this prompt went to.
+		if (harness === "claude" && sessionId && typeof params.paneId === "string" && params.paneId) {
+			await capturePaneSession(project, task.id, params.paneId, sessionId, harness);
+		}
 		return { outcome };
 	},
 

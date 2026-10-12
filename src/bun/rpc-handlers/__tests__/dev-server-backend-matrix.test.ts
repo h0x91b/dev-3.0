@@ -110,7 +110,7 @@ vi.mock("../../settings", () => ({ loadSettings: vi.fn(), recordFavoriteUsages: 
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/bash") }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn() }));
 vi.mock("../../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
-vi.mock("../../agent-transcripts", () => ({ resolveResumableSessionId: vi.fn() }));
+vi.mock("../../agent-transcripts", () => ({ resolveResumableSessionIds: vi.fn() }));
 vi.mock("../../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn() }));
 vi.mock("../../agent-prompt", () => ({ markAgentPane: vi.fn() }));
 vi.mock("../../native-task-panes", () => ({

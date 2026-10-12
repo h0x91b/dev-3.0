@@ -28,8 +28,20 @@ function parsePayload(rawInput: string): ClaudePromptPayload | null {
 }
 
 /**
+ * The tmux pane whose conversation this is, so dev3 can keep that pane's resume
+ * pointer current. A `claude -p` run from inside the pane inherits $TMUX_PANE
+ * but is not the pane's conversation; Claude marks it `sdk-cli`.
+ */
+function reportingPaneId(env: NodeJS.ProcessEnv): string | undefined {
+	const entrypoint = env.CLAUDE_CODE_ENTRYPOINT;
+	if (entrypoint && entrypoint !== "cli") return undefined;
+	return env.TMUX_PANE || undefined;
+}
+
+/**
  * Internal adapter for Claude Code's `UserPromptSubmit` hook: report the
- * submission so agent traffic can show a human message, and nothing else.
+ * submission so agent traffic can show a human message, and which pane's
+ * conversation it was, so that pane resumes the right one.
  *
  * The task's status is moved by the OTHER entry on the same event, which is
  * untouched. This one is pure recording, so every path here is quiet and
@@ -40,9 +52,11 @@ export async function handleClaudePrompt(
 	rawInput: string,
 	socketPath: string | null,
 	context: CliContext | null,
+	env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
 	const payload = parsePayload(rawInput);
 	if (!payload || !socketPath || !context?.taskId) return;
+	const paneId = reportingPaneId(env);
 
 	try {
 		const response = await sendRequest(socketPath, "task.promptSubmitted", {
@@ -52,6 +66,7 @@ export async function handleClaudePrompt(
 			prompt: payload.prompt,
 			...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 			...(payload.promptId ? { submissionId: payload.promptId } : {}),
+			...(paneId ? { paneId } : {}),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude prompt hook: ${response.error || "recording failed"}\n`);

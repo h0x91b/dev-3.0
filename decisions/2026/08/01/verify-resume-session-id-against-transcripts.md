@@ -1,5 +1,7 @@
 # 189 — Verify a resume session id against the agent's transcripts
 
+Superseded on 2026-10-12 by `decisions/2026/10/12/claude-panes-claim-their-own-conversation.md`: healing now runs once per task with per-pane claims, so a stale pane takes the newest *unclaimed* transcript, and an extra pane with none left starts fresh instead of `--continue`.
+
 ## Context
 
 A long-running task could not be resumed after a machine restart: the agent pane

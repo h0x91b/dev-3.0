@@ -19,12 +19,25 @@ import { claudeConfigDirs } from "./agent-store-roots";
 
 /** Resume pointer to actually use, after checking it against the store. */
 export interface ResumeTarget {
-	/** Id for `--resume`, or null to let the agent pick its own latest session. */
+	/** Id for `--resume`, or null when there is nothing of this pane's to reopen. */
 	sessionId: string | null;
-	/** The stored id had no transcript, so this replaces it (worth logging). */
+	/** The stored id had no transcript of its own, so this replaces it (worth logging). */
 	substituted: boolean;
+	/** The store was checked and nothing is left for this pane: every transcript
+	 *  belongs to another pane, so the agent's own "latest" would duplicate one. */
+	startFresh: boolean;
 	/** A transcript for `sessionId` was actually found on disk. False when the store could not be read. */
 	verified: boolean;
+}
+
+/** What the resolver needs of one stored pane. */
+export interface ResumeCandidate {
+	agentCmd: string;
+	sessionId: string | null;
+	agentFamily?: AgentFamily | null;
+	/** The directory whose store holds this pane's conversation, when it is not
+	 *  the task's own. Checked before healing. */
+	sessionOriginCwd?: string | null;
 }
 
 /**
@@ -57,43 +70,65 @@ export function listResumableSessionIds(
 }
 
 /**
- * Pick the session id to resume. Falls back to the newest transcript when the
- * stored id is dead, and to the agent's own "latest" when the store is empty.
- * Passes the stored id through untouched whenever it cannot be verified, so an
- * unknown store never makes resume worse than not checking at all.
+ * Pick the session id to resume for every pane of one task, from ONE snapshot of
+ * the store, so no two panes are handed the same conversation.
+ *
+ * A pane keeps its stored id when that id has a transcript and no earlier pane
+ * claimed it. Every other pane gets the newest transcript nobody claimed, and
+ * `startFresh` when none is left. Healing each pane on its own gave every stale
+ * pane the same newest transcript (h0x91b/dev-3.0#1950). A pane whose store
+ * cannot be checked passes its stored id through untouched.
  */
-export function resolveResumableSessionId(
-	agentCmd: string,
+export function resolveResumableSessionIds(
 	worktreePath: string,
-	storedSessionId: string | null | undefined,
+	panes: readonly ResumeCandidate[],
 	home: string = resolveUserHome(),
-	family?: AgentFamily,
-	/** The directory whose store actually holds this pane's conversation, when it
-	 *  is not the task's own. Checked before healing. */
-	originCwd?: string | null,
-): ResumeTarget {
-	const stored = storedSessionId ?? null;
-	const store = storeFor(agentCmd, worktreePath, home, family);
-	if (!store || !store.dirs.some((dir) => existsSync(dir))) return { sessionId: stored, substituted: false, verified: false };
-	if (!stored) return { sessionId: null, substituted: false, verified: false };
+): ResumeTarget[] {
+	const targets: ResumeTarget[] = new Array(panes.length);
+	const claimed = new Set<string>();
+	const snapshots = new Map<string, string[]>();
+	const unresolved: { index: number; ids: string[] }[] = [];
 
-	const ids = sessionIdsNewestFirst(store.dirs, store.ext);
-	if (ids.includes(stored)) return { sessionId: stored, substituted: false, verified: true };
-
-	// A conversation that began elsewhere never migrates into this worktree's
-	// store: a resume appends to the original file and only stamps the new cwd
-	// into the new records. The agent DOES create the worktree's store directory
-	// though — empty, holding just `memory/` — so the early-out above sees a
-	// store that exists, finds no ids in it, and would heal a live id to null,
-	// i.e. `--continue`, i.e. a brand new conversation.
-	if (originCwd) {
-		const origin = storeFor(agentCmd, originCwd, home, family);
-		if (origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored)) {
-			return { sessionId: stored, substituted: false, verified: true };
+	panes.forEach((pane, index) => {
+		const stored = pane.sessionId ?? null;
+		const store = storeFor(pane.agentCmd, worktreePath, home, pane.agentFamily ?? undefined);
+		if (!store || !store.dirs.some((dir) => existsSync(dir))) {
+			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: false };
+			return;
 		}
-	}
+		const key = [store.ext, ...store.dirs].join("\0");
+		let ids = snapshots.get(key);
+		if (!ids) {
+			ids = sessionIdsNewestFirst(store.dirs, store.ext);
+			snapshots.set(key, ids);
+		}
+		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home))) {
+			claimed.add(stored);
+			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: true };
+			return;
+		}
+		unresolved.push({ index, ids });
+	});
 
-	return { sessionId: ids[0] ?? null, substituted: true, verified: ids.length > 0 };
+	for (const { index, ids } of unresolved) {
+		const next = ids.find((id) => !claimed.has(id)) ?? null;
+		if (next) claimed.add(next);
+		targets[index] = { sessionId: next, substituted: panes[index].sessionId != null, startFresh: next === null, verified: next !== null };
+	}
+	return targets;
+}
+
+/**
+ * A conversation that began elsewhere never migrates into this worktree's store:
+ * a resume appends to the original file and only stamps the new cwd into the new
+ * records. The agent DOES create the worktree's store directory though — empty,
+ * holding just `memory/` — so without this look the pane would be healed away
+ * from a live id.
+ */
+function inOriginStore(pane: ResumeCandidate, stored: string, home: string): boolean {
+	if (!pane.sessionOriginCwd) return false;
+	const origin = storeFor(pane.agentCmd, pane.sessionOriginCwd, home, pane.agentFamily ?? undefined);
+	return !!origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored);
 }
 
 /** Session ids across all store dirs, newest transcript first. */

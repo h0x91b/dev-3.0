@@ -44,3 +44,19 @@ export function placeUnaddressedPaneSession(
 	if (panes.length !== 1 || panes[0].sessionId === sessionId) return null;
 	return [{ ...panes[0], sessionId }];
 }
+
+/**
+ * Claude's placement: only the entry already recorded for this exact pane moves.
+ * A pane dev3 never recorded — a teammate an agent team split off, a Claude the
+ * user started by hand — must not take over another pane's pointer.
+ */
+export function placeRecordedPaneSession(
+	panes: SessionPane[],
+	paneId: string,
+	sessionId: string,
+): SessionPane[] | null {
+	const idx = panes.findIndex((pane) => pane.paneId === paneId);
+	if (idx === -1 || panes[idx].sessionId === sessionId) return null;
+	// The new conversation lives in this worktree's store, so a foreign origin no longer applies.
+	return panes.map((pane, i) => (i === idx ? { ...pane, sessionId, sessionOriginCwd: undefined } : pane));
+}

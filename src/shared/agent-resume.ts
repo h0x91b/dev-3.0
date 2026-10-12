@@ -6,9 +6,11 @@ import type { AgentFamily } from "./types";
  * - `substituted`: the stored id had no transcript, so the newest surviving one replaces it.
  * - `unverified`: the stored id, passed through because this harness's store cannot be read.
  * - `agent-latest`: no id at all — the harness picks its own latest, and may start a new conversation.
+ * - `fresh-session`: nothing of this pane's conversation survives and every transcript belongs to
+ *   another pane, so it reopens on a new id of its own rather than duplicating one (#1950).
  * - `fresh`: the harness cannot resume at all, so it starts over from the task description.
  */
-export type ResumePaneMode = "exact" | "substituted" | "unverified" | "agent-latest" | "fresh";
+export type ResumePaneMode = "exact" | "substituted" | "unverified" | "agent-latest" | "fresh-session" | "fresh";
 
 export interface ResumePaneReport {
 	/** Position in the task's saved panes; 0 is the main pane. */
@@ -19,7 +21,8 @@ export interface ResumePaneReport {
 	agentFamily: AgentFamily | null;
 	/** The id the task had saved for this pane before the resume. */
 	storedSessionId: string | null;
-	/** The conversation the harness reopens; null for `agent-latest` and `fresh`. */
+	/** The conversation the harness reopens; null for `agent-latest` and `fresh`, and for
+	 *  `fresh-session` until the pane is launched on its new id. */
 	sessionId: string | null;
 	mode: ResumePaneMode;
 	/** `skipped`/`failed` panes stay saved on the task and can be resumed again later. */

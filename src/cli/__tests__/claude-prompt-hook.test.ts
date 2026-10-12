@@ -1,7 +1,7 @@
 /**
- * Claude Code's `UserPromptSubmit` adapter. It reports a submission and does
- * nothing else — the task's status is moved by the other entry on the same
- * event, which this must never be able to disturb.
+ * Claude Code's `UserPromptSubmit` adapter. It reports a submission and the
+ * pane it came from, nothing else — the task's status is moved by the other
+ * entry on the same event, which this must never be able to disturb.
  *
  * Payload shape verified against claude 2.1.267: `prompt` and `prompt_id` are
  * both present, and `prompt_id` is what makes exactly-once provable.
@@ -54,7 +54,7 @@ describe("handleClaudePrompt", () => {
 	it("reports the submission with its identity, and nothing about the transcript", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: { outcome: "recorded" } });
 
-		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT);
+		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, {});
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.promptSubmitted", {
 			taskId: "task-1",
@@ -67,6 +67,24 @@ describe("handleClaudePrompt", () => {
 		// transcript_path is global conversation surveillance and is never read.
 		const [, , params] = mockSend.mock.calls[0]!;
 		expect(JSON.stringify(params)).not.toContain("transcript");
+	});
+
+	it("names the pane its conversation runs in, so that pane's resume pointer can follow it", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: { outcome: "recorded" } });
+
+		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, { TMUX_PANE: "%7", CLAUDE_CODE_ENTRYPOINT: "cli" });
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-1", paneId: "%7" });
+	});
+
+	it("does not claim the pane for a `claude -p` run from inside it", async () => {
+		// The nested run inherits $TMUX_PANE; letting it report would point the
+		// pane at a throwaway conversation.
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: { outcome: "recorded" } });
+
+		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, { TMUX_PANE: "%7", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" });
+
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("paneId");
 	});
 
 	it("stays silent on another hook event", async () => {

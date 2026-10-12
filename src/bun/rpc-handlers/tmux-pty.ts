@@ -35,7 +35,7 @@ import { getUserShell } from "../shell-env";
 import { agentBinaryPathOverride } from "../executable";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
-import { resolveResumableSessionId } from "../agent-transcripts";
+import { resolveResumableSessionIds } from "../agent-transcripts";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
 import {
 	tmux,
@@ -2158,30 +2158,30 @@ async function markTerminalAttached(project: Project, task: Task): Promise<void>
 }
 
 /**
- * Resume pointer for one pane, healed against the transcripts on disk. A stored
- * id whose transcript is gone would kill the pane on `--resume`; the newest
- * surviving conversation for that worktree is the right thing to reopen instead
- * (decision 189). A null id lets the agent pick its own latest session.
+ * Resume pointers for every pane, healed against the transcripts on disk in one
+ * pass so no two panes reopen the same conversation (decision 189, #1950).
  */
-function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string): { sessionId: string | null; mode: ResumePaneMode } {
-	const target = resolveResumableSessionId(
-		pane.agentCmd,
-		task.worktreePath ?? "",
-		pane.sessionId,
-		undefined,
-		pane.agentFamily ?? undefined,
-		pane.sessionOriginCwd,
-	);
-	if (target.substituted) {
-		log.warn("Stored session id has no transcript — resuming the newest conversation instead", {
-			taskId: task.id.slice(0, 8),
-			pane: label,
-			stored: pane.sessionId,
-			using: target.sessionId ?? "agent-latest",
-		});
-	}
-	const mode: ResumePaneMode = !target.sessionId ? "agent-latest" : target.substituted ? "substituted" : target.verified ? "exact" : "unverified";
-	return { sessionId: target.sessionId, mode };
+function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode }[] {
+	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes);
+	return targets.map((target, i) => {
+		if (target.substituted || target.startFresh) {
+			log.warn("Stored session id is not resumable for this pane — resuming another conversation instead", {
+				taskId: task.id.slice(0, 8),
+				pane: i === 0 ? "main" : `pane ${i}`,
+				stored: panes[i].sessionId,
+				using: target.sessionId ?? (target.startFresh ? "fresh-session" : "agent-latest"),
+			});
+		}
+		// Only an extra pane with an agent record is relaunched on a new conversation;
+		// pane 0 and a pane carrying nothing but a command string fall back to the
+		// harness's own latest, which is what `agent-latest` reports.
+		const startsFresh = target.startFresh && i > 0 && !!panes[i].agentId;
+		const mode: ResumePaneMode = startsFresh ? "fresh-session"
+			: !target.sessionId ? "agent-latest"
+			: target.substituted ? "substituted"
+			: target.verified ? "exact" : "unverified";
+		return { sessionId: target.sessionId, mode };
+	});
 }
 
 /** The stored panes, or — when there are none — the lost Codex conversation resumeTask would reopen. Never persisted here. */
@@ -2323,10 +2323,9 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	// carry the claimed ids, not the snapshot's.
 	if (codexChoices.size) task.sessionState = { panes };
 	const allAgents = await agents.getAllAgents();
-	const targets = panes.map((pane, i) => {
-		const target = resolveResumeTarget(task, pane, i === 0 ? "main" : `pane ${i}`);
+	const targets = resolveResumeTargets(task, panes).map((target, i) => {
 		// The launch is unchanged; only the report admits that this harness starts over.
-		if (!paneHarnessCanResume(pane, allAgents)) return { ...target, mode: "fresh" as const };
+		if (!paneHarnessCanResume(panes[i], allAgents)) return { ...target, mode: "fresh" as const };
 		// The selection engine chose a Codex id from the transcripts it read.
 		return codexChoices.has(i) && target.sessionId ? { ...target, mode: "exact" as const } : target;
 	});
@@ -2404,14 +2403,19 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				projectPath: project.path,
 				worktreePath: task.worktreePath,
 			};
-			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
 					const paneResume = targets[i].sessionId;
 					const codexHome = codexHomes.get(i);
 					const accountId = codexHome ? codexAccountIdForHome(codexHome) ?? null : pane.accountId;
-					const cmdOpts: agents.CommandOptions = { resume: true, accountId };
+					// Every conversation of this worktree belongs to another pane, so
+					// `--continue` would open one of theirs: start this pane over instead.
+					const freshSessionId = targets[i].mode === "fresh-session" ? crypto.randomUUID() : null;
+					const cmdOpts: agents.CommandOptions = freshSessionId
+						? { sessionId: freshSessionId, accountId }
+						: { resume: true, accountId };
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
@@ -2444,21 +2448,25 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId });
-					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null };
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume });
+					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
 					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
 					reports[i] = { ...reports[i], status: "failed", detail: String(err) };
 				}
 			}
-			// Update pane IDs in sessionState (pane IDs change across tmux server restarts)
+			// Update pane IDs (they change across tmux server restarts) and the ids each pane resumed
 			if (paneIdUpdates.length > 0) {
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId, accountId } of paneIdUpdates) {
-						if (updatedPanes[index]) updatedPanes[index] = { ...updatedPanes[index], paneId, accountId };
+					for (const { index, paneId, accountId, sessionId } of paneIdUpdates) {
+						const prior = updatedPanes[index];
+						if (!prior) continue;
+						// A replaced id was found in this worktree's own store, so the origin goes with the old one.
+						const originCwd = sessionId === prior.sessionId ? prior.sessionOriginCwd : undefined;
+						updatedPanes[index] = { ...prior, paneId, accountId, sessionId, sessionOriginCwd: originCwd };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {

@@ -295,9 +295,9 @@ async function main(): Promise<void> {
 		);
 	}
 	if (command === "hook" && subcommand === "claude-prompt") {
-		// Internal: Claude Code's UserPromptSubmit, read for recording only. It
-		// never blocks or fails the prompt — the status move is a separate entry
-		// on the same event.
+		// Internal: Claude Code's UserPromptSubmit, read for recording and the
+		// pane's resume pointer. It never blocks or fails the prompt — the status
+		// move is a separate entry on the same event.
 		return await handleClaudePrompt(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
