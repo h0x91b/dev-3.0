@@ -12,7 +12,7 @@ byte-identical to a fresh launch.
 
 The loss is wider than resume. A renamed binary also got no `--session-id` (so
 `sessionState.panes[].sessionId` stayed `null` and there was nothing to resume
-by id), no `transcriptStore` (so `resolveResumableSessionId` could not fall back
+by id), no `transcriptStore` (so `resolveResumableSessionIds` could not fall back
 to the newest transcript either), no `--append-system-prompt` (the dev3
 protocol), no `--settings` (statusLine → rate-limit tracking), no
 `--allow-dangerously-skip-permissions`, no managed-account env, and no hooks.

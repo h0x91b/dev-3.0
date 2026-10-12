@@ -1,5 +1,7 @@
 # Resume checks the conversation's origin store
 
+Updated on 2026-10-12 by `decisions/2026/10/12/claude-panes-claim-their-own-conversation.md`: the resolver is now `resolveResumableSessionIds`, which resolves every pane of one task from a single snapshot. The origin-store check below is unchanged, but it lives in `inOriginStore` and reads `sessionOriginCwd` off the pane rather than taking it as an argument.
+
 ## Context
 
 `verify-resume-session-id-against-transcripts.md` made resume self-healing: a
@@ -40,9 +42,9 @@ leaving only a `log.warn`.
 ## Decision
 
 `PaneSessionEntry.sessionOriginCwd` records the directory whose store holds the
-conversation, and `resolveResumableSessionId` takes an `originCwd` and checks
-that store before falling back. Absent on every pane whose session began where
-the task lives, so the healing behaviour is unchanged for them.
+conversation, and the resolver checks that store (`inOriginStore`) before
+falling back. Absent on every pane whose session began where the task lives,
+so the healing behaviour is unchanged for them.
 
 The check sits *after* `ids.includes(stored)` deliberately: the task's own store
 is still the best answer when it has one, and a pane that later starts local
@@ -61,6 +63,7 @@ sessions must not have them outrank the id it was told to resume.
   in `launchTaskPty` replaces pane[0] wholesale, so the entry is rebuilt on each
   launch and resume; it now carries the origin forward while the resumed id is
   unchanged, and drops it on a substituted id, which belongs to the local store.
+  `resumeTask`'s extra-pane write and `placeRecordedPaneSession` follow the same rule.
 - **One more reverse-engineered behaviour.** The empty-`memory/` directory is not
   documented and may stop being created. If it does, the earlier `existsSync`
   guard starts firing and the stored id passes through untouched — the safe
