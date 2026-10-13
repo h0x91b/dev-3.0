@@ -7,7 +7,7 @@
     if (event.data && event.data.type === "dev3-artifact-theme") setTheme(event.data.theme);
   });
   if (!document.documentElement.dataset.theme) {
-    setTheme(matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    setTheme("light");
   }
 
   const prefersReducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -624,7 +624,7 @@
 
   // ---- generic shell controls -----------------------------------------------
   let themeMode = "auto";
-  let hostTheme = document.documentElement.dataset.theme || "dark";
+  let hostTheme = document.documentElement.dataset.theme || "light";
   const artifactTheme = document.getElementById("artifactTheme");
   const toast = document.getElementById("toast");
 

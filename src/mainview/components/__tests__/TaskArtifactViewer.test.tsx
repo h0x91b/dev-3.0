@@ -166,7 +166,7 @@ describe("TaskArtifactViewer", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it.each(["light", "dark"] as const)("starts in the current dev3 %s theme and keeps the override cycle", async (hostTheme) => {
+	it.each(["light", "dark"] as const)("starts in light mode from dev3 %s and keeps the override cycle", async (hostTheme) => {
 		const previousTheme = document.documentElement.dataset.theme;
 		document.documentElement.dataset.theme = hostTheme;
 		try {
@@ -174,17 +174,25 @@ describe("TaskArtifactViewer", () => {
 			const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
 			const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
 			const theme = screen.getByTestId("artifact-viewer-theme");
-			const nextTheme = hostTheme === "light" ? "dark" : "light";
-			expect(theme).toHaveAccessibleName(`Artifact theme: ${hostTheme === "light" ? "Light" : "Dark"}`);
+			expect(theme).toHaveAccessibleName("Artifact theme: Light");
 			fireEvent.load(frame);
-			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: hostTheme }, "*"));
+			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "light" }, "*"));
 			await userEvent.click(theme);
-			expect(theme).toHaveAccessibleName(`Artifact theme: ${nextTheme === "light" ? "Light" : "Dark"}`);
-			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: nextTheme }, "*"));
-			await userEvent.click(theme);
-			expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
-			await userEvent.click(theme);
-			expect(theme).toHaveAccessibleName(`Artifact theme: ${hostTheme === "light" ? "Light" : "Dark"}`);
+			if (hostTheme === "light") {
+				expect(theme).toHaveAccessibleName("Artifact theme: Dark");
+				await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
+				await userEvent.click(theme);
+				expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
+				await userEvent.click(theme);
+				expect(theme).toHaveAccessibleName("Artifact theme: Light");
+			} else {
+				expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
+				await userEvent.click(theme);
+				expect(theme).toHaveAccessibleName("Artifact theme: Dark");
+				await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
+				await userEvent.click(theme);
+				expect(theme).toHaveAccessibleName("Artifact theme: Light");
+			}
 		} finally {
 			if (previousTheme) document.documentElement.dataset.theme = previousTheme;
 			else delete document.documentElement.dataset.theme;

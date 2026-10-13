@@ -288,6 +288,7 @@ describe("bundled artifact starter contract", () => {
 		const app = readFileSync(appPath, "utf8");
 
 		expect(html).toContain('data-dev3-artifact-template="v1"');
+		expect(html).toContain('data-theme="light"');
 		expect(html).toContain("DEV3 ARTIFACT · OPERATIONS");
 		expect(html).toContain("Built with dev3 Artifacts");
 		expect(html).toContain('src="dev3-icon.png"');

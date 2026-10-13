@@ -118,7 +118,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const modal = !offscreen && (!dock || fullscreen);
 	const [downloading, setDownloading] = useState(false);
 	const [downloadKind, setDownloadKind] = useState<"html" | "zip" | null>(null);
-	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
+	// Reports open in light even when dev3 is dark; the toolbar still cycles Light / Follow dev3 / Dark.
+	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>("light");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	// null = nothing searched yet (empty query) — the counter stays hidden.

@@ -63,7 +63,7 @@ describe("injectArtifactThemeContract", () => {
 		const twice = injectArtifactThemeContract(once);
 		expect(once).toContain("data-dev3-artifact-shell");
 		expect(once).toContain("--dev3-surface-base");
-		expect(once).toContain("prefers-color-scheme: light");
+		expect(once).toContain("prefers-color-scheme:dark");
 		expect(twice).toBe(once);
 	});
 
