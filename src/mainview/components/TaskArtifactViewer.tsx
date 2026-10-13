@@ -201,6 +201,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	// input this feature exists to keep. The frame is told instead.
 	const canSendRef = useRef(canSendToAgent);
 	canSendRef.current = canSendToAgent;
+	const themeRef = useRef(themeMode);
+	themeRef.current = themeMode;
 
 	useEffect(() => {
 		if (!current) return;
@@ -219,7 +221,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
 				setDownloadKind(payload.downloadKind);
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current));
+				const theme = themeRef.current === "follow" ? currentTheme() : themeRef.current;
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current, theme));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };

@@ -245,4 +245,15 @@ describe("composeArtifactDocument", () => {
 		// Callers that pass no flag get the inert bridge, never a live one.
 		expect(composeArtifactDocument("<p>report</p>", [])).toContain('"canSend":false');
 	});
+
+	it("stamps light on <html> so saved dark-default reports paint light before onLoad", () => {
+		const wrapped = composeArtifactDocument("<html><head></head><body></body></html>", []);
+		expect(wrapped).toMatch(/<html[^>]*data-theme="light"/);
+		const fragment = composeArtifactDocument("<p>report</p>", []);
+		expect(fragment).toMatch(/<html[^>]*data-theme="light"/);
+		const existing = composeArtifactDocument('<html data-theme="dark"><head></head><body></body></html>', []);
+		expect(existing).toMatch(/<html[^>]*data-theme="light"/);
+		expect(existing).not.toMatch(/data-theme="dark"/);
+		expect(composeArtifactDocument("<p>report</p>", [], undefined, false, "dark")).toMatch(/<html[^>]*data-theme="dark"/);
+	});
 });

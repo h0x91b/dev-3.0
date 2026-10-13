@@ -102,6 +102,14 @@ function rewriteAssetAttribute(
 	});
 }
 
+/** Stamp the viewer's theme on <html> so first paint matches, including reports saved under the old dark :root default. */
+function applyDocumentTheme(html: string, theme: "light" | "dark"): string {
+	if (/<html\b[^>]*\bdata-theme\s*=/i.test(html)) {
+		return html.replace(/(<html\b[^>]*\bdata-theme\s*=\s*)(["']?)[^\s"'>]*\2/i, `$1$2${theme}$2`);
+	}
+	return html.replace(/<html\b/i, `<html data-theme="${theme}"`);
+}
+
 /**
  * Prepare stored artifact HTML for the viewer. Relative local asset references are
  * replaced with copied data URLs so CSS, classic scripts, raster images and bundled
@@ -115,6 +123,7 @@ export function composeArtifactDocument(
 	assets: ArtifactAssetPayload[],
 	saveImageLabel?: string,
 	canSendToAgent = false,
+	theme: "light" | "dark" = "light",
 ): string {
 	const byName = new Map(assets.map((asset) => [asset.name, asset.dataUrl]));
 	const resolve = (url: string): string => {
@@ -157,8 +166,8 @@ export function composeArtifactDocument(
 	// still sets the document base URL. `artifactLinksScript` takes the in-page
 	// anchors back off that default.
 	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactLinksScript()}${artifactBridgeScript(canSendToAgent)}${artifactCommentScript()}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
-	if (/<head(?:\s|>)/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${injected}`);
-	if (/<html(?:\s|>)/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`);
+	if (/<head(?:\s|>)/i.test(html)) return applyDocumentTheme(html.replace(/<head([^>]*)>/i, `<head$1>${injected}`), theme);
+	if (/<html(?:\s|>)/i.test(html)) return applyDocumentTheme(html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`), theme);
 	const body = html.replace(/<!doctype[^>]*>/i, "");
-	return `<!doctype html><html><head>${injected}</head><body>${body}</body></html>`;
+	return applyDocumentTheme(`<!doctype html><html><head>${injected}</head><body>${body}</body></html>`, theme);
 }
