@@ -111,7 +111,7 @@ Commands:
   dev3 message --list [--json] [--task <id>]  Pending scheduled messages (id, due in local + UTC, sender)
   dev3 message --cancel <id> [--task <id>]  Cancel one pending scheduled message
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
-  dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...]  Play MP4/WebM clips (max 25 MB each) in the same viewer as show-image; never autoplays
+  dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...]  Play MP4/WebM clips (max 300 MB each) in the same viewer as show-image; never autoplays
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image, video and audio file under it
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials

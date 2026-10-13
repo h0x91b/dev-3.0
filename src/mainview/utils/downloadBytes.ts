@@ -18,6 +18,15 @@ export function downloadObjectUrl(url: string, fileName: string): void {
 	anchor.click();
 }
 
+/** Fetch `url` into a `blob:` URL and download it — for streamed media, whose bytes are not in the renderer. */
+export async function downloadUrl(url: string, fileName: string): Promise<void> {
+	const res = await fetch(url, { credentials: "same-origin" });
+	if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`);
+	const objectUrl = URL.createObjectURL(await res.blob());
+	downloadObjectUrl(objectUrl, fileName);
+	setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
 export function base64ToBlob(base64: string, mime: string): Blob {
 	const binary = atob(base64);
 	const bytes = new Uint8Array(binary.length);

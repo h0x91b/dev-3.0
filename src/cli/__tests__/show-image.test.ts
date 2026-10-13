@@ -162,7 +162,7 @@ describe("show-video", () => {
 			taskId: CTX.taskId,
 			images: [{ path: MP4, caption: "the bug" }, { path: WEBM }],
 			projectId: CTX.projectId,
-		});
+		}, { timeoutMs: 300_000 });
 		expect(stdoutOutput).toContain("Shared 2 videos");
 	});
 
@@ -173,13 +173,34 @@ describe("show-video", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("rejects a clip over the cap before contacting the app", async () => {
+	it("rejects a clip one byte over the 300 MB cap before contacting the app, with exact sizes", async () => {
 		const big = join(DIR, "big.mp4");
 		writeFileSync(big, "");
-		truncateSync(big, 25 * 1024 * 1024 + 1);
+		truncateSync(big, 300 * 1024 * 1024 + 1);
 		await expect(handleShowVideo([big], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrText()).toContain("Video too large");
+		expect(stderrText()).toContain("314,572,801 bytes; max 300 MB = 314,572,800 bytes");
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("sends clips at and just below the cap to the app with a long copy timeout", async () => {
+		for (const size of [300 * 1024 * 1024 - 1, 300 * 1024 * 1024]) {
+			mockSend.mockReset();
+			mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+			const clip = join(DIR, `edge-${size}.mp4`);
+			writeFileSync(clip, "");
+			truncateSync(clip, size);
+			await handleShowVideo([clip], SOCKET, CTX);
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-video", expect.anything(), { timeoutMs: 300_000 });
+		}
+	});
+
+	it("keeps the 25 MB cap for images", async () => {
+		const big = join(DIR, "big.png");
+		writeFileSync(big, "");
+		truncateSync(big, 25 * 1024 * 1024 + 1);
+		await expect(handleShowImage([big], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("max 25 MB = 26,214,400 bytes");
 	});
 
 	it("points show-image users at show-video for a clip", async () => {

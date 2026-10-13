@@ -12,7 +12,7 @@ import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
-import { base64ToBlob, downloadDataUrl, downloadObjectUrl, parseDataUrl } from "../utils/downloadBytes";
+import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 
 interface TaskImageViewerProps {
@@ -52,8 +52,8 @@ const TALL_RATIO = 2.2;
  * dialog (project rule).
  *
  * A `dev3 show-video` clip swaps the stage for a `<video controls>` player that
- * never autoplays; its bytes become a `blob:` URL (seekable, freed on close) and
- * load only when the clip is the active item, never eagerly for the rail.
+ * never autoplays; it streams from a `getSharedVideoUrl` capability URL with
+ * Range requests, so a clip of hundreds of MB is never held in memory.
  *
  * While open it marks <html data-image-viewer="open">, which hides the ghostty
  * WebGL terminal canvas behind it (index.css). In WKWebView a WebGL canvas is
@@ -65,10 +65,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const newSet = useMemo(() => new Set(newIds ?? []), [newIds]);
 	const newCount = newSet.size;
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
-	// Cache of image id → data URL, or `blob:` URL for a video ("__error__" marks a failed load).
+	// Cache of image id → data URL, or the streaming URL for a video ("__error__" marks a failed load).
 	const [urls, setUrls] = useState<Record<string, string>>({});
-	const objectUrlsRef = useRef<string[]>([]);
-	useEffect(() => () => { for (const url of objectUrlsRef.current) URL.revokeObjectURL(url); }, []);
 	// The player's own failure (codec / container the engine cannot decode).
 	const [videoError, setVideoError] = useState(false);
 	const [copied, setCopied] = useState(false);
@@ -158,14 +156,10 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		startedRef.current.add(img.id);
 		let dataUrl = "__error__";
 		try {
-			const res = await api.request.readImageBase64({ path: img.storedPath });
+			const res = isSharedVideo(img)
+				? await api.request.getSharedVideoUrl({ path: img.storedPath }).then((r) => r && { dataUrl: r.url })
+				: await api.request.readImageBase64({ path: img.storedPath });
 			dataUrl = res?.dataUrl ?? "__error__";
-			const parsed = isSharedVideo(img) && res?.dataUrl ? parseDataUrl(res.dataUrl) : null;
-			if (parsed) {
-				dataUrl = URL.createObjectURL(base64ToBlob(parsed.base64, img.mime));
-				if (mountedRef.current) objectUrlsRef.current.push(dataUrl);
-				else URL.revokeObjectURL(dataUrl);
-			}
 		} catch {
 			dataUrl = "__error__";
 		}
@@ -294,13 +288,13 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	};
 
 	// Renderer-side anchor download (Electrobun → ~/Downloads, browser → its own
-	// download dir). The bytes are already here as a data URL, so this needs no RPC
-	// and behaves identically on both transports.
-	const saveImage = () => {
+	// download dir). An image is already here as a data URL; a clip is streamed, so
+	// its bytes are fetched only now, on an explicit click.
+	const saveImage = async () => {
 		setMenu(null);
 		if (!currentUrl || isError) return;
 		try {
-			if (isVideo) downloadObjectUrl(currentUrl, current.name);
+			if (isVideo) await downloadUrl(currentUrl, current.name);
 			else downloadDataUrl(currentUrl, current.name);
 			toast.success(t(isVideo ? "imageViewer.videoSaved" : "imageViewer.saved"), { taskId });
 		} catch {

@@ -1,7 +1,8 @@
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
+import { copyFile, rename, stat, unlink } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import type { SharedImage } from "../shared/types";
-import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_VIDEO_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS } from "../shared/types";
+import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_VIDEO_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS, mediaTooLargeDetail } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 import { projectStorageKey } from "../shared/project-storage-key";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
@@ -61,9 +62,11 @@ export function saveSharedImage(projectPath: string, sourcePath: string, caption
 		throw new SharedImageError(`Unsupported image type "${ext || "(none)"}" (use png/jpg/gif/webp/bmp): ${sourcePath}`);
 	}
 	if (size > MAX_SHARED_IMAGE_BYTES) {
-		throw new SharedImageError(`Image too large (${Math.round(size / 1024 / 1024)} MB, max 25 MB): ${sourcePath}`);
+		throw new SharedImageError(`Image too large (${mediaTooLargeDetail(size, MAX_SHARED_IMAGE_BYTES)}): ${sourcePath}`);
 	}
-	return copyIntoShared(projectPath, sourcePath, ext, size, caption);
+	const storedPath = newStoredPath(projectPath, ext);
+	copyFileSync(sourcePath, storedPath);
+	return sharedRecord(sourcePath, storedPath, ext, size, caption);
 }
 
 /**
@@ -71,20 +74,52 @@ export function saveSharedImage(projectPath: string, sourcePath: string, caption
  * same record, told apart by its `video/*` mime. Also sniffs the container
  * signature, so a renamed file fails here instead of as a blank player.
  */
-export function saveSharedVideo(projectPath: string, sourcePath: string, caption?: string): SharedImage {
+export function checkSharedVideo(sourcePath: string): { ext: string; size: number } {
 	const { ext, size } = checkSource(sourcePath);
 	if (!SUPPORTED_VIDEO_EXTS.has(ext)) {
 		throw new SharedImageError(`Unsupported video type "${ext || "(none)"}" (use ${SHARED_VIDEO_EXTS.join("/")}): ${sourcePath}`);
 	}
 	if (size > MAX_SHARED_VIDEO_BYTES) {
-		throw new SharedImageError(
-			`Video too large (${Math.round(size / 1024 / 1024)} MB, max ${MAX_SHARED_VIDEO_BYTES / 1024 / 1024} MB): ${sourcePath}. Trim or re-encode it smaller.`,
-		);
+		throw new SharedImageError(`Video too large (${mediaTooLargeDetail(size, MAX_SHARED_VIDEO_BYTES)}): ${sourcePath}. Trim or re-encode it smaller.`);
 	}
 	if (!hasVideoSignature(sourcePath, ext)) {
 		throw new SharedImageError(`Not a real ${ext.toUpperCase()} file (container signature missing): ${sourcePath}`);
 	}
-	return copyIntoShared(projectPath, sourcePath, ext, size, caption);
+	return { ext, size };
+}
+
+/**
+ * Async because a clip can be hundreds of MB: a sync copy would stall the main
+ * process. Copies to a `.partial` sibling and renames only once the byte count
+ * matches, so a failed or short copy never lands under a real name.
+ */
+export async function saveSharedVideo(projectPath: string, sourcePath: string, caption?: string): Promise<SharedImage> {
+	const { ext, size } = checkSharedVideo(sourcePath);
+	const storedPath = newStoredPath(projectPath, ext);
+	const partialPath = `${storedPath}.partial`;
+	try {
+		await copyFile(sourcePath, partialPath);
+		const copied = (await stat(partialPath)).size;
+		if (copied !== size) throw new Error(`copied ${copied} of ${size} bytes`);
+		await rename(partialPath, storedPath);
+	} catch (err) {
+		await unlink(partialPath).catch(() => {});
+		throw err;
+	}
+	return sharedRecord(sourcePath, storedPath, ext, size, caption);
+}
+
+/** Validates every clip before copying any, and removes the earlier copies if a later one fails. */
+export async function saveSharedVideos(projectPath: string, items: { path: string; caption?: string }[]): Promise<SharedImage[]> {
+	for (const it of items) checkSharedVideo(it.path);
+	const saved: SharedImage[] = [];
+	try {
+		for (const it of items) saved.push(await saveSharedVideo(projectPath, it.path, it.caption));
+	} catch (err) {
+		await Promise.all(saved.map((rec) => unlink(rec.storedPath).catch(() => {})));
+		throw err;
+	}
+	return saved;
 }
 
 /** MP4 carries an `ftyp` box at byte 4; WebM opens with the EBML magic 1A 45 DF A3. */
@@ -116,14 +151,15 @@ function checkSource(sourcePath: string): { ext: string; size: number } {
 	return { ext: imageExt(sourcePath), size: stat.size };
 }
 
-function copyIntoShared(projectPath: string, sourcePath: string, ext: string, size: number, caption?: string): SharedImage {
+function newStoredPath(projectPath: string, ext: string): string {
 	const dir = sharedImagesDir(projectPath);
 	mkdirSync(dir, { recursive: true });
-	const name = sanitizeName(basename(sourcePath));
 	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
-	const storedPath = `${dir}/shared-${Date.now()}-${hex}.${ext}`;
-	copyFileSync(sourcePath, storedPath);
+	return `${dir}/shared-${Date.now()}-${hex}.${ext}`;
+}
 
+function sharedRecord(sourcePath: string, storedPath: string, ext: string, size: number, caption?: string): SharedImage {
+	const name = sanitizeName(basename(sourcePath));
 	const trimmedCaption = caption?.trim();
 	return {
 		id: crypto.randomUUID(),

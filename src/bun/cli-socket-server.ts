@@ -12,7 +12,7 @@ import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopF
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
-import { SharedImageError, saveSharedImage, saveSharedVideo } from "./shared-images";
+import { SharedImageError, saveSharedImage, saveSharedVideos } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
@@ -1023,8 +1023,7 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 	// path is invalid, so the agent gets a clear signal and nothing half-lands.
 	let incoming: SharedImage[];
 	try {
-		const save = kind === "video" ? saveSharedVideo : saveSharedImage;
-		incoming = items.map((it) => save(project.path, it.path, it.caption));
+		incoming = kind === "video" ? await saveSharedVideos(project.path, items) : items.map((it) => saveSharedImage(project.path, it.path, it.caption));
 	} catch (err) {
 		if (err instanceof SharedImageError) throw err;
 		throw new Error(`Failed to store ${kind}: ${err instanceof Error ? err.message : String(err)}`);

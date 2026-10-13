@@ -7,7 +7,7 @@
 // hand-written help inside their handlers and are NOT listed here (see
 // `OWNS_HELP` below).
 
-import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
+import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_VIDEO_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../shared/cli-exit-codes";
 
@@ -720,7 +720,8 @@ const COMMANDS: CommandHelp[] = [
 		details: [
 			"Same history, badge and viewer as show-image: the viewer switches to a player for a clip.",
 			"Each --caption annotates the clip it immediately follows. Up to 20 files per call.",
-			"MP4 or WebM, 25 MB per file — trim or re-encode longer clips. H.264/AAC MP4 is the safest codec choice;",
+			`MP4 or WebM, up to ${formatMediaCap(MAX_SHARED_VIDEO_BYTES)} (${MAX_SHARED_VIDEO_BYTES.toLocaleString("en-US")} bytes) per file — trim or re-encode larger clips.`,
+			"The viewer streams the clip and can seek before it fully loads. H.264/AAC MP4 is the safest codec choice;",
 			"whether a codec plays depends on the engine (only Chromium playback of H.264, VP8 and VP9 was measured).",
 			"A codec the engine cannot decode (HEVC in Chromium, for one) shows a notice pointing at Open in default app.",
 			"Files are copied into the task's shared store, so the original may be deleted afterwards. Never autoplays.",

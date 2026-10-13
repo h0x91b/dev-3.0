@@ -672,6 +672,12 @@ function initBrowserApi(): ApiShape {
 			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}`;
 		},
 
+		// The host answers with a loopback URL; a remote tab streams the same clip from its own origin.
+		async getSharedVideoUrl(params: { path: string }) {
+			const result = await rpcRequest("getSharedVideoUrl", params);
+			return result ? { url: result.path, path: result.path } : null;
+		},
+
 		async hideApp(): Promise<void> {
 			// No-op in browser
 		},

@@ -3224,11 +3224,21 @@ export const SHARED_IMAGE_EXTS: readonly string[] = ["png", "jpg", "jpeg", "gif"
 export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
 
 /**
- * Per-video cap for `dev3 show-video` (bytes). Held at the image cap because a
- * video takes the same road — one base64 read over RPC, ~1.34× its bytes, in the
- * desktop bridge and over the remote tunnel alike — and is paid on every open.
+ * Per-video cap for `dev3 show-video` (bytes; a file of exactly this size passes).
+ * Clips never travel as base64: the viewer streams them over HTTP with Range
+ * requests (`src/bun/shared-video-stream.ts`), so the cap only bounds disk use.
  */
-export const MAX_SHARED_VIDEO_BYTES = 25 * 1024 * 1024;
+export const MAX_SHARED_VIDEO_BYTES = 300 * 1024 * 1024;
+
+/** A byte cap as the whole-MiB figure the CLI and the app print ("300 MB"). */
+export function formatMediaCap(bytes: number): string {
+	return `${Math.floor(bytes / 1024 / 1024)} MB`;
+}
+
+/** Exact sizes for a too-large error — rounded MB would print "300 MB, max 300 MB" one byte over. */
+export function mediaTooLargeDetail(size: number, cap: number): string {
+	return `${size.toLocaleString("en-US")} bytes; max ${formatMediaCap(cap)} = ${cap.toLocaleString("en-US")} bytes`;
+}
 
 /** True for a {@link SharedImage} record that `dev3 show-video` stored. */
 export function isSharedVideo(item: { mime: string }): boolean {
@@ -3853,10 +3863,11 @@ export function appendTaskMovement(
  * The source file is copied into the project's worktree `shared-images/` dir (next
  * to `uploads/`), so the record survives the original (often /tmp) file being
  * removed. Rendered in the {@link https://…|TaskImageViewer} lightbox with a
- * clickable history (newest activated first). Bytes reach the webview via the
- * existing `readImageBase64` RPC (works in desktop and browser transports).
+ * clickable history (newest activated first). Image bytes reach the webview via
+ * the `readImageBase64` RPC (works in desktop and browser transports).
  * `dev3 show-video` clips use this same record in `Task.sharedVideos` and play
- * in the same viewer; a `video/*` {@link SharedImage.mime} marks them ({@link isSharedVideo}).
+ * in the same viewer, streamed via `getSharedVideoUrl`; a `video/*`
+ * {@link SharedImage.mime} marks them ({@link isSharedVideo}).
  */
 export interface SharedImage {
 	id: string;
@@ -6206,6 +6217,11 @@ export type AppRPCSchema = {
 			readImageBase64: {
 				params: { path: string };
 				response: { dataUrl: string } | null;
+			};
+			/** A streamable URL for a stored `dev3 show-video` clip: `url` for the desktop webview, `path` for the remote browser's own origin. */
+			getSharedVideoUrl: {
+				params: { path: string };
+				response: { url: string; path: string } | null;
 			};
 			readArtifactContent: {
 				params: { artifact: SharedArtifact };

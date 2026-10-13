@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			readImageBase64: vi.fn(),
+			getSharedVideoUrl: vi.fn(),
 			openImageFile: vi.fn().mockResolvedValue(undefined),
 		},
 	},
@@ -365,7 +366,11 @@ describe("TaskImageViewer with a shared video", () => {
 	let createObjectURL: ReturnType<typeof vi.spyOn>;
 	let revokeObjectURL: ReturnType<typeof vi.spyOn>;
 
+	const STREAM_URL = "http://127.0.0.1:4242/shared-video/tok";
+
 	beforeEach(() => {
+		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockReset();
+		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: STREAM_URL, path: "/shared-video/tok" });
 		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockClear();
 		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockImplementation(async ({ path }: { path: string }) => ({
 			dataUrl: path.endsWith(".mp4") ? "data:video/mp4;base64,AAAA" : "data:image/png;base64,AAAA",
@@ -389,7 +394,11 @@ describe("TaskImageViewer with a shared video", () => {
 	it("plays the clip in the same stage with controls and no autoplay", async () => {
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
-		expect(video).toHaveAttribute("src", "blob:clip");
+		// Streamed by URL: no base64 read and no blob copy of the clip.
+		expect(video).toHaveAttribute("src", STREAM_URL);
+		expect(mockedApi.request.getSharedVideoUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(createObjectURL).not.toHaveBeenCalled();
 		expect(video.controls).toBe(true);
 		expect(video.autoplay).toBe(false);
 		expect(video).toHaveAttribute("preload", "metadata");
@@ -400,18 +409,19 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(screen.getByText("2 / 3")).toBeInTheDocument();
 	});
 
-	it("never reads a clip's bytes for the rail, only when it is on stage", async () => {
+	it("asks for a clip's stream URL only when it is on stage, never reading its bytes", async () => {
 		renderMixed(2);
 		await waitFor(() => {
 			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/a.png" });
 			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/c.png" });
 		});
-		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.getSharedVideoUrl).not.toHaveBeenCalled();
 		expect(screen.getByTestId("viewer-thumb-video")).toBeInTheDocument();
 
 		await userEvent.click(screen.getByRole("button", { name: "demo.mp4" }));
 		await screen.findByTestId("viewer-main-video");
-		expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.getSharedVideoUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 	});
 
 	it("switches back to a picture when stepping off the clip", async () => {
@@ -437,6 +447,13 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(play).toHaveBeenCalledTimes(1);
 	});
 
+	it("shows the load error when the host refuses to stream the clip", async () => {
+		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+		renderMixed(1);
+		expect(await screen.findByTestId("viewer-media-error")).toBeInTheDocument();
+		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+	});
+
 	it("explains an undecodable clip instead of showing a blank player", async () => {
 		renderMixed(1);
 		const video = await screen.findByTestId("viewer-main-video");
@@ -444,18 +461,21 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(await screen.findByTestId("viewer-media-error")).toHaveTextContent(/doesn't support its format or codec/);
 	});
 
-	it("downloads the clip under its own name and frees the blob on close", async () => {
+	it("fetches the clip only on Download, saves it under its own name and frees the blob", async () => {
 		const names: string[] = [];
 		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
 			names.push(this.download);
 		});
-		const view = renderMixed(1);
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob([new Uint8Array(4)])));
+		renderMixed(1);
 		await screen.findByTestId("viewer-main-video");
+		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(screen.getByTestId("image-viewer-download")).toHaveAccessibleName("Download video");
 		await userEvent.click(screen.getByTestId("image-viewer-download"));
-		expect(names).toEqual(["demo.mp4"]);
-		view.unmount();
-		expect(revokeObjectURL).toHaveBeenCalledWith("blob:clip");
+		await waitFor(() => expect(names).toEqual(["demo.mp4"]));
+		expect(fetchSpy).toHaveBeenCalledWith(STREAM_URL, { credentials: "same-origin" });
+		await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:clip"));
+		fetchSpy.mockRestore();
 		click.mockRestore();
 	});
 });

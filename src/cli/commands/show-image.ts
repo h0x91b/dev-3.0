@@ -4,7 +4,7 @@ import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import { resolveValue } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
-import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_IMAGES_PER_CALL, MAX_SHARED_VIDEO_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS } from "../../shared/types";
+import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_IMAGES_PER_CALL, MAX_SHARED_VIDEO_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS, mediaTooLargeDetail } from "../../shared/types";
 
 interface MediaKind {
 	command: string;
@@ -32,6 +32,8 @@ const VIDEO: MediaKind = {
 	maxBytes: MAX_SHARED_VIDEO_BYTES,
 	example: "demo.mp4",
 };
+
+const VIDEO_COPY_TIMEOUT_MS = 5 * 60_000;
 
 // Flags that take a value; anything else with a leading "--" is rejected.
 const GLOBAL_VALUE_FLAGS = new Set(["task", "task-id", "project"]);
@@ -131,9 +133,10 @@ async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: stri
 			const hint = kind === IMAGE && SHARED_VIDEO_EXTS.includes(e) ? " For a video, use `dev3 show-video`." : "";
 			exitUsage(`Unsupported ${kind.noun} type "${e || "(none)"}" for ${it.path}. Use: ${kind.exts.join(", ")}.${hint}`);
 		}
-		if (statSync(abs).size > kind.maxBytes) {
+		const size = statSync(abs).size;
+		if (size > kind.maxBytes) {
 			const noun = kind.noun[0].toUpperCase() + kind.noun.slice(1);
-			exitUsage(`${noun} too large: ${it.path} (max ${Math.round(kind.maxBytes / 1024 / 1024)} MB).`);
+			exitUsage(`${noun} too large: ${it.path} (${mediaTooLargeDetail(size, kind.maxBytes)}).${kind === VIDEO ? " Trim or re-encode it smaller." : ""}`);
 		}
 		images.push(it.caption ? { path: abs, caption: it.caption } : { path: abs });
 	}
@@ -150,7 +153,10 @@ async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: stri
 	const projectId = resolveProjectId(flags.project, context);
 	if (projectId) params.projectId = projectId;
 
-	const resp = await sendRequest(socketPath, kind.method, params);
+	// A clip near the cap can take longer than the default 30 s to copy on a slow disk.
+	const resp = kind === VIDEO
+		? await sendRequest(socketPath, kind.method, params, { timeoutMs: VIDEO_COPY_TIMEOUT_MS })
+		: await sendRequest(socketPath, kind.method, params);
 	if (!resp.ok) exitError(resp.error || `Failed to show ${kind.noun}`);
 
 	const data = resp.data as { delivered: boolean; stored: number; taskId: string; queued?: boolean; suppressed?: boolean };

@@ -47,7 +47,7 @@ vi.mock("../shared-images", () => ({
 		createdAt: 1,
 		...(caption ? { caption } : {}),
 	})),
-	saveSharedVideo: vi.fn((_projectPath: string, src: string, caption?: string) => ({
+	saveSharedVideos: vi.fn(async (_projectPath: string, items: { path: string; caption?: string }[]) => items.map(({ path: src, caption }) => ({
 		id: `vid-${src}`,
 		storedPath: `/wt/shared-images/${src.split("/").pop()}`,
 		originalPath: src,
@@ -56,7 +56,7 @@ vi.mock("../shared-images", () => ({
 		bytes: 1,
 		createdAt: 1,
 		...(caption ? { caption } : {}),
-	})),
+	}))),
 }));
 
 vi.mock("../shared-artifacts", () => ({
@@ -242,7 +242,7 @@ import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
-import { saveSharedImage, saveSharedVideo } from "../shared-images";
+import { saveSharedImage, saveSharedVideos } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
 import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
@@ -1945,7 +1945,7 @@ describe("ui.show-image", () => {
 		const pushFn = vi.fn();
 		wireShowImage(project, task, pushFn);
 		const imageSpy = vi.mocked(saveSharedImage);
-		const videoSpy = vi.mocked(saveSharedVideo);
+		const videoSpy = vi.mocked(saveSharedVideos);
 		imageSpy.mockClear();
 		videoSpy.mockClear();
 
@@ -1955,7 +1955,7 @@ describe("ui.show-image", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, stored: 1 });
-		expect(videoSpy).toHaveBeenCalledWith(project.path, "/tmp/demo.mp4", "play me");
+		expect(videoSpy).toHaveBeenCalledWith(project.path, [{ path: "/tmp/demo.mp4", caption: "play me" }]);
 		expect(imageSpy).not.toHaveBeenCalled();
 		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
 		expect(cliPush?.[1]).toMatchObject({ newKind: "video", newCount: 1 });

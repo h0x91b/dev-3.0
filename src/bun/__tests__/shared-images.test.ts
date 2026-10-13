@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,8 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import { SharedImageError, imageExt, isSupportedImage, saveSharedImage, saveSharedVideo, sharedImagesDir } from "../shared-images";
+import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_VIDEO_BYTES } from "../../shared/types";
+import { SharedImageError, imageExt, isSupportedImage, saveSharedImage, saveSharedVideo, saveSharedVideos, sharedImagesDir } from "../shared-images";
 
 const SRC_DIR = mkdtempSync(join(tmpdir(), "dev3-shared-src-"));
 
@@ -90,10 +91,10 @@ describe("saveSharedVideo", () => {
 		rmSync(sharedImagesDir("/my/project"), { recursive: true, force: true });
 	});
 
-	it("copies an MP4 into the same store as images, marked by a video mime", () => {
+	it("copies an MP4 into the same store as images, marked by a video mime", async () => {
 		const src = join(SRC_DIR, "demo.mp4");
 		writeFileSync(src, MP4_HEAD);
-		const rec = saveSharedVideo("/my/project", src, " watch the spinner ");
+		const rec = await saveSharedVideo("/my/project", src, " watch the spinner ");
 
 		expect(rec.storedPath.startsWith(`${TEST_HOME}/worktrees/my-project/shared-images/`)).toBe(true);
 		expect(rec.storedPath.endsWith(".mp4")).toBe(true);
@@ -101,43 +102,74 @@ describe("saveSharedVideo", () => {
 		expect(rec.caption).toBe("watch the spinner");
 		expect(rec.isUnread).toBe(true);
 		expect(readFileSync(rec.storedPath).equals(MP4_HEAD)).toBe(true);
+		expect(readdirSync(sharedImagesDir("/my/project")).some((f) => f.endsWith(".partial"))).toBe(false);
 	});
 
-	it("accepts a WebM by its EBML signature", () => {
+	it("accepts a WebM by its EBML signature", async () => {
 		const src = join(SRC_DIR, "qa.webm");
 		writeFileSync(src, WEBM_HEAD);
-		expect(saveSharedVideo("/my/project", src).mime).toBe("video/webm");
+		expect((await saveSharedVideo("/my/project", src)).mime).toBe("video/webm");
 	});
 
-	it("rejects a renamed file whose container signature is missing", () => {
+	it("rejects a renamed file whose container signature is missing", async () => {
 		const src = join(SRC_DIR, "fake.mp4");
 		writeFileSync(src, "definitely not a movie");
-		expect(() => saveSharedVideo("/my/project", src)).toThrow(/Not a real MP4 file/);
+		await expect(saveSharedVideo("/my/project", src)).rejects.toThrow(/Not a real MP4 file/);
 		const webm = join(SRC_DIR, "fake.webm");
 		writeFileSync(webm, MP4_HEAD);
-		expect(() => saveSharedVideo("/my/project", webm)).toThrow(/Not a real WEBM file/);
+		await expect(saveSharedVideo("/my/project", webm)).rejects.toThrow(/Not a real WEBM file/);
 	});
 
-	it("rejects other containers and images", () => {
+	it("rejects other containers and images", async () => {
 		for (const name of ["clip.mov", "clip.mkv", "shot.png"]) {
 			const src = join(SRC_DIR, name);
 			writeFileSync(src, MP4_HEAD);
-			expect(() => saveSharedVideo("/my/project", src)).toThrow(/Unsupported video type/);
+			await expect(saveSharedVideo("/my/project", src)).rejects.toThrow(/Unsupported video type/);
 		}
 	});
 
-	it("rejects a clip over the 25 MB cap and names the fix", () => {
+	it("caps clips at exactly 300 MB: one byte below and at the cap copy, one byte over is refused with exact sizes", async () => {
+		expect(MAX_SHARED_VIDEO_BYTES).toBe(300 * 1024 * 1024);
 		const src = join(SRC_DIR, "long.mp4");
+		for (const size of [MAX_SHARED_VIDEO_BYTES - 1, MAX_SHARED_VIDEO_BYTES]) {
+			writeFileSync(src, MP4_HEAD);
+			truncateSync(src, size);
+			const rec = await saveSharedVideo("/my/project", src);
+			expect(rec.bytes).toBe(size);
+			rmSync(rec.storedPath);
+		}
 		writeFileSync(src, MP4_HEAD);
-		truncateSync(src, 25 * 1024 * 1024 + 1);
-		expect(() => saveSharedVideo("/my/project", src)).toThrow(/Video too large .*max 25 MB.*Trim or re-encode/);
+		truncateSync(src, MAX_SHARED_VIDEO_BYTES + 1);
+		await expect(saveSharedVideo("/my/project", src)).rejects.toThrow(
+			"Video too large (314,572,801 bytes; max 300 MB = 314,572,800 bytes)",
+		);
+		await expect(saveSharedVideo("/my/project", src)).rejects.toThrow(/Trim or re-encode/);
+		rmSync(src);
 	});
 
-	it("keeps the path protections of show-image", () => {
-		expect(() => saveSharedVideo("/my/project", "rel/a.mp4")).toThrow(SharedImageError);
-		expect(() => saveSharedVideo("/my/project", "/a/../b.mp4")).toThrow(SharedImageError);
-		expect(() => saveSharedVideo("/my/project", join(SRC_DIR, "missing.mp4"))).toThrow(/File not found/);
-		expect(() => saveSharedVideo("/my/project", SRC_DIR)).toThrow(/Not a file/);
+	it("leaves the image cap at 25 MB", () => {
+		expect(MAX_SHARED_IMAGE_BYTES).toBe(25 * 1024 * 1024);
+		const src = join(SRC_DIR, "huge.png");
+		writeFileSync(src, "");
+		truncateSync(src, MAX_SHARED_IMAGE_BYTES + 1);
+		expect(() => saveSharedImage("/my/project", src)).toThrow("Image too large (26,214,401 bytes; max 25 MB = 26,214,400 bytes)");
+		rmSync(src);
+	});
+
+	it("keeps the path protections of show-image", async () => {
+		await expect(saveSharedVideo("/my/project", "rel/a.mp4")).rejects.toThrow(SharedImageError);
+		await expect(saveSharedVideo("/my/project", "/a/../b.mp4")).rejects.toThrow(SharedImageError);
+		await expect(saveSharedVideo("/my/project", join(SRC_DIR, "missing.mp4"))).rejects.toThrow(/File not found/);
+		await expect(saveSharedVideo("/my/project", SRC_DIR)).rejects.toThrow(/Not a file/);
+	});
+
+	it("validates a whole batch before copying any clip", async () => {
+		const good = join(SRC_DIR, "good.mp4");
+		writeFileSync(good, MP4_HEAD);
+		const bad = join(SRC_DIR, "bad.mp4");
+		writeFileSync(bad, "nope");
+		await expect(saveSharedVideos("/my/project", [{ path: good }, { path: bad }])).rejects.toThrow(/Not a real MP4 file/);
+		expect(existsSync(sharedImagesDir("/my/project")) ? readdirSync(sharedImagesDir("/my/project")) : []).toEqual([]);
 	});
 
 	it("does not let show-image take a video", () => {

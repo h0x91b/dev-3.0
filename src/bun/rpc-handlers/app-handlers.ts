@@ -30,6 +30,7 @@ import { applyMenuContext, type MenuContext } from "../../shared/application-men
 import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath } from "../shared-artifacts";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { clipboardImageToPng } from "../clipboard-image";
+import { sharedVideoUrlPath } from "../shared-video-stream";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
@@ -861,6 +862,15 @@ async function readImageBase64(params: { path: string }): Promise<{ dataUrl: str
 	}
 }
 
+async function getSharedVideoUrl(params: { path: string }): Promise<{ url: string; path: string } | null> {
+	const path = sharedVideoUrlPath(params.path);
+	if (!path) {
+		log.warn("← getSharedVideoUrl: not a stored clip, rejected");
+		return null;
+	}
+	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+}
+
 async function readArtifactContent(params: { artifact: SharedArtifact }) {
 	return { ...loadSharedArtifactContent(params.artifact), downloadKind: sharedArtifactDownloadKind(params.artifact) };
 }
@@ -1105,6 +1115,7 @@ export const appHandlers = {
 	uploadFileBase64,
 	uploadImageBase64,
 	readImageBase64,
+	getSharedVideoUrl,
 	readArtifactContent,
 	readArtifactDownload,
 	openArtifactInBrowser,
