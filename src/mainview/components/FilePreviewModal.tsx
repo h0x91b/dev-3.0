@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useT } from "../i18n";
 import { api, isElectrobun } from "../rpc";
 import { toast } from "../toast";
@@ -58,6 +58,7 @@ function middleTruncate(text: string, max: number): string {
 }
 
 const WRAP_KEY = "dev3-file-preview-wrap";
+const EXPANDED_KEY = "dev3-file-preview-expanded";
 
 /** Per-viewer view preference; storage can be missing or throw (private windows). */
 function readFlag(key: string, fallback: boolean): boolean {
@@ -86,6 +87,27 @@ function usePersistedFlag(key: string, fallback: boolean): [boolean, () => void]
 	return [value, toggle];
 }
 
+/**
+ * Grow-only height for the content-hugging dialog: reflowing the same file
+ * (Wrap lines, Raw/Rendered, find bar) may enlarge it but never shrinks it under
+ * the reader. A new file or an explicit Expand/Restore starts over (`resetKey`).
+ */
+function useFitHeightFloor(ref: RefObject<HTMLElement | null>, active: boolean, resetKey: string): number | null {
+	const [floor, setFloor] = useState<number | null>(null);
+	useEffect(() => {
+		setFloor(null);
+		const element = ref.current;
+		if (!active || !element || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => {
+			const height = Math.round(element.getBoundingClientRect().height);
+			setFloor((current) => (current === null || height > current ? height : current));
+		});
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [ref, active, resetKey]);
+	return active ? floor : null;
+}
+
 const ICON_FONT = "'JetBrainsMono Nerd Font Mono'";
 
 const GHOST_BUTTON =
@@ -103,6 +125,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const [preview, setPreview] = useState<FilePreviewResult | null>(null);
 	const [showRaw, setShowRaw] = useState(false);
 	const [wrapLines, toggleWrapLines] = usePersistedFlag(WRAP_KEY, true);
+	const [expanded, toggleExpanded] = usePersistedFlag(EXPANDED_KEY, false);
 	const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
 	const highlightRef = useRef<HTMLDivElement | null>(null);
 	const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -410,8 +433,17 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	}
 
 	const fileMissing = preview?.kind === "not-found";
-	// Content takes the screen; a one-line notice (binary, missing, too large) stays a small dialog.
-	const fillsScreen = !preview || preview.kind === "text" || preview.kind === "image";
+	// A one-line notice (binary, missing, too large) stays a small dialog. Content
+	// hugs its own height up to the screen, or fills the screen once expanded — the
+	// size changes only when the user asks, never while they read.
+	const showsContent = !preview || preview.kind === "text" || preview.kind === "image";
+	const size = !showsContent ? "notice" : expanded ? "expanded" : "fit";
+	const fitHeight = useFitHeightFloor(trapRef, size === "fit", `${path}:${size}`);
+	const sizeClass = {
+		notice: "w-[calc(100vw-2rem)] sm:w-[calc(100vw-4rem)] max-w-xl",
+		fit: `${showAside ? "w-[min(calc(100vw-2rem),80rem)] sm:w-[min(calc(100vw-4rem),80rem)]" : "w-[min(calc(100vw-2rem),60rem)] sm:w-[min(calc(100vw-4rem),60rem)]"} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-4rem)]`,
+		expanded: "w-[calc(100vw-2rem)] sm:w-[calc(100vw-4rem)] h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-4rem)]",
+	}[size];
 
 	return (
 		<div
@@ -426,10 +458,10 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 				aria-modal="true"
 				aria-labelledby="file-preview-title"
 				tabIndex={-1}
-				data-size={fillsScreen ? "screen" : "compact"}
-				className={`bg-overlay border border-edge rounded-2xl shadow-2xl w-[calc(100vw-2rem)] sm:w-[calc(100vw-4rem)] ${
-					fillsScreen ? "h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-4rem)]" : "max-w-xl"
-				} flex flex-col outline-none`}
+				data-size={size}
+				// `min-height` outranks `max-height`, so the floor is capped to the screen itself.
+				style={fitHeight ? { minHeight: `min(${fitHeight}px, calc(100dvh - 4rem))` } : undefined}
+				className={`bg-overlay border border-edge rounded-2xl shadow-2xl ${sizeClass} flex flex-col outline-none`}
 			>
 				<div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b border-edge">
 					<div className="min-w-0 flex-1">
@@ -495,6 +527,23 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						</button>
 					)}
 					</div>
+					{showsContent && (
+						<button
+							type="button"
+							data-testid="file-preview-expand"
+							onClick={toggleExpanded}
+							aria-pressed={expanded}
+							aria-label={expanded ? t("terminal.filePreviewRestore") : t("terminal.filePreviewExpand")}
+							title={expanded ? t("terminal.filePreviewRestore") : t("terminal.filePreviewExpand")}
+							className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+						>
+							<svg key={String(expanded)} className="w-4 h-4 motion-safe:animate-[dev3-icon-swap_150ms_cubic-bezier(0.2,0,0,1)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+								<path strokeLinecap="round" strokeLinejoin="round" d={expanded
+									? "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"
+									: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"} />
+							</svg>
+						</button>
+					)}
 					<button
 						type="button"
 						onClick={onClose}

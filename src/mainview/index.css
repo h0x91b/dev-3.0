@@ -719,6 +719,12 @@ button {
 	to { transform: scaleX(1); }
 }
 
+/* Icon cross-in for a toggle that swaps its glyph (remount the icon with a key). */
+@keyframes dev3-icon-swap {
+	from { transform: scale(0.25); opacity: 0; filter: blur(4px); }
+	to { transform: scale(1); opacity: 1; filter: blur(0); }
+}
+
 /* ---- Bottom sheet (narrow-viewport primitive) ---- */
 
 @keyframes dev3-sheet-up {

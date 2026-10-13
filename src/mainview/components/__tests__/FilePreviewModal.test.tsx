@@ -67,6 +67,7 @@ describe("FilePreviewModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.removeItem("dev3-file-preview-wrap");
+		localStorage.removeItem("dev3-file-preview-expanded");
 		mermaid.render.mockResolvedValue({
 			svg: '<svg data-testid="rendered-mermaid"></svg>',
 			diagramType: "flowchart-v2",
@@ -233,23 +234,50 @@ describe("FilePreviewModal", () => {
 		expect(screen.getByRole("button", { name: "Rendered" })).toHaveAttribute("aria-pressed", "false");
 	});
 
-	it("fills the screen for a file and keeps a notice compact", async () => {
+	it("hugs the content by default and keeps a notice compact", async () => {
 		readFilePreview.mockResolvedValue({ kind: "text", content: "# Title\nbody", truncated: false, size: 12 });
 		const { unmount } = renderModal("/wt/docs/guide.md");
 		await waitFor(() => expect(screen.getByRole("heading", { name: "Title", level: 1 })).toBeInTheDocument());
 		const dialog = screen.getByRole("dialog");
-		expect(dialog).toHaveAttribute("data-size", "screen");
-		expect(dialog.className).toContain("sm:w-[calc(100vw-4rem)]");
-		expect(dialog.className).toContain("sm:h-[calc(100dvh-4rem)]");
-		// The document uses the whole dialog width — no centred reading column.
-		expect(screen.getByTestId("markdown-document").className).not.toMatch(/max-w-/);
+		expect(dialog).toHaveAttribute("data-size", "fit");
+		expect(dialog.className).toContain("sm:max-h-[calc(100dvh-4rem)]");
+		expect(dialog.className).not.toContain("sm:h-[calc(100dvh-4rem)]");
+		expect(screen.getByRole("button", { name: "Expand" })).toHaveAttribute("aria-pressed", "false");
 		unmount();
 
 		readFilePreview.mockResolvedValue({ kind: "binary", size: 2048 });
 		renderModal("/wt/bin/tool");
 		await waitFor(() => expect(screen.getByText(/Binary file/)).toBeInTheDocument());
-		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "compact");
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "notice");
 		expect(screen.getByRole("dialog").className).toContain("max-w-xl");
+		expect(screen.queryByTestId("file-preview-expand")).not.toBeInTheDocument();
+	});
+
+	it("expands to the screen on request and restores again", async () => {
+		const user = userEvent.setup();
+		readFilePreview.mockResolvedValue({ kind: "text", content: "# Title\nbody", truncated: false, size: 12 });
+		renderModal("/wt/docs/guide.md");
+		await waitFor(() => expect(screen.getByRole("heading", { name: "Title", level: 1 })).toBeInTheDocument());
+
+		await user.click(screen.getByRole("button", { name: "Expand" }));
+		const dialog = screen.getByRole("dialog");
+		expect(dialog).toHaveAttribute("data-size", "expanded");
+		expect(dialog.className).toContain("sm:w-[calc(100vw-4rem)]");
+		expect(dialog.className).toContain("sm:h-[calc(100dvh-4rem)]");
+		expect(localStorage.getItem("dev3-file-preview-expanded")).toBe("1");
+
+		await user.click(screen.getByRole("button", { name: "Restore size" }));
+		expect(dialog).toHaveAttribute("data-size", "fit");
+		expect(localStorage.getItem("dev3-file-preview-expanded")).toBe("0");
+	});
+
+	it("remembers the expanded choice for the next preview", async () => {
+		localStorage.setItem("dev3-file-preview-expanded", "1");
+		readFilePreview.mockResolvedValue({ kind: "text", content: "one", truncated: false, size: 3 });
+		renderModal("/wt/src/a.ts");
+		await waitFor(() => expect(screen.getByText("one")).toBeInTheDocument());
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "expanded");
+		expect(screen.getByRole("button", { name: "Restore size" })).toHaveAttribute("aria-pressed", "true");
 	});
 
 	describe("find in file (Cmd/Ctrl+F)", () => {

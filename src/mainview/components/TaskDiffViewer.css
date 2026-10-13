@@ -574,10 +574,48 @@
 .dev3-file-preview-md .dev3-md-doc th,
 .dev3-file-preview-md .dev3-md-doc td {
 	overflow-wrap: break-word;
-	min-width: 4.5rem;
+	min-width: 6rem;
 }
 .dev3-file-preview-md .dev3-md-doc th {
 	white-space: nowrap;
+}
+
+/* File preview: prose keeps a readable measure however big the window is, while
+   tables, fences, diagrams and images may break out to the full width. A narrow
+   wide-block still spans the measure so its left edge lines up with the prose;
+   whatever still overflows scrolls inside that one block, never the document.
+   Block layout (not grid) so vertical margins keep collapsing as before. */
+.dev3-file-preview-md .dev3-md-doc {
+	--dev3-prose-measure: 32rem;
+}
+/* Expanded is an explicit "use the screen": the column widens to ~115 characters. */
+[data-size="expanded"] .dev3-file-preview-md .dev3-md-doc {
+	--dev3-prose-measure: 56rem;
+}
+.dev3-file-preview-md .dev3-md-doc > * {
+	max-width: min(100%, var(--dev3-prose-measure));
+	margin-inline: auto;
+}
+.dev3-file-preview-md .dev3-md-doc > [data-streamdown="table-wrapper"],
+.dev3-file-preview-md .dev3-md-doc > [data-streamdown="code-block"],
+.dev3-file-preview-md .dev3-md-doc > [data-streamdown="mermaid-block"] {
+	width: fit-content;
+	min-width: min(100%, var(--dev3-prose-measure));
+	max-width: 100%;
+}
+/* Images centre in the column at their natural size, never stretched up. */
+.dev3-file-preview-md .dev3-md-doc > img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+/* A fence scrolls sideways instead of wrapping: re-flowed code reads as different
+   code. The Wrap lines toggle stays a Source-mode control. */
+.dev3-file-preview-md .dev3-md-doc pre {
+	white-space: pre;
+	overflow-wrap: normal;
+	/* The pre scrolls, not Streamdown's wrapper: otherwise the frame slides off with the text. */
+	overflow-x: auto;
 }
 
 /* ---- Markdown rich diff (.dev3-md-diff) ----

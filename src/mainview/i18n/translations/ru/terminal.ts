@@ -311,6 +311,8 @@ const terminal = {
 	"terminal.filePreviewRaw": "Исходник",
 	"terminal.filePreviewWrap": "Перенос строк",
 	"terminal.filePreviewWrapHint": "Переносить длинные строки по ширине окна. Файл и копируемый текст не меняются.",
+	"terminal.filePreviewExpand": "Развернуть",
+	"terminal.filePreviewRestore": "Вернуть размер",
 	"terminal.rendererCrashed": "Отрисовщик терминала упал и не смог подняться сам. Нажмите, чтобы перезагрузить окно — сессия продолжает работать.",
 	"terminal.perf.title": "Производительность терминала",
 	"terminal.perf.close": "Закрыть панель производительности",
