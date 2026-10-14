@@ -10918,6 +10918,33 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		expect((outcome as { result: { panes: { sessionId: string | null }[] } }).result.panes[2].sessionId).toBe(minted);
 	});
 
+	it("starts a main pane with nothing of its own on a new conversation, without the brief", async () => {
+		// Its `--continue` would open NEWEST, which pane 1 is resuming at the same time.
+		const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+		seedStore([NEWEST]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			description: "the original brief",
+			// The third pane uses up the second split id beforeEach queued.
+			sessionState: { panes: [claudePane("never-prompted-main"), claudePane(NEWEST), claudePane("never-prompted-extra")] },
+		}));
+
+		const outcome = await resumeTaskSession("task-1", { requireSessionIds: true });
+
+		const [mainCall] = (agents.resolveCommandForAgent as any).mock.calls;
+		expect(mainCall[3].resume).toBeUndefined();
+		expect(mainCall[3].sessionId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(mainCall[3].sessionId).not.toBe(NEWEST);
+		expect(mainCall[2].taskDescription).toBe("");
+		expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [
+			expect.objectContaining({ index: 0, mode: "fresh-session", sessionId: mainCall[3].sessionId }),
+			expect.objectContaining({ index: 1, mode: "exact", sessionId: NEWEST }),
+			expect.objectContaining({ index: 2, mode: "fresh-session" }),
+		] } });
+		const persisted = (data.updateTask as any).mock.calls.find((call: any[]) => call[2]?.sessionState)[2];
+		expect(persisted.sessionState.panes[0].sessionId).toBe(mainCall[3].sessionId);
+	});
+
 	it("persists the id each extra pane actually resumed", async () => {
 		seedStore([NEWEST, MAIN]);
 

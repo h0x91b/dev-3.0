@@ -66,12 +66,15 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 
 function describePane(pane: ResumePaneReport): string {
 	const who = `${pane.agentId ?? "default agent"}${pane.configId ? ` / ${pane.configId}` : ""}`;
-	const conversation = pane.mode === "fresh" ? "cannot resume — would start over" : pane.sessionId ? `conversation ${pane.sessionId} (${pane.mode})` : "harness's own latest conversation";
+	const conversation = pane.mode === "fresh" ? "cannot resume — would start over"
+		: pane.sessionId ? `conversation ${pane.sessionId} (${pane.mode})`
+		: pane.mode === "fresh-session" ? "new conversation — none of its own survives (fresh-session)"
+		: "harness's own latest conversation";
 	const where = pane.status === "resumed" ? `pane ${pane.paneId ?? "(id not captured yet)"}` : pane.detail ? `${pane.status}: ${pane.detail}` : "not resumed";
 	return `  #${pane.index}${pane.index === 0 ? " main " : " extra"}  ${who}  ${conversation}  ${where}\n`;
 }
 
-/** Same managed path as the terminal's Resume Session button — never a fresh session, a reset or a new worktree. */
+/** Same managed path as the terminal's Resume Session button — never a reset or a new worktree, and never the task brief again. */
 async function handleResume(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "json"]);
 	if (args.positional.length) return exitUsage("agent resume takes flags, not positional arguments");

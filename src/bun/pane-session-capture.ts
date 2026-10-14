@@ -57,6 +57,7 @@ export function placeRecordedPaneSession(
 ): SessionPane[] | null {
 	const idx = panes.findIndex((pane) => pane.paneId === paneId);
 	if (idx === -1 || panes[idx].sessionId === sessionId) return null;
-	// The new conversation lives in this worktree's store, so a foreign origin no longer applies.
+	// The origin belonged to the old id; resume finds a `/resume`d conversation in any
+	// directory's store on its own (`inSiblingStore`).
 	return panes.map((pane, i) => (i === idx ? { ...pane, sessionId, sessionOriginCwd: undefined } : pane));
 }

@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import type { AgentFamily } from "../shared/types";
@@ -106,7 +107,7 @@ export function resolveResumableSessionIds(
 			ids = sessionIdsNewestFirst(store.dirs, store.ext);
 			snapshots.set(key, ids);
 		}
-		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home))) {
+		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home) || inSiblingStore(store, stored))) {
 			claimed.add(stored);
 			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: true };
 			return;
@@ -117,7 +118,11 @@ export function resolveResumableSessionIds(
 	for (const { index, ids } of unresolved) {
 		const next = panes[index].adoptsOrphan ? ids.find((id) => !claimed.has(id)) ?? null : null;
 		if (next) claimed.add(next);
-		targets[index] = { sessionId: next, substituted: panes[index].sessionId != null, startFresh: next === null, verified: next !== null };
+		// An adopted id is dev3's guess even when nothing was stored, so it reports as
+		// substituted. A main pane facing an empty store has nobody to collide with and
+		// keeps the agent's own latest.
+		const startFresh = next === null && (ids.length > 0 || !panes[index].adoptsOrphan);
+		targets[index] = { sessionId: next, substituted: next !== null || panes[index].sessionId != null, startFresh, verified: next !== null };
 	}
 	return targets;
 }
@@ -133,6 +138,25 @@ function inOriginStore(pane: ResumeCandidate, stored: string, home: string): boo
 	if (!pane.sessionOriginCwd) return false;
 	const origin = storeFor(pane.agentCmd, pane.sessionOriginCwd, home, pane.agentFamily ?? undefined);
 	return !!origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored);
+}
+
+/**
+ * An in-session `/resume` can switch a pane to a conversation that lives in
+ * another directory's store, and nothing records which one. Every store sits
+ * beside the worktree's own, so look for that exact id there.
+ */
+function inSiblingStore(store: { dirs: string[]; ext: string }, stored: string): boolean {
+	if (basename(stored) !== stored || stored.startsWith(".")) return false;
+	for (const projectsDir of new Set(store.dirs.map((dir) => dirname(dir)))) {
+		let entries: string[];
+		try {
+			entries = readdirSync(projectsDir);
+		} catch {
+			continue;
+		}
+		if (entries.some((entry) => existsSync(`${projectsDir}/${entry}/${stored}${store.ext}`))) return true;
+	}
+	return false;
 }
 
 /** Session ids across all store dirs, newest transcript first. */

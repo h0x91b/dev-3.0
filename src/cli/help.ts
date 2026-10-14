@@ -88,9 +88,11 @@ const COMMANDS: CommandHelp[] = [
 				summary: "Resume a task's saved agent session when its terminal is gone — the app's Resume Session.",
 				details: [
 					"Same path as the Resume Session button: same worktree, branch, files and conversations,",
-					"each saved pane under its saved agent, config and account. Never a fresh session or a reset.",
+					"each saved pane under its saved agent, config and account. Never a reset, never the brief again.",
 					"Restores every saved pane; the result lists each one with the conversation id it resumed",
-					"and how it was chosen (exact, substituted = newest surviving transcript, unverified).",
+					"and how it was chosen (exact, substituted = newest surviving transcript, unverified,",
+					"fresh-session = nothing of that pane's survives and every transcript is another pane's,",
+					"so it opens a new empty conversation instead of duplicating one).",
 					`A pane whose agent CLI cannot resume would start over; that always exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
 					"The native backend restores only the main pane; extra panes are reported as skipped.",
 					"A hibernated task is woken, same as Wake & resume.",

@@ -89,7 +89,8 @@ describe("resolveResumableSessionIds — one pane", () => {
 		expect(resolveOne("claude", "125a4c8c-b567-4d24-991b-8732e82878c8")).toEqual({
 			sessionId: null,
 			substituted: true,
-			startFresh: true,
+			// Nothing to collide with, so the main pane keeps the agent's own latest.
+			startFresh: false,
 			verified: false,
 		});
 	});
@@ -118,10 +119,11 @@ describe("resolveResumableSessionIds — one pane", () => {
 	it("gives a pane with no stored id the newest transcript, as the agent's own latest would", () => {
 		seedTranscript("1160218f-85f5-4a45-8032-ced3af5a532b", 0);
 
-		// Verified, unlike the `--continue` this replaces: the transcript was read off disk.
+		// Verified, unlike the `--continue` this replaces: the transcript was read off
+		// disk. Still dev3's guess, so it must not report as the pane's own (`exact`).
 		expect(resolveOne("claude", null)).toEqual({
 			sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b",
-			substituted: false,
+			substituted: true,
 			startFresh: false,
 			verified: true,
 		});
@@ -144,6 +146,15 @@ describe("resolveResumableSessionIds — one pane", () => {
 		seedTranscriptFor(origin, "elsewhere-1");
 
 		expect(resolveOne("claude", "elsewhere-1", origin)).toEqual({ sessionId: "elsewhere-1", substituted: false, startFresh: false, verified: true });
+	});
+
+	it("keeps an id whose conversation lives in another directory's store, origin unrecorded", () => {
+		// An in-session `/resume` can switch the pane to such a conversation, and
+		// nothing records where it lives.
+		seedTranscript("local-session", 0);
+		seedTranscriptFor("/Users/dev/code/other-checkout", "resumed-elsewhere");
+
+		expect(resolveOne("claude", "resumed-elsewhere")).toEqual({ sessionId: "resumed-elsewhere", substituted: false, startFresh: false, verified: true });
 	});
 
 	it("still heals when the origin store has lost the conversation too", () => {
@@ -187,6 +198,17 @@ describe("resolveResumableSessionIds — several panes (#1950)", () => {
 		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("main", "never-prompted"), home);
 
 		expect(targets[1]).toEqual({ sessionId: null, substituted: true, startFresh: true, verified: false });
+	});
+
+	it("starts the main pane fresh too when every transcript belongs to another pane", () => {
+		// A never-prompted main pane beside a prompted extra one: `--continue` here
+		// would reopen pane-a's conversation in two panes at once.
+		seedTranscript("pane-a", 0);
+
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("never-prompted-main", "pane-a"), home);
+
+		expect(targets[0]).toEqual({ sessionId: null, substituted: true, startFresh: true, verified: false });
+		expect(targets[1].sessionId).toBe("pane-a");
 	});
 
 	it("splits panes that already collapsed onto one id", () => {
