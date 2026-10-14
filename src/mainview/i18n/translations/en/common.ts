@@ -115,6 +115,15 @@ const common = {
 	"toast.agent.taskGone": "Task #{seq} no longer exists",
 	"toast.dismiss": "Dismiss",
 	"toast.clearAll": "Clear all",
+	"toast.agent.earlier_one": "+{count} earlier",
+	"toast.agent.earlier_other": "+{count} earlier",
+	"toast.agent.earlierHeadline_one": "{count} earlier message in this burst",
+	"toast.agent.earlierHeadline_other": "{count} earlier messages in this burst",
+	"toast.agent.earlierKept": "All kept in Agent traffic",
+	"toast.agent.burstSummary_one": "{count} message in this burst. Earlier: {pairs}.",
+	"toast.agent.burstSummary_other": "{count} messages in this burst. Earlier: {pairs}.",
+	"toast.agent.dismissBurst_one": "Dismiss {count} message",
+	"toast.agent.dismissBurst_other": "Dismiss {count} messages",
 	"common.close": "Close",
 
 	// Agent traffic — the header readout and the traffic log

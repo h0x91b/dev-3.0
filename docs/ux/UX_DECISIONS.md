@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-10-14 — Agent toast bursts stack as a deck
+
+Bible §5.7, yaml `surfaces.toast`: a replacing agent toast shows what it covered as a ≤2-layer deck in the stack gap plus an exact `+N earlier` tab — covered, not unread; it resets when the slot empties. Why: decisions/2026/10/14/agent-toast-burst-deck.md.
+
 ## 2026-10-08 — The navigation palette gains three modes (projects / tasks / combined)
 
 Bible §4/§5 `command_palette`, yaml `command_palette`: one `GoToPalette` with Tab-switchable modes (⇧⌘K/J/L), tasks reusing the token-DSL matcher (not the funnel) ordered most-recently-viewed first; the tap-reachable mode strip keeps it touch-usable. Why: decisions/2026/10/08/go-to-palette-three-modes.md.

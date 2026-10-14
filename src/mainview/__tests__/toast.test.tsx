@@ -960,3 +960,183 @@ describe("toast arming against stray clicks", () => {
 		expect(below).toHaveBeenCalledOnce();
 	});
 });
+
+describe("agent message bursts", () => {
+	function agent(message: string, burstKey: string, opts: { durationMs?: number } = {}) {
+		toast.agent(message, { durationMs: opts.durationMs ?? 60_000, burstKey });
+	}
+	const countTab = () => document.querySelector("[data-toast-burst-count]");
+	const deckLayers = () => document.querySelectorAll("[data-toast-deck-layer]");
+
+	it("counts every message the slot covered, across pairs, newest pair first", () => {
+		render(<ToastHost />);
+		act(() => {
+			agent("One", "#5-1 → #23");
+			agent("Two", "#31 → #5-1");
+			agent("Three", "#5-1 → #23");
+		});
+		expect(screen.getByText("Three")).toBeInTheDocument();
+		expect(countTab()).toHaveTextContent("+2 earlier");
+		expect(screen.getByRole("alert")).toHaveTextContent("3 messages in this burst. Earlier: #31 → #5-1 ×1, #5-1 → #23 ×1.");
+	});
+
+	it("shows a single message without any burst decoration", () => {
+		render(<ToastHost />);
+		act(() => agent("Alone", "#5-1 → #23"));
+		expect(countTab()).toBeNull();
+		expect(deckLayers()).toHaveLength(0);
+		expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+	});
+
+	it("keeps the deck to two layers however large the burst, and to one in a narrow window", () => {
+		const { unmount } = render(<ToastHost />);
+		act(() => agent("1", "a"));
+		act(() => agent("2", "a"));
+		expect(deckLayers()).toHaveLength(1);
+		act(() => {
+			for (let i = 3; i <= 23; i++) agent(`${i}`, "a");
+		});
+		expect(deckLayers()).toHaveLength(2);
+		expect(countTab()).toHaveTextContent("+22 earlier");
+		unmount();
+
+		const restoreViewport = setViewport(390);
+		const narrow = render(<ToastHost />);
+		act(() => {
+			for (let i = 1; i <= 5; i++) agent(`${i}`, "a");
+		});
+		expect(deckLayers()).toHaveLength(1);
+		narrow.unmount();
+		restoreViewport();
+	});
+
+	it("keeps the deck and the count out of the pointer's and the screen reader's way", () => {
+		render(<ToastHost />);
+		act(() => {
+			agent("1", "a");
+			agent("2", "a");
+			agent("3", "a");
+		});
+		for (const layer of deckLayers()) {
+			expect(layer).toHaveAttribute("aria-hidden", "true");
+			expect(layer.className).toContain("pointer-events-none");
+		}
+		expect(countTab()).toHaveAttribute("aria-hidden", "true");
+	});
+
+	it("dismisses the whole burst with one click, and the next message starts a new count", async () => {
+		render(<ToastHost />);
+		act(() => {
+			agent("One", "a");
+			agent("Two", "a");
+			agent("Three", "a");
+		});
+		await userEvent.click(screen.getByRole("button", { name: "Dismiss 3 messages" }));
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+		act(() => agent("Fresh", "a"));
+		expect(screen.getByText("Fresh")).toBeInTheDocument();
+		expect(countTab()).toBeNull();
+	});
+
+	it("ends the burst when its timer runs out", () => {
+		vi.useFakeTimers();
+		render(<ToastHost />);
+		act(() => {
+			agent("One", "a", { durationMs: 5000 });
+			agent("Two", "a", { durationMs: 5000 });
+		});
+		act(() => vi.advanceTimersByTime(5000));
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+		act(() => agent("Fresh", "a", { durationMs: 5000 }));
+		expect(countTab()).toBeNull();
+	});
+
+	it("never stacks a deck behind a non-agent toast", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Saved", { durationMs: 60_000 });
+			toast.info("Saved again", { durationMs: 60_000 });
+		});
+		expect(deckLayers()).toHaveLength(0);
+		expect(countTab()).toBeNull();
+	});
+
+	it("still counts cards, not messages, in Clear all", () => {
+		render(<ToastHost />);
+		act(() => {
+			agent("One", "a");
+			agent("Two", "a");
+			agent("Three", "a");
+			toast.info("Saved", { durationMs: 60_000 });
+		});
+		expect(screen.getByRole("button", { name: /Clear all/ })).toHaveTextContent("2");
+	});
+
+	it("keeps the count exact for a burst longer than the queue raised while suppressed", async () => {
+		render(<ToastHost />);
+		setToastSuppressed(true);
+		act(() => {
+			for (let i = 1; i <= 8; i++) {
+				agent(`Queued ${i}`, "a");
+				if (i <= 4) toast.info(`Info ${i}`, { durationMs: 60_000 });
+			}
+		});
+		act(() => setToastSuppressed(false));
+
+		expect(await screen.findByText("Queued 8")).toBeInTheDocument();
+		expect(countTab()).toHaveTextContent("+7 earlier");
+		for (let i = 1; i <= 4; i++) expect(screen.getByText(`Info ${i}`)).toBeInTheDocument();
+	});
+
+	it("adds a burst that was queued onto the one already on screen", async () => {
+		render(<ToastHost />);
+		act(() => {
+			agent("Live 1", "a");
+			agent("Live 2", "a");
+		});
+		setToastSuppressed(true);
+		act(() => {
+			agent("Queued 1", "b");
+			agent("Queued 2", "b");
+		});
+		act(() => setToastSuppressed(false));
+
+		expect(await screen.findByText("Queued 2")).toBeInTheDocument();
+		expect(countTab()).toHaveTextContent("+3 earlier");
+		expect(screen.getByRole("alert")).toHaveTextContent("Earlier: b ×1, a ×2.");
+	});
+});
+
+describe("agent message bursts against stray clicks", () => {
+	let now = 1_000_000;
+
+	beforeEach(() => {
+		now = 1_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		_setToastArmDelayForTests();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("re-arms the card each message replaces, so a click aimed at the previous one is ignored", async () => {
+		const first = vi.fn();
+		const second = vi.fn();
+		render(<ToastHost />);
+		act(() => toast.agent("First", { durationMs: 60_000, burstKey: "a", clickLabel: "Open sender", onClick: first }));
+		now += 5_000;
+		act(() => toast.agent("Second", { durationMs: 60_000, burstKey: "a", clickLabel: "Open sender", onClick: second }));
+		now += 100;
+
+		await userEvent.click(screen.getByRole("button", { name: /^Open sender:/ }));
+		expect(first).not.toHaveBeenCalled();
+		expect(second).not.toHaveBeenCalled();
+
+		now += 700;
+		await userEvent.click(screen.getByRole("button", { name: /^Open sender:/ }));
+		expect(second).toHaveBeenCalledOnce();
+	});
+});

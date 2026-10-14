@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Tooltip from "./components/Tooltip";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
@@ -60,12 +61,20 @@ export interface ToastAction {
 /** Source line built from links and plain separators, e.g. a link, " → ", a link. */
 export type ToastContextPart = string | ToastLink;
 
+/** One sender → recipient pair inside an agent-message burst, and how many of its messages were covered. */
+export interface ToastBurstPair {
+	label: string;
+	count: number;
+}
+
 interface ToastDestinations {
 	/** Replaces the plain source line with links; `context` stays the spoken summary. */
 	contextParts?: ToastContextPart[];
 	actions?: ToastAction[];
 	/** Prefix for the card's accessible name, naming where the card click goes. */
 	clickLabel?: string;
+	/** Agent toasts only: the pair this message belongs to in a burst's breakdown, e.g. `#5-1 → #23`. */
+	burstKey?: string;
 }
 
 export interface ToastEntry extends ToastOrigin, ToastDestinations {
@@ -77,6 +86,8 @@ export interface ToastEntry extends ToastOrigin, ToastDestinations {
 	onClick?: () => void;
 	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
+	/** Agent messages this one covered while still queued (see {@link queuePending}). */
+	earlier?: ToastBurstPair[];
 }
 
 export interface ToastOpts extends ToastOrigin, ToastDestinations {
@@ -139,6 +150,10 @@ interface RenderedToast {
 	/** Source line and click target, frozen when the toast was raised. */
 	context?: string;
 	onClick?: () => void;
+	/** Stays with the slot across replacements, so the deck behind an agent burst persists. */
+	slotId: number;
+	/** Agent messages this toast replaced since its slot was last empty; gone with the slot. */
+	earlier?: ToastBurstPair[];
 }
 
 const listeners = new Set<Listener>();
@@ -168,6 +183,45 @@ function supersededAgentToasts(previous: RenderedToast[], incoming: ToastEntry):
 	return agents.slice(0, Math.max(0, agents.length - MAX_VISIBLE_AGENT_TOASTS + 1));
 }
 
+/**
+ * The pairs `newer` already covered, plus `covered` itself and everything IT had
+ * covered, summed per pair — newest first. A burst count is "messages the agent
+ * slot hid", never an unread count: every one of them stays in agent traffic.
+ */
+function coverBurst(
+	newer: ToastBurstPair[] | undefined,
+	covered: ToastEntry,
+	coveredEarlier: ToastBurstPair[] | undefined,
+): ToastBurstPair[] {
+	const merged = new Map<string, number>();
+	const own = { label: covered.burstKey ?? covered.context ?? "", count: 1 };
+	for (const pair of [...(newer ?? []), own, ...(coveredEarlier ?? [])]) {
+		merged.set(pair.label, (merged.get(pair.label) ?? 0) + pair.count);
+	}
+	return [...merged].map(([label, count]) => ({ label, count }));
+}
+
+export function burstSize(earlier: ToastBurstPair[] | undefined): number {
+	return earlier?.reduce((sum, pair) => sum + pair.count, 0) ?? 0;
+}
+
+/**
+ * Agent messages coalesce while queued: the host would only replace each with the
+ * next anyway, and the queue is bounded, so keeping them separate would drop the
+ * oldest and undercount the burst after a long immersive-fullscreen session.
+ */
+function queuePending(entry: ToastEntry): void {
+	if (entry.variant === "agent") {
+		const index = pendingEntries.findIndex((queued) => queued.variant === "agent");
+		if (index !== -1) {
+			const [covered] = pendingEntries.splice(index, 1);
+			entry.earlier = coverBurst(entry.earlier, covered!, covered!.earlier);
+		}
+	}
+	pendingEntries.push(entry);
+	if (pendingEntries.length > MAX_PENDING_ENTRIES) pendingEntries.shift();
+}
+
 function deliver(entry: ToastEntry): void {
 	listeners.forEach((l) => l(entry));
 }
@@ -187,14 +241,14 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		contextParts: opts?.contextParts,
 		actions: opts?.actions,
 		clickLabel: opts?.clickLabel,
+		burstKey: opts?.burstKey,
 	};
 	// Queue while immersive fullscreen suppresses toasts, and also while no host is
 	// subscribed yet: `ToastHost` subscribes from a passive effect, so a toast raised
 	// from a push message that lands before React flushes it would otherwise vanish
 	// with no trace at all.
 	if (suppressed || !listeners.size) {
-		pendingEntries.push(entry);
-		if (pendingEntries.length > MAX_PENDING_ENTRIES) pendingEntries.shift();
+		queuePending(entry);
 		return;
 	}
 	deliver(entry);
@@ -453,6 +507,12 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 			const area = entry.source ? tRef.current(`toast.source.${entry.source}` as TranslationKey) : undefined;
 			const resolvedContext = joinContext(resolved?.context ?? area, entry.contextDetail);
 
+			const superseded = supersededAgentToasts(toastsRef.current, entry);
+			superseded.forEach(({ entry: supersededEntry }) => clearRuntime(supersededEntry.id));
+			// A newer agent message takes its predecessor's slot instead of joining the
+			// bottom: removing it there slid the toast below up under a pointer aimed at
+			// the agent toast, and the click opened that one (an artifact, typically).
+			const replacing = superseded[superseded.length - 1];
 			const incoming: RenderedToast = {
 				entry,
 				paused: !activeRef.current,
@@ -460,13 +520,9 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 				// a shared image opens the lightbox, not the task.
 				context: entry.context ?? resolvedContext,
 				onClick: entry.onClick ?? resolved?.onClick,
+				slotId: replacing?.slotId ?? entry.id,
+				earlier: replacing ? coverBurst(entry.earlier, replacing.entry, replacing.earlier) : entry.earlier,
 			};
-			const superseded = supersededAgentToasts(toastsRef.current, entry);
-			superseded.forEach(({ entry: supersededEntry }) => clearRuntime(supersededEntry.id));
-			// A newer agent message takes its predecessor's slot instead of joining the
-			// bottom: removing it there slid the toast below up under a pointer aimed at
-			// the agent toast, and the click opened that one (an artifact, typically).
-			const replacing = superseded[superseded.length - 1];
 			const previous = toastsRef.current
 				.filter((view) => view === replacing || !superseded.includes(view))
 				.map((view) => (view === replacing ? incoming : view));
@@ -502,18 +558,27 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 			<div ref={setPinnedSlot} className="flex flex-col gap-2.5 empty:hidden" />
 			{toasts.length > 0 && (
 			<div className="flex flex-col gap-2.5">
-			{toasts.map(({ entry, paused, context, onClick }) => (
-				<ToastCard
-					key={entry.id}
-					entry={entry}
-					context={context}
-					onClick={onClick}
-					dismissLabel={t("toast.dismiss")}
-					paused={paused}
-					onDismiss={removeToast}
-					onInteraction={setInteraction}
-				/>
-			))}
+			{toasts.map(({ entry, paused, context, onClick, slotId, earlier }) => {
+				const covered = burstSize(earlier);
+				return (
+					// The slot outlives each replacing card, so the deck behind a burst
+					// settles in place instead of sliding in with every message.
+					<div key={slotId} className="relative isolate">
+						{covered > 0 && <ToastDeck depth={Math.min(covered, narrow ? 1 : 2)} covered={covered} />}
+						<ToastCard
+							key={entry.id}
+							entry={entry}
+							context={context}
+							onClick={onClick}
+							earlier={earlier}
+							dismissLabel={covered > 0 ? t.plural("toast.agent.dismissBurst", covered + 1) : t("toast.dismiss")}
+							paused={paused}
+							onDismiss={removeToast}
+							onInteraction={setInteraction}
+						/>
+					</div>
+				);
+			})}
 			{/* Centered under the stack, sized to its own content: the control belongs to
 			    the pile without pretending to be another card in it. The border is
 			    structural here — it floats over arbitrary app content, so it needs an
@@ -576,6 +641,8 @@ interface ToastCardProps {
 	context?: string;
 	/** Click target after central resolution — not `entry.onClick`. */
 	onClick?: () => void;
+	/** Agent messages this card's slot replaced (see {@link RenderedToast.earlier}). */
+	earlier?: ToastBurstPair[];
 	dismissLabel: string;
 	paused: boolean;
 	onDismiss: (id: number) => void;
@@ -588,8 +655,11 @@ interface ToastCardProps {
  * right edge is the natural discard gesture. The visible X button and click
  * navigation still work; a completed drag suppresses the click that follows it.
  */
-function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, onInteraction }: ToastCardProps) {
+function ToastCard({ entry, context, onClick, earlier, dismissLabel, paused, onDismiss, onInteraction }: ToastCardProps) {
+	const t = useT();
 	const v = VARIANT[entry.variant];
+	const covered = burstSize(earlier);
+	const burstPairs = earlier?.map(({ label, count }) => `${label} ×${count}`) ?? [];
 	const [dragX, setDragX] = useState(0);
 	const [dragging, setDragging] = useState(false);
 	const pointerIdRef = useRef<number | null>(null);
@@ -691,7 +761,11 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 	return (
 		<div
 			ref={rootRef}
-			className="pointer-events-auto animate-slide-in-right"
+			// A burst continues in place: the full slide from off-screen on every message
+			// of a twenty-message burst is noise, so only the first one makes the entrance.
+			className={`pointer-events-auto relative ${covered > 0 ? "toast-burst-in" : "animate-slide-in-right"}`}
+			// Stays "alert" for continuations too: a freshly mounted polite region is
+			// often not announced at all, and every message mounts a new card.
 			role="alert"
 			data-toast-id={entry.id}
 			onPointerDownCapture={() => {
@@ -724,6 +798,11 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 					{v.icon}
 				</span>
 				<div className="flex-1 min-w-0 pr-1">
+					{covered > 0 && (
+						<span className="sr-only">
+							{t.plural("toast.agent.burstSummary", covered + 1, { pairs: burstPairs.join(", ") })}
+						</span>
+					)}
 					{entry.contextParts ? (
 						<ToastContextLinks
 							parts={entry.contextParts}
@@ -802,7 +881,59 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 					}}
 				/>
 			</div>
+			{/* Hangs on the deck's bottom edge, half into the stack gap, so the count
+			    costs the card no width and the column no height. Inside the card's root
+			    so hovering it keeps the timer paused. */}
+			{covered > 0 && (
+				<Tooltip
+					// Below, so reading the breakdown never covers the message it belongs to.
+					placement="bottom"
+					content={t.plural("toast.agent.earlierHeadline", covered)}
+					detail={
+						<span className="flex flex-col">
+							{burstPairs.map((pair) => <span key={pair} className="font-mono tabular-nums">{pair}</span>)}
+							<span className="mt-1">{t("toast.agent.earlierKept")}</span>
+						</span>
+					}
+				>
+					<span
+						data-toast-burst-count
+						aria-hidden="true"
+						className="absolute -bottom-[9px] right-4 z-10 inline-flex h-[18px] items-center rounded-full bg-overlay px-1.5 text-micro font-semibold tabular-nums text-agent shadow-md ring-1 ring-inset ring-agent/40"
+					>
+						{t.plural("toast.agent.earlier", covered)}
+					</span>
+				</Tooltip>
+			)}
 		</div>
+	);
+}
+
+/**
+ * The edges of the messages an agent burst covered, peeking below the newest card:
+ * at most two, each inside the 10px stack gap so nothing below ever moves. Purely
+ * decorative — the count tab and the screen-reader summary carry the number.
+ */
+function ToastDeck({ depth, covered }: { depth: number; covered: number }) {
+	return (
+		<>
+			{depth > 1 && (
+				<div
+					aria-hidden="true"
+					data-toast-deck-layer
+					className="toast-deck-layer pointer-events-none absolute inset-0 -z-20 rounded-xl border border-agent/30 bg-elevated shadow-xl"
+					style={{ transform: "translateY(10px) scale(0.91)" }}
+				/>
+			)}
+			<div
+				// Remounts per message, so the layer replays "the old card sinking in".
+				key={covered}
+				aria-hidden="true"
+				data-toast-deck-layer
+				className="toast-deck-layer toast-deck-settle pointer-events-none absolute inset-0 -z-10 rounded-xl border border-agent/45 bg-overlay shadow-xl"
+				style={{ transform: "translateY(5px) scale(0.955)" }}
+			/>
+		</>
 	);
 }
 

@@ -1684,6 +1684,18 @@ describe("App keyboard shortcuts", () => {
 			});
 		});
 
+		it("stacks a burst behind the newest message and names each covered pair", async () => {
+			await renderWithBoard();
+			dispatchAgentMessage({ preview: "first" });
+			dispatchAgentMessage({ preview: "second", fromSeq: 9, fromTaskId: "t-other", fromVariantIndex: 2 });
+			dispatchAgentMessage({ preview: "third" });
+
+			expect(await screen.findByText("third")).toBeInTheDocument();
+			expect(document.querySelector("[data-toast-burst-count]")).toHaveTextContent("+2 earlier");
+			expect(screen.getByRole("alert")).toHaveTextContent("Earlier: #9-2 → #42 ×1, #7 → #42 ×1.");
+			expect(screen.getByRole("button", { name: "Dismiss 3 messages" })).toBeInTheDocument();
+		});
+
 		// The reported bug: the card opened agent traffic, and a toast raised over an
 		// artifact turned every stray click into a trip there. The card now opens the
 		// sender; traffic is only its own labelled action.

@@ -115,6 +115,15 @@ const common = {
 	"toast.agent.taskGone": "La tarea #{seq} ya no existe",
 	"toast.dismiss": "Descartar",
 	"toast.clearAll": "Descartar todo",
+	"toast.agent.earlier_one": "+{count} anterior",
+	"toast.agent.earlier_other": "+{count} anteriores",
+	"toast.agent.earlierHeadline_one": "{count} mensaje anterior en esta ráfaga",
+	"toast.agent.earlierHeadline_other": "{count} mensajes anteriores en esta ráfaga",
+	"toast.agent.earlierKept": "Todos siguen en el tráfico de agentes",
+	"toast.agent.burstSummary_one": "{count} mensaje en esta ráfaga. Anteriores: {pairs}.",
+	"toast.agent.burstSummary_other": "{count} mensajes en esta ráfaga. Anteriores: {pairs}.",
+	"toast.agent.dismissBurst_one": "Descartar {count} mensaje",
+	"toast.agent.dismissBurst_other": "Descartar {count} mensajes",
 	"common.close": "Cerrar",
 
 	// Tráfico entre agentes — indicador de cabecera y registro

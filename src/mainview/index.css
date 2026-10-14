@@ -706,10 +706,44 @@ button {
 	transition: none;
 }
 
+/* ---- Agent-message burst: the next message lands in place, the old one sinks into the deck ---- */
+@keyframes toast-burst-in {
+	from { transform: translateX(14px); opacity: 0; }
+	to { transform: none; opacity: 1; }
+}
+
+@keyframes toast-deck-settle {
+	from { transform: none; opacity: 0.6; }
+}
+
+.toast-burst-in {
+	animation: toast-burst-in 0.22s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.toast-deck-layer {
+	transform-origin: 50% 100%;
+}
+
+.toast-deck-settle {
+	animation: toast-deck-settle 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.toast-swipe {
 		transition: none;
 	}
+
+	.toast-burst-in {
+		animation: toast-fade-in 0.12s linear both;
+	}
+
+	.toast-deck-settle {
+		animation: none;
+	}
+}
+
+@keyframes toast-fade-in {
+	from { opacity: 0; }
 }
 
 /* ---- Tip card rotation progress bar (drives auto-rotate via animationend) ---- */

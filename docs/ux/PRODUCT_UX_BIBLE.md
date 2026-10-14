@@ -364,12 +364,12 @@ The user runs many tasks in parallel, so a toast must answer **"which of my task
 
 Rules:
 
-- **Never fabricate a source line, but never leave one blank that could be filled.** The line answers "where did this come from", and every toast has an answer that is not the app's own name. Falling back to `dev-3.0` on a Settings toast is fabrication by another route: it adds a line that carries nothing.
+- **Never fabricate a source line, but never leave one blank that could be filled.** The line answers "where did this come from", and every toast has an answer that is not the app's own name. A `dev-3.0` fallback on a Settings toast is fabrication by another route: a line carrying nothing.
 - **The fallback order is task → project → app area, first match wins.** An app area is a label, not a destination: it gets no click target, because there is nothing specific to open.
-- **Origin is resolved centrally, not composed per call site.** A caller passes one token — `taskId`, `projectId`, or `source` — and `ToastHost` composes the line and the default click target through a resolver injected by `App.tsx` (areas need no state and are localized in the host). The toast module stays free of app-state imports; ~180 call sites stay one field long; a future toast is correct by default. Explicitly passed `context`/`onClick` always win.
-- **`contextDetail`** appends one more segment after the resolved origin (`dev-3.0 · Nightly digest`) when the toast is about a named thing inside that scope.
-- **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it is being sent to.
-- **Pointer clicks arm 600 ms after a toast appears/moves** (keys exempt); a replacement keeps its slot.
+- **Origin is resolved centrally, not composed per call site.** A caller passes one token — `taskId`, `projectId`, or `source` — and `ToastHost` composes the line and the default click target through a resolver injected by `App.tsx` (areas need no state and are localized in the host). The toast module imports no app state; call sites stay one field long. Explicit `context`/`onClick` always win.
+- **`contextDetail`** appends one segment after the origin (`dev-3.0 · Nightly digest`) for a named thing inside that scope.
+- **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it opens.
+- **Pointer clicks arm 600 ms after a toast appears/moves** (keys exempt); a replacement keeps its slot and stacks covered messages as a ≤2-layer deck in the gap with an exact `+N earlier` tab (covered, not unread); X ends it.
 
 - **Documented exception to one origin / one click target: agent-to-agent traffic.** Source line `#7 Coordinator → #42 Receiver`, each an underlined link (`#seq` never truncates; projects named only across boards), plus one row: sent `#7` · `Agent traffic` · inbox `#42`. Card → **sender** (inert if unknown); traffic only via its action; links/actions never nested. Violet = identity; silent for human/failed sends.
 

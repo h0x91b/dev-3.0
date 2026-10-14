@@ -112,6 +112,9 @@ export function agentMessageToast(
 		opts: {
 			context: `${from} → ${to}`,
 			contextParts: [sender ? link(sender, senderAria!) : from, "→", link(recipient, recipientAria)],
+			burstKey: [`#${fromLabel} → #${recipient.seq}`, recipient.projectName && `· ${recipient.projectName}`]
+				.filter(Boolean)
+				.join(" "),
 			// No sender id (a record queued before it existed) leaves the card inert:
 			// guessing would open some other task. No `taskId` either, because the host
 			// would resolve it into a default click on the recipient.
