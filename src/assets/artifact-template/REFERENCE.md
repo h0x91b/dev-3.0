@@ -6,7 +6,7 @@
 
 `main.app` spaces its direct children for you, so stacked panels never touch. Add sections as top-level siblings of `.app` and do not hand-add vertical margins between them. Nest a group of panels inside `<div class="stack">` when they belong together; use `.grid`, `.dashboard-grid`, or `.evidence-book` for column layouts.
 
-`.card` already carries its own padding, so a bare `<section class="card">` looks right with plain content inside it. `.section` and `.kpi` set a roomier padding, and `.table-card` intentionally drops it so a table can run edge to edge. Never re-pad a card from report markup.
+`.card` already carries its own padding, so a bare `<section class="card">` looks right with plain content inside it, and the first and last child lose their outer margins so a leading `<p>` does not sink below the inset. `.section` and `.kpi` set a roomier padding. `.table-card` drops it so the table runs edge to edge, but only the table: a paragraph, list, chart or note placed beside it keeps the inset, on the same line as the heading and the first column. Never re-pad a card from report markup.
 
 `.dashboard-grid` is a 12-column grid. A panel inside it takes the whole row unless you give it a width, so a card you drop in never collapses into a sliver. To put panels side by side add `span-3` … `span-9` (`<article class="card section span-6">`); the widths apply above 900px and every panel goes full width below that and in print.
 
@@ -161,6 +161,8 @@ Three rules the signature implies, each of which used to fail quietly:
 - **Pass the element, never its id.** `chart("velocityChart", …)` reaches ECharts as a string and throws from minified library code; the shell now throws first with the fix in the message.
 - **`update()` and `remount()` take no arguments.** They re-read your factory, so change the data the factory closes over and then call them. Passing a new option object used to be ignored and read like a caching bug; it now throws.
 - **A throwing `chart()` call kills the whole report**, because `report.js` is one IIFE — every later chart, table, and listener in the file dies with it. A blank report with one error is usually one bad `chart()` call, not four broken panels.
+
+ECharts places a top legend and the y-axis `name` in the same strip above the plot, so a chart with both collides unless that strip is tall enough. Give a hand-set `grid.top` at least `56`. Moving the legend to the bottom only moves the collision onto the x-axis labels. Long category labels are silently thinned to every other one; shorten them rather than letting a series lose its label.
 
 Use `.remount()` when switching a chart view so ECharts redraws its geometry from left to right; use `.update()` when live data should morph in place. The shell keeps ECharts' native timing and disables motion when the user prefers reduced motion. A few option shapes that render well on the shell, all colored from the viz ramp unless a series carries a verdict:
 

@@ -473,7 +473,11 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain("tbody tr:hover { --dev3-row-tint:");
 		expect(css).toContain("top: var(--dev3-table-head-top, 0px)");
 		// hidden would turn the card into a scrollport and unpin the header.
-		expect(css).toContain(".table-card { padding: 0; overflow: clip; }");
+		expect(css).toContain(".table-card { --dev3-table-edge: 18px; padding: 0; overflow: clip; }");
+		// Only the table runs edge to edge; prose beside it keeps the panel inset.
+		expect(css).toContain(".table-card > :not(table, :has(> table), .section-head) { margin-inline: var(--dev3-table-edge); }");
+		// A stacked cell must outrank the class-level column rule and ledger padding.
+		expect(css).toContain("tbody :is(th, td):nth-child(n) { display: block; padding: 4px 0; border: 0;");
 		expect(css).toContain('th[aria-sort="descending"]::after');
 		expect(app).toContain("function trackStickyOffset");
 		expect(app).toContain("--dev3-table-head-top");

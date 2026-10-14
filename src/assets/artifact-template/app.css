@@ -49,6 +49,7 @@
        readable measure through .prose instead of the container. */
     .app { display: flex; width: min(100%, clamp(1180px, 88vw, 1840px)); flex-direction: column; gap: 14px; margin: auto; }
     .prose { max-width: 72ch; }
+    :is(ul, ol).prose { padding-inline-start: 1.4em; }
     .muted, .section-copy { max-width: 90ch; }
     .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
     .topbar { justify-content: space-between; gap: 20px; margin-bottom: 6px; }
@@ -192,6 +193,10 @@
       background: rgb(var(--dev3-surface-raised));
       box-shadow: 0 14px 34px rgb(var(--dev3-shadow) / .08);
     }
+    /* The card's padding is the whole inset: a leading paragraph's UA margin
+       would otherwise stack on top of it and sink the text below the edge. */
+    .card > :first-child { margin-top: 0; }
+    .card > :last-child { margin-bottom: 0; }
     /* A toned panel carries its hue on its own edge, so a grid of cards reads as
        a set of distinct panels rather than one repeated grey box. */
     .card:is(.tone-1, .tone-2, .tone-3, .tone-4, .tone-5, .tone-6, .tone-gold) {
@@ -682,14 +687,21 @@
     [data-popover-trigger][aria-expanded="true"] .caret,
     [data-popover-trigger][aria-expanded="true"] .popover-caret { transform: rotate(180deg); }
     /* clip, not hidden: hidden makes the card a scrollport and unpins the header. */
-    .table-card { padding: 0; overflow: clip; }
+    .table-card { --dev3-table-edge: 18px; padding: 0; overflow: clip; }
+    /* Only the table runs edge to edge. A paragraph, list, chart or note an
+       author drops in beside it keeps the panel inset, on the same line as the
+       heading and the first column. */
+    .table-card > :not(table, :has(> table), .section-head) { margin-inline: var(--dev3-table-edge); }
+    .table-card > :not(table, :has(> table)):last-child { margin-bottom: var(--dev3-table-edge); }
     /* A table answers to the box it sits in, not to the window: one inside a
        half-width panel has to stack while the page is still wide. The box that
        holds the table is the container, whatever an author called it — the
        stacking below is worthless to a plain <table> in a plain card without it,
        and a container query with no container silently never matches. */
     :not(html, body):has(> table), .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }
-    .table-head { padding: 16px 18px 12px; }
+    /* The head pads itself here, so its own margin would only double the gap
+       above the table. */
+    .table-head, .table-card > .section-head { margin-bottom: 0; padding: 16px var(--dev3-table-edge, 18px) 14px; }
     .table-tools { gap: 8px; }
     /* background-color, not the shorthand: the select's caret is a background
        image and a shorthand here would wipe it. */
@@ -749,6 +761,9 @@
     .evidence-table-scroll { max-width: 100%; }
     .evidence-table { width: 100%; font-variant-numeric: tabular-nums; }
     .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: right; font-size: .65625rem; }
+    /* The outer columns line up with the panel heading, not with the cell gutter. */
+    .evidence-table :is(th, td):first-child { padding-inline-start: var(--dev3-table-edge, 9px); }
+    .evidence-table :is(th, td):last-child { padding-inline-end: var(--dev3-table-edge, 9px); }
     .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: .59375rem; }
     /* The row's identity reads as a label, not as one more number. */
     .evidence-table th:first-child, .evidence-table td:first-child { border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
@@ -839,8 +854,10 @@
          the width pressure being removed. */
       thead { display: none; }
       table, tbody { display: block; }
-      tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px 16px; border-top: 1px solid rgb(var(--dev3-border)); }
-      tbody th, tbody td { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
+      tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px var(--dev3-table-edge, 16px); border-top: 1px solid rgb(var(--dev3-border)); }
+      /* :nth-child(n) only lifts specificity: the column rule and the ledger's
+         cell padding are class-level, and a stacked cell must shed both. */
+      tbody :is(th, td):nth-child(n) { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
       /* The shell copies thead text onto each cell, so authors write no labels. */
       tbody td[data-dev3-label]::before {
         display: block;
@@ -851,9 +868,7 @@
         letter-spacing: .05em;
         text-transform: uppercase;
       }
-      /* Its own selector outranks the generic cell rule, so a stacked ledger cell
-         has to be told again not to hug the right edge. */
-      .evidence-table th, .evidence-table td { text-align: left; font-size: .6875rem; }
+      .evidence-table tbody :is(th, td):nth-child(n) { padding: 4px 0; text-align: left; font-size: .6875rem; }
       /* A prose cell takes the whole width instead of one 13rem column. */
       .evidence-table .wrap { grid-column: 1 / -1; }
     }
@@ -883,7 +898,7 @@
       .print-only { display: block !important; }
       .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
       .card { padding: 10px; }
-      .table-card { padding: 0; }
+      .table-card { --dev3-table-edge: 10px; padding: 0; }
       .kpi { padding: 9px 10px; }
       .kpi-top { font-size: .5rem; }
       .kpi-value { margin: 3px 0 1px; font-size: 1.25rem; }
@@ -900,7 +915,7 @@
       .segmented button.active { display: block; }
       .chart-host { height: var(--dev3-print-chart-height, 9.6875rem); }
       .chart-host > div, .chart-host svg { width: 100% !important; height: 100% !important; }
-      .table-head { padding: 8px 10px 6px; }
+      .table-head, .table-card > .section-head { padding: 8px 10px 6px; }
       th, td { padding: 5px 10px; font-size: .5rem; }
       thead { display: table-header-group; }
       /* Repeat the header on every page instead of pinning it to a scrollport. */

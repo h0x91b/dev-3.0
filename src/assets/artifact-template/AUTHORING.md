@@ -53,7 +53,7 @@ trend.update();     // re-reads the factory and morphs data in place — change 
 trend.remount();    // re-reads the factory and redraws from scratch
 ```
 
-Pass the **element**, never its id. `update()` and `remount()` take **no arguments**. A `chart()` call that throws kills the whole of `report.js`, so a blank report with one console error is one bad call. The shell colors series from the viz ramp, rescales `fontSize` with the text-size control, re-renders on theme change, and shows a notice when the CDN is unreachable. More: `REFERENCE.md` § Charts.
+Pass the **element**, never its id. Legend + named y-axis: `grid.top` ≥ 56. `update()` and `remount()` take **no arguments**. A `chart()` call that throws kills the whole of `report.js`, so a blank report with one error is one bad call. The shell colors series from the viz ramp, rescales `fontSize` with the text-size control and re-renders on theme change. More: `REFERENCE.md` § Charts.
 
 ## Contract
 
