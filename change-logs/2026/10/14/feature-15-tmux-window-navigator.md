@@ -1,0 +1,3 @@
+Short: See and switch tmux windows in the app
+
+A task terminal now shows its tmux windows as a row of named tabs above the terminal instead of the tmux bar, even with one window: the agent's window is marked ✦ and comes first, background windows get a dot when they print or ring the bell, a + opens a new window, and × (or right-click, middle click, Delete) closes one, asking first for the agent's window. New windows no longer steal the screen — one opened by an agent or a command arrives in the background, while ⌘T, the New window button, the tmux bar's + and ⌃B c still switch to it. On phones the window switcher gains the same names and a one-tap way back to the agent.
