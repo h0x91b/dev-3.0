@@ -151,14 +151,14 @@ function WindowTabs({
 	};
 
 	return (
-		<div data-window-nav="" className="flex-shrink-0 flex items-end gap-0.5 px-1.5 pt-1 overflow-x-auto overflow-y-hidden bg-raised border-b border-edge window-nav-scroll">
+		<div data-window-nav="" className="flex-shrink-0 flex items-center gap-1 px-2 py-1 overflow-x-auto overflow-y-hidden bg-raised border-b border-edge window-nav-scroll">
 		<div
 			ref={listRef}
 			role="tablist"
 			aria-label={t("windowPager.role")}
 			aria-orientation="horizontal"
 			onKeyDown={onKeyDown}
-			className="flex items-end gap-0.5"
+			className="flex items-center gap-1"
 		>
 			{windows.map((w) => {
 				const isUnseen = unseen.has(w.windowId);
@@ -179,11 +179,11 @@ function WindowTabs({
 							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
 							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
 							onContextMenu={openMenu(w)}
-							className={`relative flex-shrink-0 h-7 max-w-[14rem] min-w-0 pl-2.5 ${closable ? "pr-7" : "pr-2.5"} rounded-t-md flex items-center gap-1.5 text-dense transition-[background-color,color] duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-								w.active ? "bg-base text-fg shadow-[inset_0_2px_0_rgb(var(--accent))]" : "text-fg-3 hover:text-fg hover:bg-elevated"
+							className={`relative flex-shrink-0 h-6 max-w-[14rem] min-w-0 pl-2 ${closable ? "pr-6" : "pr-2"} rounded-lg flex items-center gap-1.5 text-xs font-medium transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent ${
+								w.active ? "bg-accent/15 text-fg shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.3)]" : "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 							}`}
 						>
-							{w.home ? <HomeGlyph working={agentWorking} /> : <span aria-hidden="true" className="text-fg-muted tabular-nums">{w.index}</span>}
+							{w.home ? <HomeGlyph working={agentWorking} /> : <span aria-hidden="true" className={`tabular-nums ${w.active ? "text-accent" : "text-fg-muted"}`}>{w.index}</span>}
 							<span aria-hidden="true" className="truncate">{name}</span>
 							<WindowMarker window={w} unseen={isUnseen} />
 						</button>
@@ -196,11 +196,11 @@ function WindowTabs({
 							title={t("windowNav.close", { name })}
 							data-window-close={w.windowId}
 							onClick={() => onClose(w)}
-							className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center text-fg-muted hover:text-fg hover:bg-elevated transition-opacity duration-150 ${
-								w.active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+							className={`absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 rounded-md flex items-center justify-center transition-[opacity,background-color,color,scale] duration-150 ease-out active:scale-[0.96] ${
+								w.active ? "opacity-100 text-accent hover:bg-accent/20" : "opacity-0 group-hover:opacity-100 text-fg-muted hover:text-fg hover:bg-elevated-hover"
 							}`}
 						>
-							<span aria-hidden="true" className="text-sm leading-none">×</span>
+							<svg aria-hidden="true" viewBox="0 0 12 12" className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M3 3l6 6M9 3l-6 6" /></svg>
 						</button>}
 					</div>
 				);
@@ -214,9 +214,9 @@ function WindowTabs({
 					aria-label={t("tmux.newWindowDesc")}
 					data-window-new=""
 					onClick={onNew}
-					className="flex-shrink-0 w-7 h-7 rounded-t-md flex items-center justify-center text-fg-3 hover:text-fg hover:bg-elevated transition-[background-color,color,scale] duration-150 active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+					className="flex-shrink-0 ml-0.5 w-6 h-6 rounded-full border border-edge flex items-center justify-center text-fg-3 hover:text-fg hover:bg-elevated hover:border-edge-active transition-[background-color,border-color,color,scale] duration-150 ease-out active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
 				>
-					<span aria-hidden="true" className="text-sm leading-none">+</span>
+					<svg aria-hidden="true" viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M6 2.5v7M2.5 6h7" /></svg>
 				</button>
 			</Tooltip>
 		</div>
