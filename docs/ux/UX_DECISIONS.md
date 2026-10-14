@@ -719,6 +719,6 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 - **Rule:** yaml `file_explorer`: task terminal or the Repo screen (`project-terminal`, renamed); on a board ⇧⌘E opens Repo; auto-hide overlays, never reflows.
 - **Why:** "insert path" needs a terminal and the board is task triage. Rejected a Board/Files switch (a destination hidden in a toolbar, IDE drift) and a Files destination (budget spent). `decisions/2026/10/02/file-explorer-panel.md`.
 
-## 2026-10-02 — Desktop tmux windows get an in-app navigator; vertical tabs by default
-- **Rule:** a task terminal always shows side (default) or top tabs instead of the tmux bar; agent ✦ first; new windows open in the background unless the user asked. Bible §12.
-- **Why:** a new window hid the agent, read as "my task vanished". Side tabs cost width, not a row. Rejected breadcrumb, overview-only. User-selected. Evidence: `decisions/2026/10/02/tmux-window-navigator.md`.
+## 2026-10-02 — Desktop tmux windows get an in-app navigator: a tab row on top
+- **Rule:** a task terminal always shows a tab row on top instead of the tmux bar; agent ✦ first; new windows open in the background unless the user asked. Bible §12.
+- **Why:** a new window hid the agent, read as "my task vanished". Rejected breadcrumb, overview-only, and a vertical rail + style setting (tried, dropped 2026-10-14 to keep one layout). User-selected. Evidence: `decisions/2026/10/02/tmux-window-navigator.md`.

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import TerminalWindowNav from "../TerminalWindowNav";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
-import { notifyTmuxWindowsChanged, setWindowNavStyle } from "../../terminal-window-nav";
+import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -66,11 +66,11 @@ describe("TerminalWindowNav", () => {
 		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
 	});
 
-	it("defaults to the rail, lists the agent's home window first and marks the active one", async () => {
+	it("shows a tab row above the terminal, the agent's home window first, the active one marked", async () => {
 		respond([win(1, "zsh", { active: true }), win(2, "Fix auth", { home: true })]);
 		renderNav();
 		const list = await screen.findByRole("tablist");
-		expect(list).toHaveAttribute("aria-orientation", "vertical");
+		expect(list).toHaveAttribute("aria-orientation", "horizontal");
 		const tabs = screen.getAllByRole("tab");
 		expect(tabs[0]).toHaveAccessibleName("Fix auth, agent");
 		expect(tabs[1]).toHaveAccessibleName("zsh");
@@ -101,17 +101,6 @@ describe("TerminalWindowNav", () => {
 		renderNav();
 		await userEvent.click(await screen.findByRole("tab", { name: /Fix auth/ }));
 		expect(navigate()).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@1" });
-	});
-
-	it("switching to tabs restyles live without remounting the terminal", async () => {
-		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
-		renderNav();
-		await screen.findByRole("tablist");
-		expect(mounts.count).toBe(1);
-		act(() => setWindowNavStyle("tabs"));
-		expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
-		expect(screen.getByRole("tab", { name: /zsh/ })).toHaveTextContent("zsh");
-		expect(mounts.count).toBe(1);
 	});
 
 	it("the navigator appearing once windows load does not remount the terminal", async () => {
@@ -170,7 +159,7 @@ describe("TerminalWindowNav", () => {
 		expect(tabs[0]).toHaveAttribute("tabindex", "0");
 		expect(tabs[1]).toHaveAttribute("tabindex", "-1");
 		tabs[0].focus();
-		await userEvent.keyboard("{ArrowDown}");
+		await userEvent.keyboard("{ArrowRight}");
 		expect(tabs[1]).toHaveFocus();
 		await userEvent.keyboard("{End}");
 		expect(tabs[2]).toHaveFocus();
@@ -180,7 +169,6 @@ describe("TerminalWindowNav", () => {
 	});
 
 	it("the × on a tab closes exactly that window through the shared close path", async () => {
-		act(() => setWindowNavStyle("tabs"));
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
 		renderNav();
 		await userEvent.click(await screen.findByRole("button", { name: "Close logs" }));
@@ -188,7 +176,6 @@ describe("TerminalWindowNav", () => {
 	});
 
 	it("closing the agent's window asks first, then retries that same window with force", async () => {
-		act(() => setWindowNavStyle("tabs"));
 		vi.mocked(api.request.tmuxCloseWindow).mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" });
 		vi.mocked(confirm).mockResolvedValue(true);
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
@@ -199,7 +186,6 @@ describe("TerminalWindowNav", () => {
 	});
 
 	it("declining the confirmation leaves the agent's window alone", async () => {
-		act(() => setWindowNavStyle("tabs"));
 		vi.mocked(api.request.tmuxCloseWindow).mockResolvedValueOnce({ closed: false, reason: "agentWindow", windowId: "@1" });
 		vi.mocked(confirm).mockResolvedValue(false);
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
@@ -209,7 +195,7 @@ describe("TerminalWindowNav", () => {
 		expect(api.request.tmuxCloseWindow).toHaveBeenCalledTimes(1);
 	});
 
-	it("Delete on a focused window and a middle click both close it, in the rail too", async () => {
+	it("Delete on a focused window and a middle click both close it", async () => {
 		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
 		renderNav();
 		const tabs = await screen.findAllByRole("tab");
@@ -220,23 +206,11 @@ describe("TerminalWindowNav", () => {
 		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@3" });
 	});
 
-	it("the rail is vertical tabs: full names written sideways, no numbers, same 28px width", async () => {
+	it("a tab shows the window's number and its full name", async () => {
 		respond([win(1, "Fix auth", { home: true, active: true }), win(4, "dev-server")]);
-		const { container } = renderNav();
+		renderNav();
 		const tab = await screen.findByRole("tab", { name: "dev-server" });
-		expect(tab).toHaveTextContent("dev-server");
-		expect(tab).not.toHaveTextContent("4");
-		expect(tab.className).toContain("[writing-mode:vertical-rl]");
-		expect(container.querySelector('[data-window-nav="rail"]')).toHaveClass("w-7");
-	});
-
-	it("the rail closes a window from the × at the end of its tab", async () => {
-		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh"), win(3, "logs")]);
-		const { container } = renderNav();
-		await screen.findByRole("tablist");
-		expect(container.querySelector('[data-window-nav="rail"]')).toHaveClass("w-7");
-		await userEvent.click(screen.getByRole("button", { name: "Close zsh" }));
-		expect(api.request.tmuxCloseWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
+		expect(tab).toHaveTextContent("4dev-server");
 	});
 
 	it("right-click opens a menu that closes that window", async () => {
@@ -273,8 +247,7 @@ describe("TerminalWindowNav", () => {
 		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
 	});
 
-	it.each(["rail", "tabs"] as const)("%s: the + after the last tab opens a new window, even with one window", async (style) => {
-		act(() => setWindowNavStyle(style));
+	it("the + after the last tab opens a new window, even with one window", async () => {
 		respond([win(1, "Fix auth", { home: true, active: true })]);
 		renderNav();
 		const plus = await screen.findByRole("button", { name: "New window" });

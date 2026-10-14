@@ -1,49 +1,6 @@
-import { useEffect, useState } from "react";
 import { api } from "./rpc";
 import { confirm } from "./confirm";
 import type { TFunction } from "./i18n";
-
-/**
- * How the desktop task terminal shows its tmux windows when there are two or
- * more: vertical tabs in a slim rail on the left (default — it costs width, not a terminal
- * row) or a tab row on top. A per-device rendering preference, like zoom, so it
- * lives in localStorage and applies live through a change event.
- */
-export type WindowNavStyle = "rail" | "tabs";
-
-export const WINDOW_NAV_STYLES: readonly WindowNavStyle[] = ["rail", "tabs"];
-export const DEFAULT_WINDOW_NAV_STYLE: WindowNavStyle = "rail";
-const STORAGE_KEY = "dev3-window-nav-style";
-const CHANGED_EVENT = "dev3:windowNavStyleChanged";
-
-export function getWindowNavStyle(): WindowNavStyle {
-	try {
-		const saved = localStorage.getItem(STORAGE_KEY);
-		if (saved === "rail" || saved === "tabs") return saved;
-	} catch {
-		// localStorage unavailable — fall back to the default.
-	}
-	return DEFAULT_WINDOW_NAV_STYLE;
-}
-
-export function setWindowNavStyle(style: WindowNavStyle): void {
-	try {
-		localStorage.setItem(STORAGE_KEY, style);
-	} catch {
-		// localStorage unavailable — the change still applies for this session via the event.
-	}
-	window.dispatchEvent(new CustomEvent(CHANGED_EVENT, { detail: style }));
-}
-
-export function useWindowNavStyle(): WindowNavStyle {
-	const [style, setStyle] = useState(getWindowNavStyle);
-	useEffect(() => {
-		const onChange = (e: Event) => setStyle((e as CustomEvent<WindowNavStyle>).detail ?? getWindowNavStyle());
-		window.addEventListener(CHANGED_EVENT, onChange);
-		return () => window.removeEventListener(CHANGED_EVENT, onChange);
-	}, []);
-	return style;
-}
 
 const WINDOWS_CHANGED_EVENT = "dev3:tmuxWindowsChanged";
 

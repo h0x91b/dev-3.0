@@ -19,7 +19,6 @@ import SettingsToggle from "./SettingsToggle";
 import HelpSpot from "../HelpSpot";
 import { setStreamerMode, useStreamerMode } from "../../streamer-mode";
 import type { Theme } from "./utils";
-import { setWindowNavStyle, useWindowNavStyle, type WindowNavStyle } from "../../terminal-window-nav";
 
 interface AppearanceSettingsSectionProps {
 	t: TFunction;
@@ -42,7 +41,6 @@ export default function AppearanceSettingsSection({
 }: AppearanceSettingsSectionProps) {
 	const simplifyEnabled = useIsSimplifyViewApplied();
 	const streamerMode = useStreamerMode();
-	const windowNavStyle = useWindowNavStyle();
 	return (
 		<SettingsSection title={t("settings.categoryAppearance")} helpTopicId="settings.appearance">
 			<SettingsEntry anchor="simplify-mode">
@@ -168,29 +166,6 @@ export default function AppearanceSettingsSection({
 				</div>
 			</SettingsEntry>
 
-			<SettingsEntry anchor="window-nav">
-				<div>
-					<p className="block text-fg text-sm font-semibold mb-2">
-						{t("settings.windowNav")}
-					</p>
-					<p className="text-fg-3 text-sm mb-3">{t("settings.windowNavDesc")}</p>
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t("settings.windowNav")}>
-						<WindowNavCard
-							style="rail"
-							name={t("settings.windowNavRail")}
-							description={t("settings.windowNavRailDesc")}
-							active={windowNavStyle === "rail"}
-						/>
-						<WindowNavCard
-							style="tabs"
-							name={t("settings.windowNavTabs")}
-							description={t("settings.windowNavTabsDesc")}
-							active={windowNavStyle === "tabs"}
-						/>
-					</div>
-				</div>
-			</SettingsEntry>
-
 			<SettingsEntry anchor="streamer-mode">
 				<div data-help-id="field.streamer-mode">
 					<p className="flex items-center gap-1.5 text-fg text-sm font-semibold mb-2">
@@ -208,46 +183,6 @@ export default function AppearanceSettingsSection({
 				</div>
 			</SettingsEntry>
 		</SettingsSection>
-	);
-}
-
-/** A selectable card with a tiny drawing of the terminal with that navigator. */
-function WindowNavCard({
-	style,
-	name,
-	description,
-	active,
-}: {
-	style: WindowNavStyle;
-	name: string;
-	description: string;
-	active: boolean;
-}) {
-	const tile = (on: boolean, key: number) => (
-		<div key={key} className={`rounded-sm ${on ? "bg-accent/70" : "bg-fg-muted/40"} ${style === "rail" ? "h-6 w-2" : "h-2 w-6"}`} />
-	);
-	return (
-		<button
-			type="button"
-			role="radio"
-			aria-checked={active}
-			onClick={() => setWindowNavStyle(style)}
-			className={`min-w-0 p-4 rounded-xl border-2 transition-colors text-left ${
-				active ? "border-accent shadow-lg shadow-accent/10" : "border-edge hover:border-edge-active"
-			}`}
-		>
-			<div aria-hidden="true" className={`w-full h-20 rounded-lg mb-3 overflow-hidden bg-base border border-edge flex ${style === "rail" ? "flex-row" : "flex-col"}`}>
-				<div className={`bg-raised flex gap-1 p-1 ${style === "rail" ? "flex-col border-r border-edge" : "flex-row border-b border-edge"}`}>
-					{[true, false, false].map(tile)}
-				</div>
-				<div className="flex-1 p-2 flex flex-col gap-1">
-					<div className="h-1.5 w-16 rounded-full bg-fg-muted/40" />
-					<div className="h-1.5 w-10 rounded-full bg-fg-muted/30" />
-				</div>
-			</div>
-			<div className="text-fg text-sm font-semibold">{name}</div>
-			<div className="text-fg-3 text-xs mt-0.5">{description}</div>
-		</button>
 	);
 }
 
