@@ -141,6 +141,7 @@ const terminal = {
 	"tmux.closePaneConfirmLabel": "Close pane",
 	"tmux.closePaneAskTitle": "Close pane {index}?",
 	"tmux.closePaneAskMessage": "The pane and whatever is running in it will be closed.",
+	"tmux.closePaneAskFailed": "Couldn't read the panes, so nothing was closed.",
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
 

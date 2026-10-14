@@ -147,6 +147,7 @@ const terminal = {
 	"tmux.closePaneConfirmLabel": "Закрыть панель",
 	"tmux.closePaneAskTitle": "Закрыть панель {index}?",
 	"tmux.closePaneAskMessage": "Панель и всё, что в ней запущено, будут закрыты.",
+	"tmux.closePaneAskFailed": "Не удалось прочитать панели, поэтому ничего не закрыто.",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
 
