@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ShortcutRow from "../ShortcutRow";
-import { shortcutById } from "../../../keymap";
+import { shortcutById, shortcutKeysForMode, type ShortcutSpec } from "../../../keymap";
 import { setShortcutOverrides } from "../../../keymap-store";
 import en from "../../../i18n/translations/en";
 import { interpolate } from "../../../i18n/interpolate";
@@ -20,8 +20,8 @@ function setPlatform(mac: boolean) {
 	});
 }
 
-function renderRow(id: string) {
-	render(<ShortcutRow spec={shortcutById(id)!} t={t} remote onRebind={vi.fn()} onReset={vi.fn()} />);
+function renderRow(spec: ShortcutSpec) {
+	render(<ShortcutRow spec={spec} t={t} remote onRebind={vi.fn()} onReset={vi.fn()} />);
 }
 
 describe("ShortcutRow – browser hint", () => {
@@ -31,13 +31,15 @@ describe("ShortcutRow – browser hint", () => {
 
 	it("names the browser combo when the browser owns the desktop one", () => {
 		setPlatform(true);
-		renderRow("pane-focus-left");
-		expect(screen.getByText("In the browser: ⌥⇧←")).toBeTruthy();
+		renderRow(shortcutById("pane-close")!);
+		expect(screen.getByText("In the browser: ⌃B x")).toBeTruthy();
 	});
 
 	it("stays quiet when the browser combo is the desktop one", () => {
 		setPlatform(false);
-		renderRow("pane-focus-left");
+		const paneClose = shortcutById("pane-close")!;
+		const desktopKeys = shortcutKeysForMode(paneClose, false, false);
+		renderRow({ ...paneClose, remoteDisplay: { mac: desktopKeys, other: desktopKeys } });
 		expect(screen.queryByText(/In the browser/)).toBeNull();
 	});
 });
@@ -50,8 +52,8 @@ describe("ShortcutRow – browser hint after a rebind", () => {
 
 	it("drops the default's browser alternative once the user picks their own combo", () => {
 		setPlatform(true);
-		setShortcutOverrides({ "pane-focus-left": { primary: "Alt+Mod+BracketLeft" } });
-		renderRow("pane-focus-left");
+		setShortcutOverrides({ "pane-close": { primary: "Alt+Mod+KeyW" } });
+		renderRow(shortcutById("pane-close")!);
 		expect(screen.queryByText(/In the browser/)).toBeNull();
 	});
 });

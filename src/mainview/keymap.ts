@@ -285,20 +285,27 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 		primary: [{ code: "Period", mods: ["Mod", "Shift"], platform: "mac" }, { code: "Period", mods: ["Ctrl", "Shift"], platform: "other" }],
 	},
 	// ⌘⌥+arrows is iTerm2's pane navigation; off macOS the same keys read Ctrl+Alt,
-	// which no shell treats as a control character. tmux's own ⌥⇧+arrows still work.
-	// ⌘⌥←/→ is Chrome's tab switch on macOS, which a page cannot cancel.
+	// which no shell treats as a control character. The ⌥⇧+arrows alias mirrors
+	// tmux's prefix-free binding, so native tasks get it too — and it is what the
+	// browser keeps, since ⌘⌥←/→ is Chrome's tab switch on macOS.
 	{
 		id: "pane-focus-left", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusLeft",
 		primary: [{ code: "ArrowLeft", mods: ["Mod", "Alt"], platform: "mac", desktopOnly: true }, { code: "ArrowLeft", mods: ["Ctrl", "Alt"], platform: "other" }],
-		remoteDisplay: { mac: "⌥⇧←", other: "Ctrl+Alt+←" },
+		alias: [{ code: "ArrowLeft", mods: ["Alt", "Shift"] }],
 	},
 	{
 		id: "pane-focus-right", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusRight",
 		primary: [{ code: "ArrowRight", mods: ["Mod", "Alt"], platform: "mac", desktopOnly: true }, { code: "ArrowRight", mods: ["Ctrl", "Alt"], platform: "other" }],
-		remoteDisplay: { mac: "⌥⇧→", other: "Ctrl+Alt+→" },
+		alias: [{ code: "ArrowRight", mods: ["Alt", "Shift"] }],
 	},
-	{ id: "pane-focus-up", primary: [mod("ArrowUp", "Alt")], descKey: "panes.focusUp", category: "terminal", conflictGroup: "terminal" },
-	{ id: "pane-focus-down", primary: [mod("ArrowDown", "Alt")], descKey: "panes.focusDown", category: "terminal", conflictGroup: "terminal" },
+	{
+		id: "pane-focus-up", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusUp",
+		primary: [mod("ArrowUp", "Alt")], alias: [{ code: "ArrowUp", mods: ["Alt", "Shift"] }],
+	},
+	{
+		id: "pane-focus-down", category: "terminal", conflictGroup: "terminal", descKey: "panes.focusDown",
+		primary: [mod("ArrowDown", "Alt")], alias: [{ code: "ArrowDown", mods: ["Alt", "Shift"] }],
+	},
 	// Types tmux's ⌃B prefix, so it can live on a ⌘ key tmux itself can never see.
 	// Terminal-scoped: rebound to ⌘A it stays Select All in every text field.
 	{

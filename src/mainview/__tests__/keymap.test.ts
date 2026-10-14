@@ -88,7 +88,10 @@ describe("keymap registry", () => {
 
 	it("an alias only exists where a second combo is genuinely offered", () => {
 		const withAlias = APP_SHORTCUTS.filter((s) => slotDefaults(s, "alias").length > 0).map((s) => s.id);
-		expect(withAlias).toEqual(["command-palette", "back", "forward", "task-hints", "new-task", "terminal-fullscreen"]);
+		expect(withAlias).toEqual([
+			"command-palette", "back", "forward", "task-hints", "new-task", "terminal-fullscreen",
+			"pane-focus-left", "pane-focus-right", "pane-focus-up", "pane-focus-down",
+		]);
 		// A slot never carries platform variants of its own beyond the primary's.
 		for (const s of APP_SHORTCUTS) {
 			expect(slotDefaults(s, "alias").length, `${s.id} has more than one alias`).toBeLessThanOrEqual(1);

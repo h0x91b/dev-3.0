@@ -33,7 +33,7 @@ this page and the website all read from it.
 | Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
 | Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |
 | Close pane / new tmux window | ⌘W / ⌘T | Ctrl+Shift+W / Ctrl+Shift+T |
-| Focus the pane left / right / up / down | ⌘⌥← / ⌘⌥→ / ⌘⌥↑ / ⌘⌥↓ | Ctrl+Alt+← / → / ↑ / ↓ |
+| Focus the pane left / right / up / down | ⌘⌥← / ⌘⌥→ / ⌘⌥↑ / ⌘⌥↓, or ⌥⇧+arrows | Ctrl+Alt+← / → / ↑ / ↓, or Alt+Shift+arrows |
 | Send the tmux prefix (⌃B) — rebind it to ⌘A to make ⌘A your prefix | ⌘B | Ctrl+Shift+B |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
@@ -83,7 +83,8 @@ defined in [`src/bun/tmux/config.ts`](../src/bun/tmux/config.ts). The one prefix
 **⌥⇧ + arrows** (Alt+Shift), which selects the pane in that direction; plain **⌥ + arrows** and
 **Ctrl + arrows** are deliberately left alone so the shell and agent TUIs keep word motion. A task on the **native**
 backend has no tmux and therefore no `⌃B` prefix; its panes are driven from the app's own
-controls (and, for agents, `dev3 pane`). The pane-focus shortcuts above work on both backends.
+controls (and, for agents, `dev3 pane`). The pane-focus shortcuts above work on both backends, ⌥⇧ + arrows
+included — dev3 dispatches that alias itself, so a native task answers it exactly like tmux.
 
 tmux never sees ⌘, so it cannot be a tmux prefix. The **Send the tmux prefix** shortcut is the
 way around it: it types ⌃B into a focused tmux terminal, and only there — rebind it to ⌘A and ⌘A

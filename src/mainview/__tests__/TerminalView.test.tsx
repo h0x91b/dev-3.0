@@ -684,6 +684,30 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
+	it("in the browser a native host moves left/right on Opt+Shift+arrows, not on the browser's Cmd+Opt+arrows", async () => {
+		const onFocusDirection = vi.fn();
+		await act(async () => {
+			render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onFocusDirection={onFocusDirection} /></I18nProvider>);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		const target = focusInsideTerminal();
+
+		const browserOwned = new KeyboardEvent("keydown", { code: "ArrowLeft", metaKey: true, altKey: true, bubbles: true, cancelable: true });
+		await act(async () => { window.dispatchEvent(browserOwned); });
+		expect(onFocusDirection).not.toHaveBeenCalled();
+		expect(browserOwned.defaultPrevented).toBe(false);
+
+		for (const [code, direction] of [["ArrowLeft", "left"], ["ArrowRight", "right"]] as const) {
+			const event = new KeyboardEvent("keydown", { code, altKey: true, shiftKey: true, bubbles: true, cancelable: true });
+			await act(async () => { window.dispatchEvent(event); });
+			expect(onFocusDirection).toHaveBeenLastCalledWith(direction);
+			expect(event.defaultPrevented).toBe(true);
+		}
+		target.remove();
+	});
+
 	it("Cmd+B types the tmux prefix into a tmux session", async () => {
 		await renderAndSetup();
 		act(() => { lastWebSocket?.onmessage?.({ data: "$ " } as MessageEvent); });
