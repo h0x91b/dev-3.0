@@ -10,14 +10,20 @@
     /* Every font size in this sheet is a rem, so the text-size control moves one
        number here and the whole report follows. Starting from 100% instead of a
        px base keeps the reader's own browser font setting intact. */
-    html { scroll-behavior: smooth; font-size: calc(100% * var(--dev3-font-scale)); }
+    html {
+      scroll-behavior: smooth;
+      font-size: calc(100% * var(--dev3-font-scale));
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
     /* The page color lives on `html`, never on `body` — an opaque body background
        would paint over the wash below, which sits at z-index -1 inside it. */
     body {
       margin: 0;
       padding: 24px;
       color: rgb(var(--dev3-text-primary));
-      font: .875rem/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: .9375rem/1.5 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
     }
     /* A faint fixed wash behind the report, so the page reads as deep blue with
        light in it instead of as black. `--dev3-wash` dials it down in light mode. */
@@ -48,9 +54,10 @@
     /* Wide monitors get the room instead of a 1000px empty gutter; prose keeps a
        readable measure through .prose instead of the container. */
     .app { display: flex; width: min(100%, clamp(1180px, 88vw, 1840px)); flex-direction: column; gap: 14px; margin: auto; }
-    .prose { max-width: 72ch; }
+    /* Long-form copy reads at the browser's own 16px with an open line box. */
+    .prose { max-width: 68ch; font-size: 1rem; line-height: 1.6; }
     :is(ul, ol).prose { padding-inline-start: 1.4em; }
-    .muted, .section-copy { max-width: 90ch; }
+    .muted, .section-copy { max-width: 90ch; text-wrap: pretty; }
     .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
     .topbar { justify-content: space-between; gap: 20px; margin-bottom: 6px; }
     .brand { gap: 13px; }
@@ -60,21 +67,21 @@
       border-radius: 14px;
       box-shadow: 0 10px 28px rgb(var(--dev3-accent) / .22), 0 2px 14px rgb(var(--dev3-gold) / .18);
     }
-    h1 { margin: 0; font-size: 1.375rem; line-height: 1.15; letter-spacing: -.03em; }
+    h1 { margin: 0; font-size: 1.625rem; font-weight: 700; line-height: 1.15; letter-spacing: -.022em; text-wrap: balance; }
     .muted { color: rgb(var(--dev3-text-secondary)); }
     /* A gold chip, not gold text: on white the metal only survives as a fill. */
     .eyebrow {
       display: inline-flex;
       align-items: center;
       line-height: 1.2;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       padding: 3px 8px;
       border-radius: 6px;
       background: rgb(var(--dev3-gold));
       color: rgb(var(--dev3-on-gold));
-      font-size: .625rem;
-      font-weight: 750;
-      letter-spacing: .1em;
+      font-size: .6875rem;
+      font-weight: 700;
+      letter-spacing: .08em;
       text-transform: uppercase;
     }
     /* A squeezed action row must lose a whole control to the next line, never
@@ -110,8 +117,8 @@
       padding: 9px 13px;
       border-radius: 9px;
       color: rgb(var(--dev3-text-secondary));
-      font-size: .75rem;
-      font-weight: 650;
+      font-size: .8125rem;
+      font-weight: 600;
       text-decoration: none;
       transition: background .18s ease, color .18s ease, box-shadow .18s ease;
     }
@@ -132,7 +139,8 @@
       border-radius: 999px;
       background: rgb(var(--dev3-success) / .08);
       color: rgb(var(--dev3-success));
-      font-size: .75rem;
+      font-size: .8125rem;
+      font-weight: 600;
     }
     /* flex: 0 0 auto, or a tight row shrinks the width but not the height and the
        circle reads as an ellipse. */
@@ -166,7 +174,7 @@
       border-color: rgb(var(--dev3-accent));
       background: rgb(var(--dev3-accent));
       color: rgb(var(--dev3-on-accent));
-      font-weight: 650;
+      font-weight: 600;
     }
     button.ghost { background: transparent; }
     button.active {
@@ -206,18 +214,19 @@
     /* The tone rides a rail, not the number, so the figure stays most legible. */
     .kpi { position: relative; overflow: hidden; padding: 16px; }
     .kpi::before { position: absolute; inset: 0 0 auto; height: 3px; background: rgb(var(--dev3-tone, var(--dev3-accent))); content: ""; }
-    .kpi-top > :last-child { color: rgb(var(--dev3-tone, var(--dev3-accent))); font-size: .8125rem; }
+    .kpi-top > :last-child { color: rgb(var(--dev3-tone, var(--dev3-accent))); font-size: .875rem; }
     .kpi-top {
       display: flex;
       justify-content: space-between;
       gap: 10px;
       color: rgb(var(--dev3-text-secondary));
-      font-size: .6875rem;
-      letter-spacing: .06em;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .05em;
       text-transform: uppercase;
     }
-    .kpi-value { margin: 8px 0 3px; font-size: 1.8125rem; font-weight: 760; letter-spacing: -.04em; }
-    .trend { color: rgb(var(--dev3-success)); font-size: .75rem; }
+    .kpi-value { margin: 8px 0 4px; font-size: 2rem; font-weight: 700; line-height: 1.1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+    .trend { color: rgb(var(--dev3-success)); font-size: .8125rem; font-weight: 500; }
     .trend.warn { color: rgb(var(--dev3-warning)); }
     .dashboard-grid {
       display: grid;
@@ -252,7 +261,7 @@
       margin-bottom: 16px;
     }
     /* Warm rhythm down the page; a toned panel recolors its own marker. */
-    .section-title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: .9375rem; font-weight: 700; }
+    .section-title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 1.0625rem; font-weight: 650; line-height: 1.3; letter-spacing: -.01em; text-wrap: balance; }
     .section-title::before {
       flex: 0 0 auto;
       width: 3px;
@@ -261,7 +270,7 @@
       background: rgb(var(--dev3-tone, var(--dev3-gold)));
       content: "";
     }
-    .section-copy { margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
+    .section-copy { margin-top: 4px; color: rgb(var(--dev3-text-secondary)); font-size: .8125rem; line-height: 1.45; }
     .segmented {
       gap: 3px;
       padding: 3px;
@@ -275,7 +284,7 @@
     .text-size button { min-height: 30px; font-weight: 700; }
     .text-size button[data-font-step="-1"] { font-size: .8125rem; }
     .text-size button[data-font-step="1"] { font-size: 1.0625rem; }
-    .text-size .text-size-value { min-width: 4ch; color: rgb(var(--dev3-text-secondary)); font-size: .6875rem; font-variant-numeric: tabular-nums; }
+    .text-size .text-size-value { min-width: 4ch; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; font-variant-numeric: tabular-nums; }
     .segmented button.active { background: rgb(var(--dev3-accent)); color: rgb(var(--dev3-on-accent)); }
     .chart-host { position: relative; height: 15.625rem; overflow: hidden; }
     .chart-host svg { max-width: 100%; }
@@ -290,7 +299,7 @@
       border: 1px dashed rgb(var(--dev3-border));
       border-radius: 12px;
       color: rgb(var(--dev3-text-muted));
-      font-size: .75rem;
+      font-size: .8125rem;
       text-align: center;
     }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -298,8 +307,9 @@
     .field.full { grid-column: 1 / -1; }
     .field label, .option-group legend {
       color: rgb(var(--dev3-text-secondary));
-      font-size: .6875rem;
-      letter-spacing: .05em;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .04em;
       text-transform: uppercase;
     }
     .field label:has(output) { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -309,9 +319,10 @@
       border-radius: 999px;
       background: rgb(var(--dev3-accent) / .09);
       color: rgb(var(--dev3-accent));
-      font-size: .6875rem;
-      font-weight: 750;
+      font-size: .75rem;
+      font-weight: 700;
       letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
       text-transform: none;
     }
     /* One shell for every control, hung off the elements rather than off
@@ -410,7 +421,7 @@
       background: rgb(var(--dev3-surface-base));
       color: rgb(var(--dev3-text-secondary));
       cursor: pointer;
-      font-size: .75rem;
+      font-size: .8125rem;
       transition: border-color .16s ease;
     }
     input[type="file"]:hover { border-color: rgb(var(--dev3-accent) / .5); }
@@ -449,8 +460,9 @@
     legend {
       padding: 0 6px;
       color: rgb(var(--dev3-text-secondary));
-      font-size: .6875rem;
-      letter-spacing: .05em;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .04em;
       text-transform: uppercase;
     }
     input[type="range"] {
@@ -511,8 +523,9 @@
       background: rgb(var(--dev3-surface-elevated));
       color: rgb(var(--dev3-text-primary));
       box-shadow: 0 6px 18px rgb(var(--dev3-shadow) / .2);
-      font-size: .625rem;
+      font-size: .75rem;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       opacity: 0;
       transform: translate(-50%, 3px);
       transition: opacity .16s ease, transform .16s ease;
@@ -522,8 +535,8 @@
     .ui-range-control .noUi-active .noUi-tooltip { opacity: 1; transform: translate(-50%, 0); }
     .ui-range-control .noUi-pips-horizontal { top: .79em; height: 1.57em; padding: 0; }
     .ui-range-control .noUi-marker-horizontal.noUi-marker { width: 1px; height: 4px; background: rgb(var(--dev3-border)); }
-    .ui-range-control .noUi-value-horizontal { top: 6px; color: rgb(var(--dev3-text-muted)); font-size: .5625rem; transform: translateX(-50%); }
-    .range-label { display: flex; justify-content: space-between; color: rgb(var(--dev3-text-secondary)); font-size: .6875rem; }
+    .ui-range-control .noUi-value-horizontal { top: 6px; color: rgb(var(--dev3-text-muted)); font-size: .6875rem; transform: translateX(-50%); }
+    .range-label { display: flex; justify-content: space-between; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
     .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .option-group { min-width: 0; padding: 0; margin: 0; border: 0; }
     .option-group legend { margin-bottom: 6px; }
@@ -537,7 +550,7 @@
       border-radius: 10px;
       background: rgb(var(--dev3-surface-base));
       color: rgb(var(--dev3-text-secondary));
-      font-size: .75rem;
+      font-size: .875rem;
       cursor: pointer;
       transition: border-color .16s ease, background .16s ease, color .16s ease;
     }
@@ -588,7 +601,7 @@
       --choices-font-size-md: .875rem;
       --choices-font-size-sm: .75rem;
     }
-    .choices__heading { font-size: .75rem; }
+    .choices__heading { font-size: .8125rem; }
     .table-tools .choices { width: auto; min-width: 9.5rem; }
     .choices__inner {
       min-height: 39px;
@@ -612,7 +625,7 @@
       box-shadow: 0 16px 36px rgb(var(--dev3-shadow) / .26);
       color: rgb(var(--dev3-text-primary));
     }
-    .choices__list--dropdown .choices__item, .choices__list[aria-expanded] .choices__item { padding: 9px 11px; font-size: .75rem; }
+    .choices__list--dropdown .choices__item, .choices__list[aria-expanded] .choices__item { padding: 9px 11px; font-size: .875rem; }
     .choices__list--dropdown .choices__item--choice.is-selected,
     .choices__list[aria-expanded] .choices__item--choice.is-selected {
       background: rgb(var(--dev3-accent) / .1);
@@ -657,9 +670,10 @@
     .popover:not([data-open]) { display: none; }
     .popover-title {
       padding: 7px 10px 5px;
-      color: rgb(var(--dev3-text-muted));
-      font-size: .625rem;
-      letter-spacing: .08em;
+      color: rgb(var(--dev3-text-secondary));
+      font-size: .6875rem;
+      font-weight: 600;
+      letter-spacing: .06em;
       text-transform: uppercase;
     }
     .popover hr { margin: 4px 2px; border: 0; border-top: 1px solid rgb(var(--dev3-border)); }
@@ -674,7 +688,7 @@
       border-radius: 8px;
       background: transparent;
       color: inherit;
-      font-size: .75rem;
+      font-size: .875rem;
       text-align: start;
       text-decoration: none;
     }
@@ -716,21 +730,24 @@
     .table-tools input { width: 12rem; }
     .table-tools select { padding-right: 26px; background-position: right 14px center, right 9px center; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); overflow-wrap: break-word; text-align: left; font-size: .75rem; }
+    th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); overflow-wrap: break-word; text-align: left; font-size: .8125rem; line-height: 1.4; }
     /* A vertical rule keeps the eye inside one column across a wide row; every
        cell owns its trailing edge so a pinned column can strengthen its own. */
     th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid rgb(var(--dev3-border) / .5); }
+    /* Headers are a step under the cells: uppercase at full size shouts, and the
+       secondary ink keeps them legible where muted grey sat near 4:1. */
     th {
-      color: rgb(var(--dev3-text-muted));
+      color: rgb(var(--dev3-text-secondary));
+      font-size: .75rem;
       font-weight: 600;
-      letter-spacing: .05em;
+      letter-spacing: .04em;
       text-transform: uppercase;
     }
     /* border-collapse drops borders on sticky cells, so paint them inset. */
     thead th { position: sticky; z-index: 5; top: var(--dev3-table-head-top, 0px); background: rgb(var(--dev3-surface-raised)); box-shadow: inset 0 -1px 0 rgb(var(--dev3-border)); }
     th[data-sort] { cursor: pointer; }
-    th[data-sort]:hover { color: rgb(var(--dev3-text-secondary)); }
-    th[data-sort]::after { margin-inline-start: 6px; content: "↕"; font-size: .625rem; opacity: .3; }
+    th[data-sort]:hover { color: rgb(var(--dev3-text-primary)); }
+    th[data-sort]::after { margin-inline-start: 6px; content: "↕"; font-size: .75rem; opacity: .35; }
     th[data-sort]:hover::after { opacity: .65; }
     th[aria-sort]::after { color: rgb(var(--dev3-accent)); opacity: 1; }
     th[aria-sort="ascending"]::after { content: "↑"; }
@@ -744,7 +761,7 @@
     .evidence-toolbar, .evidence-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .evidence-toolbar { justify-content: space-between; }
     .evidence-toolbar .choices { min-width: min(22.5rem, 100%); }
-    .evidence-legend { color: rgb(var(--dev3-text-secondary)); font-size: .6875rem; }
+    .evidence-legend { color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
     .evidence-marker { display: inline-flex; align-items: center; gap: 5px; }
     .evidence-marker::before { width: .58em; height: .58em; border-radius: 50%; background: rgb(var(--dev3-tone, var(--dev3-text-muted))); content: ""; }
     .evidence-marker.good::before { background: rgb(var(--dev3-success)); }
@@ -752,24 +769,25 @@
     .evidence-marker.sig::before { background: rgb(var(--dev3-gold)); box-shadow: 0 0 0 3px rgb(var(--dev3-gold) / .18); }
     .evidence-group { overflow: hidden; border: 1px solid rgb(var(--dev3-border)); border-radius: 16px; background: rgb(var(--dev3-surface-raised)); }
     .evidence-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid rgb(var(--dev3-border)); }
-    .evidence-group-title { margin: 0 0 4px; color: rgb(var(--dev3-text-primary)); font-size: .9375rem; }
+    .evidence-group-title { margin: 0 0 4px; color: rgb(var(--dev3-text-primary)); font-size: 1rem; font-weight: 650; line-height: 1.3; text-wrap: balance; }
     .evidence-table-card + .evidence-table-card { border-top: 1px solid rgb(var(--dev3-border)); }
     .evidence-table-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 14px 8px; background: rgb(var(--dev3-surface-elevated) / .42); }
-    .evidence-table-title { margin: 0; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; font-weight: 700; }
-    .evidence-table-meta { flex: 0 0 auto; color: rgb(var(--dev3-text-muted)); font: .625rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .evidence-table-title { margin: 0; color: rgb(var(--dev3-text-secondary)); font-size: .8125rem; font-weight: 650; }
+    .evidence-table-meta { flex: 0 0 auto; color: rgb(var(--dev3-text-muted)); font: .6875rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
     /* Kept as the table's query container; it deliberately does not scroll. */
     .evidence-table-scroll { max-width: 100%; }
     .evidence-table { width: 100%; font-variant-numeric: tabular-nums; }
-    .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: right; font-size: .65625rem; }
+    /* A dense ledger, but never under 12px for a value or 11px for a label. */
+    .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: right; font-size: .75rem; }
     /* The outer columns line up with the panel heading, not with the cell gutter. */
     .evidence-table :is(th, td):first-child { padding-inline-start: var(--dev3-table-edge, 9px); }
     .evidence-table :is(th, td):last-child { padding-inline-end: var(--dev3-table-edge, 9px); }
-    .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: .59375rem; }
+    .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: .6875rem; }
     /* The row's identity reads as a label, not as one more number. */
     .evidence-table th:first-child, .evidence-table td:first-child { border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
     .evidence-table th.grp { border-left: 1px solid rgb(var(--dev3-border)); text-align: center; color: rgb(var(--dev3-text-secondary)); }
     .evidence-table .sep { border-left: 1px solid rgb(var(--dev3-border)); }
-    .evidence-table .day { color: rgb(var(--dev3-text-primary)); font-weight: 650; }
+    .evidence-table .day { color: rgb(var(--dev3-text-primary)); font-weight: 600; }
     .evidence-table .good { color: rgb(var(--dev3-success)); }
     .evidence-table .bad, .evidence-table .neg { color: rgb(var(--dev3-danger)); }
     .evidence-table .flat, .evidence-table .dim { color: rgb(var(--dev3-text-muted)); }
@@ -780,7 +798,7 @@
     .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-gold) / .5); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
     /* Centred on both axes with a tight line box: a pill stretched by a flex row
        (`.actions`, a section head) otherwise pins its text to the top edge. */
-    .pill { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; line-height: 1.2; text-align: center; }
+    .pill { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; line-height: 1.2; text-align: center; white-space: nowrap; }
     .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
     .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
     .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }
@@ -815,9 +833,9 @@
       gap: 12px;
       padding: 18px 4px 2px;
       color: rgb(var(--dev3-text-muted));
-      font-size: .6875rem;
+      font-size: .75rem;
     }
-    .dev3-footer strong { color: rgb(var(--dev3-gold-ink)); font-weight: 650; }
+    .dev3-footer strong { color: rgb(var(--dev3-gold-ink)); font-weight: 600; }
     .dev3-footer a { color: rgb(var(--dev3-accent)); text-decoration: none; }
     .dev3-footer a:hover { text-decoration: underline; }
 
@@ -857,18 +875,18 @@
       tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px var(--dev3-table-edge, 16px); border-top: 1px solid rgb(var(--dev3-border)); }
       /* :nth-child(n) only lifts specificity: the column rule and the ledger's
          cell padding are class-level, and a stacked cell must shed both. */
-      tbody :is(th, td):nth-child(n) { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
+      tbody :is(th, td):nth-child(n) { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .875rem; }
       /* The shell copies thead text onto each cell, so authors write no labels. */
       tbody td[data-dev3-label]::before {
         display: block;
-        color: rgb(var(--dev3-text-muted));
+        color: rgb(var(--dev3-text-secondary));
         content: attr(data-dev3-label);
-        font-size: .5625rem;
+        font-size: .6875rem;
         font-weight: 600;
         letter-spacing: .05em;
         text-transform: uppercase;
       }
-      .evidence-table tbody :is(th, td):nth-child(n) { padding: 4px 0; text-align: left; font-size: .6875rem; }
+      .evidence-table tbody :is(th, td):nth-child(n) { padding: 4px 0; text-align: left; font-size: .8125rem; }
       /* A prose cell takes the whole width instead of one 13rem column. */
       .evidence-table .wrap { grid-column: 1 / -1; }
     }
@@ -945,12 +963,12 @@
        TEXT is brown, so `--dev3-gold` stays the real metal for fills, rules and
        markers, and `--dev3-gold-ink` is the darker one used only when gold is
        text. Light mode was the whole reason for the split. */
-    :root, [data-theme="dark"] { color-scheme: dark; --dev3-surface-base: 6 9 21; --dev3-surface-raised: 17 22 36; --dev3-surface-elevated: 25 31 48; --dev3-text-primary: 232 238 250; --dev3-text-secondary: 170 187 212; --dev3-text-muted: 115 129 149; --dev3-border: 39 49 64; --dev3-accent: 68 150 255; --dev3-gold: 243 183 67; --dev3-gold-ink: 240 178 54; --dev3-on-gold: 28 22 8; --dev3-success: 74 222 128; --dev3-warning: 250 204 21; --dev3-danger: 255 130 130; --dev3-on-accent: 255 255 255; --dev3-shadow: 0 0 0; --dev3-wash: 1; --dev3-viz-1: 139 184 250; --dev3-viz-2: 194 163 250; --dev3-viz-3: 251 134 220; --dev3-viz-4: 231 169 42; --dev3-viz-5: 49 210 177; --dev3-viz-6: 250 153 115; }
-    [data-theme="light"] { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 100 116 139; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
+    :root, [data-theme="dark"] { color-scheme: dark; --dev3-surface-base: 6 9 21; --dev3-surface-raised: 17 22 36; --dev3-surface-elevated: 25 31 48; --dev3-text-primary: 232 238 250; --dev3-text-secondary: 170 187 212; --dev3-text-muted: 133 147 168; --dev3-border: 39 49 64; --dev3-accent: 68 150 255; --dev3-gold: 243 183 67; --dev3-gold-ink: 240 178 54; --dev3-on-gold: 28 22 8; --dev3-success: 74 222 128; --dev3-warning: 250 204 21; --dev3-danger: 255 130 130; --dev3-on-accent: 255 255 255; --dev3-shadow: 0 0 0; --dev3-wash: 1; --dev3-viz-1: 139 184 250; --dev3-viz-2: 194 163 250; --dev3-viz-3: 251 134 220; --dev3-viz-4: 231 169 42; --dev3-viz-5: 49 210 177; --dev3-viz-6: 250 153 115; }
+    [data-theme="light"] { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 88 102 125; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
     @media (prefers-color-scheme: light) {
-      :root:not([data-theme]) { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 100 116 139; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
+      :root:not([data-theme]) { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 88 102 125; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
     }
-    html { background: rgb(var(--dev3-surface-base)); color: rgb(var(--dev3-text-primary)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    html { background: rgb(var(--dev3-surface-base)); color: rgb(var(--dev3-text-primary)); font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; }
     body { margin: 0; }
     .dev3-card { padding: 16px; border: 1px solid rgb(var(--dev3-border)); border-radius: 16px; background: rgb(var(--dev3-surface-raised)); }
     .dev3-grid { display: grid; gap: 16px; }

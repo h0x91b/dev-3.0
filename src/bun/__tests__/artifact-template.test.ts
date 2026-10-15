@@ -408,6 +408,10 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain("--choices-font-size-md: .875rem");
 		// A px font size anywhere in the shell would be a block that refuses to scale.
 		expect(css.match(/font(-size)?: *[0-9.]+px/g)).toBeNull();
+		// On screen nothing drops under 11px at 100%; only the print sheet may.
+		const screenCss = css.slice(0, css.indexOf("@media print"));
+		const tooSmall = [...screenCss.matchAll(/font(?:-size)?: *([0-9.]+)rem/g)].filter((m) => Number(m[1]) < 0.6875);
+		expect(tooSmall.map((m) => m[0])).toEqual([]);
 		expect(app).toContain("FONT_SCALE_STEPS");
 		expect(app).toContain("function scaleOptionFonts");
 		expect(app).toContain("dev3-artifact-font-scale");
@@ -443,7 +447,7 @@ describe("bundled artifact starter contract", () => {
 		const css = readFileSync(cssPath, "utf8");
 
 		expect(css).toContain("width: min(100%, clamp(1180px, 88vw, 1840px))");
-		expect(css).toContain(".prose { max-width: 72ch; }");
+		expect(css).toContain(".prose { max-width: 68ch; font-size: 1rem; line-height: 1.6; }");
 		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }");
 		expect(css).toContain("@media (min-width: 1500px)");
 		expect(docs).toContain("`.prose`");

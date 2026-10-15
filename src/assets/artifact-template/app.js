@@ -464,8 +464,8 @@
       textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(12) },
       categoryAxis: { axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, axisTick: { show: false }, axisLabel, splitLine: { show: false } },
       valueAxis: { axisLine: { show: false }, axisTick: { show: false }, axisLabel, splitLine: softSplit },
-      legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(11) }, itemWidth: 14, itemHeight: 9 },
-      radar: { axisName: { color: tokenColor("--dev3-text-muted"), fontSize: scaledFont(10) }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
+      legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(12) }, itemWidth: 14, itemHeight: 9 },
+      radar: { axisName: { color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(11) }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
     });
   }
 
