@@ -161,7 +161,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const [restartContext, setRestartContext] = useState<{ headless: boolean; remoteActive: boolean; tasksInProgress: number } | null>(null);
 	const [showToast, setShowToast] = useState(false);
 	const pinnedToastSlot = usePinnedToastSlot();
-	const [countdown, setCountdown] = useState(0);
+	// Seconds left before the unattended restart; `null` = no timer is running. Only a
+	// running timer that ticks down to 0 may restart — a `0` that also meant "not
+	// started" restarted the app the instant a postponed prompt re-opened.
+	const [countdown, setCountdown] = useState<number | null>(null);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [showProjectDropdown, setShowProjectDropdown] = useState(false);
 	// Which space to zoom out to, when the current project sits in more than one.
@@ -218,12 +221,12 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	useEffect(() => {
 		if (!showToast || !updateVersion) return;
 		if (remoteEngaged) {
-			setCountdown(0);
+			setCountdown(null);
 			return;
 		}
 		setCountdown(300);
 		const id = setInterval(() => {
-			setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+			setCountdown((prev) => (prev === null ? null : Math.max(0, prev - 1)));
 		}, 1000);
 		countdownRef.current = id;
 		return () => {
@@ -248,6 +251,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	useEffect(() => {
 		if (countdown === 0 && showToast && restartContext?.headless === false && !remoteEngaged) {
 			if (countdownRef.current) clearInterval(countdownRef.current);
+			// Consume the expiry: a later re-render (the 5 s context poll) must not fire it again.
+			setCountdown(null);
 			handleRestart();
 		}
 	}, [countdown, showToast, restartContext, remoteEngaged]);
@@ -367,9 +372,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		setSwitcherKeyNav(false);
 	}, [showProjectDropdown]);
 
+	// Closing the prompt by any route — X, Postpone, "see all changes" — postpones:
+	// the timer is cancelled, and only the next announcement brings the prompt back.
 	function dismissToast() {
 		setShowToast(false);
-		setCountdown(0);
+		setCountdown(null);
 		if (countdownRef.current) {
 			clearInterval(countdownRef.current);
 			countdownRef.current = null;
@@ -1547,7 +1554,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								onClick={() => { dismissToast(); handleRestart(); }}
 								className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 							>
-								{countdown > 0 ? t("update.restartCountdown", { seconds: String(countdown) }) : t("update.restartBtn")}
+								{countdown !== null && countdown > 0 ? t("update.restartCountdown", { seconds: String(countdown) }) : t("update.restartBtn")}
 							</button>
 							<button
 								onClick={dismissToast}
@@ -1560,6 +1567,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					<button
 						onClick={dismissToast}
 						aria-label={t("update.postponeBtn")}
+						data-testid="update-prompt-close"
 						className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 					>
 						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

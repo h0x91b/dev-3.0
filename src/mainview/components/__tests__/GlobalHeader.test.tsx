@@ -1021,6 +1021,64 @@ describe("GlobalHeader — update countdown", () => {
 		expect(screen.getByText(/Restart to Update \(300s\)/)).toBeInTheDocument();
 	});
 
+	// Closing the prompt — by its X or by Postpone — is a postponement. Neither may
+	// restart the app: not at the old deadline, and not when the 4-hour reminder
+	// re-opens the prompt with the restart context already known.
+	for (const [label, close] of [
+		["the X button", () => screen.getByTestId("update-prompt-close")],
+		["Postpone", () => screen.getByText("Postpone")],
+	] as const) {
+		it(`never restarts after closing with ${label}, past the deadline or on the reminder`, async () => {
+			const view = render(
+				headerElement({ screen: "dashboard" }, [project1], vi.fn(), [], {
+					updateVersion: "1.2.3",
+					updateAnnouncement: 1,
+				}),
+			);
+			await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+			act(() => { fireEvent.click(close()); });
+			expect(screen.queryByTestId("update-prompt-pinned")).not.toBeInTheDocument();
+
+			await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+			expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+
+			view.rerender(
+				headerElement({ screen: "dashboard" }, [project1], vi.fn(), [], {
+					updateVersion: "1.2.3",
+					updateAnnouncement: 2,
+				}),
+			);
+			await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+			expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+			expect(screen.getByText(/Restart to Update \(300s\)/)).toBeInTheDocument();
+		});
+	}
+
+	it("restarts at once when Restart is clicked", async () => {
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		act(() => { fireEvent.click(screen.getByText(/Restart to Update \(\d+s\)/)); });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		expect(mockedApi.request.applyUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not restart the moment remote access goes away — it starts a fresh timer", async () => {
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: true, tasksInProgress: 0 });
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: false, tasksInProgress: 0 });
+		await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+		expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+
+		await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+		expect(mockedApi.request.applyUpdate).toHaveBeenCalledTimes(1);
+	});
+
 	it("auto-restarts when countdown reaches 0", async () => {
 		renderHeader(
 			{ screen: "dashboard" },
