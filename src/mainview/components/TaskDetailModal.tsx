@@ -673,7 +673,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{onLaunchVariants && (
 								<button
 									onClick={handleRun}
-									disabled={deleting || moving || saving}
+									disabled={deleting || moving || saving || (isEditing && !editValue.trim())}
 									className="task-anim flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
 									title={t("task.run")}
 								>

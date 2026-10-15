@@ -318,6 +318,37 @@ describe("TaskDetailModal", () => {
 			expect(screen.getByRole("textbox")).toHaveValue("original more");
 		});
 
+		it("Run waits for an in-flight description save and is disabled meanwhile", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const updated = { ...task, description: "original more" };
+			const onLaunchVariants = vi.fn();
+			let resolveSave!: (t: Task) => void;
+			mockedApi.request.editTask.mockReturnValue(new Promise<Task>((r) => { resolveSave = r; }));
+			renderModal(task, { onLaunchVariants });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByRole("button", { name: "Run" }));
+
+			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+			expect(onLaunchVariants).not.toHaveBeenCalled();
+
+			await act(async () => resolveSave(updated));
+			expect(onLaunchVariants).toHaveBeenCalledTimes(1);
+			expect(onLaunchVariants).toHaveBeenCalledWith(updated, "in-progress");
+		});
+
+		it("disables Run while the open description editor is empty", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.clear(screen.getByRole("textbox"));
+
+			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+		});
+
 		it("clicking Run while editing an unchanged description launches without saving", async () => {
 			const task = makeTodoTask();
 			const onLaunchVariants = vi.fn();
