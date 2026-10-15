@@ -726,3 +726,6 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-10-02 — Desktop tmux windows get an in-app navigator: a tab row on top
 - **Rule:** a task terminal always shows a tab row on top instead of the tmux bar; agent ✦ first; new windows open in the background unless the user asked. Bible §12.
 - **Why:** a new window hid the agent, read as "my task vanished". Rejected breadcrumb, overview-only, and a vertical rail + style setting (tried, dropped 2026-10-14 to keep one layout). User-selected. Evidence: `decisions/2026/10/02/tmux-window-navigator.md`.
+
+## 2026-10-16 — A hibernated rail trades ✓ for ✕ Cancel
+- **Rule/why:** a parked task is one the user walked away from; complete stays in Move to. Rejected ✓+✕ (weak) and the hover-only header ✕. yaml `lifecycle`.

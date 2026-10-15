@@ -399,6 +399,7 @@ const kanban = {
 	"pipeline.current": "actual",
 	"pipeline.stageOf": "Etapa {current} de {total}",
 	"pipeline.completeTooltip": "Mover a Completed",
+	"pipeline.cancelTooltip": "Cancelar tarea",
 
 	// Git pull (Kanban toolbar)
 	"kanban.gitPull": "Git Pull",

@@ -94,6 +94,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const spawnVariantHidden = useIsControlHidden("spawn-variant");
 	const [moving, setMoving] = useState(false);
 	const [quickCompleting, setQuickCompleting] = useState(false);
+	const [quickCancelling, setQuickCancelling] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
 	const statusMenu = useStatusMenu(narrow);
 	const { open: menuOpen, setOpen: setMenuOpen } = statusMenu;
@@ -133,7 +134,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// An unfinished draft: not runnable, and a click reopens the New Task popup.
 	const isDraft = task.draft === true;
 	// Parked: agent, terminal and dev server killed, worktree intact. The card is
-	// inert (no drag, no column change) but still opens, and still completes.
+	// inert (no drag, no column change) but still opens, and still cancels.
 	const isHibernated = task.hibernated === true;
 	// Its session died with the app (force quit, reboot). Nothing was lost, but
 	// nothing is running either — the card must not pass for live work.
@@ -240,6 +241,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			await handleMove("completed", { alwaysConfirm: true });
 		} finally {
 			setQuickCompleting(false);
+		}
+	}
+
+	// Same contract as the ✓, for the one card whose Move-to menu is off.
+	async function handleQuickCancel(e: React.MouseEvent) {
+		e.stopPropagation();
+		setQuickCancelling(true);
+		try {
+			await handleMove("cancelled", { alwaysConfirm: true });
+		} finally {
+			setQuickCancelling(false);
 		}
 	}
 
@@ -460,10 +472,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const activeCol = task.customColumnId
 		? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
 		: null;
-	// The rail's ✓ is now a 44px touch target on narrow, so it no longer has to be
-	// desktop-only. Deliberately NOT gated on `isHibernated`: finishing a parked
-	// task must not require waking it first.
-	const canQuickComplete = !isDisabled && getAllowedTransitions(task.status).includes("completed");
+	// A parked task is one the user walked away from, so its rail offers ✕ in the
+	// ✓'s place. Completing it is still one right-click away (Move to).
+	const canQuickComplete = !isDisabled && !isHibernated && getAllowedTransitions(task.status).includes("completed");
+	const canQuickCancel = !isDisabled && isHibernated && getAllowedTransitions(task.status).includes("cancelled");
 	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
 
 	// ---- IDENTITY zone inputs -----------------------------------------------
@@ -958,6 +970,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					completing={quickCompleting}
 					onOpenMenu={statusMenu.toggle}
 					onComplete={handleQuickComplete}
+					canCancel={canQuickCancel}
+					cancelling={quickCancelling}
+					onCancel={handleQuickCancel}
 					menuTriggerRef={statusMenu.triggerRef}
 					touch={narrow}
 				/>

@@ -58,6 +58,10 @@ interface TaskCardRailProps {
 	completing: boolean;
 	onOpenMenu: (e: React.MouseEvent) => void;
 	onComplete: (e: React.MouseEvent) => void;
+	/** Hibernated only, in the ✓'s place: a parked task is one the user walked away from. */
+	canCancel?: boolean;
+	cancelling?: boolean;
+	onCancel?: (e: React.MouseEvent) => void;
 	menuTriggerRef: Ref<HTMLButtonElement>;
 	/** Narrow viewport: widen so both halves clear the 44px touch minimum. */
 	touch?: boolean;
@@ -87,6 +91,9 @@ export default function TaskCardRail({
 	completing,
 	onOpenMenu,
 	onComplete,
+	canCancel = false,
+	cancelling = false,
+	onCancel,
 	menuTriggerRef,
 	touch = false,
 	autoLabel = false,
@@ -115,6 +122,8 @@ export default function TaskCardRail({
 		observer.observe(el);
 		return () => observer.disconnect();
 	}, [autoLabel, neededForLabel]);
+
+	const showCancel = canCancel && !!onCancel;
 
 	return (
 		<div
@@ -171,31 +180,94 @@ export default function TaskCardRail({
 			</Tooltip>
 
 			{canComplete && (
-				<Tooltip content={t("pipeline.completeTooltip")} disabled={completing}>
-					<button
-						data-testid="task-card-quick-complete"
-						type="button"
-						onClick={onComplete}
-						disabled={completing}
-						aria-label={t("pipeline.completeTooltip")}
-						className={`task-anim flex w-full flex-shrink-0 items-center justify-center rounded-bl-[0.6875rem] text-success transition-[opacity,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${touch ? "h-11" : "h-7"} ${
-							completing ? "bg-success/25 opacity-100" : "opacity-70 hover:bg-success/20 hover:opacity-100"
-						}`}
-					>
-						{/* Both glyphs stay mounted and cross-fade — a hard swap on a
-						    12px target reads as a flicker. The hidden spinner must not spin:
-						    on WebKitGTK it repainted every frame (issue #1949). */}
-						<span className="relative flex h-3.5 w-3.5 items-center justify-center">
-							<span
-								className={`absolute inset-0 h-3.5 w-3.5 rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
-							/>
-							<CompleteCheckIcon
-								className={`absolute inset-0 h-3.5 w-3.5 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`}
-							/>
-						</span>
-					</button>
-				</Tooltip>
+				<RailMoveButton
+					testId="task-card-quick-complete"
+					label={t("pipeline.completeTooltip")}
+					busy={completing}
+					touch={touch}
+					last={!showCancel}
+					tone="success"
+					onClick={onComplete}
+				>
+					<CompleteCheckIcon className={RAIL_GLYPH_CLASS} />
+				</RailMoveButton>
+			)}
+			{showCancel && (
+				<RailMoveButton
+					testId="task-card-quick-cancel"
+					label={t("pipeline.cancelTooltip")}
+					busy={cancelling}
+					touch={touch}
+					last
+					tone="danger"
+					onClick={onCancel}
+				>
+					<CancelCrossIcon className={RAIL_GLYPH_CLASS} />
+				</RailMoveButton>
 			)}
 		</div>
+	);
+}
+
+const RAIL_GLYPH_CLASS = "h-3.5 w-3.5";
+
+function CancelCrossIcon({ className }: { className?: string }) {
+	return (
+		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<path d="M18 6 6 18M6 6l12 12" />
+		</svg>
+	);
+}
+
+const RAIL_TONE = {
+	success: { text: "text-success", hover: "hover:bg-success/20", busy: "bg-success/25", ring: "border-success/30 border-t-success" },
+	danger: { text: "text-fg-3 hover:text-danger", hover: "hover:bg-danger/15", busy: "bg-danger/15 text-danger", ring: "border-danger/30 border-t-danger" },
+} as const;
+
+/** One terminal move on the rail. `last` takes the card's bottom-left radius. */
+function RailMoveButton({
+	testId,
+	label,
+	busy,
+	touch,
+	last,
+	tone,
+	onClick,
+	children,
+}: {
+	testId: string;
+	label: string;
+	busy: boolean;
+	touch: boolean;
+	last: boolean;
+	tone: keyof typeof RAIL_TONE;
+	onClick?: (e: React.MouseEvent) => void;
+	children: React.ReactNode;
+}) {
+	const c = RAIL_TONE[tone];
+	const glyphFade = `absolute inset-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${busy ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`;
+	return (
+		<Tooltip content={label} disabled={busy}>
+			<button
+				data-testid={testId}
+				type="button"
+				onClick={onClick}
+				disabled={busy}
+				aria-label={label}
+				className={`task-anim flex w-full flex-shrink-0 items-center justify-center ${last ? "rounded-bl-[0.6875rem]" : ""} ${c.text} transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${touch ? "h-11" : "h-7"} ${
+					busy ? `${c.busy} opacity-100` : `opacity-70 ${c.hover} hover:opacity-100`
+				}`}
+			>
+				{/* Both glyphs stay mounted and cross-fade — a hard swap on a
+				    12px target reads as a flicker. The hidden spinner must not spin:
+				    on WebKitGTK it repainted every frame (issue #1949). */}
+				<span className="relative flex h-3.5 w-3.5 items-center justify-center">
+					<span
+						className={`absolute inset-0 h-3.5 w-3.5 rounded-full border-2 ${c.ring} transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${busy ? "animate-spin opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
+					/>
+					<span className={`${glyphFade} flex items-center justify-center`}>{children}</span>
+				</span>
+			</button>
+		</Tooltip>
 	);
 }

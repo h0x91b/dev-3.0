@@ -25,9 +25,14 @@ vi.mock("../../hooks/useTerminalPreview", () => ({
 	useTerminalPreview: () => terminalPreview,
 }));
 
+vi.mock("../../utils/confirmTaskCompletion", () => ({
+	confirmTaskCompletion: vi.fn(() => Promise.resolve(false)),
+}));
+
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
+			moveTask: vi.fn(),
 			getTerminalPreview: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
@@ -360,6 +365,30 @@ function makeTask(overrides?: Partial<Task>): Task {
 			expect(screen.queryByText("Parked task")).not.toBeInTheDocument();
 			expect(screen.queryByText("Live task")).not.toBeInTheDocument();
 			expect(screen.getByTestId("sidebar-show-hidden")).toHaveAttribute("aria-pressed", "false");
+		});
+
+		it("gives a revealed hibernated row ✕ instead of ✓, and a declined ✕ changes nothing", async () => {
+			const user = userEvent.setup();
+			const { confirmTaskCompletion } = await import("../../utils/confirmTaskCompletion");
+			const { api } = await import("../../rpc");
+			const view = renderTasks([
+				makeTask({ id: "live", title: "Live task", status: "review-by-user", groupId: null, variantIndex: null }),
+				makeTask({ id: "sleep", title: "Sleeping task", status: "review-by-user", worktreePath: "/tmp/wt", groupId: null, variantIndex: null, hibernated: true }),
+			]);
+			await user.click(screen.getByTestId("sidebar-show-hidden"));
+			const rail = (id: string) => within(screen.getByTestId(`sidebar-status-rail-${id}`));
+
+			expect(rail("live").getByTestId("task-card-quick-complete")).toBeInTheDocument();
+			expect(rail("live").queryByTestId("task-card-quick-cancel")).not.toBeInTheDocument();
+			expect(rail("sleep").queryByTestId("task-card-quick-complete")).not.toBeInTheDocument();
+
+			await user.click(rail("sleep").getByRole("button", { name: "Cancel task" }));
+
+			expect(vi.mocked(confirmTaskCompletion)).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+			);
+			expect(vi.mocked(api.request.moveTask)).not.toHaveBeenCalled();
+			expect(view.container.querySelector('[data-task-id="sleep"]')).not.toBeNull();
 		});
 
 		it("keeps is:hidden about tasks the user hid, not hibernated ones", async () => {

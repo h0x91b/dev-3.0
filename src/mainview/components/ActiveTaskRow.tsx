@@ -109,13 +109,15 @@ export default function ActiveTaskRow({
 	const statusMenu = useStatusMenu(narrow);
 	const contextMenu = useContextMenu(task.shuttingDown);
 	const [completing, setCompleting] = useState(false);
+	const [cancelling, setCancelling] = useState(false);
 	const [moving, setMoving] = useState(false);
 	const [hiding, setHiding] = useState(false);
 	const reducedMotion = useReducedMotion();
 
 	const displayTitle = getTaskTitle(task);
 	const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
-	const disabled = task.shuttingDown || task.preparing || task.hibernated || moving;
+	const busy = task.shuttingDown || task.preparing || moving;
+	const disabled = busy || task.hibernated;
 	// Session gone with the app; the row still opens (that is where recovery is
 	// offered), it just stops counting as one of the sessions running right now.
 	const disconnected = isTaskDisconnected(task);
@@ -165,6 +167,16 @@ export default function ActiveTaskRow({
 			await handleMove("completed", { alwaysConfirm: true });
 		} finally {
 			setCompleting(false);
+		}
+	}
+
+	async function handleCancel(e: React.MouseEvent) {
+		e.stopPropagation();
+		setCancelling(true);
+		try {
+			await handleMove("cancelled", { alwaysConfirm: true });
+		} finally {
+			setCancelling(false);
 		}
 	}
 
@@ -256,6 +268,10 @@ export default function ActiveTaskRow({
 					completing={completing}
 					onOpenMenu={statusMenu.toggle}
 					onComplete={handleComplete}
+					// Same as the board card: a parked row trades its ✓ for ✕.
+					canCancel={!busy && !!task.hibernated && getAllowedTransitions(task.status).includes("cancelled")}
+					cancelling={cancelling}
+					onCancel={handleCancel}
 					menuTriggerRef={statusMenu.triggerRef}
 					touch={narrow}
 					autoLabel
