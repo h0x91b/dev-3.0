@@ -274,6 +274,63 @@ describe("TaskDetailModal", () => {
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 		});
 
+		it("clicking Run with an unsaved description edit saves it before launching", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const updated = { ...task, description: "edited brief" };
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const onLaunchVariants = vi.fn();
+			mockedApi.request.editTask.mockResolvedValue(updated);
+			renderModal(task, { dispatch, onClose, onLaunchVariants });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			const textarea = screen.getByRole("textbox");
+			await user.clear(textarea);
+			await user.type(textarea, "edited brief");
+			await user.click(screen.getByRole("button", { name: "Run" }));
+
+			expect(mockedApi.request.editTask).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				description: "edited brief",
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
+			expect(onLaunchVariants).toHaveBeenCalledWith(updated, "in-progress");
+			expect(mockedApi.request.editTask.mock.invocationCallOrder[0])
+				.toBeLessThan(onLaunchVariants.mock.invocationCallOrder[0]);
+		});
+
+		it("clicking Run does not launch when saving the edited description fails", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const onClose = vi.fn();
+			const onLaunchVariants = vi.fn();
+			mockedApi.request.editTask.mockRejectedValue(new Error("disk full"));
+			renderModal(task, { onClose, onLaunchVariants });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByRole("button", { name: "Run" }));
+
+			expect(onLaunchVariants).not.toHaveBeenCalled();
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.getByRole("textbox")).toHaveValue("original more");
+		});
+
+		it("clicking Run while editing an unchanged description launches without saving", async () => {
+			const task = makeTodoTask();
+			const onLaunchVariants = vi.fn();
+			renderModal(task, { onLaunchVariants });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.click(screen.getByRole("button", { name: "Run" }));
+
+			expect(mockedApi.request.editTask).not.toHaveBeenCalled();
+			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
+		});
+
 		it("clicking Delete confirms, deletes the task and closes", async () => {
 			const task = makeTodoTask();
 			const dispatch = vi.fn();

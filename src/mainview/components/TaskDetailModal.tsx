@@ -134,11 +134,12 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		}
 	}
 
-	async function handleSave() {
+	/** Resolves to the task as persisted after the save, or null when saving failed. */
+	async function handleSave(): Promise<Task | null> {
 		const trimmed = editValue.trim();
 		if (!trimmed || trimmed === task.description) {
 			setIsEditing(false);
-			return;
+			return task;
 		}
 		setSaving(true);
 		try {
@@ -150,10 +151,13 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_edited", { project_id: project.id });
 			setIsEditing(false);
+			return updated;
 		} catch (err) {
 			toast.error(t("task.failedEdit", { error: String(err) }), { taskId: task.id });
+			return null;
+		} finally {
+			setSaving(false);
 		}
-		setSaving(false);
 	}
 
 	function handleStartRename() {
@@ -258,11 +262,14 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 	// ---- Footer action handlers (todo) ----
 
-	/** Start the task: close this modal and hand off to the launch-variants flow. */
-	function handleRun() {
+	/** Start the task: close this modal and hand off to the launch-variants flow.
+	 *  An open description edit is saved first, so the agent never gets the stale text. */
+	async function handleRun() {
 		if (!onLaunchVariants) return;
+		const launchTask = isEditing ? await handleSave() : task;
+		if (!launchTask) return;
 		onClose();
-		onLaunchVariants(task, "in-progress");
+		onLaunchVariants(launchTask, "in-progress");
 	}
 
 	async function handleDelete() {
@@ -666,7 +673,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{onLaunchVariants && (
 								<button
 									onClick={handleRun}
-									disabled={deleting || moving}
+									disabled={deleting || moving || saving}
 									className="task-anim flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
 									title={t("task.run")}
 								>
