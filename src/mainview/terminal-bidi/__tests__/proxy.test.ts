@@ -148,9 +148,49 @@ describe("createBidiRenderable", () => {
 		proxy.getCursor();
 
 		rows[0] = row("hello");
+		inner.state.dirty.add(0);
 		proxy.beginFrame();
 		expect(proxy.getCursor().x).toBe(0);
 		expect(proxy.getLine(0)).toBe(rows[0]);
+	});
+
+	it("keeps the cursor row across frames while it stays clean", () => {
+		const inner = innerBuffer([row("שלום")], { x: 0, y: 0, visible: true });
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		proxy.getCursor();
+		const first = proxy.getLine(0);
+		proxy.beginFrame();
+		proxy.getCursor();
+		expect(proxy.getLine(0)).toBe(first);
+		expect(inner.calls.getLine).toEqual([0]);
+	});
+
+	it("re-reads the held cursor row after a resize, a full redraw, a move or a forced paint", () => {
+		const rows = [row("שלום"), row("abc")];
+		const inner = innerBuffer(rows, { x: 0, y: 0, visible: true });
+		let cols = 80;
+		let full = false;
+		inner.getDimensions = () => ({ cols, rows: rows.length });
+		inner.needsFullRedraw = () => full;
+		const proxy = createBidiRenderable(inner);
+		const frame = (forceAll = false) => {
+			proxy.beginFrame(forceAll);
+			proxy.getCursor();
+		};
+
+		frame();
+		cols = 81;
+		frame();
+		full = true;
+		frame();
+		full = false;
+		inner.state.cursor = { x: 0, y: 1, visible: true };
+		frame();
+		frame(true);
+		frame();
+		expect(inner.calls.getLine).toEqual([0, 0, 0, 1, 1]);
 	});
 
 	it("forces a repaint when a logical cursor move keeps the same visual column", () => {
@@ -166,9 +206,11 @@ describe("createBidiRenderable", () => {
 		expect(proxy.isRowDirty(0)).toBe(false);
 
 		rows[0] = row("אבג");
+		inner.state.dirty.add(0);
 		inner.state.cursor = { x: 1, y: 0, visible: true };
 		proxy.beginFrame();
 		expect(proxy.getCursor().x).toBe(1);
+		inner.state.dirty.clear();
 		expect(proxy.isRowDirty(0)).toBe(true);
 	});
 
@@ -447,7 +489,22 @@ describe("installBidiRender", () => {
 		expect(renderer.seen[0].buffer).toBe(renderer.seen[1].buffer);
 	});
 
-	it("resets the per-frame cursor memo on every render", () => {
+	it("re-reorders the cursor row on a render where it changed", () => {
+		const engine = spyEngine();
+		const renderer = fakeRenderer();
+		const inner = innerBuffer([row("שלום")], { x: 0, y: 0, visible: true });
+		installBidiRender(renderer, engine);
+
+		renderer.render(inner);
+		(renderer.seen[0].buffer as typeof inner).getCursor();
+		inner.state.dirty.add(0);
+		renderer.render(inner);
+		(renderer.seen[1].buffer as typeof inner).getCursor();
+
+		expect(engine.levelCalls()).toBe(2);
+	});
+
+	it("reorders a clean cursor row once across renders, and again on a forced one", () => {
 		const engine = spyEngine();
 		const renderer = fakeRenderer();
 		const inner = innerBuffer([row("שלום")], { x: 0, y: 0, visible: true });
@@ -457,7 +514,10 @@ describe("installBidiRender", () => {
 		(renderer.seen[0].buffer as typeof inner).getCursor();
 		renderer.render(inner);
 		(renderer.seen[1].buffer as typeof inner).getCursor();
+		expect(engine.levelCalls()).toBe(1);
 
+		renderer.render(inner, true);
+		(renderer.seen[2].buffer as typeof inner).getCursor();
 		expect(engine.levelCalls()).toBe(2);
 	});
 

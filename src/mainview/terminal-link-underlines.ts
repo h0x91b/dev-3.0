@@ -1,5 +1,5 @@
 import type { Terminal } from "ghostty-web";
-import type { BufferRange } from "./terminal-file-links";
+import { createRowScan, type BufferRange, type RowScan, type ScanTerminal } from "./terminal-file-links";
 
 /**
  * Persistent underlines for file-path links in the terminal. ghostty-web only
@@ -17,9 +17,9 @@ import type { BufferRange } from "./terminal-file-links";
  * same pass, so the overlay is never left blank waiting for a recompute. A
  * debounce here would starve: under a stream of writes it never fires, which
  * blanked the underlines for the whole output burst and blinked them at the
- * refresh rate of an agent's spinner. One frame costs ~0.25 ms for a typical
- * 160×48 viewport and ~0.9 ms for a screen that is nothing but full-width
- * paths, so per-frame recompute is cheaper than the bookkeeping to avoid it.
+ * refresh rate of an agent's spinner. A throttle would leave underlines behind
+ * the text that scrolls under them. Each repaint reads the screen ONCE for all
+ * providers (`sharedScanLinks`): ~0.8 ms at 221×70 in Chrome, measured in #1962.
  */
 
 // Same blue ghostty-web hardcodes for its hover underline (#4A90E2), slightly
@@ -34,6 +34,17 @@ export function viewportRowToAbsolute(viewportRow: number, viewportY: number, sc
 	const n = Math.max(0, Math.floor(viewportY));
 	if (n > 0 && viewportRow < n) return scrollbackLength - n + viewportRow;
 	return scrollbackLength + (viewportRow - n);
+}
+
+/** The overlay's feed: every provider's links for the rows, from one shared scan of the buffer. */
+export function sharedScanLinks(
+	term: ScanTerminal,
+	providers: readonly ({ linksForRows(ys: number[], scan: RowScan): BufferRange[] } | null)[],
+): (absoluteRows: number[]) => BufferRange[] {
+	return (absoluteRows) => {
+		const scan = createRowScan(term);
+		return providers.flatMap((provider) => provider?.linksForRows(absoluteRows, scan) ?? []);
+	};
 }
 
 export interface FilePathUnderlinesHandle {

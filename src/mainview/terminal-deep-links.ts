@@ -1,6 +1,6 @@
-import type { ILink, ILinkProvider, Terminal } from "ghostty-web";
+import type { ILink, ILinkProvider } from "ghostty-web";
 import { findDeepLinksInText } from "../shared/deep-link";
-import { covers, createRowCache, getLogicalLines, mapRangeToBuffer, type BufferRange, type RowCache } from "./terminal-file-links";
+import { covers, createRowScan, getLogicalLines, mapRangeToBuffer, type BufferRange, type RowScan, type ScanTerminal } from "./terminal-file-links";
 
 /**
  * Turns a bare `dev3://…` link in terminal output into a Cmd/Ctrl+Click link.
@@ -14,13 +14,13 @@ import { covers, createRowCache, getLogicalLines, mapRangeToBuffer, type BufferR
  */
 
 export interface DeepLinkProviderOptions {
-	term: Pick<Terminal, "buffer">;
+	term: ScanTerminal;
 	onActivate: (uri: string, event: MouseEvent) => void;
 }
 
 export interface DeepLinkProvider extends ILinkProvider {
 	/** Link ranges for a set of absolute buffer rows — the underline overlay's feed. */
-	linksForRows(ys: number[]): BufferRange[];
+	linksForRows(ys: number[], scan?: RowScan): BufferRange[];
 	/** The deep link under cell (y, x) — the touch link sheet's feed. */
 	linkAt(y: number, x: number): string | undefined;
 }
@@ -31,9 +31,9 @@ interface RowLink {
 }
 
 export function createDeepLinkProvider(options: DeepLinkProviderOptions): DeepLinkProvider {
-	function computeLinks(y: number, cache?: RowCache): RowLink[] {
+	function computeLinks(y: number, scan = createRowScan(options.term)): RowLink[] {
 		const links: RowLink[] = [];
-		for (const logical of getLogicalLines((row) => options.term.buffer.active.getLine(row), y, cache)) {
+		for (const logical of getLogicalLines(scan.getLine, y, scan.cache)) {
 			for (const match of findDeepLinksInText(logical.text)) {
 				const segments = mapRangeToBuffer(logical.rows, match.start, match.end);
 				if (segments.length > 0) links.push({ uri: match.raw, segments });
@@ -61,13 +61,12 @@ export function createDeepLinkProvider(options: DeepLinkProviderOptions): DeepLi
 				callback(undefined);
 			}
 		},
-		linksForRows(ys) {
+		linksForRows(ys, scan = createRowScan(options.term)) {
 			const ranges: BufferRange[] = [];
 			const seen = new Set<string>();
-			const cache = createRowCache();
 			for (const y of ys) {
 				try {
-					for (const { segments } of computeLinks(y, cache)) {
+					for (const { segments } of computeLinks(y, scan)) {
 						for (const range of segments) {
 							const key = `${range.start.y}:${range.start.x}:${range.end.x}`;
 							if (seen.has(key)) continue;

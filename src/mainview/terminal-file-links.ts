@@ -1,4 +1,4 @@
-import type { ILink, ILinkProvider, Terminal } from "ghostty-web";
+import type { GhosttyTerminal, ILink, ILinkProvider, Terminal } from "ghostty-web";
 import type { ResolvedTerminalPath } from "../shared/types";
 
 /**
@@ -188,6 +188,59 @@ export function createRowCache(): RowCache {
 	return { rows: new Map(), lines: new Map() };
 }
 
+/** What a scan reads: the buffer, plus the emulator when it can hand over the whole screen at once. */
+export type ScanTerminal = Pick<Terminal, "buffer"> & {
+	wasmTerm?: Pick<GhosttyTerminal, "update" | "getViewport" | "getDimensions" | "isRowWrapped">;
+};
+
+/** One synchronous pass over the buffer, shareable between every provider that scans it. */
+export interface RowScan {
+	getLine: BufferLineReader;
+	cache: RowCache;
+}
+
+export function createRowScan(term: ScanTerminal): RowScan {
+	return { getLine: screenSnapshotReader(term), cache: createRowCache() };
+}
+
+/**
+ * ghostty-web 0.4.0's `getLine(y)` for a screen row copies and parses the WHOLE
+ * screen out of WASM to return one row, so a repaint reading 70 rows paid 70
+ * full-screen parses per provider. This reader takes one copy of the screen on
+ * its first screen row and slices it; scrollback rows keep the vendor path,
+ * which already reads just the one row.
+ */
+function screenSnapshotReader(term: ScanTerminal): BufferLineReader {
+	const buffer = term.buffer.active;
+	const fallback: BufferLineReader = (y) => buffer.getLine(y) ?? undefined;
+	const wasm = term.wasmTerm;
+	if (!wasm) return fallback;
+	let snapshot: { codes: Uint32Array; cols: number; top: number } | null | undefined;
+	function take(): typeof snapshot {
+		const { cols, rows } = wasm!.getDimensions();
+		wasm!.update();
+		const cells = wasm!.getViewport();
+		if (cols <= 0 || rows <= 0 || !cells || cells.length < cols * rows) return null;
+		const codes = new Uint32Array(cols * rows);
+		for (let i = 0; i < codes.length; i++) codes[i] = cells[i]!.codepoint;
+		// Same split the vendor's buffer uses: scrollback first, then the screen.
+		return { codes, cols, top: buffer.length - rows };
+	}
+	return (y) => {
+		if (y < 0 || y >= buffer.length) return undefined;
+		if (snapshot === undefined) snapshot = take();
+		if (!snapshot || y < snapshot.top) return fallback(y);
+		const row = y - snapshot.top;
+		const { codes, cols } = snapshot;
+		const start = row * cols;
+		return {
+			isWrapped: wasm.isRowWrapped(row),
+			length: cols,
+			getCell: (x) => (x < 0 || x >= cols ? undefined : { getCode: () => codes[start + x]! }),
+		};
+	};
+}
+
 function readRow(getLine: BufferLineReader, y: number, cache: RowCache): RowInfo | undefined {
 	const hit = cache.rows.get(y);
 	if (hit !== undefined || cache.rows.has(y)) return hit;
@@ -354,7 +407,7 @@ const RESOLVE_BATCH_MAX = 64; // matches the backend's per-call cap
 const RESOLVE_FLUSH_DELAY_MS = 16;
 
 export interface FilePathLinkProviderOptions {
-	term: Pick<Terminal, "buffer">;
+	term: ScanTerminal;
 	resolvePaths: (paths: string[]) => Promise<Record<string, ResolvedTerminalPath | null>>;
 	onActivate: (resolved: ResolvedTerminalPath, event: MouseEvent, line?: number) => void;
 	/** Fires after a background RPC resolution lands — the underline overlay redraws on it. */
@@ -365,9 +418,10 @@ export interface FilePathLinkProvider extends ILinkProvider {
 	/**
 	 * Synchronous link ranges for a set of absolute buffer rows (the visible
 	 * viewport), from the resolve cache only. Unknown candidates are queued
-	 * for one batched background resolve.
+	 * for one batched background resolve. Pass the repaint's shared `scan` so
+	 * every provider reads the buffer once between them.
 	 */
-	linksForRows(ys: number[]): BufferRange[];
+	linksForRows(ys: number[], scan?: RowScan): BufferRange[];
 	/** The resolved path under cell (y, x), from the resolve cache only — the touch link sheet's feed. */
 	linkAt(y: number, x: number): { target: ResolvedTerminalPath; line?: number } | undefined;
 	dispose(): void;
@@ -444,8 +498,8 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 	 * own as well, and its candidates are kept wherever the stitched read
 	 * produced no link over those cells.
 	 */
-	function computeLinks(y: number, cache?: RowCache, done?: Set<LogicalLine>): RowLink[] {
-		const logicalLines = getLogicalLines((row) => options.term.buffer.active.getLine(row), y, cache).filter(
+	function computeLinks(y: number, scan = createRowScan(options.term), done?: Set<LogicalLine>): RowLink[] {
+		const logicalLines = getLogicalLines(scan.getLine, y, scan.cache).filter(
 			(line) => !done?.has(line),
 		);
 		for (const line of logicalLines) done?.add(line);
@@ -508,7 +562,7 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 				callback(undefined);
 			}
 		},
-		linksForRows(ys) {
+		linksForRows(ys, scan = createRowScan(options.term)) {
 			const ranges: BufferRange[] = [];
 			// A logical line spans several rows, so a link surfaces once per row it
 			// covers; dedupe by range instead of skipping rows, whose other column
@@ -516,11 +570,10 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 			// off a line already handled — a viewport-sized logical line would
 			// otherwise be re-scanned once per row it covers.
 			const seen = new Set<string>();
-			const cache = createRowCache();
 			const done = new Set<LogicalLine>();
 			for (const y of ys) {
 				try {
-					for (const { segments } of computeLinks(y, cache, done)) {
+					for (const { segments } of computeLinks(y, scan, done)) {
 						for (const range of segments) {
 							const key = `${range.start.y}:${range.start.x}:${range.end.x}`;
 							if (seen.has(key)) continue;

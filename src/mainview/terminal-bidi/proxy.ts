@@ -34,11 +34,13 @@ export interface BidiScrollbackProvider {
  *    back through that row's mapping.
  *  - the renderer compares the cursor's x against its own previous value, so a
  *    logical move that maps to the same visual column must force a row repaint.
+ *  - the render state's dirty rows survive until the frame's `clearDirty()`, so a
+ *    cursor row that is not dirty still holds the cells read for it last frame.
  */
 export function createBidiRenderable(
 	inner: BidiRenderable,
 	engine: BidiEngine = defaultBidiEngine(),
-): BidiRenderable & { beginFrame(): void } {
+): BidiRenderable & { beginFrame(forceAll?: boolean): void } {
 	// Mapping of the most recent line handed to the renderer, for grapheme lookups.
 	let mappedRow = -1;
 	let visualToLogical: Int32Array | null = null;
@@ -48,6 +50,10 @@ export function createBidiRenderable(
 	let cursorLine: GhosttyCell[] | null = null;
 	let cursorReorder: ReorderedRow | null = null;
 	let cursorComputed = false;
+
+	// The cursor row as last read, kept across frames: an idle frame asks for the
+	// cursor row and nothing else, and re-reading it costs a full viewport copy.
+	let held: { y: number; cols: number; rows: number; line: GhosttyCell[] | null; reorder: ReorderedRow | null } | null = null;
 
 	// Cursor-repaint mitigation state.
 	let lastLogicalX = -1;
@@ -95,13 +101,30 @@ export function createBidiRenderable(
 	function reorderCursorRow(y: number) {
 		if (cursorComputed && cursorRow === y) return;
 		cursorRow = y;
+		cursorComputed = true;
+		const { cols, rows } = inner.getDimensions();
+		const unchanged =
+			held !== null &&
+			held.y === y &&
+			held.cols === cols &&
+			held.rows === rows &&
+			!inner.isRowDirty(y) &&
+			!(inner.needsFullRedraw?.() ?? false);
+		if (unchanged) {
+			cursorLine = held!.line;
+			cursorReorder = held!.reorder;
+			return;
+		}
 		cursorLine = readLine(y);
 		cursorReorder = cursorLine ? reorderRow(cursorLine, engine) : null;
-		cursorComputed = true;
+		held = { y, cols, rows, line: cursorLine, reorder: cursorReorder };
 	}
 
 	return {
-		beginFrame() {
+		beginFrame(forceAll = false) {
+			// A forced paint is how a theme or font change reaches the canvas; nothing
+			// read before it can be trusted to match.
+			if (forceAll) held = null;
 			cursorComputed = false;
 			cursorRow = -1;
 			cursorLine = null;
@@ -211,7 +234,7 @@ export function installBidiRender(
 	// The renderer is handed the same buffer object every frame, so the views are
 	// built once and reused — a fresh view per frame would lose the cursor memo.
 	let renderableInner: BidiRenderable | null = null;
-	let renderable: (BidiRenderable & { beginFrame(): void }) | null = null;
+	let renderable: (BidiRenderable & { beginFrame(forceAll?: boolean): void }) | null = null;
 	let scrollbackInner: BidiScrollbackProvider | null = null;
 	let scrollback: BidiScrollbackProvider | null = null;
 
@@ -226,7 +249,7 @@ export function installBidiRender(
 			renderableInner = buffer;
 			renderable = createBidiRenderable(buffer, engine);
 		}
-		renderable?.beginFrame();
+		renderable?.beginFrame(forceAll);
 
 		if (scrollbackProvider && scrollbackInner !== scrollbackProvider) {
 			scrollbackInner = scrollbackProvider;

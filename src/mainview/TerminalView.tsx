@@ -58,7 +58,7 @@ import { createDeepLinkProvider, type DeepLinkProvider } from "./terminal-deep-l
 import { createOsc8Tracker, createOsc8LinkProvider } from "./terminal-osc8-links";
 import { cellFromMouseEvent } from "./terminal-cell-hit";
 import { installOsc8HoverTooltip, type Osc8HoverHandle } from "./terminal-osc8-hover";
-import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
+import { installFilePathUnderlines, sharedScanLinks, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
 import { activateTerminalPath, activateOsc8Uri, activateDeepLinkUri } from "./terminal-path-open";
 import { installTouchLinkTap, osc8TouchLink, plainUrlAt, type TouchLink, type TouchLinkSource } from "./terminal-touch-links";
 import TerminalLinkSheet from "./components/TerminalLinkSheet";
@@ -906,7 +906,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				container: containerRef.current,
 				// Deep links get the same persistent underline as file paths — both
 				// are in-app targets the user should see without hunting for them.
-				linksForRows: (ys) => [...filePathLinks!.linksForRows(ys), ...(deepLinks?.linksForRows(ys) ?? [])],
+				linksForRows: sharedScanLinks(term, [filePathLinks, deepLinks]),
 			});
 			// Touch has no Cmd/Ctrl, so every provider above is a dead link on a
 			// phone: a tap on any of them opens the Open / Copy sheet instead. Same
