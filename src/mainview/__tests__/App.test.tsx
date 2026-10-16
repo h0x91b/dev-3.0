@@ -3306,7 +3306,8 @@ describe("App keyboard shortcuts", () => {
 				},
 			}));
 			// The start never answers within the test: the modal still holds the "idle" response.
-			vi.mocked(api.request.getRemoteAccessQR).mockReturnValue(new Promise(() => {}));
+			// Once only — a lasting never-resolving mock would leak into later tests.
+			vi.mocked(api.request.getRemoteAccessQR).mockReturnValueOnce(new Promise(() => {}));
 
 			const toggle = await screen.findByLabelText("Accessible from anywhere (Cloudflare Tunnel)", { selector: "input" });
 			await userEvent.click(toggle);

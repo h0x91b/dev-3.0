@@ -908,7 +908,7 @@ async function runAttempt(recovery: TunnelRecovery): Promise<TunnelEntry> {
 	const entry = await startEntry(optionsFor(placeholder), recovery);
 	if (entry.url) {
 		// Lost again (or stopped) between "connected" and here: the exit handler owns it now.
-		if (tunnels.get(placeholder.id) !== entry) return tunnels.get(placeholder.id) ?? entry;
+		if (tunnels.get(placeholder.id) !== entry) return tunnels.get(placeholder.id) ?? { ...entry, url: null, state: "idle" };
 		log.info("Tunnel recovered", { id: placeholder.id, attempt: recovery.attempts, previousUrl: recovery.previousUrl, url: entry.url });
 		notifyChange(entry, recovery.previousUrl);
 	} else if (tunnels.get(placeholder.id) === placeholder) {
