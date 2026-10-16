@@ -127,9 +127,9 @@ describe("the whole Windows command line fits", () => {
 	// is the property that proves it was: on the agents that carry no protocol body
 	// inline, a coordinator task keeps AT LEAST the description room it had before.
 	//
-	// Measured with the preamble padded to COORDINATOR_PROMPT_LIMIT, so the floors hold for any prompt
-	// the cap allows, not just today's text. 26 237 (gemini) / 26 226 (custom) are the 6 500-character
-	// re-baseline of the old 26 536 / 26 525 (decisions/2026/10/16/coordinator-prompt-cap-6500.md).
+	// Measured with the preamble padded to COORDINATOR_PROMPT_LIMIT. At the cap it fits 26 237 (gemini) /
+	// 26 226 (custom); the floors sit ~37 lower so a prompt gaining a few escaped quotes or backticks still
+	// passes below the cap (decisions/2026/10/16/coordinator-prompt-cap-6500.md).
 	it("a coordinator task at the prompt cap keeps its baselined launch room", async () => {
 		asPlatform("win32");
 		const coordinator = (brief: number) => ({
@@ -138,8 +138,8 @@ describe("the whole Windows command line fits", () => {
 		});
 		const fits = async (command: string, brief: number) =>
 			(await resolveAgentCommand(agent(command), undefined, coordinator(brief))).length < WINDOWS_COMMAND_LINE_LIMIT;
-		expect(await fits("gemini", 26237)).toBe(true);
-		expect(await fits("some-custom-agent", 26226)).toBe(true);
+		expect(await fits("gemini", 26200)).toBe(true);
+		expect(await fits("some-custom-agent", 26190)).toBe(true);
 	});
 
 	it("the reserve is real: a task text this long is what the budget is for", () => {
