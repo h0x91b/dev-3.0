@@ -627,6 +627,25 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/only inside `<message>`/);
 	});
 
+	// Regression cases from the 2026-10-16 auto-approve audits: a relay must carry
+	// the user's grant, and only that grant.
+	it("scopes a relayed grant to its operation, targets, limits and addressee", () => {
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/scoped to what the relay states/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a wider or pattern-computed target set/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a higher spend/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a grant addressed to a different task/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/names no concrete operation clears nothing/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/deleting the named files the task owns/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a paid run within a quoted budget/);
+	});
+
+	it("treats creating a ref and landing on the default branch as an ordinary push", () => {
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/not Modify Shared Resources/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("git push origin <sha>:refs/heads/<new>");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("`--force-with-lease=<ref>:` with an empty expected value");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/non-force push \(merge, cherry-pick, fast-forward\)/);
+	});
+
 	it("replaces an older wording of a dev3 entry instead of stacking both", () => {
 		const settings: Record<string, unknown> = {
 			autoMode: {

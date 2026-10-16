@@ -53,7 +53,7 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("A per-task word binds only that task, never waiting on the question");
 		expect(COORDINATOR_PROMPT).toContain("never start unrelated backlog or re-create a running task");
 		// A launch is not a licence for anything downstream of it.
-		expect(COORDINATOR_PROMPT).toContain("a launch approval is not one of them");
+		expect(COORDINATOR_PROMPT).toContain("A launch approval grants nothing");
 	});
 
 	// The other half: a decline is a choice, and silence is not a decline.
@@ -166,10 +166,18 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/consolidate only on the user's word/);
 	});
 
+	// A relay used to authorise nothing, so children refused what the user had
+	// granted through the coordinator; it now carries the grant, with its scope.
+	it("tells the coordinator to relay a grant with its scope, not to withhold it", () => {
+		expect(COORDINATOR_PROMPT).not.toContain("your relay authorises nothing");
+		expect(COORDINATOR_PROMPT).toMatch(/their words verbatim, the operation, exact targets, limits, the child's seq/);
+		expect(COORDINATOR_PROMPT).toMatch(/anything wider goes back to the user/);
+	});
+
 	it("keeps the four rules that were learned from a specific failure", () => {
 		expect(COORDINATOR_PROMPT).toContain("RELAY THE RULING, NOT YOUR READING OF IT");
 		expect(COORDINATOR_PROMPT).toContain("NEVER ATTRIBUTE WORDS THE USER DID NOT SAY");
-		expect(COORDINATOR_PROMPT).toContain("PERMISSION DOES NOT TRAVEL");
+		expect(COORDINATOR_PROMPT).toContain("RELAYED PERMISSION IS SCOPED AND SPENT WHEN USED");
 		expect(COORDINATOR_PROMPT).toContain("Priority and task type are the user's call");
 		expect(COORDINATOR_PROMPT).toContain("ANNOUNCE A REVERSAL AS A REVERSAL");
 	});

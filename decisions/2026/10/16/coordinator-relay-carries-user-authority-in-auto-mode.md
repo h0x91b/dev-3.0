@@ -27,6 +27,17 @@ would, hard_deny untouched) and `DEV3_AUTO_MODE_GIT_ENTRY` (a task's own branch 
 rewrite, force-push and merge on request, default branch excluded). Each dev3 entry opens with a
 stable `dev3 …:` label, and an older wording under the same label is replaced, not stacked.
 
+Follow-up the same day, from two cross-board audits (Base44, video-edit): the relay is scoped — it
+clears only the operation, targets, limits and addressee it states, and a relay naming no concrete
+operation clears nothing. The git entry also says that creating a new ref at an exact SHA, an
+expected-absent `--force-with-lease=<ref>:`, and a non-force landing on the default branch are an
+ordinary push, not Modify Shared Resources (which counts "creating new resources in shared
+namespaces" and beat the built-in Git Push Destination exception on both audited pushes). The
+coordinator brief (`COORDINATOR_PROMPT`, `src/shared/types/prompts.ts`) used to say "PERMISSION DOES
+NOT TRAVEL … your relay authorises nothing", which made children refuse relayed grants on their
+own; it is reversed to "RELAYED PERMISSION IS SCOPED AND SPENT WHEN USED", telling the coordinator to
+relay the user's words verbatim with operation, targets, limits and the child's seq.
+
 ## Risks
 
 A real loosening of the user's global safety gate, written without a per-install prompt. A
