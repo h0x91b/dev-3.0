@@ -9,8 +9,10 @@ import type {
 	ClaudeSlotModel,
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
+import type { AccountLoginState } from "../../../shared/agent-accounts";
 import { CLAUDE_MODEL_SLOTS, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
-import { api } from "../../rpc";
+import { api, isElectrobun } from "../../rpc";
+import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
@@ -45,13 +47,6 @@ function HintLabel({ text, body }: { text: string; body: string }) {
 			<FieldHint label={text} body={body} />
 		</span>
 	);
-}
-
-interface AddFlow {
-	kind: AgentAccountKind;
-	accountId: string | null;
-	loginCommand: string;
-	verifying: boolean;
 }
 
 function IdentityBadges({
@@ -268,60 +263,6 @@ function AccountRow({
 						{t("settings.accountsRemove")}
 					</button>
 				) : null}
-			</div>
-		</div>
-	);
-}
-
-function LoginFlowCard({
-	flow,
-	onVerify,
-	onCancel,
-	t,
-}: {
-	flow: AddFlow;
-	onVerify: () => void;
-	onCancel: () => void;
-	t: TFunction;
-}) {
-	const [copied, setCopied] = useState(false);
-
-	return (
-		<div className="bg-base border border-accent/30 rounded-lg p-3 space-y-2.5">
-			<p className="text-fg-2 text-xs">{t("settings.accountsLoginHint")}</p>
-			<div className="flex items-center gap-1.5">
-				<code data-wheel-x className="flex-1 bg-elevated border border-edge rounded px-2 py-1.5 text-xs font-mono text-fg overflow-x-auto whitespace-nowrap">
-					{flow.loginCommand}
-				</code>
-				<button
-					type="button"
-					onClick={() => {
-						navigator.clipboard.writeText(flow.loginCommand);
-						setCopied(true);
-						setTimeout(() => setCopied(false), 2000);
-					}}
-					className="px-2.5 py-1.5 rounded bg-elevated border border-edge text-fg-2 text-xs hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
-				>
-					{copied ? t("settings.accountsCopied") : t("settings.accountsCopy")}
-				</button>
-			</div>
-			<div className="flex items-center gap-2">
-				<button
-					type="button"
-					onClick={onVerify}
-					disabled={flow.verifying}
-					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
-				>
-					{flow.verifying ? t("settings.accountsVerifying") : t("settings.accountsVerify")}
-				</button>
-				<button
-					type="button"
-					onClick={onCancel}
-					disabled={flow.verifying}
-					className="px-3 py-1.5 rounded-lg text-fg-3 text-xs hover:text-fg hover:bg-elevated transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
-				>
-					{t("settings.accountsCancelAdd")}
-				</button>
 			</div>
 		</div>
 	);
@@ -581,10 +522,51 @@ function ApiProfileFormCard({
 	);
 }
 
+/** A sign-in the modal no longer shows: it is still running (or finished) on the host. */
+function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLoginState; onOpen: () => void; onCancel: () => void; t: TFunction }) {
+	const done = login.phase === "succeeded";
+	const attention = login.phase === "failed" || login.phase === "expired" || login.phase === "exited" || login.phase === "missing-executable";
+	return (
+		<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 rounded-lg bg-accent/10" data-testid={`account-login-row-${login.kind}`}>
+			<span
+				aria-hidden
+				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : "bg-accent motion-safe:animate-pulse"}`}
+			/>
+			<span className="text-fg-2 text-sm flex-1 min-w-0">
+				{done
+					? t("settings.accountLoginRowDone")
+					: attention
+						? loginPhaseTitle(login, !isElectrobun, t)
+						: t("settings.accountLoginRowRunning")}
+			</span>
+			<button
+				type="button"
+				onClick={onOpen}
+				className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+			>
+				{t("settings.accountLoginRowOpen")}
+			</button>
+			{done ? null : (
+				<button
+					type="button"
+					onClick={onCancel}
+					className="px-2.5 py-1 text-fg-3 text-xs hover:text-fg hover:bg-elevated rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+				>
+					{/* Same verb as the modal: a failed or expired sign-in has nothing left to cancel. */}
+					{t(login.phase === "failed" || login.phase === "expired" ? "settings.accountLoginClose" : "settings.accountLoginCancel")}
+				</button>
+			)}
+		</div>
+	);
+}
+
 export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const [state, setState] = useState<AgentAccountsState | null>(null);
 	const pinnedLogins = usePinnedClaudeLogins();
-	const [addFlow, setAddFlow] = useState<AddFlow | null>(null);
+	const [logins, setLogins] = useState<Record<AgentAccountKind, AccountLoginState | null>>({ claude: null, codex: null });
+	// Which sign-in is on screen; hiding the modal leaves the login running on the host.
+	const [shownLogin, setShownLogin] = useState<AgentAccountKind | null>(null);
+	const [loginBusy, setLoginBusy] = useState(false);
 	const [apiForm, setApiForm] = useState<ApiFormDraft | null>(null);
 	// null → the form creates a new profile; set → it edits this existing one.
 	const [apiEdit, setApiEdit] = useState<{ id: string } | null>(null);
@@ -593,6 +575,25 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	const reload = useCallback(() => {
 		api.request.listAgentAccounts().then(setState).catch(() => {});
+	}, []);
+
+	useEffect(() => {
+		// A sign-in outlives this screen (another window, a reload, a hidden modal) — pick it back up.
+		for (const kind of ["claude", "codex"] as const) {
+			api.request.getAccountLogin({ kind })
+				.then((login) => setLogins((prev) => ({ ...prev, [kind]: login })))
+				.catch(() => {});
+		}
+		function onLoginChanged(e: Event) {
+			const { kind, state: login } = (e as CustomEvent<{ kind: AgentAccountKind; state: AccountLoginState | null }>).detail;
+			setLogins((prev) => ({ ...prev, [kind]: login }));
+			if (login?.phase === "succeeded") {
+				reload();
+				notifyAgentAccountsChanged();
+			}
+		}
+		window.addEventListener("rpc:accountLoginChanged", onLoginChanged);
+		return () => window.removeEventListener("rpc:accountLoginChanged", onLoginChanged);
 	}, []);
 
 	useEffect(() => {
@@ -624,40 +625,44 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		[run],
 	);
 
-	const handleStartAdd = useCallback(
-		(kind: AgentAccountKind) =>
-			run(async () => {
-				const prepared = await api.request.prepareAgentAccountLogin({ kind });
-				setAddFlow({ kind, accountId: prepared.accountId, loginCommand: prepared.loginCommand, verifying: false });
-			}),
-		[run],
-	);
-
-	const handleVerify = useCallback(async () => {
-		if (!addFlow) return;
-		setAddFlow({ ...addFlow, verifying: true });
+	const handleStartAdd = useCallback(async (kind: AgentAccountKind) => {
+		setLoginBusy(true);
 		try {
-			await api.request.completeAgentAccountLogin({ kind: addFlow.kind, accountId: addFlow.accountId });
-			setAddFlow(null);
+			const login = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			setLogins((prev) => ({ ...prev, [kind]: login }));
+			setShownLogin(kind);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
-			setAddFlow((current) => (current ? { ...current, verifying: false } : current));
+			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
-			reload();
-			notifyAgentAccountsChanged();
+			setLoginBusy(false);
 		}
-	}, [addFlow, reload]);
+	}, [t]);
 
-	const handleCancelAdd = useCallback(() => {
-		if (!addFlow) return;
-		// A prepared-but-unverified login dir (Claude CLAUDE_CONFIG_DIR or Codex
-		// CODEX_HOME) is an orphan — clean it up. Both flows now hand back an
-		// accountId for the scaffolded dir.
-		if (addFlow.accountId) {
-			api.request.removeAgentAccount({ kind: addFlow.kind, accountId: addFlow.accountId }).catch(() => {});
+	const handleRetryLogin = useCallback(async (login: AccountLoginState) => {
+		setLoginBusy(true);
+		try {
+			const next = await api.request.restartAccountLogin({ loginId: login.loginId, remoteViewer: !isElectrobun });
+			setLogins((prev) => ({ ...prev, [login.kind]: next }));
+		} catch (err) {
+			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
+		} finally {
+			setLoginBusy(false);
 		}
-		setAddFlow(null);
-	}, [addFlow]);
+	}, [t]);
+
+	/** Cancel, Close and Done are one backend call: stop our process, keep only a verified account. */
+	const handleCloseLogin = useCallback(async (login: AccountLoginState) => {
+		setLoginBusy(true);
+		try {
+			await api.request.closeAccountLogin({ loginId: login.loginId });
+		} catch {
+			// already gone on the host — the local view closes either way
+		} finally {
+			setLogins((prev) => (prev[login.kind]?.loginId === login.loginId ? { ...prev, [login.kind]: null } : prev));
+			setShownLogin(null);
+			setLoginBusy(false);
+		}
+	}, []);
 
 	const handleStartEditApi = useCallback(
 		(account: AgentAccount) =>
@@ -772,8 +777,8 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					</button>
 					<button
 						type="button"
-						onClick={() => handleStartAdd(kind)}
-						disabled={busy || addFlow !== null || apiForm !== null}
+						onClick={() => (logins[kind] ? setShownLogin(kind) : void handleStartAdd(kind))}
+						disabled={busy || loginBusy || apiForm !== null}
 						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 					>
 						{t("settings.accountsAdd")}
@@ -782,7 +787,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						<button
 							type="button"
 							onClick={() => setApiForm(EMPTY_API_FORM)}
-							disabled={busy || addFlow !== null || apiForm !== null}
+							disabled={busy || apiForm !== null}
 							className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 						>
 							{t("settings.accountsAddApiButton")}
@@ -813,8 +818,13 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					) : null}
 					{emptyHint}
 				</div>
-				{addFlow?.kind === kind ? (
-					<LoginFlowCard flow={addFlow} onVerify={handleVerify} onCancel={handleCancelAdd} t={t} />
+				{logins[kind] && shownLogin !== kind ? (
+					<LoginInProgressRow
+						login={logins[kind]!}
+						onOpen={() => setShownLogin(kind)}
+						onCancel={() => void handleCloseLogin(logins[kind]!)}
+						t={t}
+					/>
 				) : null}
 				{kind === "claude" && apiForm ? (
 					<ApiProfileFormCard
@@ -924,6 +934,17 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				) : null,
 			)}
 			<p className="text-fg-muted text-xs">{t("settings.accountsNewSessionsHint")}</p>
+			{shownLogin && logins[shownLogin] ? (
+				<AccountLoginModal
+					login={logins[shownLogin]!}
+					busy={loginBusy}
+					onHide={() => setShownLogin(null)}
+					onCancel={() => void handleCloseLogin(logins[shownLogin]!)}
+					onRetry={() => void handleRetryLogin(logins[shownLogin]!)}
+					onDone={() => void handleCloseLogin(logins[shownLogin]!)}
+					t={t}
+				/>
+			) : null}
 			</SettingsSection>
 		</SettingsEntry>
 	);

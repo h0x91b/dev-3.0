@@ -126,6 +126,40 @@ export interface AgentAccountsState {
 	};
 }
 
+/**
+ * Where an in-app sign-in stands. `running`/`exited`/`missing-executable` keep
+ * watching the staging dir, so a login finished in any terminal still lands;
+ * `succeeded`, `failed` and `expired` are final.
+ */
+export type AccountLoginPhase =
+	| "running"
+	| "verifying"
+	| "succeeded"
+	| "exited"
+	| "missing-executable"
+	| "failed"
+	| "expired";
+
+/** One sign-in owned by the backend host. Never carries terminal output or credentials. */
+export interface AccountLoginState {
+	loginId: string;
+	kind: AgentAccountKind;
+	phase: AccountLoginPhase;
+	/** PTY session key for the embedded terminal; null when no process could start. */
+	sessionKey: string | null;
+	/** The provider's device-code flow (URL + code) instead of a host-side browser callback. */
+	deviceAuth: boolean;
+	/** Fallback for a host where the embedded process cannot start. */
+	manualCommand: string;
+	executable: string;
+	installUrl: string | null;
+	exitCode: number | null;
+	error: string | null;
+	account: AgentAccount | null;
+	startedAt: number;
+	expiresAt: number;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
 	return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }

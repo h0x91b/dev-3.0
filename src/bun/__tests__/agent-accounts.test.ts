@@ -10,6 +10,9 @@ import {
 	codexAccountIdForHome,
 	completeClaudeLogin,
 	completeCodexLogin,
+	discardStagedLogin,
+	STAGED_LOGIN_MARKER,
+	sweepAbandonedStagedLogins,
 	getActiveClaudeConfigDir,
 	getActiveClaudeSessionEnv,
 	getActiveCodexSessionEnv,
@@ -19,11 +22,13 @@ import {
 	listAgentAccounts,
 	prepareClaudeLogin,
 	prepareCodexLogin,
+	LoginNotReadyError,
 	registeredOutputStyleName,
 	removeAgentAccount,
 	renameAgentAccount,
 	setActiveClaudeAccount,
 	setActiveCodexAccount,
+	stagedLoginHasIdentity,
 	updateClaudeApiProfile,
 	type AccountPaths,
 } from "../agent-accounts";
@@ -252,6 +257,61 @@ describe("claude login flow", () => {
 		await expect(completeClaudeLogin(accountId, paths)).rejects.toThrow(/Login not detected/);
 	});
 
+	it("before the login lands, complete says not-ready (keep watching) rather than failing", async () => {
+		seedClaudeLogin();
+		const { accountId } = await prepareClaudeLogin(paths);
+		await expect(completeClaudeLogin(accountId, paths)).rejects.toBeInstanceOf(LoginNotReadyError);
+		expect(stagedLoginHasIdentity("claude", accountId, paths)).toBe(false);
+	});
+
+	it("prepare hands a launch scoped by env to its own dir, and pre-trusts that dir", async () => {
+		seedClaudeLogin();
+		const { accountId, launch } = await prepareClaudeLogin(paths);
+		const dir = claudeAccountDir(accountId, paths);
+		expect(launch).toEqual({ command: "claude", args: ["/login"], env: { CLAUDE_CONFIG_DIR: dir }, cwd: dir });
+		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
+		expect(seeded.projects[dir].hasTrustDialogAccepted).toBe(true);
+	});
+
+	it("sweeps only marked, unregistered staged dirs older than the TTL", async () => {
+		seedClaudeLogin();
+		const stale = await prepareClaudeLogin(paths);
+		const fresh = await prepareClaudeLogin(paths);
+		const saved = await prepareClaudeLogin(paths);
+		const savedDir = claudeAccountDir(saved.accountId, paths);
+		writeFileSync(join(savedDir, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "s@example.com", accountUuid: "claude-acc-s" } }));
+		writeFileSync(join(savedDir, ".credentials.json"), "{}");
+		await completeClaudeLogin(saved.accountId, paths);
+		expect(existsSync(join(savedDir, STAGED_LOGIN_MARKER))).toBe(false);
+		// A dir from an older build has no marker: never ours to judge.
+		const legacy = claudeAccountDir("legacy-unmarked", paths);
+		mkdirSync(legacy, { recursive: true });
+		const staleDir = claudeAccountDir(stale.accountId, paths);
+		writeFileSync(join(staleDir, STAGED_LOGIN_MARKER), JSON.stringify({ createdAt: Date.now() - 60 * 60_000 }));
+
+		expect(sweepAbandonedStagedLogins("claude", 20 * 60_000, Date.now(), paths)).toBe(1);
+		expect(existsSync(staleDir)).toBe(false);
+		expect(existsSync(claudeAccountDir(fresh.accountId, paths))).toBe(true);
+		expect(existsSync(savedDir)).toBe(true);
+		expect(existsSync(legacy)).toBe(true);
+	});
+
+	it("discardStagedLogin deletes an unverified dir but refuses a saved account", async () => {
+		seedClaudeLogin();
+		const staged = await prepareClaudeLogin(paths);
+		expect(discardStagedLogin("claude", staged.accountId, paths)).toBe(true);
+		expect(existsSync(claudeAccountDir(staged.accountId, paths))).toBe(false);
+
+		const saved = await prepareClaudeLogin(paths);
+		const dir = claudeAccountDir(saved.accountId, paths);
+		writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "second@example.com", accountUuid: "claude-acc-2" } }));
+		writeFileSync(join(dir, ".credentials.json"), "{}");
+		expect(stagedLoginHasIdentity("claude", saved.accountId, paths)).toBe(true);
+		await completeClaudeLogin(saved.accountId, paths);
+		expect(discardStagedLogin("claude", saved.accountId, paths)).toBe(false);
+		expect(existsSync(join(dir, ".credentials.json"))).toBe(true);
+	});
+
 	it("complete registers the account once identity + credentials exist", async () => {
 		seedClaudeLogin();
 		const { accountId } = await prepareClaudeLogin(paths);
@@ -378,6 +438,18 @@ describe("codex accounts", () => {
 			// Not registered until verified — the user's ~/.codex is untouched.
 			const state = await listAgentAccounts(paths);
 			expect(state.codex.accounts).toHaveLength(0);
+		} finally {
+			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
+			else process.env.DEV3_HEADLESS = prevHeadless;
+		}
+	});
+
+	it("prepareCodexLogin uses device auth when the viewer is remote, even on a desktop host", async () => {
+		const prevHeadless = process.env.DEV3_HEADLESS;
+		delete process.env.DEV3_HEADLESS;
+		try {
+			const { accountId, launch } = await prepareCodexLogin(paths, { deviceAuth: true });
+			expect(launch).toEqual({ command: "codex", args: ["login", "--device-auth"], env: { CODEX_HOME: codexAccountDir(accountId, paths) }, cwd: codexAccountDir(accountId, paths) });
 		} finally {
 			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
 			else process.env.DEV3_HEADLESS = prevHeadless;

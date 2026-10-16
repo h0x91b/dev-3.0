@@ -756,6 +756,39 @@ async function ensureClaudeCredentialsFile(dir: string, paths: AccountPaths): Pr
 	return false;
 }
 
+/** Written into every dir a sign-in stages, so an abandoned one is recognisably ours. */
+export const STAGED_LOGIN_MARKER = ".dev3-staged-login";
+
+function markStagedLogin(dir: string): void {
+	writeFileSync(join(dir, STAGED_LOGIN_MARKER), JSON.stringify({ createdAt: Date.now() }));
+}
+
+function unmarkStagedLogin(dir: string): void {
+	rmSync(join(dir, STAGED_LOGIN_MARKER), { force: true });
+}
+
+/** The provider has not finished writing the login yet — keep watching, not an error. */
+export class LoginNotReadyError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "LoginNotReadyError";
+	}
+}
+
+/** How a staged sign-in is launched; `env` is all that scopes it to its own dir. */
+export interface AccountLoginLaunch {
+	command: string;
+	args: string[];
+	env: Record<string, string>;
+	cwd: string;
+}
+
+export interface PreparedAccountLogin {
+	accountId: string;
+	loginCommand: string;
+	launch: AccountLoginLaunch;
+}
+
 function assertNoDuplicate(
 	registry: Registry,
 	kind: AgentAccountKind,
@@ -1019,16 +1052,28 @@ export async function updateClaudeApiProfile(
 	return toAccount(entry, "claude", paths);
 }
 
-/** Scaffold a fresh config dir for a new login and return the command to run.
+/** Scaffold a fresh config dir for a new login and return how to run it.
  *  The dir is NOT registered until the login is verified (completeClaudeLogin). */
-export async function prepareClaudeLogin(paths: AccountPaths = defaultAccountPaths()): Promise<{ accountId: string; loginCommand: string }> {
+export async function prepareClaudeLogin(paths: AccountPaths = defaultAccountPaths()): Promise<PreparedAccountLogin> {
 	const id = crypto.randomUUID();
 	const dir = claudeAccountDir(id, paths);
 	scaffoldClaudeAccountDir(dir, paths);
 	// Seed .claude.json without the identity — its presence after the login is
-	// how completeClaudeLogin verifies success.
-	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seedClaudeJson(paths), null, 2));
-	return { accountId: id, loginCommand: `CLAUDE_CONFIG_DIR='${dir}' claude /login` };
+	// how completeClaudeLogin verifies success. The embedded terminal runs in the
+	// staging dir itself, so pre-trust it: a folder-trust prompt there is noise.
+	const seeded = seedClaudeJson(paths);
+	const projects = seeded.projects && typeof seeded.projects === "object" && !Array.isArray(seeded.projects)
+		? { ...(seeded.projects as Record<string, unknown>) }
+		: {};
+	projects[dir] = { ...(projects[dir] as Record<string, unknown> | undefined), hasTrustDialogAccepted: true };
+	seeded.projects = projects;
+	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
+	markStagedLogin(dir);
+	return {
+		accountId: id,
+		loginCommand: `CLAUDE_CONFIG_DIR='${dir}' claude /login`,
+		launch: { command: "claude", args: ["/login"], env: { CLAUDE_CONFIG_DIR: dir }, cwd: dir },
+	};
 }
 
 /** Verify a prepared login dir and register it as an account. */
@@ -1036,18 +1081,20 @@ export async function completeClaudeLogin(accountId: string, paths: AccountPaths
 	const dir = claudeAccountDir(accountId, paths);
 	const identity = parseClaudeIdentity(safeReadJson(join(dir, ".claude.json")));
 	if (!identity) {
-		throw new Error("Login not detected yet. Run the login command, finish the OAuth flow, then verify again.");
+		throw new LoginNotReadyError("Login not detected yet. Finish the sign-in in the terminal.");
 	}
 	const registry = loadRegistry(paths);
 	assertNoDuplicate(registry, "claude", identity, paths, accountId);
 	if (!(await ensureClaudeCredentialsFile(dir, paths))) {
-		throw new Error("Login detected but credentials are missing. Finish the login in the terminal, then verify again.");
+		throw new LoginNotReadyError("Login detected but credentials are missing. Finish the sign-in in the terminal.");
 	}
 	if (registry.claude.accounts.some((e) => e.id === accountId)) {
 		saveRegistry(registry, paths);
 		return toAccount(registry.claude.accounts.find((e) => e.id === accountId)!, "claude", paths);
 	}
-	return registerAccount(registry, "claude", accountId, identity, paths);
+	const account = registerAccount(registry, "claude", accountId, identity, paths);
+	unmarkStagedLogin(dir);
+	return account;
 }
 
 /** Import the login currently in ~/.codex/auth.json as a managed snapshot. */
@@ -1081,18 +1128,26 @@ export async function importCurrentCodexAccount(paths: AccountPaths = defaultAcc
 	return account;
 }
 
-/** Scaffold a fresh CODEX_HOME for a new login and return the command to run.
+/** Scaffold a fresh CODEX_HOME for a new login and return how to run it.
  *  The dir is NOT registered until the login is verified (completeCodexLogin) —
- *  the user's ~/.codex is never touched, mirroring the Claude login flow. */
-export async function prepareCodexLogin(paths: AccountPaths = defaultAccountPaths()): Promise<{ accountId: string; loginCommand: string }> {
+ *  the user's ~/.codex is never touched, mirroring the Claude login flow.
+ *  `deviceAuth`: the browser finishing the login is not on this host (a headless
+ *  box, or a remote viewer), so `codex login`'s localhost:1455 callback is a dead
+ *  end — `--device-auth` prints a URL + code that works from any device. */
+export async function prepareCodexLogin(
+	paths: AccountPaths = defaultAccountPaths(),
+	opts: { deviceAuth?: boolean } = {},
+): Promise<PreparedAccountLogin> {
 	const id = crypto.randomUUID();
 	const dir = ensureCodexAccountHome(id, paths);
-	// Headless/remote box (`dev3 remote`) has no local browser, so plain
-	// `codex login` — which opens localhost:1455 + a browser — is a dead end.
-	// Codex's own hint there is `codex login --device-auth`; use it so the
-	// terminal prints a URL + code the user can open on any device.
-	const deviceAuth = process.env.DEV3_HEADLESS === "1" ? " --device-auth" : "";
-	return { accountId: id, loginCommand: `CODEX_HOME='${dir}' codex login${deviceAuth}` };
+	markStagedLogin(dir);
+	const deviceAuth = opts.deviceAuth === true || process.env.DEV3_HEADLESS === "1";
+	const args = deviceAuth ? ["login", "--device-auth"] : ["login"];
+	return {
+		accountId: id,
+		loginCommand: `CODEX_HOME='${dir}' codex ${args.join(" ")}`,
+		launch: { command: "codex", args, env: { CODEX_HOME: dir }, cwd: dir },
+	};
 }
 
 /** Verify a prepared CODEX_HOME login dir and register it as an account. */
@@ -1101,7 +1156,7 @@ export async function completeCodexLogin(accountId: string, paths: AccountPaths 
 	const authJson = safeReadJson(authFile);
 	let identity = parseCodexIdentity(authJson);
 	if (!identity?.accountId) {
-		throw new Error("Login not detected yet. Run the login command, finish the flow, then verify again.");
+		throw new LoginNotReadyError("Login not detected yet. Finish the sign-in in the terminal.");
 	}
 	const registry = loadRegistry(paths);
 	const workspaceNames = await lookupCodexWorkspaceNames(authJson);
@@ -1121,9 +1176,58 @@ export async function completeCodexLogin(accountId: string, paths: AccountPaths 
 		return toAccount(registry.codex.accounts.find((e) => e.id === accountId)!, "codex", paths);
 	}
 	const account = registerAccount(registry, "codex", accountId, identity, paths, { workspaceName });
+	unmarkStagedLogin(codexAccountDir(accountId, paths));
 	registry.codex.activeId = accountId; // newly added becomes the default preselect
 	saveRegistry(registry, paths);
 	return account;
+}
+
+/** Has the provider written an identity into a staged login dir yet? Read-only. */
+export function stagedLoginHasIdentity(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): boolean {
+	if (kind === "claude") return parseClaudeIdentity(safeReadJson(join(claudeAccountDir(accountId, paths), ".claude.json"))) !== null;
+	return Boolean(parseCodexIdentity(safeReadJson(codexAccountAuthFile(accountId, paths)))?.accountId);
+}
+
+/** Delete a staged login dir that never became an account. A registered id is
+ *  refused: its dir IS a saved login, and only an explicit Remove may delete it. */
+export function discardStagedLogin(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): boolean {
+	const registry = loadRegistry(paths);
+	if (registry[kind].accounts.some((e) => e.id === accountId)) return false;
+	const dir = kind === "claude" ? claudeAccountDir(accountId, paths) : codexAccountDir(accountId, paths);
+	rmSync(dir, { recursive: true, force: true });
+	return true;
+}
+
+/**
+ * Delete staged sign-in dirs a killed app left behind: only dirs carrying our
+ * marker, never registered, and older than `olderThanMs` — any sign-in that old
+ * has expired in whichever app instance started it. Runs when the user starts a
+ * new sign-in, never at load time.
+ */
+export function sweepAbandonedStagedLogins(
+	kind: AgentAccountKind,
+	olderThanMs: number,
+	now: number = Date.now(),
+	paths: AccountPaths = defaultAccountPaths(),
+): number {
+	const root = join(paths.accountsDir, kind);
+	let entries: string[];
+	try {
+		entries = readdirSync(root);
+	} catch {
+		return 0;
+	}
+	const registered = new Set(loadRegistry(paths)[kind].accounts.map((e) => e.id));
+	let swept = 0;
+	for (const id of entries) {
+		if (!isSafeAccountId(id) || registered.has(id)) continue;
+		const marker = safeReadJson(join(root, id, STAGED_LOGIN_MARKER)) as { createdAt?: unknown } | null;
+		if (typeof marker?.createdAt !== "number" || now - marker.createdAt < olderThanMs) continue;
+		rmSync(join(root, id), { recursive: true, force: true });
+		swept += 1;
+	}
+	if (swept > 0) log.info("Abandoned staged sign-ins removed", { kind, swept });
+	return swept;
 }
 
 /** Claude activation is registry-only: new sessions pick up CLAUDE_CONFIG_DIR. */

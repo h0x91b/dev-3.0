@@ -5,7 +5,7 @@ import type { ImportConversationsResult, ImportableConversationView } from "../c
 import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-model";
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
-import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
+import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
@@ -431,13 +431,27 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			prepareAgentAccountLogin: {
-				params: { kind: AgentAccountKind };
-				response: { accountId: string | null; loginCommand: string };
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			startAccountLogin: {
+				params: { kind: AgentAccountKind; remoteViewer: boolean };
+				response: AccountLoginState;
 			};
-			completeAgentAccountLogin: {
-				params: { kind: AgentAccountKind; accountId?: string | null };
-				response: AgentAccount;
+			getAccountLogin: {
+				params: { kind: AgentAccountKind };
+				response: AccountLoginState | null;
+			};
+			restartAccountLogin: {
+				params: { loginId: string; remoteViewer: boolean };
+				response: AccountLoginState;
+			};
+			getAccountLoginPtyUrl: {
+				params: { sessionKey: string };
+				response: string;
+			};
+			/** Cancel a sign-in in progress or dismiss a finished one; stops only its own process. */
+			closeAccountLogin: {
+				params: { loginId: string };
+				response: void;
 			};
 			setActiveAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string | null };
@@ -1742,6 +1756,8 @@ export type AppRPCSchema = {
 			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */
 			taskTerminalResumed: { taskId: string; projectId: string };
 			projectPtyDied: { projectId: string };
+			/** An in-app account sign-in changed phase; `state: null` = it was closed. */
+			accountLoginChanged: { kind: AgentAccountKind; state: AccountLoginState | null };
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			/**

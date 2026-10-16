@@ -10,6 +10,8 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+2026-10-16 — Account sign-in runs in a modal terminal, not a copied command (yaml `modal.observed`): Escape stays with the CLI, X hides, Cancel ends. Why: decisions/2026/10/16/embedded-account-login-terminal.md.
+
 ## 2026-10-14 — Agent toast bursts stack as a deck
 
 Bible §5.7, yaml `surfaces.toast`: a replacing agent toast shows what it covered as a ≤2-layer deck in the stack gap plus an exact `+N earlier` tab — covered, not unread; it resets when the slot empties. Why: decisions/2026/10/14/agent-toast-burst-deck.md.
@@ -28,9 +30,7 @@ Bible §5.7: card → sender (inert without one), traffic only via its action; a
 
 Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-video` clips (own `sharedVideos` field, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md.
 
-## 2026-09-22 — One task context menu, card and sidebar row
-
-Bible §4 `Context menu` / yaml `surfaces.context_menu.task_menu`: right-click (long-press on touch) opens one shared `TaskContextMenu` for the task object, routing to the pickers, modals and RPCs that already exist. It may repeat a control the surface shows — a menu reached blind is not chrome. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
+2026-09-22 — One task context menu for card and sidebar row; yaml `context_menu.task_menu`. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
 
 ## 2026-09-20 — Simplified Mode leads toward the Full interface
 

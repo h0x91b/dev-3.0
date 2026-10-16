@@ -568,6 +568,9 @@ applySavedTmuxPanePreferences(loadSettingsSync());
 import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
 	setPortTunnelsPushHook(pushEverywhere);
 }).catch((err) => log.warn("port-tunnels push hook setup failed", { error: String(err) }));
+import("./account-login-terminal").then(({ setAccountLoginPush }) => {
+	setAccountLoginPush(pushEverywhere);
+}).catch((err) => log.warn("account-login push hook setup failed", { error: String(err) }));
 
 // Start remote access server (serves UI + RPC + PTY proxy on LAN).
 //
@@ -843,6 +846,8 @@ function runGlobalQuitCleanup(): void {
 	// would orphan tunnels (and trycloudflare quotas) on app exit.
 	import("./port-tunnels").then(({ cleanupAllTunnels }) => cleanupAllTunnels()).catch(() => { /* shutdown — best-effort */ });
 	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
+	// A sign-in terminal is ours alone: stop it and release its staged dir.
+	import("./account-login-terminal").then(({ accountLogins }) => accountLogins.closeAll()).catch(() => { /* shutdown — best-effort */ });
 	// The model-catalog proxy dies with the app — an orphan would keep holding a
 	// loopback port and the user's provider keys in memory.
 	try { killModelSidecarNow(); } catch (err) { log.warn("killModelSidecarNow failed", { error: String(err) }); }

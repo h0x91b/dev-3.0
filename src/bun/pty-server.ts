@@ -196,6 +196,34 @@ interface PtySession {
 
 const sessions = new Map<string, PtySession>();
 
+/** A viewer socket as an external session sees it. */
+export interface ExternalPtyViewer {
+	sendText(text: string): void;
+	close(code?: number, reason?: string): void;
+}
+
+/**
+ * A PTY owned outside this module (an account sign-in terminal) and viewed through
+ * the same WebSocket, so the remote proxy reaches it with no transport of its own.
+ * It never joins `sessions`: idle, bell and tmux bookkeeping are not its business.
+ */
+export interface ExternalPtySession {
+	attach(viewer: ExternalPtyViewer): void;
+	input(viewer: ExternalPtyViewer, data: string): void;
+	resize(viewer: ExternalPtyViewer, cols: number, rows: number): void;
+	detach(viewer: ExternalPtyViewer): void;
+}
+
+const externalSessions = new Map<string, ExternalPtySession>();
+
+/** Serve `key` from `session`; the returned function unregisters it. */
+export function registerExternalPtySession(key: string, session: ExternalPtySession): () => void {
+	externalSessions.set(key, session);
+	return () => {
+		if (externalSessions.get(key) === session) externalSessions.delete(key);
+	};
+}
+
 /** Session key → sockets outside this module that carry the session's output. */
 const backpressureProbes = new Map<string, Set<() => number>>();
 
@@ -2259,6 +2287,14 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
+				const external = externalSessions.get(sessionId);
+				if (external) {
+					(ws as any).sessionId = sessionId;
+					(ws as any).externalSession = external;
+					external.attach(ws as unknown as ExternalPtyViewer);
+					return;
+				}
+
 				const session = sessions.get(sessionId);
 				if (!session) {
 					log.warn("WS connection to unknown session", {
@@ -2343,6 +2379,14 @@ const ptyServer = Bun.serve({
 			try {
 				const sessionId = (ws as any).sessionId as string | undefined;
 				if (!sessionId) return;
+				const external = (ws as any).externalSession as ExternalPtySession | undefined;
+				if (external) {
+					const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+					const size = isResizeSequence(text) ? parseResizeSequence(text) : null;
+					if (size) external.resize(ws as unknown as ExternalPtyViewer, size.cols, size.rows);
+					else if (!isResizeSequence(text)) external.input(ws as unknown as ExternalPtyViewer, text);
+					return;
+				}
 				const session = sessions.get(sessionId);
 				if (!session) return;
 				const shell = sessionShell(session);
@@ -2413,6 +2457,11 @@ const ptyServer = Bun.serve({
 				ptyOutputRecorder.forget(ws);
 				const sessionId = (ws as any).sessionId as string | undefined;
 				if (!sessionId) return;
+				const external = (ws as any).externalSession as ExternalPtySession | undefined;
+				if (external) {
+					external.detach(ws as unknown as ExternalPtyViewer);
+					return;
+				}
 
 				log.info("WS disconnected", {
 					taskId: shortId(sessionId),

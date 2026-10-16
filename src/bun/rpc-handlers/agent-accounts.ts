@@ -4,6 +4,7 @@
  */
 
 import type {
+	AccountLoginState,
 	AgentAccount,
 	AgentAccountKind,
 	AgentAccountsState,
@@ -15,6 +16,8 @@ import type { ClaudeApiProfileDraft } from "../agent-accounts";
 import { parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import * as accounts from "../agent-accounts";
+import { ACCOUNT_LOGIN_SESSION_PREFIX, accountLogins } from "../account-login-terminal";
+import { getPtyPort } from "../pty-server";
 import * as data from "../data";
 import { resolveProjectEnv } from "../repo-config";
 import { homedir } from "node:os";
@@ -110,32 +113,34 @@ async function updateAgentApiProfile(params: {
 	return account;
 }
 
-async function prepareAgentAccountLogin(params: { kind: AgentAccountKind }): Promise<{ accountId: string | null; loginCommand: string }> {
-	log.info("→ prepareAgentAccountLogin", params);
-	const result =
-		params.kind === "claude" ? await accounts.prepareClaudeLogin() : await accounts.prepareCodexLogin();
-	log.info("← prepareAgentAccountLogin", { accountId: result.accountId });
-	return result;
+/** Start (or join) the in-app sign-in for `kind`. `remoteViewer`: the page asking is
+ *  not on the host, so a host-side browser callback cannot reach the user. */
+async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState> {
+	log.info("→ startAccountLogin", params);
+	const state = await accountLogins.start(params.kind, { remoteViewer: params.remoteViewer });
+	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase });
+	return state;
 }
 
-async function completeAgentAccountLogin(params: { kind: AgentAccountKind; accountId?: string | null }): Promise<AgentAccount> {
-	log.info("→ completeAgentAccountLogin", params);
-	if (!params.accountId) throw new Error(`accountId is required for ${params.kind} login verification`);
-	try {
-		const account =
-			params.kind === "claude"
-				? await accounts.completeClaudeLogin(params.accountId)
-				: await accounts.completeCodexLogin(params.accountId);
-		log.info("← completeAgentAccountLogin", accountLogDetails(account));
-		return account;
-	} catch (error) {
-		log.warn("← completeAgentAccountLogin failed", {
-			kind: params.kind,
-			pendingAccountId: params.accountId.slice(0, 8),
-			error: String(error),
-		});
-		throw error;
-	}
+async function getAccountLogin(params: { kind: AgentAccountKind }): Promise<AccountLoginState | null> {
+	return accountLogins.get(params.kind);
+}
+
+async function restartAccountLogin(params: { loginId: string; remoteViewer: boolean }): Promise<AccountLoginState> {
+	log.info("→ restartAccountLogin", { loginId: params.loginId.slice(0, 8) });
+	return accountLogins.restart(params.loginId, { remoteViewer: params.remoteViewer });
+}
+
+/** Loopback URL of a sign-in terminal; the browser transport swaps in its proxied `/pty`. */
+async function getAccountLoginPtyUrl(params: { sessionKey: string }): Promise<string> {
+	if (!params.sessionKey.startsWith(ACCOUNT_LOGIN_SESSION_PREFIX)) throw new Error("Not a sign-in terminal");
+	return `ws://localhost:${getPtyPort()}?session=${encodeURIComponent(params.sessionKey)}`;
+}
+
+/** Cancel a sign-in in progress, or dismiss a finished one. */
+async function closeAccountLogin(params: { loginId: string }): Promise<void> {
+	log.info("→ closeAccountLogin", { loginId: params.loginId.slice(0, 8) });
+	accountLogins.close(params.loginId);
 }
 
 async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId: string | null }): Promise<void> {
@@ -203,8 +208,11 @@ export const agentAccountHandlers = {
 	addAgentApiProfile,
 	getAgentApiProfileDraft,
 	updateAgentApiProfile,
-	prepareAgentAccountLogin,
-	completeAgentAccountLogin,
+	startAccountLogin,
+	getAccountLogin,
+	restartAccountLogin,
+	getAccountLoginPtyUrl,
+	closeAccountLogin,
 	setActiveAgentAccount,
 	removeAgentAccount,
 	renameAgentAccount,

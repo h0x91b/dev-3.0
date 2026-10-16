@@ -301,6 +301,8 @@ applySavedTmuxPanePreferences(startupSettings);
 // Port-tunnels module needs the same broadcast hook for `exposedPortsChanged`
 // events so connected browsers see new public URLs appear in real time.
 const { setPortTunnelsPushHook, exposeTaskPort, cleanupAllTunnels, HEADLESS_TASK_ID } = await import("./port-tunnels");
+const { setAccountLoginPush, accountLogins } = await import("./account-login-terminal");
+setAccountLoginPush((name, payload) => pushToBrowserClients(name, payload));
 setPortTunnelsPushHook((name, payload) => {
 	pushToBrowserClients(name, payload);
 	// Reprint the URL list in the headless console — keeps users who ran
@@ -592,6 +594,7 @@ function shutdown(signal: string): void {
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
+	accountLogins.closeAll();
 	stopTunnel();
 	process.exit(0);
 }
