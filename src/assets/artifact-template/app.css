@@ -1,4 +1,10 @@
     * { box-sizing: border-box; }
+    /* Nothing an author drops into a panel may widen it: media scales down,
+       controls cap at the panel, and code that cannot wrap scrolls in place.
+       An <svg> keeps its height, since inline icons are sized by attributes. */
+    img, video, canvas { max-width: 100%; height: auto; }
+    svg, input, textarea, select { max-width: 100%; }
+    pre { max-width: 100%; overflow-x: auto; }
     /* One scale for everything that stacks, so no panel has to guess a number.
        Overlays live in the browser top layer, so their z-index only orders them
        against each other. */
@@ -24,6 +30,9 @@
       padding: 24px;
       color: rgb(var(--dev3-text-primary));
       font: .9375rem/1.5 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+      /* A URL, path, or SHA breaks inside its panel instead of stretching it;
+         `anywhere`, not `break-word`, so flex and grid children shrink too. */
+      overflow-wrap: anywhere;
     }
     /* A faint fixed wash behind the report, so the page reads as deep blue with
        light in it instead of as black. `--dev3-wash` dials it down in light mode. */
@@ -92,6 +101,9 @@
     .actions { align-items: stretch; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .actions > * { flex: 0 0 auto; }
     .actions button, .actions .status, .actions .pill { white-space: nowrap; }
+    /* `.actions` stretches its children, and only a flex pill centres its text
+       in the taller box; labels there are short and the row wraps instead. */
+    .actions .pill { display: inline-flex; align-items: center; justify-content: center; }
     .section-nav {
       position: sticky;
       z-index: var(--dev3-z-nav);
@@ -796,9 +808,9 @@
     .evidence-table .wrap { text-align: left; line-height: 1.45; }
     .evidence-table tr.regime td { border-top: 2px solid rgb(var(--dev3-accent) / .55); }
     .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-gold) / .5); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
-    /* Centred on both axes with a tight line box: a pill stretched by a flex row
-       (`.actions`, a section head) otherwise pins its text to the top edge. */
-    .pill { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; line-height: 1.2; text-align: center; white-space: nowrap; }
+    /* A block box, so a label too long for its panel ends in an ellipsis instead
+       of widening the panel; `middle` because a clipped box sits on its bottom edge. */
+    .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; padding: 4px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; line-height: 1.2; text-align: center; white-space: nowrap; }
     .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
     .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
     .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }

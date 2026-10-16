@@ -491,6 +491,22 @@ describe("bundled artifact starter contract", () => {
 		expect(docs).toContain("## Tables");
 	});
 
+	it("keeps media, controls, code and long text inside the panel that holds them", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const body = css.match(/\n {4}body \{([^}]*)\}/)?.[1] || "";
+
+		expect(css).toContain("img, video, canvas { max-width: 100%; height: auto; }");
+		expect(css).toContain("svg, input, textarea, select { max-width: 100%; }");
+		expect(css).toContain("pre { max-width: 100%; overflow-x: auto; }");
+		// `break-word` would not shrink a flex child's min-content, so a URL in a
+		// `.section-head` title would still push its pill out of the card.
+		expect(body).toContain("overflow-wrap: anywhere;");
+		// A pill never wraps, so it is cut to an ellipsis — which needs a block box.
+		const pill = css.match(/\n {4}\.pill \{([^}]*)\}/)?.[1] || "";
+		expect(pill).toContain("display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;");
+		expect(readFileSync(appPath, "utf8")).toContain("pill.title = pill.textContent.trim();");
+	});
+
 	it("stacks a table into labelled lines instead of scrolling it sideways", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
@@ -498,10 +514,11 @@ describe("bundled artifact starter contract", () => {
 		const printBlock = css.slice(css.indexOf("@media print"));
 
 		// No table may reintroduce a horizontal scroller or an unwrappable cell.
-		// `.section-nav` is the one sanctioned inline scroller and is not a table.
+		// `.section-nav` and `pre` are the only sanctioned inline scrollers, and neither
+		// is a table: code keeps its line shape, every table stacks instead.
 		const scrollers = css.match(/[^\n]*overflow-x:\s*auto[^\n]*/g) || [];
-		expect(scrollers).toHaveLength(1);
-		expect(css.slice(0, css.indexOf("overflow-x: auto"))).toMatch(/\.section-nav\s*\{[^}]*$/);
+		expect(scrollers).toEqual(["    pre { max-width: 100%; overflow-x: auto; }", "      overflow-x: auto;"]);
+		expect(css.slice(0, css.lastIndexOf("overflow-x: auto"))).toMatch(/\.section-nav\s*\{[^}]*$/);
 		expect(css).not.toMatch(/width:\s*max-content/);
 		// A cell must be able to wrap, or the table grows past its container.
 		const evidenceCells = css.match(/\.evidence-table th, \.evidence-table td \{([^}]*)\}/)?.[1] || "";

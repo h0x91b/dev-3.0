@@ -293,6 +293,12 @@
       closePopover(panel, false);
     });
   }, true);
+  // A pill cut to an ellipsis still shows its whole label on hover.
+  document.addEventListener("pointerover", (event) => {
+    const pill = event.target instanceof Element ? event.target.closest(".pill") : null;
+    if (!pill || pill.hasAttribute("title") || pill.scrollWidth <= pill.clientWidth) return;
+    pill.title = pill.textContent.trim();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     popoverTriggers.forEach((_, panel) => { if (panel.dataset.open) closePopover(panel); });
