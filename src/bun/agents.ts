@@ -26,6 +26,8 @@ import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv, getActiveOmpSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
+import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
+import { ompDefaultsArgs } from "./omp-launch-defaults";
 export { claudeModelFamily } from "../shared/agent-accounts";
 import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolveModelRoleLaunch, roleUnsetEnv } from "../shared/model-catalog";
 import { writeCodexModelCatalog } from "./codex-model-catalog";
@@ -810,6 +812,27 @@ async function applyOmpAccountEnv(
 	}
 }
 
+/** Prepend omp's dev3 defaults (`--config` overlay, see omp-launch-defaults.ts)
+ *  for whatever the user's own omp config leaves unset. Never fails a launch. */
+function withOmpLaunchDefaults(
+	config: AgentConfiguration | undefined,
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	worktreePath: string,
+	family?: AgentFamily,
+): AgentConfiguration | undefined {
+	if (agentKey(baseCmd, family) !== "omp" || hasOmpFlag(config?.additionalArgs, "--config")) return config;
+	try {
+		const agentDir = extraEnv.PI_CODING_AGENT_DIR === ENV_UNSET ? undefined : extraEnv.PI_CODING_AGENT_DIR;
+		const args = ompDefaultsArgs({ agentDir, worktreePath });
+		if (args.length === 0) return config;
+		return { ...(config ?? { id: "", name: "" }), additionalArgs: [...args, ...(config?.additionalArgs ?? [])] };
+	} catch (err) {
+		log.warn("Failed to apply omp launch defaults", { error: String(err) });
+		return config;
+	}
+}
+
 /** Rewrite a Claude preset's `--model` flag to the active API profile's override.
  *  Claude Code gives the CLI flag precedence over env, and dev3 presets pass
  *  concrete model ids — so without rewriting the flag, an API profile's per-slot
@@ -911,7 +934,10 @@ export async function resolveCommandForAgent(
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	await applyOmpAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
-	const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
+	const launchConfig = withOmpLaunchDefaults(
+		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
+		baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
+	);
 	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
@@ -1043,7 +1069,10 @@ export async function resolveCommandForProject(
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		await applyOmpAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
-		const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
+		const launchConfig = withOmpLaunchDefaults(
+			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
+			baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
+		);
 		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
 		return {
 			command,

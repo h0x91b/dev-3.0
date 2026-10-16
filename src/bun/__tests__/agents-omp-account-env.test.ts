@@ -1,4 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../settings", () => ({
@@ -31,5 +33,20 @@ describe("omp account env at launch", () => {
 	it("never consults the omp registry for another harness", async () => {
 		await resolveCommandForAgent("builtin-codex", null, ctx, { accountId: "a1" });
 		expect(mockedOmpEnv).not.toHaveBeenCalled();
+	});
+
+	it("defaults omp to Nerd Font symbols unless the account's config sets them", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "omp-acct-"));
+		try {
+			mockedOmpEnv.mockResolvedValue({ PI_CODING_AGENT_DIR: dir });
+			const fresh = await resolveCommandForAgent("builtin-omp", null, ctx, { accountId: "a1" });
+			expect(fresh.command).toMatch(/--config \S*omp-defaults\.yml/);
+
+			writeFileSync(join(dir, "config.yml"), "symbolPreset: ascii\n");
+			const chosen = await resolveCommandForAgent("builtin-omp", null, ctx, { accountId: "a1" });
+			expect(chosen.command).not.toContain("--config");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
