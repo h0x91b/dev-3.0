@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync } from "node:fs";
 import type { Project } from "../../shared/types";
-import { computeTaskTimeBreakdown } from "../../shared/types";
 
 const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-status-time`);
 
@@ -73,12 +72,6 @@ describe("status-duration accumulation", () => {
 			"review-by-user": 5 * MIN,
 		});
 
-		// The breakdown derived from the persisted task matches the split.
-		const tb = computeTaskTimeBreakdown(u, Date.parse("2026-07-01T02:00:00.000Z"));
-		expect(tb.totalMs).toBe(45 * MIN); // create → complete
-		expect(tb.agentMs).toBe(30 * MIN); // in-progress (+ AI review = 0)
-		expect(tb.userMs).toBe(5 * MIN); // review-by-user
-		expect(tb.hasStatusTracking).toBe(true);
 	});
 
 	it("accumulates repeat visits to the same status", async () => {
@@ -131,6 +124,23 @@ describe("addTaskFocusMs", () => {
 		expect(got.updatedAt).toBe(beforeUpdatedAt);
 		// History lives in the task's sidecar; still only the seeded 'created' entry.
 		expect(await loadEffectiveTaskHistory(testProject, got)).toHaveLength(1);
+	});
+
+	it("merges the per-hour split into focusByHour alongside the counter", async () => {
+		const task = await addTask(testProject, "T");
+		await addTaskFocusMs(testProject, task.id, 90_000, { "493000": 60_000, "493001": 30_000 });
+		await addTaskFocusMs(testProject, task.id, 15_000, { "493001": 15_000 });
+		const got = await getTask(testProject, task.id);
+		expect(got.focusMs).toBe(105_000);
+		expect(got.focusByHour).toEqual({ "493000": 60_000, "493001": 45_000 });
+	});
+
+	it("writes no focusByHour when no split is given (older caller shape)", async () => {
+		const task = await addTask(testProject, "T");
+		await addTaskFocusMs(testProject, task.id, 10_000);
+		const got = await getTask(testProject, task.id);
+		expect(got.focusMs).toBe(10_000);
+		expect(got.focusByHour).toBeUndefined();
 	});
 
 	it("ignores non-positive deltas and unknown task ids", async () => {

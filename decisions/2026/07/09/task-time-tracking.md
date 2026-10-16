@@ -1,5 +1,7 @@
 # 119 — Task time tracking (total / agent / focus)
 
+> Superseded on 2026-10-16 by `decisions/2026/10/16/period-clipped-time-invested.md`: the dashboard no longer sums lifetime totals of tasks completed in the period; `computeTaskTimeBreakdown` is gone and focus is also recorded per hour (`Task.focusByHour`).
+
 ## Context
 
 The Productivity cockpit celebrates *how much* you ship (tasks, lines) but not *how

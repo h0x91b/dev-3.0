@@ -162,6 +162,16 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		if (offset === 1) return t(`stats.rel.${base}Prev` as Parameters<typeof t>[0]);
 		return t.plural(`stats.rel.${base}Ago` as Parameters<typeof t.plural>[0], offset);
 	})();
+	const timeNotes: string[] = [];
+	if (data.time.gapTasks > 0) timeNotes.push(t.plural("stats.time.gap", data.time.gapTasks));
+	if (data.time.untimedFocusTasks > 0) {
+		timeNotes.push(
+			data.time.focusSince
+				? t("stats.time.focusSince", { date: formatWindowEdge(Date.parse(`${data.time.focusSince}T00:00:00`), "all") })
+				: t("stats.time.focusNotYet"),
+		);
+	}
+	if (data.time.hibernatedAgentTasks > 0) timeNotes.push(t.plural("stats.time.hibernated", data.time.hibernatedAgentTasks));
 	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(data.periodTo).toLocaleDateString()}`;
 	const periodNavTitle = offset === 0 ? periodRange : `${t("stats.nav.current")} · ${periodRange}`;
 	const formatLifetime = (hours: number) => formatLifetimeUnits(hours, {
@@ -480,42 +490,45 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							)}
 						</div>
 
-						{/* Time invested — total / agent / your-focus across the period's completed tasks */}
+						{/* Time invested — period-clipped in-flight / agent / your-focus, open tasks included */}
 						<div>
-							<div className="flex items-center justify-between mb-3">
+							<div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
 								<div className="text-fg-2 text-sm font-semibold">{t("stats.time.title")}</div>
-								<div className="text-fg-muted text-dense">
-									{data.time.count === 0
-										? t("stats.time.empty")
-										: !data.time.hasTracking
-											? t("stats.time.trackingNone")
-											: data.time.trackingSince
-												? t("stats.time.trackingSince", { date: data.time.trackingSince })
-												: t("stats.time.subtitle", { period: periodLabel })}
+								<div className="text-fg-muted text-dense tabular-nums">
+									{t("stats.time.subtitle", { from: formatWindowEdge(data.periodFrom, range), to: formatWindowEdge(data.periodTo, range) })}
 								</div>
 							</div>
-							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-								<TimeCard
-									label={t("stats.time.total")}
-									caption={t("stats.time.totalCaption")}
-									ms={data.time.totalMs}
-									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgTotalMs) }) : undefined}
-								/>
-								<TimeCard
-									label={t("stats.time.agent")}
-									caption={t("stats.time.agentCaption")}
-									ms={data.time.agentMs}
-									muted={!data.time.hasTracking}
-									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgAgentMs) }) : undefined}
-								/>
-								<TimeCard
-									label={t("stats.time.you")}
-									caption={t("stats.time.youCaption")}
-									ms={data.time.focusMs}
-									accent
-									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgFocusMs) }) : undefined}
-								/>
-							</div>
+							{data.time.activeTasks === 0 && data.time.focusMs === 0 ? (
+								<div className="rounded-xl border border-edge bg-raised px-4 py-6 text-center text-fg-muted text-xs">{t("stats.time.empty")}</div>
+							) : (
+								<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+									<TimeCard
+										label={t("stats.time.inFlight")}
+										caption={t("stats.time.inFlightCaption")}
+										ms={data.time.inFlightMs}
+										sub={t.plural("stats.time.inFlightTasks", data.time.activeTasks)}
+									/>
+									<TimeCard
+										label={t("stats.time.agent")}
+										caption={t("stats.time.agentCaption")}
+										ms={data.time.agentMs}
+										sub={data.time.agentWallMs > 0 ? t("stats.time.agentWall", { value: formatDuration(data.time.agentWallMs) }) : undefined}
+									/>
+									<TimeCard
+										label={t("stats.time.you")}
+										caption={t("stats.time.youCaption")}
+										ms={data.time.focusMs}
+										accent
+									/>
+								</div>
+							)}
+							{timeNotes.length > 0 && (
+								<ul className="mt-2 flex flex-col gap-0.5 text-fg-muted text-dense leading-tight" data-testid="stats-time-notes">
+									{timeNotes.map((note) => (
+										<li key={note}>{note}</li>
+									))}
+								</ul>
+							)}
 							{data.time.agentMs + data.time.focusMs > 0 && (
 								<AgentVsYouBar
 									agentMs={data.time.agentMs}
@@ -571,17 +584,17 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 											<div className="flex items-center gap-2 text-fg-muted text-dense">
 												{p.lines > 0 && <span>{compact(p.lines)} {t("stats.unit.lines")}</span>}
 												<span>{p.averageLifetimeMs == null ? t("stats.perProject.lifetimeUnavailable") : `${t("stats.perProject.lifetime")}: ${formatLifetime(p.averageLifetimeMs / 3_600_000)}`}</span>
-												{p.totalMs > 0 && (
+												{p.inFlightMs > 0 && (
 													<span
 														className="inline-flex items-center gap-1"
 														title={t("stats.time.perProjectTip", {
-															total: formatDuration(p.totalMs),
+															total: formatDuration(p.inFlightMs),
 															agent: formatDuration(p.agentMs),
 															you: formatDuration(p.focusMs),
 														})}
 													>
 														<span style={{ fontFamily: ICON }}>{"\u{F0150}"}</span>
-														{formatDuration(p.totalMs)}
+														{formatDuration(p.inFlightMs)}
 													</span>
 												)}
 											</div>
@@ -676,10 +689,9 @@ function Counter({
 }
 
 /**
- * One "Time invested" metric card (Total / Agent / Your time). Durations are
+ * One "Time invested" metric card (In flight / Agent / Your time). Durations are
  * informational — no gauge/red-zone — so this is a compact card with an optional
- * "avg / task" sub-line. `accent` tints the "your time" value; `muted` dims the
- * agent value when per-status tracking hasn't started yet.
+ * sub-line. `accent` tints the "your time" value.
  */
 function TimeCard({
 	label,
@@ -687,16 +699,14 @@ function TimeCard({
 	ms,
 	sub,
 	accent,
-	muted,
 }: {
 	label: string;
 	caption: string;
 	ms: number;
 	sub?: string;
 	accent?: boolean;
-	muted?: boolean;
 }) {
-	const valueColor = accent ? "text-accent" : muted ? "text-fg-3" : "text-fg";
+	const valueColor = accent ? "text-accent" : "text-fg";
 	return (
 		<div className="rounded-xl border border-edge bg-raised px-4 py-3 flex flex-col gap-0.5">
 			<div className={`text-2xl font-bold tabular-nums leading-none ${valueColor}`}>{formatDuration(ms)}</div>
@@ -705,6 +715,14 @@ function TimeCard({
 			{sub && <div className="text-fg-3 text-dense leading-tight mt-0.5 tabular-nums">{sub}</div>}
 		</div>
 	);
+}
+
+/** One edge of the reporting window — with the clock time for the rolling 24h "day", since it never starts at midnight. */
+function formatWindowEdge(ms: number, range: StatsRange): string {
+	const d = new Date(ms);
+	return range === "day"
+		? d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+		: d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 /**

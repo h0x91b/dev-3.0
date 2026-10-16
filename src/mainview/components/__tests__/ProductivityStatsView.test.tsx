@@ -35,9 +35,12 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		configId: "config-auto-opus",
 		groupId: null,
 		variantIndex: null,
-		statusDurations: {},
 		statusEnteredAt: null,
 		focusMs: 0,
+		focusByHour: {},
+		movements: [],
+		movementsDropped: 0,
+		hibernated: false,
 		...over,
 	};
 }
@@ -141,37 +144,50 @@ describe("ProductivityStatsView", () => {
 		expect(screen.queryByTestId("hero-stats-compact")).not.toBeInTheDocument();
 	});
 
-	it("renders the Time invested section with agent/your split from tracking data", async () => {
+	it("renders period-clipped Time invested cards for an open task", async () => {
+		const HOUR = 3_600_000;
+		// Hour-aligned anchor so the focus bucket provably starts inside the window.
+		const hourStart = Math.floor(Date.now() / HOUR) * HOUR - 2 * HOUR;
+		const at = (ms: number) => new Date(ms).toISOString();
 		mockGet.mockResolvedValue({
 			events: [
 				ev({
-					createdAt: new Date(Date.now() - 3 * DAY).toISOString(),
-					movedAt: new Date(Date.now() - 1 * DAY).toISOString(),
-					statusDurations: { "in-progress": 90 * 60_000, "review-by-ai": 15 * 60_000 },
-					statusEnteredAt: new Date(Date.now() - 1 * DAY).toISOString(),
+					status: "review-by-user",
+					createdAt: at(hourStart - 3 * HOUR),
+					movedAt: at(hourStart),
+					statusEnteredAt: at(hourStart),
+					movements: [
+						{ at: at(hourStart - 3 * HOUR), to: "in-progress" },
+						{ at: at(hourStart - HOUR - 15 * 60_000), to: "review-by-ai" },
+						{ at: at(hourStart), to: "review-by-user" },
+					],
 					focusMs: 45 * 60_000,
+					focusByHour: { [String(hourStart / HOUR)]: 45 * 60_000 },
 				}),
 			],
 			generatedAt: new Date().toISOString(),
 		});
 		renderView();
 		expect(await screen.findByText("Time invested")).toBeInTheDocument();
+		expect(screen.getByText("In flight")).toBeInTheDocument();
 		expect(screen.getByText("Agent time")).toBeInTheDocument();
 		expect(screen.getByText("Your time")).toBeInTheDocument();
-		// Agent = 90m + 15m → "1h 45m"; your focus = 45m → "45m".
-		expect(screen.getByText("1h 45m")).toBeInTheDocument();
+		// Agent = 1h45m in In Progress + 1h15m AI review = 3h; your focus = 45m.
+		expect(screen.getByText("3h")).toBeInTheDocument();
 		expect(screen.getByText("45m")).toBeInTheDocument();
-		// The agent-vs-you split bar renders when there is hands-on time.
+		expect(screen.getByText("across 1 task")).toBeInTheDocument();
 		expect(screen.getByText("Agent vs you")).toBeInTheDocument();
 	});
 
-	it("shows the tracking-starts-now hint for legacy tasks without tracking", async () => {
+	it("says focus is placed per period only from now on when no hour was ever recorded", async () => {
 		mockGet.mockResolvedValue({
-			events: [ev({ statusDurations: {}, statusEnteredAt: null, focusMs: 0 })],
+			events: [ev({ status: "in-progress", statusEnteredAt: new Date(Date.now() - DAY).toISOString(), focusMs: 30 * 60_000 })],
 			generatedAt: new Date().toISOString(),
 		});
 		renderView();
-		expect(await screen.findByText("Agent / your split starts tracking now")).toBeInTheDocument();
+		expect(
+			await screen.findByText("Focus is placed in periods from now on; earlier focus counts only under All"),
+		).toBeInTheDocument();
 	});
 
 	it("shows token + API-cost counters when agent usage exists in the period", async () => {

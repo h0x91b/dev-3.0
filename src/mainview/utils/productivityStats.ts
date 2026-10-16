@@ -1,9 +1,9 @@
 import {
-	computeTaskTimeBreakdown,
 	DEFAULT_AGENTS,
 	DEPRECATED_DEFAULT_CONFIG_REMAP,
 	type ProductivityStatEvent,
 } from "../../shared/types";
+import { computePeriodTime } from "./periodTime";
 
 export type StatsRange = "day" | "week" | "month" | "all";
 
@@ -46,33 +46,39 @@ export interface PerProjectStat {
 	/** Share of the period's completed tasks, 0–100. */
 	sharePct: number;
 	busiest: boolean;
-	/** Sum of lifetime (create→complete) time over the period's completed tasks, ms. */
-	totalMs: number;
-	/** Sum of agent time (in-progress + AI review) over the period's completed tasks, ms. */
+	/** Period-clipped in-flight time of this project's tasks, open ones included (see {@link TimeInvested}). */
+	inFlightMs: number;
+	/** Period-clipped agent-column time of this project's tasks, ms. */
 	agentMs: number;
-	/** Sum of real UI attention time over the period's completed tasks, ms. */
+	/** Focus recorded inside the period on this project's tasks, ms. */
 	focusMs: number;
 }
 
 /**
- * Aggregate time invested across the period's completed tasks. Total = lifetime
- * wall-clock; agent = time an agent/AI worked; focus = idle-gated UI attention.
- * Agent/focus require per-status tracking, so they are 0 for tasks completed
- * before tracking shipped — `hasTracking` gates the "agent vs your split" UI.
+ * Time that fell INSIDE the period, open tasks included — never a closed task's
+ * lifetime dumped on its close day. All three are sums over tasks, so parallel
+ * tasks add up (`agentWallMs` is the overlap-merged wall-clock). Elapsed time is
+ * not work time: `inFlightMs` counts a launched card sitting in any open column.
  */
 export interface TimeInvested {
-	totalMs: number;
+	/** Σ wall-clock tasks spent launched and not closed. */
+	inFlightMs: number;
+	/** Σ wall-clock tasks sat in In Progress / AI Review (column time, not proof an agent ran). */
 	agentMs: number;
+	/** Wall-clock with at least one task in an agent column. */
+	agentWallMs: number;
+	/** Idle-gated attention recorded inside the period (all of it for range "all"). */
 	focusMs: number;
-	/** Number of completed tasks in the period that contributed. */
-	count: number;
-	avgTotalMs: number;
-	avgAgentMs: number;
-	avgFocusMs: number;
-	/** True once any task (lifetime) carries per-status time tracking. */
-	hasTracking: boolean;
-	/** ISO date (YYYY-MM-DD) time tracking effectively started, or null. */
-	trackingSince: string | null;
+	/** Tasks with in-flight time in the period. */
+	activeTasks: number;
+	/** Tasks alive in the period with a stretch no recorded timestamp covers — their time is undercounted. */
+	gapTasks: number;
+	/** Tasks alive in the period whose focus predates per-hour recording (it shows only under "all"). */
+	untimedFocusTasks: number;
+	/** Hibernated tasks counted in agent-column time although their agent was stopped. */
+	hibernatedAgentTasks: number;
+	/** ISO date (YYYY-MM-DD) per-hour focus recording started, or null. */
+	focusSince: string | null;
 }
 
 export interface PerAgentStat {
@@ -544,11 +550,6 @@ export function computeProductivityStats(
 	const perModelConfigurationMap = new Map<string, PerModelConfigurationStat>();
 	const completedForSeries: Array<{ at: number; lines: number }> = [];
 
-	// --- Time invested (period, completed tasks) ---
-	let timeTotalCur = 0;
-	let timeAgentCur = 0;
-	let timeFocusCur = 0;
-
 	// --- All-time aggregates ---
 	let allTimeCompleted = 0;
 	let allTimeLines = 0;
@@ -557,21 +558,12 @@ export function computeProductivityStats(
 	const completedDayCounts = new Map<string, number>();
 	let locTrackingSince: number | null = null;
 	let lifecycleTrackingSince: number | null = null;
-	let hasTimeTracking = false;
-	let timeTrackingSince: number | null = null;
 
 	for (const e of events) {
 		if (e.agentId) agentsRun += 1;
 		const at = completedAtMs(e);
 		const lines = e.insertions + e.deletions;
 		const lifetimeMs = lifecycleDurationMs(e, at);
-		const hasTracking = e.statusEnteredAt != null || Object.keys(e.statusDurations ?? {}).length > 0;
-		if (hasTracking) hasTimeTracking = true;
-		// Time tracking "started" at the earliest completed task that carries
-		// per-status tracking — parallels the LOC "tracking since" hint.
-		if (isCompleted(e) && hasTracking && at != null) {
-			if (timeTrackingSince == null || at < timeTrackingSince) timeTrackingSince = at;
-		}
 		// LOC tracking "started" at the earliest completed task that has real diff
 		// data (lines > 0) — used to show an honest "tracking since" hint.
 		if (isCompleted(e) && lines > 0 && at != null) {
@@ -594,12 +586,6 @@ export function computeProductivityStats(
 				completedCur += 1;
 				linesCur += lines;
 				projectsTouched.add(e.projectId);
-				// Time invested — terminal task, so the breakdown uses finalized
-				// durations (nowMs is irrelevant for a completed task).
-				const tb = computeTaskTimeBreakdown(e, nowMs);
-				timeTotalCur += tb.totalMs;
-				timeAgentCur += tb.agentMs;
-				timeFocusCur += tb.focusMs;
 				const pp = perProjectMap.get(e.projectId) ?? {
 					projectId: e.projectId,
 					name: e.projectName,
@@ -609,7 +595,7 @@ export function computeProductivityStats(
 					averageLifetimeMs: null,
 					sharePct: 0,
 					busiest: false,
-					totalMs: 0,
+					inFlightMs: 0,
 					agentMs: 0,
 					focusMs: 0,
 				};
@@ -621,9 +607,6 @@ export function computeProductivityStats(
 					current.count += 1;
 					perProjectLifetime.set(e.projectId, current);
 				}
-				pp.totalMs += tb.totalMs;
-				pp.agentMs += tb.agentMs;
-				pp.focusMs += tb.focusMs;
 				perProjectMap.set(e.projectId, pp);
 
 				const agentId = e.agentId || "unknown";
@@ -697,17 +680,25 @@ export function computeProductivityStats(
 	for (const pm of perModelConfiguration) pm.sharePct = completedCur > 0 ? Math.round((pm.completed / completedCur) * 100) : 0;
 	if (perModelConfiguration.length > 0 && perModelConfiguration[0].completed > 0) perModelConfiguration[0].busiest = true;
 
-	// --- Time invested (period) ---
+	// --- Time invested (period-clipped, open tasks included) ---
+	const periodTime = computePeriodTime(events, win.from, win.to, nowMs, range === "all");
+	for (const pp of perProject) {
+		const pt = periodTime.perProject.get(pp.projectId);
+		if (!pt) continue;
+		pp.inFlightMs = pt.inFlightMs;
+		pp.agentMs = pt.agentMs;
+		pp.focusMs = pt.focusMs;
+	}
 	const time: TimeInvested = {
-		totalMs: timeTotalCur,
-		agentMs: timeAgentCur,
-		focusMs: timeFocusCur,
-		count: completedCur,
-		avgTotalMs: completedCur > 0 ? timeTotalCur / completedCur : 0,
-		avgAgentMs: completedCur > 0 ? timeAgentCur / completedCur : 0,
-		avgFocusMs: completedCur > 0 ? timeFocusCur / completedCur : 0,
-		hasTracking: hasTimeTracking,
-		trackingSince: timeTrackingSince != null ? dayKey(timeTrackingSince) : null,
+		inFlightMs: periodTime.inFlightMs,
+		agentMs: periodTime.agentMs,
+		agentWallMs: periodTime.agentWallMs,
+		focusMs: periodTime.focusMs,
+		activeTasks: periodTime.activeTasks,
+		gapTasks: periodTime.gapTasks,
+		untimedFocusTasks: periodTime.untimedFocusTasks,
+		hibernatedAgentTasks: periodTime.hibernatedAgentTasks,
+		focusSince: periodTime.focusSinceMs != null ? dayKey(periodTime.focusSinceMs) : null,
 	};
 
 	// --- Streaks ---

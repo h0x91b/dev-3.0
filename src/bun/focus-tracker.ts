@@ -1,3 +1,4 @@
+import { splitIntervalByHour } from "../shared/types";
 import * as data from "./data";
 import { createLogger } from "./logger";
 import { getActiveContext, isAppForeground } from "./rpc-handlers/shared";
@@ -53,8 +54,8 @@ export interface FocusTrackerDeps {
 	isForeground: () => boolean;
 	getActiveContext: () => { projectId: string | null; taskId: string | null };
 	getIdleSeconds: () => Promise<number | null>;
-	/** Persist accumulated attention for one task. */
-	addFocusMs: (projectId: string, taskId: string, ms: number) => Promise<void>;
+	/** Persist accumulated attention for one task, with its split by clock hour. */
+	addFocusMs: (projectId: string, taskId: string, ms: number, byHour: Record<string, number>) => Promise<void>;
 	tickMs?: number;
 	idleThresholdSec?: number;
 	flushEveryTicks?: number;
@@ -74,7 +75,7 @@ export class FocusTracker {
 	private tickInFlight = false;
 	private flushInFlight = false;
 	/** taskId → pending (unflushed) attention. */
-	private pending = new Map<string, { projectId: string; ms: number }>();
+	private pending = new Map<string, { projectId: string; ms: number; byHour: Record<string, number> }>();
 
 	constructor(private readonly deps: FocusTrackerDeps) {}
 
@@ -120,8 +121,11 @@ export class FocusTracker {
 					this.deps.idleThresholdSec ?? IDLE_THRESHOLD_SEC,
 				);
 				if (credit) {
-					const entry = this.pending.get(credit.taskId) ?? { projectId: credit.projectId, ms: 0 };
+					const entry = this.pending.get(credit.taskId) ?? { projectId: credit.projectId, ms: 0, byHour: {} };
 					entry.ms += elapsed;
+					for (const [hour, ms] of Object.entries(splitIntervalByHour(now - elapsed, now))) {
+						entry.byHour[hour] = (entry.byHour[hour] ?? 0) + ms;
+					}
 					entry.projectId = credit.projectId;
 					this.pending.set(credit.taskId, entry);
 				}
@@ -143,9 +147,9 @@ export class FocusTracker {
 		const batch = [...this.pending.entries()];
 		this.pending.clear();
 		try {
-			for (const [taskId, { projectId, ms }] of batch) {
+			for (const [taskId, { projectId, ms, byHour }] of batch) {
 				try {
-					await this.deps.addFocusMs(projectId, taskId, ms);
+					await this.deps.addFocusMs(projectId, taskId, ms, byHour);
 				} catch (err) {
 					log.warn("Failed to flush focus time (dropped)", { taskId: taskId.slice(0, 8), error: String(err) });
 				}
@@ -165,9 +169,9 @@ function defaultDeps(): FocusTrackerDeps {
 		isForeground: isAppForeground,
 		getActiveContext,
 		getIdleSeconds: getUserIdleSeconds,
-		addFocusMs: async (projectId, taskId, ms) => {
+		addFocusMs: async (projectId, taskId, ms, byHour) => {
 			const project = await data.getProject(projectId);
-			await data.addTaskFocusMs(project, taskId, ms);
+			await data.addTaskFocusMs(project, taskId, ms, byHour);
 		},
 	};
 }

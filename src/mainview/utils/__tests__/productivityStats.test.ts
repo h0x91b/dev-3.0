@@ -25,9 +25,12 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		configId: "claude-auto-opus5-medium",
 		groupId: null,
 		variantIndex: null,
-		statusDurations: {},
 		statusEnteredAt: null,
 		focusMs: 0,
+		focusByHour: {},
+		movements: [],
+		movementsDropped: 0,
+		hibernated: false,
 		...over,
 		lifecycleStartedAt: over.lifecycleStartedAt === undefined ? new Date(NOW - 2 * DAY).toISOString() : over.lifecycleStartedAt,
 	};
@@ -376,85 +379,78 @@ describe("computeProductivityStats — LOC tracking hint", () => {
 
 describe("computeProductivityStats — time invested", () => {
 	const HOUR = 3_600_000;
-	const MIN = 60_000;
+	const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 
-	it("aggregates total/agent/focus over completed tasks in the period", () => {
+	it("counts an open task's time inside the period instead of zero", () => {
 		const events: ProductivityStatEvent[] = [
 			ev({
-				createdAt: new Date(NOW - 5 * HOUR).toISOString(),
-				movedAt: new Date(NOW - 1 * HOUR).toISOString(), // total lifetime = 4h
-				statusDurations: {
-					"in-progress": 2 * HOUR,
-					"review-by-ai": 30 * MIN,
-					"review-by-user": 90 * MIN,
-				},
-				statusEnteredAt: new Date(NOW - 1 * HOUR).toISOString(),
-				focusMs: 45 * MIN,
+				status: "in-progress",
+				createdAt: at(20 * DAY),
+				movedAt: at(20 * DAY),
+				statusEnteredAt: at(20 * DAY),
+				movements: [{ at: at(20 * DAY), to: "in-progress" }],
 			}),
 		];
 		const r = computeProductivityStats(events, "week", NOW);
-		expect(r.time.count).toBe(1);
-		expect(r.time.totalMs).toBe(4 * HOUR);
-		// agent = in-progress + review-by-ai; user statuses excluded
-		expect(r.time.agentMs).toBe(2 * HOUR + 30 * MIN);
-		expect(r.time.focusMs).toBe(45 * MIN);
-		expect(r.time.avgTotalMs).toBe(4 * HOUR);
-		expect(r.time.hasTracking).toBe(true);
+		expect(r.time.inFlightMs).toBe(7 * DAY);
+		expect(r.time.agentMs).toBe(7 * DAY);
+		expect(r.time.activeTasks).toBe(1);
+		expect(r.hero.tasksShipped.value).toBe(0);
 	});
 
-	it("sums time across projects and per-project cards", () => {
+	it("does not dump a long task's lifetime onto its close day", () => {
+		// Worked 21 days, closed yesterday: the week sees 6 days of it, not 21.
 		const events: ProductivityStatEvent[] = [
 			ev({
-				movedAt: new Date(NOW - 1 * HOUR).toISOString(),
-				createdAt: new Date(NOW - 3 * HOUR).toISOString(),
-				statusDurations: { "in-progress": 1 * HOUR },
-				statusEnteredAt: new Date(NOW - 1 * HOUR).toISOString(),
-				focusMs: 20 * MIN,
+				status: "completed",
+				createdAt: at(21 * DAY),
+				movedAt: at(1 * DAY),
+				statusEnteredAt: at(1 * DAY),
+				movements: [
+					{ at: at(21 * DAY), to: "in-progress" },
+					{ at: at(1 * DAY), to: "completed" },
+				],
 			}),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.time.agentMs).toBe(6 * DAY);
+		expect(r.time.inFlightMs).toBe(6 * DAY);
+	});
+
+	it("feeds per-project time from the same clipped accounting", () => {
+		const events: ProductivityStatEvent[] = [
 			ev({
 				projectId: "p2",
 				projectName: "Proj B",
-				movedAt: new Date(NOW - 2 * HOUR).toISOString(),
-				createdAt: new Date(NOW - 4 * HOUR).toISOString(),
-				statusDurations: { "in-progress": 30 * MIN, "review-by-ai": 30 * MIN },
-				statusEnteredAt: new Date(NOW - 2 * HOUR).toISOString(),
-				focusMs: 10 * MIN,
+				status: "completed",
+				createdAt: at(3 * HOUR),
+				movedAt: at(1 * HOUR),
+				statusEnteredAt: at(1 * HOUR),
+				movements: [
+					{ at: at(3 * HOUR), to: "in-progress" },
+					{ at: at(2 * HOUR), to: "review-by-user" },
+					{ at: at(1 * HOUR), to: "completed" },
+				],
 			}),
 		];
 		const r = computeProductivityStats(events, "week", NOW);
-		expect(r.time.agentMs).toBe(2 * HOUR); // 1h + (30m+30m)
-		expect(r.time.focusMs).toBe(30 * MIN);
 		const p2 = r.perProject.find((p) => p.projectId === "p2");
-		expect(p2?.totalMs).toBe(2 * HOUR);
+		expect(p2?.inFlightMs).toBe(2 * HOUR);
 		expect(p2?.agentMs).toBe(1 * HOUR);
-		expect(p2?.focusMs).toBe(10 * MIN);
 	});
 
-	it("reports zero agent/focus and hasTracking=false for legacy tasks", () => {
-		const events: ProductivityStatEvent[] = [
-			ev({
-				createdAt: new Date(NOW - 2 * HOUR).toISOString(),
-				movedAt: new Date(NOW - 1 * HOUR).toISOString(),
-			}),
-		];
-		const r = computeProductivityStats(events, "week", NOW);
-		expect(r.time.totalMs).toBe(1 * HOUR); // lifetime always available
-		expect(r.time.agentMs).toBe(0);
-		expect(r.time.focusMs).toBe(0);
-		expect(r.time.hasTracking).toBe(false);
+	it("uses the whole focus counter only for the all-time range", () => {
+		const events: ProductivityStatEvent[] = [ev({ focusMs: 30 * 60_000 })];
+		expect(computeProductivityStats(events, "all", NOW).time.focusMs).toBe(30 * 60_000);
+		expect(computeProductivityStats(events, "month", NOW).time.focusMs).toBe(0);
 	});
 
-	it("reports the earliest tracked completed task as trackingSince", () => {
-		const events: ProductivityStatEvent[] = [
-			ev({ movedAt: new Date(NOW - 5 * DAY).toISOString() }), // legacy, no tracking
-			ev({
-				movedAt: new Date(NOW - 3 * DAY).toISOString(),
-				statusEnteredAt: new Date(NOW - 3 * DAY).toISOString(),
-				statusDurations: { "in-progress": 1 * HOUR },
-			}),
-		];
-		const r = computeProductivityStats(events, "all", NOW);
-		expect(r.time.trackingSince).toBe(new Date(NOW - 3 * DAY).toISOString().slice(0, 10));
+	it("reports the first recorded focus hour as focusSince", () => {
+		const hour = Math.floor((NOW - 3 * DAY) / HOUR);
+		const events: ProductivityStatEvent[] = [ev({ focusMs: 60_000, focusByHour: { [String(hour)]: 60_000 } })];
+		expect(computeProductivityStats(events, "all", NOW).time.focusSince).toBe(
+			new Date(hour * HOUR).toISOString().slice(0, 10),
+		);
 	});
 });
 

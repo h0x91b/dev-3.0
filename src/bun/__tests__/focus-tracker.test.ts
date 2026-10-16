@@ -45,7 +45,7 @@ describe("FocusTracker", () => {
 			idle: 0 as number | null,
 			ctx: { projectId: "p1" as string | null, taskId: "t1" as string | null },
 		};
-		const addFocusMs = vi.fn(async () => {});
+		const addFocusMs = vi.fn(async (_projectId: string, _taskId: string, _ms: number, _byHour: Record<string, number>) => {});
 		const deps: FocusTrackerDeps = {
 			now: () => state.nowMs,
 			isForeground: () => state.foreground,
@@ -66,7 +66,7 @@ describe("FocusTracker", () => {
 		await tracker.tick(); // baseline — elapsed 0
 		state.nowMs = 2000;
 		await tracker.tick(); // +1000ms credited to t1; 2nd tick → flush
-		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 1000);
+		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 1000, { "0": 1000 });
 	});
 
 	it("accumulates across ticks before flushing", async () => {
@@ -77,7 +77,7 @@ describe("FocusTracker", () => {
 		state.nowMs = 3500;
 		await tracker.tick(); // +1500 → 3rd tick flushes 2500 total
 		expect(addFocusMs).toHaveBeenCalledTimes(1);
-		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 2500);
+		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 2500, { "0": 2500 });
 	});
 
 	it("does not credit while backgrounded", async () => {
@@ -105,7 +105,7 @@ describe("FocusTracker", () => {
 		await tracker.tick(); // baseline @ 1000
 		state.nowMs = 1_000_000; // huge gap
 		await tracker.tick(); // clamped to maxCreditPerTickMs = 5000
-		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 5000);
+		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 5000, { "0": 5000 });
 	});
 
 	it("attributes credit to whichever task is on-screen at the tick", async () => {
@@ -118,8 +118,20 @@ describe("FocusTracker", () => {
 		await tracker.tick(); // +1000 → t2
 		state.nowMs = 4000;
 		await tracker.tick(); // +1000 → t2 ; 4th tick flushes
-		const calls = addFocusMs.mock.calls.map((c) => c.join(":")).sort();
+		const calls = addFocusMs.mock.calls.map((c) => c.slice(0, 3).join(":")).sort();
 		expect(calls).toEqual(["p1:t1:1000", "p2:t2:2000"]);
+	});
+
+	it("splits a tick that crosses an hour boundary into both hours exactly", async () => {
+		const HOUR = 3_600_000;
+		const { tracker, state, addFocusMs } = makeTracker({ flushEveryTicks: 3 });
+		state.nowMs = 10 * HOUR - 3000;
+		await tracker.tick(); // baseline 3s before the 10th hour starts
+		state.nowMs = 10 * HOUR + 1000;
+		await tracker.tick(); // +4000: 3000 in hour 9, 1000 in hour 10
+		state.nowMs = 10 * HOUR + 2000;
+		await tracker.tick(); // +1000 in hour 10; flush
+		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 5000, { "9": 3000, "10": 2000 });
 	});
 
 	it("flush is a no-op with nothing pending and clears the buffer after flushing", async () => {

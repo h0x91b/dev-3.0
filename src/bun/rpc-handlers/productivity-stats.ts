@@ -36,9 +36,12 @@ export function toStatEvent(
 		configId: task.configId ?? null,
 		groupId: task.groupId ?? null,
 		variantIndex: task.variantIndex ?? null,
-		statusDurations: task.statusDurations ?? {},
 		statusEnteredAt: task.statusEnteredAt ?? null,
 		focusMs: task.focusMs ?? 0,
+		focusByHour: task.focusByHour ?? {},
+		movements: (task.movements ?? []).map((m) => ({ at: m.at, to: m.to })),
+		movementsDropped: task.movementsDropped ?? 0,
+		hibernated: task.hibernated === true,
 	};
 }
 
