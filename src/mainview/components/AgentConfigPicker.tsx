@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentCheckResult, AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
 import { isFavorite } from "../../shared/favorites";
 import { useT } from "../i18n";
@@ -20,6 +20,8 @@ import {
 	prettifyModel,
 } from "../utils/agentPicker";
 import { useModelCatalog } from "../hooks/useModelCatalog";
+import { useLiveModels } from "../hooks/useLiveModels";
+import { findAgentConfig, parseLiveModelConfigId, withLiveModelConfigs, withSelectedLiveConfig } from "../../shared/agent-live-models";
 import { useUnavailableModels } from "../hooks/useUnavailableModels";
 import {
 	CLAUDE_ROLE_BUILTIN_MODEL,
@@ -206,12 +208,26 @@ function AgentConfigPicker({
 		});
 	}
 
-	const selectedAgent = agents.find((a) => a.id === agentId);
+	const storedAgent = agents.find((a) => a.id === agentId);
+	// Models the CLI reports for this account (omp), offered as Model groups over
+	// its model-free presets; a pick is a plain configId (see agent-live-models).
+	const liveModels = useLiveModels(storedAgent, accountId);
+	const selectedAgent = storedAgent
+		? withSelectedLiveConfig(liveModels ? withLiveModelConfigs(storedAgent, liveModels) : storedAgent, configId)
+		: undefined;
+	// A model the newly selected account does not serve falls back to the same
+	// mode without a model. Only on a known list: loading/unknown keeps the pick.
+	const livePick = configId ? parseLiveModelConfigId(configId) : null;
+	const livePickGone = !!livePick && !!liveModels && !liveModels.some((m) => m.selector === livePick.selector);
+	useEffect(() => {
+		if (livePickGone && livePick) onChange({ agentId, configId: livePick.presetId });
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per transition, not per render
+	}, [livePickGone]);
 	// Preset models the signed-in account cannot select (Codex/Cursor probe their
 	// CLI's catalog; every other agent — and any failed probe — resolves to null,
 	// which flags nothing). Passed the picker's account so the probe reads the same
 	// account a launch would. See useUnavailableModels.
-	const unavailableModels = useUnavailableModels(selectedAgent, accountId);
+	const unavailableModels = useUnavailableModels(storedAgent, accountId);
 	// Provider → Model → Mode cascade: group the flat presets by model (UI-only;
 	// the leaf is still a plain configId).
 	const groups = buildPickerGroups(selectedAgent, unavailableModels);
@@ -284,7 +300,7 @@ function AgentConfigPicker({
 		// (bible §1.0 lazy-human), else falls back to its default.
 		const group = buildPickerGroups(selectedAgent).find((g) => g.label === groupLabel);
 		if (!group) return;
-		const prev = selectedAgent?.configurations.find((c) => c.id === configId) ?? null;
+		const prev = (selectedAgent && findAgentConfig(selectedAgent, configId)) ?? null;
 		const next = pickConfigForModelChange(group, prev);
 		onChange({ agentId, configId: next?.id ?? group.configs[0]?.id ?? null });
 	}

@@ -27,6 +27,7 @@ import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv, getActiveOmpSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
+import { findAgentConfig } from "../shared/agent-live-models";
 import { ompDefaultsArgs } from "./omp-launch-defaults";
 export { claudeModelFamily } from "../shared/agent-accounts";
 import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolveModelRoleLaunch, roleUnsetEnv } from "../shared/model-catalog";
@@ -680,7 +681,7 @@ export function findConfig(
 		agent.configurations.find((c) => c.id === agent.defaultConfigId) ||
 		agent.configurations[0];
 	if (!configId) return fallback();
-	const exact = agent.configurations.find((c) => c.id === configId);
+	const exact = findAgentConfig(agent, configId);
 	if (exact) return exact;
 	// A removed preset id (e.g. "claude-bypass-sonnet") must land on its documented
 	// successor, never on whatever happens to sit first in the list.

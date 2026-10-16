@@ -9,6 +9,9 @@ import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env
 import * as data from "../data";
 import * as agents from "../agents";
 import { resolveModelAvailability } from "../agent-available-models";
+import { getOmpLiveModels } from "../omp-live-models";
+import { agentKey } from "../../shared/agent-adapters/registry";
+import type { AgentLiveModels } from "../../shared/agent-live-models";
 import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
@@ -439,6 +442,17 @@ async function getAgentAvailableModels(params: {
 	return resolveModelAvailability(agent, { accountId: params.accountId, refresh: params.refresh });
 }
 
+async function getAgentLiveModels(params: {
+	agentId: string;
+	accountId?: string | null;
+	refresh?: boolean;
+}): Promise<AgentLiveModels> {
+	const all = await agents.getAllAgents();
+	const agent = all.find((a) => a.id === params.agentId);
+	if (!agent || agentKey(agent.baseCommand, agent.agentFamily) !== "omp") return { status: "unknown" };
+	return getOmpLiveModels(params.accountId, { refresh: params.refresh });
+}
+
 async function checkForUpdate(): Promise<{ updateAvailable: boolean; version: string; error?: string }> {
 	log.info("-> checkForUpdate");
 	const settings = await loadSettings();
@@ -785,6 +799,7 @@ export const settingsConfigHandlers = {
 	getAgents,
 	saveAgents,
 	getAgentAvailableModels,
+	getAgentLiveModels,
 	checkForUpdate,
 	downloadUpdate,
 	applyUpdate,

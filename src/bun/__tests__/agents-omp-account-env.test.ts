@@ -49,4 +49,11 @@ describe("omp account env at launch", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("launches a live-model pick with that model and the preset's own mode", async () => {
+		const resolved = await resolveCommandForAgent("builtin-omp", "omp-yolo-high|model=openai-codex/gpt-6.1-sol", ctx, {});
+		expect(resolved.command).toContain("--model openai-codex/gpt-6.1-sol");
+		expect(resolved.command).toContain("--approval-mode yolo");
+		expect(resolved.command).toContain("--thinking high");
+	});
 });

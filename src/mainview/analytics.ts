@@ -3,6 +3,7 @@
 // script loading from the views:// custom protocol.
 
 import type { CodingAgent, TelemetryProfile } from "../shared/types";
+import { findAgentConfig } from "../shared/agent-live-models";
 import { BUILD_COMMIT } from "../shared/build-info.generated";
 import { countryForTimezone, currentTimezone } from "../shared/timezone-country";
 import type { Route } from "./state";
@@ -520,7 +521,7 @@ export function trackAgentLaunched(
 		null;
 
 	const config = agent
-		? (configId ? agent.configurations.find((c) => c.id === configId) : null) ??
+		? (configId ? findAgentConfig(agent, configId) : null) ??
 			agent.configurations.find((c) => c.id === agent.defaultConfigId) ??
 			agent.configurations[0] ??
 			null

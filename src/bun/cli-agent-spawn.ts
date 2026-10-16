@@ -1,4 +1,5 @@
 import type { AgentLaunchRequest, LaunchVariant, Project, Task } from "../shared/types";
+import { findAgentConfig } from "../shared/agent-live-models";
 import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import type { SpawnAgentResult } from "../shared/conversation-handoff-model";
 import { createAgentRequest, getAgentRequestState, setAgentRequestLaunchChoice, setAgentLaunchDialog } from "./agent-requests";
@@ -40,9 +41,9 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	if (!agent) throw new Error(`Unknown agent "${id}" — see dev3 agent list.`);
 	const globalConfigId = !choice.agentId && agent.configurations.some((c) => c.id === settings.defaultConfigId) ? settings.defaultConfigId : undefined;
 	const configId = choice.configId ?? globalConfigId ?? agent.defaultConfigId ?? agent.configurations[0]?.id ?? null;
-	if (configId && !agent.configurations.some((c) => c.id === configId)) throw new Error(`Unknown config "${configId}" for agent "${id}".`);
+	if (configId && !findAgentConfig(agent, configId)) throw new Error(`Unknown config "${configId}" for agent "${id}".`);
 	if (choice.accountId !== undefined) {
-		const config = agent.configurations.find((c) => c.id === configId);
+		const config = findAgentConfig(agent, configId);
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 		const family = agentKey(config?.baseCommandOverride || agentWithPath.baseCommand, agentWithPath.agentFamily);
 		if (family !== "claude" && family !== "codex" && family !== "omp") throw new Error(`Agent "${id}" does not support managed accounts.`);

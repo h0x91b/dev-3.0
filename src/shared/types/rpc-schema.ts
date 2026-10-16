@@ -22,6 +22,7 @@ import type { TaskType } from "./task-type";
 import type { Task } from "./task";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
 import type { AgentModelAvailability, CodingAgent } from "./coding-agents";
+import type { AgentLiveModels } from "../agent-live-models";
 import type { ExternalApp, FilePreviewResult, GlobalSettings, NativeTerminalAvailability, ResolvedTerminalPath, TaskTerminalBackendInfo, TipState } from "./global-settings";
 import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./model-routing";
 import type { ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
@@ -352,6 +353,14 @@ export type AppRPCSchema = {
 			getAgentAvailableModels: {
 				params: { agentId: string; accountId?: string | null; refresh?: boolean };
 				response: AgentModelAvailability;
+			};
+			/** Models the agent CLI reports for the selected account (omp today),
+			 *  newest first — the providers that account signed in to, not every
+			 *  provider with an API key in the environment. `unknown` when the CLI
+			 *  cannot be asked; the picker then shows only its presets. Cached briefly. */
+			getAgentLiveModels: {
+				params: { agentId: string; accountId?: string | null; refresh?: boolean };
+				response: AgentLiveModels;
 			};
 			getTasks: {
 				params: { projectId: string };

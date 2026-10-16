@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { findAgentConfig } from "../../shared/agent-live-models";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -107,7 +108,7 @@ function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, an
 				{orderedVariants.map((variant) => {
 					const agent = variant.agentId ? agents.find((candidate) => candidate.id === variant.agentId) : null;
 					const config = agent && variant.configId
-						? agent.configurations.find((candidate) => candidate.id === variant.configId)
+						? findAgentConfig(agent, variant.configId)
 						: agent?.configurations.find((candidate) => candidate.id === agent.defaultConfigId) ?? agent?.configurations[0];
 					const isCurrent = variant.id === currentTaskId;
 					const isAlive = ACTIVE_STATUSES.includes(variant.status);

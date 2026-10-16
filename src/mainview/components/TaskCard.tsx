@@ -1,4 +1,5 @@
 import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { findAgentConfig } from "../../shared/agent-live-models";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
@@ -481,7 +482,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// ---- IDENTITY zone inputs -----------------------------------------------
 	const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
 	const agentConfig = agent && task.configId
-		? agent.configurations.find((c) => c.id === task.configId)
+		? findAgentConfig(agent, task.configId)
 		: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
 	const configLabel = agentConfig
 		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)

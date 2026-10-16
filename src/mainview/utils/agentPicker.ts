@@ -4,6 +4,7 @@ import { orderFavorites } from "../../shared/favorites";
 import { modelRolesForAgent, type CatalogProviderKind } from "../../shared/model-catalog";
 import { unconnectedRecommendations, type RecommendedModel } from "../../shared/recommended-models";
 import { AGENT_CHOSEN_MODEL_SLUGS, modelReleaseDate } from "../../shared/model-release-dates";
+import { isLiveModelConfig } from "../../shared/agent-live-models";
 import { translate } from "../i18n";
 
 /**
@@ -243,6 +244,8 @@ function curatedPresetRank(agentId: string): Map<string, number> {
  *  first, then real models by date, then everything without a native date
  *  (unknown models, role-bound and proxy-gated presets). */
 function groupTier(configs: AgentConfiguration[]): number {
+	// Live models arrive newest first; they lead, ahead of "let the agent pick".
+	if (configs.every(isLiveModelConfig)) return -1;
 	if (configs.every((c) => !isRoutedConfig(c) && (!c.model || AGENT_CHOSEN_MODEL_SLUGS.has(c.model)))) return 0;
 	return newestReleaseDate(configs) ? 1 : 2;
 }

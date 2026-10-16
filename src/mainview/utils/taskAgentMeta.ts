@@ -1,9 +1,10 @@
 import type { AgentConfiguration, CodingAgent, Task } from "../../shared/types";
+import { findAgentConfig } from "../../shared/agent-live-models";
 
 function resolveTaskAgentConfig(agent: CodingAgent | null, configId: string | null): AgentConfiguration | null {
 	if (!agent) return null;
 	if (configId) {
-		const exact = agent.configurations.find((config) => config.id === configId);
+		const exact = findAgentConfig(agent, configId);
 		if (exact) return exact;
 	}
 	return agent.configurations.find((config) => config.id === agent.defaultConfigId) ?? agent.configurations[0] ?? null;

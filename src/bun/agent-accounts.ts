@@ -1507,9 +1507,9 @@ const ompCheckedFingerprints = new Map<string, string>();
 
 /** Ask omp which OAuth sign-ins an agent dir holds. omp prints provider and
  *  identity key only — no token ever reaches dev3. */
-export async function listOmpLogins(agentDir: string): Promise<OmpLogin[]> {
+export async function listOmpLogins(agentDir: string | null): Promise<OmpLogin[]> {
 	const proc = spawn(["omp", "usage", "accounts", "--json"], {
-		env: { PI_CODING_AGENT_DIR: agentDir },
+		env: agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {},
 		stdout: "pipe",
 		stderr: "pipe",
 	});

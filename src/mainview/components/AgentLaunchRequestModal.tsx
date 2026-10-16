@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { findAgentConfig } from "../../shared/agent-live-models";
 import type { AgentCheckResult, AgentLaunchChoice, AgentLaunchRequest, CodingAgent, GlobalSettings, LaunchVariant, TaskPriority } from "../../shared/types";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -288,7 +289,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							<ul className="space-y-1.5">
 								{request.resume.panes.map((pane, index) => {
 									const agent = agents.find((a) => a.id === pane.agentId);
-									const config = agent?.configurations.find((c) => c.id === pane.configId);
+									const config = (agent ? findAgentConfig(agent, pane.configId) : undefined);
 									return (
 										<li key={index} className="flex items-baseline gap-3 px-3 py-2 rounded-lg bg-raised text-sm">
 											<span className="text-fg font-medium shrink-0">
