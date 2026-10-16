@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
 	resolveRemoteTunnelProvider: vi.fn(),
 }));
 
+const logInfo = vi.hoisted(() => vi.fn());
+vi.mock("../../logger", () => ({
+	createLogger: () => ({ debug: vi.fn(), info: logInfo, warn: vi.fn(), error: vi.fn() }),
+}));
+
 vi.mock("../../tunnel-provider", () => ({
 	resolveRemoteTunnelProvider: mocks.resolveRemoteTunnelProvider,
 }));
@@ -138,5 +143,13 @@ describe("remote access handler", () => {
 		expect(result.signInLink).toBeNull();
 		expect(result.serverStatus.failure?.port).toBe(45999);
 		expect(mocks.generateQrDataUrl).not.toHaveBeenCalled();
+	});
+});
+
+describe("stopTunnel", () => {
+	it("stops the main tunnel and logs that the stop was requested", async () => {
+		await remoteAccessHandlers.stopTunnel();
+		expect(mocks.stopTunnel).toHaveBeenCalled();
+		expect(logInfo).toHaveBeenCalledWith("Main tunnel stopped on request");
 	});
 });

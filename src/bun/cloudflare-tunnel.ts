@@ -71,6 +71,27 @@ export interface TunnelEntry {
 	healthCheckTimer: ReturnType<typeof setInterval> | null;
 	/** Why this start failed, for every kind — recovery must not retry a misconfigured command. */
 	failureReason: TunnelFailureReason | null;
+	/**
+	 * The retry loop this entry belongs to: set on a placeholder, and on a tunnel a
+	 * recovery started until a passing health check proves it, so backoff keeps growing.
+	 */
+	recovery: TunnelRecovery | null;
+	/** Holds the slot of a tunnel being restarted or retried; no process stands behind it. */
+	placeholder: boolean;
+}
+
+/**
+ * Bringing back a tunnel that was serving and went away. While it runs, the
+ * tunnel's slot in the map holds `placeholder` (state "starting"), so list, stop,
+ * stopAll and the UI all see a tunnel that is coming back. Removing the slot ends it.
+ */
+interface TunnelRecovery {
+	placeholder: TunnelEntry;
+	previousUrl: string | null;
+	attempts: number;
+	timer: ReturnType<typeof setTimeout> | null;
+	inFlight: Promise<TunnelEntry> | null;
+	predecessorGone: Promise<void>;
 }
 
 export interface StartTunnelOptions {
@@ -103,9 +124,9 @@ export const TUNNEL_EDGE_READY = { timeoutMs: 25_000, pollMs: 500 };
 export const CUSTOM_TUNNEL_EDGE_READY = { timeoutMs: 10_000, pollMs: 750 };
 
 /**
- * Bringing back a tunnel that was serving and went away — its process exited, or
- * a health restart could not start a successor. Retries back off and never give
- * up while the tunnel is wanted; an explicit stop cancels them. Tunable for tests.
+ * Recovery timing: retries back off and never give up while the tunnel is wanted
+ * (only an explicit stop ends them); a predecessor gets this long to exit before
+ * SIGKILL. Tunable for tests.
  */
 export const TUNNEL_RECOVERY = {
 	retryDelaysMs: [5_000, 15_000, 30_000, 60_000, 120_000, 300_000],
@@ -113,9 +134,6 @@ export const TUNNEL_RECOVERY = {
 };
 
 const tunnels = new Map<string, TunnelEntry>();
-const recoveries = new Map<string, { timer: ReturnType<typeof setTimeout>; opts: StartTunnelOptions }>();
-// Bumped by every explicit stop, so a recovery or restart in flight can tell it was cancelled.
-const stopGenerations = new Map<string, number>();
 
 /**
  * Why the LAST main-tunnel start failed, for the Remote Access modal — the
@@ -378,25 +396,34 @@ async function waitForEdgeReady(entry: TunnelEntry, timeoutMs: number, pollMs: n
  * the scraped public URL until the edge answers at all. ANY HTTP status counts
  * as routable — a tunnel that gates access returns 401/403/404 from its own
  * edge, which still proves the hostname resolves and forwards. Only a transport
- * failure (DNS, refused connection, TLS, timeout) means it is not up yet.
+ * failure (DNS, refused connection, TLS, timeout) or a tunnel-down answer from
+ * the edge (see `edgeRoutes`) means it is not up yet.
  */
 async function waitForPublicUrlReady(entry: TunnelEntry, url: string, timeoutMs: number, pollMs: number): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		if (entry.process === null) return false; // process exited during the wait
 		try {
-			await fetch(url, {
+			const response = await fetch(url, {
 				method: "HEAD",
 				redirect: "manual",
 				signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
 			});
-			return true;
+			if (edgeRoutes(response)) return true;
 		} catch {
 			// Not routable yet — keep polling until the deadline.
 		}
 		await delay(pollMs);
 	}
 	return false;
+}
+
+/**
+ * Cloudflare answers 530 (error 1033 and friends) when the hostname exists but
+ * no connector serves it — an edge reply that proves the tunnel is DOWN.
+ */
+function edgeRoutes(response: Response): boolean {
+	return response.status !== 530;
 }
 
 async function waitForUrl(urlPromise: Promise<string | null>, timeoutMs: number): Promise<string | null> {
@@ -421,7 +448,7 @@ interface TunnelFilter {
 type TunnelChangeHook = (entry: TunnelEntry, previousUrl: string | null) => void;
 let tunnelChangeHook: TunnelChangeHook | null = null;
 
-function matchesFilter(entry: Pick<TunnelEntry, "kind" | "taskId">, filter?: TunnelFilter): boolean {
+function matchesFilter(entry: TunnelEntry, filter?: TunnelFilter): boolean {
 	if (!filter) return true;
 	if (filter.kind !== undefined && entry.kind !== filter.kind) return false;
 	if (filter.taskId !== undefined && entry.taskId !== filter.taskId) return false;
@@ -448,14 +475,8 @@ function warnOnDuplicateUrl(entry: TunnelEntry): void {
 	}
 }
 
-async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
-	const existing = tunnels.get(opts.id);
-	if (existing && (existing.state === "starting" || existing.state === "connected")) {
-		log.warn("Tunnel already active", { id: opts.id, state: existing.state });
-		return existing;
-	}
-
-	const entry: TunnelEntry = {
+function newEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | null): TunnelEntry {
+	return {
 		id: opts.id,
 		kind: opts.kind,
 		targetPort: opts.targetPort,
@@ -474,7 +495,27 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		healthCheckInFlight: false,
 		healthCheckTimer: null,
 		failureReason: null,
+		recovery,
+		placeholder: false,
 	};
+}
+
+/**
+ * Start a tunnel, or hand back the one already holding the id. `recovery` is set
+ * only when a recovery attempt calls in: it may replace its own placeholder, and a
+ * failed start puts that placeholder back so the retry loop keeps the slot.
+ */
+async function startEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | null = null): Promise<TunnelEntry> {
+	const existing = tunnels.get(opts.id);
+	if (existing?.placeholder) {
+		// An explicit start joins (or hurries) the recovery instead of racing it.
+		if (existing.recovery !== recovery) return attemptRecovery(existing.recovery!);
+	} else if (existing && (existing.state === "starting" || existing.state === "connected")) {
+		log.warn("Tunnel already active", { id: opts.id, state: existing.state });
+		return existing;
+	}
+
+	const entry = newEntry(opts, recovery);
 	tunnels.set(opts.id, entry);
 
 	// One provider for every tunnel kind: the main remote-access tunnel and
@@ -487,11 +528,7 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 	// who selected Custom because their network forbids cloudflared.
 	if (provider.kind === "misconfigured") {
 		log.warn("Custom tunnel provider selected but its command is empty — not starting a tunnel", { id: opts.id });
-		entry.failureReason = "command-empty";
-		if (opts.kind === "main") mainTunnelFailureReason = entry.failureReason;
-		entry.state = "failed";
-		tunnels.delete(opts.id);
-		return entry;
+		return releaseFailedStart(entry, "command-empty");
 	}
 
 	try {
@@ -509,19 +546,14 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		proc.exited.then((exitCode) => {
 			lastExitCode = exitCode;
 			log.info("Tunnel process exited", { id: opts.id, exitCode });
-			const current = tunnels.get(opts.id);
-			if (current === entry) {
-				const lostUrl = entry.state === "connected" ? entry.url : null;
-				if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
-				entry.healthCheckTimer = null;
-				entry.process = null;
-				entry.url = null;
-				entry.state = "idle";
-				if (lostUrl) {
-					log.warn("Tunnel process exited while serving", { id: opts.id, exitCode });
-					scheduleRecovery(optionsFor(entry), lostUrl, 0, null);
-				}
-			}
+			if (tunnels.get(opts.id) !== entry) return;
+			const wasServing = entry.state === "connected";
+			if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+			entry.healthCheckTimer = null;
+			entry.process = null;
+			if (!wasServing) return; // a start in progress notices the dead process itself
+			log.warn("Tunnel process exited while serving", { id: opts.id, exitCode });
+			beginRecovery(entry, Promise.resolve(), "backoff");
 		});
 
 		const urlRegex = isCustom ? provider.urlRegex! : CLOUDFLARE_URL_REGEX;
@@ -538,9 +570,10 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 			const edgeReady = isCustom
 				? await waitForPublicUrlReady(entry, url, CUSTOM_TUNNEL_EDGE_READY.timeoutMs, CUSTOM_TUNNEL_EDGE_READY.pollMs)
 				: await waitForEdgeReady(entry, TUNNEL_EDGE_READY.timeoutMs, TUNNEL_EDGE_READY.pollMs);
-			// Bail if the tunnel was stopped or its process died during the wait —
-			// never resurrect a dead entry into "connected".
-			if (tunnels.get(opts.id) !== entry || entry.process === null) return entry;
+			// Stopped during the wait: the stop already killed the process.
+			if (tunnels.get(opts.id) !== entry) return entry;
+			// The process died during the wait — never resurrect it into "connected".
+			if (entry.process === null) return releaseFailedStart(entry, "no-url");
 			entry.url = url;
 			entry.state = "connected";
 			if (opts.kind === "main") mainTunnelFailureReason = null;
@@ -574,62 +607,76 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		} else {
 			log.warn("Tunnel URL not found in process output within timeout", { id: opts.id, provider: provider.kind });
 		}
-		entry.failureReason = notFound ? "command-not-found" : "no-url";
-		if (opts.kind === "main") mainTunnelFailureReason = entry.failureReason;
-		entry.state = "failed";
-		teardownEntry(opts.id);
-		return entry;
+		return releaseFailedStart(entry, notFound ? "command-not-found" : "no-url");
 	} catch (err) {
 		log.error("Failed to start tunnel", { id: opts.id, error: String(err) });
-		entry.state = "failed";
-		teardownEntry(opts.id);
-		return entry;
+		return releaseFailedStart(entry, "no-url");
 	}
 }
 
-/** An explicit stop: the tunnel is no longer wanted, so pending recovery is cancelled too. */
+/**
+ * Settle a start that did not come up. Only this attempt's own entry is touched:
+ * a stop-then-start may already have put a newer tunnel in the slot. A recovery
+ * attempt hands the slot back to its placeholder instead of emptying it.
+ */
+function releaseFailedStart(entry: TunnelEntry, reason: TunnelFailureReason): TunnelEntry {
+	entry.state = "failed";
+	entry.failureReason = reason;
+	if (entry.kind === "main") mainTunnelFailureReason = reason;
+	const ownsSlot = tunnels.get(entry.id) === entry;
+	teardownEntry(entry);
+	if (ownsSlot && entry.recovery) tunnels.set(entry.id, entry.recovery.placeholder);
+	return entry;
+}
+
+/** An explicit stop: the tunnel is no longer wanted, and any recovery of it ends. */
 function stopEntry(id: string): void {
-	cancelRecovery(id);
-	stopGenerations.set(id, stopGeneration(id) + 1);
-	teardownEntry(id);
-}
-
-function stopGeneration(id: string): number {
-	return stopGenerations.get(id) ?? 0;
-}
-
-/** Returns the wrapper's children it signalled, which a restart must also wait out. */
-function teardownEntry(id: string): number[] {
 	const entry = tunnels.get(id);
-	if (!entry) return [];
+	if (!entry) return;
+	if (entry.recovery?.timer) {
+		clearTimeout(entry.recovery.timer);
+		entry.recovery.timer = null;
+	}
+	teardownEntry(entry);
+}
+
+/** What a torn-down tunnel left behind, for a successor that must wait for it. */
+interface Predecessor {
+	process: TunnelEntry["process"];
+	childPids: number[];
+	adoptedPid: number | null;
+}
+
+/** Signal the entry's processes and free its slot if it still holds it. */
+function teardownEntry(entry: TunnelEntry): Predecessor {
 	if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
 	entry.healthCheckTimer = null;
+	// A custom command that is a pipeline keeps its wrapper shell (no exec),
+	// so the kill below hits sh and the tunnel it spawned would live on.
+	// Capture the children FIRST — killing sh reparents them to init, after
+	// which `pkill -P <pid>` matches nothing. A plain command has none.
 	let childPids: number[] = [];
-	if (entry.process) {
-		const pid = entry.process.pid;
-		// A custom command that is a pipeline keeps its wrapper shell (no exec),
-		// so the kill below hits sh and the tunnel it spawned would live on.
-		// Capture the children FIRST — killing sh reparents them to init, after
-		// which `pkill -P <pid>` matches nothing. A plain command has none.
-		if (process.platform !== "win32" && pid) {
-			try {
-				const out = spawnSync(["pgrep", "-P", String(pid)]).stdout?.toString() ?? "";
-				childPids = out.split("\n").map((s) => Number.parseInt(s, 10)).filter((n) => Number.isFinite(n) && n > 0);
-			} catch {
-				// pgrep missing — the exec'd common case has no children anyway
-			}
+	const pid = entry.process?.pid;
+	if (entry.process && process.platform !== "win32" && pid) {
+		try {
+			const out = spawnSync(["pgrep", "-P", String(pid)]).stdout?.toString() ?? "";
+			childPids = out.split("\n").map((s) => Number.parseInt(s, 10)).filter((n) => Number.isFinite(n) && n > 0);
+		} catch {
+			// pgrep missing — the exec'd common case has no children anyway
 		}
+	}
+	if (entry.process) {
 		try {
 			entry.process.kill();
 		} catch {
 			// process may already be dead
 		}
-		for (const child of childPids) {
-			try {
-				process.kill(child, "SIGTERM");
-			} catch {
-				// already gone
-			}
+	}
+	for (const child of childPids) {
+		try {
+			process.kill(child, "SIGTERM");
+		} catch {
+			// already gone
 		}
 	}
 	if (entry.adoptedPid !== null) {
@@ -639,8 +686,8 @@ function teardownEntry(id: string): number[] {
 			// already gone, or owned by someone else — nothing we can do about it
 		}
 	}
-	tunnels.delete(id);
-	return childPids;
+	if (tunnels.get(entry.id) === entry) tunnels.delete(entry.id);
+	return { process: entry.process, childPids, adoptedPid: entry.adoptedPid };
 }
 
 /**
@@ -725,6 +772,8 @@ export function adoptMainTunnel(opts: {
 		healthCheckInFlight: false,
 		healthCheckTimer: null,
 		failureReason: null,
+		recovery: null,
+		placeholder: false,
 	};
 	tunnels.set(MAIN_ID, entry);
 	log.info("Adopted inherited tunnel", { pid: opts.pid, url: opts.url, port: opts.targetPort });
@@ -742,115 +791,149 @@ function optionsFor(entry: TunnelEntry): StartTunnelOptions {
 }
 
 /**
- * Wait for a signalled tunnel process to be gone, escalating to SIGKILL. A
+ * Wait for a torn-down tunnel's processes to be gone, escalating to SIGKILL. A
  * successor spawned while its predecessor is still in cloudflared's graceful
- * shutdown (30 s by default) can collide with whatever the old one still holds.
- * A wrapper (`flock`, a pipeline without exec) dies at once while the connector
- * it forked keeps the lock, so those children are waited out by PID as well.
+ * shutdown (30 s by default) collides with whatever the old one still holds.
  */
-async function waitForProcessGone(proc: TunnelEntry["process"], pids: number[]): Promise<void> {
+async function waitForPredecessor(gone: Predecessor): Promise<void> {
 	const timeoutMs = TUNNEL_RECOVERY.oldProcessExitTimeoutMs;
+	const waits = gone.childPids.map((pid) => waitForPidGone(pid, timeoutMs));
+	if (gone.adoptedPid !== null) waits.push(waitForPidGone(gone.adoptedPid, timeoutMs));
+	if (gone.process) waits.push(waitForChildGone(gone.process, timeoutMs));
+	await Promise.all(waits);
+}
+
+async function waitForChildGone(proc: NonNullable<TunnelEntry["process"]>, timeoutMs: number): Promise<void> {
+	const exited = await Promise.race([proc.exited.then(() => true), delay(timeoutMs).then(() => false)]);
+	if (exited) return;
+	try {
+		proc.kill(9);
+	} catch {
+		// already gone
+	}
+	await Promise.race([proc.exited, delay(timeoutMs)]);
+}
+
+/** For a process addressable only by PID: a pipeline's child, or an adopted tunnel. */
+async function waitForPidGone(pid: number, timeoutMs: number): Promise<void> {
+	if (await pidGoneWithin(pid, timeoutMs)) return;
+	try {
+		process.kill(pid, "SIGKILL");
+	} catch {
+		// already gone, or owned by someone else
+	}
+	await pidGoneWithin(pid, timeoutMs);
+}
+
+async function pidGoneWithin(pid: number, timeoutMs: number): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
-	if (proc) {
-		const exited = await Promise.race([proc.exited.then(() => true), delay(timeoutMs).then(() => false)]);
-		if (!exited) {
-			try {
-				proc.kill(9);
-			} catch {
-				// already gone
-			}
-			await Promise.race([proc.exited, delay(timeoutMs)]);
+	while (isProcessAlive(pid)) {
+		if (Date.now() >= deadline) return false;
+		await delay(50);
+	}
+	return true;
+}
+
+/**
+ * Hand `entry`'s slot to a recovery placeholder. A health restart ("now") tries at
+ * once; a lost process waits out the backoff. A tunnel a recovery started that was
+ * never proven healthy continues that recovery, so its backoff keeps growing.
+ */
+function beginRecovery(entry: TunnelEntry, predecessorGone: Promise<void>, when: "now" | "backoff"): Promise<TunnelEntry> {
+	const recovery: TunnelRecovery = entry.recovery ?? {
+		placeholder: entry,
+		previousUrl: null,
+		attempts: 0,
+		timer: null,
+		inFlight: null,
+		predecessorGone,
+	};
+	recovery.previousUrl = entry.url ?? recovery.previousUrl;
+	recovery.predecessorGone = predecessorGone;
+	recovery.placeholder = { ...newEntry(optionsFor(entry), recovery), placeholder: true };
+	tunnels.set(entry.id, recovery.placeholder);
+	if (when === "now" && recovery.attempts === 0) return attemptRecovery(recovery);
+	scheduleAttempt(recovery);
+	return Promise.resolve(recovery.placeholder);
+}
+
+/** Run the recovery's next attempt now, or join the one already running. */
+function attemptRecovery(recovery: TunnelRecovery): Promise<TunnelEntry> {
+	if (recovery.timer) {
+		clearTimeout(recovery.timer);
+		recovery.timer = null;
+	}
+	recovery.inFlight ??= runAttempt(recovery).finally(() => {
+		recovery.inFlight = null;
+	});
+	return recovery.inFlight;
+}
+
+async function runAttempt(recovery: TunnelRecovery): Promise<TunnelEntry> {
+	const { placeholder } = recovery;
+	await recovery.predecessorGone;
+	if (tunnels.get(placeholder.id) !== placeholder) return placeholder; // stopped meanwhile
+	recovery.attempts += 1;
+	const entry = await startEntry(optionsFor(placeholder), recovery);
+	if (entry.url) {
+		log.info("Tunnel recovered", { id: placeholder.id, attempt: recovery.attempts, previousUrl: recovery.previousUrl, url: entry.url });
+		tunnelChangeHook?.(entry, recovery.previousUrl);
+	} else if (tunnels.get(placeholder.id) === placeholder) {
+		if (isMisconfigured(entry.failureReason)) {
+			// Never retried, for any kind: the slot is released and the next explicit start reports it.
+			log.warn("Tunnel command is misconfigured — not retrying until it is started again", { id: placeholder.id, reason: entry.failureReason });
+			tunnels.delete(placeholder.id);
+		} else {
+			scheduleAttempt(recovery);
 		}
 	}
-	const alive = () => pids.filter(isProcessAlive);
-	while (alive().length > 0 && Date.now() < deadline) await delay(100);
-	for (const pid of alive()) {
-		try {
-			process.kill(pid, "SIGKILL");
-		} catch {
-			// already gone, or owned by someone else
-		}
-	}
+	return entry;
+}
+
+function isMisconfigured(reason: TunnelFailureReason | null): boolean {
+	return reason === "command-not-found" || reason === "command-empty";
+}
+
+function scheduleAttempt(recovery: TunnelRecovery): void {
+	const delays = TUNNEL_RECOVERY.retryDelaysMs;
+	const delayMs = delays[Math.min(recovery.attempts, delays.length - 1)];
+	log.warn("Tunnel down; retrying", { id: recovery.placeholder.id, attempt: recovery.attempts + 1, delayMs });
+	if (recovery.timer) clearTimeout(recovery.timer);
+	recovery.timer = setTimeout(() => {
+		recovery.timer = null;
+		void attemptRecovery(recovery);
+	}, delayMs);
+	(recovery.timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
 }
 
 async function restartEntry(entry: TunnelEntry): Promise<void> {
 	if (tunnels.get(entry.id) !== entry) return;
 	const previousUrl = entry.url;
-	const opts = optionsFor(entry);
-	const generation = stopGeneration(entry.id);
-	const { process: oldProcess, adoptedPid } = entry;
-	const children = teardownEntry(entry.id);
-	await waitForProcessGone(oldProcess, adoptedPid === null ? children : [adoptedPid, ...children]);
-	if (stopGeneration(entry.id) !== generation) return;
-	const restarted = await startEntry(opts);
-	if (restarted.url) {
-		log.info("Tunnel restarted", { id: entry.id, previousUrl, url: restarted.url });
-		tunnelChangeHook?.(restarted, previousUrl);
-	} else {
+	const predecessor = teardownEntry(entry);
+	const restarted = await beginRecovery(entry, waitForPredecessor(predecessor), "now");
+	if (!restarted.url && tunnels.get(entry.id)?.placeholder) {
 		log.error("Tunnel restart failed", { id: entry.id, previousUrl });
-		if (stopGeneration(entry.id) === generation) scheduleRecovery(opts, previousUrl, 0, restarted.failureReason);
 	}
-}
-
-function cancelRecovery(id: string): void {
-	const pending = recoveries.get(id);
-	if (!pending) return;
-	clearTimeout(pending.timer);
-	recoveries.delete(id);
-}
-
-function scheduleRecovery(
-	opts: StartTunnelOptions,
-	previousUrl: string | null,
-	attempt: number,
-	lastFailure: TunnelFailureReason | null,
-): boolean {
-	if (lastFailure === "command-not-found" || lastFailure === "command-empty") {
-		log.warn("Tunnel command is misconfigured — not retrying until it is started again", { id: opts.id, reason: lastFailure });
-		return false;
-	}
-	cancelRecovery(opts.id);
-	const delays = TUNNEL_RECOVERY.retryDelaysMs;
-	const delayMs = delays[Math.min(attempt, delays.length - 1)];
-	const generation = stopGeneration(opts.id);
-	log.warn("Tunnel down; retrying", { id: opts.id, attempt: attempt + 1, delayMs });
-	const timer = setTimeout(() => {
-		recoveries.delete(opts.id);
-		void recoverEntry(opts, previousUrl, attempt, generation);
-	}, delayMs);
-	(timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
-	recoveries.set(opts.id, { timer, opts });
-	return true;
-}
-
-async function recoverEntry(opts: StartTunnelOptions, previousUrl: string | null, attempt: number, generation: number): Promise<void> {
-	if (stopGeneration(opts.id) !== generation) return;
-	const existing = tunnels.get(opts.id);
-	if (existing && (existing.state === "starting" || existing.state === "connected")) return;
-	const entry = await startEntry(opts);
-	if (stopGeneration(opts.id) !== generation) return;
-	if (entry.url) {
-		log.info("Tunnel recovered", { id: opts.id, attempt: attempt + 1, previousUrl, url: entry.url });
-		tunnelChangeHook?.(entry, previousUrl);
-		return;
-	}
-	scheduleRecovery(opts, previousUrl, attempt + 1, entry.failureReason);
 }
 
 /**
  * Keep trying to bring the main tunnel up in the background — for a server that
- * runs with a tunnel by intent but whose first start failed (e.g. booted offline).
+ * runs with a tunnel by intent but whose start failed (e.g. booted offline).
  * False when the last failure was a misconfigured command, which is never retried.
  */
 export function retryMainTunnel(localPort: number): boolean {
-	return scheduleRecovery({ id: MAIN_ID, kind: "main", targetPort: localPort }, null, 0, mainTunnelFailureReason);
+	if (isMisconfigured(mainTunnelFailureReason)) return false;
+	if (!tunnels.has(MAIN_ID)) {
+		void beginRecovery(newEntry({ id: MAIN_ID, kind: "main", targetPort: localPort }, null), Promise.resolve(), "backoff");
+	}
+	return true;
 }
 
 /**
  * Ongoing health for a custom provider: keep probing its public URL, so a live
  * command whose tunnel has silently dropped is caught instead of being trusted
- * on process liveness alone. Any HTTP answer is healthy — see
- * `waitForPublicUrlReady` for why a 401/403 still proves the edge routes.
+ * on process liveness alone. Any HTTP answer but Cloudflare's tunnel-down 530 is
+ * healthy — see `waitForPublicUrlReady` for why a 401/403 still proves the edge routes.
  */
 async function checkPublicUrlHealth(entry: TunnelEntry, probeUrl: string): Promise<void> {
 	entry.healthCheckInFlight = true;
@@ -863,7 +946,7 @@ async function checkPublicUrlHealth(entry: TunnelEntry, probeUrl: string): Promi
 				redirect: "manual",
 				signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
 			});
-			reachable = true;
+			reachable = edgeRoutes(response);
 			detail = `status ${response.status}`;
 		} catch (err) {
 			detail = String(err);
@@ -875,6 +958,7 @@ async function checkPublicUrlHealth(entry: TunnelEntry, probeUrl: string): Promi
 				log.info("Tunnel edge recovered", { id: entry.id, previousFailures: entry.consecutiveHealthFailures });
 			}
 			entry.consecutiveHealthFailures = 0;
+			entry.recovery = null;
 			return;
 		}
 
@@ -950,6 +1034,7 @@ async function checkHealth(id: string): Promise<void> {
 				});
 			}
 			entry.consecutiveHealthFailures = 0;
+			entry.recovery = null;
 			return;
 		}
 
@@ -1001,10 +1086,6 @@ export const tunnelManager = {
 		for (const entry of tunnels.values()) {
 			if (matchesFilter(entry, filter)) ids.push(entry.id);
 		}
-		// A tunnel between recovery attempts has no entry, only a pending retry.
-		for (const [id, pending] of recoveries) {
-			if (matchesFilter(pending.opts, filter)) ids.push(id);
-		}
 		for (const id of ids) stopEntry(id);
 	},
 };
@@ -1036,10 +1117,8 @@ export function getTunnelState(): TunnelState {
 export function _resetState(): void {
 	for (const entry of tunnels.values()) {
 		if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+		if (entry.recovery?.timer) clearTimeout(entry.recovery.timer);
 	}
 	tunnels.clear();
-	for (const pending of recoveries.values()) clearTimeout(pending.timer);
-	recoveries.clear();
-	stopGenerations.clear();
 	mainTunnelFailureReason = null;
 }

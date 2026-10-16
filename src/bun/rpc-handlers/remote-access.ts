@@ -1,5 +1,8 @@
 import { getAccessUrl, generateQrDataUrl, getLocalInterfaces, getSignInLink, getStaticCode, resolveAccessHost } from "../remote-access-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "../../shared/types";
+import { createLogger } from "../logger";
+
+const log = createLogger("remote-access");
 
 /** Give Cloudflare's quick-tunnel hostname time to propagate before publishing it to the UI. */
 export const TUNNEL_DNS_SETTLE_DELAY_MS = 5_000;
@@ -84,6 +87,8 @@ async function startTunnel(): Promise<{ url: string | null; state: string }> {
 async function stopTunnel(): Promise<void> {
 	const { stopTunnel: stop } = await import("../cloudflare-tunnel");
 	stop();
+	// A stable marker for supervisors that restore a lost tunnel: this stop was asked for.
+	log.info("Main tunnel stopped on request");
 }
 
 export const remoteAccessHandlers = {

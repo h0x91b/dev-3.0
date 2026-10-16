@@ -650,7 +650,7 @@ export async function runSelfUpdate(opts: {
 		};
 	}
 
-	const handoff = await prepareHandoff(strategy);
+	const { handoff, stoppedWantedTunnel } = await prepareHandoff(strategy);
 	persistHandoff(handoff, record);
 
 	if (strategy === "helper") {
@@ -671,7 +671,7 @@ export async function runSelfUpdate(opts: {
 			// so staying up on the old build in memory is the least-bad state — and the
 			// operator has something to read instead of a dark box.
 			log.error("No relaunch helper could be started — staying up on the old build", { toVersion: plan.version });
-			await clearHandoff(handoff);
+			await clearHandoff(handoff, stoppedWantedTunnel);
 			return {
 				ok: false,
 				restarting: false,
@@ -739,14 +739,18 @@ function newBuildBin(plan: UpdatePlan): string {
  * changes. That is a real limitation of running under systemd, named rather than
  * papered over.
  */
-async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff> {
+/**
+ * `stoppedWantedTunnel`: a main tunnel was wanted (starting, or recovering) but had
+ * nothing to hand over, so it was stopped — an abandoned restart must bring it back.
+ */
+async function prepareHandoff(strategy: RestartStrategy): Promise<{ handoff: RemoteHandoff; stoppedWantedTunnel: boolean }> {
 	const { getServerPort } = await import("./remote-access-server");
 	const port = getServerPort();
 	if (strategy !== "helper") {
 		log.info("Supervised restart: the tunnel dies with the unit, so the public URL will change");
-		return { port, fromPid: process.pid, tunnel: null };
+		return { handoff: { port, fromPid: process.pid, tunnel: null }, stoppedWantedTunnel: false };
 	}
-	const { releaseMainTunnelForHandoff, stopMainTunnelForStableHandoff, stopTunnel } = await import("./cloudflare-tunnel");
+	const { releaseMainTunnelForHandoff, stopMainTunnelForStableHandoff, stopTunnel, getTunnelState } = await import("./cloudflare-tunnel");
 	// A provider observed to reuse its hostname needs no leaked process: the
 	// successor respawns onto the same URL, so nothing outlives an abandoned
 	// restart and the host-bound session cookie still matches.
@@ -755,9 +759,10 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
 		log.info("Custom tunnel has a stable hostname — the successor will respawn it instead of adopting it", {
 			url: stableUrl,
 		});
-		return { port, fromPid: process.pid, tunnel: null, stableTunnelUrl: stableUrl };
+		return { handoff: { port, fromPid: process.pid, tunnel: null, stableTunnelUrl: stableUrl }, stoppedWantedTunnel: false };
 	}
 	const tunnel = releaseMainTunnelForHandoff();
+	let stoppedWantedTunnel = false;
 	if (!tunnel) {
 		// NOTHING TO HAND OVER IS NOT NOTHING TO DO. The release only succeeds on a
 		// `connected` entry, so an update landing during the tunnel's start window (the
@@ -766,9 +771,10 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
 		// kill children. Left alone it outlives us as an orphan nobody tracks, and the
 		// successor starts a second one.
 		log.info("No live main tunnel to hand over — stopping it rather than leaking it");
+		stoppedWantedTunnel = getTunnelState() !== "idle";
 		stopTunnel();
 	}
-	return { port, fromPid: process.pid, tunnel };
+	return { handoff: { port, fromPid: process.pid, tunnel }, stoppedWantedTunnel };
 }
 
 /**
@@ -785,7 +791,7 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
  * from stealing a live server's tunnel) — and here `fromPid` is our own pid, so a
  * re-read always returns null and this whole function would silently do nothing.
  */
-async function clearHandoff(handoff: RemoteHandoff): Promise<void> {
+async function clearHandoff(handoff: RemoteHandoff, stoppedWantedTunnel: boolean): Promise<void> {
 	const current = readRemoteState();
 	if (current) {
 		try {
@@ -798,23 +804,18 @@ async function clearHandoff(handoff: RemoteHandoff): Promise<void> {
 	// take back — it has to be started again, or this still-serving box keeps
 	// running with no public URL at all.
 	if (handoff.stableTunnelUrl) {
-		try {
-			const { startTunnel } = await import("./cloudflare-tunnel");
-			const { getServerPort } = await import("./remote-access-server");
-			const url = await startTunnel(getServerPort());
-			log.info("Restarted the tunnel after the restart was abandoned", {
-				url,
-				sameUrl: url === handoff.stableTunnelUrl,
-			});
-		} catch (err) {
-			log.warn("Could not restart the tunnel after abandoning the restart — the box is local-only", {
-				error: String(err),
-			});
-		}
+		const url = await restartTunnelAfterAbandon();
+		log.info("Restarted the tunnel after the restart was abandoned", { url, sameUrl: url === handoff.stableTunnelUrl });
 		return;
 	}
 	const tunnel = handoff.tunnel;
-	if (!tunnel) return;
+	if (!tunnel) {
+		if (stoppedWantedTunnel) {
+			const url = await restartTunnelAfterAbandon();
+			log.info("Restarted the tunnel that was stopped for the abandoned restart", { url });
+		}
+		return;
+	}
 	try {
 		const { adoptMainTunnel } = await import("./cloudflare-tunnel");
 		const { getServerPort } = await import("./remote-access-server");
@@ -824,6 +825,22 @@ async function clearHandoff(handoff: RemoteHandoff): Promise<void> {
 		log.warn("Could not re-adopt the released tunnel — it is still running but unmanaged", {
 			error: String(err),
 		});
+	}
+}
+
+/** Start the main tunnel again, and keep retrying in the background if that fails. */
+async function restartTunnelAfterAbandon(): Promise<string | null> {
+	try {
+		const { startTunnel, retryMainTunnel } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		const url = await startTunnel(getServerPort());
+		if (!url) retryMainTunnel(getServerPort());
+		return url;
+	} catch (err) {
+		log.warn("Could not restart the tunnel after abandoning the restart — the box is local-only", {
+			error: String(err),
+		});
+		return null;
 	}
 }
 
@@ -1109,3 +1126,6 @@ function isWritable(dir: string): boolean {
 		return false;
 	}
 }
+
+/** The handoff pair is internal to `runSelfUpdate`; exported only so tests can drive it. */
+export { prepareHandoff as _prepareHandoff, clearHandoff as _clearHandoff };

@@ -3541,7 +3541,7 @@ function App() {
 										setTunnelWanted(want);
 										if (want && remoteQR.tunnelBinaryInstalled && remoteQR.tunnelState === "idle") {
 											startRemoteTunnel();
-										} else if (!want && remoteQR.tunnelState === "connected") {
+										} else if (!want && (remoteQR.tunnelState === "connected" || remoteQR.tunnelState === "starting")) {
 											stopRemoteTunnel();
 										}
 									}}

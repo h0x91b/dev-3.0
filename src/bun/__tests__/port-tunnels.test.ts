@@ -248,6 +248,36 @@ describe("port-tunnels — cleanup", () => {
 		expect(getExposedPorts("t")).toHaveLength(0);
 	});
 
+	it("cleanupTaskTunnels also ends a tunnel that is waiting to be retried", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1, 200];
+		let exit!: (code: number) => void;
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: new Promise<number>((resolve) => {
+				exit = resolve;
+			}),
+			stderr: new ReadableStream({ start(c) { c.enqueue(encoder.encode("INF | https://lost.trycloudflare.com\n")); } }),
+		});
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: Promise.resolve(1),
+			stderr: new ReadableStream({ start(c) { c.close(); } }),
+		});
+		mockNextSpawn("https://zombie.trycloudflare.com");
+		await exposeTaskPort("t", 3000);
+
+		exit(1); // connector crashes; the first retry fails, the next is 200 ms out
+		await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(2), { interval: 2 });
+		await vi.waitFor(() => expect(getExposedPorts("t")).toEqual([expect.objectContaining({ state: "starting", url: null })]), { interval: 2 });
+
+		cleanupTaskTunnels("t");
+		await new Promise((r) => setTimeout(r, 300));
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(getExposedPorts("t")).toHaveLength(0);
+		(mockSpawn as Mock).mockReset();
+	});
+
 	it("cleanupAllTunnels stops every task tunnel", async () => {
 		mockNextSpawn("https://a.trycloudflare.com");
 		mockNextSpawn("https://b.trycloudflare.com");
