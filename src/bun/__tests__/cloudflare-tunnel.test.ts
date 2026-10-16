@@ -77,6 +77,7 @@ beforeEach(() => {
 	// Recovery never fires on its own here; the cases that exercise it shorten the delays.
 	TUNNEL_RECOVERY.retryDelaysMs = [60_000];
 	TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5;
+	TUNNEL_RECOVERY.provenAfterMs = REAL_RECOVERY.provenAfterMs;
 	TUNNEL_EDGE_READY.timeoutMs = 15;
 	TUNNEL_EDGE_READY.pollMs = 1;
 	CUSTOM_TUNNEL_EDGE_READY.timeoutMs = 15;
@@ -749,6 +750,19 @@ describe("tunnel recovery", () => {
 		return { kill };
 	}
 
+	/** A spawn whose URL appears only when the test calls `printUrl()`. */
+	function mockDelayedStart(url: string) {
+		const encoder = new TextEncoder();
+		let stream!: ReadableStreamDefaultController<Uint8Array>;
+		(mockSpawn as Mock).mockReturnValueOnce({
+			pid: 7300,
+			kill: vi.fn(),
+			exited: new Promise<number>(() => {}),
+			stderr: new ReadableStream({ start(controller) { stream = controller; } }),
+		});
+		return { printUrl: () => stream.enqueue(encoder.encode(`INF | ${url}\n`)) };
+	}
+
 	async function failHealthChecks(id: string, times: number): Promise<void> {
 		for (let i = 0; i < times; i++) await tunnelManager.checkHealth(id);
 	}
@@ -993,20 +1007,61 @@ describe("tunnel recovery", () => {
 		await tick(5);
 		expect(await startTunnel(9090)).toBe("https://moved.trycloudflare.com");
 		expect(tunnelManager.get("main")?.targetPort).toBe(9090);
+		expect((mockSpawn as Mock).mock.calls[1][0].join(" ")).toContain("9090");
 	});
 
-	it("keeps ports merged into a failed recovery attempt for the next one", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [1, 60_000];
-		const first = mockTunnelProcess("https://shared.trycloudflare.com");
-		const attempt = mockHangingStart();
-		await tunnelManager.start({ id: "task:t1:shared", kind: "task-shared", targetPort: 9000, ports: [3000], taskId: "t1" });
+	it("an explicit start joins a recovery attempt that is already starting", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		const first = mockTunnelProcess("https://first.trycloudflare.com");
+		const attempt = mockDelayedStart("https://joined.trycloudflare.com");
+		await startTunnel(8080);
 
 		first.exit(1);
 		await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(2), { interval: 2 });
-		tunnelManager.get("task:t1:shared")!.ports = [3000, 4000]; // exposeTaskPortsShared merging mid-attempt
-		attempt.kill(); // the attempt dies without a URL
-		await vi.waitFor(() => expect(tunnelManager.get("task:t1:shared")?.placeholder).toBe(true), { interval: 2 });
-		expect(tunnelManager.get("task:t1:shared")?.ports).toEqual([3000, 4000]);
+		const explicit = startTunnel(8080);
+		attempt.printUrl();
+		expect(await explicit).toBe("https://joined.trycloudflare.com");
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+	});
+
+	it("a stop during a health restart's attempt is not reported as a failed restart", async () => {
+		const old = mockTunnelProcess("https://old.trycloudflare.com", { exitOnKill: true });
+		mockHangingStart();
+		await startTunnel(8080);
+
+		await failHealthChecks("main", 2);
+		const restart = tunnelManager.checkHealth("main");
+		await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(2), { interval: 2 });
+		expect(old.kill).toHaveBeenCalled();
+		stopTunnel();
+		await restart;
+		expect(loggerMocks.error).not.toHaveBeenCalledWith("Tunnel restart failed", expect.anything());
+		expect(getTunnelState()).toBe("idle");
+	});
+
+	it("starts the backoff over for a recovered tunnel that served long enough, even with no probe", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [20, 500, 60_000];
+		TUNNEL_RECOVERY.provenAfterMs = 0;
+		const first = mockTunnelProcess("https://a.trycloudflare.com");
+		const second = mockTunnelProcess("https://b.trycloudflare.com");
+		await startTunnel(8080);
+
+		first.exit(1);
+		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://b.trycloudflare.com"));
+		second.exit(1);
+		await tick(5);
+		expect(loggerMocks.warn).toHaveBeenLastCalledWith("Tunnel down; retrying", { id: "main", attempt: 1, delayMs: 20 });
+	});
+
+	it("keeps a shared tunnel's subtoken across recovery", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		const first = mockTunnelProcess("https://shared-a.trycloudflare.com");
+		mockTunnelProcess("https://shared-b.trycloudflare.com");
+		const original = await tunnelManager.start({ id: "task:t1:shared", kind: "task-shared", targetPort: 9000, ports: [3000], taskId: "t1" });
+
+		first.exit(1);
+		await vi.waitFor(() => expect(tunnelManager.get("task:t1:shared")?.url).toBe("https://shared-b.trycloudflare.com"));
+		expect(tunnelManager.get("task:t1:shared")?.subToken).toBe(original.subToken);
 	});
 
 	it("a dying attempt that lost its slot does not overwrite the main failure reason", async () => {

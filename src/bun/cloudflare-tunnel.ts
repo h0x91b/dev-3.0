@@ -100,6 +100,8 @@ export interface StartTunnelOptions {
 	targetPort: number;
 	ports?: number[];
 	taskId?: string;
+	/** Carried across a recovery, so a stable hostname's `/p/<token>/` links keep working. */
+	subToken?: string;
 }
 
 const MAIN_ID = "main";
@@ -131,6 +133,8 @@ export const CUSTOM_TUNNEL_EDGE_READY = { timeoutMs: 10_000, pollMs: 750 };
 export const TUNNEL_RECOVERY = {
 	retryDelaysMs: [5_000, 15_000, 30_000, 60_000, 120_000, 300_000],
 	oldProcessExitTimeoutMs: 5_000,
+	/** A recovered tunnel that served this long counts as healthy even with no probe to prove it. */
+	provenAfterMs: 300_000,
 };
 
 const tunnels = new Map<string, TunnelEntry>();
@@ -487,7 +491,7 @@ function newEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | null): Tu
 		process: null,
 		adoptedPid: null,
 		startedAt: Date.now(),
-		subToken: randomBytes(24).toString("base64url"),
+		subToken: opts.subToken ?? randomBytes(24).toString("base64url"),
 		metricsReadyUrl: null,
 		publicProbeUrl: null,
 		stableHostname: false,
@@ -513,6 +517,10 @@ async function startEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | n
 			existing.targetPort = opts.targetPort; // the caller knows where the backend listens now
 			return attemptRecovery(existing.recovery!);
 		}
+	} else if (existing?.recovery?.inFlight && existing.recovery !== recovery) {
+		// A recovery attempt is mid-start: join it. A new backend port applies from the next attempt.
+		existing.recovery.placeholder.targetPort = opts.targetPort;
+		return existing.recovery.inFlight;
 	} else if (existing && (existing.state === "starting" || existing.state === "connected")) {
 		log.warn("Tunnel already active", { id: opts.id, state: existing.state });
 		return existing;
@@ -794,6 +802,7 @@ function optionsFor(entry: TunnelEntry): StartTunnelOptions {
 		targetPort: entry.targetPort,
 		ports: [...entry.ports],
 		taskId: entry.taskId,
+		subToken: entry.subToken,
 	};
 }
 
@@ -847,7 +856,8 @@ async function pidGoneWithin(pid: number, timeoutMs: number): Promise<boolean> {
  * never proven healthy continues that recovery, so its backoff keeps growing.
  */
 function beginRecovery(entry: TunnelEntry, predecessorGone: Promise<void>, when: "now" | "backoff"): Promise<TunnelEntry> {
-	const recovery: TunnelRecovery = entry.recovery ?? {
+	const unproven = entry.recovery !== null && Date.now() - entry.startedAt < TUNNEL_RECOVERY.provenAfterMs;
+	const recovery: TunnelRecovery = (unproven ? entry.recovery : null) ?? {
 		placeholder: entry,
 		previousUrl: null,
 		attempts: 0,
@@ -897,6 +907,8 @@ async function runAttempt(recovery: TunnelRecovery): Promise<TunnelEntry> {
 	recovery.attempts += 1;
 	const entry = await startEntry(optionsFor(placeholder), recovery);
 	if (entry.url) {
+		// Lost again (or stopped) between "connected" and here: the exit handler owns it now.
+		if (tunnels.get(placeholder.id) !== entry) return tunnels.get(placeholder.id) ?? entry;
 		log.info("Tunnel recovered", { id: placeholder.id, attempt: recovery.attempts, previousUrl: recovery.previousUrl, url: entry.url });
 		notifyChange(entry, recovery.previousUrl);
 	} else if (tunnels.get(placeholder.id) === placeholder) {
@@ -933,7 +945,9 @@ async function restartEntry(entry: TunnelEntry): Promise<void> {
 	const previousUrl = entry.url;
 	const predecessor = teardownEntry(entry);
 	const restarted = await beginRecovery(entry, waitForPredecessor(predecessor), "now");
-	if (!restarted.placeholder && !restarted.url) {
+	// Only an attempt that ran and failed while still wanted — not a stop, not a deferred attempt.
+	const stillRecovering = restarted.recovery !== null && tunnels.get(entry.id)?.recovery === restarted.recovery;
+	if (!restarted.placeholder && !restarted.url && stillRecovering) {
 		log.error("Tunnel restart failed", { id: entry.id, previousUrl });
 	}
 }

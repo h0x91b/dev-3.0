@@ -3293,6 +3293,30 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: false });
 		});
 
+		it("unchecking the toggle while its own start request is in flight stops the tunnel", async () => {
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,local",
+					accessUrl: "http://192.168.0.1:1234/?token=local",
+					tunnelState: "idle",
+					tunnelBinaryInstalled: true,
+					tunnelProvider: "cloudflare" as const,
+					tunnelFailureReason: null,
+				},
+			}));
+			// The start never answers within the test: the modal still holds the "idle" response.
+			vi.mocked(api.request.getRemoteAccessQR).mockReturnValue(new Promise(() => {}));
+
+			const toggle = await screen.findByLabelText("Accessible from anywhere (Cloudflare Tunnel)", { selector: "input" });
+			await userEvent.click(toggle);
+			expect(toggle).toBeChecked();
+			await userEvent.click(toggle);
+
+			await waitFor(() => expect(api.request.stopTunnel).toHaveBeenCalled());
+			expect(toggle).not.toBeChecked();
+		});
+
 		it("unchecking the toggle stops a tunnel that is still starting (or being retried)", async () => {
 			await renderApp();
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {

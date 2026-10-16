@@ -41,6 +41,16 @@ describe("an abandoned self-update gives the main tunnel back", () => {
 		expect(tunnel.retryMainTunnel).toHaveBeenCalledWith(43606);
 	});
 
+	it("does not schedule retries when the restart after an abandon succeeds", async () => {
+		tunnel.state = "starting";
+		tunnel.startTunnel.mockResolvedValueOnce("https://box.example.com");
+		const { handoff, stoppedWantedTunnel } = await _prepareHandoff("helper");
+
+		await _clearHandoff(handoff, stoppedWantedTunnel);
+		expect(tunnel.startTunnel).toHaveBeenCalledWith(43606);
+		expect(tunnel.retryMainTunnel).not.toHaveBeenCalled();
+	});
+
 	it("leaves a box that had no tunnel without one", async () => {
 		tunnel.state = "idle";
 		const { handoff, stoppedWantedTunnel } = await _prepareHandoff("helper");

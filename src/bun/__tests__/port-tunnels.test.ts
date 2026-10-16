@@ -235,6 +235,12 @@ describe("port-tunnels — cleanup", () => {
 		vi.clearAllMocks();
 	});
 
+	afterEach(() => {
+		// Recovery cases leave queued spawns unconsumed when they pass — and when they fail.
+		(mockSpawn as Mock).mockReset();
+		_resetState();
+	});
+
 	it("cleanupTaskTunnels stops every tunnel owned by a task", async () => {
 		mockNextSpawn("https://a.trycloudflare.com");
 		mockNextSpawn("https://b.trycloudflare.com");
@@ -275,7 +281,33 @@ describe("port-tunnels — cleanup", () => {
 		await new Promise((r) => setTimeout(r, 300));
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
 		expect(getExposedPorts("t")).toHaveLength(0);
-		(mockSpawn as Mock).mockReset();
+	});
+
+	it("keeps ports exposed during a failed recovery attempt for the next one", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1, 60_000];
+		const encoder = new TextEncoder();
+		let exit!: (code: number) => void;
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: new Promise<number>((resolve) => {
+				exit = resolve;
+			}),
+			stderr: new ReadableStream({ start(c) { c.enqueue(encoder.encode("INF | https://shared.trycloudflare.com\n")); } }),
+		});
+		let attemptStream!: ReadableStreamDefaultController<Uint8Array>;
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: Promise.resolve(1),
+			stderr: new ReadableStream({ start(c) { attemptStream = c; } }),
+		});
+		await exposeTaskPortsShared("t", [3000], 9000);
+
+		exit(1); // the connector dies; the first retry is mid-start when port 4000 is exposed
+		await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(2), { interval: 2 });
+		await exposeTaskPortsShared("t", [4000], 9000);
+		attemptStream.close(); // that attempt fails without a URL
+		await vi.waitFor(() => expect(tunnelManager.get("task:t:shared")?.placeholder).toBe(true), { interval: 2 });
+		expect(getExposedPorts("t")).toEqual([expect.objectContaining({ state: "starting", ports: [3000, 4000] })]);
 	});
 
 	it("cleanupAllTunnels stops every task tunnel", async () => {
