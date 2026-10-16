@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	AGENT_COMMAND_LINE_RESERVE,
 	AGENT_SKILL_BODY_LIMIT,
+	COORDINATOR_PROMPT_LIMIT,
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY } from "../../shared/agent-skill-content";
@@ -126,23 +127,19 @@ describe("the whole Windows command line fits", () => {
 	// is the property that proves it was: on the agents that carry no protocol body
 	// inline, a coordinator task keeps AT LEAST the description room it had before.
 	//
-	// 26 536 characters is that measured baseline (gemini; the custom-agent adapter
-	// measured 26 525). Raw prompt length is only a proxy for it, because the launch
-	// dialect escapes quotes and backticks — measure the serialized line instead.
-	//
-	// The create-and-launch default (2026-09-12) was folded into the rules it
-	// belongs to and paid for out of illustrations and justifications, so these two
-	// numbers did not move.
-	it("a coordinator task keeps the launch room it had before the events block", async () => {
+	// Measured with the preamble padded to COORDINATOR_PROMPT_LIMIT, so the floors hold for any prompt
+	// the cap allows, not just today's text. 26 237 (gemini) / 26 226 (custom) are the 6 500-character
+	// re-baseline of the old 26 536 / 26 525 (decisions/2026/10/16/coordinator-prompt-cap-6500.md).
+	it("a coordinator task at the prompt cap keeps its baselined launch room", async () => {
 		asPlatform("win32");
 		const coordinator = (brief: number) => ({
 			...fullSizeContext(),
-			taskDescription: `${COORDINATOR_PROMPT}\n\n${"x".repeat(brief)}`,
+			taskDescription: `${COORDINATOR_PROMPT.padEnd(COORDINATOR_PROMPT_LIMIT, "x")}\n\n${"x".repeat(brief)}`,
 		});
 		const fits = async (command: string, brief: number) =>
 			(await resolveAgentCommand(agent(command), undefined, coordinator(brief))).length < WINDOWS_COMMAND_LINE_LIMIT;
-		expect(await fits("gemini", 26536)).toBe(true);
-		expect(await fits("some-custom-agent", 26525)).toBe(true);
+		expect(await fits("gemini", 26237)).toBe(true);
+		expect(await fits("some-custom-agent", 26226)).toBe(true);
 	});
 
 	it("the reserve is real: a task text this long is what the budget is for", () => {

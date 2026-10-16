@@ -49,3 +49,9 @@ export const AGENT_COMMAND_LINE_RESERVE = 5000;
  * The guard is `src/bun/__tests__/agent-command-line-budget.test.ts`.
  */
 export const AGENT_SKILL_BODY_LIMIT = WINDOWS_COMMAND_LINE_LIMIT - AGENT_COMMAND_LINE_RESERVE;
+
+/**
+ * Cap on the built-in coordinator preamble, which still travels as argv inside the task description.
+ * Not an OS limit: a ratchet on the description room a coordinator task keeps, re-baselined on 2026-10-16.
+ */
+export const COORDINATOR_PROMPT_LIMIT = 6500;

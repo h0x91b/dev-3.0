@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
+import { COORDINATOR_PROMPT_LIMIT } from "../../shared/agent-command-line-budget";
 
 const BUILTIN = "Review the code changes on this branch.";
 
@@ -267,15 +268,11 @@ describe("COORDINATOR_PROMPT", () => {
 	// length is launch capacity spent (`agent-command-line-budget.ts`) — and it is
 	// already over the 5 000-character reserve, which nothing enforces on input.
 	//
-	// 6 210 is not a round number: it is what this prompt measured BEFORE the events
-	// block was added. Adding the block cost 1 700 characters and the rest of the
-	// prompt was condensed to pay for all of them, so no coordinator task that
-	// launched before stops launching. The cap keeps that property: a new section
-	// is paid for out of existing prose, never out of the user's task description.
-	// The create-and-launch default (2026-09-12) was paid for the same way — folded
-	// into the rules it belongs to, with illustrations and justifications cut.
-	it("costs no more launch capacity than it did before the events block", () => {
-		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(6210);
+	// COORDINATOR_PROMPT_LIMIT is a ratchet, not an OS ceiling: raising it shrinks every coordinator
+	// task's description room by the same amount, and the Windows launch-room test is re-baselined with
+	// it (decisions/2026/10/16/coordinator-prompt-cap-6500.md). Headroom, not an invitation to pad.
+	it("stays within the coordinator prompt cap", () => {
+		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
 	});
 
 	it("never assumes the user's gender — it ships to every install as the default", () => {
