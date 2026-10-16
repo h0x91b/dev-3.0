@@ -145,7 +145,7 @@ const stats = {
 	"stats.time.split": "Agent vs you",
 	"stats.time.splitAgent": "Agent",
 	"stats.time.splitYou": "You",
-	"stats.time.empty": "No task was in flight in this period",
+	"stats.time.empty": "No task was in flight in this period — launch one to start the clock.",
 	"stats.time.gap_one": "{count} task has no status history for part of this period, so its time is undercounted",
 	"stats.time.gap_other": "{count} tasks have no status history for part of this period, so their time is undercounted",
 	"stats.time.focusSince": "Focus is placed in periods since {date}; earlier focus counts only under All",

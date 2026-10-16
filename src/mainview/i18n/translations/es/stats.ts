@@ -126,7 +126,7 @@ const stats = {
 	"stats.time.split": "Agente vs tú",
 	"stats.time.splitAgent": "Agente",
 	"stats.time.splitYou": "Tú",
-	"stats.time.empty": "Ninguna tarea estuvo en curso en este periodo",
+	"stats.time.empty": "Ninguna tarea estuvo en curso en este periodo — lanza una para empezar a contar.",
 	"stats.time.gap_one": "{count} tarea no tiene historial de estados en parte del periodo, así que su tiempo queda corto",
 	"stats.time.gap_many": "{count} tareas no tienen historial de estados en parte del periodo, así que su tiempo queda corto",
 	"stats.time.gap_other": "{count} tareas no tienen historial de estados en parte del periodo, así que su tiempo queda corto",
