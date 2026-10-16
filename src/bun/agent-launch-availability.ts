@@ -74,7 +74,12 @@ export async function findMissingLaunchAgent(
 	let allAgents: CodingAgent[];
 	let settings: GlobalSettings;
 	try {
-		[allAgents, settings] = await Promise.all([getAllAgents(), loadSettings()]);
+		// Both started inside promise chains: a synchronous throw from one must not
+		// leave the other's rejection unhandled.
+		[allAgents, settings] = await Promise.all([
+			Promise.resolve().then(() => getAllAgents()),
+			Promise.resolve().then(() => loadSettings()),
+		]);
 	} catch (err) {
 		log.warn("Agent availability unknown — launch not blocked", { error: String(err) });
 		return null;

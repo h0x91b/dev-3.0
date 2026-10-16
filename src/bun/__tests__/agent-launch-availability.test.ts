@@ -24,8 +24,11 @@ const claudeAgent: CodingAgent = {
 	defaultConfigId: "claude-default",
 };
 
+// The async wrapper hands out a promise the spy never observes — vi.fn attaches
+// handlers to its own return value, which would hide an unhandled rejection.
+const getAllAgentsSpy = vi.fn(async () => [ompAgent, claudeAgent]);
 vi.mock("../agents", () => ({
-	getAllAgents: vi.fn(async () => [ompAgent, claudeAgent]),
+	getAllAgents: async () => await getAllAgentsSpy(),
 	findConfig: (agent: CodingAgent, configId: string | null | undefined) =>
 		agent.configurations.find((c) => c.id === configId) ?? agent.configurations[0],
 }));
@@ -40,7 +43,6 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	})),
 }));
 
-import { getAllAgents } from "../agents";
 import { loadSettings } from "../settings";
 import { AgentNotInstalledError, assertLaunchAgentsInstalled, findMissingLaunchAgent } from "../agent-launch-availability";
 import { isAgentNotInstalledError } from "../../shared/agent-install";
@@ -89,7 +91,7 @@ describe("findMissingLaunchAgent", () => {
 	});
 
 	it("judges a path-shaped command by that path, not by a same-named binary on PATH", async () => {
-		vi.mocked(getAllAgents).mockResolvedValueOnce([{ ...claudeAgent, baseCommand: "/nowhere/dev3-test/claude" }]);
+		getAllAgentsSpy.mockResolvedValueOnce([{ ...claudeAgent, baseCommand: "/nowhere/dev3-test/claude" }]);
 		const missing = await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: "claude-default" }]);
 		expect(missing?.binaryName).toBe("claude");
 	});
@@ -100,8 +102,23 @@ describe("findMissingLaunchAgent", () => {
 		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
 	});
 
+	it("leaves no unhandled rejection when settings throw synchronously", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			vi.mocked(loadSettings).mockImplementationOnce(() => { throw new Error("no loadSettings"); });
+			getAllAgentsSpy.mockImplementationOnce(() => Promise.reject(new Error("agents also failed")));
+			expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
 	it("never blocks when the probe itself fails", async () => {
-		vi.mocked(getAllAgents).mockRejectedValueOnce(new Error("agents.json unreadable"));
+		getAllAgentsSpy.mockRejectedValueOnce(new Error("agents.json unreadable"));
 		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
 	});
 });
