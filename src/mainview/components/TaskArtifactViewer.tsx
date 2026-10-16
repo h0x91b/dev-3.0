@@ -21,6 +21,7 @@ import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { getArtifactDock, subscribeArtifactDock } from "../utils/artifact-dock";
 import { artifactViewerClosed, artifactViewerOpened } from "../artifact-activity";
+import { setArtifactThemeMode, useArtifactThemeMode } from "../artifact-theme-prefs";
 import { assetFileName, downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
 interface TaskArtifactViewerProps {
@@ -38,8 +39,6 @@ interface TaskArtifactViewerProps {
 	/** The live task record, when the host has it on screen — its `review` is what the pins are drawn from. */
 	task?: Pick<Task, "id" | "review">;
 }
-
-type ArtifactThemeMode = "follow" | "light" | "dark";
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
 const SEARCH_DEBOUNCE_MS = 150;
@@ -118,8 +117,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const modal = !offscreen && (!dock || fullscreen);
 	const [downloading, setDownloading] = useState(false);
 	const [downloadKind, setDownloadKind] = useState<"html" | "zip" | null>(null);
-	// Reports open in light even when dev3 is dark; the toolbar still cycles Light / Follow dev3 / Dark.
-	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>("light");
+	// Light until the user picks; the pick (Light / Follow dev3 / Dark) is shared and persisted.
+	const themeMode = useArtifactThemeMode();
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	// null = nothing searched yet (empty query) — the counter stays hidden.
@@ -596,10 +595,10 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		: themeMode === "light" ? t("artifactViewer.themeLight") : t("artifactViewer.themeDark");
 	const themeLabel = t("artifactViewer.themeMode", { mode: themeName });
 	const searchLabel = `${t("artifactViewer.search")} (${isMac() ? "⌘F" : "Ctrl+F"})`;
-	const cycleTheme = () => setThemeMode((mode) => {
-		if (mode === "follow") return currentTheme();
-		return mode === currentTheme() ? (mode === "light" ? "dark" : "light") : "follow";
-	});
+	const cycleTheme = () => {
+		if (themeMode === "follow") setArtifactThemeMode(currentTheme());
+		else setArtifactThemeMode(themeMode === currentTheme() ? (themeMode === "light" ? "dark" : "light") : "follow");
+	};
 	const themeIcon = themeMode === "follow" ? "◐" : themeMode === "light" ? "" : "";
 
 	// One card, three shapes: docked in flow, docked-and-fullscreen over

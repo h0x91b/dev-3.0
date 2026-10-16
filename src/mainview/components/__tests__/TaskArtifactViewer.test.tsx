@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { SharedArtifact } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskArtifactViewer from "../TaskArtifactViewer";
+import { _resetArtifactThemePrefs } from "../../artifact-theme-prefs";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 vi.mock("../../rpc", () => ({
@@ -35,6 +36,8 @@ function artifact(id: string, withBundle = false): SharedArtifact {
 }
 
 beforeEach(() => {
+	localStorage.removeItem("dev3-artifact-theme");
+	_resetArtifactThemePrefs();
 	vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValue({
 		html: '<!doctype html><html><head></head><body><img src="chart.png"></body></html>',
 		assets: [{ name: "chart.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" }],
@@ -166,37 +169,97 @@ describe("TaskArtifactViewer", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it.each(["light", "dark"] as const)("starts in light mode from dev3 %s and keeps the override cycle", async (hostTheme) => {
+	async function withHostTheme(hostTheme: "light" | "dark", body: () => Promise<void>) {
 		const previousTheme = document.documentElement.dataset.theme;
 		document.documentElement.dataset.theme = hostTheme;
 		try {
-			render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
-			const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
-			const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
-			const theme = screen.getByTestId("artifact-viewer-theme");
-			expect(theme).toHaveAccessibleName("Artifact theme: Light");
-			fireEvent.load(frame);
-			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "light" }, "*"));
-			await userEvent.click(theme);
-			if (hostTheme === "light") {
-				expect(theme).toHaveAccessibleName("Artifact theme: Dark");
-				await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
-				await userEvent.click(theme);
-				expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
-				await userEvent.click(theme);
-				expect(theme).toHaveAccessibleName("Artifact theme: Light");
-			} else {
-				expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
-				await userEvent.click(theme);
-				expect(theme).toHaveAccessibleName("Artifact theme: Dark");
-				await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
-				await userEvent.click(theme);
-				expect(theme).toHaveAccessibleName("Artifact theme: Light");
-			}
+			await body();
 		} finally {
 			if (previousTheme) document.documentElement.dataset.theme = previousTheme;
 			else delete document.documentElement.dataset.theme;
 		}
+	}
+
+	function lastThemeSent(postMessage: { mock: { calls: unknown[][] } }) {
+		const sent = postMessage.mock.calls.map(([message]) => message as { type?: string; theme?: string }).filter((message) => message.type === "dev3-artifact-theme");
+		return sent[sent.length - 1]?.theme;
+	}
+
+	async function openViewer() {
+		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
+		const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+		fireEvent.load(frame);
+		return { view, frame, postMessage, theme: screen.getByTestId("artifact-viewer-theme") };
+	}
+
+	it.each(["light", "dark"] as const)("opens light with no saved choice under dev3 %s, without saving one", async (hostTheme) => {
+		await withHostTheme(hostTheme, async () => {
+			const { frame, postMessage, theme } = await openViewer();
+			expect(theme).toHaveAccessibleName("Artifact theme: Light");
+			expect(frame.getAttribute("srcdoc")).toMatch(/<html[^>]*data-theme="light"/);
+			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "light" }, "*"));
+			expect(localStorage.getItem("dev3-artifact-theme")).toBeNull();
+		});
+	});
+
+	it.each(["light", "dark"] as const)("cycles all three modes under dev3 %s and saves each pick", async (hostTheme) => {
+		await withHostTheme(hostTheme, async () => {
+			const { postMessage, theme } = await openViewer();
+			const order = hostTheme === "light" ? ["dark", "follow", "light"] : ["follow", "dark", "light"];
+			const names = { light: "Light", dark: "Dark", follow: "Follow dev3" } as const;
+			for (const mode of order as Array<keyof typeof names>) {
+				await userEvent.click(theme);
+				expect(theme).toHaveAccessibleName(`Artifact theme: ${names[mode]}`);
+				expect(localStorage.getItem("dev3-artifact-theme")).toBe(mode);
+				const sent = mode === "follow" ? hostTheme : mode;
+				await waitFor(() => expect(lastThemeSent(postMessage)).toBe(sent));
+			}
+		});
+	});
+
+	it("keeps the pick across a reopen and a restart, never resetting it to light", async () => {
+		await withHostTheme("light", async () => {
+			const first = await openViewer();
+			await userEvent.click(first.theme);
+			expect(first.theme).toHaveAccessibleName("Artifact theme: Dark");
+			first.view.unmount();
+
+			const reopened = await openViewer();
+			expect(reopened.theme).toHaveAccessibleName("Artifact theme: Dark");
+			reopened.view.unmount();
+
+			_resetArtifactThemePrefs();
+			const restarted = await openViewer();
+			expect(restarted.theme).toHaveAccessibleName("Artifact theme: Dark");
+			expect(restarted.frame.getAttribute("srcdoc")).toMatch(/<html[^>]*data-theme="dark"/);
+			await waitFor(() => expect(restarted.postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
+			expect(localStorage.getItem("dev3-artifact-theme")).toBe("dark");
+		});
+	});
+
+	it("ignores a corrupt saved value without overwriting it", async () => {
+		localStorage.setItem("dev3-artifact-theme", "sepia");
+		_resetArtifactThemePrefs();
+		const { theme } = await openViewer();
+		expect(theme).toHaveAccessibleName("Artifact theme: Light");
+		expect(localStorage.getItem("dev3-artifact-theme")).toBe("sepia");
+	});
+
+	it("a saved Follow dev3 tracks the app theme as it changes", async () => {
+		localStorage.setItem("dev3-artifact-theme", "follow");
+		_resetArtifactThemePrefs();
+		await withHostTheme("dark", async () => {
+			const { frame, postMessage, theme } = await openViewer();
+			expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
+			expect(frame.getAttribute("srcdoc")).toMatch(/<html[^>]*data-theme="dark"/);
+			await waitFor(() => expect(lastThemeSent(postMessage)).toBe("dark"));
+			document.documentElement.dataset.theme = "light";
+			await waitFor(() => expect(lastThemeSent(postMessage)).toBe("light"));
+			document.documentElement.dataset.theme = "dark";
+			await waitFor(() => expect(lastThemeSent(postMessage)).toBe("dark"));
+			expect(localStorage.getItem("dev3-artifact-theme")).toBe("follow");
+		});
 	});
 
 	// The lightbox is modal, so it owns Escape wherever focus sits — including on
