@@ -1,0 +1,1 @@
+Split the Project Settings screen into a project-settings/ folder: the config form, branch picker, dev-server and env editors, label and custom-column rows, the name field and shared form primitives each moved verbatim into their own file, leaving ProjectSettings.tsx at about half its former size with no behavior change.
