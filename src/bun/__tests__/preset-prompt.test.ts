@@ -45,7 +45,11 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("create it and request its launch in the same step");
 		expect(COORDINATOR_PROMPT).toContain("the dialog IS that question");
 		expect(COORDINATOR_PROMPT).toContain("never a launch that skips it");
-		expect(COORDINATOR_PROMPT).toContain("To Do only when the user says park");
+		expect(COORDINATOR_PROMPT).toContain("To Do only when the user says park or prefers it");
+		// The standing preference is asked once, kept durably, and never outranks a per-task word.
+		expect(COORDINATOR_PROMPT).toContain("No preference at first delegation: ask once — start at once (recommended) or To Do");
+		expect(COORDINATOR_PROMPT).toContain("and `dev3 note` it");
+		expect(COORDINATOR_PROMPT).toContain("A per-task word binds only that task, never waiting on the question");
 		expect(COORDINATOR_PROMPT).toContain("never start unrelated backlog or re-create a running task");
 		// A launch is not a licence for anything downstream of it.
 		expect(COORDINATOR_PROMPT).toContain("a launch approval is not one of them");
