@@ -655,6 +655,8 @@ const settings = {
 	"settings.accountLoginRunningDevice": "Откройте ссылку из терминала на любом устройстве и введите одноразовый код, показанный рядом.",
 	"settings.accountLoginRunningRemote": "Вкладка браузера, которую откроет CLI, появится на хосте, а не здесь. Откройте ссылку из терминала; если попросят код — вставьте его обратно в терминал.",
 	"settings.accountLoginVerifying": "Проверяем новый вход…",
+	"settings.accountLoginPendingUnavailable": "Терминал выглядит вошедшим, но dev3 пока не может подтвердить это через `claude auth status`. Проверка продолжается — если сообщение не уходит, обновите Claude Code или отмените вход.",
+	"settings.accountLoginPendingMismatch": "Claude Code не подтверждает этот вход для папки нового аккаунта, поэтому пока ничего не добавлено. Завершите вход или отмените его.",
 	"settings.accountLoginSucceeded": "Вход выполнен: {label}",
 	"settings.accountLoginSucceededBody": "Аккаунт сохранён. Сделайте его аккаунтом по умолчанию здесь или выбирайте при запуске.",
 	"settings.accountLoginExited": "Команда входа завершилась, а вход так и не сохранился",

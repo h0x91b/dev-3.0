@@ -172,6 +172,7 @@ describe("AgentAccountsSection", () => {
 			installUrl: "https://example.com/install",
 			exitCode: null,
 			error: null,
+			pending: null,
 			account: null,
 			startedAt: 0,
 			expiresAt: 1,
@@ -243,6 +244,19 @@ describe("AgentAccountsSection", () => {
 		inner.focus();
 		await user.keyboard("{Shift>}{Tab}{/Shift}");
 		expect(document.activeElement).toBe(screen.getByTestId("account-login-hide"));
+	});
+
+	it("an identity the provider has not confirmed is shown as pending, never as success", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login());
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await screen.findByText("Sign in to Claude Code");
+
+		pushLogin(login({ pending: "status-unavailable" }));
+		expect((await screen.findByTestId("account-login-pending")).textContent).toContain("claude auth status");
+		expect(screen.queryByTestId("account-login-done")).toBeNull();
 	});
 
 	it("hiding keeps the sign-in running and offers Open / Cancel in the list", async () => {

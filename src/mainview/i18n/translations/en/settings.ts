@@ -633,6 +633,8 @@ const settings = {
 	"settings.accountLoginRunningDevice": "Open the link the terminal prints on any device, then enter the one-time code shown next to it.",
 	"settings.accountLoginRunningRemote": "A browser tab the CLI opens appears on the host, not here. Open the link the terminal prints instead; if it asks for a code, paste it back into the terminal.",
 	"settings.accountLoginVerifying": "Checking the new login…",
+	"settings.accountLoginPendingUnavailable": "The terminal looks signed in, but dev3 can’t confirm it with `claude auth status` yet. It keeps checking — if this stays, update Claude Code or cancel.",
+	"settings.accountLoginPendingMismatch": "Claude Code doesn’t confirm this sign-in for the new account’s folder, so nothing is added yet. Finish signing in, or cancel.",
 	"settings.accountLoginSucceeded": "Signed in as {label}",
 	"settings.accountLoginSucceededBody": "The account is saved. Pick it as the default here, or per launch.",
 	"settings.accountLoginExited": "The sign-in command ended before a login was saved",

@@ -36,6 +36,7 @@ import {
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type {
+	AccountLoginPendingReason,
 	AgentAccount,
 	AgentAccountAuth,
 	AgentAccountKind,
@@ -767,12 +768,73 @@ function unmarkStagedLogin(dir: string): void {
 	rmSync(join(dir, STAGED_LOGIN_MARKER), { force: true });
 }
 
-/** The provider has not finished writing the login yet — keep watching, not an error. */
+export type LoginPendingReason = AccountLoginPendingReason;
+
+/** The provider has not finished the login (or it cannot be confirmed yet) — keep watching, not an error. */
 export class LoginNotReadyError extends Error {
-	constructor(message: string) {
+	constructor(message: string, readonly reason: LoginPendingReason | null = null) {
 		super(message);
 		this.name = "LoginNotReadyError";
 	}
+}
+
+/** Env that authenticates Claude Code without the login being checked. Stripped from
+ *  the sign-in and from its status probe, so neither can pass on a key from the env. */
+export const CLAUDE_ENV_AUTH_KEYS = [
+	"ANTHROPIC_API_KEY",
+	"ANTHROPIC_AUTH_TOKEN",
+	"ANTHROPIC_BASE_URL",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"CLAUDE_CODE_USE_BEDROCK",
+	"CLAUDE_CODE_USE_VERTEX",
+	"CLAUDE_CODE_USE_FOUNDRY",
+] as const;
+
+/** Same for Codex: an API key in the env would make `codex login` moot. */
+export const CODEX_ENV_AUTH_KEYS = ["OPENAI_API_KEY", "CODEX_API_KEY"] as const;
+
+/** `claude auth status` (JSON by default) output — never carries a token. Read from
+ *  the 2.1.x binary: `{loggedIn, authMethod, apiProvider, configDirectory, email, …}`,
+ *  `apiKeySource` only when a key source exists; exit 0 iff `loggedIn`. */
+export interface ClaudeAuthStatus {
+	loggedIn?: unknown;
+	authMethod?: unknown;
+	apiProvider?: unknown;
+	apiKeySource?: unknown;
+	configDirectory?: unknown;
+	email?: unknown;
+}
+
+/** Runs `claude auth status` against `configDir`; null when it cannot run or is aborted. */
+export type ClaudeAuthStatusProbe = (configDir: string, signal: AbortSignal) => Promise<{ exitCode: number | null; stdout: string } | null>;
+
+export function parseClaudeAuthStatus(stdout: string): ClaudeAuthStatus | null {
+	const start = stdout.indexOf("{");
+	const end = stdout.lastIndexOf("}");
+	if (start === -1 || end <= start) return null;
+	try {
+		const parsed = JSON.parse(stdout.slice(start, end + 1));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as ClaudeAuthStatus) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Does the provider confirm THIS login in THIS dir? `loggedIn` alone is not enough:
+ * Claude Code also reports it for an env API key, a cloud provider or an
+ * apiKeyHelper. Accepted: a subscription login, or a Console login whose key
+ * `/login` itself manages — first-party, in the staged dir, for the staged email.
+ */
+export function claudeAuthStatusMismatch(status: ClaudeAuthStatus, exitCode: number | null, dir: string, email: string | null): string | null {
+	if (exitCode !== 0 || status.loggedIn !== true) return "not signed in";
+	if (status.apiProvider !== "firstParty") return "not the Anthropic API";
+	const subscription = status.authMethod === "claude.ai";
+	const consoleLogin = status.authMethod === "api_key" && status.apiKeySource === "/login managed key";
+	if (!subscription && !consoleLogin) return "not a /login sign-in";
+	if (typeof status.configDirectory !== "string" || resolve(status.configDirectory) !== resolve(dir)) return "a different config folder";
+	if (!email || status.email !== email) return "a different account";
+	return null;
 }
 
 /** How a staged sign-in is launched; `env` is all that scopes it to its own dir. */
@@ -1058,9 +1120,9 @@ export async function prepareClaudeLogin(paths: AccountPaths = defaultAccountPat
 	const id = crypto.randomUUID();
 	const dir = claudeAccountDir(id, paths);
 	scaffoldClaudeAccountDir(dir, paths);
-	// Seed .claude.json without the identity — its presence after the login is
-	// how completeClaudeLogin verifies success. The embedded terminal runs in the
-	// staging dir itself, so pre-trust it: a folder-trust prompt there is noise.
+	// Seed .claude.json without the identity — its appearance is when
+	// completeClaudeLogin starts asking `claude auth status`. The embedded terminal
+	// runs in the staging dir itself, so pre-trust it: a folder-trust prompt there is noise.
 	const seeded = seedClaudeJson(paths);
 	const projects = seeded.projects && typeof seeded.projects === "object" && !Array.isArray(seeded.projects)
 		? { ...(seeded.projects as Record<string, unknown>) }
@@ -1077,17 +1139,39 @@ export async function prepareClaudeLogin(paths: AccountPaths = defaultAccountPat
 }
 
 /** Verify a prepared login dir and register it as an account. */
-export async function completeClaudeLogin(accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
+/**
+ * Verify a staged sign-in and register it. Success is the provider's own
+ * `claude auth status` for the staged dir, strictly matched — never the identity
+ * alone, and never credentials copied from the system login (on macOS the new
+ * token lives in a Keychain item keyed to this dir, which Claude Code finds by
+ * itself). `stillWanted` guards against a cancel that landed during the probe.
+ */
+export async function completeClaudeLogin(
+	accountId: string,
+	paths: AccountPaths,
+	probe: ClaudeAuthStatusProbe,
+	opts: { signal?: AbortSignal; stillWanted?: () => boolean } = {},
+): Promise<AgentAccount> {
 	const dir = claudeAccountDir(accountId, paths);
 	const identity = parseClaudeIdentity(safeReadJson(join(dir, ".claude.json")));
 	if (!identity) {
 		throw new LoginNotReadyError("Login not detected yet. Finish the sign-in in the terminal.");
 	}
+	assertNoDuplicate(loadRegistry(paths), "claude", identity, paths, accountId);
+	const result = await probe(dir, opts.signal ?? new AbortController().signal);
+	const status = result ? parseClaudeAuthStatus(result.stdout) : null;
+	if (!result || !status) {
+		throw new LoginNotReadyError("dev3 couldn't confirm the sign-in with `claude auth status` yet.", "status-unavailable");
+	}
+	const mismatch = claudeAuthStatusMismatch(status, result.exitCode, dir, identity.email);
+	if (mismatch) {
+		log.info("Claude sign-in not confirmed by auth status", { pendingAccountId: accountId.slice(0, 8), mismatch });
+		throw new LoginNotReadyError(`Claude Code reports ${mismatch} for this sign-in.`, "status-mismatch");
+	}
+	if (opts.stillWanted && !opts.stillWanted()) throw new LoginNotReadyError("This sign-in was closed.");
+	// Reloaded after the probe: the registry may have changed while it ran.
 	const registry = loadRegistry(paths);
 	assertNoDuplicate(registry, "claude", identity, paths, accountId);
-	if (!(await ensureClaudeCredentialsFile(dir, paths))) {
-		throw new LoginNotReadyError("Login detected but credentials are missing. Finish the sign-in in the terminal.");
-	}
 	if (registry.claude.accounts.some((e) => e.id === accountId)) {
 		saveRegistry(registry, paths);
 		return toAccount(registry.claude.accounts.find((e) => e.id === accountId)!, "claude", paths);
@@ -1151,7 +1235,11 @@ export async function prepareCodexLogin(
 }
 
 /** Verify a prepared CODEX_HOME login dir and register it as an account. */
-export async function completeCodexLogin(accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
+export async function completeCodexLogin(
+	accountId: string,
+	paths: AccountPaths = defaultAccountPaths(),
+	opts: { stillWanted?: () => boolean } = {},
+): Promise<AgentAccount> {
 	const authFile = codexAccountAuthFile(accountId, paths);
 	const authJson = safeReadJson(authFile);
 	let identity = parseCodexIdentity(authJson);
@@ -1170,6 +1258,8 @@ export async function completeCodexLogin(accountId: string, paths: AccountPaths 
 		managedCodexAccounts: registry.codex.accounts.length,
 	});
 	assertNoDuplicate(registry, "codex", identity, paths, accountId);
+	// The workspace lookup awaited the network; a cancel may have discarded the dir meanwhile.
+	if (opts.stillWanted && !opts.stillWanted()) throw new LoginNotReadyError("This sign-in was closed.");
 	chmodSync(authFile, 0o600);
 	if (registry.codex.accounts.some((e) => e.id === accountId)) {
 		saveRegistry(registry, paths);

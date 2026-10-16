@@ -634,6 +634,8 @@ const settings = {
 	"settings.accountLoginRunningDevice": "Abre en cualquier dispositivo el enlace que muestra la terminal e introduce el código de un solo uso que aparece junto a él.",
 	"settings.accountLoginRunningRemote": "La pestaña que abra la CLI aparece en el host, no aquí. Abre el enlace que muestra la terminal; si te pide un código, pégalo de vuelta en la terminal.",
 	"settings.accountLoginVerifying": "Comprobando el nuevo inicio de sesión…",
+	"settings.accountLoginPendingUnavailable": "La terminal parece haber iniciado sesión, pero dev3 aún no puede confirmarlo con `claude auth status`. Sigue comprobando: si esto no cambia, actualiza Claude Code o cancela.",
+	"settings.accountLoginPendingMismatch": "Claude Code no confirma este inicio de sesión para la carpeta de la cuenta nueva, así que aún no se añade nada. Termina el inicio de sesión o cancélalo.",
 	"settings.accountLoginSucceeded": "Sesión iniciada como {label}",
 	"settings.accountLoginSucceededBody": "La cuenta está guardada. Elígela como predeterminada aquí o en cada lanzamiento.",
 	"settings.accountLoginExited": "El comando terminó antes de guardar un inicio de sesión",

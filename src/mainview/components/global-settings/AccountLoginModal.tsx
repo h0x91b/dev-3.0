@@ -223,6 +223,11 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							{/* Only these phases print a login label (an email) — keep the rest readable when streaming. */}
 							<p className={`text-fg text-sm font-medium${login.phase === "succeeded" ? " streamer-private" : ""}`}>{title}</p>
 							{body ? <p className={`text-fg-2 text-xs text-pretty break-words${login.phase === "failed" ? " streamer-private" : ""}`}>{body}</p> : null}
+							{login.pending && (login.phase === "running" || login.phase === "exited") ? (
+								<p className="text-warning-strong text-xs text-pretty" data-testid="account-login-pending">
+									{t(login.pending === "status-unavailable" ? "settings.accountLoginPendingUnavailable" : "settings.accountLoginPendingMismatch")}
+								</p>
+							) : null}
 							{login.phase === "missing-executable" && login.installUrl ? (
 								<p className="text-fg-3 text-xs">
 									{t("settings.accountLoginInstallGuide")}{" "}

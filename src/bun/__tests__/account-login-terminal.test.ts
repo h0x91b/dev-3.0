@@ -7,6 +7,7 @@ import type { AccountLoginState, AgentAccount, AgentAccountKind } from "../../sh
 import { LoginNotReadyError, type PreparedAccountLogin } from "../agent-accounts";
 import {
 	ACCOUNT_LOGIN_POLL_MS,
+	ACCOUNT_LOGIN_PROBE_BACKOFF_MS,
 	ACCOUNT_LOGIN_SESSION_PREFIX,
 	ACCOUNT_LOGIN_SUCCESS_LINGER_MS,
 	ACCOUNT_LOGIN_TTL_MS,
@@ -73,7 +74,7 @@ function setup(overrides: Partial<AccountLoginDeps> = {}) {
 	const pushes: { kind: AgentAccountKind; state: AccountLoginState | null }[] = [];
 	const viewerSessions = new Map<string, ExternalPtySession>();
 	let ids = 0;
-	const complete = vi.fn(async (kind: AgentAccountKind, accountId: string): Promise<AgentAccount> => {
+	const complete = vi.fn(async (kind: AgentAccountKind, accountId: string, _ctx?: { signal: AbortSignal; stillWanted: () => boolean }): Promise<AgentAccount> => {
 		if (!identity.has(accountId)) throw new LoginNotReadyError("not yet");
 		registered.add(accountId);
 		return { id: accountId, kind, label: "new@example.com" } as AgentAccount;
@@ -314,6 +315,45 @@ describe("account login manager", () => {
 		expect(env.procs[0].sizes).toEqual([[120, 40]]);
 	});
 
+	it("an unconfirmed status backs off instead of probing every poll, and says why", async () => {
+		env.complete.mockImplementation(async () => {
+			throw new LoginNotReadyError("not confirmed", "status-unavailable");
+		});
+		await env.manager.start("claude", { remoteViewer: false });
+		env.identity.add("acc-1");
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.complete).toHaveBeenCalledTimes(1);
+		expect(env.manager.get("claude")).toMatchObject({ phase: "running", pending: "status-unavailable" });
+
+		await env.clock.advance(ACCOUNT_LOGIN_PROBE_BACKOFF_MS - ACCOUNT_LOGIN_POLL_MS);
+		expect(env.complete).toHaveBeenCalledTimes(1);
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS * 2);
+		expect(env.complete).toHaveBeenCalledTimes(2);
+	});
+
+	it("a cancel during verification aborts the probe and its late result is discarded", async () => {
+		let finish!: (account: AgentAccount) => void;
+		let seenSignal: AbortSignal | null = null;
+		let stillWanted: (() => boolean) | null = null;
+		env.complete.mockImplementation((_kind: AgentAccountKind, accountId: string, ctx?: { signal: AbortSignal; stillWanted: () => boolean }) => {
+			seenSignal = ctx!.signal;
+			stillWanted = ctx!.stillWanted;
+			return new Promise<AgentAccount>((resolve) => { finish = resolve; void accountId; });
+		});
+		const state = await env.manager.start("claude", { remoteViewer: false });
+		env.identity.add("acc-1");
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("verifying");
+
+		env.manager.close(state.loginId);
+		expect(seenSignal!.aborted).toBe(true);
+		expect(stillWanted!()).toBe(false);
+		finish({ id: "acc-1", kind: "claude", label: "late" } as AgentAccount);
+		await flush();
+		expect(env.manager.get("claude")).toBeNull();
+		expect(env.pushes.some((p) => p.state?.phase === "succeeded")).toBe(false);
+	});
+
 	it("pushes carry phase only — never terminal output", async () => {
 		await env.manager.start("claude", { remoteViewer: false });
 		env.procs[0].opts.onData("https://example.com/oauth?code=SECRET\r\n");
@@ -339,9 +379,21 @@ describe("loginArgv", () => {
 
 describe("loginEnv", () => {
 	it("lets the scoped dir win over an inherited one", () => {
-		const env = loginEnv({ CLAUDE_CONFIG_DIR: "/home/me/.claude", HOME: "/home/me" }, { CLAUDE_CONFIG_DIR: "/staged/x" });
+		const env = loginEnv({ CLAUDE_CONFIG_DIR: "/home/me/.claude", HOME: "/home/me" }, { CLAUDE_CONFIG_DIR: "/staged/x" }, "claude");
 		expect(env.CLAUDE_CONFIG_DIR).toBe("/staged/x");
 		expect(env.HOME).toBe("/home/me");
 		expect(env.TERM).toBe("xterm-256color");
+	});
+
+	it("unsets env that would authenticate the CLI, even after spawn merges process.env back in", () => {
+		const base = { ANTHROPIC_API_KEY: "k", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_OAUTH_TOKEN: "t", OPENAI_API_KEY: "o", PATH: "/bin" };
+		// What src/bun/spawn.ts hands Bun: process.env underneath, our env on top.
+		const merged = (env: Record<string, string | undefined>) => ({ ...base, ...env });
+		const claude = merged(loginEnv(base, {}, "claude"));
+		expect(claude.ANTHROPIC_API_KEY).toBeUndefined();
+		expect(claude.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
+		expect(claude.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+		expect(claude.PATH).toBe("/bin");
+		expect(merged(loginEnv(base, {}, "codex")).OPENAI_API_KEY).toBeUndefined();
 	});
 });

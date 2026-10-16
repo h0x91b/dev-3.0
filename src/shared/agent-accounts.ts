@@ -140,6 +140,9 @@ export type AccountLoginPhase =
 	| "failed"
 	| "expired";
 
+/** The provider wrote a login, but its own status does not confirm it (yet). */
+export type AccountLoginPendingReason = "status-unavailable" | "status-mismatch";
+
 /** One sign-in owned by the backend host. Never carries terminal output or credentials. */
 export interface AccountLoginState {
 	loginId: string;
@@ -155,6 +158,8 @@ export interface AccountLoginState {
 	installUrl: string | null;
 	exitCode: number | null;
 	error: string | null;
+	/** Set while an identity exists but is not confirmed — shown, never treated as success. */
+	pending: AccountLoginPendingReason | null;
 	account: AgentAccount | null;
 	startedAt: number;
 	expiresAt: number;

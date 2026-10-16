@@ -35,6 +35,10 @@ export const ACCOUNT_LOGIN_TTL_MS = 20 * 60_000;
 export const ACCOUNT_LOGIN_POLL_MS = 1_000;
 /** Lets the success line render in the terminal before the REPL is stopped. */
 export const ACCOUNT_LOGIN_SUCCESS_LINGER_MS = 1_500;
+/** After a status probe that did not confirm the login, wait this long before the next one. */
+export const ACCOUNT_LOGIN_PROBE_BACKOFF_MS = 5_000;
+/** A status probe that has not answered by then counts as unavailable. */
+export const ACCOUNT_LOGIN_PROBE_TIMEOUT_MS = 10_000;
 /** Replayed to a viewer that (re)opens mid-login; output lives in memory only. */
 export const ACCOUNT_LOGIN_REPLAY_CHARS = 64 * 1024;
 const KILL_GRACE_MS = 2_000;
@@ -56,7 +60,7 @@ export interface LoginProcess {
 
 export interface LoginSpawnOptions {
 	cwd: string;
-	env: Record<string, string>;
+	env: Record<string, string | undefined>;
 	cols: number;
 	rows: number;
 	onData(data: string): void;
@@ -64,7 +68,7 @@ export interface LoginSpawnOptions {
 
 export interface AccountLoginDeps {
 	prepare(kind: AgentAccountKind, opts: { deviceAuth: boolean }): Promise<PreparedAccountLogin>;
-	complete(kind: AgentAccountKind, accountId: string): Promise<AgentAccount>;
+	complete(kind: AgentAccountKind, accountId: string, ctx: { signal: AbortSignal; stillWanted: () => boolean }): Promise<AgentAccount>;
 	hasIdentity(kind: AgentAccountKind, accountId: string): boolean;
 	discard(kind: AgentAccountKind, accountId: string): boolean;
 	/** Leftovers of sign-ins a killed app never closed; see `sweepAbandonedStagedLogins`. */
@@ -92,6 +96,10 @@ interface LoginRecord {
 	expiryTimer: unknown;
 	lingerTimer: unknown;
 	completing: boolean;
+	/** Earliest time the next verification may run (probe backoff). */
+	nextVerifyAt: number;
+	/** Aborts an in-flight status probe on cancel, TTL or shutdown. */
+	abort: AbortController;
 }
 
 /**
@@ -116,13 +124,21 @@ export function loginArgv(
 	return [resolved, ...args];
 }
 
-/** The process env plus the login's own scope; a stale nesting marker is dropped. */
-export function loginEnv(base: Record<string, string | undefined>, scoped: Record<string, string>): Record<string, string> {
-	const env: Record<string, string> = {};
+/** The process env plus the login's own scope. Env that would authenticate the CLI
+ *  without this login (an API key, a cloud provider) is unset, as is a nesting marker.
+ *  Unset means an explicit `undefined`: our `spawn` merges `process.env` underneath,
+ *  so a merely deleted key would come back (seen in QA). Bun drops `undefined` values. */
+export function loginEnv(
+	base: Record<string, string | undefined>,
+	scoped: Record<string, string>,
+	kind: AgentAccountKind,
+): Record<string, string | undefined> {
+	const env: Record<string, string | undefined> = {};
 	for (const [key, value] of Object.entries(base)) {
 		if (value !== undefined) env[key] = value;
 	}
-	delete env.CLAUDECODE;
+	env.CLAUDECODE = undefined;
+	for (const key of kind === "claude" ? accounts.CLAUDE_ENV_AUTH_KEYS : accounts.CODEX_ENV_AUTH_KEYS) env[key] = undefined;
 	env.TERM = "xterm-256color";
 	env.COLORTERM = "truecolor";
 	return { ...env, ...scoped };
@@ -194,6 +210,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		record.pollTimer = null;
 		record.expiryTimer = null;
 		record.lingerTimer = null;
+		record.abort.abort();
 	}
 
 	/** Stop everything this login owns; the staged dir goes too unless it became an account. */
@@ -230,26 +247,29 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 	}
 
 	async function verify(record: LoginRecord): Promise<void> {
-		if (record.completing) return;
+		if (record.completing || deps.now() < record.nextVerifyAt) return;
 		record.completing = true;
 		const resumePhase = record.state.phase;
 		setPhase(record, "verifying");
+		const current = () => byKind.get(record.state.kind) === record && !record.abort.signal.aborted;
 		try {
-			const account = await deps.complete(record.state.kind, record.accountId);
-			if (byKind.get(record.state.kind) !== record) return;
+			const account = await deps.complete(record.state.kind, record.accountId, { signal: record.abort.signal, stillWanted: current });
+			if (!current()) return;
 			clearTimers(record);
-			setPhase(record, "succeeded", { account, error: null });
+			setPhase(record, "succeeded", { account, error: null, pending: null });
 			// Claude stays in its REPL after /login; Codex exits on its own.
 			record.lingerTimer = deps.setTimer(() => {
 				record.lingerTimer = null;
 				stopProcess(record);
 			}, ACCOUNT_LOGIN_SUCCESS_LINGER_MS);
 		} catch (err) {
-			if (byKind.get(record.state.kind) !== record) return;
+			if (!current()) return;
 			if (err instanceof accounts.LoginNotReadyError) {
+				// A probe that did not confirm costs a CLI start: back off instead of retrying every poll.
+				if (err.reason) record.nextVerifyAt = deps.now() + ACCOUNT_LOGIN_PROBE_BACKOFF_MS;
 				// The process may have exited while we were verifying.
 				const back = record.proc ? "running" : resumePhase === "missing-executable" ? "missing-executable" : "exited";
-				setPhase(record, back);
+				setPhase(record, back, { pending: err.reason ?? null });
 				return;
 			}
 			const message = err instanceof Error ? err.message : String(err);
@@ -298,7 +318,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		try {
 			const proc = deps.spawnLogin(argv, {
 				cwd: prepared.launch.cwd,
-				env: loginEnv(deps.env, prepared.launch.env),
+				env: loginEnv(deps.env, prepared.launch.env, kind),
 				cols: 100,
 				rows: 30,
 				onData: (data) => broadcast(record, data),
@@ -347,6 +367,8 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			expiryTimer: null,
 			lingerTimer: null,
 			completing: false,
+			nextVerifyAt: 0,
+			abort: new AbortController(),
 			state: {
 				loginId,
 				kind,
@@ -358,6 +380,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 				installUrl: installUrl(kind),
 				exitCode: null,
 				error: null,
+				pending: null,
 				account: null,
 				startedAt,
 				expiresAt: startedAt + ACCOUNT_LOGIN_TTL_MS,
@@ -451,6 +474,50 @@ function spawnLoginProcess(argv: string[], opts: LoginSpawnOptions): LoginProces
 	};
 }
 
+/**
+ * `claude auth status` for one staged dir, with the same sanitized env as the
+ * sign-in. Its stdout is parsed and dropped — never logged (it names the account).
+ * Null on a missing CLI, a timeout or an abort: unavailable, never "signed in".
+ */
+async function runClaudeAuthStatus(configDir: string, signal: AbortSignal): Promise<{ exitCode: number | null; stdout: string } | null> {
+	if (signal.aborted) return null;
+	const resolved = await resolveLoginExecutable("claude", "claude");
+	if (!resolved) return null;
+	let proc: ReturnType<typeof spawn>;
+	try {
+		proc = spawn(loginArgv(resolved, ["auth", "status"], process.platform, process.env), {
+			cwd: configDir,
+			env: loginEnv(process.env, { CLAUDE_CONFIG_DIR: configDir }, "claude"),
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+	} catch (err) {
+		log.warn("claude auth status failed to start", { error: String(err) });
+		return null;
+	}
+	let cutShort = false;
+	const stop = () => {
+		cutShort = true;
+		try {
+			proc.kill();
+		} catch {
+			// already exited
+		}
+	};
+	const timer = setTimeout(stop, ACCOUNT_LOGIN_PROBE_TIMEOUT_MS);
+	signal.addEventListener("abort", stop, { once: true });
+	try {
+		const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout as ReadableStream).text()]);
+		return cutShort ? null : { exitCode, stdout };
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+		signal.removeEventListener("abort", stop);
+	}
+}
+
 let pushHook: ((name: string, payload: unknown) => void) | null = null;
 
 /** Wired by each entry point (desktop window + browsers, or browsers alone). */
@@ -460,7 +527,10 @@ export function setAccountLoginPush(fn: (name: string, payload: unknown) => void
 
 export const accountLogins = createAccountLoginManager({
 	prepare: (kind, opts) => (kind === "claude" ? accounts.prepareClaudeLogin() : accounts.prepareCodexLogin(undefined, opts)),
-	complete: (kind, id) => (kind === "claude" ? accounts.completeClaudeLogin(id) : accounts.completeCodexLogin(id)),
+	complete: (kind, id, ctx) =>
+		kind === "claude"
+			? accounts.completeClaudeLogin(id, accounts.defaultAccountPaths(), runClaudeAuthStatus, ctx)
+			: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),
 	sweepAbandoned: (kind) => void accounts.sweepAbandonedStagedLogins(kind, ACCOUNT_LOGIN_TTL_MS),
