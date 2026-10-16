@@ -738,8 +738,7 @@ function newBuildBin(plan: UpdatePlan): string {
  * what we do here, so the successor starts a fresh tunnel and the public URL
  * changes. That is a real limitation of running under systemd, named rather than
  * papered over.
- */
-/**
+ *
  * `stoppedWantedTunnel`: a main tunnel was wanted (starting, or recovering) but had
  * nothing to hand over, so it was stopped — an abandoned restart must bring it back.
  */

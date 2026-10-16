@@ -509,7 +509,10 @@ async function startEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | n
 	const existing = tunnels.get(opts.id);
 	if (existing?.placeholder) {
 		// An explicit start joins (or hurries) the recovery instead of racing it.
-		if (existing.recovery !== recovery) return attemptRecovery(existing.recovery!);
+		if (existing.recovery !== recovery) {
+			existing.targetPort = opts.targetPort; // the caller knows where the backend listens now
+			return attemptRecovery(existing.recovery!);
+		}
 	} else if (existing && (existing.state === "starting" || existing.state === "connected")) {
 		log.warn("Tunnel already active", { id: opts.id, state: existing.state });
 		return existing;
@@ -622,10 +625,14 @@ async function startEntry(opts: StartTunnelOptions, recovery: TunnelRecovery | n
 function releaseFailedStart(entry: TunnelEntry, reason: TunnelFailureReason): TunnelEntry {
 	entry.state = "failed";
 	entry.failureReason = reason;
-	if (entry.kind === "main") mainTunnelFailureReason = reason;
 	const ownsSlot = tunnels.get(entry.id) === entry;
+	if (ownsSlot && entry.kind === "main") mainTunnelFailureReason = reason;
 	teardownEntry(entry);
-	if (ownsSlot && entry.recovery) tunnels.set(entry.id, entry.recovery.placeholder);
+	if (ownsSlot && entry.recovery) {
+		// Ports merged into this attempt while it ran (a shared tunnel) must survive it.
+		entry.recovery.placeholder.ports = [...entry.ports];
+		tunnels.set(entry.id, entry.recovery.placeholder);
+	}
 	return entry;
 }
 
@@ -852,6 +859,7 @@ function beginRecovery(entry: TunnelEntry, predecessorGone: Promise<void>, when:
 	recovery.predecessorGone = predecessorGone;
 	recovery.placeholder = { ...newEntry(optionsFor(entry), recovery), placeholder: true };
 	tunnels.set(entry.id, recovery.placeholder);
+	tunnelChangeHook?.(recovery.placeholder, recovery.previousUrl); // the old URL no longer serves
 	if (when === "now" && recovery.attempts === 0) return attemptRecovery(recovery);
 	scheduleAttempt(recovery);
 	return Promise.resolve(recovery.placeholder);
@@ -911,7 +919,7 @@ async function restartEntry(entry: TunnelEntry): Promise<void> {
 	const previousUrl = entry.url;
 	const predecessor = teardownEntry(entry);
 	const restarted = await beginRecovery(entry, waitForPredecessor(predecessor), "now");
-	if (!restarted.url && tunnels.get(entry.id)?.placeholder) {
+	if (!restarted.placeholder && !restarted.url) {
 		log.error("Tunnel restart failed", { id: entry.id, previousUrl });
 	}
 }
