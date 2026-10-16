@@ -688,8 +688,8 @@ describe("tunnel recovery", () => {
 		(mockSpawn as Mock).mockReset();
 	});
 
-	/** One spawn: a live tunnel that prints `url` and runs until `exit()`, or a failed start when `url` is null. */
-	function mockTunnelProcess(url: string | null, metricsPort = 20300) {
+	/** One spawn: a live tunnel that prints `url` and runs until `exit()`, or a start that exits `failCode` when `url` is null. */
+	function mockTunnelProcess(url: string | null, { metricsPort = 20300, pid = 0, failCode = 1 } = {}) {
 		const encoder = new TextEncoder();
 		let exit!: (code: number) => void;
 		const exited = new Promise<number>((resolve) => {
@@ -700,6 +700,7 @@ describe("tunnel recovery", () => {
 			? `INF Starting metrics server on 127.0.0.1:${metricsPort}/metrics\nINF | ${url}\n`
 			: "ERR failed to reach the edge\n";
 		(mockSpawn as Mock).mockReturnValueOnce({
+			pid,
 			kill,
 			exited,
 			stderr: new ReadableStream({
@@ -709,7 +710,7 @@ describe("tunnel recovery", () => {
 				},
 			}),
 		});
-		if (!url) exit(1);
+		if (!url) exit(failCode);
 		return { kill, exit };
 	}
 
@@ -817,6 +818,58 @@ describe("tunnel recovery", () => {
 
 		tunnelManager.stopAll({ kind: "task-port" });
 		await new Promise((r) => setTimeout(r, 350));
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+	});
+
+	it("waits out and SIGKILLs a connector a wrapper forked before starting the successor", async () => {
+		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 40;
+		let spawnsAtSigkill: number | null = null;
+		const wrapper = mockTunnelProcess("https://old.trycloudflare.com", { pid: 5150 });
+		wrapper.kill.mockImplementation(() => wrapper.exit(143));
+		mockTunnelProcess("https://new.trycloudflare.com");
+		(mockSpawnSync as Mock).mockReturnValue({ exitCode: 0, stdout: Buffer.from("6161\n") });
+		let connectorAlive = true;
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: string | number) => {
+			if (pid !== 6161) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+			if (signal === "SIGKILL") {
+				spawnsAtSigkill = (mockSpawn as Mock).mock.calls.length;
+				connectorAlive = false;
+			}
+			if (!connectorAlive) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+			return true;
+		}) as typeof process.kill);
+		await startTunnel(8080);
+
+		try {
+			await failHealthChecks(3);
+		} finally {
+			killSpy.mockRestore();
+		}
+		expect(spawnsAtSigkill).toBe(1);
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(getTunnelUrl()).toBe("https://new.trycloudflare.com");
+	});
+
+	it("does not retry a port tunnel whose custom command stopped being found", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({
+			kind: "custom",
+			command: "my-tunnel {port}",
+			urlRegex: GENERIC_TUNNEL_URL_REGEX,
+		});
+		const first = mockTunnelProcess("https://port-3000.example.dev");
+		mockTunnelProcess(null, { failCode: 127 });
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+		expect(tunnelManager.get("task:t1:port:3000")?.state).toBe("connected");
+
+		first.exit(1);
+		await vi.waitFor(() =>
+			expect(loggerMocks.warn).toHaveBeenCalledWith(
+				"Tunnel command is misconfigured — not retrying until it is started again",
+				{ id: "task:t1:port:3000", reason: "command-not-found" },
+			),
+		);
+		await new Promise((r) => setTimeout(r, 20));
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
 	});
 

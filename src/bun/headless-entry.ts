@@ -416,8 +416,12 @@ if (wantTunnel && handoff?.tunnel) {
 				}
 			}
 		} else {
-			console.error("[dev3 remote] Tunnel failed to start — serving the local-only URL and retrying in the background");
-			retryMainTunnel(getServerPort());
+			const retrying = retryMainTunnel(getServerPort());
+			console.error(
+				retrying
+					? "[dev3 remote] Tunnel failed to start — serving the local-only URL and retrying in the background"
+					: "[dev3 remote] Tunnel command is misconfigured — serving the local-only URL; fix it in Settings → System → Tunnel provider",
+			);
 		}
 	}
 }
