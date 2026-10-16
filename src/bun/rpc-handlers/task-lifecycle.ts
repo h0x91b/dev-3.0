@@ -14,6 +14,7 @@ import { isScratchPlaceholderDescription, planTitleAndDescription, updateTaskMet
 import { boardPorts } from "../board-operations/runtime";
 import { USER_ACTOR } from "../board-operations/types";
 import { getResourceUsage } from "../resource-monitor";
+import { assertLaunchAgentsInstalled } from "../agent-launch-availability";
 import {
 	nativeTerminalAvailability,
 	readTaskTerminalBackendState,
@@ -330,6 +331,7 @@ export async function launchTaskWithAgentChoice(params: {
 	const { variants, priority } = params.choice;
 	const first = variants[0];
 	if (!first) throw new Error("At least one variant is required");
+	if (isActive(params.targetStatus)) await assertLaunchAgentsInstalled(variants);
 	const { agentId, configId, accountId } = first;
 
 	// Priority lands before the move so the card never appears in the wrong sort
@@ -476,6 +478,8 @@ async function spawnVariants(params: {
 	if (sourceTask.status !== "todo") {
 		throw new Error(`Task must be in todo status to spawn variants (got ${sourceTask.status})`);
 	}
+	// Before anything moves: a refused launch leaves the To Do card exactly as it was.
+	if (isActive(params.targetStatus)) await assertLaunchAgentsInstalled(params.variants);
 
 	const groupId = crypto.randomUUID();
 	const sharedSeq = sourceTask.seq;
@@ -639,6 +643,7 @@ async function addAttempts(params: {
 	log.info("→ addAttempts", { taskId: params.taskId, count: params.variants.length });
 	const project = await data.getProject(params.projectId);
 	const sourceTask = await data.getTask(project, params.taskId);
+	await assertLaunchAgentsInstalled(params.variants);
 
 	let groupId = sourceTask.groupId;
 

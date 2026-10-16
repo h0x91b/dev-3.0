@@ -934,3 +934,110 @@ describe("LaunchVariantsModal — memory notice", () => {
 		expect(mockedApi.request.spawnVariants).toHaveBeenCalled();
 	});
 });
+
+describe("LaunchVariantsModal — harness availability gate", () => {
+	const installed = (agentId: string, name: string, baseCommand: string) => ({ agentId, name, baseCommand, installed: true, resolvedPath: `/bin/${baseCommand}` });
+	const missing = (agentId: string, name: string, baseCommand: string, installCommand?: string) => ({ agentId, name, baseCommand, installed: false, installCommand });
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.spawnVariants.mockResolvedValue([]);
+	});
+
+	it("blocks Launch for a missing harness and spells out the install command", async () => {
+		mockedApi.request.checkAgentAvailability.mockResolvedValue([
+			missing("builtin-claude", "Claude", "claude", "brew install claude-code"),
+		]);
+		const user = userEvent.setup();
+		renderModal(makeProject());
+
+		expect(await screen.findByText(/Claude is not installed on the machine running dev3/)).toBeTruthy();
+		expect(screen.getByText("brew install claude-code")).toBeTruthy();
+		const launch = screen.getByText("Launch").closest("button")!;
+		expect(launch.getAttribute("aria-disabled")).toBe("true");
+		expect(launch.getAttribute("aria-describedby")).toBe("launch-agent-install-notice");
+
+		await user.click(launch);
+		expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+	});
+
+	it("Enter cannot launch a missing harness once the probe has answered", async () => {
+		mockedApi.request.checkAgentAvailability.mockResolvedValue([
+			missing("builtin-claude", "Claude", "claude", "brew install claude-code"),
+		]);
+		const user = userEvent.setup();
+		renderModal(makeProject());
+		await screen.findByTestId("agent-install-notice");
+
+		(document.activeElement as HTMLElement | null)?.blur();
+		await user.keyboard("{Enter}");
+		expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+	});
+
+	it("Check again lifts the block once the harness is installed", async () => {
+		mockedApi.request.checkAgentAvailability
+			.mockResolvedValueOnce([missing("builtin-claude", "Claude", "claude", "brew install claude-code")])
+			.mockResolvedValueOnce([installed("builtin-claude", "Claude", "claude")]);
+		const user = userEvent.setup();
+		renderModal(makeProject());
+
+		await user.click(await screen.findByTestId("agent-install-recheck"));
+		expect(await screen.findByText(/Claude is installed\. Ready to launch\./)).toBeTruthy();
+		expect(screen.queryByTestId("agent-install-notice")).toBeNull();
+
+		await user.click(screen.getByText("Launch"));
+		expect(mockedApi.request.spawnVariants).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not treat a failed probe as a missing harness", async () => {
+		mockedApi.request.checkAgentAvailability.mockRejectedValue(new Error("probe failed"));
+		const user = userEvent.setup();
+		renderModal(makeProject());
+
+		expect(await screen.findByTestId("agent-install-unknown")).toBeTruthy();
+		const launch = screen.getByText("Launch").closest("button")!;
+		expect(launch.getAttribute("aria-disabled")).toBeNull();
+		await user.click(launch);
+		expect(mockedApi.request.spawnVariants).toHaveBeenCalledTimes(1);
+	});
+
+	it("blocks a mixed group when any variant's harness is missing", async () => {
+		mockedApi.request.checkAgentAvailability.mockResolvedValue([
+			installed("builtin-claude", "Claude", "claude"),
+			missing("builtin-codex", "Codex", "codex", "brew install codex"),
+		]);
+		const user = userEvent.setup();
+		renderModal(makeProject());
+		await waitFor(() => expect(mockedApi.request.checkAgentAvailability).toHaveBeenCalled());
+		expect(screen.queryByTestId("agent-install-notice")).toBeNull();
+
+		await user.click(screen.getByText("+ Add variant"));
+		await selectOption(user, getHarnessButtons()[1], "CodexNot installed");
+
+		expect(await screen.findByText(/Codex is not installed/)).toBeTruthy();
+		await user.click(screen.getByText("Launch"));
+		expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+	});
+
+	it("re-checks when the host refuses a launch the picker thought was fine", async () => {
+		mockedApi.request.checkAgentAvailability
+			.mockResolvedValueOnce([installed("builtin-claude", "Claude", "claude")])
+			.mockResolvedValueOnce([missing("builtin-claude", "Claude", "claude", "brew install claude-code")]);
+		mockedApi.request.spawnVariants.mockRejectedValue(new Error(
+			'Claude is not installed on the machine running dev3 ("claude" was not found on PATH). Install it with: brew install claude-code Then launch again.',
+		));
+		const user = userEvent.setup();
+		renderModal(makeProject());
+		await waitFor(() => expect(mockedApi.request.checkAgentAvailability).toHaveBeenCalledTimes(1));
+
+		await user.click(screen.getByText("Launch"));
+		expect(await screen.findByTestId("agent-install-notice")).toBeTruthy();
+		expect(mockedApi.request.checkAgentAvailability).toHaveBeenCalledTimes(2);
+		expect(screen.getByRole("alert").textContent).toContain("is not installed on the machine running dev3");
+
+		mockedApi.request.checkAgentAvailability.mockResolvedValueOnce([installed("builtin-claude", "Claude", "claude")]);
+		await user.click(screen.getByTestId("agent-install-recheck"));
+		await screen.findByText(/Claude is installed\. Ready to launch\./);
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+});

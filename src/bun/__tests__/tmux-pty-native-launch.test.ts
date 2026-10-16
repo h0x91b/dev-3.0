@@ -353,6 +353,31 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 	});
 });
 
+describe("missing agent binary — hooks belong to the agent, not the retry wrapper", () => {
+	it("splices --hook into the agent command the wrapper runs, never into the wrapper's shell", async () => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "omp --approval-mode always-ask",
+			extraEnv: {},
+			agent: { id: "builtin-omp", baseCommand: "omp" },
+			config: undefined,
+			agentFamily: "omp",
+			launchModel: undefined,
+		} as never);
+		const { setupAgentHooks } = await import("../agent-hooks");
+		vi.mocked(setupAgentHooks).mockResolvedValue("--hook /h/omp-status.ts");
+		vi.mocked(sharedPure.resolveBinaryPath).mockReturnValueOnce({ resolvedPath: undefined, customPathError: false });
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		const commands = vi.mocked(sharedPure.buildCmdScript).mock.calls.map(([cmd]) => cmd);
+		// First script is original-cmd (what the wrapper execs once installed).
+		expect(commands[0]).toBe("omp --hook /h/omp-status.ts --approval-mode always-ask");
+		expect(commands.some((cmd) => /zsh --hook/.test(cmd))).toBe(false);
+		expect(commands).toContain(`/bin/zsh /tmp/dev3/${TASK_ID}/agent-check.sh`);
+		vi.mocked(setupAgentHooks).mockReset();
+	});
+});
+
 describe("unmarked task — the legacy tmux path is untouched", () => {
 	it("creates a tmux PTY session and never a native one", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);

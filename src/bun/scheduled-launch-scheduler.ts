@@ -2,6 +2,8 @@ import type { Project } from "../shared/types";
 import * as data from "./data";
 import { fireScheduledLaunch } from "./rpc-handlers/task-lifecycle";
 import { createLogger } from "./logger";
+import { AgentNotInstalledError } from "./agent-launch-availability";
+import { getPushMessage } from "./rpc-handlers/shared-pure";
 
 const log = createLogger("scheduled-launch-scheduler");
 
@@ -78,7 +80,12 @@ async function tickProject(project: Project): Promise<void> {
 			// tick forever; the task itself stays in todo for the user to relaunch.
 			log.error("Scheduled launch fire failed; clearing schedule", { taskId: task.id.slice(0, 8), error: String(err) });
 			try {
-				await data.updateTask(project, task.id, { scheduledLaunch: null });
+				// A refusal the user can act on (a missing harness) stays on the card.
+				const updated = await data.updateTask(project, task.id, {
+					scheduledLaunch: null,
+					...(err instanceof AgentNotInstalledError ? { preparationError: err.message } : {}),
+				});
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			} catch {
 				// task may have been consumed mid-failure; nothing left to clear
 			}

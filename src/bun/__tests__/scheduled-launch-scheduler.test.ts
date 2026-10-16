@@ -9,12 +9,18 @@ vi.mock("../data", () => ({
 	updateTask: vi.fn(async () => undefined),
 }));
 vi.mock("../rpc-handlers/task-lifecycle", () => ({ fireScheduledLaunch: vi.fn(async () => undefined) }));
+vi.mock("../agent-launch-availability", () => ({
+	AgentNotInstalledError: class AgentNotInstalledError extends Error {},
+}));
+const pushMessage = vi.fn();
+vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => pushMessage }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import * as data from "../data";
 import { fireScheduledLaunch } from "../rpc-handlers/task-lifecycle";
+import { AgentNotInstalledError } from "../agent-launch-availability";
 import { startScheduledLaunchScheduler, stopScheduledLaunchScheduler } from "../scheduled-launch-scheduler";
 
 const project = { id: "proj-1" } as never;
@@ -87,6 +93,21 @@ describe("scheduled-launch scheduler", () => {
 		startScheduledLaunchScheduler();
 		await flush();
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { scheduledLaunch: null });
+	});
+
+	it("leaves a missing-harness refusal on the card instead of failing silently", async () => {
+		const task = makeTask();
+		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, scheduledLaunch: null } as never);
+		const refusal = new (AgentNotInstalledError as unknown as new (m: string) => Error)("Oh My Pi is not installed on the machine running dev3");
+		vi.mocked(fireScheduledLaunch).mockRejectedValueOnce(refusal);
+		startScheduledLaunchScheduler();
+		await flush();
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			scheduledLaunch: null,
+			preparationError: "Oh My Pi is not installed on the machine running dev3",
+		});
+		expect(pushMessage).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "proj-1" }));
 	});
 
 	it("start is idempotent and a failing project does not block others", async () => {

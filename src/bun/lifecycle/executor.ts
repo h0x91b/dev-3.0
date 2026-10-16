@@ -24,6 +24,7 @@ import {
 	taskResetConsentMatches,
 } from "../../shared/types";
 import { voidAgentRequest } from "../agent-requests";
+import { assertLaunchAgentsInstalled } from "../agent-launch-availability";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
@@ -410,6 +411,13 @@ async function prepareTask(
 		existingBranch: task.existingBranch ?? undefined,
 	};
 	return withTaskPreparationRunId(task.id, launch.label, effect.runId, async () => {
+		// The board/CLI move path reaches here without an RPC-side check; refuse
+		// before a worktree exists. A reopen keeps its retry pane (it may hold work).
+		if (!effect.isReopen) {
+			await preparationStep(task, effect.runId, "resolving-config", "checkAgentInstalled", () => (
+				assertLaunchAgentsInstalled([{ agentId: launch.agentId, configId: launch.configId }])
+			));
+		}
 		if (project.kind === "virtual") {
 			const workDir = task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
 			await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorkDir", () => (

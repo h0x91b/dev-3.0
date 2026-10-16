@@ -230,6 +230,13 @@ vi.mock("../agent-prompt-native", () => ({
 
 vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
 
+// Unit-tested on its own; here only its place in each handler matters.
+vi.mock("../agent-launch-availability", () => ({
+	assertLaunchAgentsInstalled: vi.fn(async () => undefined),
+	resolveAgentLaunchBinary: vi.fn(() => ({ binaryName: "claude", resolvedPath: "/usr/local/bin/claude" })),
+	AgentNotInstalledError: class extends Error {},
+}));
+
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureClaudeConfigDir: vi.fn(),
@@ -395,6 +402,7 @@ import { getUserShell } from "../shell-env";
 import { tmux } from "../tmux";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
+import * as launchAvailability from "../agent-launch-availability";
 import * as workspaceGuard from "../task-workspace-guard";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
@@ -4006,6 +4014,31 @@ describe("handlers.spawnVariants", () => {
 		expect(result[0].agentId).toBe("agent-1");
 		expect(data.deleteTask).not.toHaveBeenCalled();
 		expect(data.addTask).not.toHaveBeenCalled();
+	});
+
+	// A harness the host cannot find must refuse the launch with the To Do card
+	// untouched — not move it to "Agent is Working" over a pane that cannot start.
+	it("refuses a launch whose harness binary is missing, before anything moves", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(launchAvailability.assertLaunchAgentsInstalled).mockRejectedValueOnce(
+			new Error("Ghost Harness is not installed on the machine running dev3"),
+		);
+
+		await expect(handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-missing", configId: null }],
+		})).rejects.toThrow("Ghost Harness is not installed on the machine running dev3");
+
+		expect(launchAvailability.assertLaunchAgentsInstalled).toHaveBeenCalledWith([{ agentId: "agent-missing", configId: null }]);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(data.addTask).not.toHaveBeenCalled();
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
 	// A scratch task launches with no prompt — "Agent is Working" would be a lie.

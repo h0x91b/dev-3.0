@@ -32,7 +32,8 @@ import { boostResourceMonitor, clearResourceMonitorBoost, getResourceUsage } fro
 import { throughputSnapshot } from "../pty-throughput";
 import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
-import { agentBinaryPathOverride } from "../executable";
+import { agentInstallCommand } from "../../shared/agent-install";
+import { assertLaunchAgentsInstalled, resolveAgentLaunchBinary } from "../agent-launch-availability";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { resolveResumableSessionIds } from "../agent-transcripts";
@@ -98,7 +99,7 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, shellQuote, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupRerunScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, shellQuote, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { buildDevServerScript } from "../dev-server-script";
 import { resetDevServerLog } from "../dev-server-log";
@@ -1151,17 +1152,32 @@ export async function launchTaskPty(
 		}
 	}
 
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily, env);
+
+	// Hooks splice a flag after the command's FIRST token, so they must land on the
+	// agent's own command line — applied after the retry wrapper below, `--hook`
+	// went to the wrapper's shell (`zsh --hook …`: "no such option").
+	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
+	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget,
+		permissionMode: resolvedPermissionMode,
+		family: resolvedAgentFamily,
+	});
+
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
-		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
 		const settings = await loadSettings();
+		const allAgents = await agents.getAllAgents();
+		const launchedAgentId = agentId ?? task.agentId ?? "";
+		const matchedAgent = allAgents.find((agent) => agent.id === launchedAgentId)
+			?? allAgents.find((agent) => agent.baseCommand === resolvedBaseCmd);
 		// A path cached for a previous base command must not vouch for the new
 		// one; a path the user set is theirs and always counts.
-		const overridePath = agentBinaryPathOverride(task.agentId ?? "", binaryName, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
-		const { resolvedPath: binaryPath } = resolveBinaryPath(binaryName, overridePath);
+		const { binaryName, resolvedPath: binaryPath } = resolveAgentLaunchBinary(matchedAgent?.id ?? launchedAgentId, resolvedBaseCmd, settings);
 		if (!binaryPath) {
-			const allAgents = await agents.getAllAgents();
-			const matchedAgent = allAgents.find((agent) => agent.baseCommand === resolvedBaseCmd || agent.baseCommand === binaryName);
-			const installCmd = matchedAgent?.installCommand ?? `Install "${binaryName}" and make sure it's on your PATH`;
+			// Only reachable past the launch-boundary check (a resume, or a binary
+			// removed mid-preparation): the pane waits for the install instead.
+			const installCmd = (matchedAgent && agentInstallCommand(matchedAgent, process.platform))
+				?? `Install "${binaryName}" and make sure it's on your PATH`;
 
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
@@ -1181,14 +1197,6 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily, env);
-
-	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
-	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget,
-		permissionMode: resolvedPermissionMode,
-		family: resolvedAgentFamily,
-	});
 	tmuxCmd = await applyModelVersionNotice(task.id, tmuxCmd, {
 		baseCmd: resolvedBaseCmd,
 		family: resolvedAgentFamily,
@@ -3413,6 +3421,7 @@ async function spawnAgentInTask(params: {
 		throw new Error("Task has no worktree — cannot spawn agent");
 	}
 	assertTaskWorkspacePresent(project, task.worktreePath);
+	await assertLaunchAgentsInstalled([{ agentId: params.agentId, configId: params.configId }]);
 
 	// Written BEFORE the split on purpose: a conversation that cannot be retold
 	// must fail with no pane opened, rather than leave a bare agent standing where
@@ -3880,6 +3889,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree — cannot spawn bug hunters");
 	}
+	await assertLaunchAgentsInstalled([{ agentId: params.agentId, configId: params.configId }]);
 
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = taskSessionName(params.taskId);

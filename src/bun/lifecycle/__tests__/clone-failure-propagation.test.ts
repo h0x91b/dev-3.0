@@ -20,6 +20,12 @@ vi.mock("node:fs/promises", () => ({ mkdir: vi.fn(async () => undefined), rm: vi
 const clonePaths = vi.fn(async () => [] as unknown[]);
 vi.mock("../../cow-clone", () => ({ clonePaths: (...args: unknown[]) => clonePaths(...(args as [])) }));
 
+// The launch-boundary harness check reads the real agent list otherwise.
+const assertLaunchAgentsInstalled = vi.fn(async (_launches: unknown) => undefined);
+vi.mock("../../agent-launch-availability", () => ({
+	assertLaunchAgentsInstalled: (launches: unknown) => assertLaunchAgentsInstalled(launches),
+}));
+
 vi.mock("../../data", () => ({
 	updateTask: vi.fn(async (_project: Project, id: string, updates: Partial<Task>) => ({ id, ...updates })),
 	deleteTask: vi.fn(async () => undefined),
@@ -77,6 +83,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 }));
 
 import * as data from "../../data";
+import * as git from "../../git";
 import { launchTaskPty } from "../../rpc-handlers/tmux-pty";
 import { executeLifecycleEffect } from "../executor";
 
@@ -193,5 +200,27 @@ describe("clone failures during task preparation", () => {
 		);
 
 		expect(cloneWrites()).toEqual([{ cloneFailures: null }]);
+	});
+});
+
+describe("missing harness at the launch boundary", () => {
+	it("refuses before a worktree exists or an agent pane is opened", async () => {
+		assertLaunchAgentsInstalled.mockRejectedValueOnce(new Error("Oh My Pi is not installed on the machine running dev3"));
+
+		await expect(executeLifecycleEffect(prepareEffect, context(project([]), task({ agentId: "builtin-omp" }))))
+			.rejects.toThrow("is not installed on the machine running dev3");
+
+		expect(assertLaunchAgentsInstalled).toHaveBeenCalledWith([{ agentId: "builtin-omp", configId: undefined }]);
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(launchTaskPty).not.toHaveBeenCalled();
+	});
+
+	it("leaves a reopen to its retry pane — the worktree may hold work", async () => {
+		await executeLifecycleEffect(
+			{ ...prepareEffect, isReopen: true } as LifecycleEffect,
+			context(project([]), task({ agentId: "builtin-omp" })),
+		).catch(() => undefined);
+
+		expect(assertLaunchAgentsInstalled).not.toHaveBeenCalled();
 	});
 });
