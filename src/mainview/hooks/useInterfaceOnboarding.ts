@@ -4,7 +4,7 @@ import { api } from "../rpc";
 import type { Route } from "../state";
 import { backLayerCount } from "../back-navigation";
 import { getOverlayLayerElements } from "../utils/overlay-layers";
-import { isTypingContext } from "../utils/typing-context";
+import { isTextEntryContext } from "../utils/typing-context";
 import { artifactActivity } from "../artifact-activity";
 
 export function onboardingRouteIsCalm(route: Route): boolean {
@@ -29,7 +29,7 @@ export function useInterfaceOnboarding(route: Route, blocked: boolean) {
 		const idle = Date.now() - lastInput.current;
 		const ownPrompt = current.current.prompt !== null;
 		const calm = visible && !current.current.blocked && onboardingRouteIsCalm(current.current.route)
-			&& (ownPrompt || idle >= 10_000) && !isTypingContext()
+			&& (ownPrompt || idle >= 10_000) && !isTextEntryContext()
 			&& backLayerCount() <= (ownPrompt ? 1 : 0) && getOverlayLayerElements().length === 0
 			&& artifactActivity.open === 0;
 		return { active: visible && idle <= 60_000, calm };
