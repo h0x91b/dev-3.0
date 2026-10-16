@@ -2042,6 +2042,20 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	artifactTemplatePath?: string;
 }
 
+/**
+ * What dev3 would do to make a folder a usable project in place. `init` runs
+ * `git init`; `first-commit` finishes a repo that has no commit yet. The first
+ * commit carries only dev3's `.dev3/README.md` placeholder (`create` / `reuse`)
+ * or nothing (`keep`: a `.dev3/README.md` of the user's own is left alone).
+ */
+export interface GitInitOffer {
+	path: string;
+	mode: "init" | "first-commit";
+	placeholder: "create" | "reuse" | "keep";
+	/** Items already in the folder; they stay untracked. */
+	existingEntries: number;
+}
+
 export interface Project {
 	id: string;
 	name: string;
@@ -5179,7 +5193,8 @@ export type AppRPCSchema = {
 				/** `name` is optional: the backend derives it from the path, which is the
 				 *  only side that knows how to spell a path on its own platform. */
 				params: { path: string; name?: string };
-				response: { ok: true; project: Project } | { ok: false; error: string };
+				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation). */
+				response: { ok: true; project: Project } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string };
@@ -5190,8 +5205,9 @@ export type AppRPCSchema = {
 				response: { ok: true; path: string } | { ok: false; error: string };
 			};
 			initAndAddProject: {
-				params: { path: string; name?: string };
-				response: { ok: true; project: Project } | { ok: false; error: string };
+				/** `initNonEmpty`: the user confirmed initializing a folder that already has files. */
+				params: { path: string; name?: string; initNonEmpty?: boolean };
+				response: { ok: true; project: Project; gitInit?: GitInitOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			/** Create (or re-open) the throwaway sandbox repo dev3 owns, under `~/.dev3.0/sandbox`. */
 			createSandboxProject: {

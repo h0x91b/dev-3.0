@@ -25,6 +25,10 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
+
+vi.mock("../../toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+
 vi.mock("../../folder-picker", () => ({
 	openFolderPicker: vi.fn(),
 	openFolderPickerMulti: vi.fn(),
@@ -32,10 +36,15 @@ vi.mock("../../folder-picker", () => ({
 
 import { api } from "../../rpc";
 import { openFolderPicker, openFolderPickerMulti } from "../../folder-picker";
+import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 
 const mockedApi = vi.mocked(api, true);
 const mockedOpenFolderPicker = vi.mocked(openFolderPicker);
 const mockedOpenFolderPickerMulti = vi.mocked(openFolderPickerMulti);
+const mockedConfirm = vi.mocked(confirm);
+
+const gitInitOffer = { path: "/tmp/demo", mode: "init" as const, placeholder: "create" as const, existingEntries: 2 };
 
 function renderModal(
 	dispatch?: React.Dispatch<AppAction>,
@@ -112,6 +121,123 @@ describe("AddProjectModal", () => {
 		await act(async () => { await user.click(screen.getByText("Pick folder...")); });
 
 		expect(screen.getByText(/not empty/i)).toBeInTheDocument();
+	});
+
+	describe("non-empty folder without git (issue #1976)", () => {
+		it("Local Folder: confirms, explains untracked files, then initializes in place", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/tmp/demo"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: false, error: "Selected folder is not a git repository", gitInit: gitInitOffer } as any);
+			mockedConfirm.mockResolvedValue(true);
+			mockedApi.request.initAndAddProject.mockResolvedValue({ ok: true, project: mockProject, gitInit: gitInitOffer } as any);
+
+			renderModal(dispatch, onClose);
+			await act(async () => { await user.click(screen.getByText("Browse...")); });
+
+			const asked = mockedConfirm.mock.calls[0][0];
+			expect(asked.title).toBe("Initialize Git in this folder?");
+			expect(asked.confirmLabel).toBe("Initialize Git and add");
+			expect(asked.message).toContain("/tmp/demo");
+			expect(asked.message).toContain("only .dev3/README.md");
+			expect(asked.message).toContain("The 2 items already in this folder are not changed, staged, or committed.");
+			expect(asked.message).toContain("task worktrees will not include them");
+			expect(mockedApi.request.initAndAddProject).toHaveBeenCalledWith({ path: "/tmp/demo", initNonEmpty: true });
+			expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: mockProject });
+			expect(vi.mocked(toast.success)).toHaveBeenCalledWith(expect.stringContaining("Existing files stay untracked"), expect.anything());
+			expect(onClose).toHaveBeenCalled();
+		});
+
+		it("Local Folder: declining changes nothing and keeps the dialog open", async () => {
+			const user = userEvent.setup();
+			const onClose = vi.fn();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/tmp/demo"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: false, error: "Selected folder is not a git repository", gitInit: gitInitOffer } as any);
+			mockedConfirm.mockResolvedValue(false);
+
+			renderModal(vi.fn(), onClose);
+			await act(async () => { await user.click(screen.getByText("Browse...")); });
+
+			expect(mockedApi.request.initAndAddProject).not.toHaveBeenCalled();
+			expect(screen.getByText(/Not added\. The folder was left unchanged\./)).toBeInTheDocument();
+			expect(onClose).not.toHaveBeenCalled();
+		});
+
+		it("Escape answers the pending confirmation instead of closing the dialog under it", async () => {
+			const user = userEvent.setup();
+			const onClose = vi.fn();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/tmp/demo"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: false, error: "Selected folder is not a git repository", gitInit: gitInitOffer } as any);
+			let signal: AbortSignal | undefined;
+			mockedConfirm.mockImplementation((opts) => new Promise<boolean>((resolve) => {
+				signal = opts.signal;
+				opts.signal?.addEventListener("abort", () => resolve(false));
+			}) as any);
+
+			renderModal(vi.fn(), onClose);
+			await act(async () => { await user.click(screen.getByText("Browse...")); });
+			await act(async () => { await user.keyboard("{Escape}"); });
+
+			expect(signal?.aborted).toBe(true);
+			expect(onClose).not.toHaveBeenCalled();
+			expect(mockedApi.request.initAndAddProject).not.toHaveBeenCalled();
+			expect(screen.getByText(/Not added\. The folder was left unchanged\./)).toBeInTheDocument();
+
+			await act(async () => { await user.keyboard("{Escape}"); });
+			expect(onClose).toHaveBeenCalled();
+		});
+
+		it("Local Folder: a plain non-repo error without an offer never asks", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/tmp/odd"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: false, error: "Selected folder is not a git repository" } as any);
+
+			renderModal();
+			await act(async () => { await user.click(screen.getByText("Browse...")); });
+
+			expect(mockedConfirm).not.toHaveBeenCalled();
+			expect(screen.getByText(/not a git repository/)).toBeInTheDocument();
+		});
+
+		it("New: confirms, initializes, and shows the failure when git refuses", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPicker.mockResolvedValue("/tmp/demo");
+			mockedApi.request.initAndAddProject
+				.mockResolvedValueOnce({ ok: false, error: "Folder is not empty and not a git repository.", gitInit: gitInitOffer } as any)
+				.mockResolvedValueOnce({ ok: false, error: "git init failed: Permission denied" } as any);
+			mockedConfirm.mockResolvedValue(true);
+
+			renderModal();
+			await act(async () => { await user.click(screen.getByText("New")); });
+			await act(async () => { await user.click(screen.getByText("Pick folder...")); });
+
+			expect(mockedApi.request.initAndAddProject).toHaveBeenNthCalledWith(1, { path: "/tmp/demo" });
+			expect(mockedApi.request.initAndAddProject).toHaveBeenNthCalledWith(2, { path: "/tmp/demo", initNonEmpty: true });
+			expect(screen.getByText("git init failed: Permission denied")).toBeInTheDocument();
+		});
+
+		it("New: a commit-less repo is offered a first commit, staged work called out", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPicker.mockResolvedValue("/tmp/demo");
+			mockedApi.request.initAndAddProject.mockResolvedValueOnce({
+				ok: false,
+				error: "This Git repository has no commits yet",
+				gitInit: { ...gitInitOffer, mode: "first-commit", placeholder: "keep", existingEntries: 1 },
+			} as any);
+			mockedConfirm.mockResolvedValue(false);
+
+			renderModal();
+			await act(async () => { await user.click(screen.getByText("New")); });
+			await act(async () => { await user.click(screen.getByText("Pick folder...")); });
+
+			const asked = mockedConfirm.mock.calls[0][0];
+			expect(asked.confirmLabel).toBe("Make first commit and add");
+			expect(asked.message).toContain("make an empty first commit");
+			expect(asked.message).toContain("anything you staged stays staged");
+			expect(asked.message).not.toContain("untracked");
+			expect(mockedApi.request.initAndAddProject).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	it("defaults to Local Folder tab with Browse button", () => {

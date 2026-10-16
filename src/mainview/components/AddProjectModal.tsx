@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName } from "../../shared/types";
-import type { Project } from "../../shared/types";
+import type { GitInitOffer, Project } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -10,6 +10,7 @@ import { trackEvent } from "../analytics";
 import posthog from "../posthog";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import { toast } from "../toast";
+import { confirm } from "../confirm";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import ProjectSpacesField, { applyDeferredSpaces, type DeferredSpaces } from "./ProjectSpacesField";
 
@@ -82,11 +83,52 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		}
 	}, [activeTab]);
 
-	useEscapeKey(onClose);
+	const pendingConfirmRef = useRef<AbortController | null>(null);
+	// The confirm dialog does not take Escape itself; without this, Escape would
+	// close this modal underneath it and leave the question hanging.
+	useEscapeKey(() => (pendingConfirmRef.current ? pendingConfirmRef.current.abort() : onClose()));
 
 	const inferredName = gitUrl.trim() ? extractRepoName(gitUrl.trim()) : "";
 	const displayName = repoName.trim() || inferredName;
 	const targetPath = cloneBaseDir && displayName ? `${cloneBaseDir}/${displayName}` : "";
+
+	/** Ask before dev3 touches a folder that has files, spelling out what changes and what does not. */
+	function confirmGitInit(offer: GitInitOffer): Promise<boolean> {
+		const keep = offer.placeholder === "keep";
+		const plan = offer.mode === "init"
+			? t(keep ? "addProject.gitInit.planInitEmpty" : "addProject.gitInit.planInit")
+			: t(keep ? "addProject.gitInit.planFirstCommitEmpty" : "addProject.gitInit.planFirstCommit");
+		const parts = [offer.path, plan];
+		// A commit-less repo may already track or stage files, so "untracked" would be a promise we cannot keep.
+		if (offer.mode === "first-commit") parts.push(t("addProject.gitInit.existingRepo"));
+		else if (offer.existingEntries > 0) parts.push(t.plural("addProject.gitInit.existing", offer.existingEntries));
+		const controller = new AbortController();
+		pendingConfirmRef.current = controller;
+		return confirm({
+			title: t("addProject.gitInit.title"),
+			message: parts.join("\n\n"),
+			confirmLabel: t(offer.mode === "init" ? "addProject.gitInit.confirm" : "addProject.gitInit.confirmFirstCommit"),
+			signal: controller.signal,
+		}).finally(() => {
+			if (pendingConfirmRef.current === controller) pendingConfirmRef.current = null;
+		});
+	}
+
+	/**
+	 * Settle an add attempt that came back with a git-init offer: confirm, then
+	 * initialize in place. `null` means the user declined and nothing changed.
+	 */
+	async function initAfterConfirm(offer: GitInitOffer): Promise<
+		{ ok: true; project: Project } | { ok: false; error: string } | null
+	> {
+		if (!(await confirmGitInit(offer))) return null;
+		const result = await api.request.initAndAddProject({ path: offer.path, initNonEmpty: true });
+		if (result.ok) {
+			const key = offer.mode === "init" ? "addProject.gitInit.success" : "addProject.gitInit.successFirstCommit";
+			toast.success(t(key, { name: result.project.name }), { source: "dashboard" });
+		}
+		return result;
+	}
 
 	async function handleBrowseLocal() {
 		if (browsing) return;
@@ -103,7 +145,10 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				// The backend names the project — see the addProject RPC comment.
 				const name = folder;
 				try {
-					const result = await api.request.addProject({ path: folder });
+					const first = await api.request.addProject({ path: folder });
+					const result = !first.ok && first.gitInit
+						? (await initAfterConfirm(first.gitInit)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
+						: first;
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
 						added.push(result.project);
@@ -152,7 +197,10 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		if (!folder) return;
 		setInitializing(true);
 		try {
-			const result = await api.request.initAndAddProject({ path: folder });
+			const first = await api.request.initAndAddProject({ path: folder });
+			const result = !first.ok && first.gitInit
+				? (await initAfterConfirm(first.gitInit)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
+				: first;
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				void applyPendingSpaces(result.project.id);

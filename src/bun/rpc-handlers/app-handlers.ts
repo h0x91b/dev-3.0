@@ -1,9 +1,9 @@
 import { interfaceOnboarding } from "../interface-onboarding";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
-import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
+import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
 import * as data from "../data";
@@ -18,6 +18,7 @@ import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { createSandboxProject } from "../sandbox-project";
+import { IGNORED_FOLDER_JUNK, initGitInPlace, probeGitInit } from "../git-init-in-place";
 import { pathBasename, projectStorageKey } from "../../shared/project-storage-key";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
@@ -310,19 +311,32 @@ async function listAgentSkills(params?: { projectPath?: string | null }): Promis
 	}
 }
 
-async function addProjectImpl(params: { path: string; name?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+function isInsideDev3Home(path: string): boolean {
+	return path === DEV3_HOME || path.startsWith(`${DEV3_HOME}/`);
+}
+
+async function addProjectImpl(
+	params: { path: string; name?: string },
+	opts: { offerGitInit?: boolean } = {},
+): Promise<{ ok: true; project: Project } | { ok: false; error: string; gitInit?: GitInitOffer }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
 		// never live under ~/.dev3.0/ (would collide with ops/<slug> paths).
-		if (params.path === DEV3_HOME || params.path.startsWith(`${DEV3_HOME}/`)) {
+		if (isInsideDev3Home(params.path)) {
 			log.warn("Rejected git project inside dev-3.0 data dir", { path: params.path });
 			return { ok: false, error: "Cannot add a project inside the dev-3.0 data directory" };
 		}
 		const isRepo = await git.isGitRepo(params.path);
+		const gitInit = opts.offerGitInit ? await probeGitInit(params.path) : null;
 		if (!isRepo) {
-			log.warn("Not a git repo", { path: params.path });
-			return { ok: false, error: "Selected folder is not a git repository" };
+			log.warn("Not a git repo", { path: params.path, offerGitInit: !!gitInit });
+			return { ok: false, error: "Selected folder is not a git repository", ...(gitInit ? { gitInit } : {}) };
+		}
+		// A repo without a commit cannot host a worktree; offer to make the first one.
+		if (gitInit) {
+			log.warn("Git repo has no commits yet", { path: params.path });
+			return { ok: false, error: "This Git repository has no commits yet", gitInit };
 		}
 		// A renderer cannot name a project from its path: in remote mode the browser
 		// may be macOS while the repo lives on a Windows drive.
@@ -460,25 +474,24 @@ async function createDirectory(params: { parentPath: string; name: string }): Pr
  */
 function isEffectivelyEmpty(path: string): boolean {
 	try {
-		const entries = readdirSync(path);
-		const IGNORED = new Set([".DS_Store", "Thumbs.db", ".localized"]);
-		return entries.every((name) => IGNORED.has(name));
+		return readdirSync(path).every((name) => IGNORED_FOLDER_JUNK.has(name));
 	} catch {
 		return false;
 	}
 }
 
 /**
- * Initialise an empty folder as a git repo (if needed), seed it with a
- * `.dev3/README.md` placeholder, commit it as "init", and register the
- * resulting repo as a project.
+ * Make a folder a git repo in place (if needed) and register it as a project.
  *
- * - Already a git repo → skip init, register directly.
+ * - A repo with history (or a folder inside one) → registered as-is.
  * - Empty (or only macOS junk) → git init + placeholder commit + register.
- * - Non-empty and not a git repo → refuse (we don't want to silently add
- *   files into someone's unrelated folder).
+ * - Has files, or is a repo with no commit yet → only with `initNonEmpty`, which
+ *   the renderer sends after the user confirmed. Otherwise the reply carries
+ *   `gitInit` describing what would happen. The user's files are never committed.
  */
-async function initAndAddProject(params: { path: string; name?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+async function initAndAddProject(params: { path: string; name?: string; initNonEmpty?: boolean }): Promise<
+	{ ok: true; project: Project; gitInit?: GitInitOffer } | { ok: false; error: string; gitInit?: GitInitOffer }
+> {
 	log.info("→ initAndAddProject", params);
 	try {
 		if (!isAbsolute(params.path) || !existsSync(params.path)) {
@@ -487,59 +500,36 @@ async function initAndAddProject(params: { path: string; name?: string }): Promi
 		if (!statSync(params.path).isDirectory()) {
 			return { ok: false, error: "Path is not a folder" };
 		}
-
-		const alreadyRepo = await git.isGitRepo(params.path);
-		if (alreadyRepo) {
-			log.info("initAndAddProject: folder is already a git repo — registering as-is");
-			return addProjectImpl({ path: params.path, name: params.name });
+		if (isInsideDev3Home(params.path)) {
+			return { ok: false, error: "Cannot add a project inside the dev-3.0 data directory" };
 		}
 
-		if (!isEffectivelyEmpty(params.path)) {
+		const offer = await probeGitInit(params.path);
+		if (!offer) {
+			if (await git.isGitRepo(params.path)) {
+				log.info("initAndAddProject: folder is already a git repo — registering as-is");
+				return addProjectImpl({ path: params.path, name: params.name });
+			}
+			return { ok: false, error: "This folder cannot be initialized: Git could not read the repository it belongs to" };
+		}
+
+		const silent = offer.mode === "init" && isEffectivelyEmpty(params.path);
+		if (!silent && !params.initNonEmpty) {
 			return {
 				ok: false,
-				error: "Folder is not empty and not a git repository. Pick an empty folder or an existing repo.",
+				error: offer.mode === "init"
+					? "Folder is not empty and not a git repository. Pick an empty folder or an existing repo."
+					: "This Git repository has no commits yet",
+				gitInit: offer,
 			};
 		}
 
-		const initResult = await git.run(["git", "init"], params.path);
-		if (!initResult.ok) {
-			return { ok: false, error: `git init failed: ${initResult.stderr || "unknown error"}` };
-		}
-
-		const dev3Dir = join(params.path, ".dev3");
-		mkdirSync(dev3Dir, { recursive: true });
-		const readmePath = join(dev3Dir, "README.md");
-		const readmeContent = [
-			"# .dev3/",
-			"",
-			"This folder is used by [dev-3.0](https://github.com/h0x91b/dev-3.0) to",
-			"store project-level config (setup / dev / cleanup scripts, clone paths,",
-			"base branch, etc). Check it in so the whole team shares the same setup.",
-			"",
-			"Local overrides go into `.dev3/config.local.json` (git-ignored).",
-			"",
-		].join("\n");
-		writeFileSync(readmePath, readmeContent, "utf8");
-
-		const addResult = await git.run(["git", "add", "."], params.path);
-		if (!addResult.ok) {
-			return { ok: false, error: `git add failed: ${addResult.stderr || "unknown error"}` };
-		}
-		const commitResult = await git.run(
-			["git", "commit", "-m", "init"],
-			params.path,
-		);
-		if (!commitResult.ok) {
-			// Most common failure: missing user.name / user.email. Surface it
-			// clearly so the user can fix `git config` and retry.
-			return {
-				ok: false,
-				error: `git commit failed: ${commitResult.stderr || "unknown error"}`,
-			};
-		}
+		const initialized = await initGitInPlace(params.path);
+		if (!initialized.ok) return initialized;
 
 		log.info("initAndAddProject: initial commit created, registering project");
-		return addProjectImpl({ path: params.path, name: params.name });
+		const added = await addProjectImpl({ path: params.path, name: params.name });
+		return added.ok && !silent ? { ...added, gitInit: initialized.offer } : added;
 	} catch (err) {
 		log.error("initAndAddProject failed", { error: String(err), params });
 		return { ok: false, error: String(err) };
@@ -1101,7 +1091,7 @@ export const appHandlers = {
 	reorderProjects,
 	listDirectory,
 	listAgentSkills,
-	addProject: addProjectImpl,
+	addProject: (params: { path: string; name?: string }) => addProjectImpl(params, { offerGitInit: true }),
 	createSandboxProject,
 	addVirtualProject,
 	cloneAndAddProject,

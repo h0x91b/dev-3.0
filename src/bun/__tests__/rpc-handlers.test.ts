@@ -81,6 +81,12 @@ vi.mock("../data", () => ({
 	saveLastRoute: vi.fn(),
 }));
 
+vi.mock("../git-init-in-place", () => ({
+	IGNORED_FOLDER_JUNK: new Set([".DS_Store", "Thumbs.db", ".localized"]),
+	probeGitInit: vi.fn(async () => null),
+	initGitInPlace: vi.fn(),
+}));
+
 vi.mock("../git", () => ({
 	removeWorktree: vi.fn(),
 	// A fresh fixture folder: the failure judge clears it.
@@ -395,8 +401,9 @@ import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
+import * as gitInit from "../git-init-in-place";
 import { Utils } from "electrobun/bun";
-import { accessSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
 import {
 	createTaskPreparation,
@@ -1643,13 +1650,37 @@ describe("handlers.setTaskHidden", () => {
 // ================================================================
 
 describe("handlers.addProject", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(null);
+	});
 
 	it("returns error when path is not a git repo", async () => {
 		vi.mocked(git.isGitRepo).mockResolvedValue(false);
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(null);
 
 		const result = await handlers.addProject({ path: "/tmp/not-a-repo", name: "Test" });
 		expect(result).toEqual({ ok: false, error: "Selected folder is not a git repository" });
+		expect(data.addProject).not.toHaveBeenCalled();
+	});
+
+	it("offers to initialize git when the plain folder allows it", async () => {
+		const offer = { path: "/tmp/plain", mode: "init" as const, placeholder: "create" as const, existingEntries: 3 };
+		vi.mocked(git.isGitRepo).mockResolvedValue(false);
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
+
+		const result = await handlers.addProject({ path: "/tmp/plain" });
+		expect(result).toEqual({ ok: false, error: "Selected folder is not a git repository", gitInit: offer });
+		expect(data.addProject).not.toHaveBeenCalled();
+	});
+
+	it("offers a first commit instead of registering a repo without one", async () => {
+		const offer = { path: "/tmp/unborn", mode: "first-commit" as const, placeholder: "create" as const, existingEntries: 1 };
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
+
+		const result = await handlers.addProject({ path: "/tmp/unborn" });
+		expect(result).toEqual({ ok: false, error: "This Git repository has no commits yet", gitInit: offer });
 		expect(data.addProject).not.toHaveBeenCalled();
 	});
 
@@ -1761,7 +1792,10 @@ describe("handlers.addVirtualProject", () => {
 // ================================================================
 
 describe("handlers.cloneAndAddProject", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(null);
+	});
 
 	it("clones repo and adds as project on success", async () => {
 		const project = makeProject({ path: "/base/my-repo", name: "my-repo" });
@@ -1936,98 +1970,82 @@ describe("handlers.createDirectory", () => {
 // ================================================================
 
 describe("handlers.initAndAddProject", () => {
+	const offer = { path: "/tmp/messy", mode: "init" as const, placeholder: "create" as const, existingEntries: 2 };
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		// Default: path exists and is a directory.
 		vi.mocked(existsSync).mockReturnValue(true);
 		vi.mocked(statSync).mockReturnValue({ isDirectory: () => true, size: 0 } as any);
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(null);
 	});
 
-	it("passes through to addProject when the folder is already a git repo", async () => {
-		const project = makeProject();
+	function registerSucceeds(project: Project) {
 		vi.mocked(git.isGitRepo).mockResolvedValue(true);
 		vi.mocked(data.addProject).mockResolvedValue(project);
 		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
 		vi.mocked(data.updateProject).mockResolvedValue(project);
+	}
+
+	it("passes through to addProject when the folder is already a git repo", async () => {
+		const project = makeProject();
+		registerSucceeds(project);
 
 		const result = await handlers.initAndAddProject({ path: "/tmp/existing-repo", name: "Existing" });
 		expect(result).toEqual({ ok: true, project });
-		// Did not run git init on an existing repo.
-		expect(git.run).not.toHaveBeenCalledWith(["git", "init"], expect.anything());
+		expect(gitInit.initGitInPlace).not.toHaveBeenCalled();
 	});
 
-	it("runs git init + commit + addProject when folder is empty", async () => {
+	it("initializes an empty folder without asking", async () => {
 		const project = makeProject({ path: "/tmp/fresh" });
-		// First call (inside initAndAddProject): not a repo yet → trigger init.
-		// Second call (inside addProjectImpl after init ran): now it IS a repo.
-		vi.mocked(git.isGitRepo).mockResolvedValueOnce(false).mockResolvedValue(true);
-		vi.mocked(readdirSync).mockReturnValue([] as any);
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "", stderr: "" });
-		vi.mocked(data.addProject).mockResolvedValue(project);
-		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue({ ...offer, path: "/tmp/fresh", existingEntries: 0 });
+		vi.mocked(readdirSync).mockReturnValue([".DS_Store"] as any);
+		vi.mocked(gitInit.initGitInPlace).mockResolvedValue({ ok: true, offer: { ...offer, path: "/tmp/fresh" } });
+		registerSucceeds(project);
 
 		const result = await handlers.initAndAddProject({ path: "/tmp/fresh", name: "Fresh" });
 		expect(result).toEqual({ ok: true, project });
-
-		// Verify the init sequence happened in the right order.
-		expect(git.run).toHaveBeenCalledWith(["git", "init"], "/tmp/fresh");
-		expect(git.run).toHaveBeenCalledWith(["git", "add", "."], "/tmp/fresh");
-		expect(git.run).toHaveBeenCalledWith(["git", "commit", "-m", "init"], "/tmp/fresh");
-		// Placeholder file materialised under .dev3/.
-		expect(mkdirSync).toHaveBeenCalledWith(expect.stringContaining("/tmp/fresh/.dev3"), expect.anything());
-		expect(writeFileSync).toHaveBeenCalledWith(
-			expect.stringContaining("/tmp/fresh/.dev3/README.md"),
-			expect.any(String),
-			"utf8",
-		);
+		expect(gitInit.initGitInPlace).toHaveBeenCalledWith("/tmp/fresh");
 		expect(data.addProject).toHaveBeenCalledWith("/tmp/fresh", "Fresh");
 	});
 
-	it("treats .DS_Store as empty", async () => {
-		const project = makeProject({ path: "/tmp/fresh" });
-		vi.mocked(git.isGitRepo).mockResolvedValueOnce(false).mockResolvedValue(true);
-		vi.mocked(readdirSync).mockReturnValue([".DS_Store"] as any);
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "", stderr: "" });
-		vi.mocked(data.addProject).mockResolvedValue(project);
-		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
-		vi.mocked(data.updateProject).mockResolvedValue(project);
-
-		const result = await handlers.initAndAddProject({ path: "/tmp/fresh", name: "Fresh" });
-		expect(result).toEqual({ ok: true, project });
-	});
-
-	it("refuses a non-empty folder that is not a git repo", async () => {
-		vi.mocked(git.isGitRepo).mockResolvedValue(false);
+	it("asks before touching a non-empty folder, returning what would happen", async () => {
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
 		vi.mocked(readdirSync).mockReturnValue(["src", "package.json"] as any);
 
 		const result = await handlers.initAndAddProject({ path: "/tmp/messy", name: "Messy" });
-		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error).toMatch(/not empty/i);
-		expect(git.run).not.toHaveBeenCalled();
+		expect(result).toEqual({ ok: false, error: expect.stringMatching(/not empty/i), gitInit: offer });
+		expect(gitInit.initGitInPlace).not.toHaveBeenCalled();
+		expect(data.addProject).not.toHaveBeenCalled();
 	});
 
-	it("surfaces a git init failure", async () => {
-		vi.mocked(git.isGitRepo).mockResolvedValue(false);
-		vi.mocked(readdirSync).mockReturnValue([] as any);
-		vi.mocked(git.run).mockResolvedValueOnce({ ok: false, stdout: "", stderr: "git not found" });
+	it("initializes a non-empty folder once the user confirmed", async () => {
+		const project = makeProject({ path: "/tmp/messy" });
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
+		vi.mocked(readdirSync).mockReturnValue(["src", "package.json"] as any);
+		vi.mocked(gitInit.initGitInPlace).mockResolvedValue({ ok: true, offer });
+		registerSucceeds(project);
 
-		const result = await handlers.initAndAddProject({ path: "/tmp/fresh", name: "Fresh" });
-		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error).toMatch(/git init failed/i);
+		const result = await handlers.initAndAddProject({ path: "/tmp/messy", name: "Messy", initNonEmpty: true });
+		expect(result).toEqual({ ok: true, project, gitInit: offer });
 	});
 
-	it("surfaces a git commit failure (e.g. missing user.email)", async () => {
-		vi.mocked(git.isGitRepo).mockResolvedValue(false);
-		vi.mocked(readdirSync).mockReturnValue([] as any);
-		vi.mocked(git.run)
-			.mockResolvedValueOnce({ ok: true, stdout: "", stderr: "" })  // git init
-			.mockResolvedValueOnce({ ok: true, stdout: "", stderr: "" })  // git add
-			.mockResolvedValueOnce({ ok: false, stdout: "", stderr: "Please tell me who you are" }); // git commit
+	it("surfaces an initialization failure and registers nothing", async () => {
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
+		vi.mocked(readdirSync).mockReturnValue(["src"] as any);
+		vi.mocked(gitInit.initGitInPlace).mockResolvedValue({ ok: false, error: "git init failed: Permission denied" });
 
-		const result = await handlers.initAndAddProject({ path: "/tmp/fresh", name: "Fresh" });
+		const result = await handlers.initAndAddProject({ path: "/tmp/messy", initNonEmpty: true });
+		expect(result).toEqual({ ok: false, error: "git init failed: Permission denied" });
+		expect(data.addProject).not.toHaveBeenCalled();
+	});
+
+	it("refuses a folder git cannot vouch for", async () => {
+		vi.mocked(git.isGitRepo).mockResolvedValue(false);
+
+		const result = await handlers.initAndAddProject({ path: "/tmp/odd", initNonEmpty: true });
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error).toMatch(/git commit failed/i);
+		expect(gitInit.initGitInPlace).not.toHaveBeenCalled();
 	});
 
 	it("rejects a path that does not exist", async () => {
