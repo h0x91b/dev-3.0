@@ -35,6 +35,13 @@ const claudeAgent: CodingAgent = {
 	configurations: [],
 };
 
+const ompAgent: CodingAgent = {
+	id: "builtin-omp",
+	name: "Oh My Pi",
+	baseCommand: "omp",
+	configurations: [],
+};
+
 const codexAgent: CodingAgent = {
 	id: "builtin-codex",
 	name: "Codex",
@@ -72,6 +79,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 			},
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
+		omp: { accounts: [], activeId: null },
 		...overrides,
 	};
 }
@@ -129,12 +137,45 @@ describe("agentAccountKindForCommand", () => {
 		expect(agentAccountKindForCommand("claude")).toBe("claude");
 		expect(agentAccountKindForCommand("/opt/homebrew/bin/claude --continue")).toBe("claude");
 		expect(agentAccountKindForCommand("codex")).toBe("codex");
+		expect(agentAccountKindForCommand("/opt/homebrew/bin/omp")).toBe("omp");
 		expect(agentAccountKindForCommand("gemini")).toBeNull();
 		expect(agentAccountKindForCommand("")).toBeNull();
 	});
 });
 
 describe("AgentAccountIndicator", () => {
+	it("omp: lists its own accounts with their providers and picks per launch", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				omp: {
+					activeId: null,
+					accounts: [
+						{
+							id: "omp-1",
+							kind: "omp",
+							label: "Work ChatGPT",
+							identity: { email: "dev@example.com", organization: null, plan: null, planLabel: "openai-codex", accountId: null },
+							auth: "oauth",
+							api: null,
+							createdAt: 0,
+						},
+					],
+				},
+			}),
+		);
+		const onSelect = vi.fn();
+		const user = userEvent.setup();
+		renderIndicator(ompAgent, { onSelect });
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("omp default (~/.omp/agent)");
+		await user.click(trigger);
+		expect(screen.getByText("openai-codex")).toBeTruthy();
+		await user.click(screen.getByText("Work ChatGPT"));
+		expect(onSelect).toHaveBeenCalledWith("omp-1");
+		expect(screen.queryByText("Work@example.com")).toBeNull();
+	});
+
 	it("shows the active managed account label on the trigger", async () => {
 		renderIndicator();
 		const trigger = await screen.findByTestId("agent-account-trigger");

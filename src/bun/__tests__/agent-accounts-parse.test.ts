@@ -4,6 +4,9 @@ import {
 	codexPlanLabel,
 	decodeJwtPayload,
 	defaultAccountLabel,
+	ompAccountIdentity,
+	ompLoginEmail,
+	parseOmpAccounts,
 	defaultApiProfileLabel,
 	shortClaudeConfigDir,
 	parseClaudeIdentity,
@@ -216,5 +219,41 @@ describe("shortClaudeConfigDir", () => {
 	it("keeps the last two segments of a long path", () => {
 		expect(shortClaudeConfigDir("/mnt/e/Projects/dev/.claude")).toBe("…/dev/.claude");
 		expect(shortClaudeConfigDir("/x/.claude")).toBe("/x/.claude");
+	});
+});
+
+describe("omp accounts parsing", () => {
+	it("reads `omp usage accounts --json` rows", () => {
+		const logins = parseOmpAccounts({
+			accounts: [
+				{ provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" },
+				{ provider: "github-copilot", identityKey: null },
+				{ identityKey: "no provider — dropped" },
+			],
+		});
+		expect(logins).toEqual([
+			{ provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" },
+			{ provider: "github-copilot", identityKey: null, orgName: null },
+		]);
+	});
+
+	it("fails loudly on a payload that is not that shape", () => {
+		expect(() => parseOmpAccounts({ rows: [] })).toThrow();
+		expect(() => parseOmpAccounts(null)).toThrow();
+	});
+
+	it("takes the email segment out of an identity key", () => {
+		expect(ompLoginEmail({ provider: "p", identityKey: "org:x|email:a@b.c", orgName: null })).toBe("a@b.c");
+		expect(ompLoginEmail({ provider: "p", identityKey: "org:x", orgName: null })).toBeNull();
+	});
+
+	it("names an account by its first emailed sign-in and badges every provider once", () => {
+		const identity = ompAccountIdentity([
+			{ provider: "github-copilot", identityKey: null, orgName: null },
+			{ provider: "openai-codex", identityKey: "email:dev@example.com", orgName: "plus" },
+			{ provider: "openai-codex", identityKey: "email:other@example.com", orgName: null },
+		]);
+		expect(identity).toEqual({ email: "dev@example.com", organization: "plus", plan: null, planLabel: "github-copilot, openai-codex", accountId: null });
+		expect(ompAccountIdentity([])).toBeNull();
 	});
 });

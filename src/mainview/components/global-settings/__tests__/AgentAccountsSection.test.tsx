@@ -71,6 +71,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 			},
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
+		omp: { accounts: [], activeId: null },
 		...overrides,
 	};
 }
@@ -107,8 +108,8 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("work@example.com")).toBeTruthy();
 		expect(screen.getByText("main@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
-		// System login is the default by default (activeId=null).
-		expect(screen.getByText("Default")).toBeTruthy();
+		// Claude's and omp's system logins are each their block's default (activeId=null).
+		expect(screen.getAllByText("Default")).toHaveLength(2);
 	});
 
 	it("activates an account on row click", async () => {
@@ -146,6 +147,37 @@ describe("AgentAccountsSection", () => {
 		} finally {
 			window.removeEventListener("dev3:agentAccountsChanged", listener);
 		}
+	});
+
+	it("omp: no import, and Add account runs omp login in the embedded terminal", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue({
+			loginId: "o1",
+			kind: "omp",
+			phase: "running",
+			sessionKey: "account-login-o1",
+			deviceAuth: false,
+			manualCommand: "PI_CODING_AGENT_DIR='/x' omp login",
+			executable: "omp",
+			installUrl: null,
+			exitCode: null,
+			error: null,
+			pending: null,
+			account: null,
+			startedAt: 0,
+			expiresAt: 1,
+		});
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("omp default (~/.omp/agent)");
+		// Claude and Codex import; omp has nothing to import.
+		expect(screen.getAllByText("Import current login")).toHaveLength(2);
+
+		const addButtons = screen.getAllByText("Add account");
+		await user.click(addButtons[addButtons.length - 1]);
+		expect(mockedApi.request.startAccountLogin).toHaveBeenCalledWith({ kind: "omp", remoteViewer: true });
+		expect(await screen.findByText("Sign in to Oh My Pi")).toBeTruthy();
+		expect(await screen.findByTestId("terminal-view")).toBeTruthy();
+		expect(mockedApi.request.getAccountLoginPtyUrl).toHaveBeenCalledWith({ sessionKey: "account-login-o1" });
 	});
 
 	it("imports the current login", async () => {

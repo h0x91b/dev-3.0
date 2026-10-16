@@ -13,29 +13,35 @@ import {
 	discardStagedLogin,
 	STAGED_LOGIN_MARKER,
 	sweepAbandonedStagedLogins,
+	completeOmpLogin,
 	getActiveClaudeConfigDir,
 	getActiveClaudeSessionEnv,
 	getActiveCodexSessionEnv,
+	getActiveOmpSessionEnv,
 	getClaudeApiProfileDraft,
 	importCurrentClaudeAccount,
 	importCurrentCodexAccount,
+	isPrivateOmpEntry,
 	listAgentAccounts,
+	ompAccountDir,
 	prepareClaudeLogin,
 	prepareCodexLogin,
 	LoginNotReadyError,
+	prepareOmpLogin,
 	registeredOutputStyleName,
 	removeAgentAccount,
 	renameAgentAccount,
 	setActiveClaudeAccount,
 	setActiveCodexAccount,
 	stagedLoginHasIdentity,
+	setActiveOmpAccount,
 	updateClaudeApiProfile,
 	claudeAuthStatusMismatch,
 	parseClaudeAuthStatus,
 	type AccountPaths,
 	type ClaudeAuthStatusProbe,
 } from "../agent-accounts";
-import { claudeApiProfileEnvKeys, ENV_UNSET } from "../../shared/agent-accounts";
+import { claudeApiProfileEnvKeys, ENV_UNSET, type OmpLogin } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -138,6 +144,7 @@ beforeEach(() => {
 		claudeHome: join(root, ".claude"),
 		claudeJson: join(root, ".claude.json"),
 		codexHome: join(root, ".codex"),
+		ompAgentHome: join(root, ".omp", "agent"),
 	};
 	vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
 });
@@ -985,5 +992,144 @@ describe("listAgentAccounts", () => {
 		writeFileSync(join(paths.accountsDir, "accounts.json"), "{corrupt");
 		const state = await listAgentAccounts(paths);
 		expect(state.claude.accounts).toHaveLength(0);
+	});
+});
+
+describe("omp accounts", () => {
+	const chatgpt: OmpLogin = { provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" };
+
+	function seedOmpAgentHome() {
+		const home = paths.ompAgentHome!;
+		mkdirSync(join(home, "skills", "dev3"), { recursive: true });
+		mkdirSync(join(home, "sessions"), { recursive: true });
+		writeFileSync(join(home, "config.yml"), "theme: dark\n");
+		writeFileSync(join(home, "agent.db"), "user's own credentials");
+		writeFileSync(join(home, "agent.db-wal"), "");
+		writeFileSync(join(home, "models.db"), "");
+	}
+
+	async function addOmpAccount(logins: OmpLogin[] = [chatgpt]) {
+		const { accountId } = await prepareOmpLogin(paths);
+		return completeOmpLogin(accountId, paths, async () => logins);
+	}
+
+	it("keeps sessions and every SQLite file private, shares the rest", () => {
+		for (const entry of ["agent.db", "agent.db-wal", "models.db-shm", "sessions", "cache", "auth-broker.token"]) {
+			expect(isPrivateOmpEntry(entry)).toBe(true);
+		}
+		for (const entry of ["config.yml", "skills", "extensions", "models.yml", "AGENTS.md"]) {
+			expect(isPrivateOmpEntry(entry)).toBe(false);
+		}
+	});
+
+	it("prepares a fresh agent dir linking the user's config but not their credentials", async () => {
+		seedOmpAgentHome();
+		const { accountId, loginCommand, launch } = await prepareOmpLogin(paths);
+		const dir = ompAccountDir(accountId, paths);
+		expect(loginCommand).toBe(`PI_CODING_AGENT_DIR='${dir}' omp login`);
+		expect(launch).toEqual({ command: "omp", args: ["login"], env: { PI_CODING_AGENT_DIR: dir }, cwd: dir });
+		expect(existsSync(join(dir, STAGED_LOGIN_MARKER))).toBe(true);
+		expect(lstatSync(join(dir, "config.yml")).isSymbolicLink()).toBe(true);
+		expect(lstatSync(join(dir, "skills")).isSymbolicLink()).toBe(true);
+		for (const entry of ["agent.db", "agent.db-wal", "models.db", "sessions"]) {
+			expect(existsSync(join(dir, entry))).toBe(false);
+		}
+		// Not registered until a sign-in is verified.
+		expect((await listAgentAccounts(paths)).omp.accounts).toHaveLength(0);
+	});
+
+	it("keeps waiting on an agent dir with no sign-in, and on a listing that fails", async () => {
+		const { accountId } = await prepareOmpLogin(paths);
+		await expect(completeOmpLogin(accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
+		const failing = async (): Promise<OmpLogin[]> => {
+			throw new Error("omp usage accounts exited with code 1");
+		};
+		await expect(completeOmpLogin(accountId, paths, failing)).rejects.toBeInstanceOf(LoginNotReadyError);
+		expect((await listAgentAccounts(paths)).omp.accounts).toHaveLength(0);
+	});
+
+	it("asks omp again only after its auth store changed", async () => {
+		const { accountId } = await prepareOmpLogin(paths);
+		const dir = ompAccountDir(accountId, paths);
+		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(true);
+		await expect(completeOmpLogin(accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
+		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(false);
+		writeFileSync(join(dir, "agent.db"), "x");
+		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(true);
+	});
+
+	it("a verified login drops the staged marker and can no longer be discarded", async () => {
+		const account = await addOmpAccount();
+		const dir = ompAccountDir(account.id, paths);
+		expect(existsSync(join(dir, STAGED_LOGIN_MARKER))).toBe(false);
+		expect(discardStagedLogin("omp", account.id, paths)).toBe(false);
+		expect(existsSync(dir)).toBe(true);
+	});
+
+	it("discards an unverified staged dir and sweeps an abandoned one", async () => {
+		const { accountId } = await prepareOmpLogin(paths);
+		expect(discardStagedLogin("omp", accountId, paths)).toBe(true);
+		expect(existsSync(ompAccountDir(accountId, paths))).toBe(false);
+		const stale = await prepareOmpLogin(paths);
+		expect(sweepAbandonedStagedLogins("omp", 60_000, Date.now() + 120_000, paths)).toBe(1);
+		expect(existsSync(ompAccountDir(stale.accountId, paths))).toBe(false);
+	});
+
+	it("registers a verified login as the default, labelled by its email", async () => {
+		const account = await addOmpAccount([chatgpt, { provider: "github-copilot", identityKey: null, orgName: null }]);
+		expect(account.label).toBe("dev@example.com");
+		expect(account.identity?.planLabel).toBe("openai-codex, github-copilot");
+		const state = await listAgentAccounts(paths);
+		expect(state.omp.accounts.map((a) => a.id)).toEqual([account.id]);
+		expect(state.omp.activeId).toBe(account.id);
+	});
+
+	it("keeps the omp registry out of accounts.json, which older builds rewrite", async () => {
+		await addOmpAccount();
+		expect(existsSync(join(paths.accountsDir, "omp-accounts.json"))).toBe(true);
+		expect(existsSync(join(paths.accountsDir, "accounts.json"))).toBe(false);
+	});
+
+	it("injects nothing while no omp account exists", async () => {
+		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({});
+	});
+
+	it("points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login", async () => {
+		const account = await addOmpAccount();
+		const dir = ompAccountDir(account.id, paths);
+		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+		expect(await getActiveOmpSessionEnv(null, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		await setActiveOmpAccount(null, paths);
+		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		expect(await getActiveOmpSessionEnv(account.id, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+	});
+
+	it("links entries that appeared in ~/.omp/agent after the account was created", async () => {
+		const account = await addOmpAccount();
+		mkdirSync(join(paths.ompAgentHome!, "extensions"), { recursive: true });
+		await getActiveOmpSessionEnv(account.id, paths);
+		expect(lstatSync(join(ompAccountDir(account.id, paths), "extensions")).isSymbolicLink()).toBe(true);
+	});
+
+	it("re-verifying an account refreshes its sign-ins without a second row", async () => {
+		const account = await addOmpAccount();
+		await completeOmpLogin(account.id, paths, async () => [chatgpt, { provider: "xai-oauth", identityKey: "email:x@example.com", orgName: null }]);
+		const [row] = (await listAgentAccounts(paths)).omp.accounts;
+		expect(row.ompLogins?.map((l) => l.provider)).toEqual(["openai-codex", "xai-oauth"]);
+		expect((await listAgentAccounts(paths)).omp.accounts).toHaveLength(1);
+	});
+
+	it("renames and removes an omp account without touching ~/.omp/agent", async () => {
+		seedOmpAgentHome();
+		const account = await addOmpAccount();
+		await renameAgentAccount("omp", account.id, "Work ChatGPT", paths);
+		expect((await listAgentAccounts(paths)).omp.accounts[0].label).toBe("Work ChatGPT");
+		await removeAgentAccount("omp", account.id, paths);
+		const state = await listAgentAccounts(paths);
+		expect(state.omp.accounts).toHaveLength(0);
+		expect(state.omp.activeId).toBeNull();
+		expect(existsSync(ompAccountDir(account.id, paths))).toBe(false);
+		expect(readFileSync(join(paths.ompAgentHome!, "config.yml"), "utf-8")).toBe("theme: dark\n");
+		expect(existsSync(join(paths.ompAgentHome!, "skills", "dev3"))).toBe(true);
 	});
 });

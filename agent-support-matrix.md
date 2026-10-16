@@ -16,8 +16,9 @@ Last updated: 2026-09-20
 > `trustKinds`; *Status hooks* → `hooksSpec()`; *Skill injection* → `skillBody`.
 > Adding an agent is one new adapter file registered in `registry.ts`, and the
 > type-checker enumerates every member to fill in. The Claude-only rows (*LLM
-> provider*, *Rate-limit tracking*, managed accounts, MCP pre-approval) stay
-> outside the seam, keyed by `isClaudeCommand`.
+> provider*, *Rate-limit tracking*, MCP pre-approval) stay outside the seam, keyed
+> by `isClaudeCommand`; *Managed accounts* also stays outside it, keyed by
+> `agentKey` in `src/bun/agents.ts` (`apply*AccountEnv`).
 
 ## Agents
 
@@ -45,6 +46,7 @@ Last updated: 2026-09-20
 | **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` | `--model` (the account's plan decides which names it will accept; `auto` always does). Copilot also persists its own default in `~/.copilot/settings.json` via `/config model`; dev3's flag overrides it per launch | `--model` |
 | **Account model filter** (flag presets the signed-in account can't select) | — | Yes — `--list-models`, matched on the base model family (Cursor bakes effort into the slug) | Yes — `debug models`, `visibility=list` + `supported_in_api`, exact slug | — (open FR gemini-cli#27847) | — (`opencode models` lists configured providers, not the account's license) | — (no list command; a blocked model only fails at launch) | — |
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — | — | — |
+| **Managed accounts** (Settings → Accounts, per-launch pick) | Yes — `CLAUDE_CONFIG_DIR` per account, plus API profiles | — | Yes — `CODEX_HOME` per account | — | — | — | Yes — `PI_CODING_AGENT_DIR` per account (own `agent.db` + sessions, the rest of `~/.omp/agent` symlinked); Add account runs `omp login` in the embedded sign-in terminal, the user picks any provider, dev3 verifies with `omp usage accounts --json` |
 | **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — | — | — (omp's 9 roles unbound) |
 | **Agent selection** | — | — | — | — | `--agent` | — | — |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | Yes (`ensureCopilotTrust` → `config.json` `trustedFolders`) | — |

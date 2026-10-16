@@ -9,6 +9,11 @@
  *       everything else                            — symlinks into ~/.claude,
  *                                                    minus CLAUDE_PRIVATE_ENTRIES
  *   ~/.dev3.0/agent-accounts/codex/<id>/auth.json  — per-account snapshot of ~/.codex/auth.json
+ *   ~/.dev3.0/agent-accounts/omp-accounts.json     — omp registry (own file: older builds
+ *                                                    rewrite accounts.json and would drop it)
+ *   ~/.dev3.0/agent-accounts/omp/<id>/             — PI_CODING_AGENT_DIR per account: its own
+ *                                                    agent.db + sessions, the rest symlinked
+ *                                                    from ~/.omp/agent
  *
  * Swap semantics:
  * - Claude: the active account's dir is injected as CLAUDE_CONFIG_DIR into newly
@@ -30,6 +35,7 @@ import {
 	readFileSync,
 	renameSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -45,6 +51,7 @@ import type {
 	AgentApiProfileInfo,
 	ClaudeSlotModel,
 	ClaudeSlotModels,
+	OmpLogin,
 } from "../shared/agent-accounts";
 import {
 	CLAUDE_MODEL_SLOTS,
@@ -54,7 +61,9 @@ import {
 	defaultAccountLabel,
 	defaultApiProfileLabel,
 	parseClaudeIdentity,
+	ompAccountIdentity,
 	parseCodexIdentity,
+	parseOmpAccounts,
 	shortCodexWorkspaceId,
 } from "../shared/agent-accounts";
 import { createLogger } from "./logger";
@@ -72,6 +81,8 @@ export interface AccountPaths {
 	claudeJson: string;
 	/** ~/.codex */
 	codexHome: string;
+	/** ~/.omp/agent — omp's default agent dir, the source of shared entries. */
+	ompAgentHome?: string;
 }
 
 export function defaultAccountPaths(): AccountPaths {
@@ -81,6 +92,7 @@ export function defaultAccountPaths(): AccountPaths {
 		claudeHome: join(home, ".claude"),
 		claudeJson: join(home, ".claude.json"),
 		codexHome: join(home, ".codex"),
+		ompAgentHome: join(home, ".omp", "agent"),
 	};
 }
 
@@ -119,6 +131,16 @@ export function isPrivateClaudeEntry(entry: string): boolean {
  *  source entries are simply skipped — a fresh codex install may have none. */
 export const CODEX_SHARED_ENTRIES = ["config.toml", "prompts"];
 
+/** Entries of ~/.omp/agent an omp account keeps to itself; everything else
+ *  (config.yml, skills, extensions, models.yml, …) is symlinked in. SQLite files
+ *  never are: a database opened through a link gets its -wal beside the link. */
+const OMP_PRIVATE_ENTRIES = ["sessions", "terminal-sessions", "cache", "blobs"];
+const OMP_PRIVATE_PATTERNS = [/\.db(-wal|-shm|-journal)?$/i, /credential/i, /^auth/i, /token/i, /\.key$/i];
+
+export function isPrivateOmpEntry(entry: string): boolean {
+	return OMP_PRIVATE_ENTRIES.includes(entry) || OMP_PRIVATE_PATTERNS.some((pattern) => pattern.test(entry));
+}
+
 interface RegistryEntry {
 	id: string;
 	label: string;
@@ -129,6 +151,9 @@ interface RegistryEntry {
 	auth?: AgentAccountAuth;
 	createdAt: number;
 }
+
+/** Kinds kept in accounts.json; omp has its own registry file. */
+type RegistryKind = Exclude<AgentAccountKind, "omp">;
 
 interface Registry {
 	version: 1;
@@ -205,6 +230,102 @@ export function codexAccountDir(id: string, paths: AccountPaths = defaultAccount
 
 function codexAccountAuthFile(id: string, paths: AccountPaths): string {
 	return join(codexAccountDir(id, paths), "auth.json");
+}
+
+export function ompAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {
+	assertSafeAccountId(id);
+	return join(paths.accountsDir, "omp", id);
+}
+
+interface OmpRegistryEntry {
+	id: string;
+	label: string;
+	logins: OmpLogin[];
+	createdAt: number;
+}
+
+interface OmpRegistry {
+	version: 1;
+	activeId: string | null;
+	accounts: OmpRegistryEntry[];
+}
+
+function ompRegistryFile(paths: AccountPaths): string {
+	return join(paths.accountsDir, "omp-accounts.json");
+}
+
+function loadOmpRegistry(paths: AccountPaths): OmpRegistry {
+	const data = safeReadJson(ompRegistryFile(paths)) as { activeId?: unknown; accounts?: unknown } | null;
+	const accounts = Array.isArray(data?.accounts)
+		? (data.accounts as any[])
+				.filter((a) => typeof a?.id === "string" && isSafeAccountId(a.id))
+				.map((a) => ({
+					id: a.id as string,
+					label: typeof a.label === "string" ? a.label : a.id,
+					logins: (() => {
+						try {
+							return parseOmpAccounts({ accounts: a.logins });
+						} catch {
+							return [];
+						}
+					})(),
+					createdAt: typeof a.createdAt === "number" ? a.createdAt : 0,
+				}))
+		: [];
+	return { version: 1, activeId: typeof data?.activeId === "string" ? data.activeId : null, accounts };
+}
+
+function saveOmpRegistry(registry: OmpRegistry, paths: AccountPaths): void {
+	mkdirSync(paths.accountsDir, { recursive: true });
+	const target = ompRegistryFile(paths);
+	const tmp = `${target}.tmp`;
+	writeFileSync(tmp, JSON.stringify(registry, null, 2));
+	renameSync(tmp, target);
+}
+
+function ompToAccount(entry: OmpRegistryEntry): AgentAccount {
+	return {
+		id: entry.id,
+		kind: "omp",
+		label: entry.label,
+		identity: ompAccountIdentity(entry.logins),
+		auth: "oauth",
+		api: null,
+		ompLogins: entry.logins,
+		createdAt: entry.createdAt,
+	};
+}
+
+/** Make the account dir a usable PI_CODING_AGENT_DIR: create it and symlink
+ *  every non-private entry of ~/.omp/agent, so the user's omp config and dev3's
+ *  skills stay visible. Idempotent and re-run per launch to pick up new entries;
+ *  an entry already present in the account dir is never replaced. */
+function scaffoldOmpAccountDir(id: string, paths: AccountPaths): string {
+	const dir = ompAccountDir(id, paths);
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const source = paths.ompAgentHome ?? join(homedir(), ".omp", "agent");
+	let entries: string[] = [];
+	try {
+		entries = readdirSync(source);
+	} catch {
+		return dir; // omp never ran yet — nothing to share
+	}
+	for (const entry of entries) {
+		if (isPrivateOmpEntry(entry) || CLAUDE_IGNORED_ENTRIES.includes(entry)) continue;
+		const linkPath = join(dir, entry);
+		try {
+			lstatSync(linkPath);
+			continue;
+		} catch {
+			// missing — create below
+		}
+		try {
+			symlinkSync(join(source, entry), linkPath);
+		} catch (err) {
+			log.warn("Failed to symlink shared omp entry", { entry, error: String(err) });
+		}
+	}
+	return dir;
 }
 
 const CODEX_ACCOUNTS_ENDPOINT = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27";
@@ -433,7 +554,7 @@ function apiProfileInfo(profile: ApiProfileFile | null): AgentApiProfileInfo | n
 	};
 }
 
-function toAccount(entry: RegistryEntry, kind: AgentAccountKind, paths: AccountPaths): AgentAccount {
+function toAccount(entry: RegistryEntry, kind: RegistryKind, paths: AccountPaths): AgentAccount {
 	const isApi = kind === "claude" && entry.auth === "api";
 	return {
 		id: entry.id,
@@ -505,6 +626,13 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 			activeId: registry.codex.accounts.some((e) => e.id === registry.codex.activeId) ? registry.codex.activeId : null,
 			currentIdentity: currentCodexIdentity(paths, registry),
 		},
+		omp: (() => {
+			const omp = loadOmpRegistry(paths);
+			return {
+				accounts: omp.accounts.map(ompToAccount),
+				activeId: omp.accounts.some((e) => e.id === omp.activeId) ? omp.activeId : null,
+			};
+		})(),
 	};
 }
 
@@ -638,6 +766,21 @@ export async function getActiveCodexSessionEnv(
 	// Missing snapshot (account added but creds gone) → fall back to system login.
 	if (!existsSync(codexAccountAuthFile(id, paths))) return {};
 	return { CODEX_HOME: ensureCodexAccountHome(id, paths) };
+}
+
+/** PI_CODING_AGENT_DIR for a new omp session. Same override semantics as Codex;
+ *  once any omp account exists the variable is actively unset for the system
+ *  login, so a value leaked into the long-lived tmux env cannot pick the account.
+ *  Empty record while no omp accounts are registered (feature unused). */
+export async function getActiveOmpSessionEnv(
+	accountIdOverride?: string | null,
+	paths: AccountPaths = defaultAccountPaths(),
+): Promise<Record<string, string>> {
+	const registry = loadOmpRegistry(paths);
+	if (registry.accounts.length === 0) return {};
+	const id = resolveAccountIdOverride(registry.activeId, accountIdOverride);
+	if (!id || !registry.accounts.some((e) => e.id === id)) return { PI_CODING_AGENT_DIR: ENV_UNSET };
+	return { PI_CODING_AGENT_DIR: scaffoldOmpAccountDir(id, paths) };
 }
 
 /** Create the per-account config dir, symlinking every non-private entry of
@@ -853,7 +996,7 @@ export interface PreparedAccountLogin {
 
 function assertNoDuplicate(
 	registry: Registry,
-	kind: AgentAccountKind,
+	kind: RegistryKind,
 	identity: AgentAccountIdentity | null,
 	paths: AccountPaths,
 	excludeId?: string,
@@ -895,7 +1038,7 @@ function assertNoDuplicate(
 
 function registerAccount(
 	registry: Registry,
-	kind: AgentAccountKind,
+	kind: RegistryKind,
 	id: string,
 	identity: AgentAccountIdentity | null,
 	paths: AccountPaths,
@@ -1275,16 +1418,26 @@ export async function completeCodexLogin(
 /** Has the provider written an identity into a staged login dir yet? Read-only. */
 export function stagedLoginHasIdentity(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): boolean {
 	if (kind === "claude") return parseClaudeIdentity(safeReadJson(join(claudeAccountDir(accountId, paths), ".claude.json"))) !== null;
+	if (kind === "omp") return ompAuthStoreFingerprint(ompAccountDir(accountId, paths)) !== ompCheckedFingerprints.get(accountId);
 	return Boolean(parseCodexIdentity(safeReadJson(codexAccountAuthFile(accountId, paths)))?.accountId);
+}
+
+function registeredAccountIds(kind: AgentAccountKind, paths: AccountPaths): Set<string> {
+	const accounts = kind === "omp" ? loadOmpRegistry(paths).accounts : loadRegistry(paths)[kind].accounts;
+	return new Set(accounts.map((e) => e.id));
+}
+
+function stagedAccountDir(kind: AgentAccountKind, accountId: string, paths: AccountPaths): string {
+	if (kind === "claude") return claudeAccountDir(accountId, paths);
+	return kind === "omp" ? ompAccountDir(accountId, paths) : codexAccountDir(accountId, paths);
 }
 
 /** Delete a staged login dir that never became an account. A registered id is
  *  refused: its dir IS a saved login, and only an explicit Remove may delete it. */
 export function discardStagedLogin(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): boolean {
-	const registry = loadRegistry(paths);
-	if (registry[kind].accounts.some((e) => e.id === accountId)) return false;
-	const dir = kind === "claude" ? claudeAccountDir(accountId, paths) : codexAccountDir(accountId, paths);
-	rmSync(dir, { recursive: true, force: true });
+	if (registeredAccountIds(kind, paths).has(accountId)) return false;
+	rmSync(stagedAccountDir(kind, accountId, paths), { recursive: true, force: true });
+	ompCheckedFingerprints.delete(accountId);
 	return true;
 }
 
@@ -1307,7 +1460,7 @@ export function sweepAbandonedStagedLogins(
 	} catch {
 		return 0;
 	}
-	const registered = new Set(loadRegistry(paths)[kind].accounts.map((e) => e.id));
+	const registered = registeredAccountIds(kind, paths);
 	let swept = 0;
 	for (const id of entries) {
 		if (!isSafeAccountId(id) || registered.has(id)) continue;
@@ -1318,6 +1471,110 @@ export function sweepAbandonedStagedLogins(
 	}
 	if (swept > 0) log.info("Abandoned staged sign-ins removed", { kind, swept });
 	return swept;
+}
+
+/** Scaffold a fresh omp agent dir for `omp login`; omp's own picker chooses the
+ *  provider. The account is not registered until completeOmpLogin finds a sign-in. */
+export async function prepareOmpLogin(paths: AccountPaths = defaultAccountPaths()): Promise<PreparedAccountLogin> {
+	const id = crypto.randomUUID();
+	const dir = scaffoldOmpAccountDir(id, paths);
+	markStagedLogin(dir);
+	return {
+		accountId: id,
+		loginCommand: `PI_CODING_AGENT_DIR='${dir}' omp login`,
+		launch: { command: "omp", args: ["login"], env: { PI_CODING_AGENT_DIR: dir }, cwd: dir },
+	};
+}
+
+/** omp keeps its sign-ins in agent.db (WAL mode); size and mtime of both files
+ *  change on every write, so a fingerprint tells "worth asking omp again". */
+function ompAuthStoreFingerprint(dir: string): string {
+	return ["agent.db", "agent.db-wal"]
+		.map((name) => {
+			try {
+				const stat = statSync(join(dir, name));
+				return `${stat.size}:${stat.mtimeMs}`;
+			} catch {
+				return "-";
+			}
+		})
+		.join("|");
+}
+
+/** Fingerprint of the auth store when omp last reported no sign-in, per staged id:
+ *  the sign-in watch asks omp again only after the store changed. */
+const ompCheckedFingerprints = new Map<string, string>();
+
+/** Ask omp which OAuth sign-ins an agent dir holds. omp prints provider and
+ *  identity key only — no token ever reaches dev3. */
+export async function listOmpLogins(agentDir: string): Promise<OmpLogin[]> {
+	const proc = spawn(["omp", "usage", "accounts", "--json"], {
+		env: { PI_CODING_AGENT_DIR: agentDir },
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const timer = setTimeout(() => proc.kill(), 20_000);
+	try {
+		const [code, out] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+		if (code !== 0) throw new Error(`omp usage accounts exited with code ${code}`);
+		return parseOmpAccounts(JSON.parse(out));
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** Verify a prepared omp agent dir and register (or re-verify) it as an account. */
+export async function completeOmpLogin(
+	accountId: string,
+	paths: AccountPaths = defaultAccountPaths(),
+	listLogins: (agentDir: string) => Promise<OmpLogin[]> = listOmpLogins,
+	opts: { stillWanted?: () => boolean } = {},
+): Promise<AgentAccount> {
+	const dir = ompAccountDir(accountId, paths);
+	if (!existsSync(dir)) throw new Error(`Unknown omp account: ${accountId}`);
+	const fingerprint = ompAuthStoreFingerprint(dir);
+	let logins: OmpLogin[];
+	try {
+		logins = await listLogins(dir);
+	} catch (err) {
+		// The watch asks again once the auth store changes; a listing hiccup is not a verdict.
+		log.warn("omp sign-in listing failed", { accountId: accountId.slice(0, 8), error: String(err) });
+		logins = [];
+	}
+	if (logins.length === 0) {
+		ompCheckedFingerprints.set(accountId, fingerprint);
+		throw new LoginNotReadyError("Login not detected yet. Finish the sign-in in the terminal.");
+	}
+	if (opts.stillWanted && !opts.stillWanted()) throw new LoginNotReadyError("This sign-in was closed.");
+	ompCheckedFingerprints.delete(accountId);
+	const registry = loadOmpRegistry(paths);
+	let entry = registry.accounts.find((e) => e.id === accountId);
+	if (entry) {
+		entry.logins = logins;
+	} else {
+		const identity = ompAccountIdentity(logins);
+		entry = {
+			id: accountId,
+			label: identity?.email ?? `omp account ${registry.accounts.length + 1}`,
+			logins,
+			createdAt: Date.now(),
+		};
+		registry.accounts.push(entry);
+		registry.activeId = accountId; // newly added becomes the default preselect
+	}
+	saveOmpRegistry(registry, paths);
+	unmarkStagedLogin(dir);
+	log.info("omp account verified", { accountId: accountId.slice(0, 8), providers: logins.map((l) => l.provider) });
+	return ompToAccount(entry);
+}
+
+export async function setActiveOmpAccount(accountId: string | null, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
+	const registry = loadOmpRegistry(paths);
+	if (accountId !== null && !registry.accounts.some((e) => e.id === accountId)) {
+		throw new Error(`Unknown omp account: ${accountId}`);
+	}
+	registry.activeId = accountId;
+	saveOmpRegistry(registry, paths);
 }
 
 /** Claude activation is registry-only: new sessions pick up CLAUDE_CONFIG_DIR. */
@@ -1347,6 +1604,15 @@ export async function setActiveCodexAccount(accountId: string | null, paths: Acc
 /** Remove a managed account (stored snapshot/config dir). The provider-side
  *  login is untouched; for Codex the current ~/.codex/auth.json stays as-is. */
 export async function removeAgentAccount(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
+	if (kind === "omp") {
+		const dir = ompAccountDir(accountId, paths);
+		const omp = loadOmpRegistry(paths);
+		omp.accounts = omp.accounts.filter((e) => e.id !== accountId);
+		if (omp.activeId === accountId) omp.activeId = null;
+		saveOmpRegistry(omp, paths);
+		rmSync(dir, { recursive: true, force: true }); // symlinks only — their targets stay
+		return;
+	}
 	const registry = loadRegistry(paths);
 	registry[kind].accounts = registry[kind].accounts.filter((e) => e.id !== accountId);
 	if (registry[kind].activeId === accountId) registry[kind].activeId = null;
@@ -1358,6 +1624,14 @@ export async function removeAgentAccount(kind: AgentAccountKind, accountId: stri
 export async function renameAgentAccount(kind: AgentAccountKind, accountId: string, label: string, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
 	const trimmed = label.trim();
 	if (!trimmed) throw new Error("Label cannot be empty");
+	if (kind === "omp") {
+		const omp = loadOmpRegistry(paths);
+		const entry = omp.accounts.find((e) => e.id === accountId);
+		if (!entry) throw new Error(`Unknown omp account: ${accountId}`);
+		entry.label = trimmed;
+		saveOmpRegistry(omp, paths);
+		return;
+	}
 	const registry = loadRegistry(paths);
 	const entry = registry[kind].accounts.find((e) => e.id === accountId);
 	if (!entry) throw new Error(`Unknown ${kind} account: ${accountId}`);

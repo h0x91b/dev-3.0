@@ -9,9 +9,21 @@
  * - Codex: `auth.json` → `tokens.id_token` (JWT whose payload carries `email`
  *   and the `https://api.openai.com/auth` claim with `chatgpt_plan_type` +
  *   `chatgpt_account_id`) and `tokens.account_id`.
+ * - Oh My Pi: `omp usage accounts --json` → `{accounts:[{provider,
+ *   identityKey, orgName?}]}` — omp's own token-free listing of its OAuth rows.
  */
 
-export type AgentAccountKind = "claude" | "codex";
+export type AgentAccountKind = "claude" | "codex" | "omp";
+
+/** One provider sign-in held inside a managed omp account. A single omp agent
+ *  dir can hold several (`/login` to ChatGPT and to Copilot, say). */
+export interface OmpLogin {
+	/** omp provider id, e.g. "openai-codex", "github-copilot". */
+	provider: string;
+	/** omp's `email:…|org:…` identity key; null when the provider reports none. */
+	identityKey: string | null;
+	orgName: string | null;
+}
 
 /** How a managed account authenticates: an OAuth login (subscription) or an
  *  API profile (custom endpoint / API key / env vars, no login at all). */
@@ -103,6 +115,8 @@ export interface AgentAccount {
 	auth: AgentAccountAuth;
 	/** Present only when auth === "api". */
 	api: AgentApiProfileInfo | null;
+	/** omp accounts only: the provider sign-ins found at the last verification. */
+	ompLogins?: OmpLogin[];
 	createdAt: number;
 }
 
@@ -123,6 +137,11 @@ export interface AgentAccountsState {
 		activeId: string | null;
 		/** Identity currently held by ~/.codex/auth.json (null when absent/unreadable). */
 		currentIdentity: AgentAccountIdentity | null;
+	};
+	omp: {
+		accounts: AgentAccount[];
+		/** Default account for new omp launches; null = omp's own ~/.omp/agent. */
+		activeId: string | null;
 	};
 }
 
@@ -271,6 +290,39 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 		planLabel: codexPlanLabel(plan),
 		accountId: accountId ?? asString(authClaim?.chatgpt_account_id),
 	};
+}
+
+/** Parse `omp usage accounts --json` output. Throws on a payload that is not
+ *  that shape, so a changed omp contract fails loudly instead of reading as
+ *  "not signed in". */
+export function parseOmpAccounts(json: unknown): OmpLogin[] {
+	const rows = asRecord(json)?.accounts;
+	if (!Array.isArray(rows)) throw new Error("Unexpected `omp usage accounts --json` output");
+	const logins: OmpLogin[] = [];
+	for (const row of rows) {
+		const rec = asRecord(row);
+		const provider = asString(rec?.provider);
+		if (!provider) continue;
+		logins.push({ provider, identityKey: asString(rec?.identityKey), orgName: asString(rec?.orgName) });
+	}
+	return logins;
+}
+
+/** `email:a@b.c|org:x` → "a@b.c". omp builds identity keys from these segments. */
+export function ompLoginEmail(login: OmpLogin): string | null {
+	for (const part of login.identityKey?.split("|") ?? []) {
+		if (part.startsWith("email:") && part.length > 6) return part.slice(6);
+	}
+	return null;
+}
+
+/** Display identity of an omp account: the email of its first sign-in that
+ *  names one, and the signed-in providers as the badge ("openai-codex, …"). */
+export function ompAccountIdentity(logins: OmpLogin[]): AgentAccountIdentity | null {
+	const login = logins.find((l) => ompLoginEmail(l)) ?? logins[0];
+	if (!login) return null;
+	const providers = [...new Set(logins.map((l) => l.provider))].join(", ");
+	return { email: ompLoginEmail(login), organization: login.orgName, plan: null, planLabel: providers, accountId: null };
 }
 
 /** Compact, display-safe prefix for a Codex ChatGPT workspace id. */

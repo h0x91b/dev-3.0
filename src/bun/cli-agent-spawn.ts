@@ -45,7 +45,7 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 		const config = agent.configurations.find((c) => c.id === configId);
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 		const family = agentKey(config?.baseCommandOverride || agentWithPath.baseCommand, agentWithPath.agentFamily);
-		if (family !== "claude" && family !== "codex") throw new Error(`Agent "${id}" does not support managed accounts.`);
+		if (family !== "claude" && family !== "codex" && family !== "omp") throw new Error(`Agent "${id}" does not support managed accounts.`);
 		if (choice.accountId !== null && !(await listAgentAccounts())[family].accounts.some((a) => a.id === choice.accountId)) throw new Error(`Unknown ${family} account "${choice.accountId}".`);
 	}
 	const availability = await settingsConfigHandlers.checkAgentAvailability();

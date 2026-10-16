@@ -20,12 +20,14 @@ import {
 	resolveAccount,
 } from "./rate-limit-ui";
 
-const KINDS: AgentAccountKind[] = ["claude", "codex"];
+/** Kinds with limit windows to show; omp reports none to dev3. */
+type UsageKind = Exclude<AgentAccountKind, "omp">;
+const KINDS: UsageKind[] = ["claude", "codex"];
 
 /** One card in the panel: an account (or a leftover reading) plus its usage. */
 interface UsageRow {
 	key: string;
-	kind: AgentAccountKind;
+	kind: UsageKind;
 	accountId: string | null;
 	/** Set on a project-pinned `CLAUDE_CONFIG_DIR` login; such rows are informational. */
 	configDir: string | null;
@@ -65,7 +67,7 @@ function spokenName(row: UsageRow, fallback: string): string {
  *  logins projects pin via `CLAUDE_CONFIG_DIR`, then any reading left over from
  *  an account or pin that no longer exists. */
 function rowsForKind(
-	kind: AgentAccountKind,
+	kind: UsageKind,
 	accounts: AgentAccountsState | null,
 	report: AgentRateLimitsReport,
 	pinnedLogins: PinnedClaudeLogin[],

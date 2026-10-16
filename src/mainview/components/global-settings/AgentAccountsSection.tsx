@@ -563,7 +563,7 @@ function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLogi
 export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const [state, setState] = useState<AgentAccountsState | null>(null);
 	const pinnedLogins = usePinnedClaudeLogins();
-	const [logins, setLogins] = useState<Record<AgentAccountKind, AccountLoginState | null>>({ claude: null, codex: null });
+	const [logins, setLogins] = useState<Record<AgentAccountKind, AccountLoginState | null>>({ claude: null, codex: null, omp: null });
 	// Which sign-in is on screen; hiding the modal leaves the login running on the host.
 	const [shownLogin, setShownLogin] = useState<AgentAccountKind | null>(null);
 	const [loginBusy, setLoginBusy] = useState(false);
@@ -579,7 +579,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	useEffect(() => {
 		// A sign-in outlives this screen (another window, a reload, a hidden modal) — pick it back up.
-		for (const kind of ["claude", "codex"] as const) {
+		for (const kind of ["claude", "codex", "omp"] as const) {
 			api.request.getAccountLogin({ kind })
 				.then((login) => setLogins((prev) => ({ ...prev, [kind]: login })))
 				.catch(() => {});
@@ -767,14 +767,17 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			<div className="bg-raised border border-edge rounded-xl p-4 space-y-2.5">
 				<div className="flex items-center gap-2">
 					<span className="text-fg text-sm font-semibold flex-1">{title}</span>
-					<button
-						type="button"
-						onClick={() => handleImport(kind)}
-						disabled={busy}
-						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
-					>
-						{t("settings.accountsImportCurrent")}
-					</button>
+					{/* omp has no single "current login" to import: an account is a fresh agent dir. */}
+					{kind !== "omp" ? (
+						<button
+							type="button"
+							onClick={() => handleImport(kind)}
+							disabled={busy}
+							className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
+						>
+							{t("settings.accountsImportCurrent")}
+						</button>
+					) : null}
 					<button
 						type="button"
 						onClick={() => (logins[kind] ? setShownLogin(kind) : void handleStartAdd(kind))}
@@ -932,6 +935,21 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						<span className="ml-auto text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
 					</div>
 				) : null,
+			)}
+			{renderAgentBlock(
+				"omp",
+				"Oh My Pi (omp)",
+				state.omp.accounts,
+				state.omp.activeId,
+				<AccountRow
+					kind="omp"
+					label={t("settings.accountsOmpDefaultLogin")}
+					identity={null}
+					isActive={state.omp.activeId === null}
+					onActivate={state.omp.activeId === null ? undefined : () => handleSetActive("omp", null)}
+					t={t}
+				/>,
+				null,
 			)}
 			<p className="text-fg-muted text-xs">{t("settings.accountsNewSessionsHint")}</p>
 			{shownLogin && logins[shownLogin] ? (

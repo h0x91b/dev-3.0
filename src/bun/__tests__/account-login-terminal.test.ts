@@ -396,4 +396,11 @@ describe("loginEnv", () => {
 		expect(claude.PATH).toBe("/bin");
 		expect(merged(loginEnv(base, {}, "codex")).OPENAI_API_KEY).toBeUndefined();
 	});
+
+	it("leaves the user's own provider keys to omp, scoped only by its agent dir", () => {
+		const env = loginEnv({ OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "k", PI_CODING_AGENT_DIR: "/home/me/.omp/agent" }, { PI_CODING_AGENT_DIR: "/staged/o" }, "omp");
+		expect(env.PI_CODING_AGENT_DIR).toBe("/staged/o");
+		expect(env.OPENAI_API_KEY).toBe("o");
+		expect(env.ANTHROPIC_API_KEY).toBe("k");
+	});
 });

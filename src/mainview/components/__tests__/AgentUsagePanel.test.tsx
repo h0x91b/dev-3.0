@@ -33,6 +33,7 @@ function accounts(): AgentAccountsState {
 			systemConfigDir: "/home/me/.claude", systemIdentity: null,
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
+		omp: { accounts: [], activeId: null },
 	};
 }
 
@@ -56,6 +57,7 @@ function sameEmailAccounts(): AgentAccountsState {
 			systemConfigDir: "/home/me/.claude", systemIdentity: null,
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
+		omp: { accounts: [], activeId: null },
 	};
 }
 

@@ -1,5 +1,5 @@
 /**
- * In-app sign-in for managed Claude Code / Codex accounts.
+ * In-app sign-in for managed Claude Code / Codex / omp accounts.
  *
  * The provider's own login command runs in a PTY on the backend host — never in
  * the viewing browser — scoped to a staged account dir by env alone. Viewers see
@@ -138,7 +138,9 @@ export function loginEnv(
 		if (value !== undefined) env[key] = value;
 	}
 	env.CLAUDECODE = undefined;
-	for (const key of kind === "claude" ? accounts.CLAUDE_ENV_AUTH_KEYS : accounts.CODEX_ENV_AUTH_KEYS) env[key] = undefined;
+	// omp's login only stores sign-ins; whatever the env authenticates is the user's own setup.
+	const authKeys = kind === "claude" ? accounts.CLAUDE_ENV_AUTH_KEYS : kind === "codex" ? accounts.CODEX_ENV_AUTH_KEYS : [];
+	for (const key of authKeys) env[key] = undefined;
 	env.TERM = "xterm-256color";
 	env.COLORTERM = "truecolor";
 	return { ...env, ...scoped };
@@ -526,11 +528,18 @@ export function setAccountLoginPush(fn: (name: string, payload: unknown) => void
 }
 
 export const accountLogins = createAccountLoginManager({
-	prepare: (kind, opts) => (kind === "claude" ? accounts.prepareClaudeLogin() : accounts.prepareCodexLogin(undefined, opts)),
+	prepare: (kind, opts) =>
+		kind === "claude"
+			? accounts.prepareClaudeLogin()
+			: kind === "omp"
+				? accounts.prepareOmpLogin()
+				: accounts.prepareCodexLogin(undefined, opts),
 	complete: (kind, id, ctx) =>
 		kind === "claude"
 			? accounts.completeClaudeLogin(id, accounts.defaultAccountPaths(), runClaudeAuthStatus, ctx)
-			: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
+			: kind === "omp"
+				? accounts.completeOmpLogin(id, accounts.defaultAccountPaths(), undefined, ctx)
+				: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),
 	sweepAbandoned: (kind) => void accounts.sweepAbandonedStagedLogins(kind, ACCOUNT_LOGIN_TTL_MS),

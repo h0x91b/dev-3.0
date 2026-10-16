@@ -7,7 +7,13 @@ import TerminalView, { type TerminalHandle } from "../../TerminalView";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "../../terminal-themes";
 import { useFocusTrap } from "../../utils/useFocusTrap";
 
-const AGENT_NAMES = { claude: "Claude Code", codex: "Codex" } as const;
+const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi" } as const;
+
+const RUNNING_HINTS = {
+	claude: "settings.accountLoginRunningClaude",
+	codex: "settings.accountLoginRunningCodex",
+	omp: "settings.accountLoginRunningOmp",
+} as const;
 
 const PRESS = "transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
 
@@ -150,7 +156,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 				? t("settings.accountLoginRunningDevice")
 				: remote
 					? t("settings.accountLoginRunningRemote")
-					: t(login.kind === "claude" ? "settings.accountLoginRunningClaude" : "settings.accountLoginRunningCodex");
+					: t(RUNNING_HINTS[login.kind]);
 			break;
 		case "succeeded":
 			body = t("settings.accountLoginSucceededBody");

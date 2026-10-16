@@ -37,6 +37,7 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 	const state = await accounts.listAgentAccounts();
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
+		omp: state.omp.accounts.length,
 		codex: {
 			count: state.codex.accounts.length,
 			activeId: state.codex.activeId?.slice(0, 8) ?? null,
@@ -48,6 +49,7 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 
 async function importAgentAccount(params: { kind: AgentAccountKind }): Promise<AgentAccount> {
 	log.info("→ importAgentAccount", params);
+	if (params.kind === "omp") throw new Error("omp accounts are added with a fresh login, not imported");
 	const account =
 		params.kind === "claude"
 			? await accounts.importCurrentClaudeAccount()
@@ -149,6 +151,8 @@ async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId
 	// ~/.codex). Codex no longer swaps auth.json — this only moves the default.
 	if (params.kind === "claude") {
 		await accounts.setActiveClaudeAccount(params.accountId);
+	} else if (params.kind === "omp") {
+		await accounts.setActiveOmpAccount(params.accountId);
 	} else {
 		await accounts.setActiveCodexAccount(params.accountId);
 	}

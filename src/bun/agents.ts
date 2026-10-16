@@ -24,7 +24,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
-import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
+import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv, getActiveOmpSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
 export { claudeModelFamily } from "../shared/agent-accounts";
 import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolveModelRoleLaunch, roleUnsetEnv } from "../shared/model-catalog";
@@ -790,6 +790,26 @@ async function applyCodexAccountEnv(
 	}
 }
 
+/** Inject the selected omp account's PI_CODING_AGENT_DIR (its own agent.db and
+ *  sessions). Same rules as Codex: an explicit value in the config's envVars
+ *  wins, and only new sessions are affected. */
+async function applyOmpAccountEnv(
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	accountId?: string | null,
+	family?: AgentFamily,
+): Promise<void> {
+	if (agentKey(baseCmd, family) !== "omp" || extraEnv.PI_CODING_AGENT_DIR) return;
+	try {
+		const accountEnv = await getActiveOmpSessionEnv(accountId);
+		for (const [key, value] of Object.entries(accountEnv)) {
+			if (!(key in extraEnv)) extraEnv[key] = value;
+		}
+	} catch (err) {
+		log.warn("Failed to resolve active omp account env", { error: String(err) });
+	}
+}
+
 /** Rewrite a Claude preset's `--model` flag to the active API profile's override.
  *  Claude Code gives the CLI flag precedence over env, and dev3 presets pass
  *  concrete model ids — so without rewriting the flag, an API profile's per-slot
@@ -889,6 +909,7 @@ export async function resolveCommandForAgent(
 	}
 	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+	await applyOmpAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
 	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
@@ -1020,6 +1041,7 @@ export async function resolveCommandForProject(
 		};
 		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+		await applyOmpAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel);
 		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
