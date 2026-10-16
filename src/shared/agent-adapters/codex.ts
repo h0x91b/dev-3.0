@@ -1,6 +1,6 @@
 /** Codex adapter. Owns Codex's quirks: the `resume` subcommand, the theme
  *  profile rewrite, and the developer-instructions delivery channel. */
-import { CODEX_SKILL_BODY } from "../agent-skill-content";
+import { CODEX_SKILL_BODY, CODEX_LEAN_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -129,6 +129,7 @@ export const codexAdapter: AgentAdapter = {
 	// from the lifecycle hook.
 	supportsPreAssignedSessionId: false,
 	skillBody: CODEX_SKILL_BODY,
+	leanSkillBody: CODEX_LEAN_SKILL_BODY,
 	trustKinds: ["claude", "codex"],
 	// Codex's effort is a separate `-c model_reasoning_effort` arg, so a preset's
 	// `model` is already the bare slug — exact match, no normalize.
@@ -159,7 +160,7 @@ export const codexAdapter: AgentAdapter = {
 		// resumed sessions, keeps the turn-1 user message clean). JSON.stringify
 		// emits a valid TOML basic string.
 		if (!options?.skipSystemPrompt) {
-			args.push("-c", shellEscape(`developer_instructions=${JSON.stringify(CODEX_SKILL_BODY)}`));
+			args.push("-c", shellEscape(`developer_instructions=${JSON.stringify(options?.protocolBody ?? CODEX_SKILL_BODY)}`));
 		}
 
 		if (!resume) {
