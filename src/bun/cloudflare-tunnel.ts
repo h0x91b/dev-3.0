@@ -100,7 +100,20 @@ export const TUNNEL_EDGE_READY = { timeoutMs: 25_000, pollMs: 500 };
  */
 export const CUSTOM_TUNNEL_EDGE_READY = { timeoutMs: 10_000, pollMs: 750 };
 
+/**
+ * Bringing back a tunnel that was serving and went away — its process exited, or
+ * a health restart could not start a successor. Retries back off and never give
+ * up while the tunnel is wanted; an explicit stop cancels them. Tunable for tests.
+ */
+export const TUNNEL_RECOVERY = {
+	retryDelaysMs: [5_000, 15_000, 30_000, 60_000, 120_000, 300_000],
+	oldProcessExitTimeoutMs: 5_000,
+};
+
 const tunnels = new Map<string, TunnelEntry>();
+const recoveries = new Map<string, { timer: ReturnType<typeof setTimeout>; opts: StartTunnelOptions }>();
+// Bumped by every explicit stop, so a recovery or restart in flight can tell it was cancelled.
+const stopGenerations = new Map<string, number>();
 
 /**
  * Why the LAST main-tunnel start failed, for the Remote Access modal — the
@@ -406,7 +419,7 @@ interface TunnelFilter {
 type TunnelChangeHook = (entry: TunnelEntry, previousUrl: string | null) => void;
 let tunnelChangeHook: TunnelChangeHook | null = null;
 
-function matchesFilter(entry: TunnelEntry, filter?: TunnelFilter): boolean {
+function matchesFilter(entry: Pick<TunnelEntry, "kind" | "taskId">, filter?: TunnelFilter): boolean {
 	if (!filter) return true;
 	if (filter.kind !== undefined && entry.kind !== filter.kind) return false;
 	if (filter.taskId !== undefined && entry.taskId !== filter.taskId) return false;
@@ -494,11 +507,16 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 			log.info("Tunnel process exited", { id: opts.id, exitCode });
 			const current = tunnels.get(opts.id);
 			if (current === entry) {
+				const lostUrl = entry.state === "connected" ? entry.url : null;
 				if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
 				entry.healthCheckTimer = null;
 				entry.process = null;
 				entry.url = null;
 				entry.state = "idle";
+				if (lostUrl) {
+					log.warn("Tunnel process exited while serving", { id: opts.id, exitCode });
+					scheduleRecovery(optionsFor(entry), lostUrl, 0);
+				}
 			}
 		});
 
@@ -554,17 +572,28 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		}
 		if (opts.kind === "main") mainTunnelFailureReason = notFound ? "command-not-found" : "no-url";
 		entry.state = "failed";
-		stopEntry(opts.id);
+		teardownEntry(opts.id);
 		return entry;
 	} catch (err) {
 		log.error("Failed to start tunnel", { id: opts.id, error: String(err) });
 		entry.state = "failed";
-		stopEntry(opts.id);
+		teardownEntry(opts.id);
 		return entry;
 	}
 }
 
+/** An explicit stop: the tunnel is no longer wanted, so pending recovery is cancelled too. */
 function stopEntry(id: string): void {
+	cancelRecovery(id);
+	stopGenerations.set(id, stopGeneration(id) + 1);
+	teardownEntry(id);
+}
+
+function stopGeneration(id: string): number {
+	return stopGenerations.get(id) ?? 0;
+}
+
+function teardownEntry(id: string): void {
 	const entry = tunnels.get(id);
 	if (!entry) return;
 	if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
@@ -694,24 +723,109 @@ export function adoptMainTunnel(opts: {
 	startHealthMonitor(entry);
 }
 
-async function restartEntry(entry: TunnelEntry): Promise<void> {
-	if (tunnels.get(entry.id) !== entry) return;
-	const previousUrl = entry.url;
-	const opts: StartTunnelOptions = {
+function optionsFor(entry: TunnelEntry): StartTunnelOptions {
+	return {
 		id: entry.id,
 		kind: entry.kind,
 		targetPort: entry.targetPort,
 		ports: [...entry.ports],
 		taskId: entry.taskId,
 	};
-	stopEntry(entry.id);
+}
+
+/**
+ * Wait for a signalled tunnel process to be gone, escalating to SIGKILL. A
+ * successor spawned while its predecessor is still in cloudflared's graceful
+ * shutdown (30 s by default) can collide with whatever the old one still holds.
+ */
+async function waitForProcessGone(proc: TunnelEntry["process"], adoptedPid: number | null): Promise<void> {
+	const timeoutMs = TUNNEL_RECOVERY.oldProcessExitTimeoutMs;
+	if (proc) {
+		const exited = await Promise.race([proc.exited.then(() => true), delay(timeoutMs).then(() => false)]);
+		if (exited) return;
+		try {
+			proc.kill(9);
+		} catch {
+			// already gone
+		}
+		await Promise.race([proc.exited, delay(timeoutMs)]);
+		return;
+	}
+	if (adoptedPid === null) return;
+	const deadline = Date.now() + timeoutMs;
+	while (isProcessAlive(adoptedPid) && Date.now() < deadline) await delay(100);
+	if (!isProcessAlive(adoptedPid)) return;
+	try {
+		process.kill(adoptedPid, "SIGKILL");
+	} catch {
+		// already gone, or owned by someone else
+	}
+}
+
+async function restartEntry(entry: TunnelEntry): Promise<void> {
+	if (tunnels.get(entry.id) !== entry) return;
+	const previousUrl = entry.url;
+	const opts = optionsFor(entry);
+	const generation = stopGeneration(entry.id);
+	const { process: oldProcess, adoptedPid } = entry;
+	teardownEntry(entry.id);
+	await waitForProcessGone(oldProcess, adoptedPid);
+	if (stopGeneration(entry.id) !== generation) return;
 	const restarted = await startEntry(opts);
 	if (restarted.url) {
 		log.info("Tunnel restarted", { id: entry.id, previousUrl, url: restarted.url });
 		tunnelChangeHook?.(restarted, previousUrl);
 	} else {
 		log.error("Tunnel restart failed", { id: entry.id, previousUrl });
+		if (stopGeneration(entry.id) === generation) scheduleRecovery(opts, previousUrl, 0);
 	}
+}
+
+function cancelRecovery(id: string): void {
+	const pending = recoveries.get(id);
+	if (!pending) return;
+	clearTimeout(pending.timer);
+	recoveries.delete(id);
+}
+
+function scheduleRecovery(opts: StartTunnelOptions, previousUrl: string | null, attempt: number): void {
+	if (opts.kind === "main" && (mainTunnelFailureReason === "command-not-found" || mainTunnelFailureReason === "command-empty")) {
+		log.warn("Tunnel command is misconfigured — not retrying until it is started again", { id: opts.id, reason: mainTunnelFailureReason });
+		return;
+	}
+	cancelRecovery(opts.id);
+	const delays = TUNNEL_RECOVERY.retryDelaysMs;
+	const delayMs = delays[Math.min(attempt, delays.length - 1)];
+	const generation = stopGeneration(opts.id);
+	log.warn("Tunnel down; retrying", { id: opts.id, attempt: attempt + 1, delayMs });
+	const timer = setTimeout(() => {
+		recoveries.delete(opts.id);
+		void recoverEntry(opts, previousUrl, attempt, generation);
+	}, delayMs);
+	(timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+	recoveries.set(opts.id, { timer, opts });
+}
+
+async function recoverEntry(opts: StartTunnelOptions, previousUrl: string | null, attempt: number, generation: number): Promise<void> {
+	if (stopGeneration(opts.id) !== generation) return;
+	const existing = tunnels.get(opts.id);
+	if (existing && (existing.state === "starting" || existing.state === "connected")) return;
+	const entry = await startEntry(opts);
+	if (stopGeneration(opts.id) !== generation) return;
+	if (entry.url) {
+		log.info("Tunnel recovered", { id: opts.id, attempt: attempt + 1, previousUrl, url: entry.url });
+		tunnelChangeHook?.(entry, previousUrl);
+		return;
+	}
+	scheduleRecovery(opts, previousUrl, attempt + 1);
+}
+
+/**
+ * Keep trying to bring the main tunnel up in the background — for a server that
+ * runs with a tunnel by intent but whose first start failed (e.g. booted offline).
+ */
+export function retryMainTunnel(localPort: number): void {
+	scheduleRecovery({ id: MAIN_ID, kind: "main", targetPort: localPort }, null, 0);
 }
 
 /**
@@ -869,6 +983,10 @@ export const tunnelManager = {
 		for (const entry of tunnels.values()) {
 			if (matchesFilter(entry, filter)) ids.push(entry.id);
 		}
+		// A tunnel between recovery attempts has no entry, only a pending retry.
+		for (const [id, pending] of recoveries) {
+			if (matchesFilter(pending.opts, filter)) ids.push(id);
+		}
 		for (const id of ids) stopEntry(id);
 	},
 };
@@ -902,5 +1020,8 @@ export function _resetState(): void {
 		if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
 	}
 	tunnels.clear();
+	for (const pending of recoveries.values()) clearTimeout(pending.timer);
+	recoveries.clear();
+	stopGenerations.clear();
 	mainTunnelFailureReason = null;
 }

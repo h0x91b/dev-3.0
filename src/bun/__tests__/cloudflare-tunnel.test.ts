@@ -61,6 +61,8 @@ import {
 	getMainTunnelFailureReason,
 	TUNNEL_EDGE_READY,
 	CUSTOM_TUNNEL_EDGE_READY,
+	TUNNEL_RECOVERY,
+	retryMainTunnel,
 	_resetState,
 } from "../cloudflare-tunnel";
 import { GENERIC_TUNNEL_URL_REGEX } from "../tunnel-provider";
@@ -70,7 +72,11 @@ import { GENERIC_TUNNEL_URL_REGEX } from "../tunnel-provider";
 // through to the best-effort "connected" quickly instead of hanging.
 const REAL_EDGE_READY = { ...TUNNEL_EDGE_READY };
 const REAL_CUSTOM_EDGE_READY = { ...CUSTOM_TUNNEL_EDGE_READY };
+const REAL_RECOVERY = { ...TUNNEL_RECOVERY };
 beforeEach(() => {
+	// Recovery never fires on its own here; the cases that exercise it shorten the delays.
+	TUNNEL_RECOVERY.retryDelaysMs = [60_000];
+	TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5;
 	TUNNEL_EDGE_READY.timeoutMs = 15;
 	TUNNEL_EDGE_READY.pollMs = 1;
 	CUSTOM_TUNNEL_EDGE_READY.timeoutMs = 15;
@@ -84,6 +90,9 @@ afterEach(() => {
 	TUNNEL_EDGE_READY.pollMs = REAL_EDGE_READY.pollMs;
 	CUSTOM_TUNNEL_EDGE_READY.timeoutMs = REAL_CUSTOM_EDGE_READY.timeoutMs;
 	CUSTOM_TUNNEL_EDGE_READY.pollMs = REAL_CUSTOM_EDGE_READY.pollMs;
+	TUNNEL_RECOVERY.retryDelaysMs = REAL_RECOVERY.retryDelaysMs;
+	TUNNEL_RECOVERY.oldProcessExitTimeoutMs = REAL_RECOVERY.oldProcessExitTimeoutMs;
+	_resetState();
 	vi.unstubAllGlobals();
 });
 
@@ -663,6 +672,176 @@ describe("edge readiness watchdog", () => {
 			id: "main",
 			consecutiveFailures: 3,
 		}));
+	});
+});
+
+describe("tunnel recovery", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 503 })));
+	});
+
+	afterEach(() => {
+		tunnelManager.setChangeHook(null);
+		// The "must not respawn" cases leave a queued spawn unconsumed on purpose.
+		(mockSpawn as Mock).mockReset();
+	});
+
+	/** One spawn: a live tunnel that prints `url` and runs until `exit()`, or a failed start when `url` is null. */
+	function mockTunnelProcess(url: string | null, metricsPort = 20300) {
+		const encoder = new TextEncoder();
+		let exit!: (code: number) => void;
+		const exited = new Promise<number>((resolve) => {
+			exit = resolve;
+		});
+		const kill = vi.fn();
+		const output = url
+			? `INF Starting metrics server on 127.0.0.1:${metricsPort}/metrics\nINF | ${url}\n`
+			: "ERR failed to reach the edge\n";
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill,
+			exited,
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(output));
+					if (!url) controller.close();
+				},
+			}),
+		});
+		if (!url) exit(1);
+		return { kill, exit };
+	}
+
+	async function failHealthChecks(times: number): Promise<void> {
+		for (let i = 0; i < times; i++) await tunnelManager.checkHealth("main");
+	}
+
+	it("waits for the old process to exit before spawning its successor", async () => {
+		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5_000;
+		const old = mockTunnelProcess("https://old.trycloudflare.com");
+		mockTunnelProcess("https://new.trycloudflare.com");
+		await startTunnel(8080);
+
+		await failHealthChecks(2);
+		const restart = tunnelManager.checkHealth("main");
+		await new Promise((r) => setTimeout(r, 30));
+		expect(old.kill).toHaveBeenCalled();
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+
+		old.exit(0);
+		await restart;
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(getTunnelUrl()).toBe("https://new.trycloudflare.com");
+	});
+
+	it("SIGKILLs an old process that outlives SIGTERM, then starts the successor", async () => {
+		const old = mockTunnelProcess("https://wedged.trycloudflare.com");
+		mockTunnelProcess("https://fresh.trycloudflare.com");
+		await startTunnel(8080);
+
+		await failHealthChecks(3);
+		expect(old.kill).toHaveBeenCalledWith(9);
+		expect(getTunnelUrl()).toBe("https://fresh.trycloudflare.com");
+	});
+
+	it("does not start a successor when the tunnel is stopped while the old one is exiting", async () => {
+		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5_000;
+		const old = mockTunnelProcess("https://old.trycloudflare.com");
+		await startTunnel(8080);
+
+		await failHealthChecks(2);
+		const restart = tunnelManager.checkHealth("main");
+		await new Promise((r) => setTimeout(r, 10));
+		stopTunnel();
+		old.exit(0);
+		await restart;
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		expect(getTunnelState()).toBe("idle");
+	});
+
+	it("keeps retrying a failed restart until a successor comes up", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		mockTunnelProcess("https://stale.trycloudflare.com");
+		mockTunnelProcess(null);
+		mockTunnelProcess(null);
+		mockTunnelProcess("https://back.trycloudflare.com");
+		const hook = vi.fn();
+		tunnelManager.setChangeHook(hook);
+		await startTunnel(8080);
+
+		await failHealthChecks(3);
+		expect(loggerMocks.error).toHaveBeenCalledWith("Tunnel restart failed", expect.objectContaining({ id: "main" }));
+
+		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://back.trycloudflare.com"));
+		expect(mockSpawn).toHaveBeenCalledTimes(4);
+		expect(loggerMocks.info).toHaveBeenCalledWith("Tunnel recovered", expect.objectContaining({ id: "main", attempt: 2 }));
+		expect(hook).toHaveBeenCalledWith(expect.objectContaining({ id: "main" }), "https://stale.trycloudflare.com");
+	});
+
+	it("brings back a tunnel whose process exits on its own while serving", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		const first = mockTunnelProcess("https://first.trycloudflare.com");
+		mockTunnelProcess("https://second.trycloudflare.com");
+		await startTunnel(8080);
+
+		first.exit(1);
+		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://second.trycloudflare.com"));
+		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel process exited while serving", { id: "main", exitCode: 1 });
+	});
+
+	it("leaves a tunnel down after an explicit stop", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [20];
+		const first = mockTunnelProcess("https://first.trycloudflare.com");
+		mockTunnelProcess("https://unwanted.trycloudflare.com");
+		await startTunnel(8080);
+
+		first.exit(1);
+		await new Promise((r) => setTimeout(r, 5));
+		stopTunnel();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		expect(getTunnelState()).toBe("idle");
+	});
+
+	it("stopAll cancels a recovery that is waiting between attempts", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1, 250];
+		const first = mockTunnelProcess("https://port.trycloudflare.com");
+		mockTunnelProcess(null);
+		mockTunnelProcess("https://unwanted.trycloudflare.com");
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+
+		first.exit(1);
+		await vi.waitFor(() => expect(tunnelManager.get("task:t1:port:3000")).toBeUndefined(), { interval: 2 });
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+		tunnelManager.stopAll({ kind: "task-port" });
+		await new Promise((r) => setTimeout(r, 350));
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+	});
+
+	it("retryMainTunnel brings up a main tunnel whose first start failed", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		mockTunnelProcess(null);
+		mockTunnelProcess("https://late.trycloudflare.com");
+
+		expect(await startTunnel(8080)).toBeNull();
+		retryMainTunnel(8080);
+		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://late.trycloudflare.com"));
+	});
+
+	it("does not retry a main tunnel whose custom command is blank", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({ kind: "misconfigured", command: null, urlRegex: null });
+
+		expect(await startTunnel(8080)).toBeNull();
+		retryMainTunnel(8080);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(mockSpawn).not.toHaveBeenCalled();
+		expect(loggerMocks.warn).toHaveBeenCalledWith(
+			"Tunnel command is misconfigured — not retrying until it is started again",
+			{ id: "main", reason: "command-empty" },
+		);
 	});
 });
 

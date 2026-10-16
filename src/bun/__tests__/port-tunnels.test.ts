@@ -11,7 +11,7 @@ vi.mock("../logger", () => ({
 }));
 
 import { spawn as mockSpawn } from "../spawn";
-import { _resetState, tunnelManager, TUNNEL_EDGE_READY } from "../cloudflare-tunnel";
+import { _resetState, tunnelManager, TUNNEL_EDGE_READY, TUNNEL_RECOVERY } from "../cloudflare-tunnel";
 import {
 	exposeTaskPort,
 	exposeTaskPortsShared,
@@ -32,14 +32,20 @@ import {
 // to reject fast — every start falls through to the best-effort "connected" in
 // a couple ms instead of the real ~25s timeout.
 const REAL_EDGE_READY = { ...TUNNEL_EDGE_READY };
+const REAL_RECOVERY = { ...TUNNEL_RECOVERY };
 beforeEach(() => {
 	TUNNEL_EDGE_READY.timeoutMs = 15;
 	TUNNEL_EDGE_READY.pollMs = 1;
+	// Mock processes never exit on SIGTERM; don't sit through the real wait before SIGKILL.
+	TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5;
+	TUNNEL_RECOVERY.retryDelaysMs = [60_000];
 	vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("no edge in tests"); }));
 });
 afterEach(() => {
 	TUNNEL_EDGE_READY.timeoutMs = REAL_EDGE_READY.timeoutMs;
 	TUNNEL_EDGE_READY.pollMs = REAL_EDGE_READY.pollMs;
+	TUNNEL_RECOVERY.oldProcessExitTimeoutMs = REAL_RECOVERY.oldProcessExitTimeoutMs;
+	TUNNEL_RECOVERY.retryDelaysMs = REAL_RECOVERY.retryDelaysMs;
 	vi.unstubAllGlobals();
 });
 

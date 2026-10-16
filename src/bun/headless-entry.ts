@@ -31,7 +31,7 @@ import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl, getStaticCode } from "./remote-access-server";
-import { startTunnel, stopTunnel, isTunnelBinaryAvailable, getTunnelUrl } from "./cloudflare-tunnel";
+import { startTunnel, stopTunnel, isTunnelBinaryAvailable, getTunnelUrl, retryMainTunnel } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
 import { writeRemoteState, clearRemoteStateIfOwnedBy, readRemoteHandoff, readRemoteState, carriedOverState } from "./remote-state";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
@@ -416,7 +416,8 @@ if (wantTunnel && handoff?.tunnel) {
 				}
 			}
 		} else {
-			console.error("[dev3 remote] Tunnel failed to start — falling back to local-only URL");
+			console.error("[dev3 remote] Tunnel failed to start — serving the local-only URL and retrying in the background");
+			retryMainTunnel(getServerPort());
 		}
 	}
 }
