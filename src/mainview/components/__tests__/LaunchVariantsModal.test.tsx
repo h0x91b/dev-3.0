@@ -961,6 +961,20 @@ describe("LaunchVariantsModal — harness availability gate", () => {
 		expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 	});
 
+	it("shows the notice inside a box that exists before and after it", async () => {
+		// Chromium left the variant pickers at 0×0 when this spot gained or lost a
+		// fieldset child (an `empty:hidden` wrapper or a bare insert) — the row went blank.
+		mockedApi.request.checkAgentAvailability.mockResolvedValue([
+			missing("builtin-claude", "Claude", "claude", "brew install claude-code"),
+		]);
+		renderModal(makeProject());
+		const notice = await screen.findByTestId("agent-install-notice");
+		const wrapper = notice.parentElement!;
+		expect(wrapper.tagName).toBe("DIV");
+		expect(wrapper.className).not.toContain("empty:");
+		expect(wrapper.parentElement!.tagName).toBe("FIELDSET");
+	});
+
 	it("Enter cannot launch a missing harness once the probe has answered", async () => {
 		mockedApi.request.checkAgentAvailability.mockResolvedValue([
 			missing("builtin-claude", "Claude", "claude", "brew install claude-code"),

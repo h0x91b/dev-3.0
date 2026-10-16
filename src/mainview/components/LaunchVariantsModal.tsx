@@ -476,9 +476,13 @@ function LaunchVariantsModal({
 							</div>
 						))}
 					</div>
-					<div className="mt-3 empty:hidden">
+					{/* A wrapper that is always in the box tree: when the fieldset gains or loses
+					    a child here (`empty:hidden`, or a bare insert), Chromium leaves the variant
+					    pickers above laid out at 0×0 and the row renders blank. */}
+					<div>
 						<AgentInstallNotice
 							id={AGENT_NOTICE_ID}
+							className="mt-3"
 							state={agentCheckState}
 							missing={missingAgent}
 							installedNow={installedNow}

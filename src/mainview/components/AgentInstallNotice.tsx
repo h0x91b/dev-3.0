@@ -36,11 +36,13 @@ interface AgentInstallNoticeProps {
 	/** Name of a harness that was missing and a recheck just found. */
 	installedNow: string | null;
 	onRecheck: () => void;
+	/** Applied to whatever the notice renders (it renders nothing when there is nothing to say). */
+	className?: string;
 }
 
 /** Inline availability notice under the launch picker: the install command for a
  *  missing harness, and the re-check that lifts the block once it is installed. */
-export default function AgentInstallNotice({ id, state, missing, installedNow, onRecheck }: AgentInstallNoticeProps) {
+export default function AgentInstallNotice({ id, state, missing, installedNow, onRecheck, className = "" }: AgentInstallNoticeProps) {
 	const t = useT();
 	const [copied, setCopied] = useState(false);
 	const checking = state === "checking";
@@ -76,7 +78,7 @@ export default function AgentInstallNotice({ id, state, missing, installedNow, o
 
 	if (missing) {
 		return (
-			<div id={id} data-testid="agent-install-notice" className="p-3 rounded-lg bg-warning/10 border border-warning/20 space-y-2">
+			<div id={id} data-testid="agent-install-notice" className={`p-3 rounded-lg bg-warning/10 border border-warning/20 space-y-2 ${className}`}>
 				<p className="text-warning-strong text-xs font-medium">
 					{t("launch.agentMissingTitle", { name: missing.agent.name })}. {t("launch.agentMissingBlocked")}
 				</p>
@@ -109,7 +111,7 @@ export default function AgentInstallNotice({ id, state, missing, installedNow, o
 
 	if (state === "unknown") {
 		return (
-			<div id={id} data-testid="agent-install-unknown" className="flex flex-wrap items-center justify-between gap-2 text-xs text-fg-3">
+			<div id={id} data-testid="agent-install-unknown" className={`flex flex-wrap items-center justify-between gap-2 text-xs text-fg-3 ${className}`}>
 				<p>{t("launch.agentCheckUnknown")}</p>
 				{recheckButton}
 			</div>
@@ -117,11 +119,11 @@ export default function AgentInstallNotice({ id, state, missing, installedNow, o
 	}
 
 	if (checking) {
-		return slowCheck ? <p role="status" aria-live="polite" className="text-xs text-fg-3">{t("launch.agentChecking")}</p> : null;
+		return slowCheck ? <p role="status" aria-live="polite" className={`text-xs text-fg-3 ${className}`}>{t("launch.agentChecking")}</p> : null;
 	}
 	if (!installedNow) return null;
 	return (
-		<p role="status" aria-live="polite" className="text-xs text-success-strong">
+		<p role="status" aria-live="polite" className={`text-xs text-success-strong ${className}`}>
 			✓ {t("launch.agentInstalledNow", { name: installedNow })}
 		</p>
 	);
