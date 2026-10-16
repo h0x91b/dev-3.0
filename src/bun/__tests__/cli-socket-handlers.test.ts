@@ -5237,3 +5237,35 @@ describe("review.*", () => {
 		expect(resp.error).toContain("body is required");
 	});
 });
+
+describe("message.send — the sender's role travels to the envelope", () => {
+	// The receiver's auto-mode classifier treats a coordinator's order as the
+	// user's own words; it keys on this role, so the app must stamp it.
+	const SENDER = "cccccccc-1111-2222-3333-444444444444";
+	const TARGET = "dddddddd-1111-2222-3333-444444444444";
+
+	function sendFrom(sender: Task) {
+		const tasks = [sender, makeTask({ id: TARGET, seq: 2 })];
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
+		vi.mocked(data.getTask).mockImplementation(async (_p, id) => tasks.find((t) => t.id === id)!);
+		return handleRequest(
+			makeRequest("message.send", { subject: "merge it", taskId: TARGET, projectId: "proj-1", sourceTaskId: SENDER, text: "merge" }),
+		);
+	}
+
+	it("stamps role coordinator when a coordinator task sends", async () => {
+		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1, taskType: "coordinator" }));
+		expect(resp.ok).toBe(true);
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[3]).toMatchObject({ taskId: SENDER, role: "coordinator" });
+	});
+
+	it("stamps no role for an ordinary task", async () => {
+		await sendFrom(makeTask({ id: SENDER, seq: 1 }));
+		const source = vi.mocked(sendMessageImmediately).mock.calls[0]?.[3];
+		expect(source).toMatchObject({ taskId: SENDER });
+		expect(source).not.toHaveProperty("role");
+	});
+});

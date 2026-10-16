@@ -49,6 +49,7 @@ export function wrapAgentMessage(
 		`<from-task>${ref}</from-task>`,
 	];
 	if (source.title) lines.push(`<from-title>${escapeXmlText(source.title)}</from-title>`);
+	if (source.role) lines.push(`<from-role>${source.role}</from-role>`);
 	// The sender's own summary, shown before the body so the receiver reads what
 	// this is about before reading it. Absent on a message queued before subjects
 	// were required.

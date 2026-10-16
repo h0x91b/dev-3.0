@@ -93,6 +93,12 @@ export interface AgentMessageSource {
 	/** Sender's title, for human-readable context in the envelope. */
 	title?: string;
 	/**
+	 * Stamped by the app, never by the sender, when the sender is a coordinator task:
+	 * it relays the user's will, and the receiver's auto-mode classifier keys on the
+	 * `<from-role>` tag this becomes (`DEV3_AUTO_MODE_COORDINATOR_ENTRY`).
+	 */
+	role?: "coordinator";
+	/**
 	 * Sender's project. Carried so the delivery notification can be dropped when
 	 * EITHER side belongs to a sensitive project — the toast names both tasks, so
 	 * gating on the receiver alone would leak the sender's title on camera — and so

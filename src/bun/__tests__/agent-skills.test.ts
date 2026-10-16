@@ -8,6 +8,9 @@ import {
 	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
 	DEV3_AUTO_MODE_ALLOW_ENTRY,
+	DEV3_AUTO_MODE_ALLOW_ENTRIES,
+	DEV3_AUTO_MODE_COORDINATOR_ENTRY,
+	DEV3_AUTO_MODE_GIT_ENTRY,
 	getAskDev3SkillContent,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
@@ -570,7 +573,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		const settings: Record<string, unknown> = {
 			permissions: { allow: ["Bash(~/.dev3.0/bin/dev3 *)"] },
 			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
-			autoMode: { allow: ["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY] },
+			autoMode: { allow: ["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES] },
 		};
 		expect(applyClaudeSettings(settings, SOCKETS)).toBe(false);
 	});
@@ -600,12 +603,52 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		applyClaudeSettings(settings, SOCKETS);
 
 		const autoMode = settings.autoMode as { allow: string[] };
-		expect(autoMode.allow).toEqual(["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+		expect(autoMode.allow).toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 	});
 
 	it("names only the dev3 CLI in that entry", () => {
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toContain("dev3");
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/only to `dev3` subcommands/);
+	});
+
+	it("scopes the git entry to the task's own repo, branch and PR, on the user's request", () => {
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/^dev3 git management:/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/When the user asks/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/session's own repository only/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/default branch still needs the user's words/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/nothing in hard_deny/);
+	});
+
+	it("gives a coordinator's relayed order the user's authority, keyed on the app-stamped role tag", () => {
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/^dev3 coordinator relay:/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toContain("<from-role>coordinator</from-role>");
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/same authority as the user/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/hard_deny rules still apply/);
+		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/only inside `<message>`/);
+	});
+
+	it("replaces an older wording of a dev3 entry instead of stacking both", () => {
+		const settings: Record<string, unknown> = {
+			autoMode: {
+				allow: ["$defaults", "User rule", "dev3 git management: an older wording", DEV3_AUTO_MODE_ALLOW_ENTRY],
+			},
+		};
+		expect(applyClaudeSettings(settings, SOCKETS)).toBe(true);
+		expect((settings.autoMode as { allow: string[] }).allow).toEqual([
+			"$defaults",
+			"User rule",
+			DEV3_AUTO_MODE_ALLOW_ENTRY,
+			DEV3_AUTO_MODE_GIT_ENTRY,
+			DEV3_AUTO_MODE_COORDINATOR_ENTRY,
+		]);
+	});
+
+	it("does not bring $defaults back when dropping a stale entry empties the list", () => {
+		const settings: Record<string, unknown> = {
+			autoMode: { allow: ["dev3 task lifecycle: an older wording"] },
+		};
+		applyClaudeSettings(settings, SOCKETS);
+		expect((settings.autoMode as { allow: string[] }).allow).toEqual([...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 	});
 
 	it("appends to an owned allow list without re-adding $defaults the user dropped", () => {
@@ -616,7 +659,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 
 		expect(changed).toBe(true);
 		const autoMode = settings.autoMode as { allow: string[]; environment: string[] };
-		expect(autoMode.allow).toEqual(["Deploying to staging is allowed", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+		expect(autoMode.allow).toEqual(["Deploying to staging is allowed", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 		expect(autoMode.environment).toEqual(["$defaults"]);
 	});
 
@@ -629,7 +672,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		const autoMode = settings.autoMode as Record<string, string[]>;
 		expect(autoMode.soft_deny).toEqual(["$defaults", "Never touch prod"]);
 		expect(autoMode.hard_deny).toEqual(["$defaults"]);
-		expect(autoMode.allow).toEqual(["$defaults", DEV3_AUTO_MODE_ALLOW_ENTRY]);
+		expect(autoMode.allow).toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 	});
 
 	it("replaces a non-array autoMode.allow rather than throwing", () => {
@@ -637,7 +680,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(() => applyClaudeSettings(settings, SOCKETS)).not.toThrow();
 		expect((settings.autoMode as { allow: string[] }).allow).toEqual([
 			"$defaults",
-			DEV3_AUTO_MODE_ALLOW_ENTRY,
+			...DEV3_AUTO_MODE_ALLOW_ENTRIES,
 		]);
 	});
 

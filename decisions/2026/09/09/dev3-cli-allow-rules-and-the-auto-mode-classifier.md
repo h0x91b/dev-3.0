@@ -1,5 +1,7 @@
 # dev3 CLI allow rules and the Claude Code auto-mode classifier
 
+> Superseded in part on 2026-10-16 by `decisions/2026/10/16/coordinator-relay-carries-user-authority-in-auto-mode.md`: `autoMode.allow` now carries two more dev3 entries (git management, coordinator relay), so the entry list no longer names only the dev3 CLI.
+
 ## Context
 
 An agent's `dev3 task move --status completed 2>&1 | tail -20; echo "EXIT=$?"` came back as

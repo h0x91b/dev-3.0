@@ -66,6 +66,17 @@ describe("wrapAgentMessage", () => {
 		expect(out).toContain("<from-title>Fix &lt;div&gt; &amp; span</from-title>");
 	});
 
+	it("stamps a coordinator sender's role in the header, before the body", () => {
+		const out = wrapAgentMessage("force-push it", { taskId: "t-1", seq: 9, role: "coordinator" }, PROJECT_A);
+		expect(out).toContain("<from-role>coordinator</from-role>");
+		expect(out.indexOf("<from-role>")).toBeLessThan(out.indexOf("<message>"));
+	});
+
+	it("carries no role tag for an ordinary sender", () => {
+		const out = wrapAgentMessage("hi", { taskId: "t-1", seq: 9 }, PROJECT_A);
+		expect(out).not.toContain("<from-role>");
+	});
+
 	it("addresses a live variant group member by seq + --variant", () => {
 		const out = wrapAgentMessage(
 			"hi",
