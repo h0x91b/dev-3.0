@@ -119,6 +119,15 @@
 			"dependencyKind": "reference",
 			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
 			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"match": "^src/shared/types(\\.ts$|/)",
+			"category": "compatibility",
+			"roadmapItem": "MIG-003",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Terminal contract types: Task.tmuxSocket, tmuxAction, kill/listTmuxSessions RPC, tmuxAltClickMoveCursor, tmux-derived fields.",
+			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
 		}
 	],
 	"overrides": {
@@ -545,14 +554,6 @@
 			"dependencyKind": "reference",
 			"consumer": "Socket client comment referencing tmux.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
-		},
-		"src/shared/types.ts": {
-			"category": "compatibility",
-			"roadmapItem": "MIG-003",
-			"depth": "caller",
-			"dependencyKind": "active",
-			"consumer": "Terminal contract types: Task.tmuxSocket, tmuxAction, kill/listTmuxSessions RPC, tmuxAltClickMoveCursor, tmux-derived fields.",
-			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
 		},
 		"src/shared/application-menu.ts": {
 			"category": "cli-rpc-ui",

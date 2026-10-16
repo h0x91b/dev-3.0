@@ -1,0 +1,1 @@
+Split the 7,000-line `src/shared/types.ts` into 32 domain modules under `src/shared/types/` (task status, task, project, settings, coding agents, prompts, RPC schema, …); `types.ts` stays the single re-exporting entry point, with no change to any exported name, type shape, runtime value or prompt text.

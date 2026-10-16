@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const sharedTypesPath = resolve(process.cwd(), "src/shared/types.ts");
+const sharedTypesPath = resolve(process.cwd(), "src/shared/types/rpc-schema.ts");
 const sharedTypesSource = readFileSync(sharedTypesPath, "utf8");
 
 describe("AppRPCSchema webview messages", () => {
