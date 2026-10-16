@@ -169,16 +169,18 @@ describe("buildPickerGroups", () => {
 			return at === -1 ? null : c.additionalArgs![at + 1];
 		};
 		const bypass = omp.configurations.filter((c) => c.permissionMode === "bypassPermissions");
-		expect(bypass.map(thinkingOf)).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
+		// Plain Bypass is omp's own `--auto-approve`, at its own thinking level.
+		expect(bypass.map(thinkingOf)).toEqual([null, "off", "low", "medium", "high", "xhigh", "max"]);
 		// The stricter modes carry no thinking variants, exactly like Claude's Default / Accept Edits.
 		for (const c of omp.configurations.filter((c) => c.permissionMode !== "bypassPermissions")) {
 			expect(thinkingOf(c)).toBeNull();
 		}
 		const leaves = omp.configurations.map((c) => getModeLeafLabel(c));
 		expect(new Set(leaves).size).toBe(leaves.length);
-		// "Default" asks first through the adapter's total approval map — no
-		// preset needs its own `--approval-mode always-ask` to be safe.
-		expect(omp.defaultConfigId).toBe("omp-default");
+		// Tasks run hands-off by default; "Default" still asks first through the
+		// adapter's total approval map, so no preset carries its own --approval-mode.
+		expect(omp.defaultConfigId).toBe("omp-yolo");
+		expect(omp.configurations.find((c) => c.id === "omp-yolo")?.permissionMode).toBe("bypassPermissions");
 		for (const c of omp.configurations) expect(c.additionalArgs ?? []).not.toContain("--approval-mode");
 	});
 

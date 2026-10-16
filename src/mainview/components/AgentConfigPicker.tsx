@@ -21,7 +21,7 @@ import {
 } from "../utils/agentPicker";
 import { useModelCatalog } from "../hooks/useModelCatalog";
 import { useLiveModels } from "../hooks/useLiveModels";
-import { findAgentConfig, parseLiveModelConfigId, withLiveModelConfigs, withSelectedLiveConfig } from "../../shared/agent-live-models";
+import { findAgentConfig, liveModelConfigId, parseLiveModelConfigId, withLiveModelConfigs, withSelectedLiveConfig } from "../../shared/agent-live-models";
 import { useUnavailableModels } from "../hooks/useUnavailableModels";
 import {
 	CLAUDE_ROLE_BUILTIN_MODEL,
@@ -223,6 +223,21 @@ function AgentConfigPicker({
 		if (livePickGone && livePick) onChange({ agentId, configId: livePick.presetId });
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per transition, not per render
 	}, [livePickGone]);
+	// On a launch surface the newest model leads unless the user has picked a
+	// model by hand; Settings keeps whatever preset it stores.
+	const modelPickedByHand = useRef(false);
+	const autoPickPreset =
+		onAccountChange && !modelPickedByHand.current && liveModels?.length && storedAgent && configId && !livePick
+			? findAgentConfig(storedAgent, configId)
+			: undefined;
+	const autoPickTarget =
+		autoPickPreset && !autoPickPreset.model && !autoPickPreset.modelRoles && liveModels?.[0]
+			? liveModelConfigId(autoPickPreset.id, liveModels[0].selector)
+			: null;
+	useEffect(() => {
+		if (autoPickTarget) onChange({ agentId, configId: autoPickTarget });
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per target
+	}, [autoPickTarget]);
 	// Preset models the signed-in account cannot select (Codex/Cursor probe their
 	// CLI's catalog; every other agent — and any failed probe — resolves to null,
 	// which flags nothing). Passed the picker's account so the probe reads the same
@@ -286,10 +301,12 @@ function AgentConfigPicker({
 		const prevKind = selectedAgent ? agentAccountKindForCommand(selectedAgent.baseCommand) : null;
 		const nextKind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
 		if (onAccountChange && accountId !== undefined && prevKind !== nextKind) onAccountChange(undefined);
+		modelPickedByHand.current = false;
 		onChange({ agentId: nextAgentId, configId: nextConfigId });
 	}
 
 	function handleModelChange(groupLabel: string) {
+		modelPickedByHand.current = groupLabel !== CONNECT_PROVIDER_VALUE;
 		// Not a model: the row that exists so connecting is never more than one
 		// click away, whether or not anything is being advertised above it.
 		if (groupLabel === CONNECT_PROVIDER_VALUE) {

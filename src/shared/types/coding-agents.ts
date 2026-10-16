@@ -563,11 +563,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		// the adapter passes `--approval-mode always-ask` for it, because omp's
 		// own default with no flag is `yolo` (see omp-flags.ts).
 		configurations: [
+			// Unattended at omp's own thinking level — omp's `--auto-approve`. The
+			// agent default: dev3 tasks run hands-off, while "Default" still asks first.
+			{ id: "omp-yolo", name: "Bypass", permissionMode: "bypassPermissions", version: 1 },
 			{ id: "omp-default", name: "Default", version: 1 },
 			{ id: "omp-write", name: "Accept Edits", permissionMode: "acceptEdits", version: 1 },
 			...createOmpBypassPresets(["off", "low", "medium", "high", "xhigh", "max"]),
 		],
-		defaultConfigId: "omp-default",
+		defaultConfigId: "omp-yolo",
 	},
 ];
 

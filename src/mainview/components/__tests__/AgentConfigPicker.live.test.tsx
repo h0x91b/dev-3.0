@@ -28,6 +28,7 @@ const ompAgent: CodingAgent = {
 	baseCommand: "omp",
 	isDefault: true,
 	configurations: [
+		{ id: "omp-yolo", name: "Bypass", permissionMode: "bypassPermissions" },
 		{ id: "omp-default", name: "Default" },
 		{ id: "omp-yolo-high", name: "Bypass (High)", modeLabel: "Bypass · High", permissionMode: "bypassPermissions" },
 	],
@@ -39,7 +40,7 @@ const liveModels = [
 	{ selector: "openai-codex/gpt-5.6-luna", provider: "openai-codex", id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
 ];
 
-function Harness({ initial, onChange }: { initial: AgentConfigSelection; onChange?: (n: AgentConfigSelection) => void }) {
+function Harness({ initial, onChange, settingsSurface }: { initial: AgentConfigSelection; onChange?: (n: AgentConfigSelection) => void; settingsSurface?: boolean }) {
 	const [sel, setSel] = useState(initial);
 	return (
 		<I18nProvider>
@@ -49,7 +50,7 @@ function Harness({ initial, onChange }: { initial: AgentConfigSelection; onChang
 				agentId={sel.agentId}
 				configId={sel.configId}
 				accountId="acct-1"
-				onAccountChange={() => {}}
+				onAccountChange={settingsSurface ? undefined : () => {}}
 				onChange={(next) => {
 					setSel(next);
 					onChange?.(next);
@@ -117,5 +118,35 @@ describe("AgentConfigPicker — live models", () => {
 		render(<Harness initial={{ agentId: "builtin-omp", configId: "omp-yolo-high|model=openai-codex/gpt-6-luna" }} onChange={onChange} />);
 		await waitFor(() => expect(onChange).toHaveBeenCalledWith({ agentId: "builtin-omp", configId: "omp-yolo-high" }));
 		expect(text(mode())).toBe("Bypass · High");
+	});
+
+	it("starts a launch on the account's newest model, keeping the mode", async () => {
+		getAgentLiveModels.mockResolvedValue({ status: "resolved", models: liveModels });
+		const onChange = vi.fn();
+		render(<Harness initial={{ agentId: "builtin-omp", configId: "omp-yolo" }} onChange={onChange} />);
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith({ agentId: "builtin-omp", configId: "omp-yolo|model=openai-codex/gpt-6.1-sol" }));
+		expect(text(mode())).toBe("Bypass");
+	});
+
+	it("leaves a hand-picked agent default alone", async () => {
+		getAgentLiveModels.mockResolvedValue({ status: "resolved", models: liveModels });
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		render(<Harness initial={{ agentId: "builtin-omp", configId: "omp-yolo" }} onChange={onChange} />);
+		await waitFor(() => expect(text(model())).toBe("GPT-6.1 Sol"));
+		const own = (await openOptions(user, model())).find((b) => !(b.textContent ?? "").startsWith("GPT") && (b.textContent ?? "").trim() !== "" && !(b.textContent ?? "").includes("Connect"));
+		await user.click(own as HTMLButtonElement);
+		expect(onChange).toHaveBeenLastCalledWith({ agentId: "builtin-omp", configId: "omp-yolo" });
+		await new Promise((r) => setTimeout(r, 50));
+		expect(onChange).toHaveBeenLastCalledWith({ agentId: "builtin-omp", configId: "omp-yolo" });
+	});
+
+	it("never rewrites a preset on a Settings surface", async () => {
+		getAgentLiveModels.mockResolvedValue({ status: "resolved", models: liveModels });
+		const onChange = vi.fn();
+		render(<Harness initial={{ agentId: "builtin-omp", configId: "omp-yolo" }} onChange={onChange} settingsSurface />);
+		await waitFor(() => expect(getAgentLiveModels).toHaveBeenCalled());
+		await new Promise((r) => setTimeout(r, 50));
+		expect(onChange).not.toHaveBeenCalled();
 	});
 });

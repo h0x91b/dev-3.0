@@ -26,3 +26,7 @@ omp reaches 60+ providers, so its presets pin no model and omp picks its own sta
 - **A `model` field on `LaunchVariant`/`Task`/panes:** the same result, through a dozen RPCs and persistence paths.
 - **Saving each picked model as a real preset in agents.json:** fills Settings with one preset per model × mode.
 - **Hard-coded Codex presets as for Copilot:** wrong for every other provider, and stale with every omp release.
+
+## Addendum — newest model by default
+
+On a launch surface (the picker has `onAccountChange`) a model-free preset is swapped for the account's newest live model under the same preset, until the user picks a model by hand; Settings surfaces never rewrite the stored preset. Model switches keep the same underlying preset (`pickConfigForModelChange`), because omp's modes differ only in `--thinking` args the mode signature cannot see.

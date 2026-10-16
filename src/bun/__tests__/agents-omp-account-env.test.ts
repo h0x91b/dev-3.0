@@ -57,3 +57,18 @@ describe("omp account env at launch", () => {
 		expect(resolved.command).toContain("--thinking high");
 	});
 });
+
+describe("retired agent defaults", () => {
+	it("moves an install still on omp's old shipped default, and only that", async () => {
+		const { migrateRetiredAgentDefaults } = await import("../agents");
+		const omp = { id: "builtin-omp", name: "Oh My Pi", baseCommand: "omp", configurations: [] };
+		const [moved, kept, other] = migrateRetiredAgentDefaults([
+			{ ...omp, defaultConfigId: "omp-default" },
+			{ ...omp, defaultConfigId: "omp-write" },
+			{ id: "builtin-codex", name: "Codex", baseCommand: "codex", configurations: [], defaultConfigId: "omp-default" },
+		]);
+		expect(moved.defaultConfigId).toBe("omp-yolo");
+		expect(kept.defaultConfigId).toBe("omp-write");
+		expect(other.defaultConfigId).toBe("omp-default");
+	});
+});

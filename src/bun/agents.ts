@@ -255,7 +255,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 15;
+export const AGENTS_LAYOUT_REVISION = 16;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
@@ -284,6 +284,25 @@ export function applyLayoutResync(agents: CodingAgent[]): CodingAgent[] {
 		}
 
 		return { ...agent, configurations: reordered };
+	});
+}
+
+/** Agent defaults dev3 once shipped and has since replaced. `defaultConfigId`
+ *  survives every merge, so the new default reaches an existing install only
+ *  through this, run once with the layout resync: an install still on the old
+ *  shipped value moves, and a later pick of it by the user is never undone. */
+const RETIRED_AGENT_DEFAULT_CONFIG: Record<string, readonly string[]> = {
+	// omp's default became Bypass (auto-approve) on 2026-10-16.
+	"builtin-omp": ["omp-default"],
+};
+
+export function migrateRetiredAgentDefaults(agents: CodingAgent[]): CodingAgent[] {
+	const defAgentById = new Map(DEFAULT_AGENTS.map((a) => [a.id, a]));
+	return agents.map((agent) => {
+		const def = defAgentById.get(agent.id);
+		const retired = RETIRED_AGENT_DEFAULT_CONFIG[agent.id];
+		if (!def?.defaultConfigId || !retired || !agent.defaultConfigId || !retired.includes(agent.defaultConfigId)) return agent;
+		return { ...agent, defaultConfigId: def.defaultConfigId };
 	});
 }
 
@@ -364,7 +383,7 @@ export async function getAllAgents(): Promise<CodingAgent[]> {
 
 	// One-time resync: existing installs otherwise keep whatever stale order
 	// their configs happened to have from whenever they first ran, forever.
-	const resynced = applyLayoutResync(merged);
+	const resynced = migrateRetiredAgentDefaults(applyLayoutResync(merged));
 	await saveAgents(resynced);
 	await saveSettings({ ...settings, agentsLayoutRevision: AGENTS_LAYOUT_REVISION });
 	return resynced;

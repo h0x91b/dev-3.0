@@ -1,3 +1,5 @@
+> Updated on 2026-10-16: omp's agent default is now the plain **Bypass** preset (`omp-yolo`, omp's `--auto-approve`), at the user's request that tasks run hands-off; installs still on the old shipped `omp-default` move once (`migrateRetiredAgentDefaults`, `src/bun/agents.ts`). The approval map below is unchanged — "Default" still asks first.
+
 # omp as a first-class agent
 
 > Superseded in part on 2026-09-20 by `decisions/2026/09/20/omp-status-extension.md`: status is no
