@@ -55,6 +55,7 @@ vi.mock("../components/AgentConfigPicker", () => ({
 
 import AgentLaunchRequestModal from "../components/AgentLaunchRequestModal";
 import { api } from "../rpc";
+import { setDialogKeyboardGuardClock } from "../utils/dialog-keyboard-guard";
 
 function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchRequest {
 	return {
@@ -357,6 +358,22 @@ describe("AgentLaunchRequestModal — auto-approve countdown", () => {
 
 		expect(api.request.holdAgentLaunchAutoApprove).toHaveBeenCalledWith({ requestId: "req-1" });
 		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+	});
+
+	// seq 2165: the request lands while the user types elsewhere. Their next keys
+	// must neither decline nor launch, yet still hold the countdown.
+	it("keys typed right after it appears answer nothing but hold the countdown", async () => {
+		setDialogKeyboardGuardClock(() => 1_000);
+		try {
+			const user = userEvent.setup();
+			const { onRespond } = renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+			await waitFor(() => expect(screen.getByRole("button", { name: "Decline" })).toHaveFocus());
+			await user.keyboard(" {Enter}{Escape}{Tab}{Enter}");
+			expect(onRespond).not.toHaveBeenCalled();
+			expect(api.request.holdAgentLaunchAutoApprove).toHaveBeenCalledWith({ requestId: "req-1" });
+		} finally {
+			setDialogKeyboardGuardClock(null);
+		}
 	});
 
 	it("asks the bun side to hold only once, however much the user clicks", async () => {

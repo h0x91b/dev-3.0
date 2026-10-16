@@ -4,6 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
+import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "../utils/dialog-keyboard-guard";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import AgentConfigPicker from "./AgentConfigPicker";
@@ -141,6 +142,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 		setAutoApproveAt(null);
 		api.request.holdAgentLaunchAutoApprove({ requestId: request.requestId }).catch(() => {});
 	}
+
+	// Arrives while the user may be typing elsewhere: no key answers it until the
+	// keyboard has gone quiet. Those swallowed keys still prove someone is here.
+	useDialogKeyboardGuard(trapRef, { quietMs: UNSOLICITED_DIALOG_QUIET_MS, onKeyActivity: takeOver });
 
 	// The dialog is broadcast to every client; a copy on another window must stop
 	// counting down to a launch that can no longer fire on its own.

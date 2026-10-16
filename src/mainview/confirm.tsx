@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Label, TaskPriority } from "../shared/types";
 import TaskDialogSubjectCard from "./components/TaskDialogSubjectCard";
 import { useT } from "./i18n";
+import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "./utils/dialog-keyboard-guard";
 import { useFocusTrap } from "./utils/useFocusTrap";
 
 export interface ConfirmAlternativeAction {
@@ -101,9 +102,9 @@ export interface ConfirmOptions {
 	 */
 	dismissOnBackdrop?: boolean;
 	/**
-	 * Answer from the keyboard, the way tmux asks `(y/n)`: Enter or Y confirms, Esc
-	 * or N cancels, and the buttons show the keys. Opt-in — Enter confirming a
-	 * destructive dialog is only right where the dialog is the user's own quick ask.
+	 * Enter confirms even with no button focused, and the buttons show the keys.
+	 * Opt-in — Enter confirming a destructive dialog is only right where the dialog
+	 * is the user's own quick ask. Letters never answer: typing must not confirm.
 	 */
 	keyboardChoice?: boolean;
 }
@@ -273,19 +274,23 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	// to be a misclick than an answer — opt those out of backdrop dismissal.
 	const dismissOnBackdrop = pending.dismissOnBackdrop ?? !pending.agentInitiated;
 
+	// Repeats, keys held from before the dialog opened, IME and the quiet window
+	// for agent requests are all handled here, ahead of every handler below.
+	useDialogKeyboardGuard(trapRef, {
+		quietMs: pending.agentInitiated ? UNSOLICITED_DIALOG_QUIET_MS : 0,
+		onEscape: () => close(false),
+	});
+
 	useEffect(() => {
 		if (!pending.keyboardChoice) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.metaKey || e.ctrlKey || e.altKey) return;
-			const key = e.key.toLowerCase();
-			const answer = key === "enter" || key === "y" ? true : key === "escape" || key === "n" ? false : null;
-			if (answer === null || (answer && gateActive)) return;
+			if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.altKey || gateActive) return;
 			// Enter on a focused button is that button's. Someone who tabbed to Cancel
 			// and pressed it must get Cancel, not the destructive default.
-			if (key === "enter" && document.activeElement?.tagName === "BUTTON") return;
+			if (document.activeElement?.tagName === "BUTTON") return;
 			e.preventDefault();
 			e.stopPropagation();
-			close(answer);
+			close(true);
 		};
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });

@@ -15,6 +15,7 @@ import { leaveLaunchForAccountSettings } from "./AgentAccountIndicator";
 import AgentConfigPicker from "./AgentConfigPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
+import { useDialogKeyboardGuard } from "../utils/dialog-keyboard-guard";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { requestTaskTerminalFocus } from "../terminal-focus-request";
 import { useReducedMotion } from "../utils/useReducedMotion";
@@ -33,6 +34,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	// focus back to the "+ Agent" button — that is the extra click this removes.
 	const spawnedRef = useRef(false);
 	const trapRef = useFocusTrap<HTMLDivElement>({ shouldRestoreFocus: () => !spawnedRef.current });
+	// A held Enter from the gesture that opened this must not launch agents.
+	useDialogKeyboardGuard(trapRef);
 	const reducedMotion = useReducedMotion();
 	const errorRef = useRef<HTMLDivElement>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);

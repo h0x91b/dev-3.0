@@ -1,7 +1,7 @@
 /**
- * True when keystrokes should go to a focused field or the terminal rather than
- * trigger a bare-key shortcut (`C`, `F`, `/`). Lives here rather than in
- * `App.tsx` because the keymap matcher needs the same answer.
+ * True when keystrokes should go to a focused field, the terminal or an open
+ * dialog rather than trigger a bare-key shortcut (`C`, `F`, `/`). Lives here
+ * rather than in `App.tsx` because the keymap matcher needs the same answer.
  */
 export function isTypingContext(): boolean {
 	if (typeof document === "undefined") return false;
@@ -11,6 +11,8 @@ export function isTypingContext(): boolean {
 	if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
 	if (el.isContentEditable) return true;
 	if (isTerminalFocus(el)) return true;
+	// A letter typed at a dialog's focused button must not open Create Task behind it.
+	if (el.closest('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) return true;
 	return false;
 }
 

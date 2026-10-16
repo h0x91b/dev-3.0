@@ -11,6 +11,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import posthog from "../posthog";
+import { useDialogKeyboardGuard } from "../utils/dialog-keyboard-guard";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import HelpSpot from "./HelpSpot";
@@ -154,6 +155,8 @@ function LaunchVariantsModal({
 	// Kanban board behind the modal (labels, task cards), letting the user
 	// operate hidden UI.
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	// A held Enter from the gesture that opened this must not launch agents.
+	useDialogKeyboardGuard(trapRef);
 
 	useEscapeKey(onClose);
 	// Enter → the dialog's CURRENT default action. With the Schedule panel open the

@@ -581,10 +581,17 @@ describe("confirm service — keyboardChoice", () => {
 		});
 	}
 
-	it.each([["Enter", true], ["y", true], ["Y", true], ["Escape", false], ["n", false]])("%s answers %s", async (key, expected) => {
+	it.each([["Enter", true], ["Escape", false]])("%s answers %s", async (key, expected) => {
 		const result = await ask(true);
 		press(key);
 		await expect(result()).resolves.toBe(expected);
+	});
+
+	// Typing must never answer a dialog: the tmux-style y/n mnemonics are gone.
+	it.each(["y", "Y", "n", "N", " "])("%j answers nothing", async (key) => {
+		await ask(true);
+		press(key);
+		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
 	});
 
 	it("shows which key answers on each button", async () => {
@@ -611,11 +618,11 @@ describe("confirm service — keyboardChoice", () => {
 		await expect(result()).resolves.toBe(false);
 	});
 
-	it("still answers yes on Y while a button holds focus", async () => {
-		const result = await ask(true);
+	it("answers nothing on Y while a button holds focus", async () => {
+		await ask(true);
 		act(() => { screen.getByRole("button", { name: /Cancel/ }).focus(); });
 		press("y");
-		await expect(result()).resolves.toBe(true);
+		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
 	});
 
 	it("leaves an ordinary dialog to its buttons", async () => {
