@@ -1097,6 +1097,35 @@ describe("tunnel recovery", () => {
 		expect(tunnelManager.list({ taskId: "t1" })).toEqual([]);
 	});
 
+	it("tells listeners when a misconfigured command releases a recovering tunnel's slot", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({ kind: "custom", command: "my-tunnel {port}", urlRegex: GENERIC_TUNNEL_URL_REGEX });
+		const first = mockTunnelProcess("https://port-3000.example.dev");
+		mockTunnelProcess(null, { failCode: 127 });
+		const hook = vi.fn();
+		tunnelManager.setChangeHook(hook);
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+
+		first.exit(1);
+		await vi.waitFor(() => expect(hook).toHaveBeenCalledTimes(2));
+		expect(hook).toHaveBeenLastCalledWith(expect.objectContaining({ id: "task:t1:port:3000", state: "failed" }), "https://port-3000.example.dev");
+		expect(tunnelManager.get("task:t1:port:3000")).toBeUndefined();
+	});
+
+	it("a change listener that throws does not stall the recovery", async () => {
+		TUNNEL_RECOVERY.retryDelaysMs = [1];
+		const first = mockTunnelProcess("https://first.trycloudflare.com");
+		mockTunnelProcess("https://second.trycloudflare.com");
+		tunnelManager.setChangeHook(() => {
+			throw new Error("broadcast failed");
+		});
+		await startTunnel(8080);
+
+		first.exit(1);
+		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://second.trycloudflare.com"));
+		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel change listener failed", expect.objectContaining({ id: "main" }));
+	});
+
 	it("does not retry a main tunnel whose custom command is blank", async () => {
 		TUNNEL_RECOVERY.retryDelaysMs = [1];
 		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({ kind: "misconfigured", command: null, urlRegex: null });

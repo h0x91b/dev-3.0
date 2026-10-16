@@ -859,10 +859,23 @@ function beginRecovery(entry: TunnelEntry, predecessorGone: Promise<void>, when:
 	recovery.predecessorGone = predecessorGone;
 	recovery.placeholder = { ...newEntry(optionsFor(entry), recovery), placeholder: true };
 	tunnels.set(entry.id, recovery.placeholder);
-	tunnelChangeHook?.(recovery.placeholder, recovery.previousUrl); // the old URL no longer serves
-	if (when === "now" && recovery.attempts === 0) return attemptRecovery(recovery);
+	const next = when === "now" && recovery.attempts === 0 ? attemptRecovery(recovery) : scheduleAttemptFor(recovery);
+	notifyChange(recovery.placeholder, recovery.previousUrl); // the old URL no longer serves
+	return next;
+}
+
+function scheduleAttemptFor(recovery: TunnelRecovery): Promise<TunnelEntry> {
 	scheduleAttempt(recovery);
 	return Promise.resolve(recovery.placeholder);
+}
+
+/** A listener that throws must not stall the recovery that called it. */
+function notifyChange(entry: TunnelEntry, previousUrl: string | null): void {
+	try {
+		tunnelChangeHook?.(entry, previousUrl);
+	} catch (err) {
+		log.warn("Tunnel change listener failed", { id: entry.id, error: String(err) });
+	}
 }
 
 /** Run the recovery's next attempt now, or join the one already running. */
@@ -885,12 +898,13 @@ async function runAttempt(recovery: TunnelRecovery): Promise<TunnelEntry> {
 	const entry = await startEntry(optionsFor(placeholder), recovery);
 	if (entry.url) {
 		log.info("Tunnel recovered", { id: placeholder.id, attempt: recovery.attempts, previousUrl: recovery.previousUrl, url: entry.url });
-		tunnelChangeHook?.(entry, recovery.previousUrl);
+		notifyChange(entry, recovery.previousUrl);
 	} else if (tunnels.get(placeholder.id) === placeholder) {
 		if (isMisconfigured(entry.failureReason)) {
 			// Never retried, for any kind: the slot is released and the next explicit start reports it.
 			log.warn("Tunnel command is misconfigured — not retrying until it is started again", { id: placeholder.id, reason: entry.failureReason });
 			tunnels.delete(placeholder.id);
+			notifyChange(entry, recovery.previousUrl);
 		} else {
 			scheduleAttempt(recovery);
 		}
@@ -930,10 +944,9 @@ async function restartEntry(entry: TunnelEntry): Promise<void> {
  * False when the last failure was a misconfigured command, which is never retried.
  */
 export function retryMainTunnel(localPort: number): boolean {
+	if (tunnels.has(MAIN_ID)) return true; // already serving, starting, or recovering
 	if (isMisconfigured(mainTunnelFailureReason)) return false;
-	if (!tunnels.has(MAIN_ID)) {
-		void beginRecovery(newEntry({ id: MAIN_ID, kind: "main", targetPort: localPort }, null), Promise.resolve(), "backoff");
-	}
+	void beginRecovery(newEntry({ id: MAIN_ID, kind: "main", targetPort: localPort }, null), Promise.resolve(), "backoff");
 	return true;
 }
 
