@@ -28,7 +28,8 @@ export type HooksSpec =
 	| { kind: "claude"; stopTarget?: TaskStatus; permissionMode?: PermissionMode }
 	| { kind: "codex" }
 	| { kind: "copilot" }
-	| { kind: "omp" };
+	| { kind: "omp" }
+	| { kind: "pi" };
 
 /** Codex-only launch runtime resolved by the backend (theme state + a
  *  `codex --help` probe are impure) and threaded into the pure CodexAdapter. */

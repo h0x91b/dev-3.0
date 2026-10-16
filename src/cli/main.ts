@@ -37,7 +37,7 @@ import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
-import { handleOmpHook } from "./commands/omp-hook";
+import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
@@ -276,10 +276,11 @@ async function main(): Promise<void> {
 			context,
 		);
 	}
-	if (command === "hook" && subcommand === "omp") {
-		// Internal lifecycle adapter for the generated omp status extension. Same
-		// contract as the Codex one: silent, and successful whatever happens.
-		return await handleOmpHook(
+	if (command === "hook" && (subcommand === "omp" || subcommand === "pi")) {
+		// Internal lifecycle adapter for the generated omp/pi status extensions.
+		// Same contract as the Codex one: silent, and successful whatever happens.
+		return await handleExtensionHook(
+			subcommand,
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

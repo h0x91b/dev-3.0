@@ -5,7 +5,7 @@
  * so that task status transitions happen automatically via the agent's built-in
  * event system, rather than relying solely on SKILL.md instructions.
  *
- * Currently supports Claude Code, Codex and omp. Extensible for Gemini, Cursor, etc.
+ * Currently supports Claude Code, Codex, omp and pi. Extensible for Gemini, Cursor, etc.
  */
 
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
@@ -14,6 +14,7 @@ import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks, writeCopilotHooks } from "../shared/agent-hooks";
 import { quoteIfUnsafe } from "../shared/agent-adapters/shell";
 import { writeOmpStatusExtension } from "../shared/omp-status-extension";
+import { writePiStatusExtension } from "../shared/pi-status-extension";
 import { resolveCopilotHome } from "./copilot-config";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
@@ -112,6 +113,15 @@ export async function setupAgentHooks(
 		const path = writeOmpStatusExtension();
 		log.info("omp status extension active", { worktreePath, path });
 		return `--hook ${quoteIfUnsafe(path)}`;
+	}
+	if (spec.kind === "pi") {
+		// Same shape as omp's, under pi's own flag: an explicit `--extension` path
+		// loads without the project-trust gate, which covers only discovered
+		// `.pi/` resources. A failed write throws to the caller, which launches
+		// without the flag and logs it.
+		const path = writePiStatusExtension();
+		log.info("pi status extension active", { worktreePath, path });
+		return `--extension ${quoteIfUnsafe(path)}`;
 	}
 
 	// spec.kind === "codex"

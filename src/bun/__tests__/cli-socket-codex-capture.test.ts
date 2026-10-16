@@ -242,6 +242,31 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			.toBe("omp --resume 00000000-0000-4000-8000-0000c0de4bba");
 	});
 
+	it("accepts a plain pi report as pi and resume targets the session with --session-id", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { buildResumeCommand } = await import("../agents");
+
+		seed([makeTask({
+			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "pi" }] },
+		})]);
+
+		const resp = await handleRequest(agentHook({
+			projectId: "proj-1",
+			taskId: "task-1",
+			harness: "pi",
+			event: "SessionStart",
+			sessionId: "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001",
+			paneId: "%3",
+		}));
+		expect(resp.ok).toBe(true);
+
+		const [pane] = readPanes();
+		expect(pane?.sessionId).toBe("0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001");
+		expect(buildResumeCommand("pi", pane!.sessionId ?? undefined))
+			.toBe("pi --session-id 0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001");
+	});
+
 	it("places a Codex id without a paneId on a task's only pane (native session without a pane suffix)", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");

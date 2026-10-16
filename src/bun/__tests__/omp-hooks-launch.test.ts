@@ -45,6 +45,14 @@ describe("setupAgentHooks for omp", () => {
 		expect(flag?.startsWith("--hook ")).toBe(true);
 	});
 
+	it("gives plain pi its own extension under --extension, never omp's --hook", async () => {
+		const flag = await setupAgentHooks(worktree, "pi");
+		const expected = join(tempHome, "data", "agent-hooks", "pi-status.ts");
+		expect(flag).toBe(`--extension ${expected}`);
+		expect(existsSync(expected)).toBe(true);
+		expect(existsSync(join(worktree, ".pi"))).toBe(false);
+	});
+
 	it("still installs nothing for agents without hooks", async () => {
 		expect(await setupAgentHooks(worktree, "gemini")).toBeNull();
 	});

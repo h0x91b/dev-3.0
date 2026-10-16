@@ -6,7 +6,7 @@ vi.mock("../socket-client", () => ({
 }));
 
 import { sendRequest } from "../socket-client";
-import { handleOmpHook } from "../commands/omp-hook";
+import { handleExtensionHook } from "../commands/extension-hook";
 
 const mockSend = vi.mocked(sendRequest);
 const SOCKET = "/tmp/test.sock";
@@ -46,11 +46,11 @@ afterEach(() => {
 	else process.env.TMUX_PANE = originalTmuxPane;
 });
 
-describe("handleOmpHook", () => {
+describe("handleExtensionHook (omp)", () => {
 	it("forwards a report from the status extension to the atomic socket handler, named as omp", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
-		await handleOmpHook(JSON.stringify({ event: "PermissionRequest", sessionId: "sess-1" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "PermissionRequest", sessionId: "sess-1" }), SOCKET, CONTEXT);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
 			taskId: "task-1",
@@ -68,7 +68,7 @@ describe("handleOmpHook", () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		process.env.TMUX_PANE = "%42";
 
-		await handleOmpHook(JSON.stringify({ event: "SessionStart", sessionId: "sess-9" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "SessionStart", sessionId: "sess-9" }), SOCKET, CONTEXT);
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "SessionStart", sessionId: "sess-9", paneId: "%42" });
 	});
@@ -76,20 +76,21 @@ describe("handleOmpHook", () => {
 	it("carries the prompt and the extension's submission id on UserPromptSubmit only", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
-		await handleOmpHook(
+		await handleExtensionHook(
+			"omp",
 			JSON.stringify({ event: "UserPromptSubmit", sessionId: "s", prompt: "rebase and push", submissionId: "sub-1" }),
 			SOCKET,
 			CONTEXT,
 		);
-		await handleOmpHook(JSON.stringify({ event: "Stop", sessionId: "s", prompt: "leftover" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "Stop", sessionId: "s", prompt: "leftover" }), SOCKET, CONTEXT);
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ prompt: "rebase and push", turnId: "sub-1" });
 		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("prompt");
 	});
 
 	it("is a successful no-op outside a dev3 task and when the app is offline", async () => {
-		await handleOmpHook(JSON.stringify({ event: "Stop" }), SOCKET, null);
-		await handleOmpHook(JSON.stringify({ event: "Stop" }), null, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), SOCKET, null);
+		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), null, CONTEXT);
 
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(stdout).toBe("");
@@ -98,16 +99,33 @@ describe("handleOmpHook", () => {
 	it("reports a socket error on stderr without failing", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: false, error: "status update failed" });
 
-		await handleOmpHook(JSON.stringify({ event: "Stop" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), SOCKET, CONTEXT);
 
 		expect(stderr).toContain("dev3 omp hook: status update failed");
 	});
 
 	it("ignores malformed and unknown payloads", async () => {
-		await handleOmpHook("not-json", SOCKET, CONTEXT);
-		await handleOmpHook(JSON.stringify({ event: "turn_start" }), SOCKET, CONTEXT);
-		await handleOmpHook(JSON.stringify({ hook_event_name: "Stop" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", "not-json", SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "turn_start" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ hook_event_name: "Stop" }), SOCKET, CONTEXT);
 
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("handleExtensionHook (pi)", () => {
+	it("names the report as pi, so the app matches it against the pi pane", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleExtensionHook("pi", JSON.stringify({ event: "Stop", sessionId: "0199aaaa" }), SOCKET, CONTEXT);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
+			taskId: "task-1",
+			projectId: "project-1",
+			harness: "pi",
+			event: "Stop",
+			sessionId: "0199aaaa",
+		}, SEND_OPTIONS);
+		expect(stdout).toBe("");
 	});
 });

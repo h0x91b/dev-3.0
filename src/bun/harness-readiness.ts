@@ -139,6 +139,9 @@ const SIGN_IN_PROBES: Record<string, (p: ProbeEnv) => boolean> = {
 	// (`~/.omp/agent/agent.db`, table `auth_credentials`), not a JSON file this
 	// seam can read. Guessing would report a signed-in install as logged out and
 	// block the sandbox; `unknown` is the honest answer this module is built for.
+	// No `pi` probe either: pi's `auth.json` holds only what `/login` saved, while
+	// pi runs just as well on dozens of provider env vars or a `models.json`
+	// provider — a missing file is not evidence of no sign-in.
 };
 
 export function harnessSignIn(baseCommand: string, p: ProbeEnv): HarnessSignIn {

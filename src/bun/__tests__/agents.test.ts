@@ -56,6 +56,7 @@ describe("skillInvocationPrefix", () => {
 		["opencode", "/"],
 		["/home/me/.bun/bin/omp", "/skill:"],
 		["omp", "/skill:"],
+		["pi", "/skill:"],
 		["", "/"],
 	])("%s → %s", (command, expected) => {
 		expect(skillInvocationPrefix(command)).toBe(expected);

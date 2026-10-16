@@ -98,7 +98,7 @@ export interface CodingAgent {
  * resume, transcripts, trust, lifecycle hooks, skill prefix — so a differently
  * named binary runs through exactly the same code as the CLI it wraps.
  */
-export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "copilot" | "omp" | "none";
+export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "copilot" | "omp" | "pi" | "none";
 
 /**
  * Which of an agent's preset models the signed-in account cannot actually select,
@@ -115,12 +115,13 @@ export type AgentModelAvailability =
 /**
  * Prefix used to invoke an installed skill from an agent prompt. Codex reserves
  * `/` for built-in commands; omp registers one slash command per skill under a
- * `skill:` namespace. Unknown commands keep the compatible slash default.
+ * `skill:` namespace, and plain pi does the same. Unknown commands keep the
+ * compatible slash default.
  */
 export function skillInvocationPrefix(baseCommand: string, family?: AgentFamily): "$" | "/" | "/skill:" {
 	const key = family ? family : (baseCommand.split("/").pop() ?? "");
 	if (key === "codex") return "$";
-	return key === "omp" ? "/skill:" : "/";
+	return key === "omp" || key === "pi" ? "/skill:" : "/";
 }
 
 /** Fixed port of the optional local `pxpipe-proxy` (token-saving image proxy).
@@ -571,6 +572,22 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			...createOmpBypassPresets(["off", "low", "medium", "high", "xhigh", "max"]),
 		],
 		defaultConfigId: "omp-yolo",
+	},
+	{
+		id: "builtin-pi",
+		name: "Pi",
+		baseCommand: "pi",
+		isDefault: true,
+		installCommand: "curl -fsSL https://pi.dev/install.sh | sh",
+		installUrl: "https://github.com/earendil-works/pi",
+		// Upstream defaults, deliberately: pi picks its own model from whatever the
+		// user signed in to, and it has no approval tiers at all — it runs every
+		// tool without asking (docs/security.md). The one preset says so with the
+		// Bypass mode rather than letting "Default" read as "asks first".
+		configurations: [
+			{ id: "pi-default", name: "Default", permissionMode: "bypassPermissions", version: 1 },
+		],
+		defaultConfigId: "pi-default",
 	},
 ];
 

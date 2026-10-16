@@ -86,6 +86,12 @@ describe("harnessSignIn", () => {
 		expect(harnessSignIn("omp", probeEnv({ env: { ANTHROPIC_API_KEY: "sk-x" } }))).toBe("unknown");
 	});
 
+	it("says unknown for plain pi — no auth.json is not evidence of no provider", () => {
+		// pi runs on provider env vars and models.json as readily as on /login.
+		expect(harnessSignIn("pi", probeEnv())).toBe("unknown");
+		expect(harnessSignIn("pi", probeEnv({ files: { "/home/u/.pi/agent/auth.json": { anthropic: {} } } }))).toBe("unknown");
+	});
+
 	it("reports unknown when the probe itself throws", () => {
 		const p = probeEnv({ readJson: () => { throw new Error("EACCES"); } });
 		expect(harnessSignIn("codex", p)).toBe("unknown");

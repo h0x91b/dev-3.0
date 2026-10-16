@@ -1976,7 +1976,7 @@ const handlers: Record<string, Handler> = {
 		}
 		// The CLI that reports is the managed copy under ~/.dev3.0/bin, which a
 		// worktree build does not replace; one from before Copilot names no harness.
-		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "copilot"
+		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot"
 			? params.harness
 			: "codex";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;

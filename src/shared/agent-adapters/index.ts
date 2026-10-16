@@ -26,4 +26,5 @@ export { copilotAdapter } from "./copilot";
 export { cursorAdapter } from "./cursor";
 export { opencodeAdapter } from "./opencode";
 export { ompAdapter } from "./omp";
+export { piAdapter } from "./pi";
 export { genericAdapter } from "./generic";

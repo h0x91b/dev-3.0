@@ -7,12 +7,15 @@
  */
 
 const OMP_POSIX_INSTALL = "curl -fsSL https://omp.sh/install | sh";
+const PI_POSIX_INSTALL = "curl -fsSL https://pi.dev/install.sh | sh";
 
 /** Windows commands keyed by builtin agent id, valid only while the agent still
  *  carries the stock POSIX command (a user-edited command is theirs and wins). */
 const WINDOWS_INSTALL_OVERRIDES: Record<string, { posix: string; windows: string }> = {
 	// can1357/oh-my-pi README → "Windows (PowerShell)".
 	"builtin-omp": { posix: OMP_POSIX_INSTALL, windows: "irm https://omp.sh/install.ps1 | iex" },
+	// earendil-works/pi README → "Getting started", the Windows line verbatim.
+	"builtin-pi": { posix: PI_POSIX_INSTALL, windows: 'powershell -c "irm https://pi.dev/install.ps1 | iex"' },
 };
 
 export function agentInstallCommand(

@@ -181,6 +181,15 @@ describe("global-settings utils", () => {
 		}
 	});
 
+	it("previews plain pi with only the flags pi defines", () => {
+		expect(buildCommandPreview("pi", { id: "p", name: "x", model: "anthropic/claude-sonnet-5", permissionMode: "bypassPermissions", effort: "high", maxBudgetUsd: 5 }).command)
+			.toBe("pi --model anthropic/claude-sonnet-5 --thinking high --append-system-prompt '…dev3 prompt file…' -- '{{TASK_DESCRIPTION}}'");
+		const pi = DEFAULT_AGENTS.find((a) => a.id === "builtin-pi")!;
+		for (const config of pi.configurations) {
+			expect(buildCommandPreview("pi", config).command).not.toMatch(/--permission-mode|--approval-mode|--effort|--max-budget-usd|--hook/);
+		}
+	});
+
 	it("omits --model for Claude when provider is bedrock", () => {
 		const config: AgentConfiguration = {
 			id: "c",

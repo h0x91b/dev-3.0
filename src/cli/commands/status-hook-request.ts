@@ -17,7 +17,7 @@ export interface StatusHookReport {
  * Forward one lifecycle report to the app's atomic `task.agentHook` handler.
  *
  * For a harness whose status arrives through a `dev3 hook <harness>` process
- * that reads no reply (omp). It never throws and never exits non-zero: board
+ * that reads no reply (omp, pi). It never throws and never exits non-zero: board
  * synchronization must not block the agent when dev3 is offline or a status
  * update fails, so a failure is one stderr line and nothing more.
  */

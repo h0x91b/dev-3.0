@@ -3,6 +3,7 @@ import { agentInstallCommand, agentNotInstalledMessage, isAgentNotInstalledError
 import { DEFAULT_AGENTS } from "../../shared/types";
 
 const omp = DEFAULT_AGENTS.find((a) => a.id === "builtin-omp")!;
+const pi = DEFAULT_AGENTS.find((a) => a.id === "builtin-pi")!;
 
 describe("agentInstallCommand", () => {
 	it("keeps omp's upstream POSIX installer on macOS and Linux", () => {
@@ -12,6 +13,12 @@ describe("agentInstallCommand", () => {
 
 	it("gives Windows omp's upstream PowerShell installer", () => {
 		expect(agentInstallCommand(omp, "win32")).toBe("irm https://omp.sh/install.ps1 | iex");
+	});
+
+	it("gives plain pi its upstream installers, POSIX and Windows", () => {
+		expect(agentInstallCommand(pi, "darwin")).toBe("curl -fsSL https://pi.dev/install.sh | sh");
+		expect(agentInstallCommand(pi, "linux")).toBe("curl -fsSL https://pi.dev/install.sh | sh");
+		expect(agentInstallCommand(pi, "win32")).toBe('powershell -c "irm https://pi.dev/install.ps1 | iex"');
 	});
 
 	it("never overrides a command the user edited", () => {

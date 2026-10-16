@@ -18,6 +18,7 @@ import { geminiAdapter } from "./gemini";
 import { genericAdapter } from "./generic";
 import { ompAdapter } from "./omp";
 import { opencodeAdapter } from "./opencode";
+import { piAdapter } from "./pi";
 import type { AgentFamily } from "../types";
 import type { AgentAdapter } from "./types";
 
@@ -31,6 +32,7 @@ const REGISTRY: Record<string, AgentAdapter> = {
 	[cursorAdapter.command]: cursorAdapter,
 	[opencodeAdapter.command]: opencodeAdapter,
 	[ompAdapter.command]: ompAdapter,
+	[piAdapter.command]: piAdapter,
 };
 
 /** The adapter for an agent; GenericAdapter for unknown/custom commands. */

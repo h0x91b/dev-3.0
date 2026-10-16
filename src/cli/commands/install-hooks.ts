@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { exitError } from "../output";
 import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 import { writeOmpStatusExtension } from "../../shared/omp-status-extension";
+import { writePiStatusExtension } from "../../shared/pi-status-extension";
 import { resolveDev3Home } from "../../shared/dev3-home";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
@@ -39,6 +40,7 @@ export async function handleInstallHooks(): Promise<void> {
 	const claudeSymlink = writeClaudeHooks(worktreePath).skippedSymlink;
 	const codexSymlink = writeCodexHooks(worktreePath);
 	const ompExtensionPath = writeOmpStatusExtension();
+	const piExtensionPath = writePiStatusExtension();
 	for (const link of [claudeSymlink, codexSymlink]) {
 		if (link) process.stderr.write(`Warning: ${link} is a symlink; dev3 does not write through it, so the hooks under it were not installed.\n`);
 	}
@@ -67,4 +69,7 @@ export async function handleInstallHooks(): Promise<void> {
 	process.stdout.write(`Installed omp status extension → ${ompExtensionPath}\n`);
 	process.stdout.write(`  Loaded with --hook on every dev3 omp launch; session/prompt/tool → in-progress,\n`);
 	process.stdout.write(`  approval wait → user-questions, agent stop → review-by-ai or review-by-user\n`);
+	process.stdout.write(`Installed pi status extension → ${piExtensionPath}\n`);
+	process.stdout.write(`  Loaded with --extension on every dev3 pi launch; session/prompt/tool → in-progress,\n`);
+	process.stdout.write(`  extension prompt wait → user-questions, agent settled → review-by-ai or review-by-user\n`);
 }

@@ -2,12 +2,15 @@ import { AGENT_STATUS_HOOK_EVENTS, type AgentStatusHookEvent } from "../../share
 import type { CliContext } from "../context";
 import { reportStatusHookEvent, type StatusHookReport } from "./status-hook-request";
 
+/** The harnesses whose status arrives from a generated in-process extension. */
+export type ExtensionHookHarness = "omp" | "pi";
+
 /**
- * The payload the generated omp status extension writes to stdin
- * (`src/shared/omp-status-extension.ts`): already in the status-hook
+ * The payload a generated status extension writes to stdin
+ * (`src/shared/status-extension-core.ts`): already in the status-hook
  * vocabulary, with the extension's own random `submissionId` on a human prompt.
  */
-function parsePayload(rawInput: string): StatusHookReport | null {
+function parsePayload(harness: ExtensionHookHarness, rawInput: string): StatusHookReport | null {
 	try {
 		const parsed = JSON.parse(rawInput) as {
 			event?: unknown;
@@ -18,7 +21,7 @@ function parsePayload(rawInput: string): StatusHookReport | null {
 		if (typeof parsed.event !== "string") return null;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(parsed.event as AgentStatusHookEvent)) return null;
 		return {
-			harness: "omp",
+			harness,
 			event: parsed.event as AgentStatusHookEvent,
 			...(typeof parsed.sessionId === "string" && parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
 			...(typeof parsed.prompt === "string" && parsed.prompt.trim() ? { prompt: parsed.prompt } : {}),
@@ -32,14 +35,16 @@ function parsePayload(rawInput: string): StatusHookReport | null {
 }
 
 /**
- * Internal omp lifecycle adapter. Prints nothing — omp reads no reply — and
- * always exits successfully, so a status-sync failure can never reach the agent.
+ * Internal lifecycle adapter behind `dev3 hook omp` and `dev3 hook pi`. Prints
+ * nothing — the extension reads no reply — and always exits successfully, so a
+ * status-sync failure can never reach the agent.
  */
-export async function handleOmpHook(
+export async function handleExtensionHook(
+	harness: ExtensionHookHarness,
 	rawInput: string,
 	socketPath: string | null,
 	context: CliContext | null,
 ): Promise<void> {
-	const payload = parsePayload(rawInput);
+	const payload = parsePayload(harness, rawInput);
 	if (payload) await reportStatusHookEvent(payload, socketPath, context);
 }
