@@ -1,5 +1,7 @@
 # /dev3-coordinator embeds the full brief; the coordinator owns outcomes and stays quiet
 
+> Superseded in part on 2026-10-16 by `decisions/2026/10/16/coordinator-prompt-cap-6500.md`: the 6 210 cap is now 6 500.
+
 ## Context
 
 The `dev3-coordinator` skill used to carry no brief at all and relied on `--print-role` output, so

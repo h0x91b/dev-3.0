@@ -1,5 +1,7 @@
 # The coordinator reads events from a cursor, at the start of a turn
 
+> Superseded in part on 2026-10-16 by `decisions/2026/10/16/coordinator-prompt-cap-6500.md`: the 6 210 cap is now 6 500, with the Windows launch-room floors measured at the cap.
+
 ## Context
 
 `dev3 events` shipped (Seq 1738) as a POSITION — a millisecond cursor, a cap that keeps the
