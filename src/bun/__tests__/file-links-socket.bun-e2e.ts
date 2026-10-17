@@ -112,7 +112,8 @@ if (refused) problems.push(`${refused} of 30 parallel small assets were refused`
 // 5. A folder link in a real git checkout: the page's assets load, a gitignored secret does not.
 const repo = join(dir, "repo");
 mkdirSync(join(repo, "config", "assets"), { recursive: true });
-if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode === 0) {
+if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode !== 0) problems.push("git is required for the gitignore check and could not init a repo");
+else {
 	writeFileSync(join(repo, ".gitignore"), "config/master.key\n");
 	writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
 	writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");

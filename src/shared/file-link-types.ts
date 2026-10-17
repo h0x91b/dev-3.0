@@ -44,6 +44,17 @@ export const FILE_LINK_CONTENT_TYPES: Readonly<Record<string, string>> = {
 /** Pages whose relative CSS/images/scripts need the link to cover their folder. */
 export const FILE_LINK_PAGE_EXTS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".svg"]);
 
+/**
+ * What a page loads — never data such as `.txt`, `.json`, `.md`, `.log`, keys or
+ * unknown types. Gitignored files ride along under a page's own ignore rule only
+ * if they are of these types, so a page written into `tmp/` cannot expose secrets there.
+ */
+export const PAGE_ASSET_EXTS: ReadonlySet<string> = new Set([
+	...FILE_LINK_PAGE_EXTS, ".css", ".js", ".mjs",
+	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".ico",
+	".woff", ".woff2", ".ttf", ".otf", ".mp4", ".webm", ".mp3", ".wav", ".ogg",
+]);
+
 /** Never rendered on the dev3 origin, only sent as a download: a PDF viewer cannot run sandboxed. */
 export const ATTACHMENT_ONLY_EXTS: ReadonlySet<string> = new Set([".pdf"]);
 
