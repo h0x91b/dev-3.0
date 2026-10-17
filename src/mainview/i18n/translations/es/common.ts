@@ -561,6 +561,7 @@ const common = {
 	"imageViewer.copyPath": "Copiar ruta de la imagen",
 	"imageViewer.copyFailed": "No se pudo copiar la ruta",
 	"imageViewer.open": "Abrir en la app predeterminada",
+	"imageViewer.openInTab": "Abrir en una pestaña nueva",
 	"imageViewer.download": "Descargar imagen",
 	"imageViewer.saved": "Imagen guardada en Descargas",
 	"imageViewer.saveFailed": "No se pudo guardar la imagen",

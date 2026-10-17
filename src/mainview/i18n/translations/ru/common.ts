@@ -594,6 +594,7 @@ const common = {
 	"imageViewer.copyPath": "Скопировать путь к изображению",
 	"imageViewer.copyFailed": "Не удалось скопировать путь",
 	"imageViewer.open": "Открыть в приложении по умолчанию",
+	"imageViewer.openInTab": "Открыть в новой вкладке",
 	"imageViewer.download": "Скачать изображение",
 	"imageViewer.saved": "Изображение сохранено в Downloads",
 	"imageViewer.saveFailed": "Не удалось сохранить изображение",

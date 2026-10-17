@@ -26,6 +26,7 @@ import {
 	sharedArtifactDownloadKind,
 	sharedArtifactHtmlPath,
 } from "../shared-artifacts";
+import { mintFileLink, resolveFileLinkPath } from "../file-links";
 
 afterAll(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
@@ -382,6 +383,23 @@ describe("stored artifact read boundary", () => {
 		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
 		rmSync(saved.storedPath, { force: true });
 		expect(() => sharedArtifactHtmlPath(saved)).toThrow(SharedArtifactError);
+	});
+});
+
+describe("remote tab link over a stored artifact", () => {
+	// createArtifactLink mints a folder link over the stored HTML's directory; a
+	// relative asset reference only resolves if the store keeps the source layout.
+	it("resolves the page's relative asset references inside the stored folder", () => {
+		const dir = join(SRC_DIR, "linked");
+		mkdirSync(join(dir, "img"), { recursive: true });
+		writeFileSync(join(dir, "index.html"), '<!doctype html><img src="img/chart.png">');
+		writeFileSync(join(dir, "img", "chart.png"), "PNGDATA");
+		const saved = saveSharedArtifact("/tmp/proj", join(dir, "index.html"), [join(dir, "img", "chart.png")]);
+		const page = sharedArtifactHtmlPath(saved);
+		const link = mintFileLink({ kind: "dir", root: dirname(page), entry: basename(page) });
+		const asset = resolveFileLinkPath(link.replace(/[^/]+$/, "img/chart.png"));
+		expect(asset).not.toBeNull();
+		expect(readFileSync(asset!, "utf8")).toBe("PNGDATA");
 	});
 });
 

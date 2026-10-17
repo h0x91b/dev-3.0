@@ -4,6 +4,8 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { toast } from "../toast";
+import { openFileInBrowser } from "../file-open-browser";
+import { isRemote } from "../utils/platform";
 import { downloadDataUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 
@@ -100,7 +102,8 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 	}, [goNext, goPrev]);
 
 	function handleOpenExternal() {
-		api.request.openImageFile({ path }).catch(() => {});
+		(isRemote() ? openFileInBrowser(path) : api.request.openImageFile({ path }))
+			.catch(() => toast.error(t("imageViewer.openFailed")));
 	}
 
 	function handleDownload() {
@@ -198,7 +201,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 						onClick={handleOpenExternal}
 						className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover transition-colors"
 					>
-						{t("images.openInPreview")}
+						{isRemote() ? t("imageViewer.openInTab") : t("images.openInPreview")}
 					</button>
 				</div>
 

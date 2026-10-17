@@ -48,13 +48,13 @@ export function opensInBrowserTab(path: string, preview: FilePreviewResult | nul
 /**
  * The tab is opened synchronously, inside the click, because the link arrives
  * over an async RPC and a later `window.open` would be popup-blocked. Its
- * `opener` is cut before it navigates to agent-written content.
+ * `opener` is cut before it navigates to agent-written content — not with the
+ * `noopener` feature, which makes `window.open` return null even on success.
  */
-export async function openFileInNewTab(path: string): Promise<void> {
+export async function openLinkInNewTab(mintLink: () => Promise<string>): Promise<void> {
 	const tab = window.open("", "_blank");
 	try {
-		const { viewUrl } = await api.request.createFileLink({ path });
-		const href = new URL(viewUrl, window.location.href).href;
+		const href = new URL(await mintLink(), window.location.href).href;
 		if (tab) {
 			tab.opener = null;
 			tab.location.replace(href);
@@ -65,6 +65,15 @@ export async function openFileInNewTab(path: string): Promise<void> {
 		tab?.close();
 		throw err;
 	}
+}
+
+export function openFileInNewTab(path: string): Promise<void> {
+	return openLinkInNewTab(async () => (await api.request.createFileLink({ path })).viewUrl);
+}
+
+/** The remote stand-in for "Open in default app": a tab when the browser can show the file, a download otherwise. */
+export function openFileInBrowser(path: string): Promise<void> {
+	return TAB_VIEWABLE_EXT.test(path) ? openFileInNewTab(path) : downloadFile(path);
 }
 
 export async function downloadFile(path: string): Promise<void> {

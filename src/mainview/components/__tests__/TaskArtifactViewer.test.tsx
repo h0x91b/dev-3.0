@@ -7,7 +7,7 @@ import { _resetArtifactThemePrefs } from "../../artifact-theme-prefs";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn(), openArtifactInBrowser: vi.fn(), sendArtifactMessageToAgent: vi.fn() } },
+	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn(), openArtifactInBrowser: vi.fn(), createArtifactLink: vi.fn(), sendArtifactMessageToAgent: vi.fn() } },
 }));
 
 // Pin the platform so the ⌘F assertions don't depend on the host running them.
@@ -432,17 +432,25 @@ describe("TaskArtifactViewer", () => {
 		expect(mockedApi.request.openArtifactInBrowser).toHaveBeenCalledWith({ artifact: artifact("a") });
 	});
 
-	it("opens the composed document in a new tab in remote mode, without touching the host", async () => {
+	// A real browser returns null from window.open when `noopener` is passed, so the
+	// old blob path reported failure for a tab that had opened. The mock returns a
+	// tab only for the no-features call, which is the one the viewer must make.
+	it("opens the stored artifact through a sandboxed link in remote mode, without touching the host", async () => {
 		platform.remote = true;
 		vi.mocked(mockedApi.request.openArtifactInBrowser).mockClear();
-		const openSpy = vi.fn().mockReturnValue({});
-		window.open = openSpy;
+		vi.mocked(mockedApi.request.createArtifactLink).mockResolvedValue({ viewUrl: "/file/tok/a.html" });
+		const tab = { opener: window as unknown, location: { replace: vi.fn() }, close: vi.fn() };
+		const openSpy = vi.fn((_url?: string, _target?: string, features?: string) => (features?.includes("noopener") ? null : tab));
+		window.open = openSpy as unknown as typeof window.open;
+		vi.mocked(toast.error).mockClear();
 		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
 		await screen.findByTitle("Artifact a");
 		await userEvent.click(screen.getByTestId("artifact-viewer-open-browser"));
+		await waitFor(() => expect(tab.location.replace).toHaveBeenCalledWith(new URL("/file/tok/a.html", window.location.href).href));
+		expect(mockedApi.request.createArtifactLink).toHaveBeenCalledWith({ artifact: artifact("a") });
 		expect(mockedApi.request.openArtifactInBrowser).not.toHaveBeenCalled();
-		expect(openSpy).toHaveBeenCalledOnce();
-		expect(String(openSpy.mock.calls[0][0])).toMatch(/^blob:/);
+		expect(tab.opener).toBeNull();
+		expect(toast.error).not.toHaveBeenCalled();
 	});
 
 	it("labels the download HTML when the host folds a bundled artifact into one page", async () => {

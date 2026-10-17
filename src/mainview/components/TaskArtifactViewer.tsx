@@ -15,6 +15,7 @@ import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
+import { openLinkInNewTab } from "../file-open-browser";
 import FindBar, { type FindBarHandle } from "./FindBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
@@ -572,22 +573,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		}
 	};
 	// Desktop hands the stored file to the OS browser, so relative assets keep
-	// resolving. In remote mode that file lives on the host machine, so the tab gets
-	// the already-composed document — opened synchronously, or the popup blocker eats it.
+	// resolving. In remote mode that file lives on the host machine, so the tab
+	// loads it through a sandboxed link over the artifact's stored folder instead.
 	const openInBrowser = () => {
-		if (!isRemote()) {
-			api.request.openArtifactInBrowser({ artifact: current })
-				.catch(() => toast.error(t("artifactViewer.openInBrowserFailed"), { taskId }));
-			return;
-		}
-		if (!srcDoc) return;
-		const url = URL.createObjectURL(new Blob([srcDoc], { type: "text/html" }));
-		if (!window.open(url, "_blank", "noopener,noreferrer")) {
-			URL.revokeObjectURL(url);
-			toast.error(t("artifactViewer.openInBrowserFailed"), { taskId });
-			return;
-		}
-		setTimeout(() => URL.revokeObjectURL(url), 60_000);
+		const opened = isRemote()
+			? openLinkInNewTab(async () => (await api.request.createArtifactLink({ artifact: current })).viewUrl)
+			: api.request.openArtifactInBrowser({ artifact: current });
+		opened.catch(() => toast.error(t("artifactViewer.openInBrowserFailed"), { taskId }));
 	};
 	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
 	const themeName = themeMode === "follow"

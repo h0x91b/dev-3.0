@@ -15,6 +15,14 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+const platform = vi.hoisted(() => ({ remote: false }));
+vi.mock("../../utils/platform", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../utils/platform")>()),
+	isRemote: () => platform.remote,
+}));
+const fileOpen = vi.hoisted(() => ({ openFileInBrowser: vi.fn(async (_path: string) => {}) }));
+vi.mock("../../file-open-browser", () => fileOpen);
+
 import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 
@@ -48,6 +56,24 @@ beforeEach(() => {
 });
 
 describe("TaskImageViewer", () => {
+	it("opens the file on the host from the desktop, and in this browser from remote mode", async () => {
+		platform.remote = false;
+		renderViewer();
+		await userEvent.click(await screen.findByRole("button", { name: "Open in default app" }));
+		expect(mockedApi.request.openImageFile).toHaveBeenCalledWith({ path: "/wt/shared-images/c.png" });
+		expect(fileOpen.openFileInBrowser).not.toHaveBeenCalled();
+	});
+
+	it("labels the remote open action for what it does and hands the file to the browser", async () => {
+		platform.remote = true;
+		vi.mocked(mockedApi.request.openImageFile).mockClear();
+		renderViewer();
+		await userEvent.click(await screen.findByRole("button", { name: "Open in new tab" }));
+		expect(fileOpen.openFileInBrowser).toHaveBeenCalledWith("/wt/shared-images/c.png");
+		expect(mockedApi.request.openImageFile).not.toHaveBeenCalled();
+		platform.remote = false;
+	});
+
 	it("opens on the newest image (initialIndex) and shows the counter", async () => {
 		renderViewer();
 		expect(screen.getByText("3 / 3")).toBeInTheDocument();
