@@ -365,6 +365,21 @@ describe("createFileLink", () => {
 		}
 	});
 
+	it("never lets a symlink point a folder link into a different checkout", () => withCheckout(worktree, async () => {
+		const other = join(tmp, "other-repo");
+		mkdirSync(join(other, ".git"), { recursive: true });
+		mkdirSync(join(other, "pub"), { recursive: true });
+		writeFileSync(join(other, "pub", "index.html"), "<p>other project</p>");
+		writeFileSync(join(other, "pub", "data.json"), "{}");
+		symlinkSync(join(other, "pub", "index.html"), join(worktree, "report.html"));
+		try {
+			const { url } = await appHandlers.createFileLink({ path: join(worktree, "report.html") });
+			expect(resolveFileLinkPath(url.replace(/[^/]+$/, "data.json"))).toBeNull();
+		} finally {
+			rmSync(join(worktree, "report.html"));
+		}
+	}));
+
 	it("never gives a page inside a dot-folder such as .git its folder", () => withCheckout(worktree, async () => {
 		writeFileSync(join(worktree, ".git", "page.html"), "<p>inside .git</p>");
 		writeFileSync(join(worktree, ".git", "config"), "[remote] url = https://user:token@host/x");

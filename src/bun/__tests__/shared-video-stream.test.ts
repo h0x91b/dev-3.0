@@ -161,18 +161,30 @@ describe("serveFileBytes with a caller's handle", () => {
 		expect(onDone).toHaveBeenCalledTimes(1);
 	});
 
-	it("streams a range with its Content-Length when asked, and reports done once the body ends", async () => {
+	it("buffers a capped range, so the wire keeps its Content-Length, and reports done at once", async () => {
 		const path = `${TEST_HOME}/ten.txt`;
 		mkdirSync(TEST_HOME, { recursive: true });
 		writeFileSync(path, "0123456789");
 		const onDone = vi.fn();
-		const res = await serveFileBytes(new Request("http://x/f", { headers: { range: "bytes=2-5" } }), path, { "Content-Type": "text/plain" }, { streamRanges: true, onDone });
+		const res = await serveFileBytes(new Request("http://x/f", { headers: { range: "bytes=2-" } }), path, { "Content-Type": "text/plain" }, { maxRangeBytes: 4, onDone });
 		expect(res.status).toBe(206);
+		expect(res.headers.get("content-range")).toBe("bytes 2-5/10");
 		expect(res.headers.get("content-length")).toBe("4");
-		expect(res.body).toBeInstanceOf(ReadableStream);
-		expect(onDone).not.toHaveBeenCalled();
+		expect(res.body).not.toBeInstanceOf(Uint8Array);
 		expect(await res.text()).toBe("2345");
 		expect(onDone).toHaveBeenCalledTimes(1);
+	});
+
+	// Bun never cancels the body of a client that left before reading it; the request signal does fire.
+	it("releases a streamed body that is never read once the client disconnects", async () => {
+		const path = `${TEST_HOME}/big.bin`;
+		writeFileSync(path, Buffer.alloc(3 * 1024 * 1024));
+		const client = new AbortController();
+		const onDone = vi.fn();
+		await serveFileBytes(new Request("http://x/f", { signal: client.signal }), path, { "Content-Type": "application/octet-stream" }, { onDone, signal: client.signal });
+		expect(onDone).not.toHaveBeenCalled();
+		client.abort();
+		await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
 	});
 
 	it("reports done at once for a bodiless reply", async () => {
