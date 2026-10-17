@@ -355,8 +355,8 @@ describe("createFileLink", () => {
 			const report = await appHandlers.createFileLink({ path: join(taskDir, "report.html") });
 			expect(resolveFileLinkPath(report.url.replace(/[^/]+$/, "conversations/c.json"))).toBeNull();
 		};
-		await check();
-		// Again with a checkout ABOVE dev3's storage (a dotfiles repo at ~): it must not count.
+		// A checkout ABOVE dev3's storage (a dotfiles repo at ~) must not count; without
+		// one, nearestCheckout finds nothing and the rule under test never runs.
 		mkdirSync(join(tmp, ".git"), { recursive: true });
 		try {
 			await check();
@@ -434,6 +434,19 @@ describe("openFileOnWindowsHost", () => {
 		writeFileSync(join(tmp, "x:y.txt"), "1");
 		await expect(appHandlers.openFileOnWindowsHost({ path: join(tmp, "x:y.txt") })).rejects.toThrow("cannot be opened on Windows");
 		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
+	});
+
+	it("checks the real target's type, so a page-named symlink to a script is refused", async () => {
+		wsl.isWslHost.mockReturnValue(true);
+		wsl.openOnWindowsHost.mockClear();
+		writeFileSync(join(tmp, "payload.hta"), "<script></script>");
+		symlinkSync(join(tmp, "payload.hta"), join(tmp, "report.html"));
+		try {
+			await expect(appHandlers.openFileOnWindowsHost({ path: join(tmp, "report.html") })).rejects.toThrow("not opened on Windows");
+			expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
+		} finally {
+			rmSync(join(tmp, "report.html"));
+		}
 	});
 
 	it("refuses scripts and programs, which Windows' default action would run", async () => {

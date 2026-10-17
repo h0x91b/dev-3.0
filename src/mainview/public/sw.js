@@ -34,6 +34,9 @@ self.addEventListener("notificationclick", (event) => {
 	event.waitUntil(
 		self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
 			for (const client of list) {
+				// A file opened in its own tab (`/file/…`, or the blank tab waiting for its link) is not the app.
+				const path = new URL(client.url).pathname;
+				if (client.url === "about:blank" || path.startsWith("/file/")) continue;
 				if ("focus" in client) {
 					if ("navigate" in client && url !== "/") client.navigate(url).catch(() => {});
 					return client.focus();

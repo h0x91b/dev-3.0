@@ -354,13 +354,13 @@ function realOr(path: string): string {
 
 /**
  * Only a page (HTML/SVG) strictly inside a task worktree or project checkout gets
- * its folder, so its relative assets load. Decided on the real folder (the link
- * pins it), never inside a dot-folder of the checkout (`.git/`), never at a
+ * its folder, so its relative assets load. Decided on the real folder the link
+ * then pins as-is, never inside a dot-folder of the checkout (`.git/`), never at a
  * checkout root, never in dev3's own storage; everything else is one file.
  */
-async function linkCoversFolder(path: string): Promise<boolean> {
-	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(path))) return false;
-	const dir = realOr(dirname(path));
+async function linkCoversFolder(realFile: string): Promise<boolean> {
+	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(realFile))) return false;
+	const dir = dirname(realFile);
 	const checkout = await nearestCheckout(dir);
 	if (!checkout || checkout === dir) return false;
 	if (relative(checkout, dir).split(sep).some((part) => part.startsWith("."))) return false;
@@ -380,9 +380,13 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	log.info("→ createFileLink", { path: params.path, download: !!params.download });
 	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
-	if (params.download) return { url: `${mintFileLink({ kind: "file", path }, { ttlMs: DOWNLOAD_TTL_MS })}?download=1` };
-	const scope = (await linkCoversFolder(path)) ? { kind: "dir" as const, root: dirname(path), entry: basename(path) } : { kind: "file" as const, path };
-	return { url: mintFileLink(scope) };
+	// Resolved once: the folder decision and the pinned scope must be the same path.
+	const realFile = realpathSync.native(path);
+	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
+	const scope = (await linkCoversFolder(realFile))
+		? { kind: "dir" as const, root: dirname(realFile), entry: basename(realFile) }
+		: { kind: "file" as const, path: realFile };
+	return { url: mintFileLink(scope, { resolved: true }) };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
@@ -395,10 +399,12 @@ async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
 	if (!isWslHost()) throw new Error("Not running under WSL");
 	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
-	if (!WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path))) throw new Error("This file type is not opened on Windows");
+	// Both the name and its real target: a `report.html` symlink to a `.hta` must not pass.
+	const real = realpathSync.native(path);
+	if (![path, real].every((p) => WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(p)))) throw new Error("This file type is not opened on Windows");
 	// WSLENV `/p` treats `:` as a list separator, so the path would arrive as a different file.
-	if (path.includes(":")) throw new Error("This file name cannot be opened on Windows");
-	await openOnWindowsHost(path);
+	if (real.includes(":")) throw new Error("This file name cannot be opened on Windows");
+	await openOnWindowsHost(real);
 }
 
 export const terminalPathHandlers = {
