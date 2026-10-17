@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { SHARED_VIDEO_EXTS } from "../shared/types";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
@@ -75,26 +75,29 @@ export function parseByteRange(header: string | null, size: number): ByteRange |
 	return { start, end };
 }
 
+type FileHandle = Awaited<ReturnType<typeof open>>;
+
 /**
- * Reads lazily, one chunk per pull, so a 300 MB clip never sits in memory. A
- * stream body also keeps Bun off its sendfile path, which drops the response
- * headers on macOS LAN sockets (decisions/2026/07/07/remote-static-sendfile-lan-headerless.md).
+ * Reads one chunk per pull, so a 300 MB clip never sits in memory, and owns
+ * `handle` (closed at the end, on error or on cancel). A stream body also keeps Bun
+ * off its sendfile path, which drops the response headers on macOS LAN sockets
+ * (decisions/2026/07/07/remote-static-sendfile-lan-headerless.md).
  */
-function fileRangeStream(path: string, start: number, end: number): ReadableStream<Uint8Array> {
-	let handle: Awaited<ReturnType<typeof open>> | null = null;
+function fileRangeStream(handle: FileHandle, start: number, end: number): ReadableStream<Uint8Array> {
+	let current: FileHandle | null = handle;
 	let position = start;
 	const close = async () => {
-		const h = handle;
-		handle = null;
+		const h = current;
+		current = null;
 		await h?.close().catch(() => {});
 	};
 	return new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
-				handle ??= await open(path, "r");
+				if (!current) return controller.close();
 				const length = Math.min(READ_CHUNK, end - position + 1);
 				const buf = new Uint8Array(length);
-				const { bytesRead } = await handle.read(buf, 0, length, position);
+				const { bytesRead } = await current.read(buf, 0, length, position);
 				if (bytesRead === 0) {
 					await close();
 					controller.close();
@@ -115,15 +118,10 @@ function fileRangeStream(path: string, start: number, end: number): ReadableStre
 	});
 }
 
-async function readRange(path: string, start: number, end: number): Promise<Uint8Array<ArrayBuffer>> {
-	const handle = await open(path, "r");
-	try {
-		const buf = new Uint8Array(new ArrayBuffer(end - start + 1));
-		const { bytesRead } = await handle.read(buf, 0, buf.length, start);
-		return bytesRead === buf.length ? buf : buf.subarray(0, bytesRead);
-	} finally {
-		await handle.close();
-	}
+async function readRange(handle: FileHandle, start: number, end: number): Promise<Uint8Array<ArrayBuffer>> {
+	const buf = new Uint8Array(new ArrayBuffer(end - start + 1));
+	const { bytesRead } = await handle.read(buf, 0, buf.length, start);
+	return bytesRead === buf.length ? buf : buf.subarray(0, bytesRead);
 }
 
 /** Serves `/shared-video/<token>` with Range support; `extraHeaders` lets the desktop route add CORS. */
@@ -137,32 +135,41 @@ export async function serveSharedVideo(req: Request, pathname: string, extraHead
 }
 
 /**
- * GET/HEAD for one file on disk with Range support. A 206 is a bounded in-memory slice because Bun
- * drops `Content-Length` from a stream body and answers chunked, which media engines handle less
- * reliably; a plain 200 streams the whole file. `baseHeaders` must carry the Content-Type.
+ * GET/HEAD for one file with Range support, from a path or from a handle the
+ * caller already opened and verified (this function then owns and closes it). A
+ * 206 is a bounded in-memory slice because Bun drops `Content-Length` from a
+ * stream body and answers chunked, which media engines handle less reliably; a
+ * plain 200 streams the whole file. `baseHeaders` must carry the Content-Type.
  */
-export async function serveFileBytes(req: Request, path: string, baseHeaders: Record<string, string>): Promise<Response> {
-	const size = statSync(path).size;
-	const headers: Record<string, string> = {
-		...baseHeaders,
-		"Accept-Ranges": "bytes",
-		"Cache-Control": "private, no-store",
-	};
-	const range = parseByteRange(req.headers.get("range"), size);
-	if (range === "invalid") {
-		return new Response(null, { status: 416, headers: { ...headers, "Content-Range": `bytes */${size}` } });
+export async function serveFileBytes(req: Request, source: string | FileHandle, baseHeaders: Record<string, string>): Promise<Response> {
+	const handle = typeof source === "string" ? await open(source, "r") : source;
+	let streaming = false;
+	try {
+		const size = (await handle.stat()).size;
+		const headers: Record<string, string> = {
+			...baseHeaders,
+			"Accept-Ranges": "bytes",
+			"Cache-Control": "private, no-store",
+		};
+		const range = parseByteRange(req.headers.get("range"), size);
+		if (range === "invalid") {
+			return new Response(null, { status: 416, headers: { ...headers, "Content-Range": `bytes */${size}` } });
+		}
+		if (!range) {
+			headers["Content-Length"] = String(size);
+			if (req.method === "HEAD" || size === 0) return new Response(null, { status: 200, headers });
+			streaming = true;
+			return new Response(fileRangeStream(handle, 0, size - 1), { status: 200, headers });
+		}
+		const { start } = range;
+		const end = Math.min(range.end, start + MAX_RANGE_RESPONSE_BYTES - 1);
+		headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+		headers["Content-Length"] = String(end - start + 1);
+		if (req.method === "HEAD") return new Response(null, { status: 206, headers });
+		return new Response(await readRange(handle, start, end), { status: 206, headers });
+	} finally {
+		if (!streaming) await handle.close().catch(() => {});
 	}
-	if (!range) {
-		headers["Content-Length"] = String(size);
-		if (req.method === "HEAD" || size === 0) return new Response(null, { status: 200, headers });
-		return new Response(fileRangeStream(path, 0, size - 1), { status: 200, headers });
-	}
-	const { start } = range;
-	const end = Math.min(range.end, start + MAX_RANGE_RESPONSE_BYTES - 1);
-	headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
-	headers["Content-Length"] = String(end - start + 1);
-	if (req.method === "HEAD") return new Response(null, { status: 206, headers });
-	return new Response(await readRange(path, start, end), { status: 206, headers });
 }
 
 /** Test hook: forget every minted token. */

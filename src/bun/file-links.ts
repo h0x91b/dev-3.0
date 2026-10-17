@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { readlinkSync, realpathSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
-import { FILE_LINK_CONTENT_TYPES, fileLinkExt } from "../shared/file-link-types";
+import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, fileLinkExt } from "../shared/file-link-types";
 import { serveFileBytes } from "./shared-video-stream";
 
 /**
@@ -121,18 +121,41 @@ function realOrNull(path: string, accept: (real: string) => boolean): string | n
 	}
 }
 
+type FileHandle = Awaited<ReturnType<typeof open>>;
+
 /** Known extension first; otherwise a NUL in the first 8 KB means binary, anything else is shown as text. */
-export async function fileLinkContentType(path: string): Promise<string> {
+async function fileLinkContentType(path: string, handle: FileHandle): Promise<string> {
 	const known = FILE_LINK_CONTENT_TYPES[fileLinkExt(path)];
 	if (known) return known;
-	const handle = await open(path, "r");
-	try {
-		const buf = new Uint8Array(SNIFF_BYTES);
-		const { bytesRead } = await handle.read(buf, 0, SNIFF_BYTES, 0);
-		return buf.subarray(0, bytesRead).includes(0) ? "application/octet-stream" : "text/plain; charset=utf-8";
-	} finally {
-		await handle.close();
+	const buf = new Uint8Array(SNIFF_BYTES);
+	const { bytesRead } = await handle.read(buf, 0, SNIFF_BYTES, 0);
+	return buf.subarray(0, bytesRead).includes(0) ? "application/octet-stream" : "text/plain; charset=utf-8";
+}
+
+/**
+ * Whether the file actually opened is the one `resolveFileLinkPath` checked: a
+ * folder swapped for a symlink between the check and the open would otherwise
+ * serve a file outside the scope. Linux names the opened file exactly; elsewhere
+ * its identity must match the checked path, which must still be real.
+ */
+async function openedFileIs(handle: FileHandle, path: string): Promise<boolean> {
+	if (process.platform === "linux") {
+		try {
+			return readlinkSync(`/proc/self/fd/${handle.fd}`) === path;
+		} catch {
+			// no procfs — fall through to the identity check
+		}
 	}
+	const [opened, named] = await Promise.all([handle.stat(), stat(path)]);
+	return opened.dev === named.dev && opened.ino === named.ino && realOrNull(path, (real) => real === path) !== null;
+}
+
+/** Opens the file `resolveFileLinkPath` checked, or returns null when what got opened is not that file. */
+export async function openCheckedFile(path: string): Promise<FileHandle | null> {
+	const handle = await open(path, "r");
+	if (await openedFileIs(handle, path)) return handle;
+	await handle.close().catch(() => {});
+	return null;
 }
 
 /** RFC 6266: an ASCII fallback for old clients plus the exact UTF-8 name. */
@@ -143,29 +166,32 @@ export function attachmentDisposition(name: string): string {
 
 /**
  * Opaque origin for everything a tab renders: no dev3 cookie, no same-origin RPC.
- * No forms or modals either — a page on the user's own dev3 host must not be
- * able to draw a convincing "enter your access code" prompt.
+ * Forms and modals are off as cheap hardening only — a scripted page can still
+ * draw its own fake prompt on the dev3 host (decision record, Risks).
  */
 export const FILE_LINK_SANDBOX = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads";
 
-/**
- * Served as files, never rendered on the dev3 origin: a PDF viewer cannot run
- * sandboxed, and its script engine is not worth trusting with the session.
- */
-const ATTACHMENT_ONLY = /^application\/pdf/;
-
 /** Video and audio play in the browser's own media document, which runs no page script and refuses a sandbox. */
 const UNSANDBOXED_MEDIA = /^(?:video|audio)\//;
+
+/** A ranged reply is buffered in memory (up to 8 MB), so a leaked token must not be able to stack them up. */
+const MAX_RANGED_IN_FLIGHT = 8;
+let rangedInFlight = 0;
 
 /** Serves `/file/<token>/<rel>`; `?download=1` turns any file into an attachment. */
 export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 	if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405 });
 	const path = resolveFileLinkPath(url.pathname);
 	if (!path) return new Response("Not Found", { status: 404 });
+	const ranged = req.headers.has("range");
+	if (ranged && rangedInFlight >= MAX_RANGED_IN_FLIGHT) return new Response("Busy", { status: 503, headers: { "Retry-After": "1" } });
+	let handle: FileHandle | null = null;
+	if (ranged) rangedInFlight++;
 	try {
-		if (!(await stat(path)).isFile()) return new Response("Not Found", { status: 404 });
-		const sniffed = await fileLinkContentType(path);
-		const download = url.searchParams.get("download") === "1" || ATTACHMENT_ONLY.test(sniffed);
+		handle = await openCheckedFile(path);
+		if (!handle || !(await handle.stat()).isFile()) return new Response("Not Found", { status: 404 });
+		const sniffed = await fileLinkContentType(path, handle);
+		const download = url.searchParams.get("download") === "1" || ATTACHMENT_ONLY_EXTS.has(fileLinkExt(path));
 		const contentType = download ? "application/octet-stream" : sniffed;
 		const headers: Record<string, string> = {
 			"Content-Type": contentType,
@@ -174,10 +200,15 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 		};
 		if (download) headers["Content-Disposition"] = attachmentDisposition(basename(path));
 		else if (!UNSANDBOXED_MEDIA.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
-		return await serveFileBytes(req, path, headers);
+		const owned = handle;
+		handle = null;
+		return await serveFileBytes(req, owned, headers);
 	} catch {
 		// Unreadable, or gone between the checks — never let Bun's error page echo the path.
 		return new Response("Not Found", { status: 404 });
+	} finally {
+		await handle?.close().catch(() => {});
+		if (ranged) rangedInFlight--;
 	}
 }
 

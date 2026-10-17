@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { DOWNLOAD_TTL_MS, mintFileLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
@@ -344,21 +344,30 @@ async function nearestCheckout(dir: string): Promise<string | null> {
 	}
 }
 
+function realOr(path: string): string {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		return path;
+	}
+}
+
 /**
  * Only a page (HTML/SVG) strictly inside a task worktree or project checkout gets
- * its folder, so its relative assets load. Never a checkout root, and never dev3's
- * own storage (uploads, shared media, task folders, transcripts), which sits
- * outside any checkout; everything else is linked as its one file.
+ * its folder, so its relative assets load. Decided on the real folder (the link
+ * pins it), never inside a dot-folder of the checkout (`.git/`), never at a
+ * checkout root, never in dev3's own storage; everything else is one file.
  */
 async function linkCoversFolder(path: string): Promise<boolean> {
 	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(path))) return false;
-	const dir = dirname(path);
+	const dir = realOr(dirname(path));
 	const checkout = await nearestCheckout(dir);
 	if (!checkout || checkout === dir) return false;
-	const worktreesRoot = join(DEV3_HOME, "worktrees");
+	if (relative(checkout, dir).split(sep).some((part) => part.startsWith("."))) return false;
+	const worktreesRoot = realOr(join(DEV3_HOME, "worktrees"));
 	// A checkout that contains dev3's storage (a dotfiles repo at ~) is not a task's checkout.
 	if (isUnder(worktreesRoot, checkout)) return false;
-	return isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, root));
+	return isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, realOr(root)));
 }
 
 function absolutePath(raw: string): string {
@@ -366,14 +375,14 @@ function absolutePath(raw: string): string {
 	return resolvePath(raw);
 }
 
-async function createFileLink(params: { path: string }): Promise<{ viewUrl: string; downloadUrl: string }> {
-	log.info("→ createFileLink", { path: params.path });
+/** One link per click: a 12 h view link (folder-scoped for a page), or a 60 s single-file download link. */
+async function createFileLink(params: { path: string; download?: boolean }): Promise<{ url: string }> {
+	log.info("→ createFileLink", { path: params.path, download: !!params.download });
 	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
+	if (params.download) return { url: `${mintFileLink({ kind: "file", path }, { ttlMs: DOWNLOAD_TTL_MS })}?download=1` };
 	const scope = (await linkCoversFolder(path)) ? { kind: "dir" as const, root: dirname(path), entry: basename(path) } : { kind: "file" as const, path };
-	const viewUrl = mintFileLink(scope);
-	const downloadUrl = `${mintFileLink({ kind: "file", path }, { ttlMs: DOWNLOAD_TTL_MS })}?download=1`;
-	return { viewUrl, downloadUrl };
+	return { url: mintFileLink(scope) };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
@@ -387,6 +396,8 @@ async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
 	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
 	if (!WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path))) throw new Error("This file type is not opened on Windows");
+	// WSLENV `/p` treats `:` as a list separator, so the path would arrive as a different file.
+	if (path.includes(":")) throw new Error("This file name cannot be opened on Windows");
 	await openOnWindowsHost(path);
 }
 

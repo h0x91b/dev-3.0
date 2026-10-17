@@ -1311,10 +1311,10 @@ export type AppRPCSchema = {
 				params: { path: string };
 				response: FilePreviewResult;
 			};
-			/** Mint a capability URL (served by the remote server) that opens or downloads a previewed file in a browser tab. */
+			/** Mint a capability URL (served by the remote server) that opens a previewed file in a browser tab, or downloads it. */
 			createFileLink: {
-				params: { path: string };
-				response: { viewUrl: string; downloadUrl: string };
+				params: { path: string; download?: boolean };
+				response: { url: string };
 			};
 			/** Whether the server runs under WSL and can open files on that Windows desktop. */
 			getWindowsHostOpen: {

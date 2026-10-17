@@ -310,7 +310,8 @@ describe("createFileLink", () => {
 		mkdirSync(join(worktree, "docs", "report", "assets"), { recursive: true });
 		writeFileSync(join(worktree, "docs", "report", "index.html"), "<link rel=stylesheet href=assets/a.css>");
 		writeFileSync(join(worktree, "docs", "report", "assets", "a.css"), "body{}");
-		const { viewUrl, downloadUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "report", "index.html") });
+		const viewUrl = (await appHandlers.createFileLink({ path: join(worktree, "docs", "report", "index.html") })).url;
+		const downloadUrl = (await appHandlers.createFileLink({ path: join(worktree, "docs", "report", "index.html"), download: true })).url;
 		expect(viewUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/index\.html$/);
 		expect(resolveFileLinkPath(viewUrl.replace(/index\.html$/, "assets/a.css"))).toBe(realpathSync(join(worktree, "docs", "report", "assets", "a.css")));
 		// The download link is its own single-file token, not the folder link.
@@ -320,7 +321,7 @@ describe("createFileLink", () => {
 	}));
 
 	it("links a non-page as its one file, even inside a checkout", () => withCheckout(worktree, async () => {
-		const { viewUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
+		const { url: viewUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
 		expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(join(worktree, "docs", "architecture.md")));
 		expect(resolveFileLinkPath(viewUrl.replace(/architecture\.md$/, "components/scout.md"))).toBeNull();
 	}));
@@ -331,7 +332,7 @@ describe("createFileLink", () => {
 		writeFileSync(join(tmp, "loose", "page.html"), "<p>outside a checkout</p>");
 		writeFileSync(join(tmp, "loose", "secret.txt"), "x");
 		for (const page of [join(worktree, "index.html"), join(tmp, "loose", "page.html")]) {
-			const { viewUrl } = await appHandlers.createFileLink({ path: page });
+			const { url: viewUrl } = await appHandlers.createFileLink({ path: page });
 			expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(page));
 			expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, page.endsWith("index.html") ? "notes.txt" : "secret.txt"))).toBeNull();
 		}
@@ -348,17 +349,47 @@ describe("createFileLink", () => {
 		writeFileSync(join(uploads, "upload-2-cd-shot.png"), "PNG");
 		writeFileSync(join(taskDir, "report.html"), "<p>beside the checkout</p>");
 		writeFileSync(join(taskDir, "conversations", "c.json"), "{}");
-		const svg = await appHandlers.createFileLink({ path: join(uploads, "upload-1-ab-pic.svg") });
-		expect(resolveFileLinkPath(svg.viewUrl.replace(/[^/]+$/, "upload-2-cd-shot.png"))).toBeNull();
-		const report = await appHandlers.createFileLink({ path: join(taskDir, "report.html") });
-		expect(resolveFileLinkPath(report.viewUrl.replace(/[^/]+$/, "conversations/c.json"))).toBeNull();
+		const check = async () => {
+			const svg = await appHandlers.createFileLink({ path: join(uploads, "upload-1-ab-pic.svg") });
+			expect(resolveFileLinkPath(svg.url.replace(/[^/]+$/, "upload-2-cd-shot.png"))).toBeNull();
+			const report = await appHandlers.createFileLink({ path: join(taskDir, "report.html") });
+			expect(resolveFileLinkPath(report.url.replace(/[^/]+$/, "conversations/c.json"))).toBeNull();
+		};
+		await check();
+		// Again with a checkout ABOVE dev3's storage (a dotfiles repo at ~): it must not count.
+		mkdirSync(join(tmp, ".git"), { recursive: true });
+		try {
+			await check();
+		} finally {
+			rmSync(join(tmp, ".git"), { recursive: true, force: true });
+		}
 	});
+
+	it("never gives a page inside a dot-folder such as .git its folder", () => withCheckout(worktree, async () => {
+		writeFileSync(join(worktree, ".git", "page.html"), "<p>inside .git</p>");
+		writeFileSync(join(worktree, ".git", "config"), "[remote] url = https://user:token@host/x");
+		const { url } = await appHandlers.createFileLink({ path: join(worktree, ".git", "page.html") });
+		expect(resolveFileLinkPath(url.replace(/[^/]+$/, "config"))).toBeNull();
+	}));
+
+	it("decides on the real folder, so a symlinked folder cannot point a folder link outside the checkout", () => withCheckout(worktree, async () => {
+		mkdirSync(join(tmp, "elsewhere"), { recursive: true });
+		writeFileSync(join(tmp, "elsewhere", "index.html"), "<p>elsewhere</p>");
+		writeFileSync(join(tmp, "elsewhere", "notes.txt"), "outside");
+		symlinkSync(join(tmp, "elsewhere"), join(worktree, "linked-docs"));
+		try {
+			const { url } = await appHandlers.createFileLink({ path: join(worktree, "linked-docs", "index.html") });
+			expect(resolveFileLinkPath(url.replace(/[^/]+$/, "notes.txt"))).toBeNull();
+		} finally {
+			rmSync(join(worktree, "linked-docs"));
+		}
+	}));
 
 	it("covers only the one file outside any project", async () => {
 		const loose = join(tmpdir(), `dev3-file-link-${process.pid}.html`);
 		writeFileSync(loose, "<p>loose</p>");
 		try {
-			const { viewUrl } = await appHandlers.createFileLink({ path: loose });
+			const { url: viewUrl } = await appHandlers.createFileLink({ path: loose });
 			expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(loose));
 			expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, "other.txt"))).toBeNull();
 		} finally {
@@ -395,6 +426,14 @@ describe("openFileOnWindowsHost", () => {
 		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
 		await appHandlers.openFileOnWindowsHost({ path: join(tmp, "notes.txt") });
 		expect(wsl.openOnWindowsHost).toHaveBeenCalledWith(join(tmp, "notes.txt"));
+	});
+
+	it("refuses a path with a colon, which WSLENV would split into a different file", async () => {
+		wsl.isWslHost.mockReturnValue(true);
+		wsl.openOnWindowsHost.mockClear();
+		writeFileSync(join(tmp, "x:y.txt"), "1");
+		await expect(appHandlers.openFileOnWindowsHost({ path: join(tmp, "x:y.txt") })).rejects.toThrow("cannot be opened on Windows");
+		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
 	});
 
 	it("refuses scripts and programs, which Windows' default action would run", async () => {

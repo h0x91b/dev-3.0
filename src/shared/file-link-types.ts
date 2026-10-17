@@ -44,8 +44,11 @@ export const FILE_LINK_CONTENT_TYPES: Readonly<Record<string, string>> = {
 /** Pages whose relative CSS/images/scripts need the link to cover their folder. */
 export const FILE_LINK_PAGE_EXTS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".svg"]);
 
-/** Assets a page loads rather than files a user opens, and PDF, which the server only ever sends as a download. */
-const NOT_OPENED_IN_TAB = new Set([".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".otf", ".ico", ".pdf"]);
+/** Never rendered on the dev3 origin, only sent as a download: a PDF viewer cannot run sandboxed. */
+export const ATTACHMENT_ONLY_EXTS: ReadonlySet<string> = new Set([".pdf"]);
+
+/** Assets a page loads rather than files a user opens, plus the download-only types. */
+const NOT_OPENED_IN_TAB = new Set([".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".otf", ".ico", ...ATTACHMENT_ONLY_EXTS]);
 
 /** Extensions a tab displays rather than downloads. */
 export const TAB_VIEWABLE_EXTS: ReadonlySet<string> = new Set(
@@ -54,11 +57,11 @@ export const TAB_VIEWABLE_EXTS: ReadonlySet<string> = new Set(
 
 /**
  * Documents and media that open safely with their Windows default app. An
- * allowlist on purpose: the default verb RUNS scripts and programs
- * (`.js` under Windows Script Host, `.bat`, `.exe`, `.lnk`, …).
+ * allowlist on purpose: the default verb RUNS scripts and programs, and CSV/PDF
+ * open in apps that run formulas or document script (Excel, Acrobat).
  */
 export const WINDOWS_OPEN_SAFE_EXTS: ReadonlySet<string> = new Set([
-	".html", ".htm", ".svg", ".md", ".markdown", ".txt", ".log", ".csv", ".json", ".pdf",
+	".html", ".htm", ".svg", ".md", ".markdown", ".txt", ".log", ".json",
 	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".mp4", ".webm", ".mp3", ".wav", ".ogg",
 ]);
 

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, openCheckedFile, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
 
 const ROOT = `${process.env.DEV3_TEST_ROOT}/file-links`;
 const REPORT = join(ROOT, "worktree", "report");
@@ -192,6 +192,31 @@ describe("serveFileLink", () => {
 		writeFileSync(gone, "x");
 		rmSync(gone);
 		expect((await get(`${base}gone.txt`)).status).toBe(404);
+	});
+});
+
+describe("openCheckedFile", () => {
+	// The race the reviewer won 20 times in ~900 requests: the path is checked,
+	// then a folder on it is swapped for a symlink before the file is opened.
+	it("refuses to hand over a file reached through a folder swapped in after the check", async () => {
+		const base = join(ROOT, "swap");
+		mkdirSync(join(base, "docs"), { recursive: true });
+		mkdirSync(join(base, "secret"), { recursive: true });
+		writeFileSync(join(base, "docs", "data.txt"), "public");
+		writeFileSync(join(base, "secret", "data.txt"), "SECRET-KEY");
+		const link = mintFileLink({ kind: "dir", root: join(base, "docs"), entry: "data.txt" });
+		const checked = resolveFileLinkPath(link);
+		expect(checked).toBe(join(base, "docs", "data.txt"));
+
+		renameSync(join(base, "docs"), join(base, "real-docs"));
+		symlinkSync(join(base, "secret"), join(base, "docs"));
+		expect(await openCheckedFile(checked!)).toBeNull();
+
+		rmSync(join(base, "docs"));
+		renameSync(join(base, "real-docs"), join(base, "docs"));
+		const handle = await openCheckedFile(checked!);
+		expect(handle).not.toBeNull();
+		await handle!.close();
 	});
 });
 
