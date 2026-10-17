@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { constants as fsConstants, readlinkSync, realpathSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
-import { basename, relative, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, PAGE_ASSET_EXTS, fileLinkExt } from "../shared/file-link-types";
 import { spawn } from "./spawn";
 import { serveFileBytes } from "./shared-video-stream";
@@ -22,23 +22,26 @@ const SNIFF_BYTES = 8192;
 
 /**
  * `dir` also serves the entry's folder tree, so a page's relative assets resolve; `file` serves one
- * file. `ignore`: refuse files that checkout's `.gitignore` excludes (local secrets such as
- * `config/master.key`), except those matched by the very rule that ignores the page itself.
+ * file. `ignore`: refuse what `checkout` gitignores under the folder (local secrets such as
+ * `config/master.key`) — except page assets when the page itself is ignored build output.
  */
 export type FileLinkScope =
-	| { kind: "dir"; root: string; entry: string; ignore?: { checkout: string; pageRule: string | null } }
+	| { kind: "dir"; root: string; entry: string; ignore?: IgnoreScope }
 	| { kind: "file"; path: string };
+
+export interface IgnoreScope {
+	checkout: string;
+	pageIgnored: boolean;
+}
 
 /** Scope pinned to real paths at mint time, so a symlink swapped in later cannot widen it. */
 type PinnedScope =
-	| { kind: "dir"; realRoot: string; entry: string; ignore?: { checkout: string; pageRule: string | null } }
+	| { kind: "dir"; realRoot: string; entry: string; ignore?: IgnoreScope }
 	| { kind: "file"; path: string; realPath: string };
 
 interface Link {
 	scope: PinnedScope;
 	expiresAt: number;
-	/** Per-path gitignore decisions (settled or in flight), so a page's assets cost one git run each. */
-	ignoreVerdicts?: Map<string, Promise<boolean>>;
 }
 
 /** Insertion order is recency: a lookup moves its link to the end, so the cap evicts the least recently used. */
@@ -99,9 +102,8 @@ export function resolveFileLinkPath(pathname: string, now = Date.now()): string 
 interface FileLinkTarget {
 	path: string;
 	token: string;
-	link: Link;
-	/** Set when the file must also pass the gitignore filter (folder links, files other than the page). */
-	ignore?: { checkout: string; pageRule: string | null };
+	/** Set for a folder link's files other than the page: they must also pass the gitignore filter. */
+	ignore?: IgnoreScope & { folder: string };
 }
 
 function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarget | null {
@@ -128,7 +130,7 @@ function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarg
 	if (scope.kind === "file") {
 		if (segments.length !== 1 || segments[0] !== basename(scope.path)) return null;
 		const path = realOrNull(scope.path, (real) => real === scope.realPath);
-		return path ? { path, token, link } : null;
+		return path ? { path, token } : null;
 	}
 	const target = resolve(scope.realRoot, ...segments);
 	if (!isInside(target, scope.realRoot)) return null;
@@ -140,86 +142,82 @@ function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarg
 		return isEntry || !parts.some((part) => part.startsWith("."));
 	});
 	if (!path) return null;
-	return { path, token, link, ignore: isEntry ? undefined : scope.ignore };
+	return { path, token, ignore: isEntry || !scope.ignore ? undefined : { ...scope.ignore, folder: scope.realRoot } };
 }
 
-export type GitIgnoreVerdict = { state: "ignored"; rule: string } | { state: "not-ignored" } | { state: "unknown" };
+/** Gitignored paths under a folder, relative to the checkout with `/` separators; a folder entry ends in `/`. */
+interface IgnoreList {
+	files: Set<string>;
+	dirs: string[];
+}
 
-const MAX_GIT_CHECKS = 4;
-const MAX_GIT_QUEUE = 64;
-let gitChecksRunning = 0;
-let gitChecksQueued = 0;
-const GIT_CHECK_TIMEOUT_MS = 5000;
+const IGNORE_LIST_TTL_MS = 30_000;
+const IGNORE_LIST_TIMEOUT_MS = 10_000;
+const ignoreLists = new Map<string, { at: number; list: Promise<IgnoreList | null> }>();
 
-/** The pattern of a `source:line:pattern` field; git quotes a source holding special characters. */
-function rulePattern(rule: string): string {
-	let rest = rule;
-	if (rest.startsWith("\"")) {
-		const close = rest.indexOf("\"", 1);
-		rest = close > 0 ? rest.slice(close + 1) : rest;
-	} else {
-		rest = rest.slice(rest.indexOf(":"));
-	}
-	return rest.replace(/^:\d*:/, "");
+function toPosix(path: string): string {
+	return sep === "\\" ? path.split(sep).join("/") : path;
 }
 
 /**
- * `git check-ignore -v -n` for `path`: prints `source:line:pattern<TAB>path` for the
- * last matching rule and `::<TAB>path` when none matches; a `!pattern` match means
- * re-included. Anything else — no git, a crash, a timeout, a full queue — is
- * unknown, which every caller treats as "refuse".
+ * One `git ls-files --others --ignored --exclude-standard --directory -z` for the
+ * folder: NUL-separated paths, no rule text to parse, a wholly ignored folder
+ * collapsed to `dir/`. `./` keeps a name starting with `:` from reading as
+ * pathspec magic. Any failure is null, which every caller treats as "refuse".
  */
-export async function gitIgnoreVerdict(checkout: string, path: string): Promise<GitIgnoreVerdict> {
-	if (gitChecksRunning >= MAX_GIT_CHECKS && gitChecksQueued >= MAX_GIT_QUEUE) return { state: "unknown" };
-	gitChecksQueued++;
+async function runIgnoreList(checkout: string, folder: string): Promise<IgnoreList | null> {
 	try {
-		while (gitChecksRunning >= MAX_GIT_CHECKS) await new Promise((resolve) => setTimeout(resolve, 10));
-	} finally {
-		gitChecksQueued--;
-	}
-	gitChecksRunning++;
-	try {
-		const proc = spawn(["git", "check-ignore", "-v", "-n", "--", relative(checkout, path)], { cwd: checkout, stdout: "pipe", stderr: "ignore" });
-		const timer = setTimeout(() => proc.kill(), GIT_CHECK_TIMEOUT_MS);
+		const rel = toPosix(relative(checkout, folder)) || ".";
+		const proc = spawn(["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--", `./${rel}`], { cwd: checkout, stdout: "pipe", stderr: "ignore" });
+		const timer = setTimeout(() => proc.kill(), IGNORE_LIST_TIMEOUT_MS);
 		const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 		clearTimeout(timer);
-		const line = stdout.split("\n")[0] ?? "";
-		const tab = line.indexOf("\t");
-		if ((code !== 0 && code !== 1) || tab < 0) return { state: "unknown" };
-		const rule = line.slice(0, tab);
-		if (rule === "::" || rulePattern(rule).startsWith("!")) return { state: "not-ignored" };
-		return { state: "ignored", rule };
+		if (code !== 0) return null;
+		const list: IgnoreList = { files: new Set(), dirs: [] };
+		for (const entry of stdout.split("\0")) {
+			if (!entry) continue;
+			if (entry.endsWith("/")) list.dirs.push(entry);
+			else list.files.add(entry);
+		}
+		return list;
 	} catch {
-		return { state: "unknown" };
-	} finally {
-		gitChecksRunning--;
+		return null;
 	}
 }
 
-async function decideIgnore(target: FileLinkTarget & { ignore: NonNullable<FileLinkTarget["ignore"]> }): Promise<"allow" | "deny" | "unknown"> {
-	const { ignore, path } = target;
-	const verdict = await gitIgnoreVerdict(ignore.checkout, path);
-	if (verdict.state === "unknown") return "unknown";
-	if (verdict.state === "not-ignored") return "allow";
-	// Under the page's own rule, only what a page loads: a page in `tmp/` must not expose `tmp/secret.txt`.
-	return verdict.rule === ignore.pageRule && PAGE_ASSET_EXTS.has(fileLinkExt(path)) ? "allow" : "deny";
+/** Shared by every link and request on the folder, refreshed after 30 s; a failed listing is not kept. */
+function ignoreListFor(checkout: string, folder: string, now = Date.now()): Promise<IgnoreList | null> {
+	const key = `${checkout}\0${folder}`;
+	const cached = ignoreLists.get(key);
+	if (cached && now - cached.at < IGNORE_LIST_TTL_MS) return cached.list;
+	const list = runIgnoreList(checkout, folder);
+	ignoreLists.set(key, { at: now, list });
+	void list.then((result) => {
+		if (!result && ignoreLists.get(key)?.list === list) ignoreLists.delete(key);
+	});
+	return list;
 }
 
-/** One git run per path and link, shared by concurrent requests; only an unknown verdict is retried. */
+function isListedIgnored(list: IgnoreList, checkout: string, path: string): boolean {
+	const rel = toPosix(relative(checkout, path));
+	return list.files.has(rel) || list.dirs.some((dir) => rel.startsWith(dir));
+}
+
 async function passesIgnoreFilter(target: FileLinkTarget): Promise<boolean> {
-	const { ignore } = target;
+	const { ignore, path } = target;
 	if (!ignore) return true;
-	const verdicts = (target.link.ignoreVerdicts ??= new Map());
-	let decision = verdicts.get(target.path);
-	if (!decision) {
-		const pending = decideIgnore({ ...target, ignore });
-		decision = pending.then((outcome) => outcome === "allow");
-		verdicts.set(target.path, decision);
-		void pending.then((outcome) => {
-			if (outcome === "unknown") verdicts.delete(target.path);
-		});
-	}
-	return decision;
+	const list = await ignoreListFor(ignore.checkout, ignore.folder);
+	if (!list) return false;
+	if (!isListedIgnored(list, ignore.checkout, path)) return true;
+	// An ignored page's own assets ride along, but only what a page loads — never `tmp/secret.txt`.
+	return ignore.pageIgnored && PAGE_ASSET_EXTS.has(fileLinkExt(path));
+}
+
+/** A folder link for a page inside `checkout`, with the gitignore filter set up for its folder. */
+export async function mintFolderLink(realFile: string, checkout: string): Promise<string> {
+	const list = await ignoreListFor(checkout, dirname(realFile));
+	const pageIgnored = list ? isListedIgnored(list, checkout, realFile) : false;
+	return mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignore: { checkout, pageIgnored } }, { resolved: true });
 }
 
 function realOrNull(path: string, accept: (real: string) => boolean): string | null {
@@ -360,6 +358,8 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 			"Content-Type": contentType,
 			"X-Content-Type-Options": "nosniff",
 			"Referrer-Policy": "no-referrer",
+			// Its own browsing-context group, so the page does not share a process with the live app.
+			"Cross-Origin-Opener-Policy": "same-origin",
 		};
 		if (download) headers["Content-Disposition"] = attachmentDisposition(basename(path));
 		else if (!UNSANDBOXED_MEDIA.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
@@ -393,6 +393,7 @@ export function openFileLinkResponses(): number {
 /** Test hook: forget every minted link. */
 export function resetFileLinks(): void {
 	links.clear();
+	ignoreLists.clear();
 	streamingByToken.clear();
 	streaming = 0;
 }

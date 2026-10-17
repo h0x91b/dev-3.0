@@ -2,9 +2,9 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
-import { DOWNLOAD_TTL_MS, gitIgnoreVerdict, mintFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
@@ -319,10 +319,11 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 	return { kind: "text", content, truncated, size };
 }
 
-/** The previewable file at `path`, or an Error naming why it cannot be handed over. */
-async function assertPreviewableFile(path: string): Promise<void> {
+/** The previewable file at `path` (or one under `alsoUnder`), or an Error naming why it cannot be handed over. */
+async function assertPreviewableFile(path: string, alsoUnder?: string): Promise<void> {
 	if (!isAbsolute(path) || path.includes("\0")) throw new Error("Invalid file path");
-	if (!(await isTerminalPathAllowed(path))) throw new Error("Path is outside the allowed directories");
+	const allowed = (alsoUnder !== undefined && isUnder(realOr(path), alsoUnder)) || (await isTerminalPathAllowed(path));
+	if (!allowed) throw new Error("Path is outside the allowed directories");
 	let st: Stats;
 	try {
 		st = await stat(path);
@@ -383,16 +384,14 @@ function absolutePath(raw: string): string {
 async function createFileLink(params: { path: string; download?: boolean }): Promise<{ url: string }> {
 	log.info("→ createFileLink", { path: params.path, download: !!params.download });
 	const path = absolutePath(params.path);
-	await assertPreviewableFile(path);
+	// dev3's own media and uploads live under DEV3_HOME, which need not sit inside the home directory.
+	await assertPreviewableFile(path, realOr(join(DEV3_HOME, "worktrees")));
 	// Resolved once: the folder decision and the pinned scope must be the same path.
 	const realFile = realpathSync.native(path);
 	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
 	const checkout = await folderLinkCheckout(path, realFile);
 	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
-	// Ignored files stay out, except page assets (CSS, scripts, images…) the page's own ignore rule covers.
-	const page = await gitIgnoreVerdict(checkout, realFile);
-	const ignore = { checkout, pageRule: page.state === "ignored" ? page.rule : null };
-	return { url: mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignore }, { resolved: true }) };
+	return { url: await mintFolderLink(realFile, checkout) };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
