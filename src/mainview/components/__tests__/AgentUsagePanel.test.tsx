@@ -34,6 +34,7 @@ function accounts(): AgentAccountsState {
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 		omp: { accounts: [], activeId: null },
+		pi: { accounts: [], activeId: null },
 	};
 }
 
@@ -58,6 +59,7 @@ function sameEmailAccounts(): AgentAccountsState {
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 		omp: { accounts: [], activeId: null },
+		pi: { accounts: [], activeId: null },
 	};
 }
 

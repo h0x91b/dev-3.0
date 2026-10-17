@@ -1,5 +1,7 @@
 # omp's live models ride the configId as `<preset>|model=<selector>`
 
+> Partly superseded on 2026-10-17 by `decisions/2026/10/17/pi-managed-accounts-share-the-agent-dir-engine.md`: `src/bun/omp-live-models.ts` is now `src/bun/agent-dir-live-models.ts` (`getAgentDirLiveModels`), serving pi as well.
+
 ## Context
 
 omp reaches 60+ providers, so its presets pin no model and omp picks its own startup model — for an install with API keys in the environment that was `cerebras/zai-glm-4.7`, because omp takes the first provider default it finds (`pickDefaultAvailableModel`, can1357/oh-my-pi @a536558) and the openai-codex default (`gpt-5.5`) is no longer in that provider's catalog. Users need the models their account actually has, in the launch picker.

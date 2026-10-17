@@ -13,35 +13,35 @@ import {
 	discardStagedLogin,
 	STAGED_LOGIN_MARKER,
 	sweepAbandonedStagedLogins,
-	completeOmpLogin,
+	completeAgentDirLogin,
 	getActiveClaudeConfigDir,
 	getActiveClaudeSessionEnv,
 	getActiveCodexSessionEnv,
-	getActiveOmpSessionEnv,
+	getActiveAgentDirSessionEnv,
 	getClaudeApiProfileDraft,
 	importCurrentClaudeAccount,
 	importCurrentCodexAccount,
-	isPrivateOmpEntry,
+	isPrivateAgentDirEntry,
 	listAgentAccounts,
-	ompAccountDir,
+	agentDirAccountDir,
 	prepareClaudeLogin,
 	prepareCodexLogin,
 	LoginNotReadyError,
-	prepareOmpLogin,
+	prepareAgentDirLogin,
 	registeredOutputStyleName,
 	removeAgentAccount,
 	renameAgentAccount,
 	setActiveClaudeAccount,
 	setActiveCodexAccount,
 	stagedLoginHasIdentity,
-	setActiveOmpAccount,
+	setActiveAgentDirAccount,
 	updateClaudeApiProfile,
 	claudeAuthStatusMismatch,
 	parseClaudeAuthStatus,
 	type AccountPaths,
 	type ClaudeAuthStatusProbe,
 } from "../agent-accounts";
-import { claudeApiProfileEnvKeys, ENV_UNSET, type OmpLogin } from "../../shared/agent-accounts";
+import { claudeApiProfileEnvKeys, ENV_UNSET, type ProviderLogin } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -145,6 +145,7 @@ beforeEach(() => {
 		claudeJson: join(root, ".claude.json"),
 		codexHome: join(root, ".codex"),
 		ompAgentHome: join(root, ".omp", "agent"),
+		piAgentHome: join(root, ".pi", "agent"),
 	};
 	vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
 });
@@ -996,7 +997,7 @@ describe("listAgentAccounts", () => {
 });
 
 describe("omp accounts", () => {
-	const chatgpt: OmpLogin = { provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" };
+	const chatgpt: ProviderLogin = { provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" };
 
 	function seedOmpAgentHome() {
 		const home = paths.ompAgentHome!;
@@ -1008,24 +1009,24 @@ describe("omp accounts", () => {
 		writeFileSync(join(home, "models.db"), "");
 	}
 
-	async function addOmpAccount(logins: OmpLogin[] = [chatgpt]) {
-		const { accountId } = await prepareOmpLogin(paths);
-		return completeOmpLogin(accountId, paths, async () => logins);
+	async function addOmpAccount(logins: ProviderLogin[] = [chatgpt]) {
+		const { accountId } = await prepareAgentDirLogin("omp", paths);
+		return completeAgentDirLogin("omp", accountId, paths, async () => logins);
 	}
 
 	it("keeps sessions and every SQLite file private, shares the rest", () => {
 		for (const entry of ["agent.db", "agent.db-wal", "models.db-shm", "sessions", "cache", "auth-broker.token"]) {
-			expect(isPrivateOmpEntry(entry)).toBe(true);
+			expect(isPrivateAgentDirEntry("omp", entry)).toBe(true);
 		}
 		for (const entry of ["config.yml", "skills", "extensions", "models.yml", "AGENTS.md"]) {
-			expect(isPrivateOmpEntry(entry)).toBe(false);
+			expect(isPrivateAgentDirEntry("omp", entry)).toBe(false);
 		}
 	});
 
 	it("prepares a fresh agent dir linking the user's config but not their credentials", async () => {
 		seedOmpAgentHome();
-		const { accountId, loginCommand, launch } = await prepareOmpLogin(paths);
-		const dir = ompAccountDir(accountId, paths);
+		const { accountId, loginCommand, launch } = await prepareAgentDirLogin("omp", paths);
+		const dir = agentDirAccountDir("omp", accountId, paths);
 		expect(loginCommand).toBe(`PI_CODING_AGENT_DIR='${dir}' omp login`);
 		expect(launch).toEqual({ command: "omp", args: ["login"], env: { PI_CODING_AGENT_DIR: dir }, cwd: dir });
 		expect(existsSync(join(dir, STAGED_LOGIN_MARKER))).toBe(true);
@@ -1039,20 +1040,20 @@ describe("omp accounts", () => {
 	});
 
 	it("keeps waiting on an agent dir with no sign-in, and on a listing that fails", async () => {
-		const { accountId } = await prepareOmpLogin(paths);
-		await expect(completeOmpLogin(accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
-		const failing = async (): Promise<OmpLogin[]> => {
+		const { accountId } = await prepareAgentDirLogin("omp", paths);
+		await expect(completeAgentDirLogin("omp", accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
+		const failing = async (): Promise<ProviderLogin[]> => {
 			throw new Error("omp usage accounts exited with code 1");
 		};
-		await expect(completeOmpLogin(accountId, paths, failing)).rejects.toBeInstanceOf(LoginNotReadyError);
+		await expect(completeAgentDirLogin("omp", accountId, paths, failing)).rejects.toBeInstanceOf(LoginNotReadyError);
 		expect((await listAgentAccounts(paths)).omp.accounts).toHaveLength(0);
 	});
 
 	it("asks omp again only after its auth store changed", async () => {
-		const { accountId } = await prepareOmpLogin(paths);
-		const dir = ompAccountDir(accountId, paths);
+		const { accountId } = await prepareAgentDirLogin("omp", paths);
+		const dir = agentDirAccountDir("omp", accountId, paths);
 		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(true);
-		await expect(completeOmpLogin(accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
+		await expect(completeAgentDirLogin("omp", accountId, paths, async () => [])).rejects.toBeInstanceOf(LoginNotReadyError);
 		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(false);
 		writeFileSync(join(dir, "agent.db"), "x");
 		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(true);
@@ -1060,19 +1061,19 @@ describe("omp accounts", () => {
 
 	it("a verified login drops the staged marker and can no longer be discarded", async () => {
 		const account = await addOmpAccount();
-		const dir = ompAccountDir(account.id, paths);
+		const dir = agentDirAccountDir("omp", account.id, paths);
 		expect(existsSync(join(dir, STAGED_LOGIN_MARKER))).toBe(false);
 		expect(discardStagedLogin("omp", account.id, paths)).toBe(false);
 		expect(existsSync(dir)).toBe(true);
 	});
 
 	it("discards an unverified staged dir and sweeps an abandoned one", async () => {
-		const { accountId } = await prepareOmpLogin(paths);
+		const { accountId } = await prepareAgentDirLogin("omp", paths);
 		expect(discardStagedLogin("omp", accountId, paths)).toBe(true);
-		expect(existsSync(ompAccountDir(accountId, paths))).toBe(false);
-		const stale = await prepareOmpLogin(paths);
+		expect(existsSync(agentDirAccountDir("omp", accountId, paths))).toBe(false);
+		const stale = await prepareAgentDirLogin("omp", paths);
 		expect(sweepAbandonedStagedLogins("omp", 60_000, Date.now() + 120_000, paths)).toBe(1);
-		expect(existsSync(ompAccountDir(stale.accountId, paths))).toBe(false);
+		expect(existsSync(agentDirAccountDir("omp", stale.accountId, paths))).toBe(false);
 	});
 
 	it("registers a verified login as the default, labelled by its email", async () => {
@@ -1091,31 +1092,31 @@ describe("omp accounts", () => {
 	});
 
 	it("injects nothing while no omp account exists", async () => {
-		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({});
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({});
 	});
 
 	it("points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login", async () => {
 		const account = await addOmpAccount();
-		const dir = ompAccountDir(account.id, paths);
-		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
-		expect(await getActiveOmpSessionEnv(null, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
-		await setActiveOmpAccount(null, paths);
-		expect(await getActiveOmpSessionEnv(undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
-		expect(await getActiveOmpSessionEnv(account.id, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+		const dir = agentDirAccountDir("omp", account.id, paths);
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+		expect(await getActiveAgentDirSessionEnv("omp", null, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		await setActiveAgentDirAccount("omp", null, paths);
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		expect(await getActiveAgentDirSessionEnv("omp", account.id, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
 	});
 
 	it("links entries that appeared in ~/.omp/agent after the account was created", async () => {
 		const account = await addOmpAccount();
 		mkdirSync(join(paths.ompAgentHome!, "extensions"), { recursive: true });
-		await getActiveOmpSessionEnv(account.id, paths);
-		expect(lstatSync(join(ompAccountDir(account.id, paths), "extensions")).isSymbolicLink()).toBe(true);
+		await getActiveAgentDirSessionEnv("omp", account.id, paths);
+		expect(lstatSync(join(agentDirAccountDir("omp", account.id, paths), "extensions")).isSymbolicLink()).toBe(true);
 	});
 
 	it("re-verifying an account refreshes its sign-ins without a second row", async () => {
 		const account = await addOmpAccount();
-		await completeOmpLogin(account.id, paths, async () => [chatgpt, { provider: "xai-oauth", identityKey: "email:x@example.com", orgName: null }]);
+		await completeAgentDirLogin("omp", account.id, paths, async () => [chatgpt, { provider: "xai-oauth", identityKey: "email:x@example.com", orgName: null }]);
 		const [row] = (await listAgentAccounts(paths)).omp.accounts;
-		expect(row.ompLogins?.map((l) => l.provider)).toEqual(["openai-codex", "xai-oauth"]);
+		expect(row.providerLogins?.map((l) => l.provider)).toEqual(["openai-codex", "xai-oauth"]);
 		expect((await listAgentAccounts(paths)).omp.accounts).toHaveLength(1);
 	});
 
@@ -1128,8 +1129,127 @@ describe("omp accounts", () => {
 		const state = await listAgentAccounts(paths);
 		expect(state.omp.accounts).toHaveLength(0);
 		expect(state.omp.activeId).toBeNull();
-		expect(existsSync(ompAccountDir(account.id, paths))).toBe(false);
+		expect(existsSync(agentDirAccountDir("omp", account.id, paths))).toBe(false);
 		expect(readFileSync(join(paths.ompAgentHome!, "config.yml"), "utf-8")).toBe("theme: dark\n");
 		expect(existsSync(join(paths.ompAgentHome!, "skills", "dev3"))).toBe(true);
+	});
+});
+
+describe("pi accounts", () => {
+	function seedPiAgentHome() {
+		const home = paths.piAgentHome!;
+		mkdirSync(join(home, "skills", "dev3"), { recursive: true });
+		mkdirSync(join(home, "sessions"), { recursive: true });
+		writeFileSync(join(home, "settings.json"), '{"theme":"dark"}');
+		writeFileSync(join(home, "auth.json"), '{"anthropic":{"type":"oauth","access":"user-own-token"}}');
+		writeFileSync(join(home, "models-store.json"), "{}");
+	}
+
+	/** What pi's /login writes: provider ids with a credential type and a secret. */
+	function signIn(dir: string, auth: Record<string, { type: string; key?: string; access?: string }>) {
+		writeFileSync(join(dir, "auth.json"), JSON.stringify(auth));
+	}
+
+	async function addPiAccount() {
+		const { accountId } = await prepareAgentDirLogin("pi", paths);
+		signIn(agentDirAccountDir("pi", accountId, paths), { openrouter: { type: "api_key", key: "sk-or-secret" } });
+		return completeAgentDirLogin("pi", accountId, paths);
+	}
+
+	it("keeps credentials, sessions and the per-key model catalog private, shares the rest", () => {
+		for (const entry of ["auth.json", "auth.json.lock", "sessions", "models-store.json", "pi-debug.log"]) {
+			expect(isPrivateAgentDirEntry("pi", entry)).toBe(true);
+		}
+		for (const entry of ["settings.json", "skills", "extensions", "models.json", "AGENTS.md", "keybindings.json"]) {
+			expect(isPrivateAgentDirEntry("pi", entry)).toBe(false);
+		}
+	});
+
+	it("signs in through pi itself with /login typed in by an extension, never passed as a prompt", async () => {
+		seedPiAgentHome();
+		const { accountId, launch } = await prepareAgentDirLogin("pi", paths);
+		const dir = agentDirAccountDir("pi", accountId, paths);
+		const extension = join(root, "data", "agent-hooks", "pi-login.ts");
+		expect(launch).toEqual({ command: "pi", args: ["--no-session", "-e", extension], env: { PI_CODING_AGENT_DIR: dir }, cwd: dir });
+		expect(readFileSync(extension, "utf-8")).toContain('setEditorText?.("/login")');
+		expect(lstatSync(join(dir, "skills")).isSymbolicLink()).toBe(true);
+		for (const entry of ["auth.json", "sessions", "models-store.json"]) expect(existsSync(join(dir, entry))).toBe(false);
+		expect((await listAgentAccounts(paths)).pi.accounts).toHaveLength(0);
+	});
+
+	it("starts an account on a copy of the user's pi settings, so /login's new default never reaches theirs", async () => {
+		seedPiAgentHome();
+		const { accountId } = await prepareAgentDirLogin("pi", paths);
+		const accountSettings = join(agentDirAccountDir("pi", accountId, paths), "settings.json");
+		expect(lstatSync(accountSettings).isSymbolicLink()).toBe(false);
+		expect(readFileSync(accountSettings, "utf-8")).toBe('{"theme":"dark"}');
+		writeFileSync(accountSettings, '{"theme":"dark","defaultProvider":"openrouter"}');
+		expect(readFileSync(join(paths.piAgentHome!, "settings.json"), "utf-8")).toBe('{"theme":"dark"}');
+		signIn(agentDirAccountDir("pi", accountId, paths), { openrouter: { type: "api_key", key: "k" } });
+		await completeAgentDirLogin("pi", accountId, paths);
+		await getActiveAgentDirSessionEnv("pi", accountId, paths); // re-scaffolds; the copy is kept
+		expect(readFileSync(accountSettings, "utf-8")).toContain("openrouter");
+	});
+
+	it("waits until pi stores a credential, then registers every provider, OAuth and API key alike", async () => {
+		const { accountId } = await prepareAgentDirLogin("pi", paths);
+		const dir = agentDirAccountDir("pi", accountId, paths);
+		await expect(completeAgentDirLogin("pi", accountId, paths)).rejects.toBeInstanceOf(LoginNotReadyError);
+		expect(stagedLoginHasIdentity("pi", accountId, paths)).toBe(false);
+		signIn(dir, { "openai-codex": { type: "oauth", access: "tok" }, openrouter: { type: "api_key", key: "sk-or-secret" } });
+		expect(stagedLoginHasIdentity("pi", accountId, paths)).toBe(true);
+		const account = await completeAgentDirLogin("pi", accountId, paths);
+		expect(account.kind).toBe("pi");
+		expect(account.label).toBe("pi account 1");
+		expect(account.providerLogins).toEqual([
+			{ provider: "openai-codex", identityKey: null, orgName: null, authType: "oauth" },
+			{ provider: "openrouter", identityKey: null, orgName: null, authType: "api_key" },
+		]);
+		const registry = readFileSync(join(paths.accountsDir, "pi-accounts.json"), "utf-8");
+		expect(registry).not.toContain("sk-or-secret");
+		expect(registry).not.toContain("tok");
+		expect((await listAgentAccounts(paths)).pi.activeId).toBe(account.id);
+	});
+
+	it("never counts the user's own ~/.pi/agent credentials as the new account's", async () => {
+		seedPiAgentHome();
+		const { accountId } = await prepareAgentDirLogin("pi", paths);
+		await expect(completeAgentDirLogin("pi", accountId, paths)).rejects.toBeInstanceOf(LoginNotReadyError);
+	});
+
+	it("keeps the pi registry in its own file, apart from omp's and accounts.json", async () => {
+		await addPiAccount();
+		expect(existsSync(join(paths.accountsDir, "pi-accounts.json"))).toBe(true);
+		expect(existsSync(join(paths.accountsDir, "omp-accounts.json"))).toBe(false);
+		expect(existsSync(join(paths.accountsDir, "accounts.json"))).toBe(false);
+	});
+
+	it("points PI_CODING_AGENT_DIR at the selected pi account and unsets it for the system login", async () => {
+		const account = await addPiAccount();
+		const dir = agentDirAccountDir("pi", account.id, paths);
+		expect(await getActiveAgentDirSessionEnv("pi", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+		await setActiveAgentDirAccount("pi", null, paths);
+		expect(await getActiveAgentDirSessionEnv("pi", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+	});
+
+	it("never lets one harness's account dir reach the other through the shared variable", async () => {
+		await addPiAccount();
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		const { accountId } = await prepareAgentDirLogin("omp", paths);
+		await completeAgentDirLogin("omp", accountId, paths, async () => [{ provider: "openai-codex", identityKey: null, orgName: null }]);
+		await setActiveAgentDirAccount("pi", null, paths);
+		expect(await getActiveAgentDirSessionEnv("pi", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+	});
+
+	it("removes a pi account without touching ~/.pi/agent", async () => {
+		seedPiAgentHome();
+		const account = await addPiAccount();
+		await renameAgentAccount("pi", account.id, "Personal OpenRouter", paths);
+		expect((await listAgentAccounts(paths)).pi.accounts[0].label).toBe("Personal OpenRouter");
+		await removeAgentAccount("pi", account.id, paths);
+		expect((await listAgentAccounts(paths)).pi.accounts).toHaveLength(0);
+		expect(existsSync(agentDirAccountDir("pi", account.id, paths))).toBe(false);
+		expect(readFileSync(join(paths.piAgentHome!, "auth.json"), "utf-8")).toContain("user-own-token");
+		expect(existsSync(join(paths.piAgentHome!, "skills", "dev3"))).toBe(true);
 	});
 });

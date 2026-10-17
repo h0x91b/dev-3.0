@@ -33,12 +33,13 @@ before and after), with pi's wiring in `src/shared/pi-status-extension.ts`, flag
 - **`agent_settled` is the stop**, not `agent_end`, which upstream says retries/compaction can follow.
 - **`ui_prompt_*` is the only wait**, mapped to `user-questions`; answered while idle it settles again.
 - **Pre-assigned session ids** (`supportsPreAssignedSessionId: true`) make recovery exact.
-- **One preset, `Default`, carrying `bypassPermissions`** — the truth about pi, and the adapter emits
+- **One preset, `Bypass` (id `pi-default`), carrying `bypassPermissions`** — the truth about pi, and the adapter emits
   no permission flag for any mode. No model pinned; effort maps to `--thinking`.
 - **No pi skill directory.** pi reads `~/.agents/skills/` (exempt from its trust prompt), where every
   dev3 skill already lives; `/skill:` is the invocation prefix.
-- **No sign-in probe, accounts or rate limits**: `auth.json` is one of several credential sources
-  (env vars, `models.json`), so absence proves nothing. Install hint: the README's `pi.dev`
+- **No sign-in probe or rate limits** for the system login: `auth.json` is one of several credential
+  sources (env vars, `models.json`), so absence proves nothing. Managed accounts came later, see
+  `pi-managed-accounts-share-the-agent-dir-engine`. Install hint: the README's `pi.dev`
   installers, Windows command verbatim.
 - A prompt opening with `@` gets one leading space so pi does not swallow it as a path.
 

@@ -4,7 +4,7 @@ import type { CodingAgent } from "../../shared/types";
 import { api } from "../rpc";
 
 /**
- * The models the agent CLI reports for the picker's account (omp today), newest
+ * The models the agent CLI reports for the picker's account (omp, pi), newest
  * first. Null while loading and whenever the answer is unknown — the picker then
  * shows only the agent's presets, exactly as before. Re-asks when the agent or
  * the account changes, because the account decides which providers are signed in.

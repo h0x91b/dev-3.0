@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AccountLoginState } from "../../../shared/agent-accounts";
+import { isAgentDirAccountKind, type AccountLoginState } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import type { TFunction } from "../../i18n";
 import TerminalView, { type TerminalHandle } from "../../TerminalView";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "../../terminal-themes";
 import { useFocusTrap } from "../../utils/useFocusTrap";
 
-const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi" } as const;
+const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi", pi: "Pi" } as const;
 
 const RUNNING_HINTS = {
 	claude: "settings.accountLoginRunningClaude",
 	codex: "settings.accountLoginRunningCodex",
 	omp: "settings.accountLoginRunningOmp",
+	pi: "settings.accountLoginRunningPi",
 } as const;
 
 const PRESS = "transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
@@ -154,9 +155,9 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 		case "running":
 			body = login.deviceAuth
 				? t("settings.accountLoginRunningDevice")
-				: login.kind === "omp"
-					// omp's provider list is the hard part, so it is explained in remote mode too.
-					? [t(RUNNING_HINTS.omp), remote ? t("settings.accountLoginRunningRemote") : null].filter(Boolean).join(" ")
+				: isAgentDirAccountKind(login.kind)
+					// The in-harness provider picker is the hard part, so it is explained in remote mode too.
+					? [t(RUNNING_HINTS[login.kind]), remote ? t("settings.accountLoginRunningRemote") : null].filter(Boolean).join(" ")
 					: remote
 						? t("settings.accountLoginRunningRemote")
 						: t(RUNNING_HINTS[login.kind]);

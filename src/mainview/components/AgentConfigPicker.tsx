@@ -209,7 +209,7 @@ function AgentConfigPicker({
 	}
 
 	const storedAgent = agents.find((a) => a.id === agentId);
-	// Models the CLI reports for this account (omp), offered as Model groups over
+	// Models the CLI reports for this account (omp, pi), offered as Model groups over
 	// its model-free presets; a pick is a plain configId (see agent-live-models).
 	const liveModels = useLiveModels(storedAgent, accountId);
 	const selectedAgent = storedAgent

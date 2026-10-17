@@ -11,18 +11,30 @@
  *   `chatgpt_account_id`) and `tokens.account_id`.
  * - Oh My Pi: `omp usage accounts --json` → `{accounts:[{provider,
  *   identityKey, orgName?}]}` — omp's own token-free listing of its OAuth rows.
+ * - Pi: the provider ids and credential types in the account's `auth.json`
+ *   (pi's documented credential file); values are never read.
  */
 
-export type AgentAccountKind = "claude" | "codex" | "omp";
+export type AgentAccountKind = "claude" | "codex" | "omp" | "pi";
 
-/** One provider sign-in held inside a managed omp account. A single omp agent
+/** Harnesses whose managed account is an agent dir passed as PI_CODING_AGENT_DIR. */
+export type AgentDirAccountKind = "omp" | "pi";
+export const AGENT_DIR_ACCOUNT_KINDS: readonly AgentDirAccountKind[] = ["omp", "pi"];
+
+export function isAgentDirAccountKind(kind: AgentAccountKind): kind is AgentDirAccountKind {
+	return kind === "omp" || kind === "pi";
+}
+
+/** One provider sign-in held inside a managed agent-dir account. A single agent
  *  dir can hold several (`/login` to ChatGPT and to Copilot, say). */
-export interface OmpLogin {
-	/** omp provider id, e.g. "openai-codex", "github-copilot". */
+export interface ProviderLogin {
+	/** Provider id, e.g. "openai-codex", "github-copilot". */
 	provider: string;
 	/** omp's `email:…|org:…` identity key; null when the provider reports none. */
 	identityKey: string | null;
 	orgName: string | null;
+	/** pi only: how the provider is signed in. */
+	authType?: "oauth" | "api_key";
 }
 
 /** How a managed account authenticates: an OAuth login (subscription) or an
@@ -115,8 +127,8 @@ export interface AgentAccount {
 	auth: AgentAccountAuth;
 	/** Present only when auth === "api". */
 	api: AgentApiProfileInfo | null;
-	/** omp accounts only: the provider sign-ins found at the last verification. */
-	ompLogins?: OmpLogin[];
+	/** omp and pi accounts only: the provider sign-ins found at the last verification. */
+	providerLogins?: ProviderLogin[];
 	createdAt: number;
 }
 
@@ -141,6 +153,11 @@ export interface AgentAccountsState {
 	omp: {
 		accounts: AgentAccount[];
 		/** Default account for new omp launches; null = omp's own ~/.omp/agent. */
+		activeId: string | null;
+	};
+	pi: {
+		accounts: AgentAccount[];
+		/** Default account for new pi launches; null = pi's own ~/.pi/agent. */
 		activeId: string | null;
 	};
 }
@@ -295,10 +312,10 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 /** Parse `omp usage accounts --json` output. Throws on a payload that is not
  *  that shape, so a changed omp contract fails loudly instead of reading as
  *  "not signed in". */
-export function parseOmpAccounts(json: unknown): OmpLogin[] {
+export function parseOmpAccounts(json: unknown): ProviderLogin[] {
 	const rows = asRecord(json)?.accounts;
 	if (!Array.isArray(rows)) throw new Error("Unexpected `omp usage accounts --json` output");
-	const logins: OmpLogin[] = [];
+	const logins: ProviderLogin[] = [];
 	for (const row of rows) {
 		const rec = asRecord(row);
 		const provider = asString(rec?.provider);
@@ -308,21 +325,36 @@ export function parseOmpAccounts(json: unknown): OmpLogin[] {
 	return logins;
 }
 
+/** pi's `auth.json` → its stored sign-ins: each top-level provider id with a
+ *  credential `type` pi knows. Only keys and types are read; a key or token
+ *  value never leaves this function. Throws on a payload that is not an object. */
+export function parsePiAuthLogins(json: unknown): ProviderLogin[] {
+	const root = asRecord(json);
+	if (!root) throw new Error("Unexpected pi auth.json content");
+	const logins: ProviderLogin[] = [];
+	for (const [provider, credential] of Object.entries(root)) {
+		const type = asRecord(credential)?.type;
+		if (type !== "oauth" && type !== "api_key") continue;
+		logins.push({ provider, identityKey: null, orgName: null, authType: type });
+	}
+	return logins;
+}
+
 /** `email:a@b.c|org:x` → "a@b.c". omp builds identity keys from these segments. */
-export function ompLoginEmail(login: OmpLogin): string | null {
+export function providerLoginEmail(login: ProviderLogin): string | null {
 	for (const part of login.identityKey?.split("|") ?? []) {
 		if (part.startsWith("email:") && part.length > 6) return part.slice(6);
 	}
 	return null;
 }
 
-/** Display identity of an omp account: the email of its first sign-in that
+/** Display identity of an agent-dir account: the email of its first sign-in that
  *  names one, and the signed-in providers as the badge ("openai-codex, …"). */
-export function ompAccountIdentity(logins: OmpLogin[]): AgentAccountIdentity | null {
-	const login = logins.find((l) => ompLoginEmail(l)) ?? logins[0];
+export function providerLoginsIdentity(logins: ProviderLogin[]): AgentAccountIdentity | null {
+	const login = logins.find((l) => providerLoginEmail(l)) ?? logins[0];
 	if (!login) return null;
 	const providers = [...new Set(logins.map((l) => l.provider))].join(", ");
-	return { email: ompLoginEmail(login), organization: login.orgName, plan: null, planLabel: providers, accountId: null };
+	return { email: providerLoginEmail(login), organization: login.orgName, plan: null, planLabel: providers, accountId: null };
 }
 
 /** Compact, display-safe prefix for a Codex ChatGPT workspace id. */

@@ -72,6 +72,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 		omp: { accounts: [], activeId: null },
+		pi: { accounts: [], activeId: null },
 		...overrides,
 	};
 }
@@ -108,8 +109,8 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("work@example.com")).toBeTruthy();
 		expect(screen.getByText("main@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
-		// Claude's and omp's system logins are each their block's default (activeId=null).
-		expect(screen.getAllByText("Default")).toHaveLength(2);
+		// Claude's, omp's and pi's system logins are each their block's default (activeId=null).
+		expect(screen.getAllByText("Default")).toHaveLength(3);
 	});
 
 	it("activates an account on row click", async () => {
@@ -172,14 +173,45 @@ describe("AgentAccountsSection", () => {
 		// Claude and Codex import; omp has nothing to import.
 		expect(screen.getAllByText("Import current login")).toHaveLength(2);
 
-		const addButtons = screen.getAllByText("Add account");
-		await user.click(addButtons[addButtons.length - 1]);
+		// Blocks render Claude, Codex, omp, pi.
+		await user.click(screen.getAllByText("Add account")[2]);
 		expect(mockedApi.request.startAccountLogin).toHaveBeenCalledWith({ kind: "omp", remoteViewer: true });
 		expect(await screen.findByText("Sign in to Oh My Pi")).toBeTruthy();
 		expect(await screen.findByTestId("terminal-view")).toBeTruthy();
 		expect(mockedApi.request.getAccountLoginPtyUrl).toHaveBeenCalledWith({ sessionKey: "account-login-o1" });
 		// The provider list is explained in remote mode too, next to the host-browser note.
 		expect(screen.getByText(/type a provider’s number.*appears on the host, not here/)).toBeTruthy();
+	});
+
+	it("pi: its own block with no import, and Add account opens pi's sign-in", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue({
+			loginId: "p1",
+			kind: "pi",
+			phase: "running",
+			sessionKey: "account-login-p1",
+			deviceAuth: false,
+			manualCommand: "PI_CODING_AGENT_DIR='/x' pi --no-session   # then type /login",
+			executable: "pi",
+			installUrl: null,
+			exitCode: null,
+			error: null,
+			pending: null,
+			account: null,
+			startedAt: 0,
+			expiresAt: 1,
+		});
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("pi default (~/.pi/agent)");
+		expect(screen.getAllByText("Import current login")).toHaveLength(2);
+
+		const addButtons = screen.getAllByText("Add account");
+		expect(addButtons).toHaveLength(4);
+		await user.click(addButtons[3]);
+		expect(mockedApi.request.startAccountLogin).toHaveBeenCalledWith({ kind: "pi", remoteViewer: true });
+		expect(await screen.findByText("Sign in to Pi")).toBeTruthy();
+		expect(await screen.findByTestId("terminal-view")).toBeTruthy();
+		expect(screen.getByText(/Press Enter to run the \/login already typed in/)).toBeTruthy();
 	});
 
 	it("imports the current login", async () => {

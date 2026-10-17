@@ -1,5 +1,5 @@
 /**
- * In-app sign-in for managed Claude Code / Codex / omp accounts.
+ * In-app sign-in for managed Claude Code / Codex / omp / pi accounts.
  *
  * The provider's own login command runs in a PTY on the backend host — never in
  * the viewing browser — scoped to a staged account dir by env alone. Viewers see
@@ -17,7 +17,7 @@
  */
 
 import { extname } from "node:path";
-import type { AccountLoginPhase, AccountLoginState, AgentAccount, AgentAccountKind } from "../shared/agent-accounts";
+import { isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, type AgentAccount, type AgentAccountKind } from "../shared/agent-accounts";
 import { DEFAULT_AGENTS } from "../shared/types";
 import * as accounts from "./agent-accounts";
 import type { PreparedAccountLogin } from "./agent-accounts";
@@ -138,7 +138,7 @@ export function loginEnv(
 		if (value !== undefined) env[key] = value;
 	}
 	env.CLAUDECODE = undefined;
-	// omp's login only stores sign-ins; whatever the env authenticates is the user's own setup.
+	// omp's and pi's logins only store sign-ins; whatever the env authenticates is the user's own setup.
 	const authKeys = kind === "claude" ? accounts.CLAUDE_ENV_AUTH_KEYS : kind === "codex" ? accounts.CODEX_ENV_AUTH_KEYS : [];
 	for (const key of authKeys) env[key] = undefined;
 	env.TERM = "xterm-256color";
@@ -531,14 +531,14 @@ export const accountLogins = createAccountLoginManager({
 	prepare: (kind, opts) =>
 		kind === "claude"
 			? accounts.prepareClaudeLogin()
-			: kind === "omp"
-				? accounts.prepareOmpLogin()
+			: isAgentDirAccountKind(kind)
+				? accounts.prepareAgentDirLogin(kind)
 				: accounts.prepareCodexLogin(undefined, opts),
 	complete: (kind, id, ctx) =>
 		kind === "claude"
 			? accounts.completeClaudeLogin(id, accounts.defaultAccountPaths(), runClaudeAuthStatus, ctx)
-			: kind === "omp"
-				? accounts.completeOmpLogin(id, accounts.defaultAccountPaths(), undefined, ctx)
+			: isAgentDirAccountKind(kind)
+				? accounts.completeAgentDirLogin(kind, id, accounts.defaultAccountPaths(), undefined, ctx)
 				: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),

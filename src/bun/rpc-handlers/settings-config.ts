@@ -9,7 +9,7 @@ import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env
 import * as data from "../data";
 import * as agents from "../agents";
 import { resolveModelAvailability } from "../agent-available-models";
-import { getOmpLiveModels } from "../omp-live-models";
+import { getAgentDirLiveModels } from "../agent-dir-live-models";
 import { agentKey } from "../../shared/agent-adapters/registry";
 import type { AgentLiveModels } from "../../shared/agent-live-models";
 import * as github from "../github";
@@ -449,8 +449,9 @@ async function getAgentLiveModels(params: {
 }): Promise<AgentLiveModels> {
 	const all = await agents.getAllAgents();
 	const agent = all.find((a) => a.id === params.agentId);
-	if (!agent || agentKey(agent.baseCommand, agent.agentFamily) !== "omp") return { status: "unknown" };
-	return getOmpLiveModels(params.accountId, { refresh: params.refresh });
+	const kind = agent ? agentKey(agent.baseCommand, agent.agentFamily) : null;
+	if (kind !== "omp" && kind !== "pi") return { status: "unknown" };
+	return getAgentDirLiveModels(kind, params.accountId, { refresh: params.refresh });
 }
 
 async function checkForUpdate(): Promise<{ updateAvailable: boolean; version: string; error?: string }> {

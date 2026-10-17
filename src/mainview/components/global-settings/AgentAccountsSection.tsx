@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { CLAUDE_MODEL_SLOTS, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -563,7 +563,7 @@ function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLogi
 export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const [state, setState] = useState<AgentAccountsState | null>(null);
 	const pinnedLogins = usePinnedClaudeLogins();
-	const [logins, setLogins] = useState<Record<AgentAccountKind, AccountLoginState | null>>({ claude: null, codex: null, omp: null });
+	const [logins, setLogins] = useState<Record<AgentAccountKind, AccountLoginState | null>>({ claude: null, codex: null, omp: null, pi: null });
 	// Which sign-in is on screen; hiding the modal leaves the login running on the host.
 	const [shownLogin, setShownLogin] = useState<AgentAccountKind | null>(null);
 	const [loginBusy, setLoginBusy] = useState(false);
@@ -579,7 +579,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	useEffect(() => {
 		// A sign-in outlives this screen (another window, a reload, a hidden modal) — pick it back up.
-		for (const kind of ["claude", "codex", "omp"] as const) {
+		for (const kind of ["claude", "codex", "omp", "pi"] as const) {
 			api.request.getAccountLogin({ kind })
 				.then((login) => setLogins((prev) => ({ ...prev, [kind]: login })))
 				.catch(() => {});
@@ -767,8 +767,8 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			<div className="bg-raised border border-edge rounded-xl p-4 space-y-2.5">
 				<div className="flex items-center gap-2">
 					<span className="text-fg text-sm font-semibold flex-1">{title}</span>
-					{/* omp has no single "current login" to import: an account is a fresh agent dir. */}
-					{kind !== "omp" ? (
+					{/* omp and pi have no single "current login" to import: an account is a fresh agent dir. */}
+					{!isAgentDirAccountKind(kind) ? (
 						<button
 							type="button"
 							onClick={() => handleImport(kind)}
@@ -947,6 +947,21 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					identity={null}
 					isActive={state.omp.activeId === null}
 					onActivate={state.omp.activeId === null ? undefined : () => handleSetActive("omp", null)}
+					t={t}
+				/>,
+				null,
+			)}
+			{renderAgentBlock(
+				"pi",
+				"Pi",
+				state.pi.accounts,
+				state.pi.activeId,
+				<AccountRow
+					kind="pi"
+					label={t("settings.accountsPiDefaultLogin")}
+					identity={null}
+					isActive={state.pi.activeId === null}
+					onActivate={state.pi.activeId === null ? undefined : () => handleSetActive("pi", null)}
 					t={t}
 				/>,
 				null,

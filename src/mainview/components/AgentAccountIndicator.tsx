@@ -9,7 +9,7 @@ import type {
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
 import type {
 	AgentRateLimitSnapshot,
@@ -60,13 +60,14 @@ export function leaveLaunchForAccountSettings(close: () => void, notice: string)
 
 /** Which account registry an agent's base command draws from. Handles path
  *  prefixes ("/opt/bin/claude") and wrapper args ("claude --foo"); anything
- *  that isn't claude/codex/omp has no account switcher — the indicator hides. */
+ *  that isn't claude/codex/omp/pi has no account switcher — the indicator hides. */
 export function agentAccountKindForCommand(baseCommand: string): AgentAccountKind | null {
 	const first = baseCommand.trim().split(/\s+/)[0] ?? "";
 	const name = first.split("/").pop() ?? "";
 	if (name === "claude") return "claude";
 	if (name === "codex") return "codex";
 	if (name === "omp") return "omp";
+	if (name === "pi") return "pi";
 	return null;
 }
 
@@ -625,7 +626,13 @@ export default function AgentAccountIndicator({
 		? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(pinnedDir) })
 		: t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir });
 	const fallbackLabel =
-		kind === "claude" ? systemLoginLabel : kind === "omp" ? t("settings.accountsOmpDefaultLogin") : t("settings.accountsUnmanaged");
+		kind === "claude"
+			? systemLoginLabel
+			: kind === "omp"
+				? t("settings.accountsOmpDefaultLogin")
+				: kind === "pi"
+					? t("settings.accountsPiDefaultLogin")
+					: t("settings.accountsUnmanaged");
 	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
 	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
 		if (kind !== "codex") return null;
@@ -636,7 +643,7 @@ export default function AgentAccountIndicator({
 	// Join the rate-limit report to a row's account: null accountId = the
 	// provider's system login. API profiles have no OAuth limit windows.
 	const usageFor = (accountId: string | null, isApi = false, configDir: string | null = null): RowUsage | null => {
-		if (!report || isApi || kind === "omp") return null;
+		if (!report || isApi || isAgentDirAccountKind(kind)) return null;
 		const snap = findRateLimitSnapshot(report, kind, accountId, configDir);
 		if (!snap) return { snap: null, state: "none" };
 		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, state: "unlimited" };

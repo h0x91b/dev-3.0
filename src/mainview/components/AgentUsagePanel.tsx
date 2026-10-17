@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentAccountIdentity, AgentAccountKind, AgentAccountsState, PinnedClaudeLogin } from "../../shared/agent-accounts";
+import type { AgentAccountIdentity, AgentAccountKind, AgentAccountsState, AgentDirAccountKind, PinnedClaudeLogin } from "../../shared/agent-accounts";
 import { shortClaudeConfigDir } from "../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
 import { findRateLimitSnapshot, hasReportedLimits, isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
@@ -20,8 +20,8 @@ import {
 	resolveAccount,
 } from "./rate-limit-ui";
 
-/** Kinds with limit windows to show; omp reports none to dev3. */
-type UsageKind = Exclude<AgentAccountKind, "omp">;
+/** Kinds with limit windows to show; omp and pi report none to dev3. */
+type UsageKind = Exclude<AgentAccountKind, AgentDirAccountKind>;
 const KINDS: UsageKind[] = ["claude", "codex"];
 
 /** One card in the panel: an account (or a leftover reading) plus its usage. */

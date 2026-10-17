@@ -13,7 +13,7 @@ import type {
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
-import { parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { isAgentDirAccountKind, parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import * as accounts from "../agent-accounts";
 import { ACCOUNT_LOGIN_SESSION_PREFIX, accountLogins } from "../account-login-terminal";
@@ -38,6 +38,7 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
 		omp: state.omp.accounts.length,
+		pi: state.pi.accounts.length,
 		codex: {
 			count: state.codex.accounts.length,
 			activeId: state.codex.activeId?.slice(0, 8) ?? null,
@@ -49,7 +50,7 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 
 async function importAgentAccount(params: { kind: AgentAccountKind }): Promise<AgentAccount> {
 	log.info("→ importAgentAccount", params);
-	if (params.kind === "omp") throw new Error("omp accounts are added with a fresh login, not imported");
+	if (isAgentDirAccountKind(params.kind)) throw new Error(`${params.kind} accounts are added with a fresh login, not imported`);
 	const account =
 		params.kind === "claude"
 			? await accounts.importCurrentClaudeAccount()
@@ -151,8 +152,8 @@ async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId
 	// ~/.codex). Codex no longer swaps auth.json — this only moves the default.
 	if (params.kind === "claude") {
 		await accounts.setActiveClaudeAccount(params.accountId);
-	} else if (params.kind === "omp") {
-		await accounts.setActiveOmpAccount(params.accountId);
+	} else if (isAgentDirAccountKind(params.kind)) {
+		await accounts.setActiveAgentDirAccount(params.kind, params.accountId);
 	} else {
 		await accounts.setActiveCodexAccount(params.accountId);
 	}

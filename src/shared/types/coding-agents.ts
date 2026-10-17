@@ -585,7 +585,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		// tool without asking (docs/security.md). The one preset says so with the
 		// Bypass mode rather than letting "Default" read as "asks first".
 		configurations: [
-			{ id: "pi-default", name: "Default", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "pi-default", name: "Bypass", permissionMode: "bypassPermissions", version: 1 },
 		],
 		defaultConfigId: "pi-default",
 	},

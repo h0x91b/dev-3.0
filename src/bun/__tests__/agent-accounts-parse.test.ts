@@ -4,8 +4,9 @@ import {
 	codexPlanLabel,
 	decodeJwtPayload,
 	defaultAccountLabel,
-	ompAccountIdentity,
-	ompLoginEmail,
+	providerLoginsIdentity,
+	parsePiAuthLogins,
+	providerLoginEmail,
 	parseOmpAccounts,
 	defaultApiProfileLabel,
 	shortClaudeConfigDir,
@@ -243,17 +244,38 @@ describe("omp accounts parsing", () => {
 	});
 
 	it("takes the email segment out of an identity key", () => {
-		expect(ompLoginEmail({ provider: "p", identityKey: "org:x|email:a@b.c", orgName: null })).toBe("a@b.c");
-		expect(ompLoginEmail({ provider: "p", identityKey: "org:x", orgName: null })).toBeNull();
+		expect(providerLoginEmail({ provider: "p", identityKey: "org:x|email:a@b.c", orgName: null })).toBe("a@b.c");
+		expect(providerLoginEmail({ provider: "p", identityKey: "org:x", orgName: null })).toBeNull();
 	});
 
 	it("names an account by its first emailed sign-in and badges every provider once", () => {
-		const identity = ompAccountIdentity([
+		const identity = providerLoginsIdentity([
 			{ provider: "github-copilot", identityKey: null, orgName: null },
 			{ provider: "openai-codex", identityKey: "email:dev@example.com", orgName: "plus" },
 			{ provider: "openai-codex", identityKey: "email:other@example.com", orgName: null },
 		]);
 		expect(identity).toEqual({ email: "dev@example.com", organization: "plus", plan: null, planLabel: "github-copilot, openai-codex", accountId: null });
-		expect(ompAccountIdentity([])).toBeNull();
+		expect(providerLoginsIdentity([])).toBeNull();
+	});
+});
+
+describe("parsePiAuthLogins", () => {
+	it("lists providers with a credential type and drops every secret value", () => {
+		const logins = parsePiAuthLogins({
+			anthropic: { type: "oauth", access: "a", refresh: "r", expires: 1 },
+			openrouter: { type: "api_key", key: "!security find-generic-password -ws openrouter" },
+			weird: { type: "something-else" },
+			broken: "not an object",
+		});
+		expect(logins).toEqual([
+			{ provider: "anthropic", identityKey: null, orgName: null, authType: "oauth" },
+			{ provider: "openrouter", identityKey: null, orgName: null, authType: "api_key" },
+		]);
+		expect(JSON.stringify(logins)).not.toContain("security");
+	});
+
+	it("throws on content that is not an object, so a broken file never reads as signed out", () => {
+		expect(() => parsePiAuthLogins([])).toThrow();
+		expect(() => parsePiAuthLogins(null)).toThrow();
 	});
 });

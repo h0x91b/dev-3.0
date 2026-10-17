@@ -1,5 +1,5 @@
 /**
- * Models an agent CLI reports at runtime for the selected account (omp today),
+ * Models an agent CLI reports at runtime for the selected account (omp, pi),
  * as opposed to the curated presets in DEFAULT_AGENTS.
  *
  * A pick is stored in the ordinary `configId` as `<presetId>|model=<selector>`,

@@ -1,5 +1,7 @@
 # Managed omp accounts are agent dirs selected with PI_CODING_AGENT_DIR
 
+> Partly superseded on 2026-10-17 by `decisions/2026/10/17/pi-managed-accounts-share-the-agent-dir-engine.md`: the omp-only functions became the shared agent-dir engine (`getActiveAgentDirSessionEnv`, `completeAgentDirLogin`, …), and the system login now unsets `PI_CODING_AGENT_DIR` once an omp OR pi account exists.
+
 ## Context
 
 dev3 already runs several Claude Code and Codex logins side by side by giving each managed account its own config dir (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). Oh My Pi (omp, `can1357/oh-my-pi`) signs in to 60+ providers itself (`/login`), and users asked for the same multi-account model there: many accounts, each signed in to whatever provider the user picks inside omp, chosen per launch.

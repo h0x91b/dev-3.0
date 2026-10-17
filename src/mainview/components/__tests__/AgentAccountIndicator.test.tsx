@@ -42,6 +42,13 @@ const ompAgent: CodingAgent = {
 	configurations: [],
 };
 
+const piAgent: CodingAgent = {
+	id: "builtin-pi",
+	name: "Pi",
+	baseCommand: "pi",
+	configurations: [],
+};
+
 const codexAgent: CodingAgent = {
 	id: "builtin-codex",
 	name: "Codex",
@@ -80,6 +87,7 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 		},
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 		omp: { accounts: [], activeId: null },
+		pi: { accounts: [], activeId: null },
 		...overrides,
 	};
 }
@@ -138,6 +146,7 @@ describe("agentAccountKindForCommand", () => {
 		expect(agentAccountKindForCommand("/opt/homebrew/bin/claude --continue")).toBe("claude");
 		expect(agentAccountKindForCommand("codex")).toBe("codex");
 		expect(agentAccountKindForCommand("/opt/homebrew/bin/omp")).toBe("omp");
+		expect(agentAccountKindForCommand("/opt/homebrew/bin/pi")).toBe("pi");
 		expect(agentAccountKindForCommand("gemini")).toBeNull();
 		expect(agentAccountKindForCommand("")).toBeNull();
 	});
@@ -174,6 +183,34 @@ describe("AgentAccountIndicator", () => {
 		await user.click(screen.getByText("Work ChatGPT"));
 		expect(onSelect).toHaveBeenCalledWith("omp-1");
 		expect(screen.queryByText("Work@example.com")).toBeNull();
+	});
+
+	it("pi: lists its own accounts, not omp's, and picks per launch", async () => {
+		const account = (id: string, kind: "omp" | "pi", label: string) => ({
+			id,
+			kind,
+			label,
+			identity: { email: null, organization: null, plan: null, planLabel: "openrouter", accountId: null },
+			auth: "oauth" as const,
+			api: null,
+			createdAt: 0,
+		});
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				omp: { activeId: null, accounts: [account("omp-1", "omp", "omp work")] },
+				pi: { activeId: null, accounts: [account("pi-1", "pi", "Personal OpenRouter")] },
+			}),
+		);
+		const onSelect = vi.fn();
+		const user = userEvent.setup();
+		renderIndicator(piAgent, { onSelect });
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("pi default (~/.pi/agent)");
+		await user.click(trigger);
+		expect(screen.queryByText("omp work")).toBeNull();
+		await user.click(screen.getByText("Personal OpenRouter"));
+		expect(onSelect).toHaveBeenCalledWith("pi-1");
 	});
 
 	it("shows the active managed account label on the trigger", async () => {

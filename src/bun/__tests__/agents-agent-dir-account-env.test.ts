@@ -9,15 +9,15 @@ vi.mock("../settings", () => ({
 }));
 vi.mock("../agent-accounts", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../agent-accounts")>()),
-	getActiveOmpSessionEnv: vi.fn(async () => ({})),
+	getActiveAgentDirSessionEnv: vi.fn(async () => ({})),
 }));
 
-import { getActiveOmpSessionEnv } from "../agent-accounts";
+import { getActiveAgentDirSessionEnv } from "../agent-accounts";
 import { resolveCommandForAgent } from "../agents";
 import { DEV3_HOME } from "../paths";
 
 const ctx = { taskTitle: "t", taskDescription: "d", projectName: "p", projectPath: "/p", worktreePath: "/w" };
-const mockedOmpEnv = vi.mocked(getActiveOmpSessionEnv);
+const mockedOmpEnv = vi.mocked(getActiveAgentDirSessionEnv);
 
 beforeAll(() => mkdirSync(DEV3_HOME, { recursive: true }));
 beforeEach(() => mockedOmpEnv.mockReset());
@@ -26,11 +26,18 @@ describe("omp account env at launch", () => {
 	it("hands the selected account's agent dir to omp", async () => {
 		mockedOmpEnv.mockResolvedValue({ PI_CODING_AGENT_DIR: "/accounts/omp/a1" });
 		const resolved = await resolveCommandForAgent("builtin-omp", null, ctx, { accountId: "a1" });
-		expect(mockedOmpEnv).toHaveBeenCalledWith("a1");
+		expect(mockedOmpEnv).toHaveBeenCalledWith("omp", "a1");
 		expect(resolved.extraEnv.PI_CODING_AGENT_DIR).toBe("/accounts/omp/a1");
 	});
 
-	it("never consults the omp registry for another harness", async () => {
+	it("hands the selected pi account's agent dir to pi", async () => {
+		mockedOmpEnv.mockResolvedValue({ PI_CODING_AGENT_DIR: "/accounts/pi/p1" });
+		const resolved = await resolveCommandForAgent("builtin-pi", null, ctx, { accountId: "p1" });
+		expect(mockedOmpEnv).toHaveBeenCalledWith("pi", "p1");
+		expect(resolved.extraEnv.PI_CODING_AGENT_DIR).toBe("/accounts/pi/p1");
+	});
+
+	it("never consults an agent-dir registry for another harness", async () => {
 		await resolveCommandForAgent("builtin-codex", null, ctx, { accountId: "a1" });
 		expect(mockedOmpEnv).not.toHaveBeenCalled();
 	});
