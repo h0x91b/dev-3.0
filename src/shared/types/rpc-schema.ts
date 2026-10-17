@@ -1274,6 +1274,11 @@ export type AppRPCSchema = {
 				params: { artifact: SharedArtifact };
 				response: void;
 			};
+			/** Remote mode: a sandboxed tab link over the artifact's stored folder (served by the remote server). */
+			createArtifactLink: {
+				params: { artifact: SharedArtifact };
+				response: { viewUrl: string };
+			};
 			openImageFile: {
 				params: { path: string };
 				response: void;

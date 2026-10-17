@@ -1,4 +1,4 @@
-import { downloadFile, isLoopbackHostname, openFileInNewTab, opensInBrowserTab, resetWindowsHostOpenCache, windowsHostOpenAvailable } from "../file-open-browser";
+import { downloadFile, isLoopbackHostname, openFileInBrowser, openFileInNewTab, opensInBrowserTab, resetWindowsHostOpenCache, windowsHostOpenAvailable } from "../file-open-browser";
 
 const request = vi.hoisted(() => ({
 	createFileLink: vi.fn(async (_params: { path: string }) => ({ viewUrl: "/file/tok/spec.md", downloadUrl: "/file/tok/spec.md?download=1" })),
@@ -70,6 +70,22 @@ describe("downloadFile", () => {
 		const anchor = click.mock.contexts[0] as HTMLAnchorElement;
 		expect(anchor.getAttribute("href")).toBe("/file/tok/spec.md?download=1");
 		expect(anchor.isConnected).toBe(false);
+		click.mockRestore();
+	});
+});
+
+describe("openFileInBrowser", () => {
+	it("opens what a tab can show and downloads the rest", async () => {
+		const tab = { opener: null, location: { replace: vi.fn() }, close: vi.fn() };
+		const open = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+		await openFileInBrowser("/wt/shared-images/clip.mp4");
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(click).not.toHaveBeenCalled();
+		await openFileInBrowser("/wt/uploads/archive.zip");
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(click).toHaveBeenCalledTimes(1);
+		open.mockRestore();
 		click.mockRestore();
 	});
 });
