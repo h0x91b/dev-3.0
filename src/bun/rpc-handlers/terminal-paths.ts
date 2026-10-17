@@ -2,11 +2,12 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { mintFileLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
+import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -63,8 +64,9 @@ async function projectRoots(): Promise<string[]> {
 	}
 }
 
-function isUnder(absPath: string, root: string): boolean {
-	return absPath === root || absPath.startsWith(root.endsWith("/") ? root : `${root}/`);
+/** `separator` is the host's (a backslash on Windows); a parameter only so tests can cover both. */
+export function isUnder(absPath: string, root: string, separator: string = sep): boolean {
+	return absPath === root || absPath.startsWith(root.endsWith(separator) ? root : `${root}${separator}`);
 }
 
 /**
@@ -331,19 +333,30 @@ async function assertPreviewableFile(path: string): Promise<void> {
 }
 
 /**
- * A browser-tab link for a file the preview shows. Inside a worktree or project
- * the link covers the file's folder, so a report's relative CSS and images load;
- * anywhere else (home, temp) it covers that one file only.
+ * Only a page (HTML/SVG) below a worktree or project root gets its folder, so its
+ * relative assets load. A checkout root never does (it would expose the whole
+ * repo to the page); everything else is linked as its one file.
  */
+async function linkCoversFolder(path: string): Promise<boolean> {
+	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(path))) return false;
+	const dir = dirname(path);
+	const worktreesRoot = join(DEV3_HOME, "worktrees");
+	const roots = [worktreesRoot, ...(await projectRoots())];
+	if (roots.includes(dir) || !roots.some((root) => isUnder(dir, root))) return false;
+	try {
+		await stat(join(dir, ".git"));
+		return false;
+	} catch {
+		return true;
+	}
+}
+
 async function createFileLink(params: { path: string }): Promise<{ viewUrl: string; downloadUrl: string }> {
 	log.info("→ createFileLink", { path: params.path });
 	const path = resolvePath(params.path);
 	await assertPreviewableFile(path);
-	const dir = dirname(path);
-	const worktreesRoot = join(DEV3_HOME, "worktrees");
-	const folderRoots = [worktreesRoot, ...(await projectRoots())];
-	const coversFolder = dir !== worktreesRoot && folderRoots.some((root) => isUnder(dir, root));
-	const viewUrl = mintFileLink(coversFolder ? { kind: "dir", root: dir, entry: basename(path) } : { kind: "file", path });
+	const scope = (await linkCoversFolder(path)) ? { kind: "dir" as const, root: dirname(path), entry: basename(path) } : { kind: "file" as const, path };
+	const viewUrl = mintFileLink(scope);
 	return { viewUrl, downloadUrl: `${viewUrl}?download=1` };
 }
 
@@ -357,7 +370,8 @@ async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
 	if (!isWslHost()) throw new Error("Not running under WSL");
 	const path = resolvePath(params.path);
 	await assertPreviewableFile(path);
-	openOnWindowsHost(path);
+	if (!WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path))) throw new Error("This file type is not opened on Windows");
+	await openOnWindowsHost(path);
 }
 
 export const terminalPathHandlers = {

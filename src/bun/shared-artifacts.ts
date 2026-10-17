@@ -26,6 +26,7 @@ import { createZip } from "./zip";
 import { inlineHtmlSource } from "../shared/html-inline";
 import { projectSlug } from "./git";
 import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
+import type { FileLinkScope } from "./file-links";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
 const MEDIA_EXTS = new Set(SHARED_MEDIA_EXTS);
@@ -258,6 +259,15 @@ export function sharedArtifactHtmlPath(artifact: SharedArtifact): string {
 	assertStoredArtifactRecord(artifact);
 	if (!existsSync(artifact.storedPath)) throw new SharedArtifactError("Artifact file is missing");
 	return artifact.storedPath;
+}
+
+/**
+ * The remote tab link's scope: the artifact's own stored folder, so the page's
+ * relative assets resolve as they do when the desktop hands the file to the OS.
+ */
+export function sharedArtifactLinkScope(artifact: SharedArtifact): FileLinkScope {
+	const page = resolvePath(sharedArtifactHtmlPath(artifact));
+	return { kind: "dir", root: dirname(page), entry: basename(page) };
 }
 
 /** Read HTML plus copied assets for the sandboxed renderer. */

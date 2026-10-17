@@ -1,43 +1,45 @@
 import { existsSync } from "node:fs";
 import { spawn, spawnSync } from "./spawn";
+import { whichSync } from "./which";
 
 /**
- * WSL can start Windows programs (interop), so a dev3 running inside WSL can
- * open a file on the Windows desktop the user's browser is on. Windows reaches
- * the Linux filesystem through the `\\wsl.localhost\<distro>\...` share, so the
- * file is opened in place — nothing is copied.
+ * Opens a file on the Windows desktop a WSL-hosted dev3 runs under, in place
+ * through the `\\wsl.localhost\<distro>\…` share.
  */
+
+const INTEROP_FLAGS = ["/proc/sys/fs/binfmt_misc/WSLInterop", "/proc/sys/fs/binfmt_misc/WSLInterop-late"];
+const OPEN_PATH_VAR = "DEV3_OPEN_PATH";
 
 let cachedIsWsl: boolean | null = null;
 
+/** Interop registered, not just a WSL environment: without it no Windows program can start. */
 export function isWslHost(): boolean {
-	cachedIsWsl ??= process.platform === "linux" && (!!process.env.WSL_DISTRO_NAME || existsSync("/proc/sys/fs/binfmt_misc/WSLInterop"));
+	cachedIsWsl ??= process.platform === "linux" && INTEROP_FLAGS.some((flag) => existsSync(flag));
 	return cachedIsWsl;
 }
 
-function wslpath(flag: "-w" | "-u", path: string): string {
-	const result = spawnSync(["wslpath", flag, path], { stdout: "pipe", stderr: "pipe" });
+/** On PATH only when WSL appends the Windows PATH; asking wslpath for C:\ honours a custom automount root. */
+function powershellBinary(): string {
+	const onPath = whichSync("powershell.exe");
+	if (onPath) return onPath;
+	const result = spawnSync(["wslpath", "-u", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], { stdout: "pipe", stderr: "pipe" });
 	const out = result.stdout?.toString().trim() ?? "";
-	if (result.exitCode !== 0 || !out) throw new Error(`wslpath failed: ${result.stderr?.toString().trim() || "no output"}`);
+	if (result.exitCode !== 0 || !out) throw new Error("Windows PowerShell not found");
 	return out;
 }
 
 /**
- * `explorer.exe` is on PATH only when WSL appends the Windows PATH, which users
- * often turn off (`appendWindowsPath=false`); asking wslpath for `C:\Windows`
- * also honours a custom automount root.
+ * Opens `path` with its Windows default app. The path travels in an env var that
+ * WSLENV `/p` translates, read with `-LiteralPath`: as an argument, explorer.exe
+ * would split it at a comma and interop would not quote it.
  */
-function explorerBinary(): string {
-	const onPath = spawnSync(["which", "explorer.exe"], { stdout: "pipe", stderr: "pipe" });
-	const found = onPath.exitCode === 0 ? onPath.stdout?.toString().trim() : "";
-	if (found) return found;
-	return `${wslpath("-u", "C:\\Windows")}/explorer.exe`;
-}
-
-/** Opens `path` with its Windows default app. explorer.exe exits 1 even on success, so only a failed launch throws. */
-export function openOnWindowsHost(path: string): void {
-	const windowsPath = wslpath("-w", path);
-	spawn([explorerBinary(), windowsPath], { stdout: "ignore", stderr: "ignore" });
+export async function openOnWindowsHost(path: string): Promise<void> {
+	const proc = spawn([powershellBinary(), "-NoProfile", "-NonInteractive", "-Command", `Invoke-Item -LiteralPath $env:${OPEN_PATH_VAR}`], {
+		stdout: "ignore",
+		stderr: "ignore",
+		env: { [OPEN_PATH_VAR]: path, WSLENV: [process.env.WSLENV, `${OPEN_PATH_VAR}/p`].filter(Boolean).join(":") },
+	});
+	if ((await proc.exited) !== 0) throw new Error("Windows could not open the file");
 }
 
 /** Test hook. */

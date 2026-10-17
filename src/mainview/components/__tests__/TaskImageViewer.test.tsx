@@ -49,6 +49,10 @@ function renderViewer(onClose = vi.fn(), initialIndex = IMAGES.length - 1) {
 	return onClose;
 }
 
+afterEach(() => {
+	platform.remote = false;
+});
+
 beforeEach(() => {
 	(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockResolvedValue({
 		dataUrl: "data:image/png;base64,AAAA",
@@ -71,7 +75,6 @@ describe("TaskImageViewer", () => {
 		await userEvent.click(await screen.findByRole("button", { name: "Open in new tab" }));
 		expect(fileOpen.openFileInBrowser).toHaveBeenCalledWith("/wt/shared-images/c.png");
 		expect(mockedApi.request.openImageFile).not.toHaveBeenCalled();
-		platform.remote = false;
 	});
 
 	it("opens on the newest image (initialIndex) and shows the counter", async () => {

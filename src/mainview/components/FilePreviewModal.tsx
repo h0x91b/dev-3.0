@@ -18,7 +18,7 @@ import { MarkdownDocument } from "./pr-review/markdown";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
-import { downloadFile, openFileInNewTab, opensInBrowserTab, windowsHostOpenAvailable } from "../file-open-browser";
+import { PopupBlockedError, downloadFile, errorText, openFileInNewTab, opensInBrowserTab, opensSafelyOnWindows, windowsHostOpenAvailable } from "../file-open-browser";
 // Token colours for both themes — the diff viewer's own stylesheet, scoped to its wrapper class.
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
@@ -116,10 +116,9 @@ const GHOST_BUTTON =
 	"transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
 
 /**
- * In-app preview for a file path Cmd/Ctrl+Clicked in terminal output — the
- * "Preview in dev3" mode of the File path click action setting, and the only
- * mode in browser/remote sessions (host-side open would be invisible there), where
- * the footer hands the file to the viewer's own browser instead.
+ * In-app preview for a file path Cmd/Ctrl+Clicked in terminal output. Browser
+ * sessions always use it (a host-side open would be invisible there), and its
+ * footer hands the file to the viewer's own browser instead.
  */
 export default function FilePreviewModal({ path, line, taskId, projectId, task, onClose }: FilePreviewModalProps) {
 	const t = useT();
@@ -450,7 +449,8 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		try {
 			await action();
 		} catch (err) {
-			toast.error(t("terminal.filePreviewLinkFailed", { error: err instanceof Error ? err.message : String(err) }), { taskId, source: "terminal" });
+			const message = err instanceof PopupBlockedError ? t("imageViewer.popupBlocked") : t("terminal.filePreviewLinkFailed", { error: errorText(err) });
+			toast.error(message, { taskId, source: "terminal" });
 		}
 	}
 
@@ -651,7 +651,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 							<button type="button" onClick={() => handleBrowserAction(() => downloadFile(path))} className={GHOST_BUTTON}>
 								{t("terminal.filePreviewDownload")}
 							</button>
-							{canOpenOnWindows && (
+							{canOpenOnWindows && opensSafelyOnWindows(path) && (
 								<button type="button" onClick={handleOpenOnWindows} className={GHOST_BUTTON}>
 									{t("terminal.filePreviewOpenOnWindows")}
 								</button>

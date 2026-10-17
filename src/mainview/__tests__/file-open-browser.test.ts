@@ -1,4 +1,4 @@
-import { downloadFile, isLoopbackHostname, openFileInBrowser, openFileInNewTab, opensInBrowserTab, resetWindowsHostOpenCache, windowsHostOpenAvailable } from "../file-open-browser";
+import { PopupBlockedError, downloadFile, isLoopbackHostname, openFileInBrowser, openFileInNewTab, opensSafelyOnWindows, opensInBrowserTab, resetWindowsHostOpenCache, windowsHostOpenAvailable } from "../file-open-browser";
 
 const request = vi.hoisted(() => ({
 	createFileLink: vi.fn(async (_params: { path: string }) => ({ viewUrl: "/file/tok/spec.md", downloadUrl: "/file/tok/spec.md?download=1" })),
@@ -52,6 +52,14 @@ describe("openFileInNewTab", () => {
 		open.mockRestore();
 	});
 
+	it("reports a blocked popup instead of silently doing nothing, before asking for a link", async () => {
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		await expect(openFileInNewTab("/wt/spec.md")).rejects.toBeInstanceOf(PopupBlockedError);
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(request.createFileLink).not.toHaveBeenCalled();
+		open.mockRestore();
+	});
+
 	it("closes the blank tab when the link cannot be made", async () => {
 		const tab = { opener: null, location: { replace: vi.fn() }, close: vi.fn() };
 		const open = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
@@ -87,5 +95,12 @@ describe("openFileInBrowser", () => {
 		expect(click).toHaveBeenCalledTimes(1);
 		open.mockRestore();
 		click.mockRestore();
+	});
+});
+
+describe("opensSafelyOnWindows", () => {
+	it("allows documents and media, never scripts or programs", () => {
+		for (const path of ["/a/report.html", "/a/spec.MD", "/a/clip.mp4", "C:\\a\\doc.pdf"]) expect(opensSafelyOnWindows(path)).toBe(true);
+		for (const path of ["/a/build.js", "/a/run.bat", "/a/setup.exe", "/a/link.lnk", "/a/x.ps1", "/a/Makefile", "/a/.bashrc"]) expect(opensSafelyOnWindows(path)).toBe(false);
 	});
 });

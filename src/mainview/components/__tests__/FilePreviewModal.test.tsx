@@ -124,6 +124,24 @@ describe("FilePreviewModal", () => {
 		await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Opened on Windows", expect.anything()));
 	});
 
+	it("never offers Open on Windows for a script, which Windows would run", async () => {
+		fileOpen.windowsHostOpenAvailable.mockResolvedValueOnce(true);
+		readFilePreview.mockResolvedValue({ kind: "text", content: "console.log(1)", truncated: false, size: 14 });
+		renderModal("/wt/scripts/build.js");
+		expect(await screen.findByText("Download")).toBeInTheDocument();
+		await waitFor(() => expect(fileOpen.windowsHostOpenAvailable).toHaveBeenCalled());
+		expect(screen.queryByText("Open on Windows")).not.toBeInTheDocument();
+	});
+
+	it("tells the user when the browser blocked the new tab", async () => {
+		const { PopupBlockedError } = await vi.importActual<typeof import("../../file-open-browser")>("../../file-open-browser");
+		fileOpen.openFileInNewTab.mockRejectedValueOnce(new PopupBlockedError());
+		readFilePreview.mockResolvedValue({ kind: "text", content: "x", truncated: false, size: 1 });
+		renderModal("/wt/a.md");
+		fireEvent.click(await screen.findByText("Open in new tab"));
+		await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Your browser blocked the new tab. Allow pop-ups for this site and try again.", expect.anything()));
+	});
+
 	it("names the failure in a toast when the link cannot be made", async () => {
 		fileOpen.downloadFile.mockRejectedValueOnce(new Error("File not found"));
 		readFilePreview.mockResolvedValue({ kind: "text", content: "x", truncated: false, size: 1 });

@@ -1,10 +1,10 @@
 import { api } from "./rpc";
 import type { FilePreviewResult } from "../shared/types";
+import { TAB_VIEWABLE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../shared/file-link-types";
 
 /**
  * Browser-mode counterparts of the desktop's "Open in default app": the file
- * travels to the viewer's own browser through a capability link the remote
- * server mints (`createFileLink`), instead of opening on the host machine.
+ * reaches the viewer's own browser through a server-minted `createFileLink`.
  */
 
 /** `*.localhost` always resolves to loopback in browsers, so it means the same machine too. */
@@ -16,9 +16,8 @@ export function isLoopbackHostname(hostname: string): boolean {
 let windowsHostOpen: Promise<boolean> | null = null;
 
 /**
- * "Open on Windows" opens the file on the PC running WSL, so it is offered only
- * when the browser sits on that same PC — from a laptop it would quietly open a
- * window at home.
+ * "Open on Windows" acts on the PC running WSL, so it is offered only when the
+ * browser sits on that same PC — from a laptop it would open a window at home.
  */
 export function windowsHostOpenAvailable(hostname = window.location.hostname): Promise<boolean> {
 	if (!isLoopbackHostname(hostname)) return Promise.resolve(false);
@@ -37,43 +36,45 @@ export function resetWindowsHostOpenCache(): void {
 	windowsHostOpen = null;
 }
 
-const TAB_VIEWABLE_EXT = /\.(?:html?|xhtml|svg|md|markdown|txt|log|json|csv|pdf|png|jpe?g|gif|webp|avif|bmp|mp4|webm|mp3|wav|ogg)$/i;
+/** Documents and media only: Windows' default action RUNS scripts and programs. */
+export function opensSafelyOnWindows(path: string): boolean {
+	return WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path));
+}
 
 /** Text and images always display in a tab; past the preview's size cap, the extension decides. */
 export function opensInBrowserTab(path: string, preview: FilePreviewResult | null): boolean {
 	if (preview?.kind === "text" || preview?.kind === "image") return true;
-	return TAB_VIEWABLE_EXT.test(path);
+	return TAB_VIEWABLE_EXTS.has(fileLinkExt(path));
+}
+
+/** The browser refused the new tab (popup blocker); callers name it so the user can allow it. */
+export class PopupBlockedError extends Error {
+	constructor() {
+		super("The browser blocked the new tab");
+		this.name = "PopupBlockedError";
+	}
 }
 
 /**
- * The tab is opened synchronously, inside the click, because the link arrives
- * over an async RPC and a later `window.open` would be popup-blocked. Its
- * `opener` is cut before it navigates to agent-written content — not with the
- * `noopener` feature, which makes `window.open` return null even on success.
+ * The tab opens synchronously inside the click — after the RPC's await it would
+ * be popup-blocked — and its `opener` is cut by hand, not with `noopener`, which
+ * makes `window.open` return null even when the tab opened.
  */
 export async function openLinkInNewTab(mintLink: () => Promise<string>): Promise<void> {
 	const tab = window.open("", "_blank");
+	if (!tab) throw new PopupBlockedError();
 	try {
 		const href = new URL(await mintLink(), window.location.href).href;
-		if (tab) {
-			tab.opener = null;
-			tab.location.replace(href);
-		} else {
-			window.open(href, "_blank", "noopener");
-		}
+		tab.opener = null;
+		tab.location.replace(href);
 	} catch (err) {
-		tab?.close();
+		tab.close();
 		throw err;
 	}
 }
 
 export function openFileInNewTab(path: string): Promise<void> {
 	return openLinkInNewTab(async () => (await api.request.createFileLink({ path })).viewUrl);
-}
-
-/** The remote stand-in for "Open in default app": a tab when the browser can show the file, a download otherwise. */
-export function openFileInBrowser(path: string): Promise<void> {
-	return TAB_VIEWABLE_EXT.test(path) ? openFileInNewTab(path) : downloadFile(path);
 }
 
 export async function downloadFile(path: string): Promise<void> {
@@ -84,4 +85,14 @@ export async function downloadFile(path: string): Promise<void> {
 	document.body.appendChild(anchor);
 	anchor.click();
 	anchor.remove();
+}
+
+/** The remote stand-in for "Open in default app": a tab when the browser can show the file, a download otherwise. */
+export function openFileInBrowser(path: string): Promise<void> {
+	return TAB_VIEWABLE_EXTS.has(fileLinkExt(path)) ? openFileInNewTab(path) : downloadFile(path);
+}
+
+/** RPC errors arrive as Error or as a bare string; the toast wants the message either way. */
+export function errorText(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
