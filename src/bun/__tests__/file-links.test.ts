@@ -1,14 +1,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The test setup stubs Bun.spawn with streams that never close; run the real command through Node
-// instead, with `run`'s real contract — cmd[0] is the executable, as in `git.ts`.
-vi.mock("../git", async () => {
-	const { spawnSync } = await import("node:child_process");
+// with the wrapper's contract (cmd[0] is the executable; stdout a web stream; exited a code).
+vi.mock("../spawn", async () => {
+	const { spawn } = await import("node:child_process");
+	const { Readable } = await import("node:stream");
 	return {
-		run: async (cmd: string[], cwd: string) => {
-			const result = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: "utf8" });
-			if (result.error) throw result.error;
-			return { ok: result.status === 0, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+		spawn: (cmd: string[], opts: { cwd?: string } = {}) => {
+			const child = spawn(cmd[0], cmd.slice(1), { cwd: opts.cwd, stdio: ["ignore", "pipe", "ignore"] });
+			return {
+				stdout: Readable.toWeb(child.stdout!) as unknown as ReadableStream,
+				exited: new Promise<number>((resolve) => {
+					child.on("close", (code) => resolve(code ?? -1));
+					child.on("error", () => resolve(-1));
+				}),
+				kill: () => child.kill(),
+			};
 		},
 	};
 });
@@ -235,28 +242,35 @@ describe("openCheckedFile", () => {
 	});
 });
 
-describe("open response cap", () => {
-	// Bigger than one 1 MB read, so the body is still unsent after the eager first pull.
-	it("holds a slot until the body is read, abandoned or its client leaves, and caps each token", async () => {
+describe("streaming slots", () => {
+	it("never refuses a burst of small assets — they are sent from memory without a slot", async () => {
+		const { base } = reportLink();
+		const replies = await Promise.all(Array.from({ length: 30 }, () => get(`${base}assets/style.css`)));
+		expect(replies.map((res) => res.status)).toEqual(Array(30).fill(200));
+		expect(openFileLinkResponses()).toBe(0);
+	});
+
+	// Bigger than the 1 MB in-memory limit, so each reply streams and holds a slot.
+	it("makes a large file wait for a free slot instead of refusing it, and releases on read, cancel or leave", async () => {
 		const { base } = reportLink();
 		const clients: AbortController[] = [];
-		const pending: Response[] = [];
-		for (let i = 0; i < 8; i++) {
+		const held: Response[] = [];
+		for (let i = 0; i < 16; i++) {
 			const client = new AbortController();
 			clients.push(client);
 			const url = new URL(`http://x${base}big.txt`);
-			pending.push(await serveFileLink(new Request(url, { signal: client.signal }), url));
+			held.push(await serveFileLink(new Request(url, { signal: client.signal }), url));
 		}
-		await new Promise((r) => setTimeout(r, 20));
-		expect(openFileLinkResponses()).toBe(8);
-		expect((await get(`${base}big.txt`)).status).toBe(503);
-		const otherToken = await get(`${reportLink().base}big.txt`);
-		expect(otherToken.status).toBe(200);
-		await otherToken.body!.cancel();
-		await pending[0].text();
-		await pending[1].body!.cancel();
+		expect(openFileLinkResponses()).toBe(16);
+		const waiting = get(`${base}big.txt`);
+		await new Promise((r) => setTimeout(r, 120));
+		await held[0].text();
+		const late = await waiting;
+		expect(late.status).toBe(200);
+		await late.body!.cancel();
+		await held[1].body!.cancel();
 		clients[2].abort();
-		await vi.waitFor(() => expect(openFileLinkResponses()).toBe(6));
+		await vi.waitFor(() => expect(openFileLinkResponses()).toBe(13));
 		clients.forEach((client) => client.abort());
 		await vi.waitFor(() => expect(openFileLinkResponses()).toBe(0));
 	});
@@ -294,18 +308,39 @@ describe("open response cap", () => {
 });
 
 describe("gitignored files under a folder link", () => {
+	function repoWith(gitignore: string, files: Record<string, string>): string | null {
+		const repo = join(ROOT, `gitrepo-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(repo, { recursive: true });
+		if (spawnSync("git", ["init", "-q", repo]).status !== 0) return null;
+		writeFileSync(join(repo, ".gitignore"), gitignore);
+		for (const [name, content] of Object.entries(files)) {
+			mkdirSync(join(repo, name, ".."), { recursive: true });
+			writeFileSync(join(repo, name), content);
+		}
+		return repo;
+	}
+
 	it("refuses ignored local secrets, but serves the page's own tracked and untracked assets", async () => {
-		const repo = join(ROOT, "gitrepo");
-		mkdirSync(join(repo, "config", "assets"), { recursive: true });
-		if (spawnSync("git", ["init", "-q", repo]).status !== 0) return;
-		writeFileSync(join(repo, ".gitignore"), "config/master.key\n");
-		writeFileSync(join(repo, "config", "master.key"), "SECRET");
-		writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
-		writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");
-		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignoreCheckout: repo });
+		const repo = repoWith("config/master.key\n", { "config/x.html": "<p>page</p>", "config/assets/a.css": "body{}", "config/master.key": "SECRET" });
+		if (!repo) return;
+		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
 		const base = link.slice(0, -"x.html".length);
 		expect((await get(link)).status).toBe(200);
 		expect((await get(`${base}assets/a.css`)).status).toBe(200);
+		expect((await get(`${base}master.key`)).status).toBe(404);
+	});
+
+	it("lets through only what the page's own ignore rule covers — *.html ignored does not expose master.key", async () => {
+		const repo = repoWith("*.html\nconfig/master.key\n", { "config/report.html": "<p>r</p>", "config/other.html": "<p>o</p>", "config/a.css": "x", "config/master.key": "SECRET" });
+		if (!repo) return;
+		const { gitIgnoreVerdict } = await import("../file-links");
+		const page = await gitIgnoreVerdict(repo, join(repo, "config", "report.html"));
+		expect(page.state).toBe("ignored");
+		const pageRule = page.state === "ignored" ? page.rule : null;
+		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "report.html", ignore: { checkout: repo, pageRule } });
+		const base = link.slice(0, -"report.html".length);
+		expect((await get(`${base}other.html`)).status).toBe(200);
+		expect((await get(`${base}a.css`)).status).toBe(200);
 		expect((await get(`${base}master.key`)).status).toBe(404);
 	});
 });

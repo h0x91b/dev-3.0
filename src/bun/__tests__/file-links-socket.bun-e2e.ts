@@ -98,7 +98,18 @@ if (process.platform === "linux") {
 	if (openFileLinkResponses() !== 0) problems.push(`${openFileLinkResponses()} slots still held after aborted downloads`);
 }
 
-// 4. A folder link in a real git checkout: the page's assets load, a gitignored secret does not.
+// 4. A page's burst of small assets is never refused (cloudflared hands them over all at once).
+const assets = join(dir, "site");
+mkdirSync(assets, { recursive: true });
+writeFileSync(join(assets, "index.html"), "<p>page</p>");
+for (let i = 0; i < 30; i++) writeFileSync(join(assets, `img${i}.png`), "PNG");
+const site = mintFileLink({ kind: "dir", root: assets, entry: "index.html" });
+const siteBase = `http://127.0.0.1:${port}${site.slice(0, -"index.html".length)}`;
+const burst = await Promise.all(Array.from({ length: 30 }, (_, i) => fetch(`${siteBase}img${i}.png`).then(async (res) => (await res.arrayBuffer(), res.status))));
+const refused = burst.filter((status) => status !== 200).length;
+if (refused) problems.push(`${refused} of 30 parallel small assets were refused`);
+
+// 5. A folder link in a real git checkout: the page's assets load, a gitignored secret does not.
 const repo = join(dir, "repo");
 mkdirSync(join(repo, "config", "assets"), { recursive: true });
 if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode === 0) {
@@ -106,7 +117,7 @@ if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode === 0) {
 	writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
 	writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");
 	writeFileSync(join(repo, "config", "master.key"), "SECRET");
-	const page = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignoreCheckout: repo });
+	const page = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
 	const base = `http://127.0.0.1:${port}${page.slice(0, -"x.html".length)}`;
 	for (const [name, want] of [["x.html", 200], ["assets/a.css", 200], ["master.key", 404]] as const) {
 		const res = await fetch(base + name);
@@ -121,4 +132,4 @@ if (problems.length) {
 	console.error(`file-links socket e2e FAILED:\n- ${problems.join("\n- ")}`);
 	process.exit(1);
 }
-console.log("file-links socket e2e: ok (range Content-Length on the wire, no slot or descriptor leaks, gitignore filter)");
+console.log("file-links socket e2e: ok (range Content-Length on the wire, no slot or descriptor leaks, gitignore filter, asset bursts)");

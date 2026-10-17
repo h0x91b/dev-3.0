@@ -9,6 +9,8 @@ import { whichSync } from "./which";
 
 const INTEROP_FLAGS = ["/proc/sys/fs/binfmt_misc/WSLInterop", "/proc/sys/fs/binfmt_misc/WSLInterop-late"];
 const OPEN_PATH_VAR = "DEV3_OPEN_PATH";
+/** A hung interop or PowerShell must not hold the RPC until its 2-minute timeout. */
+const OPEN_TIMEOUT_MS = 15_000;
 
 let cachedIsWsl: boolean | null = null;
 
@@ -39,7 +41,17 @@ export async function openOnWindowsHost(path: string): Promise<void> {
 		stderr: "ignore",
 		env: { [OPEN_PATH_VAR]: path, WSLENV: [process.env.WSLENV, `${OPEN_PATH_VAR}/p`].filter(Boolean).join(":") },
 	});
-	if ((await proc.exited) !== 0) throw new Error("Windows could not open the file");
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timedOut = new Promise<"timeout">((resolve) => {
+		timer = setTimeout(() => resolve("timeout"), OPEN_TIMEOUT_MS);
+	});
+	const outcome = await Promise.race([proc.exited, timedOut]);
+	clearTimeout(timer);
+	if (outcome === "timeout") {
+		proc.kill();
+		throw new Error("Windows did not respond");
+	}
+	if (outcome !== 0) throw new Error("Windows could not open the file");
 }
 
 /** Test hook. */
