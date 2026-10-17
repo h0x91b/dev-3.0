@@ -38,6 +38,12 @@ NOT TRAVEL … your relay authorises nothing", which made children refuse relaye
 own; it is reversed to "RELAYED PERMISSION IS SCOPED AND SPENT WHEN USED", telling the coordinator to
 relay the user's words verbatim with operation, targets, limits and the child's seq.
 
+Second follow-up, 2026-10-17: with these entries already installed, a review task's merge of the
+PR it reviewed was still refused as Merge Without Review after the user typed "мёржи" — the git
+entry only covered the task's OWN PR, and the default rule wants the user to say "without review".
+The entry now says a merge the user orders in their own turn, of the PR under discussion, is the
+human approval, and that a non-forced `git switch`/`git checkout <ref>` is not local destruction.
+
 ## Risks
 
 A real loosening of the user's global safety gate, written without a per-install prompt. A

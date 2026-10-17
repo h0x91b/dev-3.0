@@ -639,6 +639,19 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a paid run within a quoted budget/);
 	});
 
+	// Seq 2173: the user typed "мёржи" after a finished review, and the merge
+	// was still refused as Merge Without Review.
+	it("treats a merge the user ordered in their own turn as the human approval", () => {
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/A merge the user orders in their own turn/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("мёржи");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/is not Merge Without Review: that order is the human approval/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/a pr-review task merging the PR it reviewed/);
+	});
+
+	it("does not count a non-forced switch as local destruction", () => {
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/no `-f`, `--force` or `--discard-changes` is not Irreversible Local Destruction/);
+	});
+
 	it("treats creating a ref and landing on the default branch as an ordinary push", () => {
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/not Modify Shared Resources/);
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("git push origin <sha>:refs/heads/<new>");
