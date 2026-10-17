@@ -114,11 +114,15 @@ describe("serveFileLink", () => {
 		expect(await (await get(`${base}spec.md`)).text()).toBe("# Spec\n");
 	});
 
-	it("leaves PDF unsandboxed for the browser's viewer and downloads unknown binary", async () => {
+	it("leaves PDF and media unsandboxed for the browser's own viewers and downloads unknown binary", async () => {
 		const { base } = reportLink();
 		const pdf = await get(`${base}doc.pdf`);
 		expect(pdf.headers.get("content-type")).toBe("application/pdf");
 		expect(pdf.headers.get("content-security-policy")).toBeNull();
+		writeFileSync(join(REPORT, "clip.mp4"), "MP4");
+		const clip = await get(`${base}clip.mp4`);
+		expect(clip.headers.get("content-type")).toBe("video/mp4");
+		expect(clip.headers.get("content-security-policy")).toBeNull();
 		expect((await get(`${base}blob.dat`)).headers.get("content-type")).toBe("application/octet-stream");
 	});
 

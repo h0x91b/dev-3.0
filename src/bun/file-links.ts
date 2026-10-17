@@ -131,8 +131,8 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 			"Referrer-Policy": "no-referrer",
 		};
 		if (download) headers["Content-Disposition"] = attachmentDisposition(basename(path));
-		// Chromium's PDF viewer refuses to load in a sandboxed document; a PDF runs no page script.
-		else if (!contentType.startsWith("application/pdf")) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
+		// Chromium's PDF and media viewers refuse to load in a sandboxed document; neither runs page script.
+		else if (!/^(?:application\/pdf|video\/|audio\/)/.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
 		return await serveFileBytes(req, path, headers);
 	} catch {
 		// Unreadable, or gone between the checks — never let Bun's error page echo the path.
