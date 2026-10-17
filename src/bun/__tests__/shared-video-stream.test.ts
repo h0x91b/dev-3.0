@@ -8,7 +8,7 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import { MAX_RANGE_RESPONSE_BYTES, isStoredSharedVideoPath, parseByteRange, resetSharedVideoTokens, serveSharedVideo, sharedVideoUrlPath } from "../shared-video-stream";
+import { MAX_RANGE_RESPONSE_BYTES, isStoredSharedVideoPath, parseByteRange, resetSharedVideoTokens, serveFileBytes, serveSharedVideo, sharedVideoUrlPath } from "../shared-video-stream";
 
 const STORE = `${TEST_HOME}/worktrees/my-project/shared-images`;
 const CLIP = `${STORE}/shared-1-abcd.mp4`;
@@ -120,5 +120,66 @@ describe("serveSharedVideo", () => {
 		const path = sharedVideoUrlPath(CLIP)!;
 		const res = await serveSharedVideo(new Request(`http://x${path}`), path, { "Access-Control-Allow-Origin": "*" });
 		expect(res.headers.get("access-control-allow-origin")).toBe("*");
+	});
+});
+
+describe("serveFileBytes with a caller's handle", () => {
+	/** A handle whose reads resolve only when the test says so, recording when it was closed. */
+	function slowHandle(size: number) {
+		const events: string[] = [];
+		let release: () => void = () => {};
+		const handle = {
+			stat: async () => ({ size }),
+			read: (buf: Uint8Array) => new Promise<{ bytesRead: number }>((resolve) => {
+				release = () => {
+					events.push("read settled");
+					resolve({ bytesRead: buf.length });
+				};
+			}),
+			close: async () => {
+				events.push("closed");
+			},
+		};
+		return { handle, events, settle: () => release() };
+	}
+
+	// Closing a Bun FileHandle during a pending read leaks the OS descriptor, so an
+	// aborted download must not close until that read has settled.
+	it("closes the file only after the in-flight read settles when the client aborts", async () => {
+		const { handle, events, settle } = slowHandle(4 * 1024 * 1024);
+		const onDone = vi.fn();
+		const res = await serveFileBytes(new Request("http://x/f"), handle as never, { "Content-Type": "text/plain" }, { onDone });
+		const reader = res.body!.getReader();
+		void reader.read();
+		await new Promise((r) => setTimeout(r, 0));
+		const cancelled = reader.cancel();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(events).toEqual([]);
+		settle();
+		await cancelled;
+		expect(events).toEqual(["read settled", "closed"]);
+		expect(onDone).toHaveBeenCalledTimes(1);
+	});
+
+	it("streams a range with its Content-Length when asked, and reports done once the body ends", async () => {
+		const path = `${TEST_HOME}/ten.txt`;
+		mkdirSync(TEST_HOME, { recursive: true });
+		writeFileSync(path, "0123456789");
+		const onDone = vi.fn();
+		const res = await serveFileBytes(new Request("http://x/f", { headers: { range: "bytes=2-5" } }), path, { "Content-Type": "text/plain" }, { streamRanges: true, onDone });
+		expect(res.status).toBe(206);
+		expect(res.headers.get("content-length")).toBe("4");
+		expect(res.body).toBeInstanceOf(ReadableStream);
+		expect(onDone).not.toHaveBeenCalled();
+		expect(await res.text()).toBe("2345");
+		expect(onDone).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports done at once for a bodiless reply", async () => {
+		const path = `${TEST_HOME}/ten.txt`;
+		writeFileSync(path, "0123456789");
+		const onDone = vi.fn();
+		await serveFileBytes(new Request("http://x/f", { method: "HEAD" }), path, { "Content-Type": "text/plain" }, { onDone });
+		expect(onDone).toHaveBeenCalledTimes(1);
 	});
 });

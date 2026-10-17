@@ -79,25 +79,38 @@ type FileHandle = Awaited<ReturnType<typeof open>>;
 
 /**
  * Reads one chunk per pull, so a 300 MB clip never sits in memory, and owns
- * `handle` (closed at the end, on error or on cancel). A stream body also keeps Bun
- * off its sendfile path, which drops the response headers on macOS LAN sockets
+ * `handle`. A stream body also keeps Bun off its sendfile path, which drops the
+ * response headers on macOS LAN sockets
  * (decisions/2026/07/07/remote-static-sendfile-lan-headerless.md).
+ *
+ * Closing a Bun FileHandle while a read is in flight never frees the OS
+ * descriptor, so a client that aborts mid-stream would leak one: cancel only
+ * marks the stream, and the handle closes once the pending read settles.
+ * `onDone` fires exactly once, when the stream ends, errors or is cancelled.
  */
-function fileRangeStream(handle: FileHandle, start: number, end: number): ReadableStream<Uint8Array> {
+function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?: () => void): ReadableStream<Uint8Array> {
 	let current: FileHandle | null = handle;
+	let reading: Promise<unknown> | null = null;
+	let cancelled = false;
 	let position = start;
 	const close = async () => {
 		const h = current;
 		current = null;
-		await h?.close().catch(() => {});
+		if (!h) return;
+		await h.close().catch(() => {});
+		onDone?.();
 	};
 	return new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
-				if (!current) return controller.close();
+				if (!current || cancelled) return controller.close();
 				const length = Math.min(READ_CHUNK, end - position + 1);
 				const buf = new Uint8Array(length);
-				const { bytesRead } = await current.read(buf, 0, length, position);
+				const pending = current.read(buf, 0, length, position);
+				reading = pending;
+				const { bytesRead } = await pending;
+				reading = null;
+				if (cancelled) return await close();
 				if (bytesRead === 0) {
 					await close();
 					controller.close();
@@ -110,11 +123,16 @@ function fileRangeStream(handle: FileHandle, start: number, end: number): Readab
 					controller.close();
 				}
 			} catch (err) {
+				reading = null;
 				await close();
-				controller.error(err);
+				if (!cancelled) controller.error(err);
 			}
 		},
-		cancel: close,
+		async cancel() {
+			cancelled = true;
+			await reading?.catch(() => {});
+			await close();
+		},
 	});
 }
 
@@ -134,17 +152,25 @@ export async function serveSharedVideo(req: Request, pathname: string, extraHead
 	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": MIME[imageExt(path)] ?? "application/octet-stream" });
 }
 
+export interface ServeFileBytesOptions {
+	/** Stream a 206 (explicit Content-Length) instead of buffering up to 8 MB per reply. */
+	streamRanges?: boolean;
+	/** Fires exactly once, when the response body is finished or abandoned (or at once for a bodiless reply). */
+	onDone?: () => void;
+}
+
 /**
  * GET/HEAD for one file with Range support, from a path or from a handle the
  * caller already opened and verified (this function then owns and closes it). A
- * 206 is a bounded in-memory slice because Bun drops `Content-Length` from a
- * stream body and answers chunked, which media engines handle less reliably; a
- * plain 200 streams the whole file. `baseHeaders` must carry the Content-Type.
+ * 206 is buffered by default because Bun drops `Content-Length` from a stream
+ * body and answers chunked, which media engines handle less reliably; a plain 200
+ * streams the whole file. `baseHeaders` must carry the Content-Type.
  */
-export async function serveFileBytes(req: Request, source: string | FileHandle, baseHeaders: Record<string, string>): Promise<Response> {
-	const handle = typeof source === "string" ? await open(source, "r") : source;
+export async function serveFileBytes(req: Request, source: string | FileHandle, baseHeaders: Record<string, string>, options: ServeFileBytesOptions = {}): Promise<Response> {
 	let streaming = false;
+	let handle: FileHandle | null = null;
 	try {
+		handle = typeof source === "string" ? await open(source, "r") : source;
 		const size = (await handle.stat()).size;
 		const headers: Record<string, string> = {
 			...baseHeaders,
@@ -159,16 +185,23 @@ export async function serveFileBytes(req: Request, source: string | FileHandle, 
 			headers["Content-Length"] = String(size);
 			if (req.method === "HEAD" || size === 0) return new Response(null, { status: 200, headers });
 			streaming = true;
-			return new Response(fileRangeStream(handle, 0, size - 1), { status: 200, headers });
+			return new Response(fileRangeStream(handle, 0, size - 1, options.onDone), { status: 200, headers });
 		}
 		const { start } = range;
 		const end = Math.min(range.end, start + MAX_RANGE_RESPONSE_BYTES - 1);
 		headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
 		headers["Content-Length"] = String(end - start + 1);
 		if (req.method === "HEAD") return new Response(null, { status: 206, headers });
+		if (options.streamRanges) {
+			streaming = true;
+			return new Response(fileRangeStream(handle, start, end, options.onDone), { status: 206, headers });
+		}
 		return new Response(await readRange(handle, start, end), { status: 206, headers });
 	} finally {
-		if (!streaming) await handle.close().catch(() => {});
+		if (!streaming) {
+			await handle?.close().catch(() => {});
+			options.onDone?.();
+		}
 	}
 }
 

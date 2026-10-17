@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, openCheckedFile, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, openCheckedFile, openFileLinkResponses, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
+import { spawnSync } from "node:child_process";
 
 const ROOT = `${process.env.DEV3_TEST_ROOT}/file-links`;
 const REPORT = join(ROOT, "worktree", "report");
@@ -28,6 +29,7 @@ beforeAll(() => {
 	writeFileSync(join(REPORT, "blob.dat"), Buffer.from([1, 2, 0, 3]));
 	writeFileSync(join(REPORT, "doc.pdf"), "%PDF-1.4");
 	writeFileSync(join(REPORT, "ten.txt"), "0123456789");
+	writeFileSync(join(REPORT, "big.txt"), "x".repeat(3 * 1024 * 1024));
 	writeFileSync(join(REPORT, ".env"), "TOKEN=1");
 	writeFileSync(join(REPORT, ".git", "config"), "[core]");
 	writeFileSync(SECRET, "do not serve");
@@ -217,6 +219,39 @@ describe("openCheckedFile", () => {
 		const handle = await openCheckedFile(checked!);
 		expect(handle).not.toBeNull();
 		await handle!.close();
+	});
+});
+
+describe("open response cap", () => {
+	// Bigger than one 1 MB read, so the body is still unsent after the eager first pull.
+	it("holds a slot until the body is read or abandoned, and refuses past 32", async () => {
+		const { base } = reportLink();
+		const pending: Response[] = [];
+		for (let i = 0; i < 32; i++) pending.push(await get(`${base}big.txt`));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(openFileLinkResponses()).toBe(32);
+		expect((await get(`${base}big.txt`)).status).toBe(503);
+		await pending[0].text();
+		await pending[1].body!.cancel();
+		expect(openFileLinkResponses()).toBe(30);
+		expect((await get(`${base}big.txt`, { method: "HEAD" })).status).toBe(200);
+		expect(openFileLinkResponses()).toBe(30);
+		await Promise.all(pending.slice(2).map((res) => res.body!.cancel()));
+		expect(openFileLinkResponses()).toBe(0);
+	});
+
+	it("does not hang on a FIFO planted in the folder", async () => {
+		if (process.platform === "win32") return;
+		const fifo = join(REPORT, "pipe");
+		if (spawnSync("mkfifo", [fifo]).status !== 0) return;
+		try {
+			const res = await Promise.race([get(`${reportLink().base}pipe`), new Promise<"hung">((r) => setTimeout(() => r("hung"), 2000))]);
+			expect(res).not.toBe("hung");
+			expect((res as Response).status).toBe(404);
+			expect(openFileLinkResponses()).toBe(0);
+		} finally {
+			rmSync(fifo, { force: true });
+		}
 	});
 });
 
