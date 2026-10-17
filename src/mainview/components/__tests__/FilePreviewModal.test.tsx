@@ -32,9 +32,24 @@ vi.mock("../../rpc", () => ({
 				return readFilePreview;
 			},
 			openTerminalPath: vi.fn(),
+			createFileLink: vi.fn(),
+			openFileOnWindowsHost: vi.fn(async () => {}),
 		},
 	},
 }));
+
+const fileOpen = vi.hoisted(() => ({
+	windowsHostOpenAvailable: vi.fn(async () => false),
+	openFileInNewTab: vi.fn(async (_path: string) => {}),
+	downloadFile: vi.fn(async (_path: string) => {}),
+}));
+vi.mock("../../file-open-browser", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../file-open-browser")>()),
+	...fileOpen,
+}));
+
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
+vi.mock("../../toast", () => ({ toast }));
 
 const writeClipboardText = vi.hoisted(() => vi.fn(async (_text: string) => "clipboard" as const));
 vi.mock("../../utils/clipboard-write", () => ({ writeClipboardText }));
@@ -81,6 +96,40 @@ describe("FilePreviewModal", () => {
 		expect(screen.getByText("Copy path")).toBeInTheDocument();
 		expect(screen.queryByText("Open folder")).not.toBeInTheDocument();
 		expect(screen.queryByText("Open in default app")).not.toBeInTheDocument();
+	});
+
+	it("hands the file to this browser instead: open in a new tab and download", async () => {
+		readFilePreview.mockResolvedValue({ kind: "text", content: "# Hi\n", truncated: false, size: 5 });
+		renderModal("/wt/docs/guide.md");
+		fireEvent.click(await screen.findByText("Open in new tab"));
+		expect(fileOpen.openFileInNewTab).toHaveBeenCalledWith("/wt/docs/guide.md");
+		fireEvent.click(screen.getByText("Download"));
+		expect(fileOpen.downloadFile).toHaveBeenCalledWith("/wt/docs/guide.md");
+		expect(screen.queryByText("Open on Windows")).not.toBeInTheDocument();
+	});
+
+	it("offers Download but not a new tab for a binary the browser cannot show", async () => {
+		readFilePreview.mockResolvedValue({ kind: "binary", size: 2048 });
+		renderModal("/wt/build/app.bin");
+		expect(await screen.findByText("Download")).toBeInTheDocument();
+		expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
+	});
+
+	it("offers Open on Windows only when the WSL host can, and confirms it", async () => {
+		fileOpen.windowsHostOpenAvailable.mockResolvedValueOnce(true);
+		readFilePreview.mockResolvedValue({ kind: "text", content: "<p>x</p>", truncated: false, size: 8 });
+		renderModal("/wt/report/index.html");
+		fireEvent.click(await screen.findByText("Open on Windows"));
+		await waitFor(() => expect(api.request.openFileOnWindowsHost).toHaveBeenCalledWith({ path: "/wt/report/index.html" }));
+		await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Opened on Windows", expect.anything()));
+	});
+
+	it("names the failure in a toast when the link cannot be made", async () => {
+		fileOpen.downloadFile.mockRejectedValueOnce(new Error("File not found"));
+		readFilePreview.mockResolvedValue({ kind: "text", content: "x", truncated: false, size: 1 });
+		renderModal("/wt/a.txt");
+		fireEvent.click(await screen.findByText("Download"));
+		await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't open the file: File not found", expect.anything()));
 	});
 
 	it("shows filename and directory as separate header lines", async () => {
@@ -397,6 +446,8 @@ describe("FilePreviewModal", () => {
 		);
 		expect(screen.queryByText("Copy content")).not.toBeInTheDocument();
 		expect(screen.queryByText("Open folder")).not.toBeInTheDocument();
+		expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
+		expect(screen.queryByText("Download")).not.toBeInTheDocument();
 	});
 });
 

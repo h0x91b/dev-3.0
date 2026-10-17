@@ -41,7 +41,11 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) => {
 });
 vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
+const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn() }));
+vi.mock("../../wsl-host", () => wsl);
+
 import { terminalPathHandlers as appHandlers } from "../terminal-paths";
+import { resolveFileLinkPath } from "../../file-links";
 
 beforeAll(() => {
 	mkdirSync(join(worktree, "src"), { recursive: true });
@@ -283,5 +287,50 @@ describe("readFilePreview", () => {
 		if (result.kind === "image") {
 			expect(result.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
 		}
+	});
+});
+
+describe("createFileLink", () => {
+	it("covers the file's folder inside a project, so a report's relative assets resolve", async () => {
+		const { viewUrl, downloadUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
+		expect(viewUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/architecture\.md$/);
+		expect(downloadUrl).toBe(`${viewUrl}?download=1`);
+		const sibling = viewUrl.replace(/architecture\.md$/, "components/scout.md");
+		expect(resolveFileLinkPath(sibling)).toBe(join(worktree, "docs", "components", "scout.md"));
+		expect(resolveFileLinkPath(viewUrl.replace(/architecture\.md$/, "..%2F..%2Fnotes.txt"))).toBeNull();
+	});
+
+	it("covers only the one file outside any project", async () => {
+		const loose = join(tmpdir(), `dev3-file-link-${process.pid}.txt`);
+		writeFileSync(loose, "loose\n");
+		try {
+			const { viewUrl } = await appHandlers.createFileLink({ path: loose });
+			expect(resolveFileLinkPath(viewUrl)).toBe(loose);
+			expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, "other.txt"))).toBeNull();
+		} finally {
+			rmSync(loose, { force: true });
+		}
+	});
+
+	it("refuses paths the preview could not show", async () => {
+		await expect(appHandlers.createFileLink({ path: "/etc/hosts" })).rejects.toThrow("outside the allowed");
+		// A missing file under the temp dir fails the symlink-safe gate before the stat.
+		await expect(appHandlers.createFileLink({ path: join(tmp, "nope.txt") })).rejects.toThrow();
+		await expect(appHandlers.createFileLink({ path: worktree })).rejects.toThrow("Not a file");
+	});
+});
+
+describe("openFileOnWindowsHost", () => {
+	it("is refused off WSL and gated like the preview on WSL", async () => {
+		wsl.isWslHost.mockReturnValue(false);
+		expect(await appHandlers.getWindowsHostOpen()).toEqual({ available: false });
+		await expect(appHandlers.openFileOnWindowsHost({ path: join(tmp, "notes.txt") })).rejects.toThrow("Not running under WSL");
+
+		wsl.isWslHost.mockReturnValue(true);
+		expect(await appHandlers.getWindowsHostOpen()).toEqual({ available: true });
+		await expect(appHandlers.openFileOnWindowsHost({ path: "/etc/hosts" })).rejects.toThrow("outside the allowed");
+		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
+		await appHandlers.openFileOnWindowsHost({ path: join(tmp, "notes.txt") });
+		expect(wsl.openOnWindowsHost).toHaveBeenCalledWith(join(tmp, "notes.txt"));
 	});
 });

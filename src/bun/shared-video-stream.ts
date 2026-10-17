@@ -126,21 +126,25 @@ async function readRange(path: string, start: number, end: number): Promise<Uint
 	}
 }
 
-/**
- * Serves `/shared-video/<token>` with Range support; `extraHeaders` lets the desktop route add CORS.
- * A 206 is a bounded in-memory slice because Bun drops `Content-Length` from a stream body and
- * answers chunked, which media engines handle less reliably; a plain 200 streams the whole clip.
- */
+/** Serves `/shared-video/<token>` with Range support; `extraHeaders` lets the desktop route add CORS. */
 export async function serveSharedVideo(req: Request, pathname: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
 	const token = pathname.slice(SHARED_VIDEO_ROUTE.length);
 	const path = pathByToken.get(token);
 	if (!path || !existsSync(path)) return new Response("Not Found", { status: 404, headers: extraHeaders });
 	if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405, headers: extraHeaders });
 
+	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": MIME[imageExt(path)] ?? "application/octet-stream" });
+}
+
+/**
+ * GET/HEAD for one file on disk with Range support. A 206 is a bounded in-memory slice because Bun
+ * drops `Content-Length` from a stream body and answers chunked, which media engines handle less
+ * reliably; a plain 200 streams the whole file. `baseHeaders` must carry the Content-Type.
+ */
+export async function serveFileBytes(req: Request, path: string, baseHeaders: Record<string, string>): Promise<Response> {
 	const size = statSync(path).size;
 	const headers: Record<string, string> = {
-		...extraHeaders,
-		"Content-Type": MIME[imageExt(path)] ?? "application/octet-stream",
+		...baseHeaders,
 		"Accept-Ranges": "bytes",
 		"Cache-Control": "private, no-store",
 	};
