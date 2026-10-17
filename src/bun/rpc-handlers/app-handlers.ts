@@ -1,7 +1,7 @@
 import { interfaceOnboarding } from "../interface-onboarding";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
 import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
@@ -28,7 +28,7 @@ import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRende
 import { forgetRendererClient, recordRendererHeartbeat } from "../renderer-watchdog";
 import { consumeArtifactFreezeNotice } from "../artifact-freeze-recovery";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
-import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath } from "../shared-artifacts";
+import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath, sharedArtifactLinkScope } from "../shared-artifacts";
 import { mintFileLink } from "../file-links";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { clipboardImageToPng } from "../clipboard-image";
@@ -876,15 +876,11 @@ async function openArtifactInBrowser(params: { artifact: SharedArtifact }): Prom
 	Utils.openPath(path);
 }
 
-/**
- * Remote-mode counterpart of {@link openArtifactInBrowser}: a sandboxed tab link
- * over the artifact's own stored folder, so its relative assets resolve the way
- * they do when the desktop hands the file to the OS browser.
- */
+/** Remote-mode counterpart of {@link openArtifactInBrowser}: a sandboxed tab link over the stored artifact. */
 async function createArtifactLink(params: { artifact: SharedArtifact }): Promise<{ viewUrl: string }> {
-	const path = sharedArtifactHtmlPath(params.artifact);
-	log.info("→ createArtifactLink", { path });
-	return { viewUrl: mintFileLink({ kind: "dir", root: dirname(path), entry: basename(path) }) };
+	const scope = sharedArtifactLinkScope(params.artifact);
+	log.info("→ createArtifactLink", { root: scope.kind === "dir" ? scope.root : scope.path });
+	return { viewUrl: mintFileLink(scope) };
 }
 
 async function openImageFile(params: { path: string }): Promise<void> {

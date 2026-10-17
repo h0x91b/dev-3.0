@@ -15,7 +15,7 @@ import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
-import { openLinkInNewTab } from "../file-open-browser";
+import { PopupBlockedError, openLinkInNewTab } from "../file-open-browser";
 import FindBar, { type FindBarHandle } from "./FindBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
@@ -579,7 +579,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 		const opened = isRemote()
 			? openLinkInNewTab(async () => (await api.request.createArtifactLink({ artifact: current })).viewUrl)
 			: api.request.openArtifactInBrowser({ artifact: current });
-		opened.catch(() => toast.error(t("artifactViewer.openInBrowserFailed"), { taskId }));
+		opened.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "artifactViewer.openInBrowserFailed"), { taskId }));
 	};
 	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
 	const themeName = themeMode === "follow"

@@ -6,7 +6,7 @@ import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { api } from "../rpc";
-import { openFileInBrowser } from "../file-open-browser";
+import { PopupBlockedError, openFileInBrowser } from "../file-open-browser";
 import { isRemote } from "../utils/platform";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
@@ -424,7 +424,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<button
 						type="button"
 						onClick={() => (isRemote() ? openFileInBrowser(current.storedPath) : api.request.openImageFile({ path: current.storedPath }))
-							.catch(() => toast.error(t("imageViewer.openFailed"), { taskId }))}
+							.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "imageViewer.openFailed"), { taskId }))}
 						title={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
 						aria-label={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
 						className={iconBtn}

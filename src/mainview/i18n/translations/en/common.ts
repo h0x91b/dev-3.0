@@ -561,6 +561,7 @@ const common = {
 	"imageViewer.copyPath": "Copy image path",
 	"imageViewer.copyFailed": "Couldn't copy the path",
 	"imageViewer.open": "Open in default app",
+	"imageViewer.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site and try again.",
 	"imageViewer.openInTab": "Open in new tab",
 	"imageViewer.download": "Download image",
 	"imageViewer.saved": "Image saved to Downloads",

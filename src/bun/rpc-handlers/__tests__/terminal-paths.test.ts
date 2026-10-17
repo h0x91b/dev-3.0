@@ -18,7 +18,9 @@ vi.mock("../../data", () => ({
 	}),
 	// The whole temp dir is a registered project so preview/open scope checks
 	// (home dir + project roots) pass for the fixtures created below.
-	loadProjects: vi.fn(async () => [{ id: "proj-1", kind: "git", path: tmp }]),
+	// The checkout itself is a second root outside the temp dir, where a missing
+	// file reaches the stat instead of failing the temp dir's symlink check.
+	loadProjects: vi.fn(async () => [{ id: "proj-1", kind: "git", path: tmp }, { id: "proj-2", kind: "git", path: process.cwd() }]),
 }));
 
 vi.mock("../shared", () => ({
@@ -41,10 +43,10 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) => {
 });
 vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
-const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn() }));
+const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn(async (_path: string) => {}) }));
 vi.mock("../../wsl-host", () => wsl);
 
-import { terminalPathHandlers as appHandlers } from "../terminal-paths";
+import { isUnder, terminalPathHandlers as appHandlers } from "../terminal-paths";
 import { resolveFileLinkPath } from "../../file-links";
 
 beforeAll(() => {
@@ -291,21 +293,44 @@ describe("readFilePreview", () => {
 });
 
 describe("createFileLink", () => {
-	it("covers the file's folder inside a project, so a report's relative assets resolve", async () => {
-		const { viewUrl, downloadUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
-		expect(viewUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/architecture\.md$/);
+	it("gives a page below a project root its folder, so its relative assets resolve", async () => {
+		mkdirSync(join(worktree, "docs", "report", "assets"), { recursive: true });
+		writeFileSync(join(worktree, "docs", "report", "index.html"), "<link rel=stylesheet href=assets/a.css>");
+		writeFileSync(join(worktree, "docs", "report", "assets", "a.css"), "body{}");
+		const { viewUrl, downloadUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "report", "index.html") });
+		expect(viewUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/index\.html$/);
 		expect(downloadUrl).toBe(`${viewUrl}?download=1`);
-		const sibling = viewUrl.replace(/architecture\.md$/, "components/scout.md");
-		expect(resolveFileLinkPath(sibling)).toBe(join(worktree, "docs", "components", "scout.md"));
-		expect(resolveFileLinkPath(viewUrl.replace(/architecture\.md$/, "..%2F..%2Fnotes.txt"))).toBeNull();
+		expect(resolveFileLinkPath(viewUrl.replace(/index\.html$/, "assets/a.css"))).toBe(realpathSync(join(worktree, "docs", "report", "assets", "a.css")));
+		expect(resolveFileLinkPath(viewUrl.replace(/index\.html$/, "..%2Farchitecture.md"))).toBeNull();
+	});
+
+	it("links a non-page as its one file, even inside a project", async () => {
+		const { viewUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
+		expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(join(worktree, "docs", "architecture.md")));
+		expect(resolveFileLinkPath(viewUrl.replace(/architecture\.md$/, "components/scout.md"))).toBeNull();
+	});
+
+	it("never gives a page at a checkout or project root the whole repository", async () => {
+		mkdirSync(join(worktree, ".git"), { recursive: true });
+		writeFileSync(join(worktree, "index.html"), "<p>root page</p>");
+		writeFileSync(join(tmp, "root.html"), "<p>project root page</p>");
+		try {
+			for (const page of [join(worktree, "index.html"), join(tmp, "root.html")]) {
+				const { viewUrl } = await appHandlers.createFileLink({ path: page });
+				expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(page));
+				expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, "notes.txt"))).toBeNull();
+			}
+		} finally {
+			rmSync(join(worktree, ".git"), { recursive: true, force: true });
+		}
 	});
 
 	it("covers only the one file outside any project", async () => {
-		const loose = join(tmpdir(), `dev3-file-link-${process.pid}.txt`);
-		writeFileSync(loose, "loose\n");
+		const loose = join(tmpdir(), `dev3-file-link-${process.pid}.html`);
+		writeFileSync(loose, "<p>loose</p>");
 		try {
 			const { viewUrl } = await appHandlers.createFileLink({ path: loose });
-			expect(resolveFileLinkPath(viewUrl)).toBe(loose);
+			expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(loose));
 			expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, "other.txt"))).toBeNull();
 		} finally {
 			rmSync(loose, { force: true });
@@ -314,9 +339,17 @@ describe("createFileLink", () => {
 
 	it("refuses paths the preview could not show", async () => {
 		await expect(appHandlers.createFileLink({ path: "/etc/hosts" })).rejects.toThrow("outside the allowed");
-		// A missing file under the temp dir fails the symlink-safe gate before the stat.
-		await expect(appHandlers.createFileLink({ path: join(tmp, "nope.txt") })).rejects.toThrow();
+		await expect(appHandlers.createFileLink({ path: join(process.cwd(), `dev3-missing-${process.pid}.txt`) })).rejects.toThrow("File not found");
 		await expect(appHandlers.createFileLink({ path: worktree })).rejects.toThrow("Not a file");
+	});
+});
+
+describe("isUnder", () => {
+	it("matches below a root with the host's separator, Windows included", () => {
+		expect(isUnder("C:\\Users\\me\\wt\\a.png", "C:\\Users\\me", "\\")).toBe(true);
+		expect(isUnder("C:\\Users\\meow\\a.png", "C:\\Users\\me", "\\")).toBe(false);
+		expect(isUnder("/home/me/wt/a.png", "/home/me", "/")).toBe(true);
+		expect(isUnder("/home/meow/a.png", "/home/me", "/")).toBe(false);
 	});
 });
 
@@ -332,5 +365,14 @@ describe("openFileOnWindowsHost", () => {
 		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
 		await appHandlers.openFileOnWindowsHost({ path: join(tmp, "notes.txt") });
 		expect(wsl.openOnWindowsHost).toHaveBeenCalledWith(join(tmp, "notes.txt"));
+	});
+
+	it("refuses scripts and programs, which Windows' default action would run", async () => {
+		wsl.isWslHost.mockReturnValue(true);
+		wsl.openOnWindowsHost.mockClear();
+		await expect(appHandlers.openFileOnWindowsHost({ path: join(worktree, "src", "index.ts") })).rejects.toThrow("not opened on Windows");
+		writeFileSync(join(tmp, "build.js"), "1");
+		await expect(appHandlers.openFileOnWindowsHost({ path: join(tmp, "build.js") })).rejects.toThrow("not opened on Windows");
+		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
 	});
 });

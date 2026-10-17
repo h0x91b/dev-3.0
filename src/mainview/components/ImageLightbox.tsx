@@ -4,7 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { toast } from "../toast";
-import { openFileInBrowser } from "../file-open-browser";
+import { PopupBlockedError, openFileInBrowser } from "../file-open-browser";
 import { isRemote } from "../utils/platform";
 import { downloadDataUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
@@ -103,7 +103,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 
 	function handleOpenExternal() {
 		(isRemote() ? openFileInBrowser(path) : api.request.openImageFile({ path }))
-			.catch(() => toast.error(t("imageViewer.openFailed")));
+			.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "imageViewer.openFailed")));
 	}
 
 	function handleDownload() {

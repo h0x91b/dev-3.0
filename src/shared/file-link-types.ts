@@ -1,0 +1,70 @@
+/**
+ * What a browser tab can show for a file handed over through a `/file/` link.
+ * The server's Content-Type and the renderer's "Open in new tab or download"
+ * choice both read this one table, so they cannot drift apart.
+ */
+
+const TEXT = "text/plain; charset=utf-8";
+
+/** Content-Type per lower-case extension; anything absent is sniffed (text or binary) by the server. */
+export const FILE_LINK_CONTENT_TYPES: Readonly<Record<string, string>> = {
+	".html": "text/html; charset=utf-8",
+	".htm": "text/html; charset=utf-8",
+	".xhtml": "application/xhtml+xml; charset=utf-8",
+	".svg": "image/svg+xml",
+	".md": "text/markdown; charset=utf-8",
+	".markdown": "text/markdown; charset=utf-8",
+	".txt": TEXT,
+	".log": TEXT,
+	".csv": TEXT,
+	".css": "text/css; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".mjs": "text/javascript; charset=utf-8",
+	".json": "application/json; charset=utf-8",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".webp": "image/webp",
+	".avif": "image/avif",
+	".bmp": "image/bmp",
+	".ico": "image/x-icon",
+	".pdf": "application/pdf",
+	".mp4": "video/mp4",
+	".webm": "video/webm",
+	".mp3": "audio/mpeg",
+	".wav": "audio/wav",
+	".ogg": "audio/ogg",
+	".woff": "font/woff",
+	".woff2": "font/woff2",
+	".ttf": "font/ttf",
+	".otf": "font/otf",
+};
+
+/** Pages whose relative CSS/images/scripts need the link to cover their folder. */
+export const FILE_LINK_PAGE_EXTS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".svg"]);
+
+/** Assets a page loads, not files a user opens on their own. */
+const ASSET_ONLY_EXTS = new Set([".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".otf", ".ico"]);
+
+/** Extensions a tab displays rather than downloads. */
+export const TAB_VIEWABLE_EXTS: ReadonlySet<string> = new Set(
+	Object.keys(FILE_LINK_CONTENT_TYPES).filter((ext) => !ASSET_ONLY_EXTS.has(ext)),
+);
+
+/**
+ * Documents and media that open safely with their Windows default app. An
+ * allowlist on purpose: the default verb RUNS scripts and programs
+ * (`.js` under Windows Script Host, `.bat`, `.exe`, `.lnk`, …).
+ */
+export const WINDOWS_OPEN_SAFE_EXTS: ReadonlySet<string> = new Set([
+	".html", ".htm", ".svg", ".md", ".markdown", ".txt", ".log", ".csv", ".json", ".pdf",
+	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".mp4", ".webm", ".mp3", ".wav", ".ogg",
+]);
+
+/** Lower-case extension including the dot, or "" — works on POSIX and Windows paths alike. */
+export function fileLinkExt(path: string): string {
+	const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+	const dot = name.lastIndexOf(".");
+	return dot > 0 ? name.slice(dot).toLowerCase() : "";
+}
