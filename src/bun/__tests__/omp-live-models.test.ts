@@ -16,6 +16,7 @@ function deps(overrides: Partial<OmpLiveModelDeps> = {}): OmpLiveModelDeps {
 		resolveAgentDir: vi.fn(async () => `/acct/${Math.random()}`),
 		listLogins: vi.fn(async () => codex),
 		listModels: vi.fn(async () => listing),
+		readDefaultModel: vi.fn(async () => null),
 		now: () => 0,
 		...overrides,
 	};
@@ -24,6 +25,18 @@ function deps(overrides: Partial<OmpLiveModelDeps> = {}): OmpLiveModelDeps {
 describe("omp live models", () => {
 	it("keeps only chat models of the providers the account signed in to, newest first", () => {
 		expect(parseOmpModels(listing, codex).map((m) => m.selector)).toEqual(["openai-codex/gpt-6.1-sol", "openai-codex/gpt-5.6-luna"]);
+	});
+
+	it("puts the model omp is set to start on first, and ignores one the account cannot reach", () => {
+		expect(parseOmpModels(listing, codex, "openai-codex/gpt-5.6-luna").map((m) => m.selector)).toEqual(["openai-codex/gpt-5.6-luna", "openai-codex/gpt-6.1-sol"]);
+		expect(parseOmpModels(listing, codex, "anthropic/claude-opus-5-5").map((m) => m.selector)).toEqual(["openai-codex/gpt-6.1-sol", "openai-codex/gpt-5.6-luna"]);
+	});
+
+	it("reads omp's default model from the requested account's dir", async () => {
+		const d = deps({ resolveAgentDir: vi.fn(async () => "/acct/d1"), readDefaultModel: vi.fn(async () => "openai-codex/gpt-5.6-luna") });
+		const result = await getOmpLiveModels("d1", {}, d);
+		expect(d.readDefaultModel).toHaveBeenCalledWith("/acct/d1");
+		expect(result.status === "resolved" && result.models[0].selector).toBe("openai-codex/gpt-5.6-luna");
 	});
 
 	it("rejects a listing without a models array", () => {

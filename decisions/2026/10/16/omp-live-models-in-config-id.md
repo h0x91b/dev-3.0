@@ -30,3 +30,5 @@ omp reaches 60+ providers, so its presets pin no model and omp picks its own sta
 ## Addendum — newest model by default
 
 On a launch surface (the picker has `onAccountChange`) a model-free preset is swapped for the account's newest live model under the same preset, until the user picks a model by hand; Settings surfaces never rewrite the stored preset. Model switches keep the same underlying preset (`pickConfigForModelChange`), because omp's modes differ only in `--thinking` args the mode signature cannot see.
+
+Addendum 2026-10-17: the auto-pick passes `--model`, which overrides omp's own `modelRoles.default`. So `getOmpLiveModels` also reads `omp config get modelRoles --json` in the account's dir and moves that model to the front of the list when the account can reach it; the preselect then matches what a bare `omp` would start on. An unreadable or unreachable default leaves the newest-first order.

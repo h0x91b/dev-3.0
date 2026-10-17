@@ -3,6 +3,8 @@
  * account's agent dir, narrowed to the providers the account signed in to
  * (`omp usage accounts --json`). omp also counts every provider with an API key
  * in the environment as available; those are not the account's, so they stay out.
+ * The model omp itself is set to start on (`modelRoles.default`) leads the list,
+ * so the launch picker's preselect matches what a bare `omp` would run.
  */
 import { ENV_UNSET, type OmpLogin } from "../shared/agent-accounts";
 import { sortLiveModelsNewestFirst, type AgentLiveModels, type LiveModel } from "../shared/agent-live-models";
@@ -22,9 +24,10 @@ interface OmpModelRow {
 	name?: unknown;
 }
 
-/** Chat models of the signed-in providers, newest first. Throws on a shape omp
- *  no longer prints, so a format change reads as "unknown", never as "none". */
-export function parseOmpModels(json: unknown, logins: readonly OmpLogin[]): LiveModel[] {
+/** Chat models of the signed-in providers, omp's own default first, then newest
+ *  first. Throws on a shape omp no longer prints, so a format change reads as
+ *  "unknown", never as "none". */
+export function parseOmpModels(json: unknown, logins: readonly OmpLogin[], defaultSelector: string | null = null): LiveModel[] {
 	const rows = (json as { models?: unknown })?.models;
 	if (!Array.isArray(rows)) throw new Error("omp models --json: no models array");
 	const providers = new Set(logins.map((login) => login.provider));
@@ -40,11 +43,13 @@ export function parseOmpModels(json: unknown, logins: readonly OmpLogin[]): Live
 			name: typeof row.name === "string" && row.name.trim() ? row.name : row.id,
 		});
 	}
-	return sortLiveModelsNewestFirst(models);
+	const sorted = sortLiveModelsNewestFirst(models);
+	const preferred = sorted.findIndex((model) => model.selector === defaultSelector);
+	return preferred > 0 ? [sorted[preferred], ...sorted.slice(0, preferred), ...sorted.slice(preferred + 1)] : sorted;
 }
 
-async function runOmpModels(agentDir: string | null): Promise<unknown> {
-	const proc = spawn(["omp", "models", "--json"], {
+async function runOmpJson(args: string[], agentDir: string | null): Promise<unknown> {
+	const proc = spawn(["omp", ...args], {
 		env: agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {},
 		stdout: "pipe",
 		stderr: "pipe",
@@ -52,17 +57,34 @@ async function runOmpModels(agentDir: string | null): Promise<unknown> {
 	const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
 	try {
 		const [code, out] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-		if (code !== 0) throw new Error(`omp models exited with code ${code}`);
+		if (code !== 0) throw new Error(`omp ${args.join(" ")} exited with code ${code}`);
 		return JSON.parse(out);
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
+/** `modelRoles.default` from omp's settings as that agent dir sees them; null when unset or unreadable. */
+async function readOmpDefaultModel(agentDir: string | null): Promise<string | null> {
+	try {
+		const answer = (await runOmpJson(["config", "get", "modelRoles", "--json"], agentDir)) as { value?: { default?: unknown } } | null;
+		const selector = answer?.value?.default;
+		return typeof selector === "string" && selector.includes("/") ? selector : null;
+	} catch (err) {
+		log.warn("Could not read omp's default model", { error: String(err) });
+		return null;
+	}
+}
+
+function runOmpModels(agentDir: string | null): Promise<unknown> {
+	return runOmpJson(["models", "--json"], agentDir);
+}
+
 export interface OmpLiveModelDeps {
 	resolveAgentDir: (accountId?: string | null) => Promise<string | null>;
 	listLogins: (agentDir: string | null) => Promise<OmpLogin[]>;
 	listModels: (agentDir: string | null) => Promise<unknown>;
+	readDefaultModel: (agentDir: string | null) => Promise<string | null>;
 	now: () => number;
 }
 
@@ -76,6 +98,7 @@ const defaultDeps: OmpLiveModelDeps = {
 	resolveAgentDir: resolveOmpAgentDir,
 	listLogins: listOmpLogins,
 	listModels: runOmpModels,
+	readDefaultModel: readOmpDefaultModel,
 	now: () => Date.now(),
 };
 
@@ -105,9 +128,12 @@ export async function getOmpLiveModels(
 	let value: AgentLiveModels;
 	try {
 		const logins = await deps.listLogins(agentDir);
-		value = logins.length === 0
-			? { status: "resolved", models: [] }
-			: { status: "resolved", models: parseOmpModels(await deps.listModels(agentDir), logins) };
+		if (logins.length === 0) {
+			value = { status: "resolved", models: [] };
+		} else {
+			const [listing, defaultSelector] = await Promise.all([deps.listModels(agentDir), deps.readDefaultModel(agentDir)]);
+			value = { status: "resolved", models: parseOmpModels(listing, logins, defaultSelector) };
+		}
 	} catch (err) {
 		log.warn("omp live model listing failed", { error: String(err) });
 		return { status: "unknown" };
