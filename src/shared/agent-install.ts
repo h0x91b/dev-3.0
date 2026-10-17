@@ -18,6 +18,14 @@ const WINDOWS_INSTALL_OVERRIDES: Record<string, { posix: string; windows: string
 	"builtin-pi": { posix: PI_POSIX_INSTALL, windows: 'powershell -c "irm https://pi.dev/install.ps1 | iex"' },
 };
 
+/** A second way in, offered beside the upstream installer. The Homebrew formula
+ *  ships a prebuilt bottle, so it works where the installer's npm step cannot
+ *  reach the registry (a corporate mirror lagging the latest release). */
+const ALTERNATIVE_INSTALLS: Record<string, { platforms: readonly string[]; command: string }> = {
+	// homebrew-core Formula/p/pi-coding-agent.rb, bin `pi`; bottles for macOS and Linux.
+	"builtin-pi": { platforms: ["darwin", "linux"], command: "brew install pi-coding-agent" },
+};
+
 export function agentInstallCommand(
 	agent: { id: string; installCommand?: string },
 	platform: string,
@@ -27,12 +35,27 @@ export function agentInstallCommand(
 	return agent.installCommand;
 }
 
+export function agentAlternativeInstallCommand(
+	agent: { id: string; installCommand?: string },
+	platform: string,
+): string | undefined {
+	const alternative = ALTERNATIVE_INSTALLS[agent.id];
+	if (!alternative || !alternative.platforms.includes(platform)) return undefined;
+	return alternative.command === agentInstallCommand(agent, platform) ? undefined : alternative.command;
+}
+
 /** Substring in every launch refusal for a missing harness binary. The error
  *  crosses RPC as a plain string; the renderer keys its refresh on this. */
 export const AGENT_NOT_INSTALLED_MARKER = "is not installed on the machine running dev3";
 
-export function agentNotInstalledMessage(opts: { agentName: string; binaryName: string; installCommand?: string }): string {
-	const install = opts.installCommand ? ` Install it with: ${opts.installCommand}` : "";
+export function agentNotInstalledMessage(opts: {
+	agentName: string;
+	binaryName: string;
+	installCommand?: string;
+	alternativeInstallCommand?: string;
+}): string {
+	const alternative = opts.alternativeInstallCommand ? ` (or: ${opts.alternativeInstallCommand})` : "";
+	const install = opts.installCommand ? ` Install it with: ${opts.installCommand}${alternative}` : "";
 	return `${opts.agentName} ${AGENT_NOT_INSTALLED_MARKER} ("${opts.binaryName}" was not found on PATH).${install} Then launch again.`;
 }
 

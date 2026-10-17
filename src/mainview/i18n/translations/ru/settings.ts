@@ -144,6 +144,7 @@ const settings = {
 	"settings.agentNotInstalled": "Не установлен",
 	"settings.agentNotInstalledHint": "CLI не найден. Установите и войдите в систему — dev-3.0 не управляет установкой агентов.",
 	"settings.agentInstallHint": "Установить:",
+	"settings.agentInstallAltHint": "Или:",
 	"settings.agentLoginReminder": "После установки запустите команду один раз в терминале для входа.",
 	"settings.recheckAgents": "Перепроверить",
 	"settings.agentCustomPath": "Или укажите путь:",

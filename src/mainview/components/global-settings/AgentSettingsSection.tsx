@@ -107,7 +107,7 @@ export default function AgentSettingsSection({
 		{},
 	);
 	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
-	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
+	const [agentCopied, setAgentCopied] = useState<{ agentId: string; command: string } | null>(null);
 
 	const selectedDefaultAgent = agents.find(
 		(agent) => agent.id === globalSettings.defaultAgentId,
@@ -505,18 +505,16 @@ export default function AgentSettingsSection({
 									agent={activeAgent}
 									availability={availability}
 									customPath={agentCustomPaths[activeAgent.id] ?? ""}
-									copied={agentCopiedId === activeAgent.id}
+									copiedCommand={agentCopied?.agentId === activeAgent.id ? agentCopied.command : null}
 									saving={agentSavingId === activeAgent.id}
 									onCustomPathChange={(path) =>
 										setAgentCustomPaths((current) => ({ ...current, [activeAgent.id]: path }))
 									}
 									onCopyInstall={(command) => {
 										navigator.clipboard.writeText(command);
-										setAgentCopiedId(activeAgent.id);
-										setTimeout(
-											() => setAgentCopiedId((current) => (current === activeAgent.id ? null : current)),
-											2000,
-										);
+										const copied = { agentId: activeAgent.id, command };
+										setAgentCopied(copied);
+										setTimeout(() => setAgentCopied((current) => (current === copied ? null : current)), 2000);
 									}}
 									onSavePath={async () => {
 										const path = agentCustomPaths[activeAgent.id]?.trim();
@@ -1015,7 +1013,7 @@ function AgentPane({
 	agent,
 	availability,
 	customPath,
-	copied,
+	copiedCommand,
 	saving,
 	onCustomPathChange,
 	onCopyInstall,
@@ -1027,7 +1025,7 @@ function AgentPane({
 	agent: CodingAgent;
 	availability: AgentCheckResult | undefined;
 	customPath: string;
-	copied: boolean;
+	copiedCommand: string | null;
 	saving: boolean;
 	onCustomPathChange: (path: string) => void;
 	onCopyInstall: (command: string) => void;
@@ -1067,30 +1065,19 @@ function AgentPane({
 								<span className="text-fg-2 text-xs">{t("settings.agentNotInstalledHint")}</span>
 							</div>
 							{availability.installCommand ? (
-								<div>
-									<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
-									<div className="flex items-center gap-1.5">
-										<code className="text-warning-strong bg-warning/10 px-2 py-1 rounded text-xs font-mono">
-											{availability.installCommand}
-										</code>
-										<button
-											type="button"
-											onClick={() => onCopyInstall(availability.installCommand as string)}
-											className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
-											title="Copy"
-										>
-											{copied ? (
-												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-													<polyline points="20 6 9 17 4 12" />
-												</svg>
-											) : (
-												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-													<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-													<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-												</svg>
-											)}
-										</button>
-									</div>
+								<div className="space-y-1.5">
+									<p className="text-fg-3 text-xs">{t("settings.agentInstallHint")}</p>
+									<InstallCommandRow command={availability.installCommand} copied={copiedCommand === availability.installCommand} onCopy={onCopyInstall} />
+									{availability.alternativeInstallCommand ? (
+										<>
+											<p className="text-fg-3 text-xs">{t("settings.agentInstallAltHint")}</p>
+											<InstallCommandRow
+												command={availability.alternativeInstallCommand}
+												copied={copiedCommand === availability.alternativeInstallCommand}
+												onCopy={onCopyInstall}
+											/>
+										</>
+									) : null}
 								</div>
 							) : null}
 							<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
@@ -1484,6 +1471,31 @@ function ModelOverrideTable({
 					);
 				})}
 			</div>
+		</div>
+	);
+}
+
+function InstallCommandRow({ command, copied, onCopy }: { command: string; copied: boolean; onCopy: (command: string) => void }) {
+	return (
+		<div className="flex items-center gap-1.5">
+			<code className="text-warning-strong bg-warning/10 px-2 py-1 rounded text-xs font-mono">{command}</code>
+			<button
+				type="button"
+				onClick={() => onCopy(command)}
+				className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+				title="Copy"
+			>
+				{copied ? (
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<polyline points="20 6 9 17 4 12" />
+					</svg>
+				) : (
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+					</svg>
+				)}
+			</button>
 		</div>
 	);
 }

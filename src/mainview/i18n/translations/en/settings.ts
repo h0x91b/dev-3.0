@@ -138,6 +138,7 @@ const settings = {
 	"settings.agentNotInstalled": "Not installed",
 	"settings.agentNotInstalledHint": "CLI not found. Install and log in — dev-3.0 does not manage agent installation.",
 	"settings.agentInstallHint": "Install:",
+	"settings.agentInstallAltHint": "Or:",
 	"settings.agentLoginReminder": "After installing, run the command once in a terminal to log in.",
 	"settings.recheckAgents": "Re-check",
 	"settings.agentCustomPath": "Or set custom path:",

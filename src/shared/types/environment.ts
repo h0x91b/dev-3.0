@@ -33,6 +33,8 @@ export interface AgentCheckResult {
 	installed: boolean;
 	resolvedPath?: string;
 	installCommand?: string;
+	/** Another install route for this host, shown beside `installCommand`. */
+	alternativeInstallCommand?: string;
 	installUrl?: string;
 	customPathError?: boolean;
 }

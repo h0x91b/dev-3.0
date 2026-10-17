@@ -32,7 +32,7 @@ import { collectTelemetryProfile } from "../telemetry-profile";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, isExecutableFile } from "../executable";
-import { agentInstallCommand } from "../../shared/agent-install";
+import { agentAlternativeInstallCommand, agentInstallCommand } from "../../shared/agent-install";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
@@ -699,6 +699,7 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 			installed: !!resolvedPath,
 			resolvedPath,
 			installCommand: agentInstallCommand(agent, process.platform),
+			alternativeInstallCommand: agentAlternativeInstallCommand(agent, process.platform),
 			installUrl: agent.installUrl,
 			customPathError,
 		};

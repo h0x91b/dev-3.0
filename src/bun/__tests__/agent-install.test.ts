@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentInstallCommand, agentNotInstalledMessage, isAgentNotInstalledError } from "../../shared/agent-install";
+import { agentAlternativeInstallCommand, agentInstallCommand, agentNotInstalledMessage, isAgentNotInstalledError } from "../../shared/agent-install";
 import { DEFAULT_AGENTS } from "../../shared/types";
 
 const omp = DEFAULT_AGENTS.find((a) => a.id === "builtin-omp")!;
@@ -27,7 +27,28 @@ describe("agentInstallCommand", () => {
 	});
 });
 
+describe("agentAlternativeInstallCommand", () => {
+	it("offers pi's Homebrew formula where Homebrew runs", () => {
+		expect(agentAlternativeInstallCommand(pi, "darwin")).toBe("brew install pi-coding-agent");
+		expect(agentAlternativeInstallCommand(pi, "linux")).toBe("brew install pi-coding-agent");
+	});
+
+	it("offers nothing on Windows or for agents without a verified alternative", () => {
+		expect(agentAlternativeInstallCommand(pi, "win32")).toBeUndefined();
+		expect(agentAlternativeInstallCommand(omp, "darwin")).toBeUndefined();
+	});
+
+	it("does not repeat a command the user already made their install command", () => {
+		expect(agentAlternativeInstallCommand({ ...pi, installCommand: "brew install pi-coding-agent" }, "darwin")).toBeUndefined();
+	});
+});
+
 describe("agent-not-installed message", () => {
+	it("names the alternative install after the upstream one", () => {
+		expect(agentNotInstalledMessage({ agentName: "Pi", binaryName: "pi", installCommand: "curl x | sh", alternativeInstallCommand: "brew install pi-coding-agent" }))
+			.toContain("Install it with: curl x | sh (or: brew install pi-coding-agent)");
+	});
+
 	it("carries the marker the renderer keys its re-check on", () => {
 		const message = agentNotInstalledMessage({ agentName: "Oh My Pi", binaryName: "omp", installCommand: "x" });
 		expect(isAgentNotInstalledError(`Error: ${message}`)).toBe(true);

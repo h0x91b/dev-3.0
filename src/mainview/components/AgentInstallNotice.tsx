@@ -44,11 +44,12 @@ interface AgentInstallNoticeProps {
  *  missing harness, and the re-check that lifts the block once it is installed. */
 export default function AgentInstallNotice({ id, state, missing, installedNow, onRecheck, className = "" }: AgentInstallNoticeProps) {
 	const t = useT();
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<string | null>(null);
 	const checking = state === "checking";
 	const command = missing?.check.installCommand;
+	const alternative = missing?.check.alternativeInstallCommand;
 
-	useEffect(() => setCopied(false), [command]);
+	useEffect(() => setCopied(null), [command, alternative]);
 
 	// A sub-second probe would only flash a line and shift the dialog.
 	const [slowCheck, setSlowCheck] = useState(false);
@@ -58,10 +59,24 @@ export default function AgentInstallNotice({ id, state, missing, installedNow, o
 		return () => clearTimeout(id);
 	}, [checking]);
 
-	function copy() {
-		if (!command) return;
-		navigator.clipboard.writeText(command).then(() => setCopied(true), () => {});
+	function copy(text: string) {
+		navigator.clipboard.writeText(text).then(() => setCopied(text), () => {});
 	}
+
+	const commandRow = (text: string, testId: string) => (
+		<div className="flex items-center gap-2 min-w-0">
+			<code data-testid={testId} className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap text-warning-strong bg-warning/10 px-2 py-1 rounded text-xs font-mono select-all">
+				{text}
+			</code>
+			<button
+				type="button"
+				onClick={() => copy(text)}
+				className="text-xs font-medium px-2.5 py-1 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated whitespace-nowrap"
+			>
+				{copied === text ? t("launch.agentCopied") : t("launch.agentCopyInstall")}
+			</button>
+		</div>
+	);
 
 	const recheckButton = (
 		<button
@@ -85,18 +100,13 @@ export default function AgentInstallNotice({ id, state, missing, installedNow, o
 				{command ? (
 					<>
 						<p className="text-fg-2 text-xs">{t("launch.agentMissingInstall")}</p>
-						<div className="flex items-center gap-2 min-w-0">
-							<code className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap text-warning-strong bg-warning/10 px-2 py-1 rounded text-xs font-mono select-all">
-								{command}
-							</code>
-							<button
-								type="button"
-								onClick={copy}
-								className="text-xs font-medium px-2.5 py-1 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated whitespace-nowrap"
-							>
-								{copied ? t("launch.agentCopied") : t("launch.agentCopyInstall")}
-							</button>
-						</div>
+						{commandRow(command, "agent-install-command")}
+						{alternative ? (
+							<>
+								<p className="text-fg-3 text-xs">{t("launch.agentMissingInstallAlt")}</p>
+								{commandRow(alternative, "agent-install-alternative")}
+							</>
+						) : null}
 					</>
 				) : (
 					<p className="text-fg-2 text-xs">{t("launch.agentMissingNoCommand", { command: missing.check.baseCommand })}</p>

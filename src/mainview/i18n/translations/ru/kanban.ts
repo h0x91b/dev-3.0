@@ -336,6 +336,7 @@ const kanban = {
 	"launch.failedLaunch": "Не удалось запустить. {error}",
 	"launch.agentMissingTitle": "{name} не установлен на машине, где работает dev3",
 	"launch.agentMissingInstall": "Установите его там и проверьте снова:",
+	"launch.agentMissingInstallAlt": "Или установите так:",
 	"launch.agentMissingNoCommand": "Установите «{command}» там и убедитесь, что он есть в PATH, затем проверьте снова.",
 	"launch.agentMissingPathHint": "Установлен туда, где dev3 его не видит? Укажите путь в Настройки → Агенты.",
 	"launch.agentMissingBlocked": "Запуск недоступен, пока он не установлен.",

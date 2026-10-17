@@ -9,7 +9,7 @@
  * instead of starting a dead pane under "Agent is Working".
  */
 import type { CodingAgent, GlobalSettings } from "../shared/types";
-import { agentInstallCommand, agentNotInstalledMessage } from "../shared/agent-install";
+import { agentAlternativeInstallCommand, agentInstallCommand, agentNotInstalledMessage } from "../shared/agent-install";
 import { findConfig, getAllAgents } from "./agents";
 import { agentBinaryPathOverride, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
@@ -23,6 +23,7 @@ export interface MissingAgentBinary {
 	agentName: string;
 	binaryName: string;
 	installCommand?: string;
+	alternativeInstallCommand?: string;
 }
 
 export class AgentNotInstalledError extends Error {
@@ -102,6 +103,7 @@ export async function findMissingLaunchAgent(
 			agentName: target.agent.name,
 			binaryName,
 			installCommand: agentInstallCommand(target.agent, process.platform),
+			alternativeInstallCommand: agentAlternativeInstallCommand(target.agent, process.platform),
 		};
 	}
 	return null;
