@@ -187,6 +187,16 @@ describe("serveFileBytes with a caller's handle", () => {
 		await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
 	});
 
+	it("releases at once when the client already left before the body existed", async () => {
+		const path = `${TEST_HOME}/big.bin`;
+		writeFileSync(path, Buffer.alloc(3 * 1024 * 1024));
+		const client = new AbortController();
+		client.abort();
+		const onDone = vi.fn();
+		await serveFileBytes(new Request("http://x/f"), path, { "Content-Type": "application/octet-stream" }, { onDone, signal: client.signal });
+		await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+	});
+
 	it("reports done at once for a bodiless reply", async () => {
 		const path = `${TEST_HOME}/ten.txt`;
 		writeFileSync(path, "0123456789");

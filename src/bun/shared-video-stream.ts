@@ -105,8 +105,10 @@ function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?
 		await reading?.catch(() => {});
 		await close();
 	};
-	// Bun does not cancel the body of a client that disconnected before reading it; its request signal does fire.
+	// Bun does not cancel the body of a client that disconnected before reading it; its request
+	// signal does fire — unless it already fired before this listener existed.
 	signal?.addEventListener("abort", () => void abandon(), { once: true });
+	if (signal?.aborted) void abandon();
 	return new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
@@ -152,12 +154,16 @@ export async function serveSharedVideo(req: Request, pathname: string, extraHead
 	if (!path || !existsSync(path)) return new Response("Not Found", { status: 404, headers: extraHeaders });
 	if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405, headers: extraHeaders });
 
-	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": MIME[imageExt(path)] ?? "application/octet-stream" });
+	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": MIME[imageExt(path)] ?? "application/octet-stream" }, { signal: req.signal });
 }
 
 export interface ServeFileBytesOptions {
 	/** Largest 206 body, buffered in memory; the media engine asks for the next range itself. */
 	maxRangeBytes?: number;
+	/** A whole file up to this size is sent from memory rather than streamed (no `onBeforeStream`). */
+	bufferWholeBytes?: number;
+	/** Awaited before a body is streamed; a slot gate for large files. Throwing refuses the reply. */
+	onBeforeStream?: () => Promise<void>;
 	/** Fires exactly once, when the response body is finished or abandoned (or at once for a bodiless reply). */
 	onDone?: () => void;
 	/** The request's signal: a client that disconnects releases the file even if Bun never reads the body. */
@@ -189,6 +195,8 @@ export async function serveFileBytes(req: Request, source: string | FileHandle, 
 		if (!range) {
 			headers["Content-Length"] = String(size);
 			if (req.method === "HEAD" || size === 0) return new Response(null, { status: 200, headers });
+			if (size <= (options.bufferWholeBytes ?? 0)) return new Response(await readRange(handle, 0, size - 1), { status: 200, headers });
+			await options.onBeforeStream?.();
 			streaming = true;
 			return new Response(fileRangeStream(handle, 0, size - 1, options.onDone, options.signal), { status: 200, headers });
 		}

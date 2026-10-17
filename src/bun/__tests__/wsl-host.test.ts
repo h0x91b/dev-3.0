@@ -69,6 +69,21 @@ describe("openOnWindowsHost", () => {
 		expect((spawnMock.spawn.mock.calls[0][0] as string[])[0]).toBe("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
 	});
 
+	it("gives up and stops PowerShell when Windows does not answer", async () => {
+		vi.useFakeTimers();
+		try {
+			whichMock.whichSync.mockReturnValue("/win/powershell.exe");
+			const kill = vi.fn();
+			spawnMock.spawn.mockReturnValue({ exited: new Promise<number>(() => {}), kill });
+			const opening = expect(openOnWindowsHost("/x.html")).rejects.toThrow("Windows did not respond");
+			await vi.advanceTimersByTimeAsync(15_000);
+			await opening;
+			expect(kill).toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("reports a failure instead of claiming the file opened", async () => {
 		whichMock.whichSync.mockReturnValue("/win/powershell.exe");
 		spawnMock.spawn.mockReturnValue(exitingWith(1));

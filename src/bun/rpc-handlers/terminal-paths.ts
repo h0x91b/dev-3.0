@@ -4,7 +4,7 @@ import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
-import { DOWNLOAD_TTL_MS, gitIgnoreState, mintFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, gitIgnoreVerdict, mintFileLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
@@ -389,9 +389,10 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
 	const checkout = await folderLinkCheckout(path, realFile);
 	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
-	// Ignored files stay out unless the page itself is ignored build output (then they are its own assets).
-	const ignoreCheckout = (await gitIgnoreState(checkout, realFile)) === "ignored" ? undefined : checkout;
-	return { url: mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignoreCheckout }, { resolved: true }) };
+	// Ignored files stay out, except ones the page's own ignore rule covers (its build-output siblings).
+	const page = await gitIgnoreVerdict(checkout, realFile);
+	const ignore = { checkout, pageRule: page.state === "ignored" ? page.rule : null };
+	return { url: mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignore }, { resolved: true }) };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
