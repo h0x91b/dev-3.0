@@ -4,8 +4,7 @@ import { Terminal, FitAddon } from "ghostty-web";
 import { useT } from "./i18n";
 import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
-import { getShiftKeySequence } from "./shift-key-sequences";
-import { getWordDeleteSequence } from "./word-delete-keys";
+import { getTerminalKeyOverride } from "./terminal-key-overrides";
 import { pasteIntoTerminal, terminalBracketsPaste } from "./terminal-paste";
 import { debugLog } from "./debug-log";
 import { encodeResizeSequence } from "../shared/resize-protocol";
@@ -1310,23 +1309,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							mouseCleanup = setupMouseTracking(term);
 							nativeSelectionClipboardCleanup = setupNativeSelectionClipboardBridge(term);
 
-							// Fix Shift+functional keys — intercept before
-							// ghostty-web's buggy shortcut swallows the modifier.
-							// https://github.com/coder/ghostty-web/issues/109
-							// Ctrl+Backspace/Delete word delete is tmux-only: a native
-							// Windows PTY (ConPTY) already reads ^H as Ctrl+Backspace.
+							// Replace sequences ghostty-web encodes wrongly or unhelpfully
+							// (see terminal-key-overrides.ts); onData keeps the latency probe fed.
 							term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-								const seq = getShiftKeySequence(event)
-									?? (tmuxStreamRef.current ? getWordDeleteSequence(event) : null);
-								if (seq) {
-									const hex = Array.from(seq, c => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
-									debugLog("terminal", `[KeyFix] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
-									if (wsRef.current?.readyState === WebSocket.OPEN) {
-										wsRef.current.send(seq);
-									}
-									return true;
-								}
-								return false;
+								const seq = getTerminalKeyOverride(event, tmuxStreamRef.current);
+								if (!seq) return false;
+								const hex = Array.from(seq, c => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+								debugLog("terminal", `[KeyFix] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
+								term.input(seq, true);
+								return true;
 							});
 
 							// TEMP DIAGNOSTIC: log when selection exists before clipboard copy paths run.

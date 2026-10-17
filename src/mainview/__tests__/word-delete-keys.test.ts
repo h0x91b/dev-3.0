@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { InputHandler, Ghostty } from "ghostty-web";
 import { DELETE_WORD_LEFT, DELETE_WORD_RIGHT, getWordDeleteSequence } from "../word-delete-keys";
+import { getTerminalKeyOverride } from "../terminal-key-overrides";
 
 const SHIFT = 1, CTRL = 2, ALT = 4, META = 8;
 
@@ -47,6 +48,23 @@ describe("getWordDeleteSequence", () => {
 	});
 });
 
+describe("getTerminalKeyOverride", () => {
+	it("translates word delete only on a tmux stream", () => {
+		expect(getTerminalKeyOverride(keyEvent("Backspace", "Backspace", CTRL), true, false)).toBe(DELETE_WORD_LEFT);
+		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", CTRL), true, false)).toBe(DELETE_WORD_RIGHT);
+	});
+
+	it("leaves Ctrl+Backspace to ghostty on the native backend, where ConPTY reads ^H", () => {
+		expect(getTerminalKeyOverride(keyEvent("Backspace", "Backspace", CTRL), false, false)).toBeNull();
+		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", CTRL), false, false)).toBeNull();
+	});
+
+	it("keeps the Shift-key fix on both backends", () => {
+		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", SHIFT), false, false)).toBe("\x1b[3;2~");
+		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", SHIFT), true, false)).toBe("\x1b[3;2~");
+	});
+});
+
 describe("word delete through ghostty-web InputHandler", () => {
 	let ghostty: InstanceType<typeof Ghostty>;
 
@@ -65,7 +83,7 @@ describe("word delete through ghostty-web InputHandler", () => {
 			removeEventListener: () => {},
 		};
 		const custom = (event: KeyboardEvent): boolean => {
-			const seq = withFix ? getWordDeleteSequence(event, false) : null;
+			const seq = withFix ? getTerminalKeyOverride(event, true, false) : null;
 			if (seq) sent.push(seq);
 			return seq !== null;
 		};

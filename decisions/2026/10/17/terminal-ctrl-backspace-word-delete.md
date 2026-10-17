@@ -13,9 +13,13 @@ sends. `^W` beats `ESC DEL` because it also works in vim insert mode, where a le
 It applies only off macOS (Option+Backspace is the word delete there) and only on a tmux stream.
 
 ## Risks
-A program that binds Ctrl+Backspace distinctly (`^H`) no longer sees it inside tmux on Windows/Linux. The native
-backend is untouched: Windows ConPTY already turns `^H` into a real Ctrl+Backspace key event for PSReadLine, and
-the renderer cannot tell a native Linux host from a Windows one.
+Full-screen programs get the shell bindings too, the trade-off VS Code also accepts: vim insert-mode Ctrl+Delete
+leaves insert mode and starts `d`; `^W` is kill-region in emacs, search in nano, a window command in vim normal
+mode. bash's `^W` stops at whitespace, not punctuation. The browser cannot see which program tmux is showing; a
+fix would be server-side, sending the raw keys while the pane is on the alternate screen (`#{alternate_on}`).
+The native backend is untouched: ConPTY already turns `^H` into Ctrl+Backspace for PSReadLine, and the renderer
+cannot tell a native Linux host from a Windows one, so Linux native-backend users keep the old keys.
+Claude Code reads the unmodified `CSI 3;5~` as a plain Delete, so Ctrl+Delete needs `ESC d` to delete a word there.
 
 ## Alternatives considered
 `ESC DEL` (breaks vim insert mode); a per-user zsh `bindkey` (does not reach Claude Code); AutoHotkey in the
