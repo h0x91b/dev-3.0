@@ -98,10 +98,27 @@ if (process.platform === "linux") {
 	if (openFileLinkResponses() !== 0) problems.push(`${openFileLinkResponses()} slots still held after aborted downloads`);
 }
 
+// 4. A folder link in a real git checkout: the page's assets load, a gitignored secret does not.
+const repo = join(dir, "repo");
+mkdirSync(join(repo, "config", "assets"), { recursive: true });
+if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode === 0) {
+	writeFileSync(join(repo, ".gitignore"), "config/master.key\n");
+	writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
+	writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");
+	writeFileSync(join(repo, "config", "master.key"), "SECRET");
+	const page = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignoreCheckout: repo });
+	const base = `http://127.0.0.1:${port}${page.slice(0, -"x.html".length)}`;
+	for (const [name, want] of [["x.html", 200], ["assets/a.css", 200], ["master.key", 404]] as const) {
+		const res = await fetch(base + name);
+		await res.arrayBuffer();
+		if (res.status !== want) problems.push(`folder link ${name}: expected ${want}, got ${res.status}`);
+	}
+}
+
 server.stop(true);
 rmSync(dir, { recursive: true, force: true });
 if (problems.length) {
 	console.error(`file-links socket e2e FAILED:\n- ${problems.join("\n- ")}`);
 	process.exit(1);
 }
-console.log("file-links socket e2e: ok (range Content-Length on the wire, no slot or descriptor leaks)");
+console.log("file-links socket e2e: ok (range Content-Length on the wire, no slot or descriptor leaks, gitignore filter)");
