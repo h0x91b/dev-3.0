@@ -3,9 +3,17 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 
-const tmp = mkdtempSync(join(tmpdir(), "dev3-terminal-paths-"));
+const tmp = vi.hoisted(() => {
+	const { mkdtempSync } = require("node:fs") as typeof import("node:fs");
+	const { tmpdir } = require("node:os") as typeof import("node:os");
+	const { join } = require("node:path") as typeof import("node:path");
+	return mkdtempSync(join(tmpdir(), "dev3-terminal-paths-"));
+});
 const worktree = join(tmp, "worktree");
 const projectDir = join(tmp, "project");
+const dev3Home = join(tmp, "dev3home");
+
+vi.mock("../../paths", () => ({ DEV3_HOME: `${tmp}/dev3home` }));
 
 vi.mock("../../data", () => ({
 	getProject: vi.fn(async (projectId: string) => {
@@ -293,36 +301,57 @@ describe("readFilePreview", () => {
 });
 
 describe("createFileLink", () => {
-	it("gives a page below a project root its folder, so its relative assets resolve", async () => {
+	function withCheckout(dir: string, run: () => Promise<void>): Promise<void> {
+		mkdirSync(join(dir, ".git"), { recursive: true });
+		return run().finally(() => rmSync(join(dir, ".git"), { recursive: true, force: true }));
+	}
+
+	it("gives a page inside a checkout its folder, so its relative assets resolve", () => withCheckout(worktree, async () => {
 		mkdirSync(join(worktree, "docs", "report", "assets"), { recursive: true });
 		writeFileSync(join(worktree, "docs", "report", "index.html"), "<link rel=stylesheet href=assets/a.css>");
 		writeFileSync(join(worktree, "docs", "report", "assets", "a.css"), "body{}");
 		const { viewUrl, downloadUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "report", "index.html") });
 		expect(viewUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/index\.html$/);
-		expect(downloadUrl).toBe(`${viewUrl}?download=1`);
 		expect(resolveFileLinkPath(viewUrl.replace(/index\.html$/, "assets/a.css"))).toBe(realpathSync(join(worktree, "docs", "report", "assets", "a.css")));
-		expect(resolveFileLinkPath(viewUrl.replace(/index\.html$/, "..%2Farchitecture.md"))).toBeNull();
-	});
+		// The download link is its own single-file token, not the folder link.
+		expect(downloadUrl).toMatch(/^\/file\/[A-Za-z0-9_-]{32}\/index\.html\?download=1$/);
+		expect(downloadUrl.startsWith(viewUrl)).toBe(false);
+		expect(resolveFileLinkPath(downloadUrl.replace(/index\.html\?download=1$/, "assets/a.css"))).toBeNull();
+	}));
 
-	it("links a non-page as its one file, even inside a project", async () => {
+	it("links a non-page as its one file, even inside a checkout", () => withCheckout(worktree, async () => {
 		const { viewUrl } = await appHandlers.createFileLink({ path: join(worktree, "docs", "architecture.md") });
 		expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(join(worktree, "docs", "architecture.md")));
 		expect(resolveFileLinkPath(viewUrl.replace(/architecture\.md$/, "components/scout.md"))).toBeNull();
-	});
+	}));
 
-	it("never gives a page at a checkout or project root the whole repository", async () => {
-		mkdirSync(join(worktree, ".git"), { recursive: true });
+	it("never gives a page at a checkout root, or outside any checkout, more than itself", () => withCheckout(worktree, async () => {
 		writeFileSync(join(worktree, "index.html"), "<p>root page</p>");
-		writeFileSync(join(tmp, "root.html"), "<p>project root page</p>");
-		try {
-			for (const page of [join(worktree, "index.html"), join(tmp, "root.html")]) {
-				const { viewUrl } = await appHandlers.createFileLink({ path: page });
-				expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(page));
-				expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, "notes.txt"))).toBeNull();
-			}
-		} finally {
-			rmSync(join(worktree, ".git"), { recursive: true, force: true });
+		mkdirSync(join(tmp, "loose"), { recursive: true });
+		writeFileSync(join(tmp, "loose", "page.html"), "<p>outside a checkout</p>");
+		writeFileSync(join(tmp, "loose", "secret.txt"), "x");
+		for (const page of [join(worktree, "index.html"), join(tmp, "loose", "page.html")]) {
+			const { viewUrl } = await appHandlers.createFileLink({ path: page });
+			expect(resolveFileLinkPath(viewUrl)).toBe(realpathSync(page));
+			expect(resolveFileLinkPath(viewUrl.replace(/[^/]+$/, page.endsWith("index.html") ? "notes.txt" : "secret.txt"))).toBeNull();
 		}
+	}));
+
+	it("never gives a page in dev3's own storage its folder — uploads, a task folder", async () => {
+		const project = join(dev3Home, "worktrees", "proj");
+		const uploads = join(project, "uploads");
+		const taskDir = join(project, "task-1");
+		mkdirSync(uploads, { recursive: true });
+		mkdirSync(join(taskDir, "worktree", ".git"), { recursive: true });
+		mkdirSync(join(taskDir, "conversations"), { recursive: true });
+		writeFileSync(join(uploads, "upload-1-ab-pic.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+		writeFileSync(join(uploads, "upload-2-cd-shot.png"), "PNG");
+		writeFileSync(join(taskDir, "report.html"), "<p>beside the checkout</p>");
+		writeFileSync(join(taskDir, "conversations", "c.json"), "{}");
+		const svg = await appHandlers.createFileLink({ path: join(uploads, "upload-1-ab-pic.svg") });
+		expect(resolveFileLinkPath(svg.viewUrl.replace(/[^/]+$/, "upload-2-cd-shot.png"))).toBeNull();
+		const report = await appHandlers.createFileLink({ path: join(taskDir, "report.html") });
+		expect(resolveFileLinkPath(report.viewUrl.replace(/[^/]+$/, "conversations/c.json"))).toBeNull();
 	});
 
 	it("covers only the one file outside any project", async () => {
@@ -337,10 +366,11 @@ describe("createFileLink", () => {
 		}
 	});
 
-	it("refuses paths the preview could not show", async () => {
+	it("refuses paths the preview could not show, and relative paths outright", async () => {
 		await expect(appHandlers.createFileLink({ path: "/etc/hosts" })).rejects.toThrow("outside the allowed");
 		await expect(appHandlers.createFileLink({ path: join(process.cwd(), `dev3-missing-${process.pid}.txt`) })).rejects.toThrow("File not found");
 		await expect(appHandlers.createFileLink({ path: worktree })).rejects.toThrow("Not a file");
+		await expect(appHandlers.createFileLink({ path: "docs/architecture.md" })).rejects.toThrow("Invalid file path");
 	});
 });
 

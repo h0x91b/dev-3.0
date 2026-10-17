@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
 
 const ROOT = `${process.env.DEV3_TEST_ROOT}/file-links`;
 const REPORT = join(ROOT, "worktree", "report");
@@ -33,6 +33,8 @@ beforeAll(() => {
 	writeFileSync(SECRET, "do not serve");
 	symlinkSync(SECRET, join(REPORT, "leak.txt"));
 	symlinkSync(join(ROOT, "worktree"), join(REPORT, "up"));
+	symlinkSync(join(REPORT, ".env"), join(REPORT, "e"));
+	mkdirSync(join(REPORT, "sub"), { recursive: true });
 });
 
 beforeEach(() => resetFileLinks());
@@ -50,10 +52,22 @@ describe("mintFileLink / resolveFileLinkPath", () => {
 		}
 	});
 
-	it("refuses dot-files and dot-folders under a folder link, so a page cannot read .env or .git", () => {
+	it("refuses dot-files and dot-folders under a folder link, however the URL spells them", () => {
 		const { base } = reportLink();
-		expect(resolveFileLinkPath(`${base}.env`)).toBeNull();
-		expect(resolveFileLinkPath(`${base}.git/config`)).toBeNull();
+		for (const spelled of [".env", ".git/config", "%2Eenv", "x%2F..%2F.env", "sub%2F..%2F.env", "sub/..%2F.env", "assets%2F..%2F.git%2Fconfig"]) {
+			expect(resolveFileLinkPath(`${base}${spelled}`)).toBeNull();
+		}
+	});
+
+	it("refuses a symlink that leads to a dot-file inside the folder", () => {
+		expect(resolveFileLinkPath(`${reportLink().base}e`)).toBeNull();
+	});
+
+	it("rejects encoded separators even when they would land inside the folder", () => {
+		const { base } = reportLink();
+		expect(resolveFileLinkPath(`${base}assets%2Fstyle.css`)).toBeNull();
+		expect(resolveFileLinkPath(`${base}a%2F..%2F..%2Fsecret.txt`)).toBeNull();
+		expect(resolveFileLinkPath(`${base}assets//style.css`)).toBeNull();
 	});
 
 	it("follows symlinks only while they stay inside the folder", () => {
@@ -76,17 +90,38 @@ describe("mintFileLink / resolveFileLinkPath", () => {
 
 	it("mints a fresh token on every call and forgets one once expired", () => {
 		const now = 1_000_000;
-		const first = mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, now);
-		expect(mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, now)).not.toBe(first);
+		const first = mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, { now });
+		expect(mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, { now })).not.toBe(first);
 		expect(resolveFileLinkPath(first, now + 11 * 60 * 60 * 1000)).not.toBeNull();
 		expect(resolveFileLinkPath(first, now + 13 * 60 * 60 * 1000)).toBeNull();
 		expect(resolveFileLinkPath("/file/not-a-token/spec.md")).toBeNull();
 	});
 
-	it("evicts the oldest link past the cap", () => {
-		const first = mintFileLink({ kind: "file", path: join(REPORT, "spec.md") });
-		for (let i = 0; i < 256; i++) mintFileLink({ kind: "file", path: join(REPORT, "spec.md") });
-		expect(resolveFileLinkPath(first)).toBeNull();
+	it("lets a download link live only briefly", () => {
+		const now = 1_000_000;
+		const link = mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, { now, ttlMs: DOWNLOAD_TTL_MS });
+		expect(resolveFileLinkPath(link, now + DOWNLOAD_TTL_MS - 1)).not.toBeNull();
+		expect(resolveFileLinkPath(link, now + DOWNLOAD_TTL_MS)).toBeNull();
+	});
+
+	it("evicts the least recently used link past the cap, not one still in use", () => {
+		const spec = { kind: "file" as const, path: join(REPORT, "spec.md") };
+		const inUse = mintFileLink(spec);
+		const idle = mintFileLink(spec);
+		for (let i = 0; i < 254; i++) mintFileLink(spec);
+		expect(resolveFileLinkPath(inUse)).not.toBeNull();
+		mintFileLink(spec);
+		expect(resolveFileLinkPath(idle)).toBeNull();
+		expect(resolveFileLinkPath(inUse)).not.toBeNull();
+	});
+
+	it("serves a POSIX file whose name holds a backslash", () => {
+		if (process.platform === "win32") return;
+		const odd = join(REPORT, "a\\b.txt");
+		writeFileSync(odd, "x");
+		const link = mintFileLink({ kind: "file", path: odd });
+		expect(resolveFileLinkPath(link)).toBe(odd);
+		rmSync(odd);
 	});
 });
 
@@ -99,6 +134,8 @@ describe("serveFileLink", () => {
 		expect(csp).toBe(FILE_LINK_SANDBOX);
 		expect(csp).toMatch(/^sandbox /);
 		expect(csp).not.toContain("allow-same-origin");
+		expect(csp).not.toContain("allow-forms");
+		expect(csp).not.toContain("allow-modals");
 		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
 		expect(res.headers.get("referrer-policy")).toBe("no-referrer");
 		expect(await res.text()).toContain("<script>");
@@ -114,11 +151,11 @@ describe("serveFileLink", () => {
 		expect(await (await get(`${base}spec.md`)).text()).toBe("# Spec\n");
 	});
 
-	it("leaves PDF and media unsandboxed for the browser's own viewers and downloads unknown binary", async () => {
+	it("never renders a PDF on the dev3 origin, plays media unsandboxed, and downloads unknown binary", async () => {
 		const { base } = reportLink();
 		const pdf = await get(`${base}doc.pdf`);
-		expect(pdf.headers.get("content-type")).toBe("application/pdf");
-		expect(pdf.headers.get("content-security-policy")).toBeNull();
+		expect(pdf.headers.get("content-type")).toBe("application/octet-stream");
+		expect(pdf.headers.get("content-disposition")).toMatch(/^attachment; filename="doc\.pdf"/);
 		writeFileSync(join(REPORT, "clip.mp4"), "MP4");
 		const clip = await get(`${base}clip.mp4`);
 		expect(clip.headers.get("content-type")).toBe("video/mp4");
