@@ -1306,6 +1306,21 @@ export type AppRPCSchema = {
 				params: { path: string };
 				response: FilePreviewResult;
 			};
+			/** Mint a capability URL (served by the remote server) that opens or downloads a previewed file in a browser tab. */
+			createFileLink: {
+				params: { path: string };
+				response: { viewUrl: string; downloadUrl: string };
+			};
+			/** Whether the server runs under WSL and can open files on that Windows desktop. */
+			getWindowsHostOpen: {
+				params: void;
+				response: { available: boolean };
+			};
+			/** Open a previewed file with its Windows default app (WSL hosts only). */
+			openFileOnWindowsHost: {
+				params: { path: string };
+				response: void;
+			};
 			/**
 			 * Open a specific macOS System Settings pane. On non-darwin platforms
 			 * this is a no-op and returns `{ ok: false }`. Used by the stuck-

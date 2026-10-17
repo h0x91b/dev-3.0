@@ -31,6 +31,7 @@ import { telemetryBootstrapScript } from "./analytics-identity";
 import { buildSignInLink } from "../shared/remote-sign-in-link";
 import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
 import { SHARED_VIDEO_ROUTE, serveSharedVideo } from "./shared-video-stream";
+import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
 
 const log = createLogger("remote-access");
 
@@ -764,6 +765,13 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 				// Plain HTTP — proxy the request, stream the response back.
 				return proxyHttpToLocalhost(req, parsed.port, parsed.rest, url.search);
+			}
+
+			// A previewed file opened in its own tab (`createFileLink`). Same "URL is
+			// the password" model as /p/: a sandboxed HTML page has an opaque origin,
+			// so its own subresource requests never carry the session cookie.
+			if (url.pathname.startsWith(FILE_LINK_ROUTE)) {
+				return serveFileLink(req, url);
 			}
 
 			// ── API endpoints (session cookie required) ──

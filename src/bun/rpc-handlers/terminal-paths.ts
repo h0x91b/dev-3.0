@@ -2,8 +2,11 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { Utils } from "../electrobun-platform";
+import { mintFileLink } from "../file-links";
+import { DEV3_HOME } from "../paths";
+import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -314,8 +317,54 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 	return { kind: "text", content, truncated, size };
 }
 
+/** The previewable file at `path`, or an Error naming why it cannot be handed over. */
+async function assertPreviewableFile(path: string): Promise<void> {
+	if (!isAbsolute(path) || path.includes("\0")) throw new Error("Invalid file path");
+	if (!(await isTerminalPathAllowed(path))) throw new Error("Path is outside the allowed directories");
+	let st: Stats;
+	try {
+		st = await stat(path);
+	} catch {
+		throw new Error("File not found");
+	}
+	if (!st.isFile()) throw new Error("Not a file");
+}
+
+/**
+ * A browser-tab link for a file the preview shows. Inside a worktree or project
+ * the link covers the file's folder, so a report's relative CSS and images load;
+ * anywhere else (home, temp) it covers that one file only.
+ */
+async function createFileLink(params: { path: string }): Promise<{ viewUrl: string; downloadUrl: string }> {
+	log.info("→ createFileLink", { path: params.path });
+	const path = resolvePath(params.path);
+	await assertPreviewableFile(path);
+	const dir = dirname(path);
+	const worktreesRoot = join(DEV3_HOME, "worktrees");
+	const folderRoots = [worktreesRoot, ...(await projectRoots())];
+	const coversFolder = dir !== worktreesRoot && folderRoots.some((root) => isUnder(dir, root));
+	const viewUrl = mintFileLink(coversFolder ? { kind: "dir", root: dir, entry: basename(path) } : { kind: "file", path });
+	return { viewUrl, downloadUrl: `${viewUrl}?download=1` };
+}
+
+/** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
+async function getWindowsHostOpen(): Promise<{ available: boolean }> {
+	return { available: isWslHost() };
+}
+
+async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
+	log.info("→ openFileOnWindowsHost", { path: params.path });
+	if (!isWslHost()) throw new Error("Not running under WSL");
+	const path = resolvePath(params.path);
+	await assertPreviewableFile(path);
+	openOnWindowsHost(path);
+}
+
 export const terminalPathHandlers = {
 	resolveTerminalPaths,
 	openTerminalPath,
 	readFilePreview,
+	createFileLink,
+	getWindowsHostOpen,
+	openFileOnWindowsHost,
 };
