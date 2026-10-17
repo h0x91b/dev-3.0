@@ -1,6 +1,6 @@
 import { api } from "./rpc";
 import type { FilePreviewResult } from "../shared/types";
-import { TAB_VIEWABLE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../shared/file-link-types";
+import { ATTACHMENT_ONLY_EXTS, TAB_VIEWABLE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../shared/file-link-types";
 
 /**
  * Browser-mode counterparts of the desktop's "Open in default app": the file
@@ -41,10 +41,12 @@ export function opensSafelyOnWindows(path: string): boolean {
 	return WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path));
 }
 
-/** Text and images always display in a tab; past the preview's size cap, the extension decides. */
+/** Text and images display in a tab (never a download-only type such as PDF); past the preview's size cap, the extension decides. */
 export function opensInBrowserTab(path: string, preview: FilePreviewResult | null): boolean {
+	const ext = fileLinkExt(path);
+	if (ATTACHMENT_ONLY_EXTS.has(ext)) return false;
 	if (preview?.kind === "text" || preview?.kind === "image") return true;
-	return TAB_VIEWABLE_EXTS.has(fileLinkExt(path));
+	return TAB_VIEWABLE_EXTS.has(ext);
 }
 
 /** The browser refused the new tab (popup blocker); callers name it so the user can allow it. */
@@ -74,13 +76,13 @@ export async function openLinkInNewTab(mintLink: () => Promise<string>): Promise
 }
 
 export function openFileInNewTab(path: string): Promise<void> {
-	return openLinkInNewTab(async () => (await api.request.createFileLink({ path })).viewUrl);
+	return openLinkInNewTab(async () => (await api.request.createFileLink({ path })).url);
 }
 
 export async function downloadFile(path: string): Promise<void> {
-	const { downloadUrl } = await api.request.createFileLink({ path });
+	const { url } = await api.request.createFileLink({ path, download: true });
 	const anchor = document.createElement("a");
-	anchor.href = downloadUrl;
+	anchor.href = url;
 	anchor.download = "";
 	document.body.appendChild(anchor);
 	anchor.click();

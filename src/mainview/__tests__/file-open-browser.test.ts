@@ -1,7 +1,7 @@
 import { PopupBlockedError, downloadFile, isLoopbackHostname, openFileInBrowser, openFileInNewTab, opensSafelyOnWindows, opensInBrowserTab, resetWindowsHostOpenCache, windowsHostOpenAvailable } from "../file-open-browser";
 
 const request = vi.hoisted(() => ({
-	createFileLink: vi.fn(async (_params: { path: string }) => ({ viewUrl: "/file/tok/spec.md", downloadUrl: "/file/tok/spec.md?download=1" })),
+	createFileLink: vi.fn(async (params: { path: string; download?: boolean }) => ({ url: params.download ? "/file/dl/spec.md?download=1" : "/file/tok/spec.md" })),
 	getWindowsHostOpen: vi.fn(async () => ({ available: true })),
 }));
 vi.mock("../rpc", () => ({ api: { request } }));
@@ -36,6 +36,7 @@ describe("opensInBrowserTab", () => {
 		expect(opensInBrowserTab("/a/Makefile", { kind: "text", content: "", truncated: false, size: 0 })).toBe(true);
 		expect(opensInBrowserTab("/a/big.log", { kind: "too-large", size: 9e9 })).toBe(true);
 		expect(opensInBrowserTab("/a/doc.pdf", { kind: "binary", size: 10 })).toBe(false);
+		expect(opensInBrowserTab("/a/doc.pdf", { kind: "text", content: "%PDF-1.4", truncated: false, size: 8 })).toBe(false);
 		expect(opensInBrowserTab("/a/app.bin", { kind: "binary", size: 10 })).toBe(false);
 	});
 });
@@ -76,7 +77,8 @@ describe("downloadFile", () => {
 		await downloadFile("/wt/spec.md");
 		expect(click).toHaveBeenCalledTimes(1);
 		const anchor = click.mock.contexts[0] as HTMLAnchorElement;
-		expect(anchor.getAttribute("href")).toBe("/file/tok/spec.md?download=1");
+		expect(anchor.getAttribute("href")).toBe("/file/dl/spec.md?download=1");
+		expect(request.createFileLink).toHaveBeenCalledWith({ path: "/wt/spec.md", download: true });
 		expect(anchor.isConnected).toBe(false);
 		click.mockRestore();
 	});
@@ -100,7 +102,7 @@ describe("openFileInBrowser", () => {
 
 describe("opensSafelyOnWindows", () => {
 	it("allows documents and media, never scripts or programs", () => {
-		for (const path of ["/a/report.html", "/a/spec.MD", "/a/clip.mp4", "C:\\a\\doc.pdf"]) expect(opensSafelyOnWindows(path)).toBe(true);
-		for (const path of ["/a/build.js", "/a/run.bat", "/a/setup.exe", "/a/link.lnk", "/a/x.ps1", "/a/Makefile", "/a/.bashrc"]) expect(opensSafelyOnWindows(path)).toBe(false);
+		for (const path of ["/a/report.html", "/a/spec.MD", "/a/clip.mp4", "C:\\a\\shot.png"]) expect(opensSafelyOnWindows(path)).toBe(true);
+		for (const path of ["/a/build.js", "/a/run.bat", "/a/setup.exe", "/a/link.lnk", "/a/x.ps1", "/a/Makefile", "/a/.bashrc", "/a/data.csv", "/a/doc.pdf"]) expect(opensSafelyOnWindows(path)).toBe(false);
 	});
 });
