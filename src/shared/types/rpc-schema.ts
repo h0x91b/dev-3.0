@@ -1274,6 +1274,11 @@ export type AppRPCSchema = {
 				params: { artifact: SharedArtifact };
 				response: void;
 			};
+			/** Remote mode: a sandboxed tab link over the artifact's stored folder (served by the remote server). */
+			createArtifactLink: {
+				params: { artifact: SharedArtifact };
+				response: { viewUrl: string };
+			};
 			openImageFile: {
 				params: { path: string };
 				response: void;
@@ -1305,6 +1310,21 @@ export type AppRPCSchema = {
 			readFilePreview: {
 				params: { path: string };
 				response: FilePreviewResult;
+			};
+			/** Mint a capability URL (served by the remote server) that opens a previewed file in a browser tab, or downloads it. */
+			createFileLink: {
+				params: { path: string; download?: boolean };
+				response: { url: string };
+			};
+			/** Whether the server runs under WSL and can open files on that Windows desktop. */
+			getWindowsHostOpen: {
+				params: void;
+				response: { available: boolean };
+			};
+			/** Open a previewed file with its Windows default app (WSL hosts only). */
+			openFileOnWindowsHost: {
+				params: { path: string };
+				response: void;
 			};
 			/**
 			 * Open a specific macOS System Settings pane. On non-darwin platforms

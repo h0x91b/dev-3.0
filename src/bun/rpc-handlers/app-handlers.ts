@@ -28,7 +28,8 @@ import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRende
 import { forgetRendererClient, recordRendererHeartbeat } from "../renderer-watchdog";
 import { consumeArtifactFreezeNotice } from "../artifact-freeze-recovery";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
-import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath } from "../shared-artifacts";
+import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath, sharedArtifactLinkScope } from "../shared-artifacts";
+import { mintFileLink } from "../file-links";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { clipboardImageToPng } from "../clipboard-image";
 import { sharedVideoUrlPath } from "../shared-video-stream";
@@ -875,6 +876,13 @@ async function openArtifactInBrowser(params: { artifact: SharedArtifact }): Prom
 	Utils.openPath(path);
 }
 
+/** Remote-mode counterpart of {@link openArtifactInBrowser}: a sandboxed tab link over the stored artifact. */
+async function createArtifactLink(params: { artifact: SharedArtifact }): Promise<{ viewUrl: string }> {
+	const scope = sharedArtifactLinkScope(params.artifact);
+	log.info("→ createArtifactLink", { root: scope.kind === "dir" ? scope.root : scope.path });
+	return { viewUrl: mintFileLink(scope) };
+}
+
 async function openImageFile(params: { path: string }): Promise<void> {
 	log.info("→ openImageFile", { path: params.path });
 	if (!isFullyQualifiedPath(params.path, process.platform)) {
@@ -1109,6 +1117,7 @@ export const appHandlers = {
 	readArtifactContent,
 	readArtifactDownload,
 	openArtifactInBrowser,
+	createArtifactLink,
 	openImageFile,
 	openFolder,
 	openInApp,

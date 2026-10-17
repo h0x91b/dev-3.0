@@ -18,6 +18,7 @@ import { MarkdownDocument } from "./pr-review/markdown";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
+import { PopupBlockedError, downloadFile, errorText, openFileInNewTab, opensInBrowserTab, opensSafelyOnWindows, windowsHostOpenAvailable } from "../file-open-browser";
 // Token colours for both themes — the diff viewer's own stylesheet, scoped to its wrapper class.
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
@@ -115,9 +116,9 @@ const GHOST_BUTTON =
 	"transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
 
 /**
- * In-app preview for a file path Cmd/Ctrl+Clicked in terminal output — the
- * "Preview in dev3" mode of the File path click action setting, and the only
- * mode in browser/remote sessions (host-side open would be invisible there).
+ * In-app preview for a file path Cmd/Ctrl+Clicked in terminal output. Browser
+ * sessions always use it (a host-side open would be invisible there), and its
+ * footer hands the file to the viewer's own browser instead.
  */
 export default function FilePreviewModal({ path, line, taskId, projectId, task, onClose }: FilePreviewModalProps) {
 	const t = useT();
@@ -127,6 +128,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const [wrapLines, toggleWrapLines] = usePersistedFlag(WRAP_KEY, true);
 	const [expanded, toggleExpanded] = usePersistedFlag(EXPANDED_KEY, false);
 	const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
+	const [canOpenOnWindows, setCanOpenOnWindows] = useState(false);
 	const highlightRef = useRef<HTMLDivElement | null>(null);
 	const bodyRef = useRef<HTMLDivElement | null>(null);
 	const findBarRef = useRef<FindBarHandle | null>(null);
@@ -250,6 +252,17 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		else if (commentMode) setCommentMode(false);
 		else onClose();
 	});
+
+	useEffect(() => {
+		if (isElectrobun) return;
+		let stale = false;
+		void windowsHostOpenAvailable().then((available) => {
+			if (!stale) setCanOpenOnWindows(available);
+		});
+		return () => {
+			stale = true;
+		};
+	}, []);
 
 	useEffect(() => {
 		let stale = false;
@@ -432,7 +445,22 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		}
 	}
 
+	async function handleBrowserAction(action: () => Promise<void>) {
+		try {
+			await action();
+		} catch (err) {
+			const message = err instanceof PopupBlockedError ? t("imageViewer.popupBlocked") : t("terminal.filePreviewLinkFailed", { error: errorText(err) });
+			toast.error(message, { taskId, source: "terminal" });
+		}
+	}
+
+	const handleOpenOnWindows = () => handleBrowserAction(async () => {
+		await api.request.openFileOnWindowsHost({ path });
+		toast.success(t("terminal.filePreviewOpenedOnWindows"), { taskId, source: "terminal" });
+	});
+
 	const fileMissing = preview?.kind === "not-found";
+	const isFile = !!preview && preview.kind !== "not-found" && preview.kind !== "directory";
 	// A one-line notice (binary, missing, too large) stays a small dialog. Content
 	// hugs its own height up to the screen, or fills the screen once expanded — the
 	// size changes only when the user asks, never while they read.
@@ -611,6 +639,23 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 							<button type="button" onClick={() => handleOpen("system")} className={GHOST_BUTTON}>
 								{t("terminal.filePreviewOpenSystem")}
 							</button>
+						</>
+					)}
+					{!isElectrobun && isFile && (
+						<>
+							{opensInBrowserTab(path, preview) && (
+								<button type="button" onClick={() => handleBrowserAction(() => openFileInNewTab(path))} className={GHOST_BUTTON}>
+									{t("terminal.filePreviewOpenInTab")}
+								</button>
+							)}
+							<button type="button" onClick={() => handleBrowserAction(() => downloadFile(path))} className={GHOST_BUTTON}>
+								{t("terminal.filePreviewDownload")}
+							</button>
+							{canOpenOnWindows && opensSafelyOnWindows(path) && (
+								<button type="button" onClick={handleOpenOnWindows} className={GHOST_BUTTON}>
+									{t("terminal.filePreviewOpenOnWindows")}
+								</button>
+							)}
 						</>
 					)}
 					<button type="button" onClick={onClose} className={GHOST_BUTTON}>

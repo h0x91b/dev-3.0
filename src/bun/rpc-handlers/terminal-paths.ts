@@ -2,8 +2,12 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
+import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
+import { DEV3_HOME } from "../paths";
+import { isWslHost, openOnWindowsHost } from "../wsl-host";
+import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -60,8 +64,9 @@ async function projectRoots(): Promise<string[]> {
 	}
 }
 
-function isUnder(absPath: string, root: string): boolean {
-	return absPath === root || absPath.startsWith(root.endsWith("/") ? root : `${root}/`);
+/** `separator` is the host's (a backslash on Windows); a parameter only so tests can cover both. */
+export function isUnder(absPath: string, root: string, separator: string = sep): boolean {
+	return absPath === root || absPath.startsWith(root.endsWith(separator) ? root : `${root}${separator}`);
 }
 
 /**
@@ -314,8 +319,104 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 	return { kind: "text", content, truncated, size };
 }
 
+/** The previewable file at `path` (or one under `alsoUnder`), or an Error naming why it cannot be handed over. */
+async function assertPreviewableFile(path: string, alsoUnder?: string): Promise<void> {
+	if (!isAbsolute(path) || path.includes("\0")) throw new Error("Invalid file path");
+	const allowed = (alsoUnder !== undefined && isUnder(realOr(path), alsoUnder)) || (await isTerminalPathAllowed(path));
+	if (!allowed) throw new Error("Path is outside the allowed directories");
+	let st: Stats;
+	try {
+		st = await stat(path);
+	} catch {
+		throw new Error("File not found");
+	}
+	if (!st.isFile()) throw new Error("Not a file");
+}
+
+/** The closest folder at or above `dir` holding a `.git` entry (a checkout root), or null. */
+async function nearestCheckout(dir: string): Promise<string | null> {
+	for (let current = dir; ; current = dirname(current)) {
+		try {
+			await stat(join(current, ".git"));
+			return current;
+		} catch {
+			if (dirname(current) === current) return null;
+		}
+	}
+}
+
+function realOr(path: string): string {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		return path;
+	}
+}
+
+/**
+ * Only a page (HTML/SVG) strictly inside a task worktree or project checkout gets
+ * its folder, so its relative assets load; returns that checkout, or null for a
+ * one-file link. Decided on the real folder the link then pins as-is, never inside
+ * a dot-folder of the checkout (`.git/`), never at a checkout root, never in dev3's
+ * own storage, and never through a symlink into a different checkout.
+ */
+async function folderLinkCheckout(requested: string, realFile: string): Promise<string | null> {
+	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(realFile))) return null;
+	const dir = dirname(realFile);
+	const checkout = await nearestCheckout(dir);
+	if (!checkout || checkout === dir) return null;
+	if (relative(checkout, dir).split(sep).some((part) => part.startsWith("."))) return null;
+	const requestedCheckout = await nearestCheckout(dirname(requested));
+	if (!requestedCheckout || realOr(requestedCheckout) !== checkout) return null;
+	const worktreesRoot = realOr(join(DEV3_HOME, "worktrees"));
+	// A checkout that contains dev3's storage (a dotfiles repo at ~) is not a task's checkout.
+	if (isUnder(worktreesRoot, checkout)) return null;
+	const inScope = isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, realOr(root)));
+	return inScope ? checkout : null;
+}
+
+function absolutePath(raw: string): string {
+	if (!isAbsolute(raw) || raw.includes("\0")) throw new Error("Invalid file path");
+	return resolvePath(raw);
+}
+
+/** One link per click: a 12 h view link (folder-scoped for a page), or a 60 s single-file download link. */
+async function createFileLink(params: { path: string; download?: boolean }): Promise<{ url: string }> {
+	log.info("→ createFileLink", { path: params.path, download: !!params.download });
+	const path = absolutePath(params.path);
+	// dev3's own media and uploads live under DEV3_HOME, which need not sit inside the home directory.
+	await assertPreviewableFile(path, realOr(join(DEV3_HOME, "worktrees")));
+	// Resolved once: the folder decision and the pinned scope must be the same path.
+	const realFile = realpathSync.native(path);
+	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
+	const checkout = await folderLinkCheckout(path, realFile);
+	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
+	return { url: await mintFolderLink(realFile, checkout) };
+}
+
+/** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
+async function getWindowsHostOpen(): Promise<{ available: boolean }> {
+	return { available: isWslHost() };
+}
+
+async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
+	log.info("→ openFileOnWindowsHost", { path: params.path });
+	if (!isWslHost()) throw new Error("Not running under WSL");
+	const path = absolutePath(params.path);
+	await assertPreviewableFile(path);
+	// Both the name and its real target: a `report.html` symlink to a `.hta` must not pass.
+	const real = realpathSync.native(path);
+	if (![path, real].every((p) => WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(p)))) throw new Error("This file type is not opened on Windows");
+	// WSLENV `/p` treats `:` as a list separator, so the path would arrive as a different file.
+	if (real.includes(":")) throw new Error("This file name cannot be opened on Windows");
+	await openOnWindowsHost(real);
+}
+
 export const terminalPathHandlers = {
 	resolveTerminalPaths,
 	openTerminalPath,
 	readFilePreview,
+	createFileLink,
+	getWindowsHostOpen,
+	openFileOnWindowsHost,
 };

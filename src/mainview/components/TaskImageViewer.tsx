@@ -6,6 +6,8 @@ import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { api } from "../rpc";
+import { PopupBlockedError, openFileInBrowser } from "../file-open-browser";
+import { isRemote } from "../utils/platform";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
@@ -421,9 +423,10 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					</button>
 					<button
 						type="button"
-						onClick={() => api.request.openImageFile({ path: current.storedPath }).catch(() => toast.error(t("imageViewer.openFailed"), { taskId }))}
-						title={t("imageViewer.open")}
-						aria-label={t("imageViewer.open")}
+						onClick={() => (isRemote() ? openFileInBrowser(current.storedPath) : api.request.openImageFile({ path: current.storedPath }))
+							.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "imageViewer.openFailed"), { taskId }))}
+						title={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
+						aria-label={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
 						className={iconBtn}
 					>
 						<span className="text-base leading-none" style={{ fontFamily: ICON }}>{""}</span>

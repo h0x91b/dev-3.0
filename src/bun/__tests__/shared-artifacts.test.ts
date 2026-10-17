@@ -25,7 +25,9 @@ import {
 	saveSharedArtifact,
 	sharedArtifactDownloadKind,
 	sharedArtifactHtmlPath,
+	sharedArtifactLinkScope,
 } from "../shared-artifacts";
+import { mintFileLink, resolveFileLinkPath } from "../file-links";
 
 afterAll(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
@@ -382,6 +384,37 @@ describe("stored artifact read boundary", () => {
 		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
 		rmSync(saved.storedPath, { force: true });
 		expect(() => sharedArtifactHtmlPath(saved)).toThrow(SharedArtifactError);
+	});
+});
+
+describe("sharedArtifactLinkScope", () => {
+	function savedReport() {
+		const dir = join(SRC_DIR, "linked");
+		mkdirSync(join(dir, "img"), { recursive: true });
+		writeFileSync(join(dir, "index.html"), '<!doctype html><img src="img/chart.png">');
+		writeFileSync(join(dir, "img", "chart.png"), "PNGDATA");
+		return saveSharedArtifact("/tmp/proj", join(dir, "index.html"), [join(dir, "img", "chart.png")]);
+	}
+
+	it("covers the stored folder, so the page's relative asset references resolve", () => {
+		const saved = savedReport();
+		const link = mintFileLink(sharedArtifactLinkScope(saved));
+		const asset = resolveFileLinkPath(link.replace(/[^/]+$/, "img/chart.png"));
+		expect(asset).not.toBeNull();
+		expect(readFileSync(asset!, "utf8")).toBe("PNGDATA");
+	});
+
+	it("resolves a stored path spelled with .. segments, or every asset would 404", () => {
+		const saved = savedReport();
+		const dir = dirname(saved.storedPath);
+		mkdirSync(join(dir, "x"), { recursive: true });
+		const scope = sharedArtifactLinkScope({ ...saved, storedPath: `${dir}/x/../${basename(saved.storedPath)}` });
+		expect(scope).toEqual({ kind: "dir", root: dir, entry: basename(saved.storedPath) });
+	});
+
+	it("refuses a record whose stored path escapes the artifact store", () => {
+		const forged = { ...artifact("forged"), storedPath: `${TEST_HOME}/worktrees/x/shared-artifacts/id/../../../../secret.txt` };
+		expect(() => sharedArtifactLinkScope(forged)).toThrow(SharedArtifactError);
 	});
 });
 

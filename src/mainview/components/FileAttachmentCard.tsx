@@ -1,5 +1,8 @@
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { toast } from "../toast";
+import { PopupBlockedError, errorText, openFileInBrowser } from "../file-open-browser";
+import { isRemote } from "../utils/platform";
 
 const FILE_DOC_ICON = "\u{F09ED}"; // nf-md-note_text_outline
 
@@ -16,7 +19,10 @@ export function FileAttachmentCard({ path, onRemove }: FileAttachmentCardProps) 
 	return (
 		<div className="relative flex-shrink-0 group">
 			<button
-				onClick={() => { api.request.openImageFile({ path }).catch(() => {}); }}
+				onClick={() => {
+					(isRemote() ? openFileInBrowser(path) : api.request.openImageFile({ path }))
+						.catch((err) => toast.error(err instanceof PopupBlockedError ? t("imageViewer.popupBlocked") : t("terminal.filePreviewLinkFailed", { error: errorText(err) })));
+				}}
 				className="flex flex-col items-center justify-center gap-1 w-[6.25rem] h-[5rem] rounded-lg bg-elevated border border-edge group-hover:border-accent/50 transition-colors cursor-pointer px-1.5"
 				title={t("attachments.openFile", { name: filename })}
 			>
