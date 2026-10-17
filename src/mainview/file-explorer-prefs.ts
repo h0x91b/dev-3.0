@@ -43,17 +43,42 @@ function load(): FileExplorerPrefs {
 }
 
 let prefs: FileExplorerPrefs = load();
+/** A Repo visit's own mode: shown on screen, never saved, dropped by any explicit mode change. */
+let visitMode: Exclude<FileExplorerMode, "hidden"> | null = null;
+let snapshot: FileExplorerPrefs = prefs;
 const listeners = new Set<() => void>();
 
-function update(next: Partial<FileExplorerPrefs>): void {
-	prefs = { ...prefs, ...next };
-	if (prefs.mode !== "hidden") prefs.lastVisibleMode = prefs.mode;
-	try { localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs)); } catch { /* private mode */ }
+function publish(): void {
+	snapshot = visitMode ? { ...prefs, mode: visitMode } : prefs;
 	for (const listener of listeners) listener();
 }
 
+function update(next: Partial<FileExplorerPrefs>): void {
+	if (next.mode !== undefined) visitMode = null;
+	prefs = { ...prefs, ...next };
+	if (prefs.mode !== "hidden") prefs.lastVisibleMode = prefs.mode;
+	try { localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs)); } catch { /* private mode */ }
+	publish();
+}
+
 export function getFileExplorerPrefs(): FileExplorerPrefs {
-	return prefs;
+	return snapshot;
+}
+
+/**
+ * Entering the Repo screen shows the explorer even if it was left hidden, for
+ * this visit only, so task terminals keep the saved preference. Returns the mode on screen.
+ */
+export function beginFileExplorerVisit(): FileExplorerMode {
+	if (prefs.mode === "hidden") visitMode = prefs.lastVisibleMode;
+	publish();
+	return snapshot.mode;
+}
+
+export function endFileExplorerVisit(): void {
+	if (!visitMode) return;
+	visitMode = null;
+	publish();
 }
 
 export function setFileExplorerMode(mode: FileExplorerMode): void {
@@ -73,8 +98,8 @@ export const REVEAL_FILE_EXPLORER_EVENT = "dev3:toggleFileExplorerReveal";
  * auto-hide → the rail stays and the tree slides in or out.
  */
 export function toggleFileExplorer(): void {
-	if (prefs.mode === "hidden") update({ mode: prefs.lastVisibleMode });
-	else if (prefs.mode === "pinned") update({ mode: "hidden" });
+	if (snapshot.mode === "hidden") update({ mode: prefs.lastVisibleMode });
+	else if (snapshot.mode === "pinned") update({ mode: "hidden" });
 	else window.dispatchEvent(new CustomEvent(REVEAL_FILE_EXPLORER_EVENT));
 }
 
@@ -105,6 +130,8 @@ export function useFileExplorerPrefs(): FileExplorerPrefs {
 /** Test-only: re-read storage and drop listeners. */
 export function _resetFileExplorerPrefs(): void {
 	prefs = load();
+	visitMode = null;
+	snapshot = prefs;
 	revealOnMount = false;
 	listeners.clear();
 }

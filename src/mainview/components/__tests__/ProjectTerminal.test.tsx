@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import ProjectTerminal from "../ProjectTerminal";
 import { I18nProvider } from "../../i18n";
 import { requestTerminalPaste } from "../../terminal-paste-request";
-import { _resetFileExplorerPrefs, setFileExplorerMode } from "../../file-explorer-prefs";
+import { _resetFileExplorerPrefs, getFileExplorerPrefs, setFileExplorerMode, toggleFileExplorer } from "../../file-explorer-prefs";
 
 const { lastHandle } = vi.hoisted(() => ({ lastHandle: { current: null as null | { paste: ReturnType<typeof vi.fn>; focus: ReturnType<typeof vi.fn> } } }));
 
@@ -57,20 +57,25 @@ function setCoarsePointer(coarse: boolean) {
 	})) as typeof window.matchMedia;
 }
 
+function terminalTree(projectId: string, onBack = vi.fn()) {
+	return (
+		<I18nProvider>
+			<ProjectTerminal
+				projectId={projectId}
+				projectPath="/home/user/project"
+				projectName="project"
+				onBack={onBack}
+			/>
+		</I18nProvider>
+	);
+}
+
 function renderTerminal(onBack = vi.fn()) {
-	return {
-		onBack,
-		...render(
-			<I18nProvider>
-				<ProjectTerminal
-					projectId="p1"
-					projectPath="/home/user/project"
-					projectName="project"
-					onBack={onBack}
-				/>
-			</I18nProvider>,
-		),
-	};
+	return { onBack, ...render(terminalTree("p1", onBack)) };
+}
+
+function savedExplorerMode() {
+	return JSON.parse(localStorage.getItem("dev3-file-explorer") ?? "{}").mode;
 }
 
 describe("ProjectTerminal — back-to-board toolbar", () => {
@@ -148,5 +153,55 @@ describe("ProjectTerminal — Repo explorer", () => {
 		expect(lastHandle.current?.focus).toHaveBeenCalled();
 		act(() => requestTerminalPaste("task-1", "other.ts "));
 		expect(lastHandle.current?.paste).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens a hidden explorer on entry without saving it for task terminals", async () => {
+		setFileExplorerMode("hidden");
+		const { unmount } = renderTerminal();
+		expect(await screen.findByTestId("file-explorer-pinned")).toBeInTheDocument();
+		expect(savedExplorerMode()).toBe("hidden");
+		unmount();
+		expect(getFileExplorerPrefs().mode).toBe("hidden");
+	});
+
+	it("stays closed for the rest of the visit and reopens on the next entry", async () => {
+		setFileExplorerMode("hidden");
+		const user = userEvent.setup();
+		const { unmount } = renderTerminal();
+		await screen.findByTestId("file-explorer-pinned");
+		await user.click(screen.getByRole("button", { name: "More actions" }));
+		await user.click(await screen.findByRole("menuitem", { name: "Hide explorer" }));
+		expect(screen.queryByTestId("file-explorer")).not.toBeInTheDocument();
+		await act(async () => {});
+		expect(screen.queryByTestId("file-explorer")).not.toBeInTheDocument();
+		unmount();
+		renderTerminal();
+		expect(await screen.findByTestId("file-explorer-pinned")).toBeInTheDocument();
+	});
+
+	it("lets the toggle close an explorer the visit opened", async () => {
+		setFileExplorerMode("hidden");
+		renderTerminal();
+		await screen.findByTestId("file-explorer-pinned");
+		act(() => toggleFileExplorer());
+		expect(screen.queryByTestId("file-explorer")).not.toBeInTheDocument();
+	});
+
+	it("reopens the explorer when the Repo screen switches project", async () => {
+		setFileExplorerMode("hidden");
+		const { rerender } = renderTerminal();
+		await screen.findByTestId("file-explorer-pinned");
+		act(() => setFileExplorerMode("hidden"));
+		expect(screen.queryByTestId("file-explorer")).not.toBeInTheDocument();
+		rerender(terminalTree("p2"));
+		expect(await screen.findByTestId("file-explorer-pinned")).toBeInTheDocument();
+	});
+
+	it("slides an auto-hidden tree in on entry without taking focus", async () => {
+		setFileExplorerMode("autohide");
+		renderTerminal();
+		const overlay = await screen.findByTestId("file-explorer-overlay");
+		expect(overlay).toContainElement(screen.getByTestId("file-explorer"));
+		expect(overlay.contains(document.activeElement)).toBe(false);
 	});
 });

@@ -155,7 +155,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 				</div>
 			</div>
 			<div className="relative flex-1 min-h-0 overflow-hidden">
-				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow}>
+				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter>
 				{ptyUrl ? (
 					<TerminalView
 						ptyUrl={ptyUrl}

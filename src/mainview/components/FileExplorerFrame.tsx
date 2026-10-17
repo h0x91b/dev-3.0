@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
+	beginFileExplorerVisit,
 	clampExplorerWidth,
 	consumeRevealOnMount,
+	endFileExplorerVisit,
 	FILE_EXPLORER_DEFAULT_WIDTH,
 	FILE_EXPLORER_MAX_WIDTH,
 	FILE_EXPLORER_MIN_WIDTH,
@@ -23,6 +25,8 @@ interface FileExplorerFrameProps {
 	rootLabel: string;
 	/** False where the panel must not appear (narrow viewport, immersive, a diff over the pane). */
 	enabled: boolean;
+	/** Show the explorer on every entry (the Repo screen), whatever the last visit left. */
+	openOnEnter?: boolean;
 	onOpenYazi?: () => void;
 	children: ReactNode;
 }
@@ -32,7 +36,7 @@ interface FileExplorerFrameProps {
  * the content gives up width. Auto-hidden, only a rail is docked and the tree
  * slides over the content, so a terminal behind it never changes size.
  */
-export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, onOpenYazi, children }: FileExplorerFrameProps) {
+export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, openOnEnter, onOpenYazi, children }: FileExplorerFrameProps) {
 	const t = useT();
 	const prefs = useFileExplorerPrefs();
 	const mode = enabled ? prefs.mode : "hidden";
@@ -50,9 +54,27 @@ export default function FileExplorerFrame({ projectId, taskId, rootLabel, enable
 		hoverTimer.current = null;
 	};
 	useEffect(() => clearHoverTimer, []);
+
+	// Entry slides an auto-hidden tree in without focusing it: the terminal keeps the keyboard.
+	const quietRevealPending = useRef(false);
+	const [visit, setVisit] = useState(0);
+	useLayoutEffect(() => {
+		if (!openOnEnter) return;
+		quietRevealPending.current = beginFileExplorerVisit() === "autohide";
+		setVisit((n) => n + 1);
+		return endFileExplorerVisit;
+	}, [openOnEnter, projectId]);
+
 	useEffect(() => {
-		if (mode !== "autohide") setRevealed(null);
-	}, [mode]);
+		if (mode !== "autohide") {
+			setRevealed(null);
+			return;
+		}
+		if (quietRevealPending.current) {
+			quietRevealPending.current = false;
+			setRevealed("sticky");
+		}
+	}, [mode, visit]);
 
 	useEffect(() => {
 		if (mode !== "autohide") return;
