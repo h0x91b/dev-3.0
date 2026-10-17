@@ -357,7 +357,7 @@ Each project has three lifecycle scripts (free-form shell), configurable in Proj
 | Field | When it runs |
 |---|---|
 | `setupScript` | After a new worktree is created for a task |
-| `devScript` | On dev-server start (`dev3 dev-server start` or the UI button; runs in a tmux window — see `src/bun/rpc-handlers/tmux-pty.ts`) |
+| `devScript` | On dev-server start (`dev3 dev-server start` or the UI button; runs in a tmux window — see `src/bun/rpc-handlers/tmux-pty/dev-servers.ts`) |
 | `cleanupScript` | Before worktree removal after `completed`/`cancelled` (and `archived` once added) |
 
 ## Styling & design tokens

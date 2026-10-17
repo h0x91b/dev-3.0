@@ -1,5 +1,6 @@
 /**
- * `cli-socket-server.ts` may reach the RPC handlers only through their BARREL.
+ * `cli-socket-server.ts` and its command modules under `cli-socket/` may reach
+ * the RPC handlers only through their BARREL.
  *
  * Every suite that exercises the socket server mocks `../rpc-handlers` — one
  * factory, listing exports by name. A static import of a handler DOMAIN module
@@ -13,13 +14,17 @@
  * load it lazily inside the command (see `conversationImport`).
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SOURCE = readFileSync(join(import.meta.dirname, "..", "cli-socket-server.ts"), "utf-8");
+const BUN_DIR = join(import.meta.dirname, "..");
+const SOURCES = [
+	join(BUN_DIR, "cli-socket-server.ts"),
+	...readdirSync(join(BUN_DIR, "cli-socket")).filter((f) => f.endsWith(".ts")).map((f) => join(BUN_DIR, "cli-socket", f)),
+].map((path) => readFileSync(path, "utf-8"));
 
-/** A static `import … from "./rpc-handlers/<domain>"`, which is what breaks. */
-const STATIC_DOMAIN_IMPORT = /^import\s[^;]*?from\s+"\.\/rpc-handlers\/([^"]+)"/gm;
+/** A static `import … from "./rpc-handlers/<domain>"` (or `../` from `cli-socket/`), which is what breaks. */
+const STATIC_DOMAIN_IMPORT = /^import\s[^;]*?from\s+"\.\.?\/rpc-handlers\/([^"]+)"/gm;
 
 /** Deliberate exceptions, each with the reason it is safe. */
 const ALLOWED: Record<string, string> = {
@@ -35,6 +40,8 @@ describe("cli-socket-server imports", () => {
 	it("flags the shape this guard exists for", () => {
 		const before = 'import { conversationImportHandlers } from "./rpc-handlers/conversation-import-handlers";';
 		expect(staticDomainImports(before)).toEqual(["conversation-import-handlers"]);
+		const fromCommandModule = 'import { conversationImportHandlers } from "../rpc-handlers/conversation-import-handlers";';
+		expect(staticDomainImports(fromCommandModule)).toEqual(["conversation-import-handlers"]);
 	});
 
 	it("does not read a lazy import as a static one, so the fix is not flagged", () => {
@@ -43,7 +50,8 @@ describe("cli-socket-server imports", () => {
 	});
 
 	it("imports no handler domain module the socket suites do not already handle", () => {
-		const offenders = staticDomainImports(SOURCE).filter((name) => !(name in ALLOWED));
+		expect(SOURCES.length).toBeGreaterThan(1);
+		const offenders = SOURCES.flatMap(staticDomainImports).filter((name) => !(name in ALLOWED));
 		expect(offenders, "go through ./rpc-handlers, load it lazily, or add a reasoned allowlist entry").toEqual([]);
 	});
 });

@@ -63,7 +63,7 @@ describe("deliverAgentPrompt", () => {
 
 describe("the launch argument", () => {
 	it("still registers a receipt at both launch sites", () => {
-		const source = readFileSync(new URL("../rpc-handlers/tmux-pty.ts", import.meta.url), "utf-8");
+		const source = readFileSync(new URL("../rpc-handlers/tmux-pty/task-launch.ts", import.meta.url), "utf-8");
 		// The task brief and a column agent's prompt both reach the agent as launch
 		// arguments, and Claude Code fires UserPromptSubmit for them.
 		expect(source.split("noteDev3TypedPrompt(").length - 1).toBe(2);
