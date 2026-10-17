@@ -136,11 +136,15 @@ function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarg
 	return { path, token, ignoreCheckout: isEntry ? undefined : scope.ignoreCheckout };
 }
 
-/** `git check-ignore` for `path` in `checkout`: exit 0 ignored, 1 not, anything else unknown. */
+/** `git check-ignore` for `path` in `checkout`: exit 0 ignored, 1 not, anything else (no git, timeout) unknown. */
 export async function gitIgnoreState(checkout: string, path: string): Promise<"ignored" | "not-ignored" | "unknown"> {
-	const result = await runGit(["check-ignore", "-q", "--", relative(checkout, path)], checkout, { timeoutMs: 5000 });
-	if (result.ok) return "ignored";
-	return result.stderr.trim() === "" ? "not-ignored" : "unknown";
+	try {
+		const result = await runGit(["git", "check-ignore", "-q", "--", relative(checkout, path)], checkout, { timeoutMs: 5000 });
+		if (result.ok) return "ignored";
+		return result.stderr.trim() === "" ? "not-ignored" : "unknown";
+	} catch {
+		return "unknown";
+	}
 }
 
 function realOrNull(path: string, accept: (real: string) => boolean): string | null {

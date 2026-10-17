@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The test setup stubs Bun.spawn with streams that never close; run real git through Node instead.
+// The test setup stubs Bun.spawn with streams that never close; run the real command through Node
+// instead, with `run`'s real contract — cmd[0] is the executable, as in `git.ts`.
 vi.mock("../git", async () => {
 	const { spawnSync } = await import("node:child_process");
 	return {
 		run: async (cmd: string[], cwd: string) => {
-			const result = spawnSync("git", cmd, { cwd, encoding: "utf8" });
+			const result = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: "utf8" });
+			if (result.error) throw result.error;
 			return { ok: result.status === 0, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 		},
 	};
