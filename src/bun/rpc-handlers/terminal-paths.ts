@@ -4,7 +4,7 @@ import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
-import { mintFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, mintFileLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
@@ -332,32 +332,48 @@ async function assertPreviewableFile(path: string): Promise<void> {
 	if (!st.isFile()) throw new Error("Not a file");
 }
 
+/** The closest folder at or above `dir` holding a `.git` entry (a checkout root), or null. */
+async function nearestCheckout(dir: string): Promise<string | null> {
+	for (let current = dir; ; current = dirname(current)) {
+		try {
+			await stat(join(current, ".git"));
+			return current;
+		} catch {
+			if (dirname(current) === current) return null;
+		}
+	}
+}
+
 /**
- * Only a page (HTML/SVG) below a worktree or project root gets its folder, so its
- * relative assets load. A checkout root never does (it would expose the whole
- * repo to the page); everything else is linked as its one file.
+ * Only a page (HTML/SVG) strictly inside a task worktree or project checkout gets
+ * its folder, so its relative assets load. Never a checkout root, and never dev3's
+ * own storage (uploads, shared media, task folders, transcripts), which sits
+ * outside any checkout; everything else is linked as its one file.
  */
 async function linkCoversFolder(path: string): Promise<boolean> {
 	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(path))) return false;
 	const dir = dirname(path);
+	const checkout = await nearestCheckout(dir);
+	if (!checkout || checkout === dir) return false;
 	const worktreesRoot = join(DEV3_HOME, "worktrees");
-	const roots = [worktreesRoot, ...(await projectRoots())];
-	if (roots.includes(dir) || !roots.some((root) => isUnder(dir, root))) return false;
-	try {
-		await stat(join(dir, ".git"));
-		return false;
-	} catch {
-		return true;
-	}
+	// A checkout that contains dev3's storage (a dotfiles repo at ~) is not a task's checkout.
+	if (isUnder(worktreesRoot, checkout)) return false;
+	return isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, root));
+}
+
+function absolutePath(raw: string): string {
+	if (!isAbsolute(raw) || raw.includes("\0")) throw new Error("Invalid file path");
+	return resolvePath(raw);
 }
 
 async function createFileLink(params: { path: string }): Promise<{ viewUrl: string; downloadUrl: string }> {
 	log.info("→ createFileLink", { path: params.path });
-	const path = resolvePath(params.path);
+	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
 	const scope = (await linkCoversFolder(path)) ? { kind: "dir" as const, root: dirname(path), entry: basename(path) } : { kind: "file" as const, path };
 	const viewUrl = mintFileLink(scope);
-	return { viewUrl, downloadUrl: `${viewUrl}?download=1` };
+	const downloadUrl = `${mintFileLink({ kind: "file", path }, { ttlMs: DOWNLOAD_TTL_MS })}?download=1`;
+	return { viewUrl, downloadUrl };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
@@ -368,7 +384,7 @@ async function getWindowsHostOpen(): Promise<{ available: boolean }> {
 async function openFileOnWindowsHost(params: { path: string }): Promise<void> {
 	log.info("→ openFileOnWindowsHost", { path: params.path });
 	if (!isWslHost()) throw new Error("Not running under WSL");
-	const path = resolvePath(params.path);
+	const path = absolutePath(params.path);
 	await assertPreviewableFile(path);
 	if (!WINDOWS_OPEN_SAFE_EXTS.has(fileLinkExt(path))) throw new Error("This file type is not opened on Windows");
 	await openOnWindowsHost(path);

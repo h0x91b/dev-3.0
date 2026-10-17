@@ -35,7 +35,7 @@ describe("opensInBrowserTab", () => {
 	it("follows the preview for text and images, and the extension past its cap", () => {
 		expect(opensInBrowserTab("/a/Makefile", { kind: "text", content: "", truncated: false, size: 0 })).toBe(true);
 		expect(opensInBrowserTab("/a/big.log", { kind: "too-large", size: 9e9 })).toBe(true);
-		expect(opensInBrowserTab("/a/doc.pdf", { kind: "binary", size: 10 })).toBe(true);
+		expect(opensInBrowserTab("/a/doc.pdf", { kind: "binary", size: 10 })).toBe(false);
 		expect(opensInBrowserTab("/a/app.bin", { kind: "binary", size: 10 })).toBe(false);
 	});
 });

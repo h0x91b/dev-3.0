@@ -44,12 +44,12 @@ export const FILE_LINK_CONTENT_TYPES: Readonly<Record<string, string>> = {
 /** Pages whose relative CSS/images/scripts need the link to cover their folder. */
 export const FILE_LINK_PAGE_EXTS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".svg"]);
 
-/** Assets a page loads, not files a user opens on their own. */
-const ASSET_ONLY_EXTS = new Set([".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".otf", ".ico"]);
+/** Assets a page loads rather than files a user opens, and PDF, which the server only ever sends as a download. */
+const NOT_OPENED_IN_TAB = new Set([".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".otf", ".ico", ".pdf"]);
 
 /** Extensions a tab displays rather than downloads. */
 export const TAB_VIEWABLE_EXTS: ReadonlySet<string> = new Set(
-	Object.keys(FILE_LINK_CONTENT_TYPES).filter((ext) => !ASSET_ONLY_EXTS.has(ext)),
+	Object.keys(FILE_LINK_CONTENT_TYPES).filter((ext) => !NOT_OPENED_IN_TAB.has(ext)),
 );
 
 /**

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
-import { basename, resolve, sep } from "node:path";
+import { basename, relative, resolve, sep } from "node:path";
 import { FILE_LINK_CONTENT_TYPES, fileLinkExt } from "../shared/file-link-types";
 import { serveFileBytes } from "./shared-video-stream";
 
@@ -13,7 +13,9 @@ import { serveFileBytes } from "./shared-video-stream";
 
 export const FILE_LINK_ROUTE = "/file/";
 
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+const VIEW_TTL_MS = 12 * 60 * 60 * 1000;
+/** A download is fetched once, right away; its link should not linger in download history. */
+export const DOWNLOAD_TTL_MS = 60 * 1000;
 const MAX_TOKENS = 256;
 const SNIFF_BYTES = 8192;
 
@@ -28,7 +30,13 @@ interface Link {
 	expiresAt: number;
 }
 
+/** Insertion order is recency: a lookup moves its link to the end, so the cap evicts the least recently used. */
 const links = new Map<string, Link>();
+
+/** `native` expands Windows 8.3 short names (`ENV~1`), which would otherwise hide a dot-file from the check. */
+function realPath(path: string): string {
+	return realpathSync.native(path);
+}
 
 function encodeRelPath(rel: string): string {
 	return rel.split("/").map(encodeURIComponent).join("/");
@@ -43,21 +51,32 @@ function isInside(path: string, root: string): boolean {
  * file. Every call gets a new token: reusing one would let a leaked link live on
  * for as long as the user keeps opening files in that folder.
  */
-export function mintFileLink(scope: FileLinkScope, now = Date.now()): string {
+export function mintFileLink(scope: FileLinkScope, { now = Date.now(), ttlMs = VIEW_TTL_MS } = {}): string {
 	const pinned: PinnedScope = scope.kind === "dir"
-		? { kind: "dir", realRoot: realpathSync(scope.root), entry: scope.entry }
-		: { kind: "file", path: scope.path, realPath: realpathSync(scope.path) };
+		? { kind: "dir", realRoot: realPath(scope.root), entry: scope.entry }
+		: { kind: "file", path: scope.path, realPath: realPath(scope.path) };
 	const token = randomBytes(24).toString("base64url");
-	links.set(token, { scope: pinned, expiresAt: now + TOKEN_TTL_MS });
+	links.set(token, { scope: pinned, expiresAt: now + ttlMs });
 	while (links.size > MAX_TOKENS) links.delete(links.keys().next().value as string);
 	const rel = scope.kind === "dir" ? scope.entry : basename(scope.path);
 	return `${FILE_LINK_ROUTE}${token}/${encodeRelPath(rel)}`;
 }
 
 /**
+ * A decoded URL segment must be one plain name: never empty, `.`, `..`, or
+ * carrying a separator (`%2F`), NUL, or — on Windows — `\` or a drive colon,
+ * any of which would let `resolve()` reach somewhere the URL did not name.
+ */
+function isPlainSegment(segment: string): boolean {
+	if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\0")) return false;
+	return sep !== "\\" || !(segment.includes("\\") || segment.includes(":"));
+}
+
+/**
  * The real file a `/file/<token>/<rel>` path names, or null when the token is
- * unknown/expired, `rel` names a dot-file/folder other than the entry (`.env`,
- * `.git/…`), or the resolved target — symlinks followed — leaves the scope.
+ * unknown/expired or the target leaves the scope. Under a folder link the dot
+ * rule (`.env`, `.git/…`) is checked on the real path, so encodings and
+ * symlinks cannot reach a dot-file either.
  */
 export function resolveFileLinkPath(pathname: string, now = Date.now()): string | null {
 	const rest = pathname.slice(FILE_LINK_ROUTE.length);
@@ -70,23 +89,32 @@ export function resolveFileLinkPath(pathname: string, now = Date.now()): string 
 		links.delete(token);
 		return null;
 	}
+	links.delete(token);
+	links.set(token, link);
 	let segments: string[];
 	try {
 		segments = rest.slice(slash + 1).split("/").map(decodeURIComponent);
 	} catch {
 		return null;
 	}
-	const rel = segments.join("/");
-	if (!rel || rel.includes("\0") || rel.includes("\\")) return null;
+	if (!segments.every(isPlainSegment)) return null;
 	const { scope } = link;
-	if (scope.kind === "file") return rel === basename(scope.path) ? realOrNull(scope.path, (real) => real === scope.realPath) : null;
-	if (rel !== scope.entry && segments.some((segment) => segment.startsWith("."))) return null;
-	return realOrNull(resolve(scope.realRoot, rel), (real) => isInside(real, scope.realRoot));
+	if (scope.kind === "file") {
+		if (segments.length !== 1 || segments[0] !== basename(scope.path)) return null;
+		return realOrNull(scope.path, (real) => real === scope.realPath);
+	}
+	const target = resolve(scope.realRoot, ...segments);
+	if (!isInside(target, scope.realRoot)) return null;
+	return realOrNull(target, (real) => {
+		if (!isInside(real, scope.realRoot)) return false;
+		const parts = relative(scope.realRoot, real).split(sep);
+		return parts.join("/") === scope.entry || !parts.some((part) => part.startsWith("."));
+	});
 }
 
 function realOrNull(path: string, accept: (real: string) => boolean): string | null {
 	try {
-		const real = realpathSync(path);
+		const real = realPath(path);
 		return accept(real) ? real : null;
 	} catch {
 		return null;
@@ -113,8 +141,21 @@ export function attachmentDisposition(name: string): string {
 	return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
-/** Opaque origin for everything a tab renders: no dev3 cookie, no same-origin RPC — whatever injects script. */
-export const FILE_LINK_SANDBOX = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads";
+/**
+ * Opaque origin for everything a tab renders: no dev3 cookie, no same-origin RPC.
+ * No forms or modals either — a page on the user's own dev3 host must not be
+ * able to draw a convincing "enter your access code" prompt.
+ */
+export const FILE_LINK_SANDBOX = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads";
+
+/**
+ * Served as files, never rendered on the dev3 origin: a PDF viewer cannot run
+ * sandboxed, and its script engine is not worth trusting with the session.
+ */
+const ATTACHMENT_ONLY = /^application\/pdf/;
+
+/** Video and audio play in the browser's own media document, which runs no page script and refuses a sandbox. */
+const UNSANDBOXED_MEDIA = /^(?:video|audio)\//;
 
 /** Serves `/file/<token>/<rel>`; `?download=1` turns any file into an attachment. */
 export async function serveFileLink(req: Request, url: URL): Promise<Response> {
@@ -123,16 +164,16 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 	if (!path) return new Response("Not Found", { status: 404 });
 	try {
 		if (!(await stat(path)).isFile()) return new Response("Not Found", { status: 404 });
-		const download = url.searchParams.get("download") === "1";
-		const contentType = download ? "application/octet-stream" : await fileLinkContentType(path);
+		const sniffed = await fileLinkContentType(path);
+		const download = url.searchParams.get("download") === "1" || ATTACHMENT_ONLY.test(sniffed);
+		const contentType = download ? "application/octet-stream" : sniffed;
 		const headers: Record<string, string> = {
 			"Content-Type": contentType,
 			"X-Content-Type-Options": "nosniff",
 			"Referrer-Policy": "no-referrer",
 		};
 		if (download) headers["Content-Disposition"] = attachmentDisposition(basename(path));
-		// Chromium's PDF and media viewers refuse to load in a sandboxed document; neither runs page script.
-		else if (!/^(?:application\/pdf|video\/|audio\/)/.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
+		else if (!UNSANDBOXED_MEDIA.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
 		return await serveFileBytes(req, path, headers);
 	} catch {
 		// Unreadable, or gone between the checks — never let Bun's error page echo the path.
