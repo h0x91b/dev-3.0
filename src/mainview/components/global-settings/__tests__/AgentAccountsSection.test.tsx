@@ -178,6 +178,8 @@ describe("AgentAccountsSection", () => {
 		expect(await screen.findByText("Sign in to Oh My Pi")).toBeTruthy();
 		expect(await screen.findByTestId("terminal-view")).toBeTruthy();
 		expect(mockedApi.request.getAccountLoginPtyUrl).toHaveBeenCalledWith({ sessionKey: "account-login-o1" });
+		// The provider list is explained in remote mode too, next to the host-browser note.
+		expect(screen.getByText(/type a provider’s number.*appears on the host, not here/)).toBeTruthy();
 	});
 
 	it("imports the current login", async () => {

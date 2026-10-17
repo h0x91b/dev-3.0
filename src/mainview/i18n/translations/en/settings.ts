@@ -631,7 +631,7 @@ const settings = {
 	"settings.accountLoginRunning": "Finish signing in below",
 	"settings.accountLoginRunningClaude": "Choose a sign-in method in the terminal, then approve it in the browser tab that opens. No tab? Open the link the terminal prints.",
 	"settings.accountLoginRunningCodex": "Approve the sign-in in the browser tab that opens. No tab? Open the link the terminal prints.",
-	"settings.accountLoginRunningOmp": "Pick a provider in the terminal with the arrow keys and Enter, then approve the sign-in in the browser tab that opens. No tab? Open the link the terminal prints.",
+	"settings.accountLoginRunningOmp": "Scroll up for the whole list, type a provider’s number and press Enter, then approve the sign-in in the browser tab that opens. Providers that take only an API key aren’t saved as an account.",
 	"settings.accountLoginRunningDevice": "Open the link the terminal prints on any device, then enter the one-time code shown next to it.",
 	"settings.accountLoginRunningRemote": "A browser tab the CLI opens appears on the host, not here. Open the link the terminal prints instead; if it asks for a code, paste it back into the terminal.",
 	"settings.accountLoginVerifying": "Checking the new login…",

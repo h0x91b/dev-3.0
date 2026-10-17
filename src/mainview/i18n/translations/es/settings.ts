@@ -632,7 +632,7 @@ const settings = {
 	"settings.accountLoginRunning": "Completa el inicio de sesión abajo",
 	"settings.accountLoginRunningClaude": "Elige un método de inicio de sesión en la terminal y apruébalo en la pestaña del navegador que se abre. ¿No se abre? Abre el enlace que muestra la terminal.",
 	"settings.accountLoginRunningCodex": "Aprueba el inicio de sesión en la pestaña del navegador que se abre. ¿No se abre? Abre el enlace que muestra la terminal.",
-	"settings.accountLoginRunningOmp": "Elige un proveedor en la terminal con las flechas y Enter, y aprueba el inicio de sesión en la pestaña del navegador que se abre. ¿No se abre? Abre el enlace que muestra la terminal.",
+	"settings.accountLoginRunningOmp": "Desplázate hacia arriba para ver la lista completa, escribe el número de un proveedor y pulsa Enter; luego aprueba el inicio de sesión en la pestaña del navegador que se abre. Los proveedores que solo usan una clave de API no se guardan como cuenta.",
 	"settings.accountLoginRunningDevice": "Abre en cualquier dispositivo el enlace que muestra la terminal e introduce el código de un solo uso que aparece junto a él.",
 	"settings.accountLoginRunningRemote": "La pestaña que abra la CLI aparece en el host, no aquí. Abre el enlace que muestra la terminal; si te pide un código, pégalo de vuelta en la terminal.",
 	"settings.accountLoginVerifying": "Comprobando el nuevo inicio de sesión…",

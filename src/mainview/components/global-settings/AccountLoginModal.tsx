@@ -154,9 +154,12 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 		case "running":
 			body = login.deviceAuth
 				? t("settings.accountLoginRunningDevice")
-				: remote
-					? t("settings.accountLoginRunningRemote")
-					: t(RUNNING_HINTS[login.kind]);
+				: login.kind === "omp"
+					// omp's provider list is the hard part, so it is explained in remote mode too.
+					? [t(RUNNING_HINTS.omp), remote ? t("settings.accountLoginRunningRemote") : null].filter(Boolean).join(" ")
+					: remote
+						? t("settings.accountLoginRunningRemote")
+						: t(RUNNING_HINTS[login.kind]);
 			break;
 		case "succeeded":
 			body = t("settings.accountLoginSucceededBody");

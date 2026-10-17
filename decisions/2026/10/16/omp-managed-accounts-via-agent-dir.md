@@ -22,7 +22,7 @@ Read against omp 18.11.1 (`packages/utils/src/dirs.ts`, `packages/ai/src/auth/`)
 
 ## Risks
 
-- Only OAuth sign-ins are detected, matching what `omp login` offers. An API-key-only `/login` typed inside an omp session in that dir fails verification.
+- Only OAuth sign-ins are detected (`omp usage accounts` lists nothing else). `omp login` (18.11.1) is a numbered list of 84 providers that also includes API-key ones; picking one of those leaves the sign-in waiting, and the modal says so. Detecting them would need a credential listing omp does not expose without also counting the env's own keys.
 - The provider list is a snapshot taken at verification. A later `/login` inside a running session shows up only after the next verification.
 - If omp ever rewrites a shared file by rename, the account gets a private copy and stops following `~/.omp/agent`. This is the same exposure the Claude account dirs have.
 - The manual fallback command is POSIX shell syntax, as the Codex one is. Not verified on Windows.
