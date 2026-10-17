@@ -88,7 +88,7 @@ type FileHandle = Awaited<ReturnType<typeof open>>;
  * marks the stream, and the handle closes once the pending read settles.
  * `onDone` fires exactly once, when the stream ends, errors or is cancelled.
  */
-function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?: () => void): ReadableStream<Uint8Array> {
+function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?: () => void, signal?: AbortSignal): ReadableStream<Uint8Array> {
 	let current: FileHandle | null = handle;
 	let reading: Promise<unknown> | null = null;
 	let cancelled = false;
@@ -100,6 +100,13 @@ function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?
 		await h.close().catch(() => {});
 		onDone?.();
 	};
+	const abandon = async () => {
+		cancelled = true;
+		await reading?.catch(() => {});
+		await close();
+	};
+	// Bun does not cancel the body of a client that disconnected before reading it; its request signal does fire.
+	signal?.addEventListener("abort", () => void abandon(), { once: true });
 	return new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
@@ -128,11 +135,7 @@ function fileRangeStream(handle: FileHandle, start: number, end: number, onDone?
 				if (!cancelled) controller.error(err);
 			}
 		},
-		async cancel() {
-			cancelled = true;
-			await reading?.catch(() => {});
-			await close();
-		},
+		cancel: abandon,
 	});
 }
 
@@ -153,18 +156,20 @@ export async function serveSharedVideo(req: Request, pathname: string, extraHead
 }
 
 export interface ServeFileBytesOptions {
-	/** Stream a 206 (explicit Content-Length) instead of buffering up to 8 MB per reply. */
-	streamRanges?: boolean;
+	/** Largest 206 body, buffered in memory; the media engine asks for the next range itself. */
+	maxRangeBytes?: number;
 	/** Fires exactly once, when the response body is finished or abandoned (or at once for a bodiless reply). */
 	onDone?: () => void;
+	/** The request's signal: a client that disconnects releases the file even if Bun never reads the body. */
+	signal?: AbortSignal;
 }
 
 /**
  * GET/HEAD for one file with Range support, from a path or from a handle the
  * caller already opened and verified (this function then owns and closes it). A
- * 206 is buffered by default because Bun drops `Content-Length` from a stream
- * body and answers chunked, which media engines handle less reliably; a plain 200
- * streams the whole file. `baseHeaders` must carry the Content-Type.
+ * 206 is a bounded in-memory slice because Bun drops `Content-Length` from a
+ * stream body and answers chunked, which WebKit's media loader rejects; a plain
+ * 200 streams the whole file. `baseHeaders` must carry the Content-Type.
  */
 export async function serveFileBytes(req: Request, source: string | FileHandle, baseHeaders: Record<string, string>, options: ServeFileBytesOptions = {}): Promise<Response> {
 	let streaming = false;
@@ -185,17 +190,13 @@ export async function serveFileBytes(req: Request, source: string | FileHandle, 
 			headers["Content-Length"] = String(size);
 			if (req.method === "HEAD" || size === 0) return new Response(null, { status: 200, headers });
 			streaming = true;
-			return new Response(fileRangeStream(handle, 0, size - 1, options.onDone), { status: 200, headers });
+			return new Response(fileRangeStream(handle, 0, size - 1, options.onDone, options.signal), { status: 200, headers });
 		}
 		const { start } = range;
-		const end = Math.min(range.end, start + MAX_RANGE_RESPONSE_BYTES - 1);
+		const end = Math.min(range.end, start + (options.maxRangeBytes ?? MAX_RANGE_RESPONSE_BYTES) - 1);
 		headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
 		headers["Content-Length"] = String(end - start + 1);
 		if (req.method === "HEAD") return new Response(null, { status: 206, headers });
-		if (options.streamRanges) {
-			streaming = true;
-			return new Response(fileRangeStream(handle, start, end, options.onDone), { status: 206, headers });
-		}
 		return new Response(await readRange(handle, start, end), { status: 206, headers });
 	} finally {
 		if (!streaming) {

@@ -3,6 +3,7 @@ import { constants as fsConstants, readlinkSync, realpathSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, fileLinkExt } from "../shared/file-link-types";
+import { run as runGit } from "./git";
 import { serveFileBytes } from "./shared-video-stream";
 
 /**
@@ -19,11 +20,15 @@ export const DOWNLOAD_TTL_MS = 60 * 1000;
 const MAX_TOKENS = 256;
 const SNIFF_BYTES = 8192;
 
-/** `dir` also serves the entry's folder tree, so a page's relative assets resolve; `file` serves one file. */
-export type FileLinkScope = { kind: "dir"; root: string; entry: string } | { kind: "file"; path: string };
+/**
+ * `dir` also serves the entry's folder tree, so a page's relative assets resolve; `file` serves one
+ * file. `ignoreCheckout`: refuse files that checkout's `.gitignore` excludes (local secrets such as
+ * `config/master.key`) — omitted when the page itself is ignored build output.
+ */
+export type FileLinkScope = { kind: "dir"; root: string; entry: string; ignoreCheckout?: string } | { kind: "file"; path: string };
 
 /** Scope pinned to real paths at mint time, so a symlink swapped in later cannot widen it. */
-type PinnedScope = { kind: "dir"; realRoot: string; entry: string } | { kind: "file"; path: string; realPath: string };
+type PinnedScope = { kind: "dir"; realRoot: string; entry: string; ignoreCheckout?: string } | { kind: "file"; path: string; realPath: string };
 
 interface Link {
 	scope: PinnedScope;
@@ -56,7 +61,7 @@ export function mintFileLink(scope: FileLinkScope, { now = Date.now(), ttlMs = V
 	// again here could pin a different folder than the one that was checked.
 	const real = (path: string) => (resolved ? path : realPath(path));
 	const pinned: PinnedScope = scope.kind === "dir"
-		? { kind: "dir", realRoot: real(scope.root), entry: scope.entry }
+		? { kind: "dir", realRoot: real(scope.root), entry: scope.entry, ignoreCheckout: scope.ignoreCheckout }
 		: { kind: "file", path: scope.path, realPath: real(scope.path) };
 	const token = randomBytes(24).toString("base64url");
 	links.set(token, { scope: pinned, expiresAt: now + ttlMs });
@@ -82,6 +87,17 @@ function isPlainSegment(segment: string): boolean {
  * symlinks cannot reach a dot-file either.
  */
 export function resolveFileLinkPath(pathname: string, now = Date.now()): string | null {
+	return resolveFileLinkTarget(pathname, now)?.path ?? null;
+}
+
+interface FileLinkTarget {
+	path: string;
+	token: string;
+	/** Set when the file must also not be gitignored in this checkout (folder links only). */
+	ignoreCheckout?: string;
+}
+
+function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarget | null {
 	const rest = pathname.slice(FILE_LINK_ROUTE.length);
 	const slash = rest.indexOf("/");
 	if (slash <= 0) return null;
@@ -104,15 +120,27 @@ export function resolveFileLinkPath(pathname: string, now = Date.now()): string 
 	const { scope } = link;
 	if (scope.kind === "file") {
 		if (segments.length !== 1 || segments[0] !== basename(scope.path)) return null;
-		return realOrNull(scope.path, (real) => real === scope.realPath);
+		const path = realOrNull(scope.path, (real) => real === scope.realPath);
+		return path ? { path, token } : null;
 	}
 	const target = resolve(scope.realRoot, ...segments);
 	if (!isInside(target, scope.realRoot)) return null;
-	return realOrNull(target, (real) => {
+	let isEntry = false;
+	const path = realOrNull(target, (real) => {
 		if (!isInside(real, scope.realRoot)) return false;
 		const parts = relative(scope.realRoot, real).split(sep);
-		return parts.join("/") === scope.entry || !parts.some((part) => part.startsWith("."));
+		isEntry = parts.join("/") === scope.entry;
+		return isEntry || !parts.some((part) => part.startsWith("."));
 	});
+	if (!path) return null;
+	return { path, token, ignoreCheckout: isEntry ? undefined : scope.ignoreCheckout };
+}
+
+/** `git check-ignore` for `path` in `checkout`: exit 0 ignored, 1 not, anything else unknown. */
+export async function gitIgnoreState(checkout: string, path: string): Promise<"ignored" | "not-ignored" | "unknown"> {
+	const result = await runGit(["check-ignore", "-q", "--", relative(checkout, path)], checkout, { timeoutMs: 5000 });
+	if (result.ok) return "ignored";
+	return result.stderr.trim() === "" ? "not-ignored" : "unknown";
 }
 
 function realOrNull(path: string, accept: (real: string) => boolean): string | null {
@@ -183,31 +211,48 @@ export const FILE_LINK_SANDBOX = "sandbox allow-scripts allow-popups allow-popup
 const UNSANDBOXED_MEDIA = /^(?:video|audio)\//;
 
 /**
- * Responses whose body is still being sent, released only when it finishes or the
- * client goes away, so a leaked token cannot pile up open files and sockets.
+ * Responses whose body is still being sent, released when it finishes or the
+ * client leaves. One token gets a few, so a leaked link cannot starve the rest.
  */
-const MAX_OPEN_RESPONSES = 32;
+const MAX_OPEN_RESPONSES = 64;
+const MAX_OPEN_RESPONSES_PER_TOKEN = 8;
 let openResponses = 0;
+const openByToken = new Map<string, number>();
+
+/** A /file/ range reply is buffered, so it stays small; the media engine asks for the next one. */
+const FILE_LINK_MAX_RANGE_BYTES = 1024 * 1024;
+
+const PLAIN_HEADERS = { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store" };
+
+function plain(status: number, body: string, extra: Record<string, string> = {}): Response {
+	return new Response(body, { status, headers: { ...PLAIN_HEADERS, ...extra } });
+}
 
 /** Serves `/file/<token>/<rel>`; `?download=1` turns any file into an attachment. */
 export async function serveFileLink(req: Request, url: URL): Promise<Response> {
-	if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405 });
-	const path = resolveFileLinkPath(url.pathname);
-	if (!path) return new Response("Not Found", { status: 404 });
-	if (openResponses >= MAX_OPEN_RESPONSES) return new Response("Busy", { status: 503, headers: { "Retry-After": "1" } });
+	if (req.method !== "GET" && req.method !== "HEAD") return plain(405, "Method Not Allowed");
+	const target = resolveFileLinkTarget(url.pathname);
+	if (!target) return plain(404, "Not Found");
+	const { path, token } = target;
+	const tokenOpen = openByToken.get(token) ?? 0;
+	if (openResponses >= MAX_OPEN_RESPONSES || tokenOpen >= MAX_OPEN_RESPONSES_PER_TOKEN) return plain(503, "Busy", { "Retry-After": "1" });
 	openResponses++;
+	openByToken.set(token, tokenOpen + 1);
 	let released = false;
 	const release = () => {
-		if (!released) {
-			released = true;
-			openResponses--;
-		}
+		if (released) return;
+		released = true;
+		openResponses--;
+		const left = (openByToken.get(token) ?? 1) - 1;
+		if (left > 0) openByToken.set(token, left);
+		else openByToken.delete(token);
 	};
 	let handedOff = false;
 	let handle: FileHandle | null = null;
 	try {
+		if (target.ignoreCheckout && (await gitIgnoreState(target.ignoreCheckout, path)) !== "not-ignored") return plain(404, "Not Found");
 		handle = await openCheckedFile(path);
-		if (!handle) return new Response("Not Found", { status: 404 });
+		if (!handle) return plain(404, "Not Found");
 		const sniffed = await fileLinkContentType(path, handle);
 		const download = url.searchParams.get("download") === "1" || ATTACHMENT_ONLY_EXTS.has(fileLinkExt(path));
 		const contentType = download ? "application/octet-stream" : sniffed;
@@ -218,13 +263,15 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 		};
 		if (download) headers["Content-Disposition"] = attachmentDisposition(basename(path));
 		else if (!UNSANDBOXED_MEDIA.test(contentType)) headers["Content-Security-Policy"] = FILE_LINK_SANDBOX;
+		// A client gone before the body exists would never be read or cancelled by Bun.
+		if (req.signal.aborted) return plain(499, "Client Closed Request");
 		const owned = handle;
 		handle = null;
 		handedOff = true;
-		return await serveFileBytes(req, owned, headers, { streamRanges: true, onDone: release });
+		return await serveFileBytes(req, owned, headers, { maxRangeBytes: FILE_LINK_MAX_RANGE_BYTES, onDone: release, signal: req.signal });
 	} catch {
 		// Unreadable, or gone between the checks — never let Bun's error page echo the path.
-		return new Response("Not Found", { status: 404 });
+		return plain(404, "Not Found");
 	} finally {
 		await handle?.close().catch(() => {});
 		if (!handedOff) release();
@@ -239,4 +286,6 @@ export function openFileLinkResponses(): number {
 /** Test hook: forget every minted link. */
 export function resetFileLinks(): void {
 	links.clear();
+	openByToken.clear();
+	openResponses = 0;
 }

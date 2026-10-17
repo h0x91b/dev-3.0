@@ -1,4 +1,15 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The test setup stubs Bun.spawn with streams that never close; run real git through Node instead.
+vi.mock("../git", async () => {
+	const { spawnSync } = await import("node:child_process");
+	return {
+		run: async (cmd: string[], cwd: string) => {
+			const result = spawnSync("git", cmd, { cwd, encoding: "utf8" });
+			return { ok: result.status === 0, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+		},
+	};
+});
 import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, openCheckedFile, openFileLinkResponses, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
@@ -224,19 +235,44 @@ describe("openCheckedFile", () => {
 
 describe("open response cap", () => {
 	// Bigger than one 1 MB read, so the body is still unsent after the eager first pull.
-	it("holds a slot until the body is read or abandoned, and refuses past 32", async () => {
+	it("holds a slot until the body is read, abandoned or its client leaves, and caps each token", async () => {
 		const { base } = reportLink();
+		const clients: AbortController[] = [];
 		const pending: Response[] = [];
-		for (let i = 0; i < 32; i++) pending.push(await get(`${base}big.txt`));
+		for (let i = 0; i < 8; i++) {
+			const client = new AbortController();
+			clients.push(client);
+			const url = new URL(`http://x${base}big.txt`);
+			pending.push(await serveFileLink(new Request(url, { signal: client.signal }), url));
+		}
 		await new Promise((r) => setTimeout(r, 20));
-		expect(openFileLinkResponses()).toBe(32);
+		expect(openFileLinkResponses()).toBe(8);
 		expect((await get(`${base}big.txt`)).status).toBe(503);
+		const otherToken = await get(`${reportLink().base}big.txt`);
+		expect(otherToken.status).toBe(200);
+		await otherToken.body!.cancel();
 		await pending[0].text();
 		await pending[1].body!.cancel();
-		expect(openFileLinkResponses()).toBe(30);
-		expect((await get(`${base}big.txt`, { method: "HEAD" })).status).toBe(200);
-		expect(openFileLinkResponses()).toBe(30);
-		await Promise.all(pending.slice(2).map((res) => res.body!.cancel()));
+		clients[2].abort();
+		await vi.waitFor(() => expect(openFileLinkResponses()).toBe(6));
+		clients.forEach((client) => client.abort());
+		await vi.waitFor(() => expect(openFileLinkResponses()).toBe(0));
+	});
+
+	it("does not open a file for a client that already left", async () => {
+		const client = new AbortController();
+		client.abort();
+		const url = new URL(`http://x${reportLink().base}big.txt`);
+		const res = await serveFileLink(new Request(url, { signal: client.signal }), url);
+		expect(res.status).toBe(499);
+		expect(openFileLinkResponses()).toBe(0);
+	});
+
+	it("keeps ranged replies small and buffered", async () => {
+		const res = await get(`${reportLink().base}big.txt`, { headers: { range: "bytes=0-" } });
+		expect(res.status).toBe(206);
+		expect(res.headers.get("content-range")).toBe(`bytes 0-${1024 * 1024 - 1}/${3 * 1024 * 1024}`);
+		expect((await res.arrayBuffer()).byteLength).toBe(1024 * 1024);
 		expect(openFileLinkResponses()).toBe(0);
 	});
 
@@ -251,6 +287,32 @@ describe("open response cap", () => {
 			expect(openFileLinkResponses()).toBe(0);
 		} finally {
 			rmSync(fifo, { force: true });
+		}
+	});
+});
+
+describe("gitignored files under a folder link", () => {
+	it("refuses ignored local secrets, but serves the page's own tracked and untracked assets", async () => {
+		const repo = join(ROOT, "gitrepo");
+		mkdirSync(join(repo, "config", "assets"), { recursive: true });
+		if (spawnSync("git", ["init", "-q", repo]).status !== 0) return;
+		writeFileSync(join(repo, ".gitignore"), "config/master.key\n");
+		writeFileSync(join(repo, "config", "master.key"), "SECRET");
+		writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
+		writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");
+		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignoreCheckout: repo });
+		const base = link.slice(0, -"x.html".length);
+		expect((await get(link)).status).toBe(200);
+		expect((await get(`${base}assets/a.css`)).status).toBe(200);
+		expect((await get(`${base}master.key`)).status).toBe(404);
+	});
+});
+
+describe("error replies", () => {
+	it("carry nosniff and no-store like every other /file/ reply", async () => {
+		for (const res of [await get("/file/nope/x.html"), await get(reportLink().link, { method: "POST" })]) {
+			expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+			expect(res.headers.get("cache-control")).toBe("no-store");
 		}
 	});
 });

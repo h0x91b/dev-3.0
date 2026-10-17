@@ -4,7 +4,7 @@ import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
-import { DOWNLOAD_TTL_MS, mintFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, gitIgnoreState, mintFileLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
@@ -354,20 +354,24 @@ function realOr(path: string): string {
 
 /**
  * Only a page (HTML/SVG) strictly inside a task worktree or project checkout gets
- * its folder, so its relative assets load. Decided on the real folder the link
- * then pins as-is, never inside a dot-folder of the checkout (`.git/`), never at a
- * checkout root, never in dev3's own storage; everything else is one file.
+ * its folder, so its relative assets load; returns that checkout, or null for a
+ * one-file link. Decided on the real folder the link then pins as-is, never inside
+ * a dot-folder of the checkout (`.git/`), never at a checkout root, never in dev3's
+ * own storage, and never through a symlink into a different checkout.
  */
-async function linkCoversFolder(realFile: string): Promise<boolean> {
-	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(realFile))) return false;
+async function folderLinkCheckout(requested: string, realFile: string): Promise<string | null> {
+	if (!FILE_LINK_PAGE_EXTS.has(fileLinkExt(realFile))) return null;
 	const dir = dirname(realFile);
 	const checkout = await nearestCheckout(dir);
-	if (!checkout || checkout === dir) return false;
-	if (relative(checkout, dir).split(sep).some((part) => part.startsWith("."))) return false;
+	if (!checkout || checkout === dir) return null;
+	if (relative(checkout, dir).split(sep).some((part) => part.startsWith("."))) return null;
+	const requestedCheckout = await nearestCheckout(dirname(requested));
+	if (!requestedCheckout || realOr(requestedCheckout) !== checkout) return null;
 	const worktreesRoot = realOr(join(DEV3_HOME, "worktrees"));
 	// A checkout that contains dev3's storage (a dotfiles repo at ~) is not a task's checkout.
-	if (isUnder(worktreesRoot, checkout)) return false;
-	return isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, realOr(root)));
+	if (isUnder(worktreesRoot, checkout)) return null;
+	const inScope = isUnder(checkout, worktreesRoot) || (await projectRoots()).some((root) => isUnder(checkout, realOr(root)));
+	return inScope ? checkout : null;
 }
 
 function absolutePath(raw: string): string {
@@ -383,10 +387,11 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	// Resolved once: the folder decision and the pinned scope must be the same path.
 	const realFile = realpathSync.native(path);
 	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
-	const scope = (await linkCoversFolder(realFile))
-		? { kind: "dir" as const, root: dirname(realFile), entry: basename(realFile) }
-		: { kind: "file" as const, path: realFile };
-	return { url: mintFileLink(scope, { resolved: true }) };
+	const checkout = await folderLinkCheckout(path, realFile);
+	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
+	// Ignored files stay out unless the page itself is ignored build output (then they are its own assets).
+	const ignoreCheckout = (await gitIgnoreState(checkout, realFile)) === "ignored" ? undefined : checkout;
+	return { url: mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignoreCheckout }, { resolved: true }) };
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */
