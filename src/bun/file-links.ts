@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { constants as fsConstants, readlinkSync, realpathSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
-import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, fileLinkExt } from "../shared/file-link-types";
+import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, PAGE_ASSET_EXTS, fileLinkExt } from "../shared/file-link-types";
 import { spawn } from "./spawn";
 import { serveFileBytes } from "./shared-video-stream";
 
@@ -37,8 +37,8 @@ type PinnedScope =
 interface Link {
 	scope: PinnedScope;
 	expiresAt: number;
-	/** Per-path gitignore verdicts, so a page's assets cost one git run each at most. */
-	ignoreVerdicts?: Map<string, boolean>;
+	/** Per-path gitignore decisions (settled or in flight), so a page's assets cost one git run each. */
+	ignoreVerdicts?: Map<string, Promise<boolean>>;
 }
 
 /** Insertion order is recency: a lookup moves its link to the end, so the cap evicts the least recently used. */
@@ -146,16 +146,37 @@ function resolveFileLinkTarget(pathname: string, now = Date.now()): FileLinkTarg
 export type GitIgnoreVerdict = { state: "ignored"; rule: string } | { state: "not-ignored" } | { state: "unknown" };
 
 const MAX_GIT_CHECKS = 4;
+const MAX_GIT_QUEUE = 64;
 let gitChecksRunning = 0;
+let gitChecksQueued = 0;
 const GIT_CHECK_TIMEOUT_MS = 5000;
 
+/** The pattern of a `source:line:pattern` field; git quotes a source holding special characters. */
+function rulePattern(rule: string): string {
+	let rest = rule;
+	if (rest.startsWith("\"")) {
+		const close = rest.indexOf("\"", 1);
+		rest = close > 0 ? rest.slice(close + 1) : rest;
+	} else {
+		rest = rest.slice(rest.indexOf(":"));
+	}
+	return rest.replace(/^:\d*:/, "");
+}
+
 /**
- * `git check-ignore -v -n` for `path`: prints `source:line:pattern<TAB>path` when
- * a rule ignores it and `::<TAB>path` when none does. Anything else — no git, a
- * crash, a timeout — is unknown, which every caller treats as "refuse".
+ * `git check-ignore -v -n` for `path`: prints `source:line:pattern<TAB>path` for the
+ * last matching rule and `::<TAB>path` when none matches; a `!pattern` match means
+ * re-included. Anything else — no git, a crash, a timeout, a full queue — is
+ * unknown, which every caller treats as "refuse".
  */
 export async function gitIgnoreVerdict(checkout: string, path: string): Promise<GitIgnoreVerdict> {
-	while (gitChecksRunning >= MAX_GIT_CHECKS) await new Promise((resolve) => setTimeout(resolve, 10));
+	if (gitChecksRunning >= MAX_GIT_CHECKS && gitChecksQueued >= MAX_GIT_QUEUE) return { state: "unknown" };
+	gitChecksQueued++;
+	try {
+		while (gitChecksRunning >= MAX_GIT_CHECKS) await new Promise((resolve) => setTimeout(resolve, 10));
+	} finally {
+		gitChecksQueued--;
+	}
 	gitChecksRunning++;
 	try {
 		const proc = spawn(["git", "check-ignore", "-v", "-n", "--", relative(checkout, path)], { cwd: checkout, stdout: "pipe", stderr: "ignore" });
@@ -166,7 +187,8 @@ export async function gitIgnoreVerdict(checkout: string, path: string): Promise<
 		const tab = line.indexOf("\t");
 		if ((code !== 0 && code !== 1) || tab < 0) return { state: "unknown" };
 		const rule = line.slice(0, tab);
-		return rule === "::" ? { state: "not-ignored" } : { state: "ignored", rule };
+		if (rule === "::" || rulePattern(rule).startsWith("!")) return { state: "not-ignored" };
+		return { state: "ignored", rule };
 	} catch {
 		return { state: "unknown" };
 	} finally {
@@ -174,15 +196,30 @@ export async function gitIgnoreVerdict(checkout: string, path: string): Promise<
 	}
 }
 
-async function passesIgnoreFilter(target: FileLinkTarget): Promise<boolean> {
-	const { ignore, link, path } = target;
-	if (!ignore) return true;
-	const cached = link.ignoreVerdicts?.get(path);
-	if (cached !== undefined) return cached;
+async function decideIgnore(target: FileLinkTarget & { ignore: NonNullable<FileLinkTarget["ignore"]> }): Promise<"allow" | "deny" | "unknown"> {
+	const { ignore, path } = target;
 	const verdict = await gitIgnoreVerdict(ignore.checkout, path);
-	const allowed = verdict.state === "not-ignored" || (verdict.state === "ignored" && verdict.rule === ignore.pageRule);
-	if (verdict.state !== "unknown") (link.ignoreVerdicts ??= new Map()).set(path, allowed);
-	return allowed;
+	if (verdict.state === "unknown") return "unknown";
+	if (verdict.state === "not-ignored") return "allow";
+	// Under the page's own rule, only what a page loads: a page in `tmp/` must not expose `tmp/secret.txt`.
+	return verdict.rule === ignore.pageRule && PAGE_ASSET_EXTS.has(fileLinkExt(path)) ? "allow" : "deny";
+}
+
+/** One git run per path and link, shared by concurrent requests; only an unknown verdict is retried. */
+async function passesIgnoreFilter(target: FileLinkTarget): Promise<boolean> {
+	const { ignore } = target;
+	if (!ignore) return true;
+	const verdicts = (target.link.ignoreVerdicts ??= new Map());
+	let decision = verdicts.get(target.path);
+	if (!decision) {
+		const pending = decideIgnore({ ...target, ignore });
+		decision = pending.then((outcome) => outcome === "allow");
+		verdicts.set(target.path, decision);
+		void pending.then((outcome) => {
+			if (outcome === "unknown") verdicts.delete(target.path);
+		});
+	}
+	return decision;
 }
 
 function realOrNull(path: string, accept: (real: string) => boolean): string | null {
@@ -259,17 +296,28 @@ const UNSANDBOXED_MEDIA = /^(?:video|audio)\//;
  */
 const MAX_STREAMING = 64;
 const MAX_STREAMING_PER_TOKEN = 16;
-const SLOT_WAIT_MS = 10_000;
+/** Waiters each hold an open file, so only so many may queue; beyond that a reply is refused. */
+const MAX_SLOT_WAITERS = 128;
 let streaming = 0;
+let slotWaiters = 0;
 const streamingByToken = new Map<string, number>();
 
 class SlotBusyError extends Error {}
 
+/** Waits for a slot for as long as the client stays connected — a slow link must not lose assets. */
 async function takeStreamSlot(token: string, signal: AbortSignal): Promise<() => void> {
-	const deadline = Date.now() + SLOT_WAIT_MS;
-	while (streaming >= MAX_STREAMING || (streamingByToken.get(token) ?? 0) >= MAX_STREAMING_PER_TOKEN) {
-		if (signal.aborted || Date.now() >= deadline) throw new SlotBusyError();
-		await new Promise((resolve) => setTimeout(resolve, 50));
+	const full = () => streaming >= MAX_STREAMING || (streamingByToken.get(token) ?? 0) >= MAX_STREAMING_PER_TOKEN;
+	if (full()) {
+		if (slotWaiters >= MAX_SLOT_WAITERS) throw new SlotBusyError();
+		slotWaiters++;
+		try {
+			while (full()) {
+				if (signal.aborted) throw new SlotBusyError();
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+		} finally {
+			slotWaiters--;
+		}
 	}
 	streaming++;
 	streamingByToken.set(token, (streamingByToken.get(token) ?? 0) + 1);

@@ -2,11 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 // The test setup stubs Bun.spawn with streams that never close; run the real command through Node
 // with the wrapper's contract (cmd[0] is the executable; stdout a web stream; exited a code).
+const spawnCount = vi.hoisted(() => ({ git: 0 }));
 vi.mock("../spawn", async () => {
 	const { spawn } = await import("node:child_process");
 	const { Readable } = await import("node:stream");
 	return {
 		spawn: (cmd: string[], opts: { cwd?: string } = {}) => {
+			if (cmd[0] === "git") spawnCount.git++;
 			const child = spawn(cmd[0], cmd.slice(1), { cwd: opts.cwd, stdio: ["ignore", "pipe", "ignore"] });
 			return {
 				stdout: Readable.toWeb(child.stdout!) as unknown as ReadableStream,
@@ -308,10 +310,11 @@ describe("streaming slots", () => {
 });
 
 describe("gitignored files under a folder link", () => {
-	function repoWith(gitignore: string, files: Record<string, string>): string | null {
+	/** A real git repository; git is required, so a missing one fails the test rather than skipping it. */
+	function repoWith(gitignore: string, files: Record<string, string>): string {
 		const repo = join(ROOT, `gitrepo-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(repo, { recursive: true });
-		if (spawnSync("git", ["init", "-q", repo]).status !== 0) return null;
+		expect(spawnSync("git", ["init", "-q", repo]).status).toBe(0);
 		writeFileSync(join(repo, ".gitignore"), gitignore);
 		for (const [name, content] of Object.entries(files)) {
 			mkdirSync(join(repo, name, ".."), { recursive: true });
@@ -322,7 +325,6 @@ describe("gitignored files under a folder link", () => {
 
 	it("refuses ignored local secrets, but serves the page's own tracked and untracked assets", async () => {
 		const repo = repoWith("config/master.key\n", { "config/x.html": "<p>page</p>", "config/assets/a.css": "body{}", "config/master.key": "SECRET" });
-		if (!repo) return;
 		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
 		const base = link.slice(0, -"x.html".length);
 		expect((await get(link)).status).toBe(200);
@@ -330,9 +332,41 @@ describe("gitignored files under a folder link", () => {
 		expect((await get(`${base}master.key`)).status).toBe(404);
 	});
 
+	it("serves only page assets under the page's own rule — a page in an ignored tmp/ cannot expose tmp/ secrets", async () => {
+		const repo = repoWith("/tmp/*\n", { "tmp/report.html": "<link rel=stylesheet href=style.css>", "tmp/style.css": "body{}", "tmp/local_secret.txt": "SECRET_KEY_BASE=abc123", "tmp/creds.json": "{}" });
+		const { gitIgnoreVerdict } = await import("../file-links");
+		const page = await gitIgnoreVerdict(repo, join(repo, "tmp", "report.html"));
+		const pageRule = page.state === "ignored" ? page.rule : null;
+		expect(pageRule).not.toBeNull();
+		const link = mintFileLink({ kind: "dir", root: join(repo, "tmp"), entry: "report.html", ignore: { checkout: repo, pageRule } });
+		const base = link.slice(0, -"report.html".length);
+		expect((await get(`${base}style.css`)).status).toBe(200);
+		expect((await get(`${base}local_secret.txt`)).status).toBe(404);
+		expect((await get(`${base}creds.json`)).status).toBe(404);
+	});
+
+	it("treats a file re-included with ! as not ignored", async () => {
+		const repo = repoWith("*.key\n!public.key\n", { "config/x.html": "<p>x</p>", "config/public.key": "PUBLIC", "config/master.key": "SECRET" });
+		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
+		const base = link.slice(0, -"x.html".length);
+		expect((await get(`${base}public.key`)).status).toBe(200);
+		expect((await get(`${base}master.key`)).status).toBe(404);
+	});
+
+	it("runs git once for an asset however many requests ask at the same time, and once for a refused one", async () => {
+		const repo = repoWith("config/master.key\n", { "config/x.html": "<p>x</p>", "config/a.css": "body{}", "config/master.key": "SECRET" });
+		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
+		const base = link.slice(0, -"x.html".length);
+		const before = spawnCount.git;
+		const replies = await Promise.all(Array.from({ length: 20 }, () => get(`${base}a.css`)));
+		expect(replies.every((res) => res.status === 200)).toBe(true);
+		expect(spawnCount.git - before).toBe(1);
+		for (let i = 0; i < 5; i++) expect((await get(`${base}master.key`)).status).toBe(404);
+		expect(spawnCount.git - before).toBe(2);
+	});
+
 	it("lets through only what the page's own ignore rule covers — *.html ignored does not expose master.key", async () => {
 		const repo = repoWith("*.html\nconfig/master.key\n", { "config/report.html": "<p>r</p>", "config/other.html": "<p>o</p>", "config/a.css": "x", "config/master.key": "SECRET" });
-		if (!repo) return;
 		const { gitIgnoreVerdict } = await import("../file-links");
 		const page = await gitIgnoreVerdict(repo, join(repo, "config", "report.html"));
 		expect(page.state).toBe("ignored");

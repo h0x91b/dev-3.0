@@ -389,7 +389,7 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
 	const checkout = await folderLinkCheckout(path, realFile);
 	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
-	// Ignored files stay out, except ones the page's own ignore rule covers (its build-output siblings).
+	// Ignored files stay out, except page assets (CSS, scripts, images…) the page's own ignore rule covers.
 	const page = await gitIgnoreVerdict(checkout, realFile);
 	const ignore = { checkout, pageRule: page.state === "ignored" ? page.rule : null };
 	return { url: mintFileLink({ kind: "dir", root: dirname(realFile), entry: basename(realFile), ignore }, { resolved: true }) };
