@@ -21,9 +21,9 @@ vi.mock("../spawn", async () => {
 		},
 	};
 });
-import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, openCheckedFile, openFileLinkResponses, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
+import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, mintFolderLink, openCheckedFile, openFileLinkResponses, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
 import { spawnSync } from "node:child_process";
 
 const ROOT = `${process.env.DEV3_TEST_ROOT}/file-links`;
@@ -309,7 +309,7 @@ describe("streaming slots", () => {
 	});
 });
 
-describe("gitignored files under a folder link", () => {
+describe("gitignored files under a folder link (real git, minted like createFileLink)", () => {
 	/** A real git repository; git is required, so a missing one fails the test rather than skipping it. */
 	function repoWith(gitignore: string, files: Record<string, string>): string {
 		const repo = join(ROOT, `gitrepo-${Math.random().toString(36).slice(2)}`);
@@ -323,59 +323,64 @@ describe("gitignored files under a folder link", () => {
 		return repo;
 	}
 
-	it("refuses ignored local secrets, but serves the page's own tracked and untracked assets", async () => {
+	async function folderLink(repo: string, page: string): Promise<(name: string) => Promise<number>> {
+		const link = await mintFolderLink(realpathSync(join(repo, page)), realpathSync(repo));
+		const base = link.slice(0, link.lastIndexOf("/") + 1);
+		return async (name) => {
+			const res = await get(`${base}${name}`);
+			await res.arrayBuffer();
+			return res.status;
+		};
+	}
+
+	it("refuses ignored local secrets, but serves the page and its tracked and untracked assets", async () => {
 		const repo = repoWith("config/master.key\n", { "config/x.html": "<p>page</p>", "config/assets/a.css": "body{}", "config/master.key": "SECRET" });
-		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
-		const base = link.slice(0, -"x.html".length);
-		expect((await get(link)).status).toBe(200);
-		expect((await get(`${base}assets/a.css`)).status).toBe(200);
-		expect((await get(`${base}master.key`)).status).toBe(404);
+		const status = await folderLink(repo, "config/x.html");
+		expect(await status("x.html")).toBe(200);
+		expect(await status("assets/a.css")).toBe(200);
+		expect(await status("master.key")).toBe(404);
 	});
 
-	it("serves only page assets under the page's own rule — a page in an ignored tmp/ cannot expose tmp/ secrets", async () => {
-		const repo = repoWith("/tmp/*\n", { "tmp/report.html": "<link rel=stylesheet href=style.css>", "tmp/style.css": "body{}", "tmp/local_secret.txt": "SECRET_KEY_BASE=abc123", "tmp/creds.json": "{}" });
-		const { gitIgnoreVerdict } = await import("../file-links");
-		const page = await gitIgnoreVerdict(repo, join(repo, "tmp", "report.html"));
-		const pageRule = page.state === "ignored" ? page.rule : null;
-		expect(pageRule).not.toBeNull();
-		const link = mintFileLink({ kind: "dir", root: join(repo, "tmp"), entry: "report.html", ignore: { checkout: repo, pageRule } });
-		const base = link.slice(0, -"report.html".length);
-		expect((await get(`${base}style.css`)).status).toBe(200);
-		expect((await get(`${base}local_secret.txt`)).status).toBe(404);
-		expect((await get(`${base}creds.json`)).status).toBe(404);
+	it("lets an ignored page's own assets through, but never its folder's data — a page in tmp/ cannot expose tmp/ secrets", async () => {
+		const repo = repoWith("/tmp/*\n", { "tmp/report.html": "<p>r</p>", "tmp/style.css": "body{}", "tmp/local_secret.txt": "SECRET_KEY_BASE=abc123", "tmp/creds.json": "{}" });
+		const status = await folderLink(repo, "tmp/report.html");
+		expect(await status("style.css")).toBe(200);
+		expect(await status("local_secret.txt")).toBe(404);
+		expect(await status("creds.json")).toBe(404);
+	});
+
+	it("keeps master.key out when *.html makes the page itself ignored", async () => {
+		const repo = repoWith("*.html\nconfig/master.key\n", { "config/report.html": "<p>r</p>", "config/other.html": "<p>o</p>", "config/a.css": "x", "config/master.key": "SECRET" });
+		const status = await folderLink(repo, "config/report.html");
+		expect(await status("other.html")).toBe(200);
+		expect(await status("a.css")).toBe(200);
+		expect(await status("master.key")).toBe(404);
 	});
 
 	it("treats a file re-included with ! as not ignored", async () => {
 		const repo = repoWith("*.key\n!public.key\n", { "config/x.html": "<p>x</p>", "config/public.key": "PUBLIC", "config/master.key": "SECRET" });
-		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
-		const base = link.slice(0, -"x.html".length);
-		expect((await get(`${base}public.key`)).status).toBe(200);
-		expect((await get(`${base}master.key`)).status).toBe(404);
+		const status = await folderLink(repo, "config/x.html");
+		expect(await status("public.key")).toBe(200);
+		expect(await status("master.key")).toBe(404);
 	});
 
-	it("runs git once for an asset however many requests ask at the same time, and once for a refused one", async () => {
-		const repo = repoWith("config/master.key\n", { "config/x.html": "<p>x</p>", "config/a.css": "body{}", "config/master.key": "SECRET" });
-		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
-		const base = link.slice(0, -"x.html".length);
+	it("is not fooled by a folder name starting with a colon (pathspec magic)", async () => {
+		const repo = repoWith("*.key\n", { ":docs/x.html": "<p>x</p>", ":docs/only-here.key": "SECRET", ":docs/a.css": "x" });
+		const status = await folderLink(repo, ":docs/x.html");
+		expect(await status("a.css")).toBe(200);
+		expect(await status("only-here.key")).toBe(404);
+	});
+
+	it("serves a burst of 150 assets with one git run for the folder", async () => {
+		const files: Record<string, string> = { "qa/x.html": "<p>x</p>", "qa/secret.key": "SECRET" };
+		for (let i = 0; i < 150; i++) files[`qa/img${i}.png`] = "PNG";
+		const repo = repoWith("*.key\n", files);
 		const before = spawnCount.git;
-		const replies = await Promise.all(Array.from({ length: 20 }, () => get(`${base}a.css`)));
-		expect(replies.every((res) => res.status === 200)).toBe(true);
+		const status = await folderLink(repo, "qa/x.html");
+		const statuses = await Promise.all(Array.from({ length: 150 }, (_, i) => status(`img${i}.png`)));
+		expect(statuses.filter((code) => code !== 200)).toEqual([]);
+		expect(await status("secret.key")).toBe(404);
 		expect(spawnCount.git - before).toBe(1);
-		for (let i = 0; i < 5; i++) expect((await get(`${base}master.key`)).status).toBe(404);
-		expect(spawnCount.git - before).toBe(2);
-	});
-
-	it("lets through only what the page's own ignore rule covers — *.html ignored does not expose master.key", async () => {
-		const repo = repoWith("*.html\nconfig/master.key\n", { "config/report.html": "<p>r</p>", "config/other.html": "<p>o</p>", "config/a.css": "x", "config/master.key": "SECRET" });
-		const { gitIgnoreVerdict } = await import("../file-links");
-		const page = await gitIgnoreVerdict(repo, join(repo, "config", "report.html"));
-		expect(page.state).toBe("ignored");
-		const pageRule = page.state === "ignored" ? page.rule : null;
-		const link = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "report.html", ignore: { checkout: repo, pageRule } });
-		const base = link.slice(0, -"report.html".length);
-		expect((await get(`${base}other.html`)).status).toBe(200);
-		expect((await get(`${base}a.css`)).status).toBe(200);
-		expect((await get(`${base}master.key`)).status).toBe(404);
 	});
 });
 

@@ -5,10 +5,10 @@
  *
  *   bun run test:file-links-e2e
  */
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mintFileLink, openFileLinkResponses, serveFileLink } from "../file-links";
+import { mintFileLink, mintFolderLink, openFileLinkResponses, serveFileLink } from "../file-links";
 
 const dir = mkdtempSync(join(tmpdir(), "dev3-file-links-e2e-"));
 mkdirSync(dir, { recursive: true });
@@ -109,18 +109,22 @@ const burst = await Promise.all(Array.from({ length: 30 }, (_, i) => fetch(`${si
 const refused = burst.filter((status) => status !== 200).length;
 if (refused) problems.push(`${refused} of 30 parallel small assets were refused`);
 
-// 5. A folder link in a real git checkout: the page's assets load, a gitignored secret does not.
+// 5. A folder link in a real git checkout, minted as createFileLink does: the page's assets load
+// (all 150 at once), a gitignored secret does not.
 const repo = join(dir, "repo");
 mkdirSync(join(repo, "config", "assets"), { recursive: true });
 if (Bun.spawnSync(["git", "init", "-q", repo]).exitCode !== 0) problems.push("git is required for the gitignore check and could not init a repo");
 else {
 	writeFileSync(join(repo, ".gitignore"), "config/master.key\n");
 	writeFileSync(join(repo, "config", "x.html"), "<p>page</p>");
-	writeFileSync(join(repo, "config", "assets", "a.css"), "body{}");
 	writeFileSync(join(repo, "config", "master.key"), "SECRET");
-	const page = mintFileLink({ kind: "dir", root: join(repo, "config"), entry: "x.html", ignore: { checkout: repo, pageRule: null } });
+	for (let i = 0; i < 150; i++) writeFileSync(join(repo, "config", "assets", `a${i}.png`), "PNG");
+	const page = await mintFolderLink(realpathSync(join(repo, "config", "x.html")), realpathSync(repo));
 	const base = `http://127.0.0.1:${port}${page.slice(0, -"x.html".length)}`;
-	for (const [name, want] of [["x.html", 200], ["assets/a.css", 200], ["master.key", 404]] as const) {
+	const codes = await Promise.all(Array.from({ length: 150 }, (_, i) => fetch(`${base}assets/a${i}.png`).then(async (res) => (await res.arrayBuffer(), res.status))));
+	const broken = codes.filter((code) => code !== 200).length;
+	if (broken) problems.push(`${broken} of 150 assets under a gitignore-filtered folder link failed`);
+	for (const [name, want] of [["x.html", 200], ["master.key", 404]] as const) {
 		const res = await fetch(base + name);
 		await res.arrayBuffer();
 		if (res.status !== want) problems.push(`folder link ${name}: expected ${want}, got ${res.status}`);
