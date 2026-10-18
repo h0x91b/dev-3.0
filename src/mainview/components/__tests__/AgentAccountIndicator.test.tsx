@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentAccountsState } from "../../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../../shared/rate-limits";
+import type { AssessedAccount, AutoAccountPreview } from "../../../shared/account-routing";
 import type { CodingAgent } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -11,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			setActiveAgentAccount: vi.fn(),
 			getAgentRateLimits: vi.fn(),
 			getProjectClaudeLogin: vi.fn(),
+			previewAutoAccount: vi.fn(),
 		},
 	},
 }));
@@ -138,6 +140,93 @@ beforeEach(() => {
 	mockedApi.request.getAgentRateLimits.mockResolvedValue(makeReport([]));
 	mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ configDir: null, identity: null });
 	mockedConfirm.mockResolvedValue(true);
+	mockedApi.request.previewAutoAccount.mockResolvedValue(null);
+});
+
+function assessed(id: string | null, status: AssessedAccount["status"] = "eligible"): AssessedAccount {
+	return {
+		id, label: id ?? "system", status, tier: "known", shortEff: 20, weeklyEff: 40, pace: 1,
+		shortResetsAt: null, weeklyResetsAt: null, stale: false, reservedShort: 0, activeReservations: 0,
+	};
+}
+
+function preview(overrides: Partial<AutoAccountPreview> = {}): AutoAccountPreview {
+	return {
+		picked: true,
+		accountId: "cl-1",
+		label: "work@example.com",
+		reason: { code: "lowest-short", short: 20, nextShort: 70 },
+		assessed: [assessed("cl-1"), assessed(null)],
+		...overrides,
+	};
+}
+
+describe("Auto (balanced)", () => {
+	it("offers Auto once two subscription logins exist and selects it per launch", async () => {
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
+		const onSelect = vi.fn();
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: undefined, onSelect, projectId: "p1" });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		const row = await screen.findByRole("menuitemradio", { name: /Auto \(balanced\)/ });
+		expect(row).toHaveTextContent("Least-used 5h window: 20% vs 70%");
+		await user.click(row);
+
+		expect(onSelect).toHaveBeenCalledWith("auto");
+		expect(mockedApi.request.previewAutoAccount).toHaveBeenCalledWith({ kind: "claude", projectId: "p1" });
+		expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
+	});
+
+	it("hides Auto when only one login could be balanced", async () => {
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview({ assessed: [assessed("cl-1"), assessed(null, "excluded")] }));
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: undefined, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await waitFor(() => expect(mockedApi.request.previewAutoAccount).toHaveBeenCalled());
+		expect(screen.queryByRole("menuitemradio", { name: /Auto \(balanced\)/ })).toBeNull();
+	});
+
+	it("names the account Auto would use on the pill while Auto is the choice", async () => {
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
+		renderIndicator(claudeAgent, { value: "auto", onSelect: vi.fn() });
+
+		expect(await screen.findByText("Auto · work@example.com")).toBeInTheDocument();
+	});
+
+	it("follows a default set to Auto, and marks excluded logins", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({
+			claude: { ...makeState().claude, autoDefault: true },
+		}));
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview({ assessed: [assessed("cl-1"), assessed(null, "excluded"), assessed("x")] }));
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: undefined, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(await screen.findByRole("menuitemradio", { name: /Auto \(balanced\)/ })).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByRole("menuitemradio", { name: /^work@example.com/ })).toHaveAttribute("aria-checked", "false");
+		expect(screen.getByText("Excluded from Auto in this project")).toBeInTheDocument();
+	});
+
+	it("makes Auto the default from the global switcher", async () => {
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
+		const user = userEvent.setup();
+		renderIndicator();
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await user.click(await screen.findByRole("menuitemradio", { name: /Auto \(balanced\)/ }));
+
+		await waitFor(() => expect(mockedApi.request.setActiveAgentAccount).toHaveBeenCalledWith({ kind: "claude", accountId: "auto" }));
+	});
+
+	it("never offers Auto for omp", async () => {
+		const user = userEvent.setup();
+		renderIndicator(ompAgent, { value: undefined, onSelect: vi.fn() });
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(screen.queryByRole("menuitemradio", { name: /Auto \(balanced\)/ })).toBeNull();
+		expect(mockedApi.request.previewAutoAccount).not.toHaveBeenCalled();
+	});
 });
 
 describe("agentAccountKindForCommand", () => {

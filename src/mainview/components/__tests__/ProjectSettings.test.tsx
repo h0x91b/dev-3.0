@@ -35,6 +35,11 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
 			prepareCustomArtifactTemplate: vi.fn().mockResolvedValue({ path: "/home/.dev3.0/artifact-template-custom", exists: true, seeded: false }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+			listAgentAccounts: vi.fn().mockResolvedValue({
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
+				codex: { accounts: [], activeId: null, currentIdentity: null },
+				omp: { accounts: [], activeId: null },
+			}),
 		},
 	},
 }));
@@ -997,6 +1002,41 @@ describe("environment variables editor", () => {
 			);
 		});
 	});
+	describe("accounts for Auto (Board tab)", () => {
+		const login = (id: string, label: string) => ({ id, kind: "claude", label, identity: null, auth: "oauth", api: null, createdAt: 0 });
+
+		it("stays hidden with fewer than two subscription logins", async () => {
+			await renderProjectSettings();
+			expect(screen.queryByTestId("auto-account-exclusions")).toBeNull();
+		});
+
+		it("excludes a login from Auto for this project, and lists API profiles never", async () => {
+			vi.mocked(api.request.listAgentAccounts).mockResolvedValueOnce({
+				claude: {
+					accounts: [login("work", "Work"), login("home", "Home"), { ...login("api", "Gateway"), auth: "api" }],
+					activeId: "work",
+					systemConfigDir: "/home/me/.claude",
+					systemIdentity: null,
+				},
+				codex: { accounts: [], activeId: null, currentIdentity: null },
+				omp: { accounts: [], activeId: null },
+			} as never);
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { autoAccountExclusions: ["work"] });
+
+			const section = await screen.findByTestId("auto-account-exclusions");
+			expect(section).not.toHaveTextContent("Gateway");
+			expect(screen.getByRole("switch", { name: "Work" })).toHaveAttribute("aria-checked", "false");
+			await user.click(screen.getByRole("switch", { name: "Home" }));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", autoAccountExclusions: ["work", "home"] });
+			});
+		});
+	});
+
 	describe("project rename (Board tab)", () => {
 		it("saves a trimmed name on blur", async () => {
 			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;

@@ -131,6 +131,28 @@ describe("AgentConfigPicker", () => {
 		expect(onAccountChange).toHaveBeenCalledWith(undefined);
 	});
 
+	it("keeps Auto across a switch between harnesses Auto can balance", async () => {
+		const user = userEvent.setup();
+		const onAccountChange = vi.fn();
+		render(
+			<I18nProvider>
+				<AgentConfigPicker
+					idPrefix="test"
+					agents={agents}
+					agentId="builtin-claude"
+					configId="opus-bypass-xhigh"
+					onChange={() => {}}
+					accountId="auto"
+					onAccountChange={onAccountChange}
+				/>
+			</I18nProvider>,
+		);
+
+		await pick(user, harnessBtn(), "Codex");
+
+		expect(onAccountChange).not.toHaveBeenCalled();
+	});
+
 	it("changing Model preserves the Mode kind (permissionMode + effort) across the group switch", async () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();

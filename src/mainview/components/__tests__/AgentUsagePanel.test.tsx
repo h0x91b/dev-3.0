@@ -189,6 +189,18 @@ describe("AgentUsagePanel", () => {
 		}
 	});
 
+	it("offers Auto as a default once two logins exist, and shows it chosen", async () => {
+		renderPanel();
+		await userEvent.click(screen.getByRole("radio", { name: "Make Auto (balanced) the default account" }));
+		expect(setActive).toHaveBeenCalledWith({ kind: "claude", accountId: "auto" });
+
+		const state = accounts();
+		state.claude.autoDefault = true;
+		renderPanel(state);
+		const checked = screen.getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true");
+		expect(checked.at(-1)?.textContent).toContain("Auto (balanced)");
+	});
+
 	it("stays read-only for a pointer that has not settled in the panel", async () => {
 		renderPanel(accounts(), false);
 		// The row a hovering pointer would land on: live in a pinned panel, inert
