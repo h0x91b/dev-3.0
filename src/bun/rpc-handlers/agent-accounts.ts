@@ -13,7 +13,10 @@ import type {
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
-import { isAgentDirAccountKind, parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type RoutableAccountKind } from "../../shared/agent-accounts";
+import type { AutoAccountPreview } from "../../shared/account-routing";
+import { previewAutoAccount as previewAutoAccountNow } from "../account-router";
+import { loadSettings, saveSettings } from "../settings";
 import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import * as accounts from "../agent-accounts";
 import { ACCOUNT_LOGIN_SESSION_PREFIX, accountLogins } from "../account-login-terminal";
@@ -35,6 +38,9 @@ function accountLogDetails(account: AgentAccount) {
 async function listAgentAccounts(): Promise<AgentAccountsState> {
 	log.info("→ listAgentAccounts");
 	const state = await accounts.listAgentAccounts();
+	const autoDefault = (await loadSettings()).autoAccountDefault;
+	if (autoDefault?.claude) state.claude.autoDefault = true;
+	if (autoDefault?.codex) state.codex.autoDefault = true;
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
 		omp: state.omp.accounts.length,
@@ -148,6 +154,12 @@ async function closeAccountLogin(params: { loginId: string }): Promise<void> {
 
 async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId: string | null }): Promise<void> {
 	log.info("→ setActiveAgentAccount", params);
+	if (isAutoAccountId(params.accountId)) {
+		if (!isRoutableAccountKind(params.kind)) throw new Error(`Auto is not available for ${params.kind} accounts`);
+		await setAutoAccountDefault(params.kind, true);
+		log.info("← setActiveAgentAccount done (auto)");
+		return;
+	}
 	// Both kinds now accept null = "default to the system login" (~/.claude /
 	// ~/.codex). Codex no longer swaps auth.json — this only moves the default.
 	if (params.kind === "claude") {
@@ -157,7 +169,27 @@ async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId
 	} else {
 		await accounts.setActiveCodexAccount(params.accountId);
 	}
+	if (isRoutableAccountKind(params.kind)) await setAutoAccountDefault(params.kind, false);
 	log.info("← setActiveAgentAccount done");
+}
+
+/** Auto as the default lives in settings, not the registry, so an older build
+ *  reading accounts.json still finds a specific, valid default. */
+async function setAutoAccountDefault(kind: RoutableAccountKind, on: boolean): Promise<void> {
+	const settings = await loadSettings();
+	const current = settings.autoAccountDefault ?? {};
+	if ((current[kind] === true) === on) return;
+	const next = { ...current };
+	if (on) next[kind] = true;
+	else delete next[kind];
+	await saveSettings({ ...settings, autoAccountDefault: Object.keys(next).length ? next : undefined });
+}
+
+/** What Auto would pick for a launch in this project right now. Reserves nothing. */
+async function previewAutoAccount(params: { kind: AgentAccountKind; projectId?: string | null }): Promise<AutoAccountPreview | null> {
+	if (!isRoutableAccountKind(params.kind)) return null;
+	const project = params.projectId ? await data.getProject(params.projectId).catch(() => null) : null;
+	return previewAutoAccountNow({ kind: params.kind, exclusions: project?.autoAccountExclusions ?? [] });
 }
 
 async function removeAgentAccount(params: { kind: AgentAccountKind; accountId: string }): Promise<void> {
@@ -219,6 +251,7 @@ export const agentAccountHandlers = {
 	getAccountLoginPtyUrl,
 	closeAccountLogin,
 	setActiveAgentAccount,
+	previewAutoAccount,
 	removeAgentAccount,
 	renameAgentAccount,
 };

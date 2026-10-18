@@ -113,6 +113,15 @@ export interface RoutingResult {
 	cooling: Set<string>;
 }
 
+/** What Auto would pick right now — the launch dialog's preview. */
+export interface AutoAccountPreview {
+	picked: boolean;
+	accountId: string | null;
+	label: string | null;
+	reason: AccountPickReason;
+	assessed: AssessedAccount[];
+}
+
 export interface RoutingInput {
 	accounts: RoutableAccount[];
 	reservations?: AccountReservation[];

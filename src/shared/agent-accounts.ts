@@ -158,6 +158,8 @@ export interface AgentAccountsState {
 		systemConfigDir: string;
 		/** Identity of the system login parsed from ~/.claude.json (null when absent). */
 		systemIdentity: AgentAccountIdentity | null;
+		/** New launches left on the default go to Auto (the usage-balanced router). */
+		autoDefault?: boolean;
 	};
 	codex: {
 		accounts: AgentAccount[];
@@ -165,6 +167,8 @@ export interface AgentAccountsState {
 		activeId: string | null;
 		/** Identity currently held by ~/.codex/auth.json (null when absent/unreadable). */
 		currentIdentity: AgentAccountIdentity | null;
+		/** New launches left on the default go to Auto (the usage-balanced router). */
+		autoDefault?: boolean;
 	};
 	omp: {
 		accounts: AgentAccount[];

@@ -15,6 +15,8 @@ import { agentBinaryPathOverride, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { resolveBinaryPath } from "./rpc-handlers/shared-pure";
 import { loadSettings } from "./settings";
+import { agentKey } from "../shared/agent-adapters/families";
+import type { RoutableAccountKind } from "../shared/agent-accounts";
 
 const log = createLogger("agent-launch-availability");
 
@@ -114,4 +116,15 @@ export async function assertLaunchAgentsInstalled(
 ): Promise<void> {
 	const missing = await findMissingLaunchAgent(launches);
 	if (missing) throw new AgentNotInstalledError(missing);
+}
+
+/** The harness a launch choice runs, when Auto can balance its accounts. */
+export async function routableLaunchKind(
+	launch: { agentId?: string | null; configId?: string | null },
+): Promise<RoutableAccountKind | null> {
+	const [allAgents, settings] = await Promise.all([getAllAgents(), loadSettings()]);
+	const launched = launchedAgent(allAgents, settings, launch.agentId, launch.configId);
+	if (!launched) return null;
+	const key = agentKey(launched.baseCmd, launched.agent.agentFamily);
+	return key === "claude" || key === "codex" ? key : null;
 }

@@ -4,6 +4,7 @@ import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFA
 import type { SpawnAgentResult } from "../shared/conversation-handoff-model";
 import { createAgentRequest, getAgentRequestState, setAgentRequestLaunchChoice, setAgentLaunchDialog } from "./agent-requests";
 import { listAgentAccounts } from "./agent-accounts";
+import { isAutoAccountId, isRoutableAccountKind } from "../shared/agent-accounts";
 import { applyBinaryPathOverride, getAllAgents } from "./agents";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
@@ -47,7 +48,11 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 		const family = agentKey(config?.baseCommandOverride || agentWithPath.baseCommand, agentWithPath.agentFamily);
 		if (family !== "claude" && family !== "codex" && family !== "omp" && family !== "pi") throw new Error(`Agent "${id}" does not support managed accounts.`);
-		if (choice.accountId !== null && !(await listAgentAccounts())[family].accounts.some((a) => a.id === choice.accountId)) throw new Error(`Unknown ${family} account "${choice.accountId}".`);
+		if (isAutoAccountId(choice.accountId)) {
+			if (!isRoutableAccountKind(family)) throw new Error(`Auto account balancing is not available for "${id}".`);
+		} else if (choice.accountId !== null && !(await listAgentAccounts())[family].accounts.some((a) => a.id === choice.accountId)) {
+			throw new Error(`Unknown ${family} account "${choice.accountId}".`);
+		}
 	}
 	const availability = await settingsConfigHandlers.checkAgentAvailability();
 	const check = availability.find((a) => a.agentId === id);

@@ -5,6 +5,7 @@ import type { ImportConversationsResult, ImportableConversationView } from "../c
 import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-model";
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
+import type { AutoAccountPreview } from "../account-routing";
 import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
@@ -463,9 +464,15 @@ export type AppRPCSchema = {
 				params: { loginId: string };
 				response: void;
 			};
+			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string | null };
 				response: void;
+			};
+			/** What Auto would pick for a launch right now; null for a harness Auto cannot route. */
+			previewAutoAccount: {
+				params: { kind: AgentAccountKind; projectId?: string | null };
+				response: AutoAccountPreview | null;
 			};
 			removeAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string };

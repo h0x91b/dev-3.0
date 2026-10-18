@@ -10,10 +10,10 @@ import {
 	routeAccount,
 	type AccountPickReason,
 	type AccountReservation,
-	type AssessedAccount,
+	type AutoAccountPreview,
 } from "../shared/account-routing";
 import { homedir } from "node:os";
-import type { RoutableAccountKind } from "../shared/agent-accounts";
+import { isAutoAccountId, type RoutableAccountKind } from "../shared/agent-accounts";
 import { pinnedClaudeConfigDir } from "../shared/claude-config-dir";
 import type { Project } from "../shared/types";
 import { listAgentAccounts } from "./agent-accounts";
@@ -43,14 +43,6 @@ export interface AutoAccountPick {
 	accountId: string | null;
 	label: string;
 	reason: AccountPickReason;
-}
-
-export interface AutoAccountPreview {
-	picked: boolean;
-	accountId: string | null;
-	label: string | null;
-	reason: AccountPickReason;
-	assessed: AssessedAccount[];
 }
 
 interface TaggedReservation extends AccountReservation {
@@ -150,4 +142,33 @@ export function releaseAccountReservation(reservationKey: string): void {
 export function resetAccountRouterForTests(): void {
 	reservations = [];
 	cooling.clear();
+}
+
+/**
+ * When every variant of a launch routes through Auto and none has an eligible
+ * account, the moment the launch could start: the latest of their earliest
+ * resets. Null when the launch can go now (or cannot be routed at all, so it
+ * stays on today's path). Throws NoEligibleAccountError when no reset is known.
+ */
+export async function autoLaunchDeferral(
+	project: Project,
+	variants: ReadonlyArray<{ accountId?: string | null }>,
+	kinds: ReadonlyArray<RoutableAccountKind | null>,
+): Promise<number | null> {
+	if (!variants.length) return null;
+	const routing = await autoRoutingContext(project, "deferral-probe");
+	let at = 0;
+	for (let i = 0; i < variants.length; i++) {
+		const kind = kinds[i];
+		const accountId = variants[i].accountId;
+		if (!kind) return null;
+		const wantsAuto = isAutoAccountId(accountId) || (accountId === undefined && (await isAutoAccountDefault(kind)));
+		if (!wantsAuto || (kind === "claude" && routing.claudeConfigPinned)) return null;
+		const preview = await previewAutoAccount({ kind, exclusions: routing.exclusions });
+		if (preview.picked) return null;
+		const earliest = preview.reason.code === "none" ? preview.reason.earliestResetAt : null;
+		if (earliest == null) throw new NoEligibleAccountError(kind, null);
+		at = Math.max(at, earliest);
+	}
+	return at;
 }
