@@ -169,7 +169,7 @@ export function worstSnapshotWindow(snapshot: AgentRateLimitSnapshot): RateLimit
 }
 
 /** Budget-style windows: no fixed length, so the pill only spells them out alone. */
-const BUDGET_WINDOW_IDS = new Set(["monthly_credits", "spend_limit"]);
+export const BUDGET_WINDOW_IDS: ReadonlySet<string> = new Set(["monthly_credits", "spend_limit"]);
 
 /** The windows the header pill spells out, shortest first ("5h 7% · 7d 55%").
  *  Monthly credits and spend limits only appear when the account has no timed window. */

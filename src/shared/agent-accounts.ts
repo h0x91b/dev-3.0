@@ -25,6 +25,22 @@ export function isAgentDirAccountKind(kind: AgentAccountKind): kind is AgentDirA
 	return kind === "omp" || kind === "pi";
 }
 
+/** Launch-time account choice meaning "let the usage-balanced router pick".
+ *  Never persisted on a launched pane: the resolved account id replaces it.
+ *  Real account ids are `crypto.randomUUID()`s, so it cannot collide. */
+export const AUTO_ACCOUNT_ID = "auto";
+
+export function isAutoAccountId(accountId: string | null | undefined): accountId is typeof AUTO_ACCOUNT_ID {
+	return accountId === AUTO_ACCOUNT_ID;
+}
+
+/** Harnesses whose limits dev3 reads, so Auto can balance them. */
+export type RoutableAccountKind = "claude" | "codex";
+
+export function isRoutableAccountKind(kind: AgentAccountKind | null | undefined): kind is RoutableAccountKind {
+	return kind === "claude" || kind === "codex";
+}
+
 /** One provider sign-in held inside a managed agent-dir account. A single agent
  *  dir can hold several (`/login` to ChatGPT and to Copilot, say). */
 export interface ProviderLogin {
