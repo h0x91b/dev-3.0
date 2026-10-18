@@ -259,6 +259,7 @@ function UsageRowCard({
 						source={row.kind}
 						account={row.account}
 						unlimited={row.snap ? isUnlimitedRateLimitSnapshot(row.snap) : false}
+						publicName={row.auto}
 					/>
 				</span>
 				{row.chip && !row.configDir ? (

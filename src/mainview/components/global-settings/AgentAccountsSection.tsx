@@ -122,6 +122,7 @@ function AccountRow({
 	onEditApi,
 	onRemove,
 	note,
+	labelPublic,
 	t,
 }: {
 	kind: AgentAccountKind;
@@ -136,6 +137,8 @@ function AccountRow({
 	onRemove?: () => void;
 	/** Muted text after the identity, e.g. "Not signed in" on an empty default login. */
 	note?: string | null;
+	/** The label names no identity ("Auto (balanced)"), so streamer mode shows it. */
+	labelPublic?: boolean;
 	t: TFunction;
 }) {
 	const [editing, setEditing] = useState(false);
@@ -203,7 +206,7 @@ function AccountRow({
 						className="flex-none w-48 max-w-full px-2 py-0.5 bg-base border border-edge rounded text-fg text-sm outline-none focus:border-accent/40"
 					/>
 				) : (
-					<span className="text-fg text-sm font-medium truncate streamer-private">{label}</span>
+					<span className={`text-fg text-sm font-medium truncate ${labelPublic ? "" : "streamer-private"}`}>{label}</span>
 				)}
 				{api ? (
 					<ApiProfileBadges api={api} />
@@ -903,6 +906,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			<AccountRow
 				kind={kind}
 				label={t("launch.accountAuto")}
+				labelPublic
 				identity={null}
 				note={t("launch.accountAutoHint")}
 				isActive={kindState.autoDefault === true}

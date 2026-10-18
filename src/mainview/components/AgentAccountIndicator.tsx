@@ -308,6 +308,8 @@ interface PopoverRow {
 	note?: string | null;
 	/** The note names an account (Auto's pick), so streamer mode blurs it. */
 	notePrivate?: boolean;
+	/** False for a label that names no account ("Auto (balanced)"). Default true. */
+	labelPrivate?: boolean;
 }
 
 function SwitcherPopover({
@@ -439,7 +441,7 @@ function SwitcherPopover({
 								/>
 								<span className="min-w-0 flex-1">
 									<span className="flex items-center gap-2 min-w-0">
-										<span title={row.label} className="text-fg text-sm truncate flex-1 streamer-private">
+										<span title={row.label} className={`text-fg text-sm truncate flex-1 ${row.labelPrivate === false ? "" : "streamer-private"}`}>
 											{row.label}
 										</span>
 										{row.isApi ? (
@@ -658,6 +660,9 @@ export default function AgentAccountIndicator({
 			: preview.picked
 				? t("launch.accountAutoPill", { label: preview.label ?? "" })
 				: t("launch.accountAutoPillNone");
+	// Only the picked account's name is private; "Auto ·" stays readable in streamer mode.
+	const autoPillParts =
+		autoSelected && preview?.picked ? (t("launch.accountAutoPill", { label: "\u0000" }).split("\u0000") as [string, string?]) : null;
 	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
 		if (kind !== "codex") return null;
 		const workspace = identity?.organization ?? shortCodexWorkspaceId(identity);
@@ -682,6 +687,7 @@ export default function AgentAccountIndicator({
 		rows.push({
 			key: "auto",
 			label: t("launch.accountAuto"),
+			labelPrivate: false,
 			sub: null,
 			planLabel: null,
 			workspaceLabel: null,
@@ -765,9 +771,17 @@ export default function AgentAccountIndicator({
 				>
 					{"\u{F0004}"}
 				</span>
-				<span title={activeLabel} className="truncate streamer-private">
-					{activeLabel}
-				</span>
+				{autoPillParts ? (
+					<span title={activeLabel} className="truncate">
+						{autoPillParts[0]}
+						<span className="streamer-private">{preview?.label}</span>
+						{autoPillParts[1]}
+					</span>
+				) : (
+					<span title={activeLabel} className={`truncate ${autoSelected ? "" : "streamer-private"}`}>
+						{activeLabel}
+					</span>
+				)}
 				{selectedAccount?.auth === "api" ? (
 					<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>
 				) : null}

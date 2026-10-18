@@ -207,10 +207,13 @@ export function AccountCardHeader({
 	source,
 	account,
 	unlimited,
+	publicName,
 }: {
 	source: RateLimitSource;
 	account: AccountLine | null;
 	unlimited?: boolean;
+	/** The name is not an identity ("Auto (balanced)"), so streamer mode shows it. */
+	publicName?: boolean;
 }) {
 	const t = useT();
 	// Collapse the auto-generated "email (workspace)" label into a plain
@@ -227,7 +230,7 @@ export function AccountCardHeader({
 	return (
 		<div className="flex items-center gap-1.5">
 			<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[source] ?? source}</span>
-			{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
+			{displayName && <span className={`min-w-0 truncate text-fg-3 ${publicName ? "" : "streamer-private"}`}>{displayName}</span>}
 			{/* The workspace shrinks too. Held at its natural width it pushed the plan
 			    and "Default" chips off the panel's right edge instead of eliding. */}
 			{showOrg && <span className="min-w-0 truncate text-fg-muted streamer-private">· {account?.organization}</span>}

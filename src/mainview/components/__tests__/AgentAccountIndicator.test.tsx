@@ -192,7 +192,7 @@ describe("Auto (balanced)", () => {
 		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
 		renderIndicator(claudeAgent, { value: "auto", onSelect: vi.fn() });
 
-		expect(await screen.findByText("Auto · work@example.com")).toBeInTheDocument();
+		expect(await screen.findByTitle("Auto · work@example.com")).toHaveTextContent("Auto · work@example.com");
 	});
 
 	it("follows a default set to Auto, and marks excluded logins", async () => {
