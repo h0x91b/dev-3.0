@@ -305,8 +305,10 @@ export function routeAccount(input: RoutingInput): RoutingResult {
 		}
 		return done(pick, { code: "tie-short", short });
 	}
-	if (unlimited.length) return done(unlimited[0], { code: "unlimited" });
-	if (unknown.length) return done(unknown[0], { code: "unknown" });
+	// No reading to compare, so spread a burst by what recent launches reserved.
+	const leastReserved = (tier: AssessedAccount[]) => tier.reduce((best, a) => (a.reservedShort < best.reservedShort ? a : best));
+	if (unlimited.length) return done(leastReserved(unlimited), { code: "unlimited" });
+	if (unknown.length) return done(leastReserved(unknown), { code: "unknown" });
 
 	const blockers = assessed
 		.map((a) => (a.status === "hot" ? a.shortResetsAt : a.status === "weekly-floor" ? a.weeklyResetsAt : null))

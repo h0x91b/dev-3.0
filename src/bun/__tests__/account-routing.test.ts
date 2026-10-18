@@ -100,6 +100,10 @@ describe("routeAccount — the design scenarios", () => {
 		expect(busy.reason.code).toBe("unknown");
 	});
 
+	it("a burst with no readings at all still spreads over the logins", () => {
+		expect(batch([acc("C", null), acc("D", null)], 4)).toEqual(["C", "D", "C", "D"]);
+	});
+
 	it("s8: unlimited is the overflow tier; limit-less readings never route", () => {
 		const unlimited: RoutableAccount = { ...acc("E", null), snapshot: { ...snap({ source: "codex" }), windows: [], creditsBalance: "unlimited" } };
 		const silent: RoutableAccount = { ...acc("U", null), snapshot: { ...snap({}), windows: [] } };

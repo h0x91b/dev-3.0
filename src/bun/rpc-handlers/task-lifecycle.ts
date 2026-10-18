@@ -506,7 +506,8 @@ async function spawnVariants(params: {
 	}
 	// Before anything moves: a refused launch leaves the To Do card exactly as it was.
 	if (isActive(params.targetStatus)) await assertLaunchAgentsInstalled(params.variants);
-	if (isActive(params.targetStatus)) {
+	// A draft never carries a scheduledLaunch: let the lifecycle machine reject it.
+	if (isActive(params.targetStatus) && sourceTask.draft !== true) {
 		const deferred = await deferAutoLaunchUntilReset(project, sourceTask, params.targetStatus, params.variants);
 		if (deferred) return [deferred];
 	}

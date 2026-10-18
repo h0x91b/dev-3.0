@@ -156,14 +156,16 @@ export async function autoLaunchDeferral(
 	kinds: ReadonlyArray<RoutableAccountKind | null>,
 ): Promise<number | null> {
 	if (!variants.length) return null;
-	const routing = await autoRoutingContext(project, "deferral-probe");
+	let routing: AutoRoutingContext | null = null;
 	let at = 0;
 	for (let i = 0; i < variants.length; i++) {
 		const kind = kinds[i];
 		const accountId = variants[i].accountId;
 		if (!kind) return null;
 		const wantsAuto = isAutoAccountId(accountId) || (accountId === undefined && (await isAutoAccountDefault(kind)));
-		if (!wantsAuto || (kind === "claude" && routing.claudeConfigPinned)) return null;
+		if (!wantsAuto) return null;
+		routing ??= await autoRoutingContext(project, "deferral-probe");
+		if (kind === "claude" && routing.claudeConfigPinned) return null;
 		const preview = await previewAutoAccount({ kind, exclusions: routing.exclusions });
 		if (preview.picked) return null;
 		const earliest = preview.reason.code === "none" ? preview.reason.earliestResetAt : null;
