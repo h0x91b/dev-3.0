@@ -23,6 +23,7 @@ import { LabelRow } from "./project-settings/LabelRow";
 import { ProjectNameField } from "./project-settings/ProjectNameField";
 import { CONFIG_BOOLEAN_DEFAULTS, decodeGitHubAccountValue, encodeGitHubAccountValue, formatGitHubAccountLabel, getEffectiveCompareRef, type ProjectConfigValues } from "./project-settings/config-values";
 import { AddRowButton, EmptyHint, ToggleSwitch, WarningNote } from "./project-settings/fields";
+import { AutoAccountExclusions } from "./project-settings/AutoAccountExclusions";
 
 function normalizeReviewPrompt(prompt: string): string {
 	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
@@ -416,6 +417,16 @@ function ProjectSettings({
 				const path = updated.artifactTemplatePath || globalArtifactTemplate.path;
 				api.request.prepareCustomArtifactTemplate({ path, seed: true }).catch(() => {});
 			}
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
+		}
+	}
+
+	async function handleAutoAccountExclusions(next: string[]) {
+		if (!project) return;
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, autoAccountExclusions: next });
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
@@ -961,6 +972,8 @@ function ProjectSettings({
 								</div>
 							)}
 							</SettingsSection>
+
+							<AutoAccountExclusions project={project} onSave={(next) => void handleAutoAccountExclusions(next)} />
 
 							<SettingsSection
 								title={t("projectSettings.groupPrivacy")}

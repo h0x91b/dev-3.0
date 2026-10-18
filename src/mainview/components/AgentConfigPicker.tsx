@@ -1,3 +1,4 @@
+import { isAutoAccountId, isRoutableAccountKind } from "../../shared/agent-accounts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentCheckResult, AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
 import { isFavorite } from "../../shared/favorites";
@@ -209,9 +210,12 @@ function AgentConfigPicker({
 	}
 
 	const storedAgent = agents.find((a) => a.id === agentId);
+	// "auto" is a launch-time choice, not an account: catalogs are read for the
+	// default until the launch resolves which login it really lands on.
+	const catalogAccountId = isAutoAccountId(accountId) ? undefined : accountId;
 	// Models the CLI reports for this account (omp, pi), offered as Model groups over
 	// its model-free presets; a pick is a plain configId (see agent-live-models).
-	const liveModels = useLiveModels(storedAgent, accountId);
+	const liveModels = useLiveModels(storedAgent, catalogAccountId);
 	const selectedAgent = storedAgent
 		? withSelectedLiveConfig(liveModels ? withLiveModelConfigs(storedAgent, liveModels) : storedAgent, configId)
 		: undefined;
@@ -242,7 +246,7 @@ function AgentConfigPicker({
 	// CLI's catalog; every other agent — and any failed probe — resolves to null,
 	// which flags nothing). Passed the picker's account so the probe reads the same
 	// account a launch would. See useUnavailableModels.
-	const unavailableModels = useUnavailableModels(storedAgent, accountId);
+	const unavailableModels = useUnavailableModels(storedAgent, catalogAccountId);
 	// Provider → Model → Mode cascade: group the flat presets by model (UI-only;
 	// the leaf is still a plain configId).
 	const groups = buildPickerGroups(selectedAgent, unavailableModels);
@@ -300,7 +304,9 @@ function AgentConfigPicker({
 		// Codex launch: crossing registries drops back to the new harness's default.
 		const prevKind = selectedAgent ? agentAccountKindForCommand(selectedAgent.baseCommand) : null;
 		const nextKind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
-		if (onAccountChange && accountId !== undefined && prevKind !== nextKind) onAccountChange(undefined);
+		// Auto is not tied to one registry, so it survives a switch between harnesses it can balance.
+		const autoTravels = isAutoAccountId(accountId) && isRoutableAccountKind(nextKind);
+		if (onAccountChange && accountId !== undefined && prevKind !== nextKind && !autoTravels) onAccountChange(undefined);
 		modelPickedByHand.current = false;
 		onChange({ agentId: nextAgentId, configId: nextConfigId });
 	}

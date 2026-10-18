@@ -9,7 +9,8 @@ import type {
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
 import type {
 	AgentRateLimitSnapshot,
@@ -303,6 +304,10 @@ interface PopoverRow {
 	usage: RowUsage | null;
 	/** null = row is informational only (codex unmanaged login). */
 	onSelect: (() => void) | null;
+	/** A plain-text line under the row: Auto's reason, or why Auto skips it. */
+	note?: string | null;
+	/** The note names an account (Auto's pick), so streamer mode blurs it. */
+	notePrivate?: boolean;
 }
 
 function SwitcherPopover({
@@ -464,6 +469,9 @@ function SwitcherPopover({
 											) : null}
 										</span>
 									) : null}
+									{row.note ? (
+										<span className={`mt-1 block text-xs text-fg-3 ${row.notePrivate ? "streamer-private" : ""}`}>{row.note}</span>
+									) : null}
 									{row.usage && row.usage.state === "none" ? (
 										<span className="mt-1 block text-xs text-fg-3">{t("rateLimits.noRecentData")}</span>
 									) : null}
@@ -568,6 +576,12 @@ export default function AgentAccountIndicator({
 	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
+	const routable = isRoutableAccountKind(kind);
+	const autoDefault = routable && !!state && state[kind].autoDefault === true;
+	const autoSelected = routable && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
+	// Fetched while the popover is open (to decide whether Auto is worth a row)
+	// and whenever Auto is the choice (the pill names the account it would use).
+	const preview = useAutoAccountPreview(kind, projectId, anchor !== null || autoSelected);
 
 	// Closing the popover hands focus back to the pill that opened it — the panel
 	// unmounts, and without this a keyboard user lands on <body>, outside the
@@ -611,8 +625,11 @@ export default function AgentAccountIndicator({
 	// registry default) or, for the global switcher, the registry default itself.
 	// A per-launch id belonging to the OTHER kind (the harness was switched after
 	// picking) falls back to this kind's default — never shows as "nothing selected".
-	const carriedOver = isLocal && typeof value === "string" && !kindState.accounts.some((a) => a.id === value);
-	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver ? value : kindState.activeId;
+	const carriedOver = isLocal && typeof value === "string" && !isAutoAccountId(value) && !kindState.accounts.some((a) => a.id === value);
+	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver && !isAutoAccountId(value) ? value : kindState.activeId;
+	const isRowActive = (id: string | null) => !autoSelected && id === effectiveSelectedId;
+	const excludedNote = (id: string | null) =>
+		preview?.assessed.some((a) => a.id === id && a.status === "excluded") ? t("launch.accountExcludedHere") : null;
 
 	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
 	// Any managed Claude account makes every launch set (or unset) CLAUDE_CONFIG_DIR
@@ -633,7 +650,14 @@ export default function AgentAccountIndicator({
 				: kind === "pi"
 					? t("settings.accountsPiDefaultLogin")
 					: t("settings.accountsUnmanaged");
-	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const accountLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const activeLabel = !autoSelected
+		? accountLabel
+		: !preview
+			? t("launch.accountAuto")
+			: preview.picked
+				? t("launch.accountAutoPill", { label: preview.label ?? "" })
+				: t("launch.accountAutoPillNone");
 	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
 		if (kind !== "codex") return null;
 		const workspace = identity?.organization ?? shortCodexWorkspaceId(identity);
@@ -652,6 +676,25 @@ export default function AgentAccountIndicator({
 	};
 
 	const rows: PopoverRow[] = [];
+	// Auto earns its row once there are two logins to balance — or while it is the
+	// choice, so a selected state never vanishes from the list.
+	if (routable && (autoSelected || autoCandidateTotal(preview) >= 2)) {
+		rows.push({
+			key: "auto",
+			label: t("launch.accountAuto"),
+			sub: null,
+			planLabel: null,
+			workspaceLabel: null,
+			isApi: false,
+			isActive: autoSelected,
+			usage: null,
+			notePrivate: !!preview?.picked,
+			note: preview ? `${preview.label && preview.picked ? `${preview.label} · ` : ""}${autoReasonText(t, preview.reason)}` : t("launch.accountAutoHint"),
+			onSelect: isLocal
+				? () => handleSelectLocal(AUTO_ACCOUNT_ID)
+				: () => handleSelectGlobal(kind, AUTO_ACCOUNT_ID),
+		});
+	}
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
 	// real system-login fallback); in the global switcher it stays claude-only
 	// selectable, and codex renders an informational "unmanaged" row.
@@ -663,8 +706,9 @@ export default function AgentAccountIndicator({
 			planLabel: identityBadge(fallbackIdentity),
 			workspaceLabel: workspaceLabel(fallbackIdentity),
 			isApi: false,
-			isActive: effectiveSelectedId === null,
+			isActive: isRowActive(null),
 			usage: usageFor(null, false, kind === "claude" ? pinnedDir : null),
+			note: excludedNote(null),
 			onSelect: isLocal
 				? () => handleSelectLocal(null)
 				: () => handleSelectGlobal(kind, null),
@@ -693,8 +737,9 @@ export default function AgentAccountIndicator({
 			planLabel: account.auth === "api" ? null : identityBadge(account.identity),
 			workspaceLabel: workspaceLabel(account.identity),
 			isApi: account.auth === "api",
-			isActive: account.id === effectiveSelectedId,
+			isActive: isRowActive(account.id),
 			usage: usageFor(account.id, account.auth === "api"),
+			note: excludedNote(account.id),
 			onSelect: isLocal
 				? () => handleSelectLocal(account.id)
 				: () => handleSelectGlobal(kind, account.id),

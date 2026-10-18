@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -892,6 +892,28 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const codexUnmanaged =
 		state.codex.currentIdentity && state.codex.activeId === null ? state.codex.currentIdentity : null;
 
+	// "Auto (balanced)" sits beside the accounts as one more default: it earns its
+	// row once two subscription logins could be balanced, and keeps it while chosen.
+	const autoRow = (kind: "claude" | "codex") => {
+		const kindState = state[kind];
+		const systemIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
+		const logins = kindState.accounts.filter((a) => a.auth !== "api").length + (systemIdentity ? 1 : 0);
+		if (!kindState.autoDefault && logins < 2) return null;
+		return (
+			<AccountRow
+				kind={kind}
+				label={t("launch.accountAuto")}
+				identity={null}
+				note={t("launch.accountAutoHint")}
+				isActive={kindState.autoDefault === true}
+				onActivate={kindState.autoDefault ? undefined : () => handleSetActive(kind, AUTO_ACCOUNT_ID)}
+				t={t}
+			/>
+		);
+	};
+	const claudeActiveId = state.claude.autoDefault ? AUTO_ACCOUNT_ID : state.claude.activeId;
+	const codexActiveId = state.codex.autoDefault ? AUTO_ACCOUNT_ID : state.codex.activeId;
+
 	return (
 		<SettingsEntry anchor="agent-accounts">
 			<SettingsSection
@@ -903,28 +925,31 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				"claude",
 				"Claude Code",
 				state.claude.accounts,
-				state.claude.activeId,
-				<AccountRow
-					kind="claude"
-					label={t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir })}
-					identity={state.claude.systemIdentity}
-					note={state.claude.systemIdentity ? null : t("settings.accountsNotSignedIn")}
-					isActive={state.claude.activeId === null}
-					onActivate={
-						state.claude.activeId === null
-							? undefined
-							: () => handleSetActive("claude", null)
-					}
-					t={t}
-				/>,
+				claudeActiveId,
+				<>
+					{autoRow("claude")}
+					<AccountRow
+						kind="claude"
+						label={t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir })}
+						identity={state.claude.systemIdentity}
+						note={state.claude.systemIdentity ? null : t("settings.accountsNotSignedIn")}
+						isActive={claudeActiveId === null}
+						onActivate={
+							claudeActiveId === null
+								? undefined
+								: () => handleSetActive("claude", null)
+						}
+						t={t}
+					/>
+				</>,
 				pinnedRows,
 			)}
 			{renderAgentBlock(
 				"codex",
 				"Codex",
 				state.codex.accounts,
-				state.codex.activeId,
-				null,
+				codexActiveId,
+				autoRow("codex"),
 				codexUnmanaged ? (
 					<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 bg-elevated/50 border border-edge border-dashed rounded-lg">
 						<span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-warning/60 shrink-0" />
