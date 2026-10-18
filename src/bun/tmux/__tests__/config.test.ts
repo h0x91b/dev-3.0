@@ -131,6 +131,14 @@ describe("buildThemeConfig", () => {
 		}
 	});
 
+	it("turns Ctrl+Delete into a word delete only off the alternate screen", () => {
+		for (const flavor of ["mocha", "latte"] as const) {
+			expect(buildThemeConfig(flavor)).toContain(
+				"bind -n C-DC if -F '#{alternate_on}' 'send-keys C-DC' 'send-keys M-d'",
+			);
+		}
+	});
+
 	it("writes a backslash split binding with a literal double backslash", () => {
 		expect(buildThemeConfig("mocha")).toContain(
 			String.raw`bind \\ split-window -h -c "${PANE_CWD_FORMAT}"`,

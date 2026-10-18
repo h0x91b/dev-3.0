@@ -2695,3 +2695,34 @@ describe("TerminalView – a selection copies and offers nothing else", () => {
 		expect(container.querySelectorAll("button").length).toBe(buttonsBefore);
 	});
 });
+
+describe("TerminalView – Ctrl+Backspace word delete", () => {
+	const ctrlKey = (key: string, ctrl = true) =>
+		({ type: "keydown", key, code: key, ctrlKey: ctrl, shiftKey: false, altKey: false, metaKey: false }) as unknown as KeyboardEvent;
+	const keyHandler = () => mockTermInstance.attachCustomKeyEventHandler.mock.lastCall![0] as (e: KeyboardEvent) => boolean;
+	const deliver = (data: string) => act(() => { lastWebSocket?.onmessage?.({ data } as MessageEvent); });
+
+	beforeEach(() => { mockInput.mockClear(); });
+
+	it("sends ^W through onData on a tmux stream and leaves Ctrl+Delete to ghostty", async () => {
+		await renderAndSetup();
+		deliver("$ ");
+		expect(keyHandler()(ctrlKey("Backspace"))).toBe(true);
+		expect(keyHandler()(ctrlKey("Delete"))).toBe(false);
+		expect(keyHandler()(ctrlKey("Backspace", false))).toBe(false);
+		expect(mockInput.mock.calls).toEqual([["\x17", true]]);
+	});
+
+	it("leaves Ctrl+Backspace to ghostty on a native stream, where ConPTY reads ^H", async () => {
+		await renderAndSetup();
+		deliver(`\x1b_dev3nt;${JSON.stringify({ v: 1, t: "o", seq: 1 })}\x1b\\native output`);
+		expect(keyHandler()(ctrlKey("Backspace"))).toBe(false);
+		expect(mockInput).not.toHaveBeenCalled();
+	});
+
+	it("leaves Ctrl+Backspace to ghostty before the socket delivered anything", async () => {
+		await renderAndSetup();
+		expect(keyHandler()(ctrlKey("Backspace"))).toBe(false);
+		expect(mockInput).not.toHaveBeenCalled();
+	});
+});

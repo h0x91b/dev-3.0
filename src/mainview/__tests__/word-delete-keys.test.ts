@@ -1,11 +1,11 @@
 /**
- * Ctrl+Backspace / Ctrl+Delete → word delete, through ghostty-web's real
- * InputHandler and WASM KeyEncoder, so the "without the fix" bytes are the
- * encoder's own output rather than an assumption.
+ * Ctrl+Backspace → word delete, through ghostty-web's real InputHandler and WASM
+ * KeyEncoder, so the "without the fix" bytes are the encoder's own output. Ctrl+Delete
+ * keeps ghostty's CSI 3;5~ — tmux turns it into a word delete (tmux/config.ts).
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { InputHandler, Ghostty } from "ghostty-web";
-import { DELETE_WORD_LEFT, DELETE_WORD_RIGHT, getWordDeleteSequence } from "../word-delete-keys";
+import { DELETE_WORD_LEFT, getWordDeleteSequence } from "../word-delete-keys";
 import { getTerminalKeyOverride } from "../terminal-key-overrides";
 
 const SHIFT = 1, CTRL = 2, ALT = 4, META = 8;
@@ -27,10 +27,13 @@ function keyEvent(code: string, key: string, mods = 0, type = "keydown"): Keyboa
 }
 
 describe("getWordDeleteSequence", () => {
-	it("maps Ctrl+Backspace to ^W and Ctrl+Delete to ESC d off macOS", () => {
+	it("maps Ctrl+Backspace to ^W off macOS", () => {
 		expect(getWordDeleteSequence(keyEvent("Backspace", "Backspace", CTRL), false)).toBe(DELETE_WORD_LEFT);
-		expect(getWordDeleteSequence(keyEvent("Delete", "Delete", CTRL), false)).toBe(DELETE_WORD_RIGHT);
-		expect(getWordDeleteSequence(keyEvent("NumpadDecimal", "Delete", CTRL), false)).toBe(DELETE_WORD_RIGHT);
+	});
+
+	it("leaves Ctrl+Delete to ghostty, so neovim on the alternate screen still decodes it", () => {
+		expect(getWordDeleteSequence(keyEvent("Delete", "Delete", CTRL), false)).toBeNull();
+		expect(getWordDeleteSequence(keyEvent("NumpadDecimal", "Delete", CTRL), false)).toBeNull();
 	});
 
 	it("leaves macOS alone", () => {
@@ -51,7 +54,7 @@ describe("getWordDeleteSequence", () => {
 describe("getTerminalKeyOverride", () => {
 	it("translates word delete only on a tmux stream", () => {
 		expect(getTerminalKeyOverride(keyEvent("Backspace", "Backspace", CTRL), true, false)).toBe(DELETE_WORD_LEFT);
-		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", CTRL), true, false)).toBe(DELETE_WORD_RIGHT);
+		expect(getTerminalKeyOverride(keyEvent("Delete", "Delete", CTRL), true, false)).toBeNull();
 	});
 
 	it("leaves Ctrl+Backspace to ghostty on the native backend, where ConPTY reads ^H", () => {
@@ -98,11 +101,11 @@ describe("word delete through ghostty-web InputHandler", () => {
 		expect(sent).toEqual(["\x08", "\x1b[3;5~"]);
 	});
 
-	it("with the fix the word-delete sequences replace them", () => {
+	it("with the fix ^W replaces ^H, and Ctrl+Delete reaches tmux as CSI 3;5~", () => {
 		const { sent, fire } = setup(true);
 		fire(keyEvent("Backspace", "Backspace", CTRL));
 		fire(keyEvent("Delete", "Delete", CTRL));
-		expect(sent).toEqual([DELETE_WORD_LEFT, DELETE_WORD_RIGHT]);
+		expect(sent).toEqual([DELETE_WORD_LEFT, "\x1b[3;5~"]);
 	});
 
 	it("plain Backspace and Delete are untouched", () => {

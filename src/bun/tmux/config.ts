@@ -159,6 +159,11 @@ bind -n M-S-Right select-pane -R
 bind -n M-S-Up select-pane -U
 bind -n M-S-Down select-pane -D
 
+# Ctrl+Delete deletes the next word (M-d) at a shell or agent prompt; a full-screen
+# program on the alternate screen (neovim, vim, nano) gets the raw key it decodes itself.
+# See decisions/2026/10/17/terminal-ctrl-backspace-word-delete.md.
+bind -n C-DC if -F '#{alternate_on}' 'send-keys C-DC' 'send-keys M-d'
+
 # Remember the last AGENT pane the user focused, per session. Fires on every
 # pane selection (mouse, Alt+Shift+arrow, programmatic). The conditional keeps the
 # previous value when the newly-focused pane is not an agent pane, so focusing a
