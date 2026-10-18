@@ -50,3 +50,5 @@ active" is demoted to a **default account** = the picker's preselect, nothing mo
   lingering legacy swap — rejected in favor of a full refactor to the default-account model.
 - **Auto-distribute (round-robin pool across parallel agents):** the rate-limit-spreading feature;
   explicitly deferred to a low-priority follow-up (task `4663a70c`) to keep this iteration focused.
+  Shipped on 2026-10-18 as usage-balanced Auto, not round-robin:
+  `decisions/2026/10/18/usage-balanced-auto-account-routing.md`.

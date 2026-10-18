@@ -198,7 +198,7 @@ describe("AgentUsagePanel", () => {
 		state.claude.autoDefault = true;
 		renderPanel(state);
 		const checked = screen.getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true");
-		expect(checked.at(-1)?.textContent).toContain("Auto (balanced)");
+		expect(checked[checked.length - 1]?.textContent).toContain("Auto (balanced)");
 	});
 
 	it("stays read-only for a pointer that has not settled in the panel", async () => {
