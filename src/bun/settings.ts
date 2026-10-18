@@ -109,6 +109,16 @@ function resolveDefaultConfigId(stored: unknown): string {
 	return looksBuiltin ? DEFAULT_SETTINGS.defaultConfigId : remapped;
 }
 
+function normalizeAutoAccountDefault(raw: unknown): GlobalSettings["autoAccountDefault"] {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	const out: NonNullable<GlobalSettings["autoAccountDefault"]> = {
+		...(r.claude === true ? { claude: true as const } : {}),
+		...(r.codex === true ? { codex: true as const } : {}),
+	};
+	return Object.keys(out).length ? out : undefined;
+}
+
 /**
  * Shape the raw file into `GlobalSettings`.
  *
@@ -190,6 +200,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		focusMode: d.focusMode === true ? true : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
+		autoAccountDefault: normalizeAutoAccountDefault(d.autoAccountDefault),
 		// Boolean preference — both true (watch) and false (don't watch) are
 		// meaningful stored choices, so preserve either; only undefined drops.
 		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,

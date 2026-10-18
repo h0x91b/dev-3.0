@@ -274,6 +274,12 @@ export interface GlobalSettings {
 	 */
 	agentRateLimitTracking?: boolean;
 	/**
+	 * Harnesses whose default for new launches is "Auto" — the usage-balanced
+	 * router — instead of the registry's specific default account. The registry
+	 * `activeId` stays untouched so older builds keep a valid default.
+	 */
+	autoAccountDefault?: { claude?: true; codex?: true };
+	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and
 	 * reused as the default for the next launch. Undefined → default to unwatched.

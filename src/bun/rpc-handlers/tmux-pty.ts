@@ -7,6 +7,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { codexAccountIdForHome } from "../agent-accounts";
+import { autoRoutingContext, releaseAccountReservation } from "../account-router";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { agentKey } from "../../shared/agent-adapters/families";
@@ -1022,12 +1023,20 @@ export async function launchTaskPty(
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let resolvedLaunchModel: string | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
+	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const reservationKey = `${task.id}:${crypto.randomUUID()}`;
+	// The account the session really runs on: the default applied, or Auto's pick.
+	let launchAccountId = accountId;
+	let accountPick: agents.ResolvedAgentCommand["accountPick"];
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
 		// snapshots fall back to the task selection; undefined uses the default.
 		const cmdOptions: agents.CommandOptions = { accountId };
 		let freshSessionId: string | null = null;
+		if (!resume && !skipSessionPersist && !opts?.agentRefusal) {
+			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
+		}
 
 		if (resumeFresh) {
 			cmdOptions.sessionId = opts?.freshSessionId;
@@ -1056,6 +1065,8 @@ export async function launchTaskPty(
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
+			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			accountPick = resolved.accountPick;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -1072,6 +1083,8 @@ export async function launchTaskPty(
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
+			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			accountPick = resolved.accountPick;
 		}
 
 		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
@@ -1094,15 +1107,20 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: (!resume && agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
-					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? accountId,
+				accountId: resume ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry, ...(resume ? task.sessionState?.panes.slice(1).map((pane) => ({ ...pane, paneId: null })) ?? [] : [])] };
+			// A routed launch pins its pick on the task too, so Start Fresh, reconnect
+			// and legacy-pane resume read a concrete account instead of routing again.
+			const routedPatch: Partial<Task> = accountPick
+				? { accountId: accountPick.accountId, accountPick: { reason: accountPick.reason, at: new Date().toISOString() } }
+				: {};
 			try {
-				await data.updateTask(project, task.id, { sessionState });
+				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
 			} catch (err) {
 				log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -1111,6 +1129,7 @@ export async function launchTaskPty(
 
 		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
 	} catch (err) {
+		releaseAccountReservation(reservationKey);
 		log.error("Failed to resolve command", {
 			taskId: task.id.slice(0, 8),
 			error: String(err),
@@ -1126,7 +1145,6 @@ export async function launchTaskPty(
 	// command must be resolvable as "$DEV3_PROJECT_PATH/.dev3/<hook>.sh".
 	// dev3's own defaults first, then project env (Project Settings / .dev3
 	// config) — overridable by lifecycle DEV3_* vars and per-agent-config env.
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...projectEnv,
@@ -1152,7 +1170,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, accountId, task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
 	// agent's own command line — applied after the retry wrapper below, `--hook`
@@ -1394,25 +1412,35 @@ export async function launchColumnAgent(
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
+	let launchAccountId: string | null | undefined;
+	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const reservationKey = `${task.id}:column:${crypto.randomUUID()}`;
 
 	try {
-		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, { skipSystemPrompt: true });
+		// A column agent is a fresh session nobody picked an account for: it follows
+		// the default, which routes when the default is Auto.
+		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, {
+			skipSystemPrompt: true,
+			autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
+		});
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedPermissionMode = resolved.config?.permissionMode;
 		resolvedAgentFamily = resolved.agentFamily;
+		launchAccountId = resolved.resolvedAccountId;
 	} catch (err) {
+		releaseAccountReservation(reservationKey);
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
 	}
 	const env = {
 		...AGENT_ENV_DEFAULTS,
-		...(await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode })),
+		...projectEnv,
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		permissionMode: resolvedPermissionMode,
@@ -3455,7 +3483,14 @@ async function spawnAgentInTask(params: {
 	// Pre-assign a session ID for Claude so we can recover this pane later
 	const freshSessionId = crypto.randomUUID();
 	// Per-launch account for THIS extra pane (independent of the main pane's).
-	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId, accountId: params.accountId };
+	const projectEnv = await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode });
+	const reservationKey = `${task.id}:spawn:${freshSessionId}`;
+	const cmdOptions: agents.CommandOptions = {
+		sessionId: freshSessionId,
+		accountId: params.accountId,
+		autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
+	};
+	let launchAccountId = params.accountId;
 
 	if (params.agentId) {
 		const resolved = await agents.resolveCommandForAgent(params.agentId, params.configId, ctx, cmdOptions);
@@ -3464,6 +3499,7 @@ async function spawnAgentInTask(params: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
+		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
 		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
@@ -3482,6 +3518,7 @@ async function spawnAgentInTask(params: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
+		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -3491,11 +3528,11 @@ async function spawnAgentInTask(params: {
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
 	const env: Record<string, string> = {
 		...AGENT_ENV_DEFAULTS,
-		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
+		...projectEnv,
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
 	};
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		family: resolvedAgentFamily,
@@ -3556,7 +3593,7 @@ async function spawnAgentInTask(params: {
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
 		agentId: launchedAgentId,
 		configId: launchedConfigId,
-		accountId: params.accountId,
+		accountId: launchAccountId,
 		agentFamily: resolvedAgentFamily,
 	};
 	const existingPanes = task.sessionState?.panes ?? [];
@@ -3685,7 +3722,13 @@ async function spawnSingleBugHunterPane(opts: {
 	};
 
 	const freshSessionId = crypto.randomUUID();
-	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId, accountId: opts.accountId };
+	const projectEnv = await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath, { foreignCode: opts.task.foreignCode });
+	const cmdOptions: agents.CommandOptions = {
+		sessionId: freshSessionId,
+		accountId: opts.accountId,
+		autoRouting: await autoRoutingContext(opts.project, `${opts.task.id}:hunter:${freshSessionId}`, projectEnv),
+	};
+	let launchAccountId = opts.accountId;
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
@@ -3699,6 +3742,7 @@ async function spawnSingleBugHunterPane(opts: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
 	} else {
@@ -3714,6 +3758,7 @@ async function spawnSingleBugHunterPane(opts: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -3722,11 +3767,11 @@ async function spawnSingleBugHunterPane(opts: {
 	// otherwise launches against a stale config.toml and crashes.
 	const env: Record<string, string> = {
 		...AGENT_ENV_DEFAULTS,
-		...(await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath, { foreignCode: opts.task.foreignCode })),
+		...projectEnv,
 		...buildAgentEnv(extraEnv, opts.task.id),
 		...ensureArtifactTemplateEnv(opts.project, opts.task, opts.worktreePath),
 	};
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, launchAccountId, opts.task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		family: resolvedAgentFamily,
@@ -3766,7 +3811,7 @@ async function spawnSingleBugHunterPane(opts: {
 			sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
 			agentId: launchedAgentId,
 			configId: launchedConfigId,
-			accountId: opts.accountId,
+			accountId: launchAccountId,
 			agentFamily: resolvedAgentFamily,
 		};
 		try {

@@ -151,6 +151,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;
 	sensitive?: boolean;
+	/** Replaces the whole exclusion list; an empty array clears it. */
+	autoAccountExclusions?: string[];
 	/** Turns reading of this project's `.dev3/` config files on or off. */
 	useRepoConfig?: boolean;
 	/** Blank string clears the project override and falls back to global. */
@@ -242,6 +244,12 @@ export interface Project {
 	 * gated on streamer mode being on. See PRODUCT_UX_BIBLE §10 + decision 197.
 	 */
 	sensitive?: boolean;
+	/**
+	 * Logins the usage-balanced "Auto" account choice must never pick for this
+	 * project: managed account ids, or `system:<kind>` for a harness's own login.
+	 * Machine-local (projects.json only) — account ids mean nothing on another box.
+	 */
+	autoAccountExclusions?: string[];
 	/**
 	 * Project-level override of the PR review preset's prompt. Absent/blank ⇒ the
 	 * global setting, then the localized built-in. See resolvePresetPrompt.

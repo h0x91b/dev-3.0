@@ -1,4 +1,5 @@
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
+import type { AccountPickReason } from "../account-routing";
 import type { ReviewComment } from "../review";
 import type { TaskStatus } from "./task-status";
 import type { TaskPriority } from "./task-priority";
@@ -127,8 +128,12 @@ export interface Task {
 	 * explicitly the system login (~/.claude / ~/.codex); a string → that managed
 	 * account. Persisted so Retry and session recovery re-launch on the same
 	 * account. See decisions/2026/07/12/per-launch-agent-account-selection.md.
+	 * `"auto"` (AUTO_ACCOUNT_ID) only until the first launch replaces it with the
+	 * account the usage-balanced router picked.
 	 */
 	accountId?: string | null;
+	/** Why Auto chose `accountId`, recorded at the launch that routed it. */
+	accountPick?: { reason: AccountPickReason; at: string } | null;
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;

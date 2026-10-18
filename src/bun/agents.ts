@@ -24,8 +24,9 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
-import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
-import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
+import { effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
+import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
+import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
 import { findAgentConfig } from "../shared/agent-live-models";
 import { ompDefaultsArgs } from "./omp-launch-defaults";
@@ -513,6 +514,10 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
+	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
+	 *  pass it, so a resumed conversation is never re-routed. */
+	autoRouting?: AutoRoutingContext;
 	/** Raw CLI args contributed by the preset's model roles (Codex's `-c` config
 	 *  overrides). Appended after the provider's own routing args; the adapter
 	 *  shell-escapes them. */
@@ -766,6 +771,38 @@ function applyStatusLineOption(
 	return { ...options, statuslineSettingsFile: settingsFile };
 }
 
+/** Which account a launch uses, before any env is built. `"auto"` (or a
+ *  default set to Auto, on a fresh launch) goes to the usage-balanced router;
+ *  everything explicit passes through untouched. A preset that pins its own
+ *  config dir/home bypasses accounts entirely, so it is never routed. Auto with
+ *  a project-pinned Claude login falls back to the default: Auto never adds an
+ *  override on top of a pin. */
+async function resolveLaunchAccount(
+	baseCmd: string,
+	family: AgentFamily | undefined,
+	extraEnv: Record<string, string>,
+	options: CommandOptions | undefined,
+): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick }> {
+	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
+		? "claude"
+		: agentKey(baseCmd, family) === "codex"
+			? "codex"
+			: agentKey(baseCmd, family) === "omp"
+				? "omp"
+				: null;
+	const requested = options?.accountId;
+	const explicit = isAutoAccountId(requested) ? undefined : requested;
+	const bypassed = kind === "claude" ? !!extraEnv.CLAUDE_CONFIG_DIR : kind === "codex" ? !!extraEnv.CODEX_HOME : kind === "omp" ? !!extraEnv.PI_CODING_AGENT_DIR : true;
+	if (!kind || bypassed) return { accountId: explicit, resolvedAccountId: undefined };
+	const settle = (accountId: string | null | undefined) => ({ accountId, resolvedAccountId: effectiveAccountId(kind, accountId) });
+	const routing = options?.autoRouting;
+	if (!routing || !isRoutableAccountKind(kind)) return settle(explicit);
+	const wantsAuto = isAutoAccountId(requested) || (requested === undefined && (await isAutoAccountDefault(kind)));
+	if (!wantsAuto || (kind === "claude" && routing.claudeConfigPinned)) return settle(explicit);
+	const pick = await pickAutoAccount({ kind, exclusions: routing.exclusions, reservationKey: routing.reservationKey });
+	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick };
+}
+
 /** Inject the active managed account's env into Claude-based commands (agent
  *  account switcher): CLAUDE_CONFIG_DIR for OAuth accounts, plus ANTHROPIC_*
  *  and extra vars for API profiles. An explicit CLAUDE_CONFIG_DIR in the
@@ -919,6 +956,12 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	 *  model via env, since then the request never reaches the vendor endpoint
 	 *  whose version floor the gate knows about. */
 	launchModel: string | undefined;
+	/** The account the launch really uses (default applied): a managed id, null
+	 *  for the system login, undefined when this harness has no account registry
+	 *  or the preset pins its own config dir. What a pane should record. */
+	resolvedAccountId?: string | null;
+	/** Set when the usage-balanced router chose `resolvedAccountId`. */
+	accountPick?: AutoAccountPick;
 }
 
 export async function resolveCommandForAgent(
@@ -951,9 +994,10 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
-	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-	await applyAgentDirAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
+	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = withOmpLaunchDefaults(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -972,6 +1016,8 @@ export async function resolveCommandForAgent(
 		extraEnv,
 		agentFamily: agentWithPath.agentFamily,
 		launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
+		resolvedAccountId: account.resolvedAccountId,
+		...(account.pick ? { accountPick: account.pick } : {}),
 	};
 }
 
@@ -1086,9 +1132,10 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
-		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-		await applyAgentDirAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
+		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = withOmpLaunchDefaults(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -1102,6 +1149,8 @@ export async function resolveCommandForProject(
 			extraEnv,
 			agentFamily: agentWithPath.agentFamily,
 			launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
+			resolvedAccountId: account.resolvedAccountId,
+			...(account.pick ? { accountPick: account.pick } : {}),
 		};
 	}
 

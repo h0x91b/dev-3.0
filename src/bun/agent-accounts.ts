@@ -689,6 +689,21 @@ function resolveAccountIdOverride(activeId: string | null, accountIdOverride: st
 	return accountIdOverride === undefined ? activeId : accountIdOverride;
 }
 
+/** The account a launch really lands on once the default is applied: a managed
+ *  id that exists, or null for the system login. What a pane records so a resume
+ *  cannot drift onto whatever the default became since. */
+export function effectiveAccountId(
+	kind: AgentAccountKind,
+	accountIdOverride: string | null | undefined,
+	paths: AccountPaths = defaultAccountPaths(),
+): string | null {
+	const { activeId, ids } = kind === "omp"
+		? (() => { const r = loadOmpRegistry(paths); return { activeId: r.activeId, ids: r.accounts.map((e) => e.id) }; })()
+		: (() => { const r = loadRegistry(paths)[kind]; return { activeId: r.activeId, ids: r.accounts.map((e) => e.id) }; })();
+	const id = resolveAccountIdOverride(activeId, accountIdOverride);
+	return id && ids.includes(id) ? id : null;
+}
+
 /** CLAUDE_CONFIG_DIR to inject into new Claude sessions, or null for ~/.claude.
  *  `accountIdOverride` selects a specific account for THIS launch (per-launch
  *  selector); omit it to use the registry default. */
