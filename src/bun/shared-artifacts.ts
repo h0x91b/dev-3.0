@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -27,6 +28,7 @@ import { inlineHtmlSource } from "../shared/html-inline";
 import { projectSlug } from "./git";
 import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
 import type { FileLinkScope } from "./file-links";
+import { FILE_LINK_PAGE_EXTS, fileLinkExt } from "../shared/file-link-types";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
 const MEDIA_EXTS = new Set(SHARED_MEDIA_EXTS);
@@ -261,12 +263,18 @@ export function sharedArtifactHtmlPath(artifact: SharedArtifact): string {
 	return artifact.storedPath;
 }
 
+const ARTIFACT_DIR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /**
  * The remote tab link's scope: the artifact's own stored folder, so the page's
  * relative assets resolve as they do when the desktop hands the file to the OS.
  */
 export function sharedArtifactLinkScope(artifact: SharedArtifact): FileLinkScope {
-	const page = resolvePath(sharedArtifactHtmlPath(artifact));
+	// The record comes from the renderer, so only a real `<slug>/shared-artifacts/<uuid>/` folder of dev3's own qualifies.
+	const page = realpathSync.native(resolvePath(sharedArtifactHtmlPath(artifact)));
+	const parts = relative(realpathSync.native(resolvePath(DEV3_HOME, "worktrees")), dirname(page)).split(sep);
+	const ownFolder = parts.length === 3 && !parts[0].startsWith(".") && !isAbsolute(parts[0]) && parts[1] === "shared-artifacts" && ARTIFACT_DIR_ID.test(parts[2]);
+	if (!ownFolder || !FILE_LINK_PAGE_EXTS.has(fileLinkExt(page))) throw new SharedArtifactError("Invalid stored artifact path");
 	return { kind: "dir", root: dirname(page), entry: basename(page) };
 }
 

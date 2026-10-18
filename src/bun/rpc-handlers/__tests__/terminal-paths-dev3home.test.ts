@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // DEV3_HOME outside the home dir, the temp dirs and every project: /var/tmp is none of them.
@@ -25,7 +25,7 @@ describe("createFileLink with DEV3_HOME outside the home directory", () => {
 		mkdirSync(join(clip, ".."), { recursive: true });
 		writeFileSync(clip, "PNG");
 		const { url } = await terminalPathHandlers.createFileLink({ path: clip });
-		expect(resolveFileLinkPath(url)).toBe(clip);
+		expect(resolveFileLinkPath(url)).toBe(realpathSync(clip));
 
 		writeFileSync(join(dev3Home, "outside-worktrees.txt"), "x");
 		await expect(terminalPathHandlers.createFileLink({ path: join(dev3Home, "outside-worktrees.txt") })).rejects.toThrow("outside the allowed");

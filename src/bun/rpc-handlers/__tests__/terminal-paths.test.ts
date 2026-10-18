@@ -440,7 +440,7 @@ describe("openFileOnWindowsHost", () => {
 		await expect(appHandlers.openFileOnWindowsHost({ path: "/etc/hosts" })).rejects.toThrow("outside the allowed");
 		expect(wsl.openOnWindowsHost).not.toHaveBeenCalled();
 		await appHandlers.openFileOnWindowsHost({ path: join(tmp, "notes.txt") });
-		expect(wsl.openOnWindowsHost).toHaveBeenCalledWith(join(tmp, "notes.txt"));
+		expect(wsl.openOnWindowsHost).toHaveBeenCalledWith(realpathSync(join(tmp, "notes.txt")));
 	});
 
 	it("refuses a path with a colon, which WSLENV would split into a different file", async () => {

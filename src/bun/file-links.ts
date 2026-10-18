@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { constants as fsConstants, readlinkSync, realpathSync } from "node:fs";
-import { open, stat } from "node:fs/promises";
-import { basename, dirname, relative, resolve, sep } from "node:path";
+import { lstat, open, stat } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, PAGE_ASSET_EXTS, fileLinkExt } from "../shared/file-link-types";
 import { spawn } from "./spawn";
 import { serveFileBytes } from "./shared-video-stream";
@@ -185,11 +185,12 @@ async function runIgnoreList(checkout: string, folder: string): Promise<IgnoreLi
 	}
 }
 
-/** Shared by every link and request on the folder, refreshed after 30 s; a failed listing is not kept. */
+/** Shared by every link and request on the folder, refreshed after 30 s; a failed or stale listing is not kept. */
 function ignoreListFor(checkout: string, folder: string, now = Date.now()): Promise<IgnoreList | null> {
 	const key = `${checkout}\0${folder}`;
 	const cached = ignoreLists.get(key);
 	if (cached && now - cached.at < IGNORE_LIST_TTL_MS) return cached.list;
+	for (const [staleKey, entry] of ignoreLists) if (now - entry.at >= IGNORE_LIST_TTL_MS) ignoreLists.delete(staleKey);
 	const list = runIgnoreList(checkout, folder);
 	ignoreLists.set(key, { at: now, list });
 	void list.then((result) => {
@@ -203,11 +204,29 @@ function isListedIgnored(list: IgnoreList, checkout: string, path: string): bool
 	return list.files.has(rel) || list.dirs.some((dir) => rel.startsWith(dir));
 }
 
+/**
+ * Folders between `folder` and `path` holding a `.git` entry: nested repositories and
+ * submodules, whose own ignore rules the folder's listing never sees. An unreadable
+ * entry counts as one, so the check fails closed.
+ */
+async function nestedCheckouts(folder: string, path: string): Promise<string[]> {
+	const found: string[] = [];
+	for (let dir = dirname(path); dir !== folder && isInside(dir, folder); dir = dirname(dir)) {
+		const hasGit = await lstat(join(dir, ".git")).then(() => true, (err: NodeJS.ErrnoException) => err.code !== "ENOENT");
+		if (hasGit) found.push(dir);
+	}
+	return found;
+}
+
 async function passesIgnoreFilter(target: FileLinkTarget): Promise<boolean> {
 	const { ignore, path } = target;
 	if (!ignore) return true;
 	const list = await ignoreListFor(ignore.checkout, ignore.folder);
 	if (!list) return false;
+	for (const nested of await nestedCheckouts(ignore.folder, path)) {
+		const nestedList = await ignoreListFor(nested, nested);
+		if (!nestedList || isListedIgnored(nestedList, nested, path)) return false;
+	}
 	if (!isListedIgnored(list, ignore.checkout, path)) return true;
 	// An ignored page's own assets ride along, but only what a page loads — never `tmp/secret.txt`.
 	return ignore.pageIgnored && PAGE_ASSET_EXTS.has(fileLinkExt(path));

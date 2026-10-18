@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -409,7 +409,20 @@ describe("sharedArtifactLinkScope", () => {
 		const dir = dirname(saved.storedPath);
 		mkdirSync(join(dir, "x"), { recursive: true });
 		const scope = sharedArtifactLinkScope({ ...saved, storedPath: `${dir}/x/../${basename(saved.storedPath)}` });
-		expect(scope).toEqual({ kind: "dir", root: dir, entry: basename(saved.storedPath) });
+		expect(scope).toEqual({ kind: "dir", root: realpathSync(dir), entry: basename(saved.storedPath) });
+	});
+
+	it("refuses any folder that is not an artifact's own <slug>/shared-artifacts/<uuid>/ dir", () => {
+		const saved = savedReport();
+		const store = dirname(dirname(saved.storedPath));
+		writeFileSync(join(dirname(saved.storedPath), "master.key"), "SECRET");
+		expect(() => sharedArtifactLinkScope({ ...saved, storedPath: join(dirname(saved.storedPath), "master.key") })).toThrow(SharedArtifactError);
+		const decoys = [join(store, "not-a-uuid"), join(dirname(saved.storedPath), "nested"), join(dirname(store), "task", "worktree", "shared-artifacts", "keys")];
+		for (const dir of decoys) {
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, "master.key"), "SECRET");
+			expect(() => sharedArtifactLinkScope({ ...saved, storedPath: join(dir, "master.key") })).toThrow(SharedArtifactError);
+		}
 	});
 
 	it("refuses a record whose stored path escapes the artifact store", () => {

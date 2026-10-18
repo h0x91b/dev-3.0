@@ -26,7 +26,8 @@ import { join } from "node:path";
 import { DOWNLOAD_TTL_MS, FILE_LINK_SANDBOX, attachmentDisposition, mintFileLink, mintFolderLink, openCheckedFile, openFileLinkResponses, resetFileLinks, resolveFileLinkPath, serveFileLink } from "../file-links";
 import { spawnSync } from "node:child_process";
 
-const ROOT = `${process.env.DEV3_TEST_ROOT}/file-links`;
+// Real path: links pin real paths, and macOS spells the temp dir both /var and /private/var.
+const ROOT = join(realpathSync(process.env.DEV3_TEST_ROOT!), "file-links");
 const REPORT = join(ROOT, "worktree", "report");
 const SECRET = join(ROOT, "worktree", "secret.txt");
 
@@ -369,6 +370,18 @@ describe("gitignored files under a folder link (real git, minted like createFile
 		const status = await folderLink(repo, ":docs/x.html");
 		expect(await status("a.css")).toBe(200);
 		expect(await status("only-here.key")).toBe(404);
+	});
+
+	it("keeps out what a nested repository ignores — the outer listing never looks inside it", async () => {
+		const repo = repoWith("*.key\n", { "site/x.html": "<p>x</p>", "site/vendor/lib.css": "x", "site/vendor/config/creds.txt": "NESTED", "site/vendor/deep/inner/secret.txt": "DEEP" });
+		expect(spawnSync("git", ["init", "-q", join(repo, "site", "vendor")]).status).toBe(0);
+		writeFileSync(join(repo, "site", "vendor", ".gitignore"), "config/\n");
+		expect(spawnSync("git", ["init", "-q", join(repo, "site", "vendor", "deep")]).status).toBe(0);
+		writeFileSync(join(repo, "site", "vendor", "deep", ".gitignore"), "inner/\n");
+		const status = await folderLink(repo, "site/x.html");
+		expect(await status("vendor/lib.css")).toBe(200);
+		expect(await status("vendor/config/creds.txt")).toBe(404);
+		expect(await status("vendor/deep/inner/secret.txt")).toBe(404);
 	});
 
 	it("serves a burst of 150 assets with one git run for the folder", async () => {

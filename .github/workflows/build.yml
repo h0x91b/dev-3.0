@@ -190,6 +190,12 @@ jobs:
       - name: Live terminal e2e (whole set, orphan-checked)
         run: bun scripts/run-terminal-e2e.ts
 
+      # Real-socket proof for /file/ links: Content-Length on a 206, and no slot or
+      # descriptor left behind by a client that leaves. macOS is where the fd check races.
+      - name: File-link socket e2e
+        timeout-minutes: 5
+        run: bun run test:file-links-e2e
+
       # A gate that catches the rarest failure in the change and then discards the
       # evidence is a rumour. Only written when something survived, so an empty upload
       # is the normal case.
