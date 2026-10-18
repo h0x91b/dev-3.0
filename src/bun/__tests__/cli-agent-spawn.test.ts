@@ -105,6 +105,19 @@ describe("managed CLI agent spawning", () => {
 		await pending;
 		expect(tmuxPtyHandlers.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ accountId: "slot-1" }));
 	});
+	it("accepts Auto for a Claude/Codex harness without looking it up as an account", async () => {
+		const pending = spawnCliAgent(options());
+		await answer(true, { variants: [{ agentId: "agent-1", configId: "config-1", accountId: "auto" }] });
+		await pending;
+		expect(tmuxPtyHandlers.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ accountId: "auto" }));
+	});
+	it("refuses Auto for omp, whose limits dev3 cannot read", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([{ id: "agent-1", baseCommand: "omp", configurations: [{ id: "config-1" }] }] as any);
+		const pending = spawnCliAgent(options());
+		const assertion = expect(pending).rejects.toThrow("Auto account balancing is not available");
+		await answer(true, { variants: [{ agentId: "agent-1", configId: "config-1", accountId: "auto" }] });
+		await assertion;
+	});
 	it("rejects an account belonging only to the overridden harness", async () => {
 		vi.mocked(getAllAgents).mockResolvedValue([{ id: "agent-1", baseCommand: "claude", configurations: [{ id: "config-1", baseCommandOverride: "codex" }] }] as any);
 		vi.mocked(listAgentAccounts).mockResolvedValue({

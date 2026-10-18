@@ -235,8 +235,18 @@ vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(
 // Unit-tested on its own; here only its place in each handler matters.
 vi.mock("../agent-launch-availability", () => ({
 	assertLaunchAgentsInstalled: vi.fn(async () => undefined),
+	routableLaunchKind: vi.fn(async () => null),
 	resolveAgentLaunchBinary: vi.fn(() => ({ binaryName: "claude", resolvedPath: "/usr/local/bin/claude" })),
 	AgentNotInstalledError: class extends Error {},
+}));
+
+// Routing is unit-tested on its own (account-router.test.ts); here only the
+// handlers' use of it matters.
+vi.mock("../account-router", () => ({
+	autoLaunchDeferral: vi.fn(async () => null),
+	autoRoutingContext: vi.fn(async () => ({ exclusions: [], claudeConfigPinned: false, reservationKey: "k" })),
+	releaseAccountReservation: vi.fn(),
+	previewAutoAccount: vi.fn(async () => null),
 }));
 
 vi.mock("../agents", () => ({
@@ -405,6 +415,7 @@ import { tmux } from "../tmux";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as launchAvailability from "../agent-launch-availability";
+import * as accountRouter from "../account-router";
 import * as workspaceGuard from "../task-workspace-guard";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
@@ -4030,6 +4041,27 @@ describe("handlers.spawnVariants", () => {
 		expect(result[0].agentId).toBe("agent-1");
 		expect(data.deleteTask).not.toHaveBeenCalled();
 		expect(data.addTask).not.toHaveBeenCalled();
+	});
+
+	it("defers an Auto launch with no free subscription account to the earliest reset", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null });
+		const resetAt = Date.now() + 2 * 60 * 60 * 1000;
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(launchAvailability.routableLaunchKind).mockResolvedValueOnce("claude");
+		vi.mocked(accountRouter.autoLaunchDeferral).mockResolvedValueOnce(resetAt);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...sourceTask, ...updates }) as never);
+
+		const variants = [{ agentId: "agent-1", configId: null, accountId: "auto" }];
+		const result = await handlers.spawnVariants({ taskId: "task-1", projectId: "proj-1", targetStatus: "in-progress", variants });
+
+		expect(result).toHaveLength(1);
+		expect(result[0].status).toBe("todo");
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			scheduledLaunch: { at: new Date(resetAt).toISOString(), targetStatus: "in-progress", variants },
+		});
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
 	// A harness the host cannot find must refuse the launch with the To Do card
@@ -11540,6 +11572,37 @@ describe("launchTaskPty", () => {
 			}),
 			expect.any(String),
 		);
+	});
+
+	it("pins Auto's pick on the task and the pane so later launches never route again", async () => {
+		const project = makeProject();
+		const task = makeTask({ accountId: "auto" });
+		const reason = { code: "lowest-short" as const, short: 20, nextShort: 60 };
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({
+			command: "claude", extraEnv: {}, agent: { baseCommand: "claude" }, resolvedAccountId: "acct-b",
+			accountPick: { accountId: "acct-b", label: "B", reason },
+		} as never);
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude", "claude-default", expect.anything(),
+			expect.objectContaining({ accountId: "auto", autoRouting: expect.objectContaining({ reservationKey: "k" }) }),
+		);
+		const patch = vi.mocked(data.updateTask).mock.calls.map(([, , updates]) => updates).find((u) => u.sessionState);
+		expect(patch).toMatchObject({ accountId: "acct-b", accountPick: { reason } });
+		expect(patch?.sessionState?.panes[0].accountId).toBe("acct-b");
+	});
+
+	it("never hands a resume the routing context", async () => {
+		const project = makeProject();
+		const task = makeTask({ accountId: "acct-a" });
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", false, true, { sessionId: "s-1" });
+
+		const options = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
+		expect(options).not.toHaveProperty("autoRouting");
+		expect(options).toMatchObject({ accountId: "acct-a", resume: true });
 	});
 
 	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {
