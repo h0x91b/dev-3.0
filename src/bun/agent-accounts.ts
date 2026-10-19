@@ -697,9 +697,9 @@ export function effectiveAccountId(
 	accountIdOverride: string | null | undefined,
 	paths: AccountPaths = defaultAccountPaths(),
 ): string | null {
-	const { activeId, ids } = kind === "omp"
-		? (() => { const r = loadOmpRegistry(paths); return { activeId: r.activeId, ids: r.accounts.map((e) => e.id) }; })()
-		: (() => { const r = loadRegistry(paths)[kind]; return { activeId: r.activeId, ids: r.accounts.map((e) => e.id) }; })();
+	const r = isAgentDirAccountKind(kind) ? loadAgentDirRegistry(kind, paths) : loadRegistry(paths)[kind];
+	const activeId = r.activeId;
+	const ids = r.accounts.map((e) => e.id);
 	const id = resolveAccountIdOverride(activeId, accountIdOverride);
 	return id && ids.includes(id) ? id : null;
 }

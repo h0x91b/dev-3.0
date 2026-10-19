@@ -59,6 +59,7 @@ function setup(accounts: AgentAccount[], snapshots: AgentRateLimitSnapshot[]): v
 		claude: { accounts, activeId: accounts[0]?.id ?? null, systemConfigDir: "/h/.claude", systemIdentity: null },
 		codex: { accounts: [], activeId: null, currentIdentity: null },
 		omp: { accounts: [], activeId: null },
+			pi: { accounts: [], activeId: null },
 	};
 	state.accounts = accountsState;
 	state.report = { snapshots, generatedAt: Date.now() } satisfies AgentRateLimitsReport;
@@ -105,6 +106,7 @@ describe("pickAutoAccount", () => {
 			claude: { accounts: [], activeId: null, systemConfigDir: "/h/.claude", systemIdentity: { email: "c@x", organization: null, plan: null, planLabel: null, accountId: "uuid-c" } },
 			codex: { accounts: [], activeId: null, currentIdentity: { email: "x@x", organization: null, plan: null, planLabel: null, accountId: "uuid-x" } },
 			omp: { accounts: [], activeId: null },
+			pi: { accounts: [], activeId: null },
 		};
 		state.accounts = accountsState;
 		state.report = { snapshots: [], generatedAt: Date.now() } satisfies AgentRateLimitsReport;

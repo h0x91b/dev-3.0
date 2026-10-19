@@ -226,6 +226,7 @@ describe("buildRoutableAccounts", () => {
 		claude: { accounts: [], activeId: null, systemConfigDir: "/h/.claude", systemIdentity: null },
 		codex: { accounts, activeId: null, currentIdentity: { email: "me@x", organization: null, plan: "plus", planLabel: "Plus", accountId: "ws-a" } },
 		omp: { accounts: [], activeId: null },
+			pi: { accounts: [], activeId: null },
 	});
 
 	it("marks usage-based plans metered, applies exclusions, and appends the system login", () => {
