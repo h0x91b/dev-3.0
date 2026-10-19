@@ -227,4 +227,33 @@ describe("shared tmux PTY sizing", () => {
 		vi.advanceTimersByTime(50);
 		expect(terminal.resize).not.toHaveBeenCalled();
 	});
+
+	// Found in browser QA: the follower's own report jiggled the PTY, and the
+	// jiggle's 16ms restore then undid the new sizer's real resize.
+	it("never lets a repaint jiggle undo a real resize that lands inside it", () => {
+		startSession("task-size-jiggle-race");
+		const desk = connect("task-size-jiggle-race", 167, 45);
+		wsHandlers.message(desk, encodeViewerSignal("active"));
+		vi.advanceTimersByTime(50);
+
+		const late = new FakeViewer("task-size-jiggle-race");
+		wsHandlers.open(late);
+		wsHandlers.message(late, encodeResizeSequence(80, 24));
+		wsHandlers.message(desk, encodeResizeSequence(167, 46));
+
+		expect(ptySize()).toEqual({ cols: 167, rows: 46 });
+	});
+
+	it("does not repaint everyone when a follower re-reports its own viewport", () => {
+		startSession("task-size-follower-quiet");
+		const desk = connect("task-size-follower-quiet", 167, 45);
+		const phone = connect("task-size-follower-quiet", 78, 64);
+		wsHandlers.message(desk, encodeViewerSignal("active"));
+		vi.advanceTimersByTime(50);
+		terminal.resize.mockClear();
+
+		wsHandlers.message(phone, encodeResizeSequence(78, 62));
+		vi.advanceTimersByTime(50);
+		expect(terminal.resize).not.toHaveBeenCalled();
+	});
 });

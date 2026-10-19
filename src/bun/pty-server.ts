@@ -1748,8 +1748,8 @@ function publishSharedSizing(session: PtySession, sizer: any): void {
  * other viewer is told to render at that geometry. Native: the writer wins.
  *
  * `repaintUnchanged` asks for the redraw jiggle when the size does not change —
- * wanted for a resize report (a new viewer needs its first paint), not for a
- * presence signal that merely confirmed the current sizer.
+ * wanted for a socket's first resize report (a new viewer needs its first
+ * paint), not for later reports or presence signals.
  */
 function applyClientSizes(session: PtySession, repaintUnchanged = true): void {
 	const term = sessionShell(session);
@@ -1782,8 +1782,10 @@ function applyClientSizes(session: PtySession, repaintUnchanged = true): void {
 		if (repaintUnchanged) {
 			try {
 				term.resize(minCols, Math.max(1, minRows - 1));
+				// Restore whatever is applied WHEN the timer fires: a real resize can land
+				// inside these 16ms, and restoring the captured size would undo it.
 				setTimeout(() => {
-					try { term.resize(minCols, minRows); } catch { /* ignore */ }
+					try { term.resize(session.appliedCols ?? minCols, session.appliedRows ?? minRows); } catch { /* ignore */ }
 				}, 16);
 			} catch (err) {
 				log.debug("applyClientSizes jiggle failed", { error: String(err) });
@@ -2482,14 +2484,16 @@ const ptyServer = Bun.serve({
 				}
 
 				// Record this client's viewport; the shared PTY follows whichever
-				// viewer was active last (applyClientSizes). A repeat of the same
-				// report changes nothing, so it must not jiggle everyone's screen.
+				// viewer was active last (applyClientSizes). Only a socket's first
+				// report needs the repaint jiggle — a follower re-reporting its own
+				// viewport renders at the shared grid and needs no redraw.
 				if (isResizeSequence(data)) {
 					const size = parseResizeSequence(data);
 					if (size && (size.cols !== (ws as any).ptyCols || size.rows !== (ws as any).ptyRows)) {
+						const firstReport = (ws as any).ptyCols === undefined;
 						(ws as any).ptyCols = size.cols;
 						(ws as any).ptyRows = size.rows;
-						applyClientSizes(session);
+						applyClientSizes(session, firstReport);
 					}
 					return;
 				}

@@ -621,6 +621,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 
 			if (ws?.readyState !== WebSocket.OPEN) return;
 
+			// A reset is a gesture in this viewer, so it repaints at this viewer's size.
+			ws.send(encodeViewerSignal("active"));
 			// 2. Send RIS (Reset to Initial State) to PTY/tmux
 			ws.send("\x1bc");
 

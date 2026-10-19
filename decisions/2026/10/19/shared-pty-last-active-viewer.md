@@ -22,8 +22,10 @@ terminal for everyone, with nothing in the UI saying why (h0x91b/dev-3.0#2000). 
 - **Followers render at the shared grid** (`ESC ] dev3sizing ; cols ; rows ; 0|1 BEL`,
   server → viewer, deduped per viewer), like a native observer, but keep reporting their own
   viewport so a takeover applies at once. `SharedSizeBar` says so and offers "Fit here".
-- The redraw jiggle now fires only for a resize report that changed that viewer's size —
-  not for presence signals, repeated identical reports, or disconnects.
+- The redraw jiggle now fires only for a socket's FIRST resize report (a new viewer's first
+  paint), and its 16ms restore re-applies the size current when it fires. Browser QA caught
+  the old shape: a new follower's own report jiggled the PTY, and the restore of the captured
+  size undid the new sizer's real resize landing inside those 16ms.
 - Native is unchanged: the writer lease still owns its geometry.
 
 ## Risks
