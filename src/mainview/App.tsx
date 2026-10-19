@@ -994,6 +994,8 @@ function App() {
 		[currentProjectTasks, projects, openTaskFromNotification, navigateToProject],
 	);
 
+	const isToastTaskInView = useCallback((taskId: string) => routeShowsTaskWorkspace(routeRef.current, taskId), []);
+
 	// Route an inbound `dev3://…` deep link (resolved by the backend) to the right
 	// surface: jump to a task, open a project board, or open the Create Task modal
 	// on a project prefilled with text. Reuses the same navigation the toast click
@@ -3781,7 +3783,7 @@ function App() {
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<PushEnrollmentInvite t={t} />
 			<ArtifactFreezeNotice t={t} />
-			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
+			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} isTaskInView={isToastTaskInView} />
 		</div>
 	);
 

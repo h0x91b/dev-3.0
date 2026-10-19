@@ -276,7 +276,7 @@ export function useTaskBranchStatus({
 			// handoffs. Nothing here claims a PR exists: all that is ever proven is
 			// that the request reached the agent's pane.
 			if (delivery.status === "delivered") {
-				toast.info(t("infoPanel.createPRAgentStarted"), { taskId: task.id });
+				toast.info(t("infoPanel.createPRAgentStarted"), { taskId: task.id, quietWhileTaskInView: true });
 				posthog.capture("pull_request_created", { auto_merge: autoMerge });
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.createPRAgentUnconfirmed"), { taskId: task.id });

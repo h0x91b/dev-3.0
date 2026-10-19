@@ -88,6 +88,7 @@ export interface ToastEntry extends ToastOrigin, ToastDestinations {
 	context?: string;
 	/** Agent messages this one covered while still queued (see {@link queuePending}). */
 	earlier?: ToastBurstPair[];
+	quietWhileTaskInView?: boolean;
 }
 
 export interface ToastOpts extends ToastOrigin, ToastDestinations {
@@ -96,6 +97,8 @@ export interface ToastOpts extends ToastOrigin, ToastDestinations {
 	onClick?: () => void;
 	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
+	/** Drop it when `taskId` is already on screen in the foreground — the user is watching what it reports. */
+	quietWhileTaskInView?: boolean;
 }
 
 /** Compact source line for a task-scoped toast, e.g. "#804 · dev-3.0 · Task title". */
@@ -132,6 +135,8 @@ export interface ToastHostProps {
 	 * is never fabricated from nothing.
 	 */
 	resolveOrigin?: (origin: ToastOrigin) => ResolvedToastOrigin | undefined;
+	/** Whether a task's workspace is what the user is looking at, read when a toast arrives. */
+	isTaskInView?: (taskId: string) => boolean;
 }
 
 type Listener = (entry: ToastEntry) => void;
@@ -242,6 +247,7 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		actions: opts?.actions,
 		clickLabel: opts?.clickLabel,
 		burstKey: opts?.burstKey,
+		quietWhileTaskInView: opts?.quietWhileTaskInView,
 	};
 	// Queue while immersive fullscreen suppresses toasts, and also while no host is
 	// subscribed yet: `ToastHost` subscribes from a passive effect, so a toast raised
@@ -338,7 +344,7 @@ function rendererIsActive(): boolean {
 	return document.visibilityState === "visible" && focused;
 }
 
-export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}) {
+export function ToastHost({ onTaskOverflow, resolveOrigin, isTaskInView }: ToastHostProps = {}) {
 	const t = useT();
 	const narrow = useNarrowViewport(NARROW_VIEWPORT_PX);
 	const maxVisibleToasts = narrow ? NARROW_MAX_VISIBLE_TOASTS : MAX_VISIBLE_TOASTS;
@@ -349,10 +355,12 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 	const tRef = useRef(t);
 	const overflowHandlerRef = useRef(onTaskOverflow);
 	const resolveOriginRef = useRef(resolveOrigin);
+	const isTaskInViewRef = useRef(isTaskInView);
 	const maxVisibleToastsRef = useRef(maxVisibleToasts);
 	tRef.current = t;
 	overflowHandlerRef.current = onTaskOverflow;
 	resolveOriginRef.current = resolveOrigin;
+	isTaskInViewRef.current = isTaskInView;
 	maxVisibleToastsRef.current = maxVisibleToasts;
 
 	function publish(next: RenderedToast[]): void {
@@ -488,6 +496,12 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 
 	useEffect(() => {
 		const listener: Listener = (entry) => {
+			// Judged on arrival, not when the call site started its request: the user
+			// may have navigated away while it was in flight.
+			if (
+				entry.quietWhileTaskInView && entry.taskId && rendererIsActive()
+				&& isTaskInViewRef.current?.(entry.taskId)
+			) return;
 			const runtime: ToastRuntime = {
 				remainingMs: Math.max(0, entry.durationMs),
 				startedAtMs: null,

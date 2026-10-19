@@ -1,0 +1,1 @@
+Clicking Auto PR (or Create PR) on the task you are looking at no longer shows a redundant "Handed PR creation to the agent — watch the terminal" toast; it still appears if you have moved to another task or screen, the diff covers the terminal, or the app is in the background, and failed handoffs keep their error toasts.

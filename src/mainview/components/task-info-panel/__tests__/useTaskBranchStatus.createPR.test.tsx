@@ -18,11 +18,18 @@ vi.mock("../../../rpc", () => ({
 }));
 
 const toastCalls: Array<{ level: string; message: string }> = [];
+const toastOpts: Array<Record<string, unknown> | undefined> = [];
 
 vi.mock("../../../toast", () => ({
 	toast: {
-		info: (message: string) => void toastCalls.push({ level: "info", message }),
-		error: (message: string) => void toastCalls.push({ level: "error", message }),
+		info: (message: string, opts?: Record<string, unknown>) => {
+			toastCalls.push({ level: "info", message });
+			toastOpts.push(opts);
+		},
+		error: (message: string, opts?: Record<string, unknown>) => {
+			toastCalls.push({ level: "error", message });
+			toastOpts.push(opts);
+		},
 	},
 }));
 
@@ -35,6 +42,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 async function createPRWithVerdict(status: AgentPromptDeliveryStatus, reason?: string) {
 	toastCalls.length = 0;
+	toastOpts.length = 0;
 	createPullRequest.mockResolvedValue({ delivery: { status, ...(reason ? { reason } : {}) } });
 	// `enabled: false` keeps the branch-status poll inert — this suite is only
 	// about what the user is told after the handoff.
@@ -52,6 +60,27 @@ describe("useTaskBranchStatus — Create PR feedback", () => {
 	it("confirms the handoff without claiming a PR exists", async () => {
 		const calls = await createPRWithVerdict("delivered");
 		expect(calls).toEqual([{ level: "info", message: "Handed PR creation to the agent — watch the terminal" }]);
+	});
+
+	// The user who clicked is usually watching that very terminal; the host drops it then.
+	it("lets a successful handoff stay quiet while its task is in view", async () => {
+		await createPRWithVerdict("delivered");
+		expect(toastOpts).toEqual([{ taskId: "task-1", quietWhileTaskInView: true }]);
+	});
+
+	it("never quiets an unconfirmed or failed handoff", async () => {
+		for (const status of ["unconfirmed", "not-delivered"] as const) {
+			await createPRWithVerdict(status);
+			expect(toastOpts[0]).toEqual({ taskId: "task-1" });
+		}
+		createPullRequest.mockRejectedValue(new Error("boom"));
+		toastOpts.length = 0;
+		const { result } = renderHook(
+			() => useTaskBranchStatus({ task, project, dispatch: vi.fn(), navigate: vi.fn(), isTaskActive: true, enabled: false }),
+			{ wrapper },
+		);
+		await act(() => result.current.handleCreatePR(false));
+		expect(toastOpts).toEqual([{ taskId: "task-1" }]);
 	});
 
 	it("says so when delivery could not be confirmed, and does not call it a failure", async () => {

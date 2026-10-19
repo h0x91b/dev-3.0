@@ -277,6 +277,41 @@ describe("toast service", () => {
 		expect(openTask).toHaveBeenCalledOnce();
 	});
 
+	describe("quietWhileTaskInView", () => {
+		it("drops the toast when its task is the one on screen", () => {
+			render(<ToastHost isTaskInView={(id) => id === "t1"} />);
+			act(() => toast.info("Handed off", { taskId: "t1", quietWhileTaskInView: true }));
+			expect(screen.queryByText("Handed off")).not.toBeInTheDocument();
+		});
+
+		it("still shows it while another task is on screen", () => {
+			render(<ToastHost isTaskInView={(id) => id === "t2"} />);
+			act(() => toast.info("Handed off", { taskId: "t1", quietWhileTaskInView: true }));
+			expect(screen.getByText("Handed off")).toBeInTheDocument();
+		});
+
+		it("still shows it when the app is not in the foreground", () => {
+			render(<ToastHost isTaskInView={() => true} />);
+			setRendererActivity(true, false);
+			act(() => toast.info("Handed off", { taskId: "t1", quietWhileTaskInView: true }));
+			expect(screen.getByText("Handed off")).toBeInTheDocument();
+		});
+
+		it("reads the view when the toast arrives, not when the host mounted", () => {
+			let viewing = "t1";
+			render(<ToastHost isTaskInView={(id) => id === viewing} />);
+			viewing = "t2";
+			act(() => toast.info("Handed off", { taskId: "t1", quietWhileTaskInView: true }));
+			expect(screen.getByText("Handed off")).toBeInTheDocument();
+		});
+
+		it("never drops a toast that did not opt in, errors included", () => {
+			render(<ToastHost isTaskInView={() => true} />);
+			act(() => toast.error("Push failed", { taskId: "t1" }));
+			expect(screen.getByText("Push failed")).toBeInTheDocument();
+		});
+	});
+
 	it("keeps an explicit context and click target over the resolved ones", async () => {
 		const user = userEvent.setup();
 		const ownClick = vi.fn();
