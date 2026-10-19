@@ -12,7 +12,7 @@ import { BackIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { subscribeTerminalPaste, terminalPasteTarget } from "../terminal-paste-request";
 import FileExplorerFrame from "./FileExplorerFrame";
-import SharedSizeBar from "./SharedSizeBar";
+import SharedSizeNotice from "./SharedSizeNotice";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProjectTerminalProps {
@@ -156,7 +156,6 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 					<HelpSpot topicId="terminal.quick-shell" />
 				</div>
 			</div>
-			{ptyUrl && sizedElsewhere && <SharedSizeBar onFitHere={() => termHandle?.takeSize()} />}
 			<div className="relative flex-1 min-h-0 overflow-hidden">
 				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter>
 				{ptyUrl ? (
@@ -177,6 +176,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 						</div>
 					</div>
 				)}
+				{ptyUrl && sizedElsewhere && <SharedSizeNotice onFitHere={() => termHandle?.takeSize()} />}
 				{scrolledUp && termHandle && (
 					<ScrollToLatestButton onClick={() => termHandle.scrollToBottom()} />
 				)}

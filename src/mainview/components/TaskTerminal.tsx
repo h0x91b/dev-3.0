@@ -25,7 +25,7 @@ import TerminalWindowNav from "./TerminalWindowNav";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
 import NativeViewerBar from "./NativeViewerBar";
-import SharedSizeBar from "./SharedSizeBar";
+import SharedSizeNotice from "./SharedSizeNotice";
 import {
 	mergeViewerStatus,
 	type NativeStreamRole,
@@ -1176,6 +1176,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Tmux path (unchanged) ──────────────────────────────────────────────────
 
+	const sharedSizeNotice = ptyUrl && sizedElsewhere ? <SharedSizeNotice onFitHere={() => termHandle?.takeSize()} /> : null;
+
 	const terminalArea = ptyUrl ? (
 		<TerminalView
 			ptyUrl={ptyUrl}
@@ -1216,7 +1218,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					onTakeControl={() => termHandle?.claimWriter()}
 				/>
 			)}
-			{ptyUrl && sizedElsewhere && <SharedSizeBar onFitHere={() => termHandle?.takeSize()} />}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -1224,6 +1225,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
 					{scrollToLatestFor(TMUX_VIEW, termHandle)}
+					{sharedSizeNotice}
 					{setupFailedNotice}
 				</div>
 			) : (
@@ -1233,6 +1235,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 						{ptyUrl && <ClosePanePicker taskId={taskId} />}
 						{scrollToLatestFor(TMUX_VIEW, termHandle)}
+						{sharedSizeNotice}
 						{setupFailedNotice}
 					</div>
 				</TerminalWindowNav>
