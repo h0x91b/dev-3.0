@@ -1893,17 +1893,17 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 			else refitRef.current?.();
 		}
 
-		/** tmux: follow the shared size while another viewer owns it; fit our own when we do. */
+		/**
+		 * tmux: follow the shared size while another viewer owns it; fit our own when we do.
+		 * Re-fit NOW, not after layout: the server sends this notice before tmux's redraw
+		 * at the new size, and a deferred fit let that redraw land on the old grid.
+		 */
 		function adoptSharedSizing(notice: SizingNotice): void {
 			const previous = sharedSizeRef.current;
 			sharedSizeRef.current = notice;
-			if (previous?.sizing !== notice.sizing) {
-				onSharedSizingRef.current?.(!notice.sizing);
-				// The notice strip appears or goes away, so measure after layout.
-				refitAfterLayoutRef.current?.();
-				return;
-			}
-			if (previous.cols !== notice.cols || previous.rows !== notice.rows) refitRef.current?.();
+			const roleChanged = previous?.sizing !== notice.sizing;
+			if (roleChanged || previous.cols !== notice.cols || previous.rows !== notice.rows) refitRef.current?.();
+			if (roleChanged) onSharedSizingRef.current?.(!notice.sizing);
 		}
 
 		/** Follow the writer's PTY shape; a writer keeps fitting its own container. */

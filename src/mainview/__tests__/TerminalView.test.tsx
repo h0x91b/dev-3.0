@@ -2775,6 +2775,28 @@ describe("TerminalView – shared tmux size", () => {
 		expect(sent()).not.toContain("\x1b]resize;22;40\x07");
 	});
 
+	// tmux's redraw at the new size follows the notice on the same socket; a fit
+	// deferred to a later frame let that redraw land on the old grid (browser QA).
+	it("re-fits at once on a notice, before any later frame", async () => {
+		const { onSharedSizing } = await renderShared();
+		vi.stubGlobal("requestAnimationFrame", () => 1);
+		try {
+			mockTermInstance.resize.mockClear();
+			notice(22, 40, false);
+			expect(mockTermInstance.resize).toHaveBeenLastCalledWith(22, 40);
+
+			fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
+			notice(100, 30, true);
+			expect(mockTermInstance.resize).toHaveBeenLastCalledWith(100, 30);
+			expect(onSharedSizing).toHaveBeenLastCalledWith(false);
+		} finally {
+			vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+				cb(0);
+				return 1;
+			});
+		}
+	});
+
 	it("never reports the shared grid it follows as its own size", async () => {
 		await renderShared();
 		notice(22, 40, false);
