@@ -3,6 +3,7 @@ import * as data from "./data";
 import { fireScheduledLaunch } from "./rpc-handlers/task-lifecycle";
 import { createLogger } from "./logger";
 import { AgentNotInstalledError } from "./agent-launch-availability";
+import { NoEligibleAccountError } from "./account-router";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
 const log = createLogger("scheduled-launch-scheduler");
@@ -80,10 +81,11 @@ async function tickProject(project: Project): Promise<void> {
 			// tick forever; the task itself stays in todo for the user to relaunch.
 			log.error("Scheduled launch fire failed; clearing schedule", { taskId: task.id.slice(0, 8), error: String(err) });
 			try {
-				// A refusal the user can act on (a missing harness) stays on the card.
+				// A refusal the user can act on (a missing harness, no account Auto may use) stays on the card.
+				const refusal = err instanceof AgentNotInstalledError || err instanceof NoEligibleAccountError;
 				const updated = await data.updateTask(project, task.id, {
 					scheduledLaunch: null,
-					...(err instanceof AgentNotInstalledError ? { preparationError: err.message } : {}),
+					...(refusal ? { preparationError: err.message } : {}),
 				});
 				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			} catch {
