@@ -3440,7 +3440,7 @@ async function spawnAgentInTask(params: {
 	/** Hand the new agent a retelling of this task's newest conversation. */
 	handoff?: boolean;
 }): Promise<SpawnAgentResult> {
-	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true });
+	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true, promptChars: params.prompt?.length ?? 0 });
 
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -3466,7 +3466,7 @@ async function spawnAgentInTask(params: {
 	// spawned this from, so the pointer sat there until he pressed Enter (seq 1775).
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
-		taskDescription: [handoff ? handoffPrompt(handoff) : "", params.prompt ?? ""].filter(Boolean).join("\n\n"),
+		taskDescription: handoff ? handoffPrompt(handoff, params.prompt) : (params.prompt ?? ""),
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath: task.worktreePath,

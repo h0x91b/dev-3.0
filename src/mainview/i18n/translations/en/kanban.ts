@@ -387,6 +387,9 @@ const kanban = {
 	"spawnAgent.handoffDesc_other": "The new agent gets a retelling of the {agent} session so far ({count} turns): your prompts and its replies verbatim, its actions summarised. Agents cannot resume each other, so a retelling is what a switch is.",
 	"spawnAgent.handoffSent": "The conversation was handed over — reading the retelling is the new agent's first turn.",
 	"spawnAgent.handoffNotDelivered": "The agent started but never got the pointer to the retelling. It is written at {path} — point the agent at it by hand.",
+	"spawnAgent.instructionLabel": "Follow-up prompt",
+	"spawnAgent.instructionHint": "Sent after the retelling as your next message. Leave empty to just continue.",
+	"spawnAgent.instructionPlaceholder": "Optional — e.g. Now review the security of the solution",
 
 	// Watch
 	"task.devStarting": "starting",

@@ -51,6 +51,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	// transcript — the option is then not offered rather than offered and failing.
 	const [handoffPreview, setHandoffPreview] = useState<HandoffPreview | null>(null);
 	const [handoff, setHandoff] = useState(false);
+	// The user's next message after the retelling; only ever sent with a handoff.
+	const [instruction, setInstruction] = useState("");
 
 	useEffect(() => {
 		api.request.previewTaskHandoff({ taskId: task.id, projectId: project.id })
@@ -105,7 +107,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [spawning, globalSettings, agentId, configId]);
+	}, [spawning, globalSettings, agentId, configId, accountId, handoff, instruction]);
 
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
@@ -119,6 +121,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		if (agentNotInstalled) return;
 		setSpawning(true);
 		setError(null);
+		const nextInstruction = handoff ? instruction.trim() : "";
 		try {
 			const result = await api.request.spawnAgentInTask({
 				taskId: task.id,
@@ -127,6 +130,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				configId,
 				accountId,
 				handoff,
+				...(nextInstruction ? { prompt: nextInstruction } : {}),
 			});
 			// The pane is up either way; only the pointer into the retelling can still
 			// have failed, and that is the difference between a takeover and a fresh
@@ -218,7 +222,11 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 									<input
 										type="checkbox"
 										checked={handoff}
-										onChange={(e) => setHandoff(e.target.checked)}
+										onChange={(e) => {
+											setHandoff(e.target.checked);
+											// An unticked handoff sends no instruction, so none may linger to reappear later.
+											if (!e.target.checked) setInstruction("");
+										}}
 										className="w-4 h-4 mt-0.5 rounded accent-accent shrink-0"
 										data-testid="spawn-agent-handoff"
 									/>
@@ -232,6 +240,26 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 										</span>
 									</span>
 								</label>
+								{handoff && (
+									<div className="ml-[1.625rem] mt-2.5">
+										<label htmlFor="spawn-agent-instruction" className="text-fg-2 text-xs font-medium block">
+											{t("spawnAgent.instructionLabel")}
+										</label>
+										<textarea
+											id="spawn-agent-instruction"
+											rows={3}
+											value={instruction}
+											onChange={(e) => setInstruction(e.target.value)}
+											placeholder={t("spawnAgent.instructionPlaceholder")}
+											aria-describedby="spawn-agent-instruction-hint"
+											className="mt-1 w-full resize-y rounded-md border border-edge bg-elevated px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-muted outline-none focus:border-accent"
+											data-testid="spawn-agent-instruction"
+										/>
+										<p id="spawn-agent-instruction-hint" className="text-fg-3 text-xs mt-1">
+											{t("spawnAgent.instructionHint")}
+										</p>
+									</div>
+								)}
 							</div>
 						)}
 

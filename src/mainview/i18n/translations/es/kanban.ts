@@ -386,6 +386,9 @@ const kanban = {
 	"spawnAgent.handoffDesc_other": "El nuevo agente recibe un resumen narrado de la sesión de {agent} ({count} turnos): tus mensajes y sus respuestas literales, sus acciones resumidas. Los agentes no pueden retomar la sesión de otro, así que cambiar es narrar.",
 	"spawnAgent.handoffSent": "La conversación se entregó — leer el resumen es el primer turno del nuevo agente.",
 	"spawnAgent.handoffNotDelivered": "El agente arrancó pero nunca recibió el puntero al resumen. Está escrito en {path} — indícaselo a mano.",
+	"spawnAgent.instructionLabel": "Prompt de seguimiento",
+	"spawnAgent.instructionHint": "Se envía después del resumen como tu siguiente mensaje. Déjalo vacío para que simplemente continúe.",
+	"spawnAgent.instructionPlaceholder": "Opcional — p. ej.: Ahora revisa la seguridad de la solución",
 
 	// Watch
 	"task.devStarting": "iniciando",

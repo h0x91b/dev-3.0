@@ -219,6 +219,95 @@ describe("SpawnAgentModal", () => {
 				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ handoff: true }));
 			});
 		});
+
+		it("shows an empty, optional follow-up prompt as soon as the handoff is ticked", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			const box = await screen.findByTestId("spawn-agent-handoff");
+			expect(screen.queryByTestId("spawn-agent-instruction")).toBeNull();
+			await user.click(box);
+
+			const field = screen.getByLabelText("Follow-up prompt");
+			expect(field).toHaveValue("");
+			expect(field).toHaveAttribute("placeholder", expect.stringMatching(/^Optional/));
+			expect(field).toHaveAccessibleDescription(/Leave empty to just continue/);
+		});
+
+		it("sends exactly today's payload when the instruction is left empty", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			await user.click(await screen.findByTestId("spawn-agent-handoff"));
+			await user.type(screen.getByTestId("spawn-agent-instruction"), "   ");
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					agentId: "builtin-claude",
+					configId: "claude-default",
+					handoff: true,
+				});
+			});
+		});
+
+		it("sends a multi-line instruction alongside the handoff, trimmed but otherwise verbatim", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			await user.click(await screen.findByTestId("spawn-agent-handoff"));
+			await user.type(screen.getByTestId("spawn-agent-instruction"), "  Now review the security{Enter}Only propose a plan, no edits  ");
+			// Enter in the field is a line break, not a launch.
+			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({
+					handoff: true,
+					prompt: "Now review the security\nOnly propose a plan, no edits",
+				}));
+			});
+			expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledTimes(1);
+		});
+
+		it("drops the draft when the handoff is unticked, so it cannot ride a later launch", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			const box = await screen.findByTestId("spawn-agent-handoff");
+			await user.click(box);
+			await user.type(screen.getByTestId("spawn-agent-instruction"), "stale draft");
+			await user.click(box);
+			expect(screen.queryByTestId("spawn-agent-instruction")).toBeNull();
+
+			await user.click(box);
+			expect(screen.getByTestId("spawn-agent-instruction")).toHaveValue("");
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalled());
+			expect(mockedApi.request.spawnAgentInTask.mock.calls[0][0]).not.toHaveProperty("prompt");
+		});
+
+		it("keeps the instruction when an implicit Enter launches from outside the field", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.previewTaskHandoff.mockResolvedValue(preview);
+			renderModal();
+
+			await user.click(await screen.findByTestId("spawn-agent-handoff"));
+			await user.type(screen.getByTestId("spawn-agent-instruction"), "Review the security");
+			(document.activeElement as HTMLElement).blur();
+			await user.keyboard("{Enter}");
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ handoff: true, prompt: "Review the security" }));
+			});
+		});
 	});
 
 	it("shows error when spawn fails", async () => {

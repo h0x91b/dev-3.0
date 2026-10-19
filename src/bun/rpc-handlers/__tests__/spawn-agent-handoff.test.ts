@@ -39,7 +39,8 @@ vi.mock("../../data", () => ({
 vi.mock("../../conversation-handoff", () => ({
 	prepareTaskHandoff: mocks.prepareTaskHandoff,
 	previewTaskHandoff: mocks.previewTaskHandoff,
-	handoffPrompt: (h: { path: string }) => `read ${h.path} and continue`,
+	handoffPrompt: (h: { path: string }, instruction?: string) =>
+		instruction ? `read ${h.path}, then: ${instruction}` : `read ${h.path} and continue`,
 }));
 
 vi.mock("../../agent-prompt-delivery", () => ({ deliverAgentPrompt: mocks.deliverAgentPrompt }));
@@ -168,10 +169,6 @@ describe("spawnAgentInTask without a handoff", () => {
 		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", null, expect.objectContaining({ taskDescription: "Review only" }), expect.anything());
 	});
 
-	it("combines handoff and explicit instructions in the launch prompt", async () => {
-		await tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: null, prompt: "Review only", handoff: true });
-		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", null, expect.objectContaining({ taskDescription: `read ${PREPARED.path} and continue\n\nReview only` }), expect.anything());
-	});
 
 	it("neither writes a retelling nor sends anything", async () => {
 		expect(await spawn()).toMatchObject({ paneId: "%42", backend: "native", handoff: null });
@@ -221,6 +218,24 @@ describe("spawnAgentInTask handing the conversation over", () => {
 			expect.objectContaining({ taskDescription: "" }),
 			expect.anything(),
 		);
+	});
+
+	it("hands the instruction to the retelling as the next message, keeping the same handoff", async () => {
+		const instruction = "Now review the security.\nOnly propose a plan — no \"edits\".";
+		const result = await tmuxPtyHandlers.spawnAgentInTask({
+			taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: null, prompt: instruction, handoff: true,
+		});
+
+		expect(mocks.prepareTaskHandoff).toHaveBeenCalledTimes(1);
+		expect(mocks.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			null,
+			expect.objectContaining({ taskDescription: `read ${PREPARED.path}, then: ${instruction}` }),
+			expect.anything(),
+		);
+		expect(result.handoff).toMatchObject({ path: PREPARED.path, source: "claude", delivery: { status: "delivered", reason: "launch-prompt" } });
+		// Delivered once, on the new agent's own command line — never typed into a pane.
+		expect(mocks.deliverAgentPrompt).not.toHaveBeenCalled();
 	});
 
 	it("opens no pane at all when there is nothing to hand over", async () => {

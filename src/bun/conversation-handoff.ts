@@ -119,15 +119,23 @@ export async function prepareTaskHandoff(
  * The line typed into the new agent's pane. Short by necessity and blunt on
  * purpose: the one thing that must not be misread is that the actions in the file
  * belong to a previous agent and nothing in it is still running.
+ *
+ * A non-blank `instruction` is the user's next message in that conversation: it
+ * replaces "continue from where it stopped", never the retelling itself.
  */
-export function handoffPrompt(handoff: PreparedHandoff): string {
+export function handoffPrompt(handoff: PreparedHandoff, instruction?: string): string {
 	const previous = handoff.source === "claude" ? "Claude Code" : "Codex";
-	return (
+	const preamble =
 		`You are taking over work that ran in ${previous}, in this same worktree. ` +
 		`Read ${handoff.path} in full before anything else. ` +
 		`It is a RETELLING of that conversation written by dev3, not a transcript of your own: ` +
 		`prompts and replies are verbatim, tool calls are reduced to what they did, and tool output is truncated. ` +
-		`You did none of it, and nothing in it is still running. ` +
-		`Re-read any file you need to be sure about, then continue the work from where it stopped.`
+		`You did none of it, and nothing in it is still running. `;
+	const next = instruction?.trim();
+	if (!next) return `${preamble}Re-read any file you need to be sure about, then continue the work from where it stopped.`;
+	return (
+		`${preamble}Re-read any file you need to be sure about. ` +
+		`Then do not simply resume: the user's next message in that conversation follows below, and it takes priority over any plan in the retelling.\n\n` +
+		next
 	);
 }
