@@ -109,11 +109,21 @@ describe("moveTaskToStatus", () => {
 		expect(mockedMoveTask).not.toHaveBeenCalled();
 	});
 
-	it("does not play a sound for non-terminal moves and does not suppress the push", async () => {
+	it.each(["review-by-user", "user-questions"] as const)(
+		"keeps a move the user made into %s silent, here and in the backend push",
+		async (newStatus) => {
+			const dispatch = vi.fn();
+			await moveTaskToStatus({ task, project, newStatus, dispatch, t });
+			expect(mockedSound).not.toHaveBeenCalled();
+			expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus, clientPlayedSound: true });
+		},
+	);
+
+	it("leaves other non-terminal moves to the backend", async () => {
 		const dispatch = vi.fn();
-		await moveTaskToStatus({ task, project, newStatus: "review-by-user", dispatch, t });
+		await moveTaskToStatus({ task: { ...task, status: "review-by-user" }, project, newStatus: "in-progress", dispatch, t });
 		expect(mockedSound).not.toHaveBeenCalled();
-		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "review-by-user", clientPlayedSound: false });
+		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "in-progress", clientPlayedSound: false });
 	});
 
 	it("retries with force when the normal move fails", async () => {

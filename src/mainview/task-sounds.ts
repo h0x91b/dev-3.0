@@ -3,19 +3,24 @@
 // WKWebView's media loader issues (decision 057).
 import completedSoundUrl from "../assets/sounds/task-completed.mp3?inline";
 import cancelledSoundUrl from "../assets/sounds/task-cancelled.mp3?inline";
+import needsYouSoundUrl from "../assets/sounds/task-needs-you.mp3?inline";
+import type { TaskSoundStatus } from "../shared/task-sound-statuses";
 
-type TaskSoundStatus = "completed" | "cancelled";
-
+// Your Review and Has Questions share one chime: both mean the agent stopped
+// and is waiting on the user. Synthesized for this repo — see
+// decisions/2026/10/19/task-needs-you-sound.md.
 export const SOUND_DEFS: Record<TaskSoundStatus, { url: string; volume: number }> = {
 	completed: { url: completedSoundUrl, volume: 0.3 },
 	cancelled: { url: cancelledSoundUrl, volume: 0.7 },
+	"review-by-user": { url: needsYouSoundUrl, volume: 0.4 },
+	"user-questions": { url: needsYouSoundUrl, volume: 0.4 },
 };
 
 // Task sounds play through an <audio> element, and the chimes are deliberately
 // kept SHORT — under WebKit's 0.95s `isElementLongEnoughForMainContent`
 // threshold, above which macOS promotes a media element to the system "Now
 // Playing" session and the hardware Play/Pause key replays our chime instead of
-// resuming Spotify (issue #1176). Both assets are 0.82s and a test guards that.
+// resuming Spotify (issue #1176). Every asset is under 0.85s and a test guards that.
 //
 // Web Audio was tried instead (#1192) and is a dead end in the packaged app:
 // in the Electrobun WKWebView an AudioContext reports `running`, advances
@@ -82,8 +87,8 @@ export function playTaskCompletionSound(status: TaskSoundStatus): boolean {
 
 /**
  * Handle a bun `taskSound` push. Fired for completions no renderer played
- * locally (CLI, branch-merge, agent approval), and for the ones a renderer
- * could not play. Only one window is sent this push (src/bun/push-targets.ts) —
+ * locally (CLI, branch-merge, agent approval), for the ones a renderer could
+ * not play, and for agent-driven moves into Your Review / Has Questions. Only one window is sent this push (src/bun/push-targets.ts) —
  * module state here is per-renderer and cannot see another window's chime.
  */
 export function playTaskSoundFromPush(status: TaskSoundStatus): void {
@@ -132,6 +137,8 @@ export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
 	installUnlockHandlers();
 
 	const def = SOUND_DEFS[status];
+	// A remote tab left open across an update may be pushed a status it has no chime for.
+	if (!def) return;
 	// A fresh element per play, so two tasks finishing back-to-back overlap
 	// instead of one cutting the other off. Dropped as soon as it ends.
 	const el = new Audio(def.url);

@@ -6,6 +6,7 @@ import posthog from "../posthog";
 import { confirmTaskCompletion } from "./confirmTaskCompletion";
 import { confirmTaskReset } from "./confirmTaskReset";
 import { playTaskCompletionSound } from "../task-sounds";
+import { isNeedsYouSoundStatus } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, taskNeedsReset, type Task, type Project, type TaskStatus } from "../../shared/types";
 
 /**
@@ -198,7 +199,9 @@ export async function moveTaskToStatus({
 	// When the UI plays the completion sound here, tell the backend to skip its
 	// own `taskSound` push — otherwise it comes back to a window and to every
 	// attached remote browser, and the chime plays twice.
-	let clientPlayedSound = false;
+	// A card the user moved into a needs-you column themselves has nothing to
+	// announce, so the UI claims that sound too and plays nothing.
+	let clientPlayedSound = isNeedsYouSoundStatus(newStatus);
 	if (terminal) {
 		dispatch({ type: "clearBell", taskId: task.id });
 		clientPlayedSound = playTaskCompletionSound(newStatus as "completed" | "cancelled");

@@ -416,6 +416,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleNeedsYouSoundToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ playSoundOnTaskNeedsYou: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handleWatchByDefaultToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -994,6 +1001,7 @@ function GlobalSettings({
 						t={t}
 						globalSettings={globalSettings}
 						onSoundToggle={handleSoundToggle}
+						onNeedsYouSoundToggle={handleNeedsYouSoundToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 					/>

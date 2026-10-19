@@ -263,6 +263,8 @@ const settings = {
 	"settings.terminalBackendPerTaskHint": "Una tarea concreta se puede cambiar en sus detalles, mientras no tenga un terminal activo.",
 	"settings.taskCompleteSound": "Sonido de tarea completada",
 	"settings.taskCompleteSoundDesc": "Reproducir un sonido al completar o cancelar una tarea",
+	"settings.taskNeedsYouSound": "Sonido de tarea que te espera",
+	"settings.taskNeedsYouSoundDesc": "Reproducir un sonido cuando una tarea pasa a Tu revisión o Tiene preguntas",
 	"settings.watchByDefault": "Observar tareas de forma predeterminada",
 	"settings.watchByDefaultDesc": "Preselecciona Observar al iniciar una tarea. Puedes cambiarlo para cada tarea.",
 	"settings.suggestCompletingTasksAfterMerge": "Sugerir completar tareas tras un merge",

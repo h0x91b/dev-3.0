@@ -13,6 +13,7 @@ import {
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	type TaskStatus,
 } from "../../shared/types";
+import { isNeedsYouSoundStatus } from "../../shared/task-sound-statuses";
 import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
@@ -161,6 +162,20 @@ function mergePromptBlocked(
 	);
 }
 
+/**
+ * The needs-you chime, for a move that newly lands in Your Review or User
+ * questions. Placed after the column write, which aborts the chain when a guard
+ * rejects it, so a refused hook move stays silent.
+ */
+function needsYouSoundEffects(
+	oldStatus: TaskStatus,
+	target: LifecycleColumn,
+	event: Extract<LifecycleEvent, { type: "moveRequested" }>,
+): LifecycleEffect[] {
+	if (event.clientPlayedSound || target.status === oldStatus || !isNeedsYouSoundStatus(target.status)) return [];
+	return [effect({ type: "emitTaskSound", status: target.status as "review-by-user" | "user-questions" })];
+}
+
 function moveTransition(
 	state: LifecycleState,
 	event: Extract<LifecycleEvent, { type: "moveRequested" }>,
@@ -236,6 +251,7 @@ function moveTransition(
 				...(event.cause === "pr-promotion"
 					? [effect({ type: "setPrPromoted", promoted: true })]
 					: []),
+				...needsYouSoundEffects(oldStatus, target, event),
 				effect({ type: "push", message: "taskUpdated", view: "current" }),
 				// AFTER the column write, which stops the effect run when it is rejected
 				// or fails. Only then is "moved to <column>" true.
@@ -410,6 +426,7 @@ function moveTransition(
 				guards: event.guards,
 				runtime: nextRuntime,
 			}, "abort"),
+			...needsYouSoundEffects(oldStatus, target, event),
 			effect({ type: "clearMergeThrottle" }),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: target.status }),

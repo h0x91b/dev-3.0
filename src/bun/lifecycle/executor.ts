@@ -44,6 +44,7 @@ import * as pty from "../pty-server";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { AuxPaneUnavailableError } from "../task-aux-panes";
 import * as repoConfig from "../repo-config";
+import { isTaskSoundEnabled, type TaskSoundStatus } from "../../shared/task-sound-statuses";
 import { loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
@@ -660,8 +661,8 @@ export async function captureCompletedDiffStats(
 	}
 }
 
-export function emitTaskSound(status: "completed" | "cancelled", taskId: string): void {
-	if (loadSettingsSync().playSoundOnTaskComplete === false) return;
+export function emitTaskSound(status: TaskSoundStatus, taskId: string): void {
+	if (!isTaskSoundEnabled(loadSettingsSync(), status)) return;
 	const payload: BunMessagePayload<"taskSound"> = { status, taskId };
 	getPushMessage()?.("taskSound", payload);
 }

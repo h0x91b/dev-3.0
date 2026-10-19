@@ -1,3 +1,4 @@
+import type { TaskSoundStatus } from "../../shared/task-sound-statuses";
 import type { AppRPCSchema, CompletedDiffStats, TaskResetConsent, TaskStatus } from "../../shared/types";
 import type { LifecycleColumn, LifecycleEvent, LifecycleRuntime, LifecycleTaskPatch, PreparationLaunch } from "./events";
 
@@ -128,5 +129,5 @@ export type LifecycleEffect =
 	| ({ type: "launchColumnAgent"; column: LifecycleColumn } & EffectPolicy)
 	| ({ type: "notifyStatusChange"; from: TaskStatus; to: TaskStatus } & EffectPolicy)
 	| ({ type: "raisePrAttention"; reason: string } & EffectPolicy)
-	| ({ type: "emitTaskSound"; status: "completed" | "cancelled" } & EffectPolicy)
+	| ({ type: "emitTaskSound"; status: TaskSoundStatus } & EffectPolicy)
 	| LifecyclePushEffect;

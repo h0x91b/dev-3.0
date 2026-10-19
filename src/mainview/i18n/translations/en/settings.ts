@@ -263,6 +263,8 @@ const settings = {
 	"settings.terminalBackendPerTaskHint": "A single task can be switched in its task details, while it has no live terminal.",
 	"settings.taskCompleteSound": "Task complete sound",
 	"settings.taskCompleteSoundDesc": "Play a sound when a task is completed or cancelled",
+	"settings.taskNeedsYouSound": "Task needs you sound",
+	"settings.taskNeedsYouSoundDesc": "Play a sound when a task moves to Your Review or Has Questions",
 	"settings.watchByDefault": "Watch tasks by default",
 	"settings.watchByDefaultDesc": "Preselect Watch when launching a task. You can override it for each task.",
 	"settings.suggestCompletingTasksAfterMerge": "Suggest completing tasks after merge",

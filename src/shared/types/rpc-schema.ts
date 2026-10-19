@@ -15,6 +15,7 @@ import type { AgentPromptDelivery } from "../agent-prompt-delivery";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
 import type { TaskPeekSnapshot } from "../task-peek";
+import type { TaskSoundStatus } from "../task-sound-statuses";
 import type { ChangelogEntry, UpdateChangelog, UpdatePopoverPreview } from "./changelog";
 import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState } from "./task-status";
 import type { TaskPriority } from "./task-priority";
@@ -580,8 +581,10 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			moveTask: {
-				// `clientPlayedSound`: the UI already played the completion/cancel sound
-				// optimistically in the initiating renderer, so the backend must NOT
+				// `clientPlayedSound`: the initiating renderer owns this move's sound — it
+				// played the completion/cancel chime optimistically, or the user moved
+				// the card into Your Review / Has Questions themselves, which has
+				// nothing to announce. The backend must NOT
 				// also push `taskSound` (that push still reaches a window and every
 				// attached remote browser, so the chime would play a second time on
 				// the same machine). Unset for CLI / branch-merge / agent
@@ -1780,7 +1783,7 @@ export type AppRPCSchema = {
 			taskUpdated: { projectId: string; task: Task };
 			projectUpdated: { project: Project };
 			spacesUpdated: { file: SpacesFile };
-			taskSound: { status: "completed" | "cancelled"; taskId: string };
+			taskSound: { status: TaskSoundStatus; taskId: string };
 			ptyDied: { taskId: string };
 			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */
 			taskTerminalResumed: { taskId: string; projectId: string };

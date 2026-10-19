@@ -215,6 +215,17 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).openArtifactsInPopup).toBe(false);
 	});
 
+	// Opt-in: an install that never chose must stay silent on every agent turn.
+	it("defaults the needs-you chime to off and stores only an explicit opt-in", async () => {
+		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: true }), null, 2), "utf-8");
+		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBe(true);
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: false }), null, 2), "utf-8");
+		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
+	});
+
 	// The dev3 template is the default, so only the two other modes are stored.
 	it("keeps only the non-default artifactTemplate modes and a non-blank folder", async () => {
 		expect((await loadSettings()).artifactTemplate).toBeUndefined();
@@ -375,6 +386,7 @@ describe("saveSettings", () => {
 			lowBatteryDisabled: true,
 			lowBatteryAnnounced: true,
 			playSoundOnTaskComplete: false,
+			playSoundOnTaskNeedsYou: true,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
 			telemetryDisabled: true,

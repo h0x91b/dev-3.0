@@ -816,6 +816,70 @@ describe("task lifecycle transition table", () => {
 	});
 });
 
+describe("needs-you chime", () => {
+	function soundsOf(effects: ReturnType<typeof transition>["effects"]) {
+		return effects.filter((candidate) => candidate.type === "emitTaskSound");
+	}
+
+	it.each(["review-by-user", "user-questions"] as const)(
+		"chimes when a hook moves the task into %s, after the column write",
+		(target) => {
+			const moved = transition(state("in-progress"), {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+				guards: { ifStatus: "in-progress" },
+			});
+			const persistIndex = moved.effects.findIndex((candidate) => candidate.type === "persistColumn");
+			const soundIndex = moved.effects.findIndex((candidate) => candidate.type === "emitTaskSound");
+
+			expect(soundsOf(moved.effects)).toEqual([expect.objectContaining({ status: target })]);
+			// A guard-rejected write stops the effect run, so a refused hook stays silent.
+			expect(soundIndex).toBeGreaterThan(persistIndex);
+		},
+	);
+
+	it("chimes when a failed AI review falls back to Your Review", () => {
+		const moved = transition(state("review-by-ai"), {
+			type: "moveRequested",
+			target: { status: "review-by-user", customColumnId: null },
+			cause: "column-agent-fallback",
+			guards: { ifStatus: "review-by-ai" },
+		});
+		expect(soundsOf(moved.effects)).toEqual([expect.objectContaining({ status: "review-by-user" })]);
+	});
+
+	it("stays silent when the UI already owns the sound", () => {
+		const moved = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "review-by-user", customColumnId: null },
+			clientPlayedSound: true,
+		});
+		expect(soundsOf(moved.effects)).toEqual([]);
+	});
+
+	it("stays silent for a move that does not change the status", () => {
+		const moved = transition(state("review-by-user", {
+			column: { status: "review-by-user", customColumnId: "qa-column" },
+		}), {
+			type: "moveRequested",
+			target: { status: "review-by-user", customColumnId: null },
+		});
+		expect(moved.effects.some((candidate) => candidate.type === "persistColumn")).toBe(true);
+		expect(soundsOf(moved.effects)).toEqual([]);
+	});
+
+	it.each(["in-progress", "review-by-ai", "review-by-colleague"] as const)(
+		"stays silent for a move into %s",
+		(target) => {
+			const moved = transition(state("user-questions"), {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+			});
+			expect(soundsOf(moved.effects)).toEqual([]);
+		},
+	);
+});
+
 describe("boot runtime reconciliation", () => {
 	it.each([
 		["idle", false, false, "idle", []],

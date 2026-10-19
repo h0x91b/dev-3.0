@@ -947,7 +947,7 @@ describe("TaskInfoPanel", () => {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "user-questions",
-				clientPlayedSound: false,
+				clientPlayedSound: true,
 			});
 			expect(dispatch).toHaveBeenCalledWith({
 				type: "updateTask",
@@ -983,7 +983,7 @@ describe("TaskInfoPanel", () => {
 				projectId: "p1",
 				newStatus: "review-by-user",
 				force: true,
-				clientPlayedSound: false,
+				clientPlayedSound: true,
 			});
 			expect(dispatch).toHaveBeenCalledWith({
 				type: "updateTask",
@@ -4283,7 +4283,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "user-questions",
-				clientPlayedSound: false,
+				clientPlayedSound: true,
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
 			expect(screen.queryByTestId("task-status-sheet")).not.toBeInTheDocument();

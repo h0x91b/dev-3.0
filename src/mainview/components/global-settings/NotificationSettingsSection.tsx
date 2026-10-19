@@ -9,12 +9,14 @@ export default function NotificationSettingsSection({
 	t,
 	globalSettings,
 	onSoundToggle,
+	onNeedsYouSoundToggle,
 	onFocusModeToggle,
 	onWatchByDefaultToggle,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
 	onSoundToggle: (enabled: boolean) => void;
+	onNeedsYouSoundToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 }) {
@@ -70,6 +72,24 @@ export default function NotificationSettingsSection({
 						offLabel={t("settings.off")}
 						onToggle={() =>
 							onSoundToggle(globalSettings.playSoundOnTaskComplete === false)
+						}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="task-needs-you-sound">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.taskNeedsYouSound")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.taskNeedsYouSoundDesc")}</p>
+					<SettingsToggle
+						checked={globalSettings.playSoundOnTaskNeedsYou === true}
+						ariaLabel={t("settings.taskNeedsYouSound")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() =>
+							onNeedsYouSoundToggle(globalSettings.playSoundOnTaskNeedsYou !== true)
 						}
 					/>
 				</div>

@@ -2940,6 +2940,20 @@ describe("handlers.moveTask", () => {
 		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed", taskId: "task-1" });
 	});
 
+	it("emitTaskSound: gates the needs-you chime on its own opt-in setting", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
+		emitTaskSound("review-by-user", "task-3");
+		expect(push).not.toHaveBeenCalled();
+
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false, playSoundOnTaskNeedsYou: true } as any);
+		emitTaskSound("user-questions", "task-3");
+		emitTaskSound("completed", "task-3");
+		expect(push.mock.calls).toEqual([["taskSound", { status: "user-questions", taskId: "task-3" }]]);
+	});
+
 	it("emitTaskSound: stays silent when the setting is disabled", () => {
 		const push = vi.fn();
 		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false } as any);

@@ -15,6 +15,7 @@ const t = Object.assign((key: string) => key, {
 
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onSoundToggle = vi.fn();
+	const onNeedsYouSoundToggle = vi.fn();
 	const onFocusModeToggle = vi.fn();
 	const onWatchByDefaultToggle = vi.fn();
 	render(
@@ -23,12 +24,13 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				t={t}
 				globalSettings={{ taskSortOrder: "oldest-first", ...settings } as GlobalSettings}
 				onSoundToggle={onSoundToggle}
+				onNeedsYouSoundToggle={onNeedsYouSoundToggle}
 				onFocusModeToggle={onFocusModeToggle}
 				onWatchByDefaultToggle={onWatchByDefaultToggle}
 			/>
 		</I18nProvider>,
 	);
-	return { onSoundToggle, onFocusModeToggle, onWatchByDefaultToggle };
+	return { onSoundToggle, onNeedsYouSoundToggle, onFocusModeToggle, onWatchByDefaultToggle };
 }
 
 describe("NotificationSettingsSection", () => {
@@ -37,6 +39,7 @@ describe("NotificationSettingsSection", () => {
 
 		expect(screen.getByText("settings.categoryNotifications")).toBeInTheDocument();
 		expect(document.querySelector('[data-settings-entry="task-complete-sound"]')).not.toBeNull();
+		expect(document.querySelector('[data-settings-entry="task-needs-you-sound"]')).not.toBeNull();
 		expect(document.querySelector('[data-settings-entry="focus-mode"]')).not.toBeNull();
 		expect(document.querySelector('[data-settings-entry="watch-by-default"]')).not.toBeNull();
 		expect(screen.getByTestId("browser-notification-settings")).toBeInTheDocument();
@@ -56,5 +59,16 @@ describe("NotificationSettingsSection", () => {
 		expect(callbacks.onSoundToggle).toHaveBeenCalledWith(true);
 		expect(callbacks.onFocusModeToggle).toHaveBeenCalledWith(true);
 		expect(callbacks.onWatchByDefaultToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("shows the needs-you chime off by default and turns it on", async () => {
+		const callbacks = renderSection();
+		const toggle = screen.getByRole("switch", { name: "settings.taskNeedsYouSound" });
+
+		expect(toggle).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(toggle);
+
+		expect(callbacks.onNeedsYouSoundToggle).toHaveBeenCalledWith(true);
+		expect(callbacks.onSoundToggle).not.toHaveBeenCalled();
 	});
 });

@@ -271,6 +271,8 @@ const settings = {
 	"settings.terminalBackendPerTaskHint": "Отдельную задачу можно переключить в её деталях, пока у неё нет живого терминала.",
 	"settings.taskCompleteSound": "Звук завершения задачи",
 	"settings.taskCompleteSoundDesc": "Воспроизводить звук при завершении или отмене задачи",
+	"settings.taskNeedsYouSound": "Звук «задача ждёт вас»",
+	"settings.taskNeedsYouSoundDesc": "Воспроизводить звук, когда задача переходит в «Ваше ревью» или «Есть вопросы»",
 	"settings.watchByDefault": "Следить за задачами по умолчанию",
 	"settings.watchByDefaultDesc": "Предварительно включает «Следить» при запуске задачи. Для каждой задачи это можно изменить отдельно.",
 	"settings.suggestCompletingTasksAfterMerge": "Предлагать завершить задачу после merge",

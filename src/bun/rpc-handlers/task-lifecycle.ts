@@ -1,5 +1,6 @@
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
+import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -294,7 +295,7 @@ export async function moveTask(params: {
  * the backend push or on the renderer's audio pipeline.
  */
 async function debugEmitTaskSound(params: { status: "completed" | "cancelled" }): Promise<{ pushed: boolean }> {
-	const pushed = loadSettingsSync().playSoundOnTaskComplete !== false;
+	const pushed = isTaskSoundEnabled(loadSettingsSync(), params.status);
 	log.info("→ debugEmitTaskSound", { status: params.status, pushed });
 	emitTaskSound(params.status, "debug-probe");
 	return { pushed };

@@ -159,6 +159,11 @@ export interface GlobalSettings {
 	lowBatteryDisabled?: boolean;
 	lowBatteryAnnounced?: boolean;
 	playSoundOnTaskComplete?: boolean;
+	/**
+	 * Chime when a task enters Your Review or User questions. Off unless an
+	 * explicit `true`: those moves happen at the end of every agent turn.
+	 */
+	playSoundOnTaskNeedsYou?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
 	/**

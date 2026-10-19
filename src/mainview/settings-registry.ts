@@ -229,6 +229,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "task-needs-you-sound",
+		category: "notifications",
+		titleKey: "settings.taskNeedsYouSound",
+		descriptionKey: "settings.taskNeedsYouSoundDesc",
+		anchor: "task-needs-you-sound",
+		globalField: "playSoundOnTaskNeedsYou",
+		storage: "global",
+	},
+	{
 		id: "focus-mode",
 		category: "notifications",
 		titleKey: "settings.focusMode",
@@ -650,6 +659,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"freezeDiagnosticsEnabled",
 	"agentTrafficExperiment",
 	"playSoundOnTaskComplete",
+	"playSoundOnTaskNeedsYou",
 	"externalApps",
 	"tipsDisabled",
 	"telemetryDisabled",
