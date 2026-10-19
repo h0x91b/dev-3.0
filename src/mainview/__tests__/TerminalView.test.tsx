@@ -2780,7 +2780,7 @@ describe("TerminalView – shared tmux size", () => {
 		notice(22, 40, false);
 		lastWebSocket!.send.mockClear();
 
-		const onResize = mockTermInstance.onResize.mock.calls[0][0] as (size: { cols: number; rows: number }) => void;
+		const onResize = (mockTermInstance.onResize.mock.calls[0] as unknown[])[0] as (size: { cols: number; rows: number }) => void;
 		onResize({ cols: 22, rows: 40 });
 
 		expect(sent()).toEqual([]);
