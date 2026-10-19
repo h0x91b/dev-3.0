@@ -47,6 +47,8 @@ export interface AutoAccountPick {
 
 interface TaggedReservation extends AccountReservation {
 	key: string;
+	/** Both harnesses' system logins are `accountId: null`, so the kind keeps them apart. */
+	kind: RoutableAccountKind;
 }
 
 /** What a fresh launch hands the command resolver so Auto can route it. */
@@ -73,9 +75,9 @@ export async function autoRoutingContext(
 let reservations: TaggedReservation[] = [];
 const cooling = new Map<RoutableAccountKind, Set<string>>();
 
-function liveReservations(now: number): TaggedReservation[] {
+function liveReservations(kind: RoutableAccountKind, now: number): TaggedReservation[] {
 	reservations = reservations.filter((r) => now - r.at < ROUTING_PARAMS.reservationMs);
-	return reservations;
+	return reservations.filter((r) => r.kind === kind);
 }
 
 async function routingInputs(kind: RoutableAccountKind, exclusions: readonly string[]) {
@@ -105,7 +107,7 @@ export async function pickAutoAccount(opts: {
 }): Promise<AutoAccountPick> {
 	const accounts = await routingInputs(opts.kind, opts.exclusions ?? []);
 	const now = Date.now();
-	const result = routeAccount({ accounts, reservations: liveReservations(now), now, cooling: cooling.get(opts.kind) });
+	const result = routeAccount({ accounts, reservations: liveReservations(opts.kind, now), now, cooling: cooling.get(opts.kind) });
 	cooling.set(opts.kind, result.cooling);
 	if (!result.picked) {
 		const earliest = result.reason.code === "none" ? result.reason.earliestResetAt : null;
@@ -114,6 +116,7 @@ export async function pickAutoAccount(opts: {
 	}
 	reservations.push({
 		key: opts.reservationKey,
+		kind: opts.kind,
 		accountId: result.accountId,
 		at: now,
 		short: ROUTING_PARAMS.reserveShort,
@@ -130,7 +133,7 @@ export async function previewAutoAccount(opts: {
 }): Promise<AutoAccountPreview> {
 	const accounts = await routingInputs(opts.kind, opts.exclusions ?? []);
 	const now = Date.now();
-	const result = routeAccount({ accounts, reservations: liveReservations(now), now, cooling: cooling.get(opts.kind) });
+	const result = routeAccount({ accounts, reservations: liveReservations(opts.kind, now), now, cooling: cooling.get(opts.kind) });
 	return { picked: result.picked, accountId: result.accountId, label: result.label, reason: result.reason, assessed: result.assessed };
 }
 

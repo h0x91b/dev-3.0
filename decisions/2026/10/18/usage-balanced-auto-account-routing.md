@@ -40,6 +40,11 @@ assumed to be 5h.
 - a passed reset counts as 10%;
 - each launch reserves 6pp/1pp, which decays linearly over 20 minutes.
 
+Reservations only rank. The hot and weekly-floor filters read the measured
+(drifted) usage, because a guess that expires in 20 minutes must not defer a
+burst to a reset hours away, nor fail a variant the deferral probe let through.
+Reservations are kept per harness: both system logins are `accountId: null`.
+
 Unlimited logins are an overflow tier, and never-read logins are used only once
 no known login is below 60%.
 

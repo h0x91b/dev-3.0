@@ -13,6 +13,7 @@
  *     window still left — the quota most at risk of expiring unused.
  * "Effective" usage is pessimistic: the measured % is a floor, a stale
  * reading drifts upwards, and recent launches add a decaying reservation.
+ * The hard filters ignore reservations — they rank a burst, never block it.
  */
 import type { AgentAccountIdentity, AgentAccountsState, RoutableAccountKind } from "./agent-accounts";
 import {
@@ -203,18 +204,24 @@ function assess(
 	const ageHours = Math.max(0, now - snap.capturedAt) / 3_600_000;
 	const stale = now - snap.capturedAt > p.freshMs;
 	const shortReset = short.resetsAt != null && short.resetsAt <= now;
-	let shortEff = shortReset ? p.resetFloor : short.usedPercent;
-	if (!shortReset && stale) shortEff += Math.min(p.staleShortCap, p.staleShortPpPerHour * ageHours);
-	shortEff = Math.min(100, shortEff + load.short);
+	// Eligibility reads the measured (drifted) usage; reservations only rank. A
+	// reservation is a guess that expires in minutes, so letting it make an account
+	// hot deferred a burst until a reset hours away.
+	let shortMeasured = shortReset ? p.resetFloor : short.usedPercent;
+	if (!shortReset && stale) shortMeasured += Math.min(p.staleShortCap, p.staleShortPpPerHour * ageHours);
+	shortMeasured = Math.min(100, shortMeasured);
+	const shortEff = Math.min(100, shortMeasured + load.short);
 
 	let weeklyEff: number | null = null;
+	let weeklyMeasured: number | null = null;
 	let tau = 1;
 	let weeklyResetsAt: number | null = null;
 	if (long) {
 		const longReset = long.resetsAt != null && long.resetsAt <= now;
-		weeklyEff = longReset ? p.resetFloor : long.usedPercent;
-		if (!longReset && stale) weeklyEff += Math.min(p.staleWeeklyCap, p.staleWeeklyPpPerHour * ageHours);
-		weeklyEff = Math.min(100, weeklyEff + load.weekly);
+		weeklyMeasured = longReset ? p.resetFloor : long.usedPercent;
+		if (!longReset && stale) weeklyMeasured += Math.min(p.staleWeeklyCap, p.staleWeeklyPpPerHour * ageHours);
+		weeklyMeasured = Math.min(100, weeklyMeasured);
+		weeklyEff = Math.min(100, weeklyMeasured + load.weekly);
 		if (!longReset && long.resetsAt != null && long.windowMinutes) {
 			tau = Math.max(p.tauFloor, (long.resetsAt - now) / (long.windowMinutes * 60_000));
 			weeklyResetsAt = long.resetsAt;
@@ -234,10 +241,11 @@ function assess(
 		stale,
 	};
 	const shortCooling = cooling.has(coolKey(acc.id, "short")) && !shortReset;
-	const hot = shortCooling ? shortEff > p.hotReadmit : shortEff >= p.hot;
+	const hot = shortCooling ? shortMeasured > p.hotReadmit : shortMeasured >= p.hot;
 	if (hot) nextCooling.add(coolKey(acc.id, "short"));
 	const weeklyCooling = cooling.has(coolKey(acc.id, "weekly")) && weeklyResetsAt != null;
-	const floor = weeklyEff != null && (weeklyCooling ? weeklyLeft < p.weeklyReadmit : weeklyLeft < p.weeklyFloor);
+	const weeklyMeasuredLeft = weeklyMeasured == null ? 100 : 100 - weeklyMeasured;
+	const floor = weeklyMeasured != null && (weeklyCooling ? weeklyMeasuredLeft < p.weeklyReadmit : weeklyMeasuredLeft < p.weeklyFloor);
 	if (floor) nextCooling.add(coolKey(acc.id, "weekly"));
 	if (hot) return { ...assessed, status: "hot" };
 	if (floor) return { ...assessed, status: "weekly-floor" };

@@ -125,6 +125,18 @@ describe("routeAccount — the design scenarios", () => {
 		expect(picks).toEqual(["A", "A", "A", "B", "A"]);
 	});
 
+	it("reservations alone never make an account hot or defer a burst to the reset", () => {
+		const accounts = [acc("A", { s: 80, w: 40, sResetH: 4 }), acc("B", { s: 80, w: 40, sResetH: 4 })];
+		const reservations: AccountReservation[] = ["A", "A", "B", "B"].map((id) => ({ accountId: id, at: NOW, short: 6, weekly: 1 }));
+		const r = routeAccount({ accounts, reservations, now: NOW });
+		expect(r.picked).toBe(true);
+		expect(r.assessed.map((a) => a.status)).toEqual(["eligible", "eligible"]);
+		expect(r.assessed[0].shortEff).toBe(92);
+		const nearFloor = [acc("W", { s: 10, w: 94 })];
+		const weekly: AccountReservation[] = [0, 1, 2].map(() => ({ accountId: "W", at: NOW, short: 6, weekly: 1 }));
+		expect(routeAccount({ accounts: nearFloor, reservations: weekly, now: NOW }).picked).toBe(true);
+	});
+
 	it("s11: nothing eligible → no pick, earliest blocking reset, never the metered one", () => {
 		const r = routeAccount({
 			accounts: [

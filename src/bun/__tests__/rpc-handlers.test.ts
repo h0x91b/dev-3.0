@@ -2161,6 +2161,18 @@ describe("handlers.saveGlobalSettings", () => {
 		);
 	});
 
+	// The Auto default is set from the account surfaces, never from this snapshot;
+	// trusting the payload switched Auto off (or back on) on the next unrelated save.
+	it("keeps the stored Auto account default whatever the renderer's snapshot says", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountDefault: { claude: true } } as GlobalSettings);
+		await handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountDefault).toEqual({ claude: true });
+
+		vi.mocked(loadSettings).mockResolvedValue({} as GlobalSettings);
+		await handlers.saveGlobalSettings({ autoAccountDefault: { codex: true } } as unknown as GlobalSettings);
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountDefault).toBeUndefined();
+	});
+
 	// The switch has to reach the collector in this session: a diagnostic that
 	// only starts at the next launch is useless while the app is misbehaving.
 	it("starts and stops the freeze collector when the stored switch changes", async () => {

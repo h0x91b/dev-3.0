@@ -100,6 +100,20 @@ describe("pickAutoAccount", () => {
 		expect((await pickAutoAccount({ kind: "claude", reservationKey: "y" })).accountId).toBe("a");
 	});
 
+	it("keeps one harness's reservations off the other harness's system login", async () => {
+		const accountsState: AgentAccountsState = {
+			claude: { accounts: [], activeId: null, systemConfigDir: "/h/.claude", systemIdentity: { email: "c@x", organization: null, plan: null, planLabel: null, accountId: "uuid-c" } },
+			codex: { accounts: [], activeId: null, currentIdentity: { email: "x@x", organization: null, plan: null, planLabel: null, accountId: "uuid-x" } },
+			omp: { accounts: [], activeId: null },
+		};
+		state.accounts = accountsState;
+		state.report = { snapshots: [], generatedAt: Date.now() } satisfies AgentRateLimitsReport;
+		for (let i = 0; i < 3; i++) await pickAutoAccount({ kind: "claude", reservationKey: `s${i}` });
+		const codex = await previewAutoAccount({ kind: "codex" });
+		expect(codex.assessed[0].reservedShort).toBe(0);
+		expect((await previewAutoAccount({ kind: "claude" })).assessed[0].reservedShort).toBeGreaterThan(0);
+	});
+
 	it("never falls back to an API profile", async () => {
 		setup([account("a"), account("api", { auth: "api", identity: null })], [snapshot("a", 95)]);
 		await expect(pickAutoAccount({ kind: "claude", reservationKey: "z" })).rejects.toBeInstanceOf(NoEligibleAccountError);
