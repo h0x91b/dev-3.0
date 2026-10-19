@@ -12,6 +12,7 @@ import { BackIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { subscribeTerminalPaste, terminalPasteTarget } from "../terminal-paste-request";
 import FileExplorerFrame from "./FileExplorerFrame";
+import SharedSizeBar from "./SharedSizeBar";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProjectTerminalProps {
@@ -34,6 +35,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 	// Undefined off touch: its absence keeps the copy-mode poll from arming on a pointer.
 	const scrollSignal = touchInput ? setScrolledUp : undefined;
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
+	const [sizedElsewhere, setSizedElsewhere] = useState(false);
 	const [rawMode, setRawMode] = useState(false);
 	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 
@@ -154,6 +156,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 					<HelpSpot topicId="terminal.quick-shell" />
 				</div>
 			</div>
+			{ptyUrl && sizedElsewhere && <SharedSizeBar onFitHere={() => termHandle?.takeSize()} />}
 			<div className="relative flex-1 min-h-0 overflow-hidden">
 				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter>
 				{ptyUrl ? (
@@ -162,6 +165,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 						taskId={sessionKey}
 						projectId={projectId}
 						onReady={setTermHandle}
+						onSharedSizing={setSizedElsewhere}
 						touchComposeMode={touchInput && !rawMode}
 						onScrolledIntoHistory={scrollSignal}
 					/>

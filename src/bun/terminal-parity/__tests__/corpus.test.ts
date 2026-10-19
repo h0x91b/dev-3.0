@@ -48,7 +48,7 @@ describe("parity corpus — data integrity", () => {
 		expect(getScenario("create.session-cwd-env")).toBeTruthy();
 		expect(getScenario("exit.status-code-propagates")).toBeTruthy();
 		expect(getScenario("focus.exactly-one-active-view")).toBeTruthy();
-		expect(getScenario("resize.min-across-clients")).toBeTruthy();
+		expect(getScenario("resize.last-active-client")).toBeTruthy();
 		expect(getScenario("capture.content-and-ordering")).toBeTruthy();
 		expect(getScenario("cleanup.reaps-owned-process-tree")).toBeTruthy();
 	});

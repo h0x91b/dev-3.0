@@ -45,7 +45,7 @@ describe("terminal-parity corpus isolation", () => {
 	it("keeps the shared modules free of side-effecting imports", () => {
 		// Standalone `bun` e2e scripts import these modules directly. `pty-server.ts`
 		// starts a WebSocket server at module load, so importing it (previously for
-		// the pure `smallestClientSize` helper) left those scripts running forever
+		// the pure size-negotiation helper) left those scripts running forever
 		// after their checks passed, burning the CI job's entire timeout.
 		const importsPtyServer = /(?:from|import|require\s*\()\s*['"][^'"]*pty-server/;
 		for (const name of ["checks.ts", "corpus.ts", "runner.ts"]) {

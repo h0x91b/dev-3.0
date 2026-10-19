@@ -1,3 +1,5 @@
+> Superseded on 2026-10-19 by `decisions/2026/10/19/shared-pty-last-active-viewer.md`: the shared tmux PTY now follows the last active visible viewer, not the smallest.
+
 # 060 — Shared PTY sizes to the smallest connected client
 
 ## Context

@@ -7,7 +7,14 @@ import { api, isElectrobun } from "./rpc";
 import { getTerminalKeyOverride } from "./terminal-key-overrides";
 import { pasteIntoTerminal, terminalBracketsPaste } from "./terminal-paste";
 import { debugLog } from "./debug-log";
-import { encodeResizeSequence } from "../shared/resize-protocol";
+import {
+	encodeResizeSequence,
+	encodeViewerSignal,
+	isSizingNotice,
+	parseSizingNotice,
+	type SizingNotice,
+	type ViewerSignal,
+} from "../shared/resize-protocol";
 import {
 	claimMessage,
 	decodeNativeStreamMessage,
@@ -236,6 +243,8 @@ export interface TerminalHandle {
 	blur: () => void;
 	/** Native backend only: take the writer lease from whoever holds it. No-op on tmux. */
 	claimWriter: () => void;
+	/** tmux only: size the shared terminal for this viewer instead of another one. */
+	takeSize: () => void;
 	/** Return to the live tail: leave tmux copy-mode, or scroll ghostty's own buffer to the bottom. */
 	scrollToBottom: () => void;
 }
@@ -253,6 +262,11 @@ interface TerminalViewProps {
 	 * refused something it typed. Never fires for a tmux session.
 	 */
 	onNativeStatus?: (status: NativeViewerStatus) => void;
+	/**
+	 * tmux only: true while the shared terminal is sized for ANOTHER viewer, so
+	 * this one renders at that viewer's geometry until the user takes it over.
+	 */
+	onSharedSizing?: (sizedElsewhere: boolean) => void;
 	/**
 	 * The app refused this socket outright (missing/unknown session). Supplying it
 	 * hands recovery to the owner, which renders one shared exited state; without
@@ -295,7 +309,7 @@ const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSharedSizing, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -341,6 +355,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const tmuxStreamRef = useRef(false);
 	/** The PTY's size, which an observer renders at instead of its container's. */
 	const ptyGeometryRef = useRef<{ cols: number; rows: number } | null>(null);
+	/** tmux: the shared PTY's size and whether this viewer is the one it follows. */
+	const sharedSizeRef = useRef<SizingNotice | null>(null);
+	const onSharedSizingRef = useRef(onSharedSizing);
+	onSharedSizingRef.current = onSharedSizing;
+	const sendViewerSignal = useCallback((signal: ViewerSignal) => {
+		const ws = wsRef.current;
+		if (ws?.readyState === WebSocket.OPEN) ws.send(encodeViewerSignal(signal));
+	}, []);
+	/** A user gesture here takes the shared size back — only sent while another viewer has it. */
+	const noteViewerActivity = useCallback(() => {
+		if (sharedSizeRef.current?.sizing === false) sendViewerSignal("active");
+	}, [sendViewerSignal]);
 	/** Set by the terminal-setup effect; re-runs the fit after geometry or role changes. */
 	const refitRef = useRef<(() => void) | null>(null);
 	/** Re-fit on a settled layout — see the assignment for why two frames are needed. */
@@ -603,7 +629,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			//    doesn't introduce a column-re-wrap flicker.
 			if (term) {
 				try {
-					const [nudge, correct] = buildResizeDance(term.cols, term.rows);
+					// A follower's grid is the shared size; the server wants our own viewport.
+					const own = sharedSizeRef.current?.sizing === false ? fitAddonRef.current?.proposeDimensions() : undefined;
+					const [nudge, correct] = buildResizeDance(own?.cols ?? term.cols, own?.rows ?? term.rows);
 					ws.send(nudge);
 					setTimeout(() => {
 						if (ws.readyState === WebSocket.OPEN) {
@@ -1226,6 +1254,25 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					}
 					return;
 				}
+				// tmux, sized for another viewer: render at its grid like an observer, but
+				// keep reporting our own viewport so taking over applies it at once.
+				const shared = sharedSizeRef.current;
+				if (shared && !shared.sizing) {
+					let own: { cols: number; rows: number } | undefined;
+					try { own = fitAddon?.proposeDimensions(); } catch { /* disposed */ }
+					try {
+						term.resize(shared.cols, shared.rows);
+						trail.note("resize-follower", `${shared.cols}x${shared.rows}`);
+					} catch (err) {
+						if (!disposed) {
+							logDiagnostic("refit", "error", "follower term.resize threw", { error: String(err), cols: shared.cols, rows: shared.rows, trail: trail.format() });
+							recoverFromRendererCrashRef.current?.("follower-resize", String(err));
+						}
+					}
+					const socket = wsRef.current;
+					if (own && socket?.readyState === WebSocket.OPEN) socket.send(encodeResizeSequence(own.cols, own.rows));
+					return;
+				}
 				if (!fitAddon) return;
 				let dims: { cols: number; rows: number } | undefined;
 				// A throw here on a LIVE terminal leaves the canvas frozen with no trace —
@@ -1358,7 +1405,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 										wsRef.current.send(claimMessage());
 									}
 								},
+								takeSize: () => sendViewerSignal("active"),
 								sendInput: (data: string) => {
+									noteViewerActivity();
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(data);
 									}
@@ -1368,11 +1417,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								// copy-mode keys, so a pending scroll-up is cleared first (async only
 								// when there is something to clear — the common path stays sync).
 								paste: (data: string) => {
+									noteViewerActivity();
 									const run = () => { try { pasteIntoTerminal(term, data, tmuxStreamRef.current); } catch { /* disposed */ } };
 									if (copyModePending()) void exitCopyModeIfNeeded().then(run);
 									else run();
 								},
 								submit: (data: string) => {
+									noteViewerActivity();
 									const run = () => submitPastedText(data, {
 										paste: (value) => pasteIntoTerminal(term, value, tmuxStreamRef.current),
 										sendInput: (value) => {
@@ -1840,6 +1891,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			else refitRef.current?.();
 		}
 
+		/** tmux: follow the shared size while another viewer owns it; fit our own when we do. */
+		function adoptSharedSizing(notice: SizingNotice): void {
+			const previous = sharedSizeRef.current;
+			sharedSizeRef.current = notice;
+			if (previous?.sizing !== notice.sizing) {
+				onSharedSizingRef.current?.(!notice.sizing);
+				// The notice strip appears or goes away, so measure after layout.
+				refitAfterLayoutRef.current?.();
+				return;
+			}
+			if (previous.cols !== notice.cols || previous.rows !== notice.rows) refitRef.current?.();
+		}
+
 		/** Follow the writer's PTY shape; a writer keeps fitting its own container. */
 		function adoptPtyGeometry(cols?: number, rows?: number): void {
 			if (!cols || !rows) return;
@@ -1946,6 +2010,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						}
 					}, 50);
 				}
+				// Connecting alone never takes the shared size: only a viewer the user
+				// is looking at right now does, and a backgrounded one opts out.
+				if (document.visibilityState === "hidden") socket.send(encodeViewerSignal("hidden"));
+				else if (document.hasFocus()) socket.send(encodeViewerSignal("active"));
 			};
 
 			socket.onmessage = (event) => {
@@ -1954,6 +2022,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				try {
 					latency.noteOutput();
 					if (typeof event.data === "string") {
+						if (isSizingNotice(event.data)) {
+							const notice = parseSizingNotice(event.data);
+							if (notice) adoptSharedSizing(notice);
+							return;
+						}
 						// A native session frames every message with a watermark header; a
 						// tmux session sends bare terminal text and never enters this branch.
 						const native = decodeNativeStreamMessage(event.data);
@@ -2038,6 +2111,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}),
 				term.onResize(({ cols, rows }) => {
 					if (disposed) return;
+					// A follower's grid is the shared size, not its own; refit reports that.
+					if (sharedSizeRef.current?.sizing === false) return;
 					if (ws?.readyState === WebSocket.OPEN) {
 						ws.send(encodeResizeSequence(cols, rows));
 					}
@@ -2402,13 +2477,33 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		return () => { cancelled = true; };
 	}, [searchOpen, searchPaneId, taskId]);
 
+	// Typing in, clicking or focusing this viewer makes it the one the shared
+	// terminal is sized for (tmux; the server ignores this on native).
+	useEffect(() => {
+		const container = containerRef.current;
+		const onFocus = () => sendViewerSignal("active");
+		window.addEventListener("focus", onFocus);
+		container?.addEventListener("pointerdown", noteViewerActivity, true);
+		container?.addEventListener("keydown", noteViewerActivity, true);
+		return () => {
+			window.removeEventListener("focus", onFocus);
+			container?.removeEventListener("pointerdown", noteViewerActivity, true);
+			container?.removeEventListener("keydown", noteViewerActivity, true);
+		};
+	}, [sendViewerSignal, noteViewerActivity]);
+
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force
 	// tmux to fully redraw. This fixes display glitches (row offsets,
 	// stuck/duplicated text) that accumulate while the terminal was hidden.
 	useEffect(() => {
 		function onVisibilityChange() {
-			if (document.hidden) return;
+			if (document.hidden) {
+				sendViewerSignal("hidden");
+				return;
+			}
+			// Before the dance, so the PTY is already sized for us when it repaints.
+			sendViewerSignal("active");
 			const ws = wsRef.current;
 			const term = termRef.current;
 			const fit = fitAddonRef.current;
@@ -2429,7 +2524,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		document.addEventListener("visibilitychange", onVisibilityChange);
 		return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-	}, []);
+	}, [sendViewerSignal]);
 
 	// Scale terminal font size with app zoom level.
 	// Font-size scaling (not CSS zoom) is used for the app, so canvas isn't

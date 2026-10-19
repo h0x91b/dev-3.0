@@ -25,6 +25,7 @@ import TerminalWindowNav from "./TerminalWindowNav";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
 import NativeViewerBar from "./NativeViewerBar";
+import SharedSizeBar from "./SharedSizeBar";
 import {
 	mergeViewerStatus,
 	type NativeStreamRole,
@@ -115,6 +116,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		setRefusedReason(snapshot.refusedReason);
 	}, []);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
+	/** tmux: the shared terminal is sized for another viewer right now. */
+	const [sizedElsewhere, setSizedElsewhere] = useState(false);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
 	// The recovery offer came from hibernation, not from a session that died on
@@ -1183,6 +1186,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				consumePendingFocus(handle);
 			}}
 			onNativeStatus={handleNativeStatus}
+			onSharedSizing={setSizedElsewhere}
 			touchComposeMode={touchInput && !rawMode}
 			onScrolledIntoHistory={scrollSignalFor(TMUX_VIEW)}
 		/>
@@ -1212,6 +1216,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					onTakeControl={() => termHandle?.claimWriter()}
 				/>
 			)}
+			{ptyUrl && sizedElsewhere && <SharedSizeBar onFitHere={() => termHandle?.takeSize()} />}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">

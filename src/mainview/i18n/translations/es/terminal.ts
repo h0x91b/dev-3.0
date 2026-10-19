@@ -107,6 +107,9 @@ const terminal = {
 	"nativeViewer.transferFailedHint": "El host de terminal no confirmó la transferencia. Comprueba que la terminal sigue viva e inténtalo de nuevo.",
 	"nativeViewer.takeControl": "Tomar el control",
 	"nativeViewer.takeControlHint": "Escribirás tú; el otro cliente pasará a solo lectura",
+	"sharedSize.sizedElsewhere": "Ajustada a otro cliente — haz clic en la terminal para ajustarla aquí",
+	"sharedSize.fitHere": "Ajustar aquí",
+	"sharedSize.fitHereHint": "Ajusta la terminal a esta ventana; los demás clientes la verán con este tamaño",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-div",

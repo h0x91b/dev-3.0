@@ -41,7 +41,7 @@ export const NATIVE_DEFERRED_MULTI_VIEW_SCENARIOS = [
 ] as const;
 
 /** `pure` scenarios run backend-neutrally (no runner needed). */
-export const NATIVE_PURE_SCENARIOS = ["resize.min-across-clients", "resize.invalid-is-ignored"] as const;
+export const NATIVE_PURE_SCENARIOS = ["resize.last-active-client", "resize.invalid-is-ignored"] as const;
 
 /** `gap` scenarios: documented in the corpus, not driven here (same as tmux). */
 export const NATIVE_GAP_SCENARIOS = [

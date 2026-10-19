@@ -41,7 +41,7 @@ vi.mock("../../TerminalView", () => ({
 	default: ({ ptyUrl, onReady }: { ptyUrl: string; onReady?: (h: unknown) => void }) => {
 		const paneId = ptyUrl.split("~")[1] ?? "";
 		useEffect(() => {
-			onReady?.({ focus: () => focusCalls.push(paneId), blur: () => {}, paste: () => {}, claimWriter: () => {} });
+			onReady?.({ focus: () => focusCalls.push(paneId), blur: () => {}, paste: () => {}, claimWriter: () => {}, takeSize: () => {} });
 		}, [ptyUrl]);
 		return <div data-testid="terminal-view" data-pty-url={ptyUrl} />;
 	},

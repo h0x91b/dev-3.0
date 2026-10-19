@@ -17,7 +17,7 @@ TmuxClient) / `pure` (product pure helper) / `gap` (documented, not driven here)
 | `attach.missing-session-is-clean` | attach (neg) | required | live | MIG-006, INT-005 |
 | `attach.duplicate-attach-does-not-disrupt` | attach (neg) | intent-diff | gap | HOST-004, HOST-005 |
 | `input.keys-reach-process` | input | required | live | INT-002, INT-005, HOST-005 |
-| `resize.min-across-clients` | resize | intent-diff | pure | HOST-005, LAY-005, LAY-007 |
+| `resize.last-active-client` | resize | intent-diff | pure | HOST-005, LAY-005, LAY-007 |
 | `resize.invalid-is-ignored` | resize (neg) | required | pure | HOST-005, LAY-007 |
 | `split.adds-second-view` | split | required | live | LAY-004, INT-001, INT-002, MIG-004 |
 | `focus.exactly-one-active-view` | focus | required | live | LAY-004, LAY-005, INT-002 |
@@ -37,12 +37,12 @@ TmuxClient) / `pure` (product pure helper) / `gap` (documented, not driven here)
 - **MIG-004** (native creation opt-in, single owner): `create.session-cwd-env`, `split.adds-second-view`
 - **MIG-006** (tmux failure isolation): `attach.missing-session-is-clean`, `cleanup.removes-session`, `cleanup.reaps-owned-process-tree`, `cleanup.retry-is-idempotent`
 - **HOST-004** (no duplicate hosts/attaches): `attach.duplicate-attach-does-not-disrupt`
-- **HOST-005** (multi-client, one writer): `attach.read-current-and-subsequent-output`, `attach.duplicate-attach-does-not-disrupt`, `input.keys-reach-process`, `resize.min-across-clients`, `resize.invalid-is-ignored`
+- **HOST-005** (multi-client, one writer): `attach.read-current-and-subsequent-output`, `attach.duplicate-attach-does-not-disrupt`, `input.keys-reach-process`, `resize.last-active-client`, `resize.invalid-is-ignored`
 - **HOST-006** (survive restart/reconnect): `reconnect.session-survives-detach`
 - **LAY-003** (logical view ids across remounts): `create.stable-logical-id`, `reconnect.session-survives-detach`
 - **LAY-004** (layout behavior): `split.adds-second-view`, `focus.exactly-one-active-view`
-- **LAY-005** (shared vs client-local state): `focus.exactly-one-active-view`, `resize.min-across-clients`
-- **LAY-007** (multi-surface rendering): `resize.min-across-clients`, `resize.invalid-is-ignored`
+- **LAY-005** (shared vs client-local state): `focus.exactly-one-active-view`, `resize.last-active-client`
+- **LAY-007** (multi-surface rendering): `resize.last-active-client`, `resize.invalid-is-ignored`
 - **STATE-006** (stream resync): `reconnect.session-survives-detach`, `high-output.lossless-ordered`
 - **STATE-007** (backpressure/memory budgets): `high-output.lossless-ordered`
 - **STATE-008** (restore terminal features — capture/search): `capture.content-and-ordering`, `capture.dead-view-is-clean`, `exit.process-exit-ends-view`

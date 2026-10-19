@@ -12,11 +12,11 @@
  *
  * Import hygiene: this module must stay free of side-effecting imports. It is
  * loaded by standalone `bun` e2e scripts, and `pty-server.ts` (the previous home
- * of `smallestClientSize`) starts a WebSocket server at load time, which kept
+ * of the size negotiator) starts a WebSocket server at load time, which kept
  * those scripts alive forever after their checks had passed.
  */
 import { realpathSync } from "node:fs";
-import { encodeResizeSequence, parseResizeSequence, smallestClientSize } from "../../shared/resize-protocol";
+import { encodeResizeSequence, parseResizeSequence, pickSizingViewer } from "../../shared/resize-protocol";
 import type { ParityRunner } from "./runner";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -327,24 +327,24 @@ export const LIVE_CHECKS: Record<string, (runner: ParityRunner, ctx: CheckContex
 
 /** Executable checks for every `pure` corpus scenario (no backend needed). */
 export const PURE_CHECKS: Record<string, () => void> = {
-	"resize.min-across-clients": () => {
-		const negotiated = smallestClientSize([
-			{ cols: 120, rows: 40 },
-			{ cols: 80, rows: 50 },
-			{ cols: 100, rows: 30 },
+	"resize.last-active-client": () => {
+		const negotiated = pickSizingViewer([
+			{ cols: 120, rows: 40, activeAt: 3 },
+			{ cols: 80, rows: 50, activeAt: 7 },
+			{ cols: 100, rows: 30, activeAt: 9, hidden: true },
 		]);
-		assert(negotiated?.cols === 80 && negotiated.rows === 30, "size is the per-axis minimum across clients");
-		const withUnsized = smallestClientSize([{ cols: 80, rows: 24 }, {}]);
-		assert(withUnsized?.cols === 80 && withUnsized.rows === 24, "a client with no reported size does not shrink the result");
+		assert(negotiated?.cols === 80 && negotiated.rows === 50, "size follows the most recently active visible client");
+		const withUnsized = pickSizingViewer([{ cols: 80, rows: 24 }, { activeAt: 5 }]);
+		assert(withUnsized?.cols === 80 && withUnsized.rows === 24, "a client with no reported size cannot take the size");
 	},
 
 	"resize.invalid-is-ignored": () => {
-		const negotiated = smallestClientSize([
-			{ cols: 0, rows: -5 },
-			{ cols: 100, rows: 40 },
+		const negotiated = pickSizingViewer([
+			{ cols: 0, rows: -5, activeAt: 2 },
+			{ cols: 100, rows: 40, activeAt: 1 },
 		]);
 		assert(negotiated?.cols === 100 && negotiated.rows === 40, "non-positive dimensions do not contribute");
-		assert(smallestClientSize([{ cols: 0, rows: 0 }]) === null, "no valid size yields no applied geometry");
+		assert(pickSizingViewer([{ cols: 0, rows: 0 }]) === null, "no valid size yields no applied geometry");
 		assert(parseResizeSequence("\x1b]resize;abc;def\x07") === null, "a malformed resize report parses to nothing");
 		const parsed = parseResizeSequence(encodeResizeSequence(132, 43));
 		assert(parsed?.cols === 132 && parsed.rows === 43, "a well-formed resize report round-trips");

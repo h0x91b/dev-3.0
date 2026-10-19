@@ -57,7 +57,7 @@ vi.mock("../../TerminalView", () => ({
 			paneScrollToBottom.set(ptyUrl, scrollToBottom);
 			setTimeout(() => onReady({
 				sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(),
-				focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom,
+				focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), takeSize: vi.fn(), scrollToBottom,
 			}), 0);
 		}
 		return <div data-testid="terminal-view" data-pty-url={ptyUrl} />;

@@ -2,7 +2,15 @@ import { access } from "node:fs/promises";
 import { getTaskTitle, type TmuxLayout, type TmuxWindowInfo, type TmuxPaneInfo } from "../shared/types";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import type { TerminalBackendIdentity } from "../shared/terminal-backend-identity";
-import { isResizeSequence, parseResizeSequence, smallestClientSize } from "../shared/resize-protocol";
+import {
+	encodeSizingNotice,
+	isResizeSequence,
+	isViewerSignal,
+	parseResizeSequence,
+	parseViewerSignal,
+	pickSizingViewer,
+	type ViewerSignal,
+} from "../shared/resize-protocol";
 import {
 	attachMessage,
 	decodeNativeStreamMessage,
@@ -188,8 +196,8 @@ interface PtySession {
 	configureTimer: ReturnType<typeof setTimeout> | null;
 	/** Partial OSC 52 clipboard sequence buffered across PTY chunks. */
 	osc52Buffer: string;
-	/** Size last applied to the shared PTY (min across all clients). Used to
-	 *  detect same-size resizes that need a forced redraw — see applyClientSizes. */
+	/** Size last applied to the shared PTY. Used to detect same-size resizes
+	 *  that need a forced redraw — see applyClientSizes. */
 	appliedCols?: number;
 	appliedRows?: number;
 }
@@ -1247,26 +1255,6 @@ function checkForBell(data: string, taskId: string): void {
 }
 
 /**
- * Resize the single shared PTY to the SMALLEST size requested across all
- * currently connected clients.
- *
- * One PTY (one tmux attach client) is shared by every viewer of a session —
- * multiple app windows on the same task, plus any remote/browser clients. The
- * PTY can only be one size, so if two windows of different sizes each sent
- * their own size we'd flip-flop (last write wins) and every window except the
- * most recent one would render against the wrong geometry.
- *
- * Instead we clamp to the min cols and min rows independently — exactly how
- * tmux negotiates a session shared by multiple real clients. The smallest
- * viewer gets a perfect fit; larger viewers letterbox the content (blank
- * margin on the right / bottom) which is the correct, stable behaviour.
- *
- * Each client's last requested size lives on the WS object (`ptyCols`/
- * `ptyRows`); clients that haven't reported a size yet are ignored so a
- * freshly-connected window doesn't shrink everyone to the 80x24 default before
- * its real size arrives.
- */
-/**
  * The session's live write/resize surface, whichever backend owns it. Both are
  * the SAME shape on purpose: the WebSocket bridge, geometry negotiation, and
  * batching above this line stay backend-agnostic.
@@ -1712,7 +1700,58 @@ export function _nativeTakeoversInFlightForTests(): number {
 	return nativeTakeoverInFlight.size;
 }
 
-function applyClientSizes(session: PtySession): void {
+/** Orders viewer gestures across every session; only relative order matters. */
+let viewerActivitySeq = 0;
+
+/** Record a viewer's presence signal on its socket, where applyClientSizes reads it. */
+function noteViewerSignal(ws: any, signal: ViewerSignal): void {
+	if (signal === "hidden") {
+		ws.ptyHidden = true;
+		return;
+	}
+	ws.ptyHidden = false;
+	ws.ptyActiveAt = ++viewerActivitySeq;
+}
+
+/** The tmux viewer the shared PTY is sized for — see pickSizingViewer. */
+function sizingClient(session: PtySession): any | null {
+	const picked = pickSizingViewer(
+		Array.from(session.clients, (client: any) => ({
+			client,
+			cols: client.ptyCols,
+			rows: client.ptyRows,
+			hidden: client.ptyHidden,
+			activeAt: client.ptyActiveAt,
+		})),
+	);
+	return picked?.client ?? null;
+}
+
+/** Tell each tmux viewer the PTY's size and whether it is the one sizing it. */
+function publishSharedSizing(session: PtySession, sizer: any): void {
+	const { appliedCols: cols, appliedRows: rows } = session;
+	if (!cols || !rows) return;
+	for (const client of session.clients as Set<any>) {
+		const notice = encodeSizingNotice({ cols, rows, sizing: client === sizer });
+		if (client.lastSizingNotice === notice) continue;
+		client.lastSizingNotice = notice;
+		sendToClient(client, notice);
+	}
+}
+
+/**
+ * Size the single shared PTY for one viewer.
+ *
+ * One PTY (one tmux attach client) is shared by every viewer of a session —
+ * app windows plus remote/browser tabs — and can only be one size. tmux: the
+ * most recently ACTIVE visible viewer wins (`pickSizingViewer`), and every
+ * other viewer is told to render at that geometry. Native: the writer wins.
+ *
+ * `repaintUnchanged` asks for the redraw jiggle when the size does not change —
+ * wanted for a resize report (a new viewer needs its first paint), not for a
+ * presence signal that merely confirmed the current sizer.
+ */
+function applyClientSizes(session: PtySession, repaintUnchanged = true): void {
 	const term = sessionShell(session);
 	if (!term) return;
 	// Only the process holding the HOST lease may size the shared PTY. Without this a
@@ -1723,11 +1762,10 @@ function applyClientSizes(session: PtySession): void {
 	// negotiation of its own, so clamping to the smallest viewer would let any
 	// remote tab (a phone in portrait, say) shrink the writer's shell out from
 	// under it. Observers letterbox instead — their zoom stays client-local.
+	const sizer = session.backend === "native" ? null : sizingClient(session);
 	const target = session.backend === "native"
 		? writerClientSize(session)
-		: smallestClientSize(
-			Array.from(session.clients, (c) => ({ cols: (c as any).ptyCols, rows: (c as any).ptyRows })),
-		);
+		: sizer && { cols: sizer.ptyCols as number, rows: sizer.ptyRows as number };
 	if (!target) return;
 	const { cols: minCols, rows: minRows } = target;
 
@@ -1741,14 +1779,17 @@ function applyClientSizes(session: PtySession): void {
 		// resize, so that viewer's freshly-mounted blank terminal would never get
 		// its initial paint. Force a full redraw with a one-row jiggle (same trick
 		// as the WKWebView resize nudge in window-manager.ts).
-		try {
-			term.resize(minCols, Math.max(1, minRows - 1));
-			setTimeout(() => {
-				try { term.resize(minCols, minRows); } catch { /* ignore */ }
-			}, 16);
-		} catch (err) {
-			log.debug("applyClientSizes jiggle failed", { error: String(err) });
+		if (repaintUnchanged) {
+			try {
+				term.resize(minCols, Math.max(1, minRows - 1));
+				setTimeout(() => {
+					try { term.resize(minCols, minRows); } catch { /* ignore */ }
+				}, 16);
+			} catch (err) {
+				log.debug("applyClientSizes jiggle failed", { error: String(err) });
+			}
 		}
+		publishSharedSizing(session, sizer);
 		return;
 	}
 
@@ -1795,6 +1836,7 @@ function applyClientSizes(session: PtySession): void {
 	} catch (err) {
 		log.debug("applyClientSizes resize failed", { error: String(err) });
 	}
+	publishSharedSizing(session, sizer);
 }
 
 /**
@@ -2384,7 +2426,7 @@ const ptyServer = Bun.serve({
 					const text = typeof message === "string" ? message : new TextDecoder().decode(message);
 					const size = isResizeSequence(text) ? parseResizeSequence(text) : null;
 					if (size) external.resize(ws as unknown as ExternalPtyViewer, size.cols, size.rows);
-					else if (!isResizeSequence(text)) external.input(ws as unknown as ExternalPtyViewer, text);
+					else if (!isResizeSequence(text) && !isViewerSignal(text)) external.input(ws as unknown as ExternalPtyViewer, text);
 					return;
 				}
 				const session = sessions.get(sessionId);
@@ -2405,6 +2447,8 @@ const ptyServer = Bun.serve({
 						}
 						return;
 					}
+					// Native sizing follows the writer lease, not presence.
+					if (isViewerSignal(data)) return;
 					// Every viewer reports its own viewport; only the writer's reaches the
 					// PTY (see applyClientSizes), so an observer's zoom stays client-local.
 					if (isResizeSequence(data)) {
@@ -2428,12 +2472,21 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
-				// Handle resize messages. Record this client's requested size and
-				// resize the shared PTY to the smallest across all clients, so
-				// multiple windows on the same task don't fight over the geometry.
+				if (isViewerSignal(data)) {
+					const signal = parseViewerSignal(data);
+					if (signal) {
+						noteViewerSignal(ws, signal);
+						applyClientSizes(session, false);
+					}
+					return;
+				}
+
+				// Record this client's viewport; the shared PTY follows whichever
+				// viewer was active last (applyClientSizes). A repeat of the same
+				// report changes nothing, so it must not jiggle everyone's screen.
 				if (isResizeSequence(data)) {
 					const size = parseResizeSequence(data);
-					if (size) {
+					if (size && (size.cols !== (ws as any).ptyCols || size.rows !== (ws as any).ptyRows)) {
 						(ws as any).ptyCols = size.cols;
 						(ws as any).ptyRows = size.rows;
 						applyClientSizes(session);
@@ -2484,9 +2537,9 @@ const ptyServer = Bun.serve({
 							roleMessage(effectiveNativeRole(session, promoted.writer), false, nativePtyGeometry(session)),
 						);
 					}
-					// A viewer left: the smallest-size constraint may have relaxed,
-					// so grow the PTY back to the smallest of the remaining clients.
-					applyClientSizes(session);
+					// A viewer left: if it was the sizer, the next most recently
+					// active viewer takes the size over. Nobody new needs a first paint.
+					applyClientSizes(session, false);
 				}
 			} catch (err) {
 				log.error("WS close handler error", {

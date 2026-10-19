@@ -31,7 +31,7 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
-const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom: vi.fn() };
+const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), takeSize: vi.fn(), scrollToBottom: vi.fn() };
 let terminalViewOnScrolledIntoHistory: ((scrolledUp: boolean) => void) | undefined;
 
 vi.mock("../../TerminalView", () => ({

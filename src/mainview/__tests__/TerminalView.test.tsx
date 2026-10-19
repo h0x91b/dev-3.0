@@ -2726,3 +2726,141 @@ describe("TerminalView – Ctrl+Backspace word delete", () => {
 		expect(mockInput).not.toHaveBeenCalled();
 	});
 });
+
+// One tmux PTY, several viewers: it follows the viewer used last
+// (h0x91b/dev-3.0#2000). Every other viewer renders at that grid and takes it
+// back with a click, a keystroke, focus or becoming visible.
+describe("TerminalView – shared tmux size", () => {
+	const ACTIVE = "\x1b]dev3viewer;active\x07";
+	const HIDDEN = "\x1b]dev3viewer;hidden\x07";
+
+	async function renderShared(onSharedSizing = vi.fn()) {
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onSharedSizing={onSharedSizing} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => {
+			fireResize?.();
+		});
+		return { onSharedSizing, container: result.container.querySelector("[data-terminal]") as HTMLElement };
+	}
+
+	function notice(cols: number, rows: number, sizing: boolean) {
+		act(() => {
+			lastWebSocket?.onmessage?.({ data: `\x1b]dev3sizing;${cols};${rows};${sizing ? 1 : 0}\x07` } as MessageEvent);
+		});
+	}
+
+	function sent(): string[] {
+		return lastWebSocket!.send.mock.calls.map((call) => call[0] as string);
+	}
+
+	it("renders at the shared grid while sized elsewhere, and keeps reporting its own viewport", async () => {
+		const { onSharedSizing } = await renderShared();
+		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
+		mockTermInstance.resize.mockClear();
+		lastWebSocket!.send.mockClear();
+
+		notice(22, 40, false);
+
+		expect(onSharedSizing).toHaveBeenLastCalledWith(true);
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(22, 40);
+		expect(sent()).toContain("\x1b]resize;100;30\x07");
+		expect(sent()).not.toContain("\x1b]resize;22;40\x07");
+	});
+
+	it("never reports the shared grid it follows as its own size", async () => {
+		await renderShared();
+		notice(22, 40, false);
+		lastWebSocket!.send.mockClear();
+
+		const onResize = mockTermInstance.onResize.mock.calls[0][0] as (size: { cols: number; rows: number }) => void;
+		onResize({ cols: 22, rows: 40 });
+
+		expect(sent()).toEqual([]);
+	});
+
+	it("goes back to fitting its own container once it is the one sized for", async () => {
+		const { onSharedSizing } = await renderShared();
+		notice(22, 40, false);
+		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
+		mockTermInstance.resize.mockClear();
+
+		notice(100, 30, true);
+
+		expect(onSharedSizing).toHaveBeenLastCalledWith(false);
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(100, 30);
+	});
+
+	it("takes the size back on a click or keystroke only while another viewer has it", async () => {
+		const { container } = await renderShared();
+		notice(100, 30, true);
+		lastWebSocket!.send.mockClear();
+		fireEvent.pointerDown(container);
+		fireEvent.keyDown(container, { key: "a" });
+		expect(sent()).not.toContain(ACTIVE);
+
+		notice(22, 40, false);
+		fireEvent.pointerDown(container);
+		expect(sent()).toContain(ACTIVE);
+	});
+
+	it("takes the size from the handle's Fit here action and from composer input", async () => {
+		let handle: TerminalHandle | null = null;
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onReady={(h) => { handle = h; }} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => {
+			fireResize?.();
+		});
+		lastWebSocket!.send.mockClear();
+		handle!.takeSize();
+		expect(sent()).toEqual([ACTIVE]);
+
+		notice(22, 40, false);
+		lastWebSocket!.send.mockClear();
+		handle!.sendInput("x");
+		expect(sent()).toEqual([ACTIVE, "x"]);
+	});
+
+	it("reports going hidden and coming back", async () => {
+		await renderShared();
+		lastWebSocket!.send.mockClear();
+
+		Object.defineProperty(document, "hidden", { configurable: true, value: true });
+		act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+		expect(sent()).toContain(HIDDEN);
+
+		Object.defineProperty(document, "hidden", { configurable: true, value: false });
+		act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+		expect(sent()).toContain(ACTIVE);
+	});
+
+	it("claims the size on connect only when the user is looking at it", async () => {
+		const hasFocus = vi.spyOn(document, "hasFocus");
+		try {
+			hasFocus.mockReturnValue(false);
+			await renderShared();
+			act(() => { lastWebSocket!.onopen?.(new Event("open")); });
+			expect(sent()).not.toContain(ACTIVE);
+
+			hasFocus.mockReturnValue(true);
+			act(() => { lastWebSocket!.onopen?.(new Event("open")); });
+			expect(sent()).toContain(ACTIVE);
+		} finally {
+			hasFocus.mockRestore();
+		}
+	});
+});

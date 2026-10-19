@@ -112,6 +112,9 @@ const terminal = {
 	"nativeViewer.transferFailedHint": "Хост терминала не подтвердил передачу управления. Проверьте, жив ли терминал, и попробуйте снова.",
 	"nativeViewer.takeControl": "Взять управление",
 	"nativeViewer.takeControlHint": "Печатать будете вы, другой клиент перейдёт в режим чтения",
+	"sharedSize.sizedElsewhere": "Размер подогнан под другой клиент — нажмите на терминал, чтобы подогнать здесь",
+	"sharedSize.fitHere": "Подогнать здесь",
+	"sharedSize.fitHereHint": "Подогнать терминал под это окно; другие клиенты увидят его в этом размере",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",

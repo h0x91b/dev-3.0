@@ -302,22 +302,22 @@ export const PARITY_CORPUS: readonly ParityScenario[] = [
 	},
 	// ── resize ──────────────────────────────────────────────────────────
 	{
-		id: "resize.min-across-clients",
+		id: "resize.last-active-client",
 		category: "resize",
 		kind: "positive",
-		title: "Shared size is negotiated across clients",
+		title: "Shared size follows the last active client",
 		intent:
-			"When several clients view one session at different sizes, the applied geometry is the smallest cols and smallest rows independently, so the smallest viewer fits and larger viewers letterbox.",
+			"When several clients view one session at different sizes, the applied geometry is the most recently active visible client's, so the viewer in use fits and the others render at its geometry.",
 		observables: [
-			"Given several client sizes, the negotiated size is the per-axis minimum of the positive sizes.",
-			"Clients that have not reported a size yet do not shrink the result.",
+			"Given several client sizes, the negotiated size is the one with the latest activity among visible clients.",
+			"Clients that have not reported a size yet cannot take the size.",
 		],
 		parity: {
 			level: "intentional-difference",
 			note:
-				"The min-across-clients letterbox model is tmux's (`resize-negotiation`). Native negotiates under writer-owns-resize (HOST-005). The pure negotiator is still captured because it is the current product contract.",
+				"The last-active model is tmux's own `window-size latest` (`resize-negotiation`). Native negotiates under writer-owns-resize (HOST-005). The pure negotiator is still captured because it is the current product contract.",
 		},
-		verification: { mode: "pure", note: "Driven through the product pure helper `smallestClientSize` — no tmux, no PTY." },
+		verification: { mode: "pure", note: "Driven through the product pure helper `pickSizingViewer` — no tmux, no PTY." },
 		platform: "any",
 		protects: ["HOST-005", "LAY-005", "LAY-007"],
 	},
@@ -334,7 +334,7 @@ export const PARITY_CORPUS: readonly ParityScenario[] = [
 		parity: { level: "required" },
 		verification: {
 			mode: "pure",
-			note: "Driven through the product pure helpers `smallestClientSize` and `parseResizeSequence`.",
+			note: "Driven through the product pure helpers `pickSizingViewer` and `parseResizeSequence`.",
 		},
 		platform: "any",
 		protects: ["HOST-005", "LAY-007"],

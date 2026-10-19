@@ -38,7 +38,7 @@ Every scenario is classified so a native backend is never forced to emulate a
 tmux artifact. `required` behaviors (stable logical ids, cwd/env propagation,
 capture ordering, single active view, owned cleanup, clean error handling) must
 match. The `INTENTIONAL_DIFFERENCES` catalog (id/pane string formats, 16ms
-output batching, min-across-clients resize + jiggle redraw, multi-writer
+output batching, last-active-client resize + jiggle redraw, multi-writer
 sessions, copy-mode search, status-bar reservation, hostname-default titles)
 records where native may legitimately differ — the "record intentional
 differences" half of roadmap item CUT-001.
