@@ -1,5 +1,7 @@
 # 146 — Windows Job Object containment for detached PTYs
 
+The prototype implementation described here was retired on 2026-10-20; see [retire-detached-pty-development-spike](../../10/20/retire-detached-pty-development-spike.md). The production native-session registry retains its own Windows Job Object containment.
+
 ## Context
 
 The detached PTY tracer reattached to the same PowerShell PID and state on Bun

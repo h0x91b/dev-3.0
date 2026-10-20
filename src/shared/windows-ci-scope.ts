@@ -86,7 +86,6 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/__tests__/native-task-terminal.bun-e2e.ts",
 	"src/bun/__tests__/native-task-terminal-controller.ts",
 	"src/shared/native-terminal-runtime.ts",
-	"src/bun/prototypes/detached-pty/**",
 	"src/bun/native-terminal-registry/**",
 	"src/bun/native-terminal-multipane/**",
 	"src/bun/native-terminal-adapter/**",

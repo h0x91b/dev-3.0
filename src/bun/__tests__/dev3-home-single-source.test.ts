@@ -59,13 +59,12 @@ describe("the dev3 data root has one source", () => {
 		expect(offenders, "compose the data root via resolveDev3Home(), or add a reasoned allowlist entry").toEqual([]);
 	});
 
-	it("all three modules that started the bug no longer compose it themselves", () => {
-		// The exact three non-test places that honoured env.DEV3_HOME with their own
-		// inline fallback chain while the app's own DEV3_HOME ignored it.
+	it("the surviving modules that started the bug use the shared resolver", () => {
+		// These modules had an inline fallback while the app ignored DEV3_HOME.
+		// The third was the retired detached-PTY prototype.
 		for (const file of [
 			"native-terminal-registry/paths.ts",
 			"native-terminal-multipane/paths.ts",
-			"prototypes/detached-pty/state.ts",
 		]) {
 			const source = readFileSync(join(APP_ROOT, file), "utf-8");
 			expect(composesDev3HomeItself(source), `${file} must use resolveDev3Home`).toBe(false);

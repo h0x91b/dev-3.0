@@ -2,7 +2,7 @@
 /**
  * Lifecycle E2E for the persistent native-session registry (seq 1214), on the
  * REAL Bun runtime (vitest stubs the Bun global, so a live Bun.Terminal cannot
- * run there — mirrors the `test:proto-e2e` pattern). Run: `bun run test:native-registry-e2e`.
+ * run there). Run: `bun run test:native-registry-e2e`.
  *
  * Proves end-to-end, across TWO simultaneous sessions addressed by stable id:
  *   • start two sessions → distinct hosts/shells/ports/journals, both listed;

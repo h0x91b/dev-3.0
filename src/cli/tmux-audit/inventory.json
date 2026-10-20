@@ -44,8 +44,8 @@
 	"totals": {
 		"trackedFiles": 2637,
 		"inBoundaryClean": 939,
-		"inventoried": 252,
-		"occurrences": 4674
+		"inventoried": 248,
+		"occurrences": 4646
 	},
 	"historical": {
 		"fileCount": 272,
@@ -58,27 +58,27 @@
 		"agent-control": 10,
 		"capture-state": 6,
 		"cli-rpc-ui": 33,
-		"compatibility": 14,
-		"documentation": 56,
+		"compatibility": 12,
+		"documentation": 55,
 		"packaging-update": 14,
 		"pane-layout": 17,
 		"process-resource": 3,
 		"terminal-ownership": 9,
-		"test-only": 90
+		"test-only": 89
 	},
 	"byDepth": {
 		"caller": 76,
 		"deep-internal": 10,
-		"isolation": 10,
-		"surface": 66,
-		"test": 90
+		"isolation": 8,
+		"surface": 65,
+		"test": 89
 	},
 	"byDependencyKind": {
-		"active": 155,
-		"reference": 97
+		"active": 154,
+		"reference": 94
 	},
 	"byRoadmapItem": {
-		"CUT-005": 119,
+		"CUT-005": 118,
 		"CUT-006": 29,
 		"INT-001": 13,
 		"INT-002": 9,
@@ -91,7 +91,7 @@
 		"LAY-007": 2,
 		"MIG-001": 6,
 		"MIG-003": 3,
-		"MIG-006": 22,
+		"MIG-006": 19,
 		"RUN-005": 2,
 		"RUN-006": 2,
 		"STATE-008": 3
@@ -1248,54 +1248,6 @@
 			"dependencyKind": "active",
 			"consumer": "Reads pane PIDs per session (list-panes) to attribute listening ports.",
 			"deletionPrerequisite": "Process/port tooling reads ownership from the native host, not tmux panes (INT-007/PROC-007)."
-		},
-		{
-			"path": "src/bun/prototypes/detached-pty/__tests__/lifecycle.bun-e2e.ts",
-			"occurrences": 19,
-			"fingerprint": "68ec57ab2fd50250",
-			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
-			"category": "test-only",
-			"roadmapItem": "CUT-005",
-			"depth": "test",
-			"dependencyKind": "active",
-			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
-			"deletionPrerequisite": "Removed together with the production code it exercises."
-		},
-		{
-			"path": "src/bun/prototypes/detached-pty/host.ts",
-			"occurrences": 3,
-			"fingerprint": "e3df44e0aa4e8df6",
-			"via": "override",
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike host: tmux-backed sentinel proving isolation.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		{
-			"path": "src/bun/prototypes/detached-pty/README.md",
-			"occurrences": 5,
-			"fingerprint": "b21397eeb71d1943",
-			"via": "override",
-			"category": "documentation",
-			"roadmapItem": "MIG-006",
-			"depth": "surface",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike README references tmux-removal context.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		{
-			"path": "src/bun/prototypes/detached-pty/state.ts",
-			"occurrences": 1,
-			"fingerprint": "314238ad0cb66ea5",
-			"via": "override",
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike state referencing tmux for contrast.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
 		{
 			"path": "src/bun/prototypes/stream-resync/README.md",
@@ -3121,5 +3073,6 @@
 			"consumer": "Terminal contract types: Task.tmuxSocket, tmuxAction, kill/listTmuxSessions RPC, tmuxAltClickMoveCursor, tmux-derived fields.",
 			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
 		}
-	]
+	],
+	"$maintenanceNote": "2026-10-20: removed only the four retired detached-PTY entries and recalculated entry summaries. Tracked-file, clean-file and historical counts retain the prior scan baseline. Full regeneration remains blocked by unrelated manifest drift; this is not a current whole-repository inventory."
 }

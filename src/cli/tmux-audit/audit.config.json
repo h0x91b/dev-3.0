@@ -1123,30 +1123,6 @@
 			"consumer": "Windows shell matrix references tmux for contrast.",
 			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
-		"src/bun/prototypes/detached-pty/host.ts": {
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike host: tmux-backed sentinel proving isolation.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		"src/bun/prototypes/detached-pty/state.ts": {
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike state referencing tmux for contrast.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		"src/bun/prototypes/detached-pty/README.md": {
-			"category": "documentation",
-			"roadmapItem": "MIG-006",
-			"depth": "surface",
-			"dependencyKind": "reference",
-			"consumer": "Detached-PTY spike README references tmux-removal context.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
 		"src/bun/prototypes/terminal-state/README.md": {
 			"category": "documentation",
 			"roadmapItem": "MIG-006",

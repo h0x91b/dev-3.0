@@ -18,7 +18,6 @@
 		"test:cli": "VT=$(command -v rtk >/dev/null 2>&1 && echo rtk || echo bunx) && $VT vitest run --config vitest.config.cli.ts",
 		"perf:task-store": "bun src/bun/__tests__/task-store-burst.bun-perf.ts",
 		"test:pane-e2e": "bun --preload ./src/bun/__tests__/pane-exit-e2e-preload.ts src/bun/__tests__/pane-exit-e2e.ts",
-		"test:proto-e2e": "bun src/bun/prototypes/detached-pty/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-cross-session-echo": "bun src/bun/native-terminal-registry/__tests__/cross-session-echo-probe.ts",
 		"test:native-registry-e2e": "bun src/bun/native-terminal-registry/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-output-log-e2e": "bun src/bun/native-terminal-registry/__tests__/output-log.bun-e2e.ts",

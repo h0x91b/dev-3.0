@@ -1,5 +1,7 @@
 # 144 — Detached Bun PTY owner (tmux-removal spike)
 
+Superseded on 2026-10-20 by [retire-detached-pty-development-spike](../../10/20/retire-detached-pty-development-spike.md): the prototype and manual tracer are retired; this record preserves their technical evidence.
+
 ## Context
 
 The tmux-removal roadmap (parent seq 1141) needs proof that a detached Bun
