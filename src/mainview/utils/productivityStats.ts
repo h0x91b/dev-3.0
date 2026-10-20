@@ -345,19 +345,28 @@ function periodSpanMs(range: StatsRange): number {
 			return 7 * DAY_MS;
 		case "month":
 			return 30 * DAY_MS;
+		case "mtd":
+			throw new Error("mtd steps by calendar month, see monthToDateWindow");
 		default:
 			return DAY_MS;
 	}
 }
 
-/** Calendar month `steps` back: the whole month, or month-to-date for the current one, vs the same span of the month before. */
+/**
+ * Calendar month `steps` back. A past month is whole and compared with the whole month before;
+ * the current month runs to now and is compared with the same date and clock time last month
+ * (by calendar fields, so DST cannot shift it; a date past the month's end clamps to its end).
+ */
 function monthToDateWindow(nowMs: number, steps: number): Window {
 	const now = new Date(nowMs);
-	const monthStart = (back: number) => new Date(now.getFullYear(), now.getMonth() - back, 1).getTime();
+	const y = now.getFullYear();
+	const m = now.getMonth();
+	const monthStart = (back: number) => new Date(y, m - back, 1).getTime();
 	const from = monthStart(steps);
-	const to = steps === 0 ? nowMs : monthStart(steps - 1);
 	const prevFrom = monthStart(steps + 1);
-	return { from, to, prevFrom, prevTo: Math.min(from, prevFrom + (to - from)) };
+	if (steps > 0) return { from, to: monthStart(steps - 1), prevFrom, prevTo: from };
+	const sameTimeLastMonth = new Date(y, m - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+	return { from, to: nowMs, prevFrom, prevTo: Math.min(from, sameTimeLastMonth.getTime()) };
 }
 
 function rangeWindow(range: StatsRange, nowMs: number, steps: number, earliestMs: number): Window {
@@ -410,7 +419,9 @@ function buildSeries(
 		}
 		assignByDay(buckets, completedEvents);
 	} else if (range === "mtd") {
-		for (let d = new Date(win.from); d.getTime() < win.to; d.setDate(d.getDate() + 1)) push(d.getTime(), `${d.getDate()}`);
+		for (let d = new Date(win.from); d.getTime() < win.to || buckets.length === 0; d.setDate(d.getDate() + 1)) {
+			push(d.getTime(), `${d.getDate()}`);
+		}
 		assignByDay(buckets, completedEvents);
 	} else {
 		// "all": monthly buckets from the first event month to the current month.

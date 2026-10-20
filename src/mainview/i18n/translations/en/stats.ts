@@ -40,6 +40,8 @@ const stats = {
 	"stats.rel.weekPrev": "Last week",
 	"stats.rel.weekAgo_one": "{count} week ago",
 	"stats.rel.weekAgo_other": "{count} weeks ago",
+	"stats.rel.d30Current": "Last 30 days",
+	"stats.rel.d30Ago": "{from}–{to} days ago",
 	"stats.rel.monthCurrent": "This month",
 	"stats.rel.monthPrev": "Last month",
 	"stats.rel.monthAgo_one": "{count} month ago",

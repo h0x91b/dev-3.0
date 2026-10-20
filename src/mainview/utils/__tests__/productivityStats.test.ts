@@ -524,6 +524,14 @@ describe("computeProductivityStats — period navigation (offset)", () => {
 		expect(may.series).toHaveLength(31);
 	});
 
+	it("mtd compares a past month with the whole month before, even a longer one", () => {
+		const at = (iso: string) => ev({ movedAt: new Date(iso).toISOString() });
+		const mid = new Date(2026, 4, 15, 12).getTime(); // viewing April from mid-May
+		const april = computeProductivityStats([at("2026-03-31T12:00:00"), at("2026-04-10T12:00:00")], "mtd", mid, 1);
+		expect(april.hero.tasksShipped.value).toBe(1);
+		expect(april.hero.tasksShipped.previous).toBe(1); // March 31 counts
+	});
+
 	it("ignores offset entirely for range 'all'", () => {
 		const all = computeProductivityStats([ev()], "all", NOW, 3);
 		expect(all.offset).toBe(0);

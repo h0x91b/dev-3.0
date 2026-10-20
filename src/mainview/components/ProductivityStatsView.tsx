@@ -122,13 +122,13 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	);
 
 	// Token/cost totals for the visible period. "all" sums everything; other ranges
-	// filter by the same [periodFrom, periodTo] window the task stats use (day-aligned).
+	// filter by the same [periodFrom, periodTo) window the task stats use (day-aligned).
 	const usagePeriod = useMemo(() => {
 		const rows = usage ?? [];
 		const inPeriod =
 			range === "all"
 				? rows
-				: rows.filter((r) => r.startMs >= data.periodFrom && r.startMs <= data.periodTo);
+				: rows.filter((r) => r.startMs >= data.periodFrom && r.startMs < data.periodTo);
 		let tokens = 0;
 		let cost = 0;
 		let fullyPriced = true;
@@ -158,7 +158,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 
 	// Relative label for the period navigator (e.g. "Today", "Last week", "3 months ago").
 	const periodNavLabel = (() => {
-		const base = range === "day" ? "day" : range === "month" || range === "mtd" ? "month" : "week";
+		if (range === "month") {
+			return offset === 0 ? t("stats.rel.d30Current") : t("stats.rel.d30Ago", { from: offset * 30, to: (offset + 1) * 30 });
+		}
+		const base = range === "day" ? "day" : range === "mtd" ? "month" : "week";
 		if (offset === 0) return t(`stats.rel.${base}Current` as Parameters<typeof t>[0]);
 		if (offset === 1) return t(`stats.rel.${base}Prev` as Parameters<typeof t>[0]);
 		return t.plural(`stats.rel.${base}Ago` as Parameters<typeof t.plural>[0], offset);
@@ -173,7 +176,9 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		);
 	}
 	if (data.time.hibernatedAgentTasks > 0) timeNotes.push(t.plural("stats.time.hibernated", data.time.hibernatedAgentTasks));
-	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(data.periodTo).toLocaleDateString()}`;
+	// A past calendar month ends at the next month's midnight; show its last day instead.
+	const periodEnd = range === "mtd" && offset > 0 ? data.periodTo - 1 : data.periodTo;
+	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(periodEnd).toLocaleDateString()}`;
 	const periodNavTitle = offset === 0 ? periodRange : `${t("stats.nav.current")} · ${periodRange}`;
 	const formatLifetime = (hours: number) => formatLifetimeUnits(hours, {
 		minute: t("stats.unit.minuteShort"),
@@ -496,7 +501,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
 								<div className="text-fg-2 text-sm font-semibold">{t("stats.time.title")}</div>
 								<div className="text-fg-muted text-dense tabular-nums">
-									{t("stats.time.subtitle", { from: formatWindowEdge(data.periodFrom, range), to: formatWindowEdge(data.periodTo, range) })}
+									{t("stats.time.subtitle", { from: formatWindowEdge(data.periodFrom, range), to: formatWindowEdge(periodEnd, range) })}
 								</div>
 							</div>
 							{data.time.activeTasks === 0 && data.time.focusMs === 0 ? (

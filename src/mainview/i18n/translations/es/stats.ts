@@ -33,6 +33,8 @@ const stats = {
 	"stats.rel.weekPrev": "Semana pasada",
 	"stats.rel.weekAgo_one": "hace {count} semana",
 	"stats.rel.weekAgo_other": "hace {count} semanas",
+	"stats.rel.d30Current": "Últimos 30 días",
+	"stats.rel.d30Ago": "hace {from}–{to} días",
 	"stats.rel.monthCurrent": "Este mes",
 	"stats.rel.monthPrev": "Mes pasado",
 	"stats.rel.monthAgo_one": "hace {count} mes",
