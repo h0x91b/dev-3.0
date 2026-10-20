@@ -22,7 +22,7 @@ function SharedSizeNotice({ onFitHere }: { onFitHere: () => void }) {
 			<button
 				type="button"
 				onClick={onFitHere}
-				className="absolute left-1/2 top-2 z-20 flex min-h-11 max-w-[calc(100%-1rem)] -translate-x-1/2 touch-manipulation items-center gap-2 rounded-full border border-edge-active bg-overlay/95 py-1.5 pl-4 pr-1.5 text-xs text-fg-2 shadow-lg shadow-black/40 transition-transform active:scale-[0.96]"
+				className="absolute left-1/2 top-2 z-20 flex min-h-[44px] max-w-[calc(100%-1rem)] -translate-x-1/2 touch-manipulation items-center gap-2 rounded-full border border-edge-active bg-overlay/95 py-1.5 pl-4 pr-1.5 text-xs text-fg-2 shadow-lg shadow-black/40 transition-transform active:scale-[0.96]"
 			>
 				<span className="truncate">{t("sharedSize.sizedElsewhere")}</span>
 				<span className="shrink-0 rounded-full bg-accent-fill px-3 py-1 font-medium text-white">{t("sharedSize.fitHere")}</span>
