@@ -29,7 +29,6 @@
 
 import {
 	COMPACTION_RECORD_TYPE,
-	emptyUsage,
 	type ConversationEvent,
 	type ConversationTurn,
 	type ParsedConversation,
@@ -362,9 +361,4 @@ export function turnAssistantText(turn: { events: ConversationEvent[] }): string
 		if (event.kind === "message" && event.role === "assistant" && event.text) return event.text;
 	}
 	return undefined;
-}
-
-/** Usage totals of a turn, for readers of a dump that no longer stores per-event usage. */
-export function turnUsage(turn: ConversationTurn): ConversationTurn["usage"] {
-	return turn.usage ?? emptyUsage();
 }

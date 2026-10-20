@@ -34,10 +34,6 @@ export function setShortcutOverrides(next: ShortcutOverrides | undefined) {
 	emit();
 }
 
-export function getShortcutOverrides(): ShortcutOverrides {
-	return overrides;
-}
-
 function serializeOverrides(value: ShortcutOverrides): string {
 	return JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
 }
@@ -59,11 +55,6 @@ export function resolvedSlot(id: string, slot: ShortcutSlot, defaults: Binding[]
 export function hasOverride(id: string): boolean {
 	const stored = overrides[id];
 	return !!stored && ("primary" in stored || "alias" in stored);
-}
-
-export function hasSlotOverride(id: string, slot: ShortcutSlot): boolean {
-	const stored = overrides[id];
-	return !!stored && slot in stored;
 }
 
 export function overrideCount(): number {

@@ -1,1 +1,1 @@
-Corrected the native-session registry documentation to describe its production integration and guarded caller boundary.
+Corrected the native-session registry documentation to describe its production integration and guarded caller boundary. Removed unused internal shortcut/conversation helpers and the unconsumed Gauge re-export file.
