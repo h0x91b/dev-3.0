@@ -7,12 +7,12 @@ several native sessions at once, and that survives launcher/client exit: a fresh
 process rediscovers every live session purely from on-disk records + private
 tokens — **with no tmux involved**.
 
-This is **not** production terminal integration and **not** the product-level
-`TerminalBackend` seam. Nothing in the app (`src/bun/index.ts`) or CLI
-(`src/cli/main.ts`) graph imports it (guarded by `__tests__/isolation.test.ts`),
-it touches neither `pty-server.ts` nor `src/bun/tmux/`, and it writes only to an
-additive, registry-only namespace. Existing tmux-backed flows — including those
-of older dev3 versions on the same machine — are completely unaffected.
+This registry supports production native terminals through the task-terminal,
+pane, host-runtime and `TerminalBackend` integration modules. The packaged host
+entrypoint uses it directly; CLI process diagnostics only inspect its records.
+`__tests__/isolation.test.ts` enforces the explicit product-caller allowlist.
+Session records stay in an additive, registry-only namespace; the registry does
+not replace tmux-backed flows or rewrite older versions' project/task state.
 
 ## Roles
 
