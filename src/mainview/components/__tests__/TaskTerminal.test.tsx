@@ -1014,8 +1014,11 @@ describe("TaskTerminal", () => {
 			expect(screen.queryByText("Sized for another viewer")).not.toBeInTheDocument();
 
 			act(() => terminalViewOnSharedSizing?.(true));
-			await user.click(screen.getByRole("button", { name: "Fit here" }));
+			// The whole pill is the button: a tap on its label must take the size too.
+			await user.click(screen.getByText("Sized for another viewer"));
 			expect(terminalViewMockHandle.takeSize).toHaveBeenCalledTimes(1);
+			await user.click(screen.getByRole("button", { name: /Fit here/ }));
+			expect(terminalViewMockHandle.takeSize).toHaveBeenCalledTimes(2);
 
 			act(() => terminalViewOnSharedSizing?.(false));
 			expect(screen.queryByText("Sized for another viewer")).not.toBeInTheDocument();
