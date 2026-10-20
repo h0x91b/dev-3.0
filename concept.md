@@ -12,7 +12,7 @@ Legend: `[x]` done, `[-]` in progress, `[ ]` not started
 ### Infrastructure
 
 - [x] Electrobun app shell (main process, window, menu)
-- [x] Vite + React renderer with HMR
+- [x] Vite + React renderer with the build-and-launch development loop
 - [x] ghostty-web terminal integration (single instance)
 - [x] Native PTY via Bun.spawn (WebSocket bridge)
 - [ ] JSON-based data storage layer (projects, tasks, settings)

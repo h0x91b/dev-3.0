@@ -1,1 +1,1 @@
-Corrected the native-session registry documentation to describe its production integration and guarded caller boundary. Removed unused internal shortcut/conversation helpers and the unconsumed Gauge re-export file.
+Corrected the native-session registry documentation and removed unused internal shortcut/conversation helpers and the unconsumed Gauge re-export file. Retired the unsupported watch/hmr commands and their old development watcher; the supported build-and-launch flow and runtime Vite support remain unchanged.
