@@ -278,7 +278,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 
 - **Rule:** Every agent-initiated request wears the same identity (accent border, AI-agent-request badge, autofocused decline) while the accepting button takes its role from what the action does — `destructive` for completion, `primary` for a launch; a request needing more than yes/no gets its own modal and `confirm()` stays boolean. Bible §6 row `agent_request`, yaml `surfaces.modal.agent_request`.
 - **Why:** the 2026-06-10 completion rule bundled identity and severity, so a second instance (an agent asking to *start* a task, which is reversible and creates state) would have shipped a red button for a safe action and spent the danger token on nothing. Rejected: extending `confirm()` to host the agent picker — that turns a boolean service into a form host.
-- **Status:** Implemented. Evidence: `AgentLaunchRequestModal.tsx`, `TaskDialogSubjectCard.tsx`, `confirm.tsx`, `agent-requests.ts`, `cli-socket-server.ts`. Extends the 2026-06-10 entry.
+- **Status:** Implemented. Evidence: `AgentLaunchRequestModal.tsx`, `TaskDialogSubjectCard.tsx`, `confirm.tsx`, `agent-requests.ts`, `cli-socket/approvals.ts`. Extends the 2026-06-10 entry.
 
 ## 2026-07-30 — Capacity telemetry is permanent header chrome; faults are not
 
@@ -463,7 +463,7 @@ Folded: rule and reasoning in `decisions/2026/07/03/close-pane-visual-picker.md`
 
 - **Rule:** Agent-surfaced images open in a global lightbox overlay (Modal family, not a destination, not the inspector); arrival raises the attention badge + toast, auto-opens only when the user is already focused on that task; a conditional count badge appears next to the diff badge. Bible §5, §12.3.
 - **Why:** The missing "agent shows the human a picture" channel; mirrors the diff viewer (task-scoped full surface kept out of nav to protect the ≤7 nav budget and inspector density); files stored in the task worktree (`shared-images/`, additive to the frozen `~/.dev3.0/` layout). Rejected: new destination, inspector tab, toast-only (no history). Decision 097.
-- **Status:** Observed (2026-07-02). Evidence: `src/bun/shared-images.ts`, `TaskImageViewer.tsx`, `cli-socket-server.ts`.
+- **Status:** Observed (2026-07-02). Evidence: `src/bun/shared-images.ts`, `TaskImageViewer.tsx`, `cli-socket/ui-commands.ts`.
 
 ## 2026-07-02 — Period navigation on the Velocity Cockpit (temporal nav ≠ a forbidden control)
 
@@ -637,7 +637,7 @@ Folded into bible §12 (terminal windows row).
 
 - **Rule:** Agent-requested completion opens the imperative `confirm()` modal with an `agentInitiated` treatment (accent border + "AI agent request" badge, danger-role confirm, autofocused cancel); the CLI blocks ≤10 min; decline = exit code 6; `cancelled` stays CLI-forbidden.
 - **Why:** Completion destroys the worktree + tmux session (destructive → human approval); the AI-identity badge prevents mistaking it for a routine confirm. Zero new chrome. Decision 067.
-- **Status:** Observed. Evidence: `confirm.tsx`, `completion-requests.ts`, `cli-socket-server.ts`.
+- **Status:** Observed. Evidence: `confirm.tsx`, `completion-requests.ts`, `cli-socket/approvals.ts`.
 
 ## 2026-06-03 — Narrow-viewport carousel navigation (mobile / remote)
 

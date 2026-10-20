@@ -586,7 +586,7 @@ ux_architecture:
         elsewhere: "NO focus-steal; toast + attention badge; click either to open."
         toggle: "Settings->Behavior 'Auto-open shared images' (default on)."
       status: "observed"
-      evidence: ["decisions/2026/07/02/show-image-viewer.md", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/2026/04/16/worktree-uploaded-dnd-files.md"]
+      evidence: ["decisions/2026/07/02/show-image-viewer.md", "src/cli/commands/show-image.ts", "src/bun/cli-socket/ui-commands.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/2026/04/16/worktree-uploaded-dnd-files.md"]
     task_artifact_viewer:
       purpose: "Task-bound interactive HTML via dev3 show-artifact; one viewer, three shapes (see layout)."
       feature_class: ["object_action", "data_visualization", "notification"]

@@ -70,7 +70,7 @@ describe("every task-scoped launcher calls the guard", () => {
 		["rpc-handlers/tmux-pty/terminal-attach.ts", "async function getPtyUrl("],
 		["rpc-handlers/task-panes.ts", "async function splitContext("],
 		["rpc-handlers/scripts.ts", "async function runScriptHandler("],
-		["cli-socket-server.ts", "\"pane.run\": async (params) => {"],
+		["cli-socket/pane-commands.ts", "\"pane.run\": async (params) => {"],
 	];
 	it.each(LAUNCHERS)("%s — %s", (file, signature) => {
 		const source = readFileSync(join(SRC, file), "utf-8");

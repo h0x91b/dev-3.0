@@ -94,6 +94,7 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/shared/cli-endpoint.ts",
 	"src/bun/cli-listener.ts",
 	"src/bun/cli-socket-server.ts",
+	"src/bun/cli-socket/**",
 	"src/bun/cli-self-install.ts",
 	"src/bun/instance-broadcast.ts",
 	"src/cli/context.ts",
