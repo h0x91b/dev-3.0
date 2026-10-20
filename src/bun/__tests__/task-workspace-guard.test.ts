@@ -60,14 +60,14 @@ describe("assertTaskWorkspacePresent", () => {
 describe("every task-scoped launcher calls the guard", () => {
 	const SRC = resolve(import.meta.dirname, "..");
 	const LAUNCHERS: Array<[file: string, fn: string]> = [
-		["rpc-handlers/tmux-pty.ts", "export async function launchTaskPty("],
-		["rpc-handlers/tmux-pty.ts", "export async function launchColumnAgent("],
-		["rpc-handlers/tmux-pty.ts", "async function startOneDevServer("],
-		["rpc-handlers/tmux-pty.ts", "async function spawnAgentInTask("],
-		["rpc-handlers/tmux-pty.ts", "async function spawnSingleBugHunterPane("],
-		["rpc-handlers/tmux-pty.ts", "async function openFileBrowser("],
-		["rpc-handlers/tmux-pty.ts", "async function rerunSetupScript("],
-		["rpc-handlers/tmux-pty.ts", "async function getPtyUrl("],
+		["rpc-handlers/tmux-pty/task-launch.ts", "export async function launchTaskPty("],
+		["rpc-handlers/tmux-pty/task-launch.ts", "export async function launchColumnAgent("],
+		["rpc-handlers/tmux-pty/dev-servers.ts", "async function startOneDevServer("],
+		["rpc-handlers/tmux-pty/agent-spawn.ts", "async function spawnAgentInTask("],
+		["rpc-handlers/tmux-pty/bug-hunters.ts", "async function spawnSingleBugHunterPane("],
+		["rpc-handlers/tmux-pty/terminal-attach.ts", "async function openFileBrowser("],
+		["rpc-handlers/tmux-pty/setup-rerun.ts", "async function rerunSetupScript("],
+		["rpc-handlers/tmux-pty/terminal-attach.ts", "async function getPtyUrl("],
 		["rpc-handlers/task-panes.ts", "async function splitContext("],
 		["rpc-handlers/scripts.ts", "async function runScriptHandler("],
 		["cli-socket-server.ts", "\"pane.run\": async (params) => {"],

@@ -1,0 +1,1 @@
+Split the 4,100-line `src/bun/rpc-handlers/tmux-pty.ts` into domain modules under `src/bun/rpc-handlers/tmux-pty/` (dev servers, task launch, terminal attach, resume, setup re-run, tmux control, agent spawn, bug hunters); the entry file keeps the RPC handler object and every previous export, with no behaviour change.

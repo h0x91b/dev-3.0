@@ -113,6 +113,7 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/shared/launch-failure.ts",
 	"src/bun/rpc-handlers/shared-pure.ts",
 	"src/bun/rpc-handlers/tmux-pty.ts",
+	"src/bun/rpc-handlers/tmux-pty/**",
 	"src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts",
 	"src/bun/__tests__/launch-failure.test.ts",
 	// The agent command line itself (Seq 1737). It is TEXT the wrapper re-parses, so
