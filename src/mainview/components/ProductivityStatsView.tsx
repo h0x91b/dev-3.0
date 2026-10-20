@@ -56,7 +56,7 @@ function redZoneOf(avg: number | null): number | undefined {
 
 function loadRange(): StatsRange {
 	const v = (typeof localStorage !== "undefined" && localStorage.getItem(RANGE_KEY)) as StatsRange | null;
-	return v === "day" || v === "week" || v === "month" || v === "all" ? v : "week";
+	return v === "day" || v === "week" || v === "month" || v === "mtd" || v === "all" ? v : "week";
 }
 
 function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStatsViewProps) {
@@ -144,6 +144,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		day: t("stats.range.day"),
 		week: t("stats.range.week"),
 		month: t("stats.range.month"),
+		mtd: t("stats.range.mtd"),
 		all: t("stats.range.all"),
 	};
 	const periodLabel = t(`stats.period.${range}` as Parameters<typeof t>[0]);
@@ -157,7 +158,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 
 	// Relative label for the period navigator (e.g. "Today", "Last week", "3 months ago").
 	const periodNavLabel = (() => {
-		const base = range === "day" ? "day" : range === "month" ? "month" : "week";
+		const base = range === "day" ? "day" : range === "month" || range === "mtd" ? "month" : "week";
 		if (offset === 0) return t(`stats.rel.${base}Current` as Parameters<typeof t>[0]);
 		if (offset === 1) return t(`stats.rel.${base}Prev` as Parameters<typeof t>[0]);
 		return t.plural(`stats.rel.${base}Ago` as Parameters<typeof t.plural>[0], offset);

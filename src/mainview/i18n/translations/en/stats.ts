@@ -9,17 +9,20 @@ const stats = {
 	// Time range switch
 	"stats.range.day": "Day",
 	"stats.range.week": "Week",
-	"stats.range.month": "Month",
+	"stats.range.month": "30d",
+	"stats.range.mtd": "MTD",
 	"stats.range.all": "All",
 	// Period captions (gauge unit)
 	"stats.period.day": "today",
 	"stats.period.week": "this week",
-	"stats.period.month": "this month",
+	"stats.period.month": "last 30 days",
+	"stats.period.mtd": "month to date",
 	"stats.period.all": "all-time",
 	// Trend suffix (vs previous period)
 	"stats.periodPrev.day": "vs yesterday",
 	"stats.periodPrev.week": "vs last week",
 	"stats.periodPrev.month": "vs prev. 30d",
+	"stats.periodPrev.mtd": "vs same days last month",
 	"stats.periodPrev.all": "",
 	// Neutral trend suffix when browsing a past period (relative-to-now labels don't fit)
 	"stats.periodPrev.generic": "vs prev.",

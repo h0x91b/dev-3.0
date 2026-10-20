@@ -7,7 +7,7 @@ interface TimeRangeSwitchProps {
 	labels: Record<StatsRange, string>;
 }
 
-/** Segmented control for the dashboard time range (Day / Week / Month / All). */
+/** Segmented control for the dashboard time range (Day / Week / 30d / MTD / All). */
 export function TimeRangeSwitch({ value, onChange, labels }: TimeRangeSwitchProps) {
 	return (
 		<div className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5">

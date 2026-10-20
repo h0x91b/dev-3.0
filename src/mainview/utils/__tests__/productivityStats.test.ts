@@ -506,6 +506,24 @@ describe("computeProductivityStats — period navigation (offset)", () => {
 		expect(back.canGoNewer).toBe(true);
 	});
 
+	it("mtd covers the calendar month to date, compared with the same days of last month", () => {
+		const at = (iso: string) => ev({ movedAt: new Date(iso).toISOString() });
+		// NOW is June 28 noon UTC; local midnights keep the assertions timezone-free.
+		const events = [at("2026-06-02T12:00:00"), at("2026-06-20T12:00:00"), at("2026-05-30T12:00:00"), at("2026-05-10T12:00:00")];
+		const cur = computeProductivityStats(events, "mtd", NOW, 0);
+		expect(cur.periodFrom).toBe(new Date(2026, 5, 1).getTime());
+		expect(cur.periodTo).toBe(NOW);
+		expect(cur.hero.tasksShipped.value).toBe(2);
+		expect(cur.hero.tasksShipped.previous).toBe(1); // May 30 falls outside May 1..28
+		expect(cur.series[0].label).toBe("1");
+
+		const may = computeProductivityStats(events, "mtd", NOW, 1);
+		expect(may.periodFrom).toBe(new Date(2026, 4, 1).getTime());
+		expect(may.periodTo).toBe(new Date(2026, 5, 1).getTime());
+		expect(may.hero.tasksShipped.value).toBe(2);
+		expect(may.series).toHaveLength(31);
+	});
+
 	it("ignores offset entirely for range 'all'", () => {
 		const all = computeProductivityStats([ev()], "all", NOW, 3);
 		expect(all.offset).toBe(0);
