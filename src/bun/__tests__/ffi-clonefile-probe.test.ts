@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 vi.mock("../spawn", () => ({ spawn: () => ({ exited: Promise.resolve(0), stderr: undefined }) }));
+// "/src" and "/dst" are not real directories; the tracked-path guard resolves symlinks through realpath.
+vi.mock("node:fs/promises", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:fs/promises")>()),
+	realpath: async (p: string) => p,
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() }),
 }));
@@ -49,6 +54,8 @@ describe("ffi clonefile release probe", () => {
 		expect(workflow).toContain("bun build scripts/ffi-clonefile-probe.ts --compile");
 		expect(workflow).toContain('-path "*/Resources/app/workers/clonefile-worker.js"');
 		expect(workflow).toContain('"$PROBE_DIR/probe" "$PROBE_DIR/src" "$PROBE_DIR/dest" "$WORKER_JS"');
+		// cow-clone refuses any path git cannot vouch for, so plain temp dirs would fail the gate.
+		expect(workflow).toContain('git init -q "$PROBE_DIR/src" && git init -q "$PROBE_DIR/dest"');
 		expect(repoFile("electrobun.config.ts")).toContain('"dist/workers": "workers"');
 	});
 });

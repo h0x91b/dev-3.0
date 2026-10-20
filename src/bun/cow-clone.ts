@@ -8,8 +8,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { cp, mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { cp, mkdir, realpath, rm } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -31,6 +31,9 @@ export interface CloneResult {
 	skipped?: boolean;
 	error?: string;
 }
+
+/** Why a path was not copied, keyed by its clone-list entry. */
+type Refusals = Map<string, string>;
 
 function isMacOS(): boolean {
 	return process.platform === "darwin";
@@ -256,6 +259,7 @@ async function cloneSingle(
 	sourceRoot: string,
 	destRoot: string,
 	relativePath: string,
+	refusals: Refusals,
 ): Promise<CloneResult> {
 	const start = performance.now();
 	const src = `${sourceRoot}/${relativePath}`;
@@ -269,6 +273,17 @@ async function cloneSingle(
 			method: "copy",
 			durationMs: Math.round(performance.now() - start),
 			skipped: true,
+		};
+	}
+
+	const refusal = refusals.get(relativePath);
+	if (refusal) {
+		log.warn("Clone path refused — it would replace files git tracks", { path: relativePath, reason: refusal });
+		return {
+			path: relativePath,
+			method: "copy",
+			durationMs: Math.round(performance.now() - start),
+			error: refusal,
 		};
 	}
 
@@ -351,6 +366,115 @@ function failed(
 		durationMs: Math.round(performance.now() - start),
 		error,
 	};
+}
+
+/** macOS and Windows filesystems are case-insensitive by default: `Build` IS `build`. */
+function caseInsensitiveFs(): boolean {
+	return isMacOS() || isWindows();
+}
+
+/**
+ * The path as git sees it once symlinks in its parent chain are resolved —
+ * `git ls-files` stops matching at a symlink, so `link/x` through a link to a
+ * tracked `src/` reads as untracked. Null when it resolves to or outside `root`.
+ */
+async function resolveGitPath(root: string, relativePath: string): Promise<string | null> {
+	let realRoot: string;
+	try {
+		realRoot = await realpath(root);
+	} catch {
+		return null;
+	}
+	const full = join(root, relativePath);
+	const rest = [basename(full)];
+	let parent = dirname(full);
+	for (;;) {
+		try {
+			const rel = relative(realRoot, join(await realpath(parent), ...rest));
+			if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+			return isWindows() ? rel.replaceAll("\\", "/") : rel;
+		} catch {
+			const up = dirname(parent);
+			if (up === parent) return null;
+			rest.unshift(basename(parent));
+			parent = up;
+		}
+	}
+}
+
+/** Every file git tracks under the given paths in `root`, or null when git could not say. */
+async function listTrackedFiles(root: string, gitPaths: string[]): Promise<string[] | null> {
+	const magic = caseInsensitiveFs() ? ":(literal,icase)" : ":(literal)";
+	try {
+		const proc = spawn(["git", "-C", root, "ls-files", "-z", "--", ...gitPaths.map((p) => magic + p)], {
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, stderr] = await Promise.all([
+			proc.stdout ? new Response(proc.stdout as ReadableStream).text() : Promise.resolve(""),
+			readStderr(proc),
+		]);
+		const code = await proc.exited;
+		if (code !== 0) {
+			log.warn("git ls-files failed", { root, code, stderr });
+			return null;
+		}
+		return stdout.split("\0").filter(Boolean);
+	} catch (err) {
+		log.warn("git ls-files failed", { root, error: String(err) });
+		return null;
+	}
+}
+
+/** Tracked files that `gitPath` would cover — itself, or anything beneath it. */
+function trackedUnder(gitPath: string, tracked: string[]): string[] {
+	const norm = (p: string) => (caseInsensitiveFs() ? p.toLowerCase() : p);
+	const target = norm(gitPath);
+	return tracked.filter((f) => {
+		const file = norm(f);
+		return file === target || file.startsWith(`${target}/`);
+	});
+}
+
+/**
+ * Clone paths that hold committed files, in `root`, keyed by clone-list entry.
+ * A clone deletes its destination before copying, so a tracked path would trade
+ * the checkout for the root's working copy (#2026). Anything git cannot vouch
+ * for — a path through a symlink out of the repo, a failed git — is refused too.
+ */
+async function trackedConflicts(root: string, where: string, paths: string[]): Promise<Refusals> {
+	const refusals: Refusals = new Map();
+	const resolved = new Map<string, string>();
+	for (const p of paths) {
+		const gitPath = await resolveGitPath(root, p);
+		if (gitPath === null) refusals.set(p, `"${p}" does not resolve to a path inside ${where}; not copied.`);
+		else resolved.set(p, gitPath);
+	}
+	if (resolved.size === 0) return refusals;
+
+	const tracked = await listTrackedFiles(root, [...new Set(resolved.values())]);
+	for (const [p, gitPath] of resolved) {
+		if (tracked === null) {
+			refusals.set(p, `Could not confirm with git that "${p}" holds no committed files in ${where}; not copied.`);
+			continue;
+		}
+		const hits = trackedUnder(gitPath, tracked);
+		if (hits.length === 0) continue;
+		refusals.set(
+			p,
+			`Not copied: git tracks files under "${p}" in ${where} (e.g. ${hits[0]}), and clone paths never replace committed files. ` +
+				`Remove "${p}" from Clone Paths in Project Settings or .dev3/config.json, or set "clonePaths": [] in .dev3/config.local.json.`,
+		);
+	}
+	return refusals;
+}
+
+/** Refusals for both ends: the worktree checkout it would overwrite, and the root it copies from. */
+async function findRefusals(sourceRoot: string, destRoot: string, paths: string[]): Promise<Refusals> {
+	const dest = await trackedConflicts(destRoot, "the task worktree", paths);
+	const remaining = paths.filter((p) => !dest.has(p));
+	const source = await trackedConflicts(sourceRoot, "the project root", remaining);
+	return new Map([...dest, ...source]);
 }
 
 /**
@@ -441,7 +565,8 @@ export const WELL_KNOWN_CLONE_PATHS = [
 
 /**
  * Scan a project directory and return the subset of WELL_KNOWN_CLONE_PATHS
- * that actually exist. Used to auto-populate clonePaths when adding a project.
+ * that actually exist and hold no committed files — a tracked `build/` is source
+ * code, not output (#2026). Used to auto-populate clonePaths when adding a project.
  */
 export async function detectClonePaths(projectPath: string): Promise<string[]> {
 	// Deduplicate the well-known list (some entries appear for multiple ecosystems)
@@ -454,8 +579,10 @@ export async function detectClonePaths(projectPath: string): Promise<string[]> {
 		}),
 	);
 
-	const detected = checks.filter((c) => c.exists).map((c) => c.path);
-	log.info("Auto-detected clone paths", { projectPath, detected });
+	const present = checks.filter((c) => c.exists).map((c) => c.path);
+	const tracked = await trackedConflicts(projectPath, "the project root", present);
+	const detected = present.filter((p) => !tracked.has(p));
+	log.info("Auto-detected clone paths", { projectPath, detected, excluded: [...tracked.keys()] });
 	return detected;
 }
 
@@ -496,8 +623,9 @@ export async function clonePaths(
 	// Deduplicate expanded paths
 	const uniquePaths = [...new Set(expandedPaths)];
 
+	const refusals = uniquePaths.length > 0 ? await findRefusals(sourceRoot, destRoot, uniquePaths) : new Map();
 	const results = await Promise.all(
-		uniquePaths.map((p) => cloneSingle(sourceRoot, destRoot, p)),
+		uniquePaths.map((p) => cloneSingle(sourceRoot, destRoot, p, refusals)),
 	);
 
 	const totalMs = results.reduce((sum, r) => Math.max(sum, r.durationMs), 0);

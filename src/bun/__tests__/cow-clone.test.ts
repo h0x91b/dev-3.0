@@ -9,10 +9,12 @@ vi.mock("../spawn", () => ({
 const mockCp = vi.fn(async () => undefined);
 const mockRm = vi.fn(async () => undefined);
 const mockMkdir = vi.fn(async () => undefined);
+const mockRealpath = vi.fn(async (p: string) => p);
 vi.mock("node:fs/promises", () => ({
 	cp: (...args: unknown[]) => mockCp(...(args as [])),
 	rm: (...args: unknown[]) => mockRm(...(args as [])),
 	mkdir: (...args: unknown[]) => mockMkdir(...(args as [])),
+	realpath: (p: string) => mockRealpath(p),
 }));
 vi.mock("node:fs", () => ({ existsSync: () => true }));
 
@@ -28,11 +30,17 @@ vi.mock("../logger", () => ({
 
 import { clonePaths, detectClonePaths, WELL_KNOWN_CLONE_PATHS } from "../cow-clone";
 
-function makeProc(exitCode: number, stderr = "") {
+function makeProc(exitCode: number, stderr = "", stdout = "") {
 	return {
 		exited: Promise.resolve(exitCode),
 		stderr: stderr ? new Response(stderr).body : undefined,
+		stdout: stdout ? new Response(stdout).body : undefined,
 	};
+}
+
+/** `git ls-files -z` answering with these tracked files for the given root. */
+function lsFiles(cmd: string[], byRoot: Record<string, string[]>) {
+	return makeProc(0, "", (byRoot[cmd[2]] ?? []).map((f) => `${f}\0`).join(""));
 }
 
 describe("cow-clone", () => {
@@ -279,8 +287,9 @@ describe("cow-clone", () => {
 				recursive: true,
 				force: true,
 			});
-			// `cp`/`rm`/`mkdir`/`test` are not Windows binaries.
-			expect(mockSpawn).not.toHaveBeenCalled();
+			// `cp`/`rm`/`mkdir`/`test` are not Windows binaries; only the git safety check spawns.
+			const binaries = mockSpawn.mock.calls.map((c: unknown[]) => (c[0] as string[])[0]);
+			expect(binaries.every((b) => b === "git")).toBe(true);
 		});
 
 		it("creates the destination parent for a nested path", async () => {
@@ -319,6 +328,82 @@ describe("WELL_KNOWN_CLONE_PATHS", () => {
 		for (const p of WELL_KNOWN_CLONE_PATHS) {
 			expect(p.split("/")).not.toContain("..");
 		}
+	});
+});
+
+describe("tracked destination guard (#2026)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockRealpath.mockImplementation(async (p: string) => p);
+	});
+
+	function rig(byRoot: Record<string, string[]>, gitExit = 0) {
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return gitExit === 0 ? lsFiles(cmd, byRoot) : makeProc(gitExit, "fatal: boom");
+			if (cmd[0] === "cp") return cmd.includes("-cR") || cmd.includes("--reflink=always") ? makeProc(1) : makeProc(0);
+			return makeProc(0);
+		});
+	}
+	const destructive = () => mockSpawn.mock.calls.filter((c: unknown[]) => ["rm", "cp"].includes((c[0] as string[])[0]));
+
+	it("refuses a path the worktree tracks and never removes or copies it", async () => {
+		rig({ "/dst": ["build/a.txt", "build/b.txt"] });
+		const results = await clonePaths("/src", "/dst", ["build", "node_modules"]);
+		const build = results.find((r) => r.path === "build")!;
+		expect(build.error).toContain('git tracks files under "build" in the task worktree');
+		expect(build.error).toContain("Remove \"build\" from Clone Paths");
+		expect(destructive().some((c) => (c[0] as string[]).some((a) => a.endsWith("/build")))).toBe(false);
+		expect(results.find((r) => r.path === "node_modules")!.error).toBeUndefined();
+	});
+
+	it("refuses a path holding a single tracked descendant", async () => {
+		rig({ "/dst": ["out/keep.txt"] });
+		const [result] = await clonePaths("/src", "/dst", ["out"]);
+		expect(result.error).toContain("out/keep.txt");
+	});
+
+	it("refuses a path only the project root tracks", async () => {
+		rig({ "/src": ["build/old.txt"] });
+		const [result] = await clonePaths("/src", "/dst", ["build"]);
+		expect(result.error).toContain("in the project root");
+		expect(destructive()).toHaveLength(0);
+	});
+
+	it("does not mistake a sibling sharing a prefix for a descendant", async () => {
+		rig({ "/dst": ["build-tools/x.sh", "build.gradle"] });
+		const [result] = await clonePaths("/src", "/dst", ["build"]);
+		expect(result.error).toBeUndefined();
+	});
+
+	it("refuses every path when git cannot answer", async () => {
+		rig({}, 128);
+		const [result] = await clonePaths("/src", "/dst", ["node_modules"]);
+		expect(result.error).toContain("Could not confirm with git");
+		expect(destructive()).toHaveLength(0);
+	});
+
+	it("refuses a path that resolves outside the worktree through a symlink", async () => {
+		rig({});
+		mockRealpath.mockImplementation(async (p: string) => (p === "/dst/link" ? "/elsewhere" : p));
+		const [result] = await clonePaths("/src", "/dst", ["link/cache"]);
+		expect(result.error).toContain("does not resolve to a path inside the task worktree");
+	});
+
+	it("checks the symlink-resolved path, not the spelled one", async () => {
+		rig({ "/dst": ["src/gen/a.ts"] });
+		mockRealpath.mockImplementation(async (p: string) => (p === "/dst/link" ? "/dst/src" : p));
+		const [result] = await clonePaths("/src", "/dst", ["link/gen"]);
+		expect(result.error).toContain("src/gen/a.ts");
+	});
+
+	it("keeps a missing source a silent skip even when it is tracked", async () => {
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return lsFiles(cmd, { "/dst": ["build/a.txt"] });
+			return makeProc(cmd[0] === "test" ? 1 : 0);
+		});
+		const [result] = await clonePaths("/src", "/dst", ["build"]);
+		expect(result.skipped).toBe(true);
+		expect(result.error).toBeUndefined();
 	});
 });
 
@@ -431,6 +516,25 @@ describe("detectClonePaths", () => {
 		expect(detected).not.toContain(".gradle");
 	});
 
+	it("leaves out a well-known path that git tracks (#2026)", async () => {
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return lsFiles(cmd, { "/proj": ["build/gen.ts"] });
+			if (cmd[0] === "test") return makeProc(["/proj/build", "/proj/node_modules"].includes(cmd[2]) ? 0 : 1);
+			return makeProc(1);
+		});
+
+		expect(await detectClonePaths("/proj")).toEqual(["node_modules"]);
+	});
+
+	it("detects nothing when git cannot vouch for the paths", async () => {
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return makeProc(128, "fatal: not a git repository");
+			return makeProc(cmd[0] === "test" ? 0 : 1);
+		});
+
+		expect(await detectClonePaths("/proj")).toEqual([]);
+	});
+
 	it("returns empty array when nothing exists", async () => {
 		mockSpawn.mockImplementation(() => makeProc(1));
 
@@ -442,6 +546,7 @@ describe("detectClonePaths", () => {
 		// "vendor" and "build" appear for multiple ecosystems
 		// detectClonePaths should deduplicate
 		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return makeProc(0);
 			if (cmd[0] === "test" && cmd[2] === "/proj/vendor") return makeProc(0);
 			return makeProc(1);
 		});

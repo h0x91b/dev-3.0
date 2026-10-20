@@ -1,3 +1,5 @@
+> Partly superseded on 2026-10-20 by `decisions/2026/10/20/clonepaths-refuse-tracked-paths.md`: `clonePaths: []` is now an explicit "clone nothing"; other empty arrays still fall through.
+
 # 020 — Empty array config fallthrough
 
 ## Context

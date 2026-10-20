@@ -12,13 +12,19 @@ const CONFIG_FILE = `${CONFIG_DIR}/config.json`;
 const LOCAL_CONFIG_FILE = `${CONFIG_DIR}/config.local.json`;
 
 /**
- * Treat empty arrays as "not configured" so they fall through the cascade.
- * A config file that contains `clonePaths: []` should not shadow a project-level
- * `clonePaths: ["node_modules"]`. See #378.
+ * Keys whose empty array is an explicit value, not "not configured": `clonePaths: []`
+ * in a config file is the only way that file can turn cloning off (#2026).
  */
-function effective<T>(val: T): T | undefined {
+const EXPLICIT_EMPTY_ARRAY_KEYS: ReadonlySet<keyof Dev3RepoConfig> = new Set(["clonePaths"]);
+
+/**
+ * Treat empty arrays as "not configured" so they fall through the cascade — a
+ * phantom `sparseCheckoutPaths: []` once written by the UI must not shadow a real
+ * value (#378). {@link EXPLICIT_EMPTY_ARRAY_KEYS} are the exception.
+ */
+function effective<T>(val: T, key: keyof Dev3RepoConfig): T | undefined {
 	if (val === undefined || val === null) return undefined;
-	if (Array.isArray(val) && val.length === 0) return undefined;
+	if (Array.isArray(val) && val.length === 0 && !EXPLICIT_EMPTY_ARRAY_KEYS.has(key)) return undefined;
 	return val;
 }
 
@@ -130,9 +136,9 @@ export async function getConfigSources(projectPath: string): Promise<ConfigSourc
 
 	const entries: ConfigSourceEntry[] = [];
 	for (const field of DEV3_REPO_CONFIG_KEYS) {
-		if (localConfig && effective(localConfig[field]) !== undefined) {
+		if (localConfig && effective(localConfig[field], field) !== undefined) {
 			entries.push({ field, source: "local" });
-		} else if (repoConfig && effective(repoConfig[field]) !== undefined) {
+		} else if (repoConfig && effective(repoConfig[field], field) !== undefined) {
 			entries.push({ field, source: "repo" });
 		}
 	}
@@ -155,7 +161,8 @@ export async function getConfigSources(projectPath: string): Promise<ConfigSourc
  *
  * `resolved` is the output of resolveProjectConfig for the same project+path;
  * `project` is the raw Project object. Empty arrays count as "not configured"
- * for file layers (matches effective()), so a phantom `[]` can't claim a key.
+ * for file layers (matches effective()), so a phantom `[]` can't claim a key —
+ * except an explicit `clonePaths: []`, which wins and is attributed to its file.
  */
 export function resolveConfigProvenance(
 	resolved: Project,
@@ -170,9 +177,9 @@ export function resolveConfigProvenance(
 	const repoConfig = enabled ? readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`) : null;
 	const provenance: Record<string, ResolvedConfigSource> = {};
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		if (effective(localConfig?.[key]) !== undefined) {
+		if (effective(localConfig?.[key], key) !== undefined) {
 			provenance[key] = "local";
-		} else if (effective(repoConfig?.[key]) !== undefined) {
+		} else if (effective(repoConfig?.[key], key) !== undefined) {
 			provenance[key] = "repo";
 		} else if ((project as any)[key] != null) {
 			provenance[key] = "project";
@@ -212,7 +219,7 @@ type ConfigLayer = { config: Dev3RepoConfig | null; trusted: boolean };
 /** Layer value for one key, or undefined when this layer may not supply it. */
 function layerValue(layer: ConfigLayer, key: keyof Dev3RepoConfig): unknown {
 	if (!layer.trusted && COMMAND_BEARING_KEYS.has(key)) return undefined;
-	return effective(layer.config?.[key]);
+	return effective(layer.config?.[key], key);
 }
 
 /**
@@ -237,7 +244,8 @@ function pathConfigLayers(basePath: string, trusted = true): ConfigLayer[] {
  * (resolveOperationalProjectConfig) so the rules live in exactly one place.
  *
  * Per field, the first layer with an "effective" value wins (empty arrays count
- * as "not configured" so a phantom `[]` can't shadow a real value, #378), then
+ * as "not configured" so a phantom `[]` can't shadow a real value, #378 — except
+ * `clonePaths: []`, which turns cloning off, #2026), then
  * the project object, then DEFAULTS. `compareRefBasePath` is the dir used to
  * auto-detect `defaultCompareRef` when nothing sets it (skipped if missing).
  */
@@ -330,7 +338,8 @@ export async function resolveProjectConfig(project: Project, configPath?: string
  *   5. projects.json field values (Project object, Project Settings UI → Project tab)
  *   6. DEFAULTS
  *
- * Per field, the highest layer that sets it wins (empty arrays = "not set"). The
+ * Per field, the highest layer that sets it wins (empty arrays = "not set", bar
+ * `clonePaths: []`). The
  * worktree always outranks main, so a stale/empty value from main or the project
  * object can never shadow a worktree value.
  *
@@ -451,8 +460,8 @@ export async function saveConfigToWinningLayer(
 	const leftover: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(config)) {
 		const field = key as keyof Dev3RepoConfig;
-		if (field !== "env" && local && effective(local[field]) !== undefined) localPatch[key] = value;
-		else if (field !== "env" && repo && effective(repo[field]) !== undefined) repoPatch[key] = value;
+		if (field !== "env" && local && effective(local[field], field) !== undefined) localPatch[key] = value;
+		else if (field !== "env" && repo && effective(repo[field], field) !== undefined) repoPatch[key] = value;
 		else leftover[key] = value;
 	}
 	if (Object.keys(localPatch).length > 0) {

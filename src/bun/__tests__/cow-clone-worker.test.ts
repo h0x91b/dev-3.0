@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 const mockSpawn = vi.fn();
 vi.mock("../spawn", () => ({ spawn: (...args: unknown[]) => mockSpawn(...args) }));
+// "/src" and "/dst" are not real directories; the tracked-path guard resolves symlinks through realpath.
+vi.mock("node:fs/promises", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:fs/promises")>()),
+	realpath: async (p: string) => p,
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() }),
 }));

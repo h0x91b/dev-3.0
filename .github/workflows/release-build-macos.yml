@@ -286,6 +286,8 @@ jobs:
           PROBE_DIR=$(mktemp -d)
           mkdir -p "$PROBE_DIR/src/node_modules" "$PROBE_DIR/dest"
           echo probe > "$PROBE_DIR/src/node_modules/file.txt"
+          # cow-clone refuses a path git cannot check for tracked files (#2026).
+          git init -q "$PROBE_DIR/src" && git init -q "$PROBE_DIR/dest"
           bun build scripts/ffi-clonefile-probe.ts --compile --outfile "$PROBE_DIR/probe"
           codesign --remove-signature "$PROBE_DIR/probe" 2>/dev/null || true
           codesign --force --sign - --options runtime \
