@@ -2531,7 +2531,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (term) {
 				try {
 					term.options.fontSize = scaledTerminalFontSize((e as CustomEvent).detail);
-					fitAddonRef.current?.fit();
+					// refit, never fitAddon.fit(): it reports through term.onResize, which a
+					// follower suppresses, and it fits a follower/observer to its own container.
+					refitRef.current?.();
 				} catch { /* disposed */ }
 			}
 		}
@@ -2554,7 +2556,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					// would otherwise re-apply the font the user already moved off.
 					term.options.fontFamily = terminalFontStack();
 					term.options.fontSize = scaledTerminalFontSize();
-					fitAddonRef.current?.fit();
+					refitRef.current?.();
 				} catch { /* disposed */ }
 			};
 			Promise.all([

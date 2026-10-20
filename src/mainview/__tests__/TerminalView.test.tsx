@@ -2876,6 +2876,23 @@ describe("TerminalView – shared tmux size", () => {
 		expect(sent()).toContain(ACTIVE);
 	});
 
+	// A zoom (or terminal-font) change resizes the canvas without touching the
+	// container, so nothing else reports the new viewport: a follower must still
+	// render at the shared grid AND tell the server its own size, or taking over
+	// afterwards applies the pre-zoom geometry.
+	it("still reports its own viewport when zoom changes while sized elsewhere", async () => {
+		await renderShared();
+		notice(22, 40, false);
+		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 90, rows: 28 }));
+		mockTermInstance.resize.mockClear();
+		lastWebSocket!.send.mockClear();
+
+		act(() => { window.dispatchEvent(new CustomEvent("dev3-zoom-changed", { detail: 1.25 })); });
+
+		expect(sent()).toContain("\x1b]resize;90;28\x07");
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(22, 40);
+	});
+
 	it("claims the size on connect only when the user is looking at it", async () => {
 		const hasFocus = vi.spyOn(document, "hasFocus");
 		try {

@@ -27,6 +27,12 @@ terminal for everyone, with nothing in the UI saying why (h0x91b/dev-3.0#2000). 
   44px-tall button at the top: a small chip at the bottom edge was missed on a real phone.
   `TerminalView` renders it inside its own wrapper, so it sits over the canvas on every surface
   (the phone layout's container also holds the window switcher).
+- **Every size change goes through the role-aware refit**, zoom and terminal-font changes
+  included. They used to call `FitAddon.fit()`, which fits the terminal to its own container
+  and reports through `term.onResize` — the one path a follower suppresses. So a zoomed
+  follower both stopped rendering at the shared grid and told the server nothing, and the
+  size it then took over with was its PRE-zoom one — and stayed there, because the role
+  flip's refit is a no-op on a terminal `fit()` has already resized (browser A/B, 2026-10-20).
 - The redraw jiggle now fires only for a socket's FIRST resize report (a new viewer's first
   paint), and its 16ms restore re-applies the size current when it fires. Browser QA caught
   the old shape: a new follower's own report jiggled the PTY, and the restore of the captured
