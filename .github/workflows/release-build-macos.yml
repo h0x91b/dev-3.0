@@ -260,11 +260,9 @@ jobs:
       - name: Verify CLI binary can run bun:ffi (JIT entitlements gate)
         run: |
           set -euo pipefail
-          CLI_BIN=$(find "$RUNNER_TEMP/eb-payload" ./build -path "*/Resources/app/cli/dev3" -type f 2>/dev/null | head -1)
-          if [ -z "$CLI_BIN" ]; then
-            echo "::error::no CLI binary found in the built app (Resources/app/cli/dev3)"
-            exit 1
-          fi
+          # The payload root exists only when electrobun packed it; the helper skips a
+          # missing root and still fails on a missing file or a broken search.
+          CLI_BIN=$(bash scripts/find-shipped-app-file.sh "Resources/app/cli/dev3" "$RUNNER_TEMP/eb-payload" ./build)
           echo "checking $CLI_BIN"
           ENTS=$(codesign -d --entitlements - --xml "$CLI_BIN" 2>&1 || true)
           for key in com.apple.security.cs.allow-jit com.apple.security.cs.allow-unsigned-executable-memory; do
@@ -278,11 +276,7 @@ jobs:
 
           # Runtime half: the real cow-clone code, signed the way the CLI is,
           # running clonefile(2) through the worker bundle the app ships.
-          WORKER_JS=$(find "$RUNNER_TEMP/eb-payload" ./build -path "*/Resources/app/workers/clonefile-worker.js" -type f 2>/dev/null | head -1)
-          if [ -z "$WORKER_JS" ]; then
-            echo "::error::no clonefile worker in the built app (Resources/app/workers/clonefile-worker.js)"
-            exit 1
-          fi
+          WORKER_JS=$(bash scripts/find-shipped-app-file.sh "Resources/app/workers/clonefile-worker.js" "$RUNNER_TEMP/eb-payload" ./build)
           PROBE_DIR=$(mktemp -d)
           mkdir -p "$PROBE_DIR/src/node_modules" "$PROBE_DIR/dest"
           echo probe > "$PROBE_DIR/src/node_modules/file.txt"

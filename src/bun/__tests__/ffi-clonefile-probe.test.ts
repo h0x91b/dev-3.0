@@ -52,7 +52,9 @@ describe("ffi clonefile release probe", () => {
 	it("is what the macOS release gate compiles, fed the worker the app ships", () => {
 		const workflow = repoFile(".github/workflows/release-build-macos.yml");
 		expect(workflow).toContain("bun build scripts/ffi-clonefile-probe.ts --compile");
-		expect(workflow).toContain('-path "*/Resources/app/workers/clonefile-worker.js"');
+		expect(workflow).toContain(
+			'WORKER_JS=$(bash scripts/find-shipped-app-file.sh "Resources/app/workers/clonefile-worker.js"',
+		);
 		expect(workflow).toContain('"$PROBE_DIR/probe" "$PROBE_DIR/src" "$PROBE_DIR/dest" "$WORKER_JS"');
 		// cow-clone refuses any path git cannot vouch for, so plain temp dirs would fail the gate.
 		expect(workflow).toContain('git init -q "$PROBE_DIR/src" && git init -q "$PROBE_DIR/dest"');
