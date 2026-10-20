@@ -122,6 +122,34 @@ describe("previewTaskHandoff", () => {
 	});
 });
 
+describe("a task whose agent is Cursor Agent", () => {
+	/** Cursor cuts long cwds and hash-suffixes the dir, so only `.workspace-trusted` names the worktree. */
+	function seedCursor(mtime: number): void {
+		const project = join(home, ".cursor", "projects", "Users-x-Docume-28b6597");
+		const dir = join(project, "agent-transcripts", "cur-1");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(project, ".workspace-trusted"), JSON.stringify({ workspacePath: task.worktreePath }));
+		const path = join(dir, "cur-1.jsonl");
+		writeFileSync(path, jsonl(
+			{ role: "user", message: { content: [{ type: "text", text: "<user_query>\nCURSOR WORK\n</user_query>" }] } },
+			{ role: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+		));
+		utimesSync(path, mtime, mtime);
+	}
+
+	it("offers the Cursor conversation for handoff", async () => {
+		seedCursor(2_000);
+		expect(await previewTaskHandoff(task, { home })).toMatchObject({ source: "cursor", sessionId: "cur-1", turns: 1 });
+	});
+
+	it("retells it under Cursor's name", async () => {
+		seedCursor(2_000);
+		const prepared = await prepareTaskHandoff(task, { home });
+		expect(readFileSync(prepared!.path, "utf-8")).toContain("CURSOR WORK");
+		expect(handoffPrompt(prepared!)).toContain("ran in Cursor Agent");
+	});
+});
+
 describe("prepareTaskHandoff", () => {
 	it("writes the retelling beside the task's dumps, not inside the worktree", async () => {
 		const prepared = await prepareTaskHandoff(task, { home });

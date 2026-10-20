@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import type { Task } from "../shared/types";
 import type { HandoffPreview } from "../shared/conversation-handoff-model";
+import { CONVERSATION_SOURCE_LABELS } from "../shared/conversation-import-model";
 import type { RenderTarget } from "../shared/conversation-render";
 import { conversationDumpDir, type TranscriptFingerprint } from "./conversation-parse";
 import { runHandoffJob } from "./conversation-handoff-runner";
@@ -124,7 +125,7 @@ export async function prepareTaskHandoff(
  * replaces "continue from where it stopped", never the retelling itself.
  */
 export function handoffPrompt(handoff: PreparedHandoff, instruction?: string): string {
-	const previous = handoff.source === "claude" ? "Claude Code" : "Codex";
+	const previous = CONVERSATION_SOURCE_LABELS[handoff.source];
 	const preamble =
 		`You are taking over work that ran in ${previous}, in this same worktree. ` +
 		`Read ${handoff.path} in full before anything else. ` +

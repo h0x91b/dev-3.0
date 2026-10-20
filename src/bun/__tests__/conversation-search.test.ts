@@ -47,6 +47,16 @@ function seedGeminiChat(taskId: string, alias: string, messages: Array<{ type: s
 	);
 }
 
+function seedCursorChat(dirName: string, trustedPath: string | null, sessionId: string, messages: Array<{ role: string; text: string }>): void {
+	const project = join(home, ".cursor", "projects", dirName);
+	mkdirSync(join(project, "agent-transcripts", sessionId), { recursive: true });
+	if (trustedPath) writeFileSync(join(project, ".workspace-trusted"), JSON.stringify({ workspacePath: trustedPath }));
+	writeFileSync(
+		join(project, "agent-transcripts", sessionId, `${sessionId}.jsonl`),
+		messages.map((m) => JSON.stringify({ role: m.role, message: { content: [{ type: "text", text: m.text }] } })).join("\n") + "\n",
+	);
+}
+
 function task(id: string, over: Partial<EngineTask> = {}): EngineTask {
 	return { id, title: id, description: "", status: "completed", groupId: null, agentId: "builtin-claude", ...over };
 }
@@ -218,6 +228,32 @@ describe("searchConversations", () => {
 		expect(results.map((r) => r.taskId)).toEqual(["gem00000-a"]);
 		expect(results[0].snippets.join(" ").toLowerCase()).toContain("webhook");
 		expect(results[0].transcriptPaths[0]).toContain(".gemini/tmp");
+	});
+
+	describe("cursor agent transcripts", () => {
+		const search = (query: string, tasks: EngineTask[]) =>
+			searchConversations({ query, tasks, projectSlug: SLUG, currentTaskId: null, currentGroupId: null, home, dev3Home });
+
+		it("finds every hash-named dir that names the worktree, matching the user's words only", () => {
+			const wt = reconstructWorktreePath(dev3Home, SLUG, "cur00000-a");
+			seedCursorChat("Users-x-Docume-1111111", wt, "s1", [
+				{ role: "user", text: "<timestamp>Sunday, Oct 18</timestamp>\n<user_query>\nthrottle the webhook\n</user_query>" },
+			]);
+			seedCursorChat("Users-x-Docume-2222222", wt, "s2", [{ role: "assistant", text: "added kafka backoff" }]);
+			const tasks = [task("cur00000-a", { agentId: "builtin-cursor" })];
+
+			expect(search("webhook", tasks).map((r) => r.taskId)).toEqual(["cur00000-a"]);
+			expect(search("kafka", tasks).map((r) => r.taskId)).toEqual(["cur00000-a"]);
+			expect(search("sunday", tasks)).toEqual([]);
+		});
+
+		it("does not claim a derived-name dir whose trust record names another workspace", () => {
+			const wt = reconstructWorktreePath(dev3Home, SLUG, "cur00000-b");
+			const derived = wt.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+			seedCursorChat(derived, "/somewhere/else", "s1", [{ role: "assistant", text: "unrelated zebra work" }]);
+
+			expect(search("zebra", [task("cur00000-b", { agentId: "builtin-cursor" })])).toEqual([]);
+		});
 	});
 
 	it("matches a task by a historical (renamed-away) title or overview", () => {

@@ -17,6 +17,7 @@ import {
 	tokenizeQuery,
 	type ConversationMatch,
 } from "../shared/conversation-search-core";
+import { unwrapUserQuery } from "../shared/conversation-parsers";
 
 /**
  * Filesystem engine for searching past task conversations.
@@ -265,6 +266,78 @@ const geminiLocator: TranscriptLocator = {
 	},
 };
 
+// ---- cursor: ~/.cursor/projects/<dir>/agent-transcripts/<id>/<id>.jsonl; <dir> → cwd
+// via its `.workspace-trusted` (decisions/2026/10/20/cursor-agent-transcripts.md) ----
+
+function cursorProjectDirName(worktreePath: string): string {
+	return worktreePath.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function cursorTranscriptsIn(projectDir: string): string[] {
+	const root = `${projectDir}/agent-transcripts`;
+	if (!existsSync(root)) return [];
+	try {
+		return readdirSync(root).flatMap((session) => jsonlFilesIn(`${root}/${session}`));
+	} catch {
+		return [];
+	}
+}
+
+const cursorLocator: TranscriptLocator = {
+	kind: "cursor",
+	buildIndex(home) {
+		const root = `${home}/.cursor/projects`;
+		let dirs: string[];
+		try {
+			dirs = readdirSync(root);
+		} catch {
+			return null;
+		}
+		const index: WorktreeIndex = new Map();
+		for (const dir of dirs) {
+			const trusted = readFileSafe(`${root}/${dir}/.workspace-trusted`);
+			if (!trusted) continue;
+			let workspacePath: unknown;
+			try {
+				workspacePath = (JSON.parse(trusted) as Record<string, unknown>).workspacePath;
+			} catch {
+				continue;
+			}
+			if (typeof workspacePath !== "string") continue;
+			const list = index.get(workspacePath);
+			if (list) list.push(`${root}/${dir}`);
+			else index.set(workspacePath, [`${root}/${dir}`]);
+		}
+		return index;
+	},
+	filesForWorktree(worktreePath, home, index) {
+		const dirs = new Set(index?.get(worktreePath) ?? []);
+		// The encoding is lossy, so a derived dir that names its own workspace is left to the index.
+		const derived = `${home}/.cursor/projects/${cursorProjectDirName(worktreePath)}`;
+		if (!existsSync(`${derived}/.workspace-trusted`)) dirs.add(derived);
+		return [...dirs].flatMap(cursorTranscriptsIn);
+	},
+	extractUnits(filePath) {
+		const content = readFileSafe(filePath);
+		if (!content) return [];
+		const units: string[] = [];
+		for (const line of content.split("\n")) {
+			if (!line.trim()) continue;
+			let obj: Record<string, unknown>;
+			try {
+				obj = JSON.parse(line) as Record<string, unknown>;
+			} catch {
+				continue;
+			}
+			if (obj.role !== "user" && obj.role !== "assistant") continue;
+			const blocks = textFromBlocks((obj.message as Record<string, unknown> | undefined)?.content, (t) => t === "text");
+			const text = obj.role === "user" ? unwrapUserQuery(blocks) : blocks;
+			if (text.trim()) units.push(text);
+		}
+		return units;
+	},
+};
+
 // ---- dev3's own dumps: <task container>/conversations, written when a task goes
 // terminal. The only copy that outlives both the worktree and Claude's own
 // retention window, which is exactly the case search exists for. ----
@@ -303,7 +376,7 @@ const dumpLocator: TranscriptLocator = {
 };
 
 /** Registered locators — every agent whose store maps to a single task (variant isolation). */
-const LOCATORS: TranscriptLocator[] = [claudeLocator, codexLocator, geminiLocator, dumpLocator];
+const LOCATORS: TranscriptLocator[] = [claudeLocator, codexLocator, cursorLocator, geminiLocator, dumpLocator];
 
 /** One transcript file found on disk, tagged with the agent whose store held it. */
 export interface TranscriptFile {

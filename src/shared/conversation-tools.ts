@@ -124,6 +124,21 @@ const CODEX_OPS: Record<string, CanonicalToolOp> = {
 	request_permissions: "user.ask",
 };
 
+/** Cursor-only names seen in real transcripts; shared ones (Read, Write, Grep…) mirror Claude's. */
+const CURSOR_OPS: Record<string, CanonicalToolOp> = {
+	...CLAUDE_OPS,
+	Shell: "shell.run",
+	AwaitShell: "shell.wait",
+	StrReplace: "file.edit",
+	AskQuestion: "user.ask",
+};
+
+const OPS_BY_SOURCE: Record<ConversationSource, Record<string, CanonicalToolOp>> = {
+	claude: CLAUDE_OPS,
+	codex: CODEX_OPS,
+	cursor: CURSOR_OPS,
+};
+
 /** Reduce one native tool call to its canonical form. */
 export function normalizeToolCall(
 	source: ConversationSource,
@@ -139,7 +154,7 @@ export function normalizeToolCall(
 		return { op: "mcp.call", nativeName: name, extra: { server, tool: tool.join("__"), args } };
 	}
 
-	const op = (source === "claude" ? CLAUDE_OPS[name] : CODEX_OPS[name]) ?? "unknown";
+	const op = OPS_BY_SOURCE[source][name] ?? "unknown";
 	const call: CanonicalToolCall = { op, nativeName: name };
 
 	switch (op) {
@@ -158,7 +173,7 @@ export function normalizeToolCall(
 		case "file.write":
 		case "file.edit":
 			call.path = str(args, "file_path", "path", "notebook_path");
-			if (op === "file.write") call.body = str(args, "content");
+			if (op === "file.write") call.body = str(args, "content", "contents");
 			if (op === "file.edit") call.body = str(args, "new_string", "new_source");
 			break;
 		case "file.patch": {

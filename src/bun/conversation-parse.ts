@@ -24,7 +24,7 @@ import { transcriptFilesForWorktree } from "./conversation-search";
  */
 
 /** Locator kinds the parser layer understands. Gemini is discovered but not parsed yet. */
-const PARSEABLE_KINDS = new Set<string>(["claude", "codex"]);
+const PARSEABLE_KINDS = new Set<string>(["claude", "codex", "cursor"]);
 
 export interface ParsedTranscript {
 	conversation: ParsedConversation;

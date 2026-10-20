@@ -20,6 +20,7 @@ export type ImportTargetStatus = "user-questions" | "completed";
 export const CONVERSATION_SOURCE_LABELS: Record<ConversationSource, string> = {
 	claude: "Claude Code",
 	codex: "Codex",
+	cursor: "Cursor Agent",
 };
 
 /** One row of the import preview. The transcript path stays server-side. */

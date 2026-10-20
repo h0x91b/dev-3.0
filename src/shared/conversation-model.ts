@@ -22,7 +22,7 @@
 import type { CanonicalToolCall } from "./conversation-tools";
 
 /** Transcript formats dev3 can parse. One per native on-disk layout. */
-export type ConversationSource = "claude" | "codex";
+export type ConversationSource = "claude" | "codex" | "cursor";
 
 /** Bump when the emitted JSON's shape changes in a way readers must notice. */
 export const CONVERSATION_SCHEMA_VERSION = 2;

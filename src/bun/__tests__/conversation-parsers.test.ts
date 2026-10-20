@@ -3,6 +3,7 @@ import {
 	detectConversationSource,
 	parseClaudeTranscript,
 	parseCodexTranscript,
+	parseCursorTranscript,
 } from "../../shared/conversation-parsers";
 import { conversationEvents, scanJsonl, type ParsedConversation } from "../../shared/conversation-model";
 
@@ -294,7 +295,55 @@ describe("parseCodexTranscript", () => {
 	});
 });
 
+describe("parseCursorTranscript", () => {
+	const cursorUser = {
+		role: "user",
+		message: { content: [{ type: "text", text: "<timestamp>Sunday, Oct 18, 2026</timestamp>\n<user_query>\nfix the build\n</user_query>" }] },
+	};
+	const cursorAssistant = {
+		role: "assistant",
+		message: {
+			content: [
+				{ type: "text", text: "running it" },
+				{ type: "tool_use", name: "Shell", input: { command: "make", description: "build" } },
+				{ type: "tool_use", name: "StrReplace", input: { path: "/w/a.ts", old_string: "a", new_string: "b" } },
+			],
+		},
+	};
+	const path = "/p/agent-transcripts/cur-1/cur-1.jsonl";
+
+	it("reads role-keyed records as user prompts and assistant replies, not all as prompts", () => {
+		const parsed = parseCursorTranscript(jsonl(cursorUser, cursorAssistant, { type: "turn_ended", status: "success" }), path);
+		expect(parsed.source).toBe("cursor");
+		expect(parsed.stats.turns).toBe(1);
+		expect(parsed.turns[0].assistantText).toBe("running it");
+		expect(parsed.stats.unknownRecords).toBe(0);
+		expect(parsed.fidelity.level).toBe("full");
+	});
+
+	it("takes the session id from the file name, since the records carry none", () => {
+		expect(parseCursorTranscript(jsonl(cursorUser), path).sessionId).toBe("cur-1");
+	});
+
+	it("keeps only the user's words, without Cursor's timestamp and query wrapper", () => {
+		const parsed = parseCursorTranscript(jsonl(cursorUser), path);
+		expect(parsed.turns[0].userText).toBe("fix the build");
+		expect(ev(parsed)[0].text).toBe("fix the build");
+	});
+
+	it("maps Cursor's tool names to canonical operations", () => {
+		const calls = ev(parseCursorTranscript(jsonl(cursorUser, cursorAssistant), path)).filter((e) => e.kind === "tool-call");
+		expect(calls.map((c) => c.tool?.canonical?.op)).toEqual(["shell.run", "file.edit"]);
+		expect(calls[0].tool?.canonical?.command).toBe("make");
+		expect(calls[1].tool?.canonical?.path).toBe("/w/a.ts");
+	});
+});
+
 describe("detectConversationSource", () => {
+	it("recognizes a cursor transcript by its role-only records", () => {
+		expect(detectConversationSource(jsonl({ role: "user", message: { content: [] } }))).toBe("cursor");
+	});
+
 	it("recognizes a codex rollout by its header line", () => {
 		expect(detectConversationSource(jsonl(codexMeta))).toBe("codex");
 	});

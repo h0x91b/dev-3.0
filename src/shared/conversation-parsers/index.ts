@@ -8,15 +8,18 @@ import type { ConversationSource, ParsedConversation } from "../conversation-mod
 import { scanJsonl } from "../conversation-model";
 import { parseClaudeTranscript } from "./claude";
 import { parseCodexTranscript } from "./codex";
+import { parseCursorTranscript } from "./cursor";
 import type { ParseConversationOptions } from "./types";
 
 export type { ParseConversationOptions } from "./types";
 export { parseClaudeTranscript } from "./claude";
 export { parseCodexTranscript } from "./codex";
+export { parseCursorTranscript, unwrapUserQuery } from "./cursor";
 
 const PARSERS: Record<ConversationSource, (body: string, path: string, o?: ParseConversationOptions) => ParsedConversation> = {
 	claude: parseClaudeTranscript,
 	codex: parseCodexTranscript,
+	cursor: parseCursorTranscript,
 };
 
 export function parseConversation(
@@ -30,7 +33,8 @@ export function parseConversation(
 
 /**
  * Identify a transcript from its first records. Codex opens with a `session_meta`
- * line; Claude records carry a `sessionId` plus a bare `type`. Content-based so a
+ * line; Claude records carry a `sessionId` plus a bare `type`; Cursor records carry
+ * only `role` + `message`. Content-based so a
  * file copied out of its native directory still parses.
  */
 export function detectConversationSource(body: string): ConversationSource | null {
@@ -39,6 +43,7 @@ export function detectConversationSource(body: string): ConversationSource | nul
 		const type = record.type;
 		if (type === "session_meta" || type === "response_item" || type === "event_msg") return "codex";
 		if (typeof record.sessionId === "string" && typeof type === "string") return "claude";
+		if (type === undefined && typeof record.role === "string" && record.message) return "cursor";
 	}
 	return null;
 }

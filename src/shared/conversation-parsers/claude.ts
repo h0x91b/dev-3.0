@@ -24,6 +24,7 @@ import {
 	toolOutputText,
 	type ConversationEvent,
 	type ConversationRole,
+	type ConversationSource,
 	type ConversationUsage,
 	type ParsedConversation,
 	assembleTurns,
@@ -44,6 +45,8 @@ const LIFECYCLE_TYPES = new Set([
 	"agent-setting",
 	// The user queued or dequeued a message while the agent was working.
 	"queue-operation",
+	// Cursor Agent's end-of-turn marker (see cursor.ts).
+	"turn_ended",
 ]);
 
 function usageFrom(message: Record<string, unknown> | undefined): ConversationUsage | undefined {
@@ -74,7 +77,7 @@ function noticePayload(attachmentType: string, attachment: Record<string, unknow
 }
 
 function roleOf(record: Record<string, unknown>, message: Record<string, unknown> | undefined): ConversationRole {
-	const role = stringAt(message, "role");
+	const role = stringAt(message, "role") ?? stringAt(record, "role");
 	if (role === "user" || role === "assistant" || role === "system") return role;
 	return record.type === "assistant" ? "assistant" : "user";
 }
@@ -84,6 +87,7 @@ function eventsFromMessage(
 	record: Record<string, unknown>,
 	seq: number,
 	includeRaw: boolean,
+	source: ConversationSource,
 ): ConversationEvent[] {
 	const message = recordAt(record, "message");
 	const uuid = stringAt(record, "uuid") ?? String(seq);
@@ -150,7 +154,7 @@ function eventsFromMessage(
 					callId: stringAt(b, "id") ?? undefined,
 					name,
 					input: b.input,
-					canonical: normalizeToolCall("claude", name, b.input),
+					canonical: normalizeToolCall(source, name, b.input),
 				},
 			});
 			continue;
@@ -207,6 +211,16 @@ export function parseClaudeTranscript(
 	sourcePath: string,
 	options: ParseConversationOptions = {},
 ): ParsedConversation {
+	return parseMessageTranscript(body, sourcePath, options, "claude");
+}
+
+/** Any JSONL of Anthropic-style `{role|type, message}` records — Claude's, or Cursor Agent's. */
+export function parseMessageTranscript(
+	body: string,
+	sourcePath: string,
+	options: ParseConversationOptions,
+	source: ConversationSource,
+): ParsedConversation {
 	const includeRaw = options.includeRaw === true;
 	const scan = scanJsonl(body);
 	const stats = emptyStats();
@@ -225,13 +239,14 @@ export function parseClaudeTranscript(
 		sessionId ??= stringAt(record, "sessionId") ?? stringAt(record, "session_id");
 		cwd ??= stringAt(record, "cwd");
 		gitBranch ??= stringAt(record, "gitBranch");
-		const type = typeof record.type === "string" ? record.type : "";
+		// Cursor records carry only `role`; Claude's always carry `type`.
+		const type = stringAt(record, "type") ?? stringAt(record, "role") ?? "";
 
 		if (type === "user" || type === "assistant") {
 			model ??= stringAt(recordAt(record, "message"), "model");
 			// A record can yield an attachment or a usage-only marker, which belong
 			// to the session layer even though the record was a message.
-			routeEvents(eventsFromMessage(record, seq, includeRaw), events, sessionEvents);
+			routeEvents(eventsFromMessage(record, seq, includeRaw, source), events, sessionEvents);
 			return;
 		}
 
@@ -312,7 +327,7 @@ export function parseClaudeTranscript(
 	return {
 		schemaVersion: CONVERSATION_SCHEMA_VERSION,
 		parserVersion: CONVERSATION_PARSER_VERSION,
-		source: "claude",
+		source,
 		sessionId,
 		sourcePath,
 		cwd,

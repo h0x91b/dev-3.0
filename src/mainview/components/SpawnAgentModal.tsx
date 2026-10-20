@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import type { HandoffPreview } from "../../shared/conversation-handoff-model";
+import { CONVERSATION_SOURCE_LABELS } from "../../shared/conversation-import-model";
 import { agentPromptMayHaveLanded } from "../../shared/agent-prompt-delivery";
 import { getTaskTitle } from "../../shared/types";
 import { toast } from "../toast";
@@ -234,7 +235,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 										<span className="text-fg text-sm font-medium block">{t("spawnAgent.handoff")}</span>
 										<span className="text-fg-3 text-xs block mt-0.5">
 											{t.plural("spawnAgent.handoffDesc", handoffPreview.turns, {
-												agent: handoffPreview.source === "claude" ? "Claude Code" : "Codex",
+												agent: CONVERSATION_SOURCE_LABELS[handoffPreview.source],
 												count: handoffPreview.turns,
 											})}
 										</span>

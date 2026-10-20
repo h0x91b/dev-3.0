@@ -38,7 +38,7 @@ import { createLogger } from "./logger";
 const log = createLogger("task-conversation");
 
 /** Transcript kinds the parser layer understands. Gemini is found but not parsed. */
-const PARSEABLE_KINDS = new Set<string>(["claude", "codex"]);
+const PARSEABLE_KINDS = new Set<string>(["claude", "codex", "cursor"]);
 
 /** A session in the list, plus how to get its turns when it is the selected one. */
 interface SessionRef {
@@ -130,7 +130,8 @@ function archivedSessions(project: Project, task: Task): SessionRef[] {
 	}
 	return names.map((name) => {
 		const path = `${dir}/${name}`;
-		const source: ConversationSource = name.startsWith("codex-") ? "codex" : "claude";
+		const prefix = name.slice(0, name.indexOf("-"));
+		const source: ConversationSource = prefix === "codex" || prefix === "cursor" ? prefix : "claude";
 		const { mtime, bytes } = statOf(path);
 		const sessionId = sessionIdFromName(name, source);
 		return {
