@@ -256,6 +256,16 @@ const terminal = {
 	"ports.count_many": "{count} портов",
 	"ports.count_other": "{count} портов",
 	"ports.allocated": "Выделенные порты",
+	"ports.openPort": "Открыть :{port} в браузере",
+	"ports.moreCount_one": "ещё {count}",
+	"ports.moreCount_few": "ещё {count}",
+	"ports.moreCount_many": "ещё {count}",
+	"ports.moreCount_other": "ещё {count}",
+	"ports.showAllCount_one": "Показать все {count} порт",
+	"ports.showAllCount_few": "Показать все {count} порта",
+	"ports.showAllCount_many": "Показать все {count} портов",
+	"ports.showAllCount_other": "Показать все {count} портов",
+	"ports.showFewer": "Свернуть",
 
 	// Resources
 	"resources.title": "Ресурсы",

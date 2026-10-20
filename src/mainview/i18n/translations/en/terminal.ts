@@ -242,6 +242,12 @@ const terminal = {
 	"ports.count_one": "{count} port",
 	"ports.count_other": "{count} ports",
 	"ports.allocated": "Allocated Ports",
+	"ports.openPort": "Open :{port} in browser",
+	"ports.moreCount_one": "+{count} more",
+	"ports.moreCount_other": "+{count} more",
+	"ports.showAllCount_one": "Show all {count} port",
+	"ports.showAllCount_other": "Show all {count} ports",
+	"ports.showFewer": "Show fewer",
 
 	// Resources
 	"resources.title": "Resources",

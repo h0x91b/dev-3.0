@@ -243,6 +243,12 @@ const terminal = {
 	"ports.count_one": "{count} puerto",
 	"ports.count_other": "{count} puertos",
 	"ports.allocated": "Puertos asignados",
+	"ports.openPort": "Abrir :{port} en el navegador",
+	"ports.moreCount_one": "+{count} más",
+	"ports.moreCount_other": "+{count} más",
+	"ports.showAllCount_one": "Mostrar {count} puerto",
+	"ports.showAllCount_other": "Mostrar los {count} puertos",
+	"ports.showFewer": "Mostrar menos",
 
 	// Resources
 	"resources.title": "Recursos",

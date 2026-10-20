@@ -2130,3 +2130,45 @@ describe("ActiveTasksSidebar — row context menu", () => {
 		expect(screen.queryByTestId("sidebar-task-menu-t1")).not.toBeInTheDocument();
 	});
 });
+
+describe("ActiveTasksSidebar port badges", () => {
+	const ports = Array.from({ length: 60 }, (_, i) => ({ port: 51400 + i, pid: 100 + i, processName: "node" }));
+
+	it("folds a long port list on the row and expands it without opening the task", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask()]} dispatch={vi.fn()}
+					navigate={navigate} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map([["t1", ports]])} />
+			</I18nProvider>,
+		);
+
+		const list = screen.getByTestId("sidebar-ports-t1");
+		expect(within(list).getAllByRole("button", { name: /^Open :/ })).toHaveLength(5);
+		const toggle = screen.getByTestId("sidebar-ports-t1-toggle");
+		expect(toggle).toHaveTextContent("+55 more");
+
+		await user.click(toggle);
+		expect(within(list).getAllByRole("button", { name: /^Open :/ })).toHaveLength(60);
+		await user.click(within(list).getByRole("button", { name: "Open :51459 in browser" }));
+		expect(open).toHaveBeenCalledWith("http://localhost:51459", "_blank");
+
+		await user.click(toggle);
+		expect(within(list).getAllByRole("button", { name: /^Open :/ })).toHaveLength(5);
+		expect(navigate).not.toHaveBeenCalled();
+		open.mockRestore();
+	});
+
+	it("leaves a short port list as it was", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask()]} dispatch={vi.fn()}
+					navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map([["t1", ports.slice(0, 3)]])} />
+			</I18nProvider>,
+		);
+		expect(within(screen.getByTestId("sidebar-ports-t1")).getAllByRole("button")).toHaveLength(3);
+		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
+	});
+});

@@ -1244,7 +1244,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{portsPopoverOpen && ports && ports.length > 0 && createPortal(
 				<div
 					ref={portsPopoverRef}
-					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[10rem]"
+					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[10rem] max-h-[min(24rem,calc(100vh-2rem))] overflow-y-auto overscroll-contain"
+					data-testid="task-card-ports-popover"
 					style={{
 						top: portsPopoverPos.top,
 						left: portsPopoverPos.left,
