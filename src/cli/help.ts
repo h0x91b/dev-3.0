@@ -135,7 +135,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] [--epic <name>] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -155,6 +155,9 @@ const COMMANDS: CommandHelp[] = [
 					"                      is told what it is. Same values as `task update --type`.",
 					"                      coordinator = manages other tasks; pr-review = reviews code",
 					"                      somebody else wrote, and needs --pr to have anything to read.",
+					"--epic <name>         Put the task in this epic. Without it, a task created from",
+					"                      inside a task inherits that task's epic (any project);",
+					'                      --epic "" opts out.',
 					'Review a pull request:  dev3 task create --pr 1497 --title "Review of #1497"',
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
@@ -170,8 +173,8 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]',
-				summary: "Update a task's title, description, priority, completion policy, or type.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard] [--epic <name>]',
+				summary: "Update a task's title, description, priority, completion policy, type, or epic.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
@@ -180,6 +183,8 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest) of this task only; its variants keep theirs.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
+					"--epic <name>         Set the task's epic: one short kebab-case name shared across",
+					'                      projects, new tasks it creates inherit it. --epic "" clears it.',
 					"--type coordinator|pr-review|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",

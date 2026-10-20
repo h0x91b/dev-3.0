@@ -1,6 +1,6 @@
 import type { AgentMessageSource, Project, Task } from "../../shared/types";
 import { seqIsShared } from "../../shared/agent-message-envelope";
-import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask } from "../../shared/types";
+import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask, normalizeEpic } from "../../shared/types";
 import * as data from "../data";
 import { loadEffectiveTaskHistory } from "../task-blobs";
 
@@ -292,6 +292,26 @@ export function messageVariantIndex(params: Record<string, unknown>): number | u
 		throw new Error(`Invalid --variant "${String(raw)}": expected a non-negative integer index.`);
 	}
 	return value;
+}
+
+/**
+ * The epic a new task starts in. An explicit `epic` wins (`""` opts out); without
+ * one the creating task's own epic is inherited, whichever project it lives in.
+ */
+export async function resolveNewTaskEpic(params: Record<string, unknown>): Promise<string | undefined> {
+	if (typeof params.epic === "string") {
+		if (!params.epic.trim()) return undefined;
+		const epic = normalizeEpic(params.epic);
+		if (!epic) throw new Error(`Invalid epic "${params.epic}". Use a short kebab-case name, e.g. schema-validation-redesign.`);
+		return epic;
+	}
+	const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceTaskId) return undefined;
+	try {
+		return (await resolveTaskAcrossProjects(sourceTaskId))?.task.epic ?? undefined;
+	} catch {
+		return undefined; // ambiguous/broken creator ref — create the task without an epic
+	}
 }
 
 /**

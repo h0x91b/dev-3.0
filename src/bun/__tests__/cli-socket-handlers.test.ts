@@ -5322,3 +5322,77 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		expect(source).not.toHaveProperty("role");
 	});
 });
+
+describe("task epic — create inheritance and update", () => {
+	function wireCreate(sourceTask?: ReturnType<typeof makeTask>, sourceProject = makeProject()) {
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, sourceProject]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (sourceTask && p.id === sourceProject.id ? [sourceTask] : []));
+		vi.mocked(createTask).mockResolvedValue(task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+	}
+
+	it("inherits the epic of the task it is created from, even in another project", async () => {
+		const source = makeTask({ id: "src-task", seq: 7, projectId: "proj-2", epic: "schema-redesign" });
+		wireCreate(source, makeProject({ id: "proj-2", path: "/tmp/other" }));
+
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "src-task" }));
+
+		expect(resp.ok).toBe(true);
+		expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ epic: "schema-redesign" }));
+	});
+
+	it("an explicit epic wins over the creator's and is normalized", async () => {
+		wireCreate(makeTask({ id: "src-task", epic: "schema-redesign" }));
+
+		await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "src-task", epic: "Other Epic" }));
+
+		expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ epic: "other-epic" }));
+	});
+
+	it("an empty epic opts out of inheritance", async () => {
+		wireCreate(makeTask({ id: "src-task", epic: "schema-redesign" }));
+
+		await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "src-task", epic: "" }));
+
+		expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("epic");
+	});
+
+	it("creates no epic when the creating task has none or is unknown", async () => {
+		wireCreate(makeTask({ id: "src-task" }));
+
+		await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "A", sourceTaskId: "src-task" }));
+		await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "B", sourceTaskId: "no-such-task" }));
+
+		for (const call of vi.mocked(createTask).mock.calls) expect(call[0]).not.toHaveProperty("epic");
+	});
+
+	it("rejects an unusable epic before creating anything", async () => {
+		wireCreate();
+
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", epic: "!!!" }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Invalid epic");
+		expect(createTask).not.toHaveBeenCalled();
+	});
+
+	it("task.update sets a normalized epic and clears it with an empty string", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ epic: "old-epic" })]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator: any) => {
+			const task = makeTask({ epic: "old-epic" });
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+
+		const set = await handleRequest(makeRequest("task.update", { taskId: makeTask().id, projectId: "proj-1", epic: "New Epic" }));
+		const cleared = await handleRequest(makeRequest("task.update", { taskId: makeTask().id, projectId: "proj-1", epic: "" }));
+
+		expect((set.data as { task: { epic?: string } }).task.epic).toBe("new-epic");
+		expect((cleared.data as { task: { epic?: string } }).task.epic).toBeUndefined();
+	});
+});

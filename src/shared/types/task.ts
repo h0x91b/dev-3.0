@@ -328,6 +328,14 @@ export interface Task {
 	 */
 	taskType?: TaskType | null;
 	/**
+	 * The epic this task belongs to: one short kebab-case name ({@link normalizeEpic}),
+	 * at most one per task. Not a label — epics span projects, so the same name on
+	 * tasks in different repos is the same epic. A coordinator sets its own, and
+	 * every task created from inside a task that has one inherits it at creation.
+	 * Absent on every pre-existing task, so older app versions ignore it.
+	 */
+	epic?: string;
+	/**
 	 * The Claude Code session this task was imported from, for a task created by
 	 * the conversation import. Nothing about the task behaves differently
 	 * afterwards — this is the key that keeps a second import from offering the

@@ -125,6 +125,20 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
+		it("shows the task's epic when it has one", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: "aaaaaaaa-1111-2222-3333-444444444444",
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, epic: "schema-redesign" }));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toMatch(/Epic:\s*schema-redesign/);
+		});
+
 		it("shows custom title from live task data when present", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",

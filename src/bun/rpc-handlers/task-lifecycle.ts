@@ -142,7 +142,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
  * too — a second creation path is how `foreignCode` came to be set in the GUI
  * and nowhere else.
  */
-export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; epic?: string }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -200,6 +200,7 @@ export async function createTask(params: { projectId: string; description: strin
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 		...(params.taskType ? { taskType: params.taskType } : {}),
+		...(params.epic ? { epic: params.epic } : {}),
 	};
 	const initialStatus = isActive(status) ? "todo" : status;
 	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
@@ -237,9 +238,9 @@ export async function createTask(params: { projectId: string; description: strin
  * to the agent. A scratch task has no prompt by definition — whoever asked for it
  * drives it with messages afterwards.
  */
-export async function createScratchTask(projectId: string): Promise<Task> {
+export async function createScratchTask(projectId: string, epic?: string): Promise<Task> {
 	const project = await data.getProject(projectId);
-	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true, ...(epic ? { epic } : {}) });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	log.info("← createScratchTask", { taskId: task.id.slice(0, 8) });
 	return task;
@@ -586,6 +587,7 @@ async function spawnVariants(params: {
 				// Whose code the group is about is a property of the branch, so every
 				// sibling inherits it — never re-derived per variant.
 				foreignCode: sourceTask.foreignCode,
+				epic: sourceTask.epic,
 				watched: sourceTask.watched,
 				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
 				// on every variant, but the flag tells the launch path (see
@@ -719,6 +721,7 @@ async function addAttempts(params: {
 				// Whose code the group is about is a property of the branch, so every
 				// sibling inherits it — never re-derived per variant.
 				foreignCode: sourceTask.foreignCode,
+				epic: sourceTask.epic,
 				watched: sourceTask.watched,
 				// Carry the scratch flag onto every added attempt — otherwise the
 				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt

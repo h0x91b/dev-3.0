@@ -226,3 +226,33 @@ describe("board operations — overviews", () => {
 		expect(ports.pushes.map((p) => p.name)).toEqual(["taskUpdated", "taskUpdated"]);
 	});
 });
+
+describe("board operations — epic", () => {
+	it("sets, no-ops on a repeat, and clears an epic with null", async () => {
+		board = await createBoard();
+		const { meta, types } = await ops();
+		const ports = recordingPorts();
+
+		const set = await meta.updateTaskMetadata(ports, board.project, "task-1", { epic: "schema-redesign" }, types.AGENT_ACTOR);
+		const again = await meta.updateTaskMetadata(ports, board.project, "task-1", { epic: "schema-redesign" }, types.AGENT_ACTOR);
+		const cleared = await meta.updateTaskMetadata(ports, board.project, "task-1", { epic: null }, types.AGENT_ACTOR);
+
+		expect(set).toMatchObject({ verdict: "applied", task: { epic: "schema-redesign" } });
+		expect(again.verdict).toBe("noop");
+		expect(cleared).toMatchObject({ verdict: "applied" });
+		expect(cleared.task.epic).toBeUndefined();
+	});
+
+	// Older app versions read the same tasks.json — a cleared epic must leave no key behind.
+	it("persists an epic as a plain string and drops the key when cleared", async () => {
+		board = await createBoard();
+		const { meta, types, data } = await ops();
+		const ports = recordingPorts();
+
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { epic: "schema-redesign" }, types.AGENT_ACTOR);
+		expect((await data.loadTasks(board.project))[0]!.epic).toBe("schema-redesign");
+
+		await meta.updateTaskMetadata(ports, board.project, "task-1", { epic: null }, types.AGENT_ACTOR);
+		expect("epic" in (await data.loadTasks(board.project))[0]!).toBe(false);
+	});
+});

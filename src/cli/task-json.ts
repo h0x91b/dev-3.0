@@ -27,6 +27,7 @@ export interface TaskShowJson {
 	customColumnId: string | null;
 	priority: string;
 	taskType: string | null;
+	epic: string | null;
 	draft: boolean;
 	manualCompletion: boolean;
 	branch: string | null;
@@ -62,6 +63,7 @@ export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?:
 		customColumnId: task.customColumnId ?? null,
 		priority: task.priority ?? DEFAULT_PRIORITY,
 		taskType: task.taskType ?? null,
+		epic: task.epic ?? null,
 		draft: task.draft === true,
 		manualCompletion: taskCompletesManually(task),
 		branch: task.branchName ?? null,

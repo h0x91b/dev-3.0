@@ -1,5 +1,5 @@
 import type { CustomColumn, PresetPromptSource, Project, Task, TaskStatus, TaskType } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizeEpic, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import type { DeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
@@ -17,7 +17,7 @@ import { taskPeek } from "../task-peek";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveNewTaskEpic, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -193,6 +193,7 @@ export const taskHandlers: Record<string, Handler> = {
 			if (!taskType) throw new Error(`Invalid task type "${params.taskType}". Use ${TASK_TYPES.join(", ")} or standard.`);
 		}
 
+		const epic = await resolveNewTaskEpic(params);
 		const project = await data.getProject(projectId);
 		// What the task is ABOUT, resolved before it exists — creation derives
 		// foreignCode from this ref, and a ref set afterwards would leave the trust
@@ -215,6 +216,7 @@ export const taskHandlers: Record<string, Handler> = {
 			...(existingBranch ? { existingBranch } : {}),
 			...(priority ? { priority } : {}),
 			...(taskType ? { taskType } : {}),
+			...(epic ? { epic } : {}),
 		});
 		// If a separate title was given alongside a description, store it as customTitle.
 		// A role brief counts as a body too: without this the card would be named
@@ -244,7 +246,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const project = await data.getProject(projectId);
 		// Before the placeholder exists, so a bad id leaves nothing behind.
 		const suggested = await resolveLaunchSuggestion(params);
-		const task = await createScratchTask(project.id);
+		const task = await createScratchTask(project.id, await resolveNewTaskEpic({ sourceTaskId }));
 		const requester = await resolveAgentMessageSource(params, task.id);
 		if (!requester) {
 			await deleteTask({ taskId: task.id, projectId: project.id });
@@ -347,6 +349,14 @@ export const taskHandlers: Record<string, Handler> = {
 				};
 			}
 		}
+		if (params.epic !== undefined) {
+			const raw = params.epic === null ? "" : String(params.epic);
+			const epic = raw.trim() ? normalizeEpic(raw) : null;
+			if (raw.trim() && !epic) {
+				throw new Error(`Invalid epic "${raw}". Use a short kebab-case name, e.g. schema-validation-redesign.`);
+			}
+			change.epic = epic;
+		}
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");
@@ -362,8 +372,9 @@ export const taskHandlers: Record<string, Handler> = {
 			&& priority === undefined
 			&& params.manualCompletion === undefined
 			&& params.taskType === undefined
+			&& params.epic === undefined
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, or --type.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, or --epic.");
 		}
 
 		let updated = task;

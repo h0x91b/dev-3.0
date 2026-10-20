@@ -35,6 +35,12 @@ const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
  * and `task update` can never accept different spellings of the same three
  * roles. `standard` (and its aliases) means "no type" and maps to null.
  */
+/** `--epic` value: "" clears (update) or opts out of inheritance (create); a bare flag is a mistake. */
+function parseEpicFlag(raw: string): string {
+	if (raw === "true") exitUsage('--epic needs a name (e.g. --epic schema-validation-redesign); --epic "" clears it.');
+	return raw.trim();
+}
+
 function parseTypeFlag(raw: string): TaskType | null {
 	const value = raw.trim().toLowerCase();
 	if (value === "standard" || value === "none" || value === "") return null;
@@ -171,6 +177,7 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
+	if (task.epic) fields.push(["Epic:", task.epic]);
 	if (task.taskType) {
 		fields.push([
 			"Type:",
@@ -232,7 +239,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
@@ -299,6 +306,9 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (taskType) params.taskType = taskType;
 	if (prFlag) params.pr = prFlag;
 	if (branchFlag) params.branch = branchFlag;
+	// An explicit --epic wins; otherwise the backend inherits the epic of the task this runs in.
+	if (args.flags.epic !== undefined) params.epic = parseEpicFlag(args.flags.epic);
+	else if (context?.taskId) params.sourceTaskId = context.taskId;
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) {
@@ -332,10 +342,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "epic", "force", "print-role"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard] [--epic <name>]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -376,6 +386,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 	const rawType = args.flags.type;
 	if (rawType !== undefined) params.taskType = parseTypeFlag(rawType);
+	if (args.flags.epic !== undefined) params.epic = parseEpicFlag(args.flags.epic);
 	if (args.flags.force === "true") {
 		params.force = true;
 	}
@@ -397,8 +408,9 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& params.priority === undefined
 		&& rawManualCompletion === undefined
 		&& rawType === undefined
+		&& params.epic === undefined
 	) {
-		exitUsage("Provide --title, --description, --priority, --manual-completion, or --type to update");
+		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, or --epic to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);

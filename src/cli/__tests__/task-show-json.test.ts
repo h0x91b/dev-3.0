@@ -76,9 +76,14 @@ describe("task show --json", () => {
 		});
 	});
 
+	it("projects the epic, null when the task has none", () => {
+		expect(buildTaskShowJson(TASK).epic).toBeNull();
+		expect(buildTaskShowJson({ ...TASK, epic: "schema-redesign" }).epic).toBe("schema-redesign");
+	});
+
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
-			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "id",
+			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "id",
 			"labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",

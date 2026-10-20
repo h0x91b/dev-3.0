@@ -283,6 +283,10 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
 	});
 
+	it("tells the coordinator to set its own epic with the CLI", () => {
+		expect(COORDINATOR_PROMPT).toContain("dev3 task update --epic <name>");
+	});
+
 	it("never assumes the user's gender — it ships to every install as the default", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/\b(he|him|his|she|her|hers)\b/i);
 	});

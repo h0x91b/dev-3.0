@@ -84,6 +84,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
+				if (task.epic) fields.push(["Epic:", task.epic]);
 				fields.push(...spaceFields(context.projectId));
 
 				printDetail(fields);
@@ -147,6 +148,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 		const offlineBranch = (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
 		if (offlineBranch) fields.push(["Branch:", offlineBranch]);
 		if (worktreePath) fields.push(["Worktree:", worktreePath]);
+		if (typeof task.epic === "string" && task.epic) fields.push(["Epic:", task.epic]);
 		fields.push(...spaceFields(context.projectId));
 
 		fields.push(["", ""]);

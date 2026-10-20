@@ -25,6 +25,8 @@ export interface TitleDescriptionChange {
 
 export interface TaskMetadataChange extends TitleDescriptionChange {
 	taskType?: TaskType | null;
+	/** `null` clears the epic. */
+	epic?: string | null;
 	manualCompletion?: boolean;
 	overview?: string | null;
 	userOverview?: string | null;
@@ -110,6 +112,7 @@ export async function updateTaskMetadata(
 		previousTitle = getTaskTitle(current);
 		const { updates, rejected } = planTitleAndDescription(current, change, actor);
 		if (change.taskType !== undefined) updates.taskType = change.taskType;
+		if (change.epic !== undefined) updates.epic = change.epic ?? undefined;
 		if (change.overview !== undefined) updates.overview = change.overview?.trim() || null;
 		if (change.userOverview !== undefined) updates.userOverview = change.userOverview?.trim() || null;
 		const flipsCompletion = change.manualCompletion !== undefined && change.manualCompletion !== current.manualCompletion;

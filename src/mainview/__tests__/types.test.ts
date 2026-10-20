@@ -27,6 +27,8 @@ import {
 	spacesOfProject,
 	isSpaceSensitive,
 	normalizeTaskType,
+	normalizeEpic,
+	MAX_EPIC_LENGTH,
 	taskCompletesManually,
 	withPresetPrompt,
 	withoutPresetPrompt,
@@ -1005,5 +1007,25 @@ describe("isSpaceSensitive", () => {
 	// is marked, so the space carries its own flag.
 	it("is true from the space's own flag, with no sensitive member at all", () => {
 		expect(isSpaceSensitive({ ...sp("sp_a", ["p1"]), sensitive: true }, new Set())).toBe(true);
+	});
+});
+
+describe("normalizeEpic", () => {
+	it("keeps a kebab-case name as is", () => {
+		expect(normalizeEpic("schema-validation-redesign")).toBe("schema-validation-redesign");
+	});
+
+	it("folds case, spaces and punctuation into one canonical kebab-case form", () => {
+		expect(normalizeEpic("  Schema Validation_Redesign! ")).toBe("schema-validation-redesign");
+	});
+
+	it("rejects input with no usable characters", () => {
+		expect(normalizeEpic("")).toBeNull();
+		expect(normalizeEpic(" --- ")).toBeNull();
+	});
+
+	it("rejects a name longer than the cap", () => {
+		expect(normalizeEpic("a".repeat(MAX_EPIC_LENGTH))).not.toBeNull();
+		expect(normalizeEpic("a".repeat(MAX_EPIC_LENGTH + 1))).toBeNull();
 	});
 });

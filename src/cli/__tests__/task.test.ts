@@ -119,6 +119,17 @@ describe("task show", () => {
 		expect(stdoutOutput).toMatch(/Priority:\s*P0/);
 	});
 
+	it("prints the epic when the task has one and omits the line otherwise", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, epic: "schema-redesign" }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Epic:\s*schema-redesign/);
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("Epic:");
+	});
+
 	it("auto-detects taskId from context when no ID given", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
@@ -384,6 +395,41 @@ describe("task create", () => {
 			title: "New task",
 		});
 		expect(stderrOutput).not.toContain("Role:");
+	});
+
+	it("sends an explicit --epic and no creator reference", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { title: "Child", epic: "schema-redesign" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.epic).toBe("schema-redesign");
+		expect(params).not.toHaveProperty("sourceTaskId");
+	});
+
+	it("names the creating task so the app can inherit its epic", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { title: "Child" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.sourceTaskId).toBe(CTX.taskId);
+		expect(params).not.toHaveProperty("epic");
+	});
+
+	it('sends --epic "" as an explicit opt-out of inheritance', async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { title: "Child", epic: "" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.epic).toBe("");
+		expect(params).not.toHaveProperty("sourceTaskId");
+	});
+
+	it("rejects a bare --epic before contacting the app", async () => {
+		await expect(handleTask("create", args([], { title: "Child", epic: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("rejects an unknown --type before contacting the app", async () => {
@@ -658,6 +704,22 @@ describe("task update", () => {
 			taskType: "coordinator",
 		});
 		expect(stderrOutput).toContain("told the running agent");
+	});
+
+	it("sets --epic as a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, epic: "schema-redesign" }, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { epic: "schema-redesign" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", epic: "schema-redesign" });
+	});
+
+	it('clears the epic with --epic ""', async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { epic: "" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", epic: "" });
 	});
 
 	it("maps --type standard onto a cleared type", async () => {

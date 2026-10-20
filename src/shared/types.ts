@@ -5,6 +5,7 @@ export * from "./types/changelog";
 export * from "./types/task-status";
 export * from "./types/task-priority";
 export * from "./types/task-type";
+export * from "./types/task-epic";
 export * from "./types/task";
 export * from "./types/column-agents";
 export * from "./types/prompts";
