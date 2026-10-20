@@ -7,6 +7,7 @@ import { api, isElectrobun } from "./rpc";
 import { getTerminalKeyOverride } from "./terminal-key-overrides";
 import { pasteIntoTerminal, terminalBracketsPaste } from "./terminal-paste";
 import { debugLog } from "./debug-log";
+import SharedSizeNotice from "./components/SharedSizeNotice";
 import {
 	encodeResizeSequence,
 	encodeViewerSignal,
@@ -243,8 +244,6 @@ export interface TerminalHandle {
 	blur: () => void;
 	/** Native backend only: take the writer lease from whoever holds it. No-op on tmux. */
 	claimWriter: () => void;
-	/** tmux only: size the shared terminal for this viewer instead of another one. */
-	takeSize: () => void;
 	/** Return to the live tail: leave tmux copy-mode, or scroll ghostty's own buffer to the bottom. */
 	scrollToBottom: () => void;
 }
@@ -262,11 +261,6 @@ interface TerminalViewProps {
 	 * refused something it typed. Never fires for a tmux session.
 	 */
 	onNativeStatus?: (status: NativeViewerStatus) => void;
-	/**
-	 * tmux only: true while the shared terminal is sized for ANOTHER viewer, so
-	 * this one renders at that viewer's geometry until the user takes it over.
-	 */
-	onSharedSizing?: (sizedElsewhere: boolean) => void;
 	/**
 	 * The app refused this socket outright (missing/unknown session). Supplying it
 	 * hands recovery to the owner, which renders one shared exited state; without
@@ -309,7 +303,7 @@ const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSharedSizing, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -357,8 +351,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 	const ptyGeometryRef = useRef<{ cols: number; rows: number } | null>(null);
 	/** tmux: the shared PTY's size and whether this viewer is the one it follows. */
 	const sharedSizeRef = useRef<SizingNotice | null>(null);
-	const onSharedSizingRef = useRef(onSharedSizing);
-	onSharedSizingRef.current = onSharedSizing;
+	/** tmux: the shared terminal is sized for another viewer right now (drives the notice). */
+	const [sizedElsewhere, setSizedElsewhere] = useState(false);
 	const sendViewerSignal = useCallback((signal: ViewerSignal) => {
 		const ws = wsRef.current;
 		if (ws?.readyState === WebSocket.OPEN) ws.send(encodeViewerSignal(signal));
@@ -1407,7 +1401,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 										wsRef.current.send(claimMessage());
 									}
 								},
-								takeSize: () => sendViewerSignal("active"),
 								sendInput: (data: string) => {
 									noteViewerActivity();
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1903,7 +1896,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 			sharedSizeRef.current = notice;
 			const roleChanged = previous?.sizing !== notice.sizing;
 			if (roleChanged || previous.cols !== notice.cols || previous.rows !== notice.rows) refitRef.current?.();
-			if (roleChanged) onSharedSizingRef.current?.(!notice.sizing);
+			if (roleChanged) setSizedElsewhere(!notice.sizing);
 		}
 
 		/** Follow the writer's PTY shape; a writer keeps fitting its own container. */
@@ -2771,6 +2764,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSh
 			ref={wrapperRef}
 			className="relative w-full h-full min-h-0 overflow-hidden"
 		>
+			{sizedElsewhere && <SharedSizeNotice onFitHere={() => sendViewerSignal("active")} />}
 			<div
 				ref={containerRef}
 				className="w-full h-full overflow-hidden"

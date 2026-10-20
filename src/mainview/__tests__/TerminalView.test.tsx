@@ -2734,12 +2734,12 @@ describe("TerminalView – shared tmux size", () => {
 	const ACTIVE = "\x1b]dev3viewer;active\x07";
 	const HIDDEN = "\x1b]dev3viewer;hidden\x07";
 
-	async function renderShared(onSharedSizing = vi.fn()) {
+	async function renderShared() {
 		let result!: ReturnType<typeof render>;
 		await act(async () => {
 			result = render(
 				<I18nProvider>
-					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onSharedSizing={onSharedSizing} />
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" />
 				</I18nProvider>,
 			);
 			await Promise.resolve();
@@ -2748,7 +2748,7 @@ describe("TerminalView – shared tmux size", () => {
 		await act(async () => {
 			fireResize?.();
 		});
-		return { onSharedSizing, container: result.container.querySelector("[data-terminal]") as HTMLElement };
+		return { container: result.container.querySelector("[data-terminal]") as HTMLElement, pill: () => result.queryByText("Sized for another viewer") };
 	}
 
 	function notice(cols: number, rows: number, sizing: boolean) {
@@ -2762,14 +2762,14 @@ describe("TerminalView – shared tmux size", () => {
 	}
 
 	it("renders at the shared grid while sized elsewhere, and keeps reporting its own viewport", async () => {
-		const { onSharedSizing } = await renderShared();
+		const { pill } = await renderShared();
 		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
 		mockTermInstance.resize.mockClear();
 		lastWebSocket!.send.mockClear();
 
 		notice(22, 40, false);
 
-		expect(onSharedSizing).toHaveBeenLastCalledWith(true);
+		expect(pill()).toBeInTheDocument();
 		expect(mockTermInstance.resize).toHaveBeenCalledWith(22, 40);
 		expect(sent()).toContain("\x1b]resize;100;30\x07");
 		expect(sent()).not.toContain("\x1b]resize;22;40\x07");
@@ -2778,7 +2778,7 @@ describe("TerminalView – shared tmux size", () => {
 	// tmux's redraw at the new size follows the notice on the same socket; a fit
 	// deferred to a later frame let that redraw land on the old grid (browser QA).
 	it("re-fits at once on a notice, before any later frame", async () => {
-		const { onSharedSizing } = await renderShared();
+		const { pill } = await renderShared();
 		vi.stubGlobal("requestAnimationFrame", () => 1);
 		try {
 			mockTermInstance.resize.mockClear();
@@ -2788,7 +2788,7 @@ describe("TerminalView – shared tmux size", () => {
 			fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
 			notice(100, 30, true);
 			expect(mockTermInstance.resize).toHaveBeenLastCalledWith(100, 30);
-			expect(onSharedSizing).toHaveBeenLastCalledWith(false);
+			expect(pill()).not.toBeInTheDocument();
 		} finally {
 			vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 				cb(0);
@@ -2809,14 +2809,14 @@ describe("TerminalView – shared tmux size", () => {
 	});
 
 	it("goes back to fitting its own container once it is the one sized for", async () => {
-		const { onSharedSizing } = await renderShared();
+		const { pill } = await renderShared();
 		notice(22, 40, false);
 		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
 		mockTermInstance.resize.mockClear();
 
 		notice(100, 30, true);
 
-		expect(onSharedSizing).toHaveBeenLastCalledWith(false);
+		expect(pill()).not.toBeInTheDocument();
 		expect(mockTermInstance.resize).toHaveBeenCalledWith(100, 30);
 	});
 
@@ -2833,10 +2833,12 @@ describe("TerminalView – shared tmux size", () => {
 		expect(sent()).toContain(ACTIVE);
 	});
 
-	it("takes the size from the handle's Fit here action and from composer input", async () => {
+	// The whole pill is the button: a phone tap on its label must take the size too.
+	it("takes the size from anywhere on the pill, and from composer input", async () => {
 		let handle: TerminalHandle | null = null;
+		let result!: ReturnType<typeof render>;
 		await act(async () => {
-			render(
+			result = render(
 				<I18nProvider>
 					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" onReady={(h) => { handle = h; }} />
 				</I18nProvider>,
@@ -2847,11 +2849,15 @@ describe("TerminalView – shared tmux size", () => {
 		await act(async () => {
 			fireResize?.();
 		});
+		notice(22, 40, false);
 		lastWebSocket!.send.mockClear();
-		handle!.takeSize();
+		fireEvent.click(result.getByText("Sized for another viewer"));
 		expect(sent()).toEqual([ACTIVE]);
 
-		notice(22, 40, false);
+		lastWebSocket!.send.mockClear();
+		fireEvent.click(result.getByRole("button", { name: /Fit here/ }));
+		expect(sent()).toEqual([ACTIVE]);
+
 		lastWebSocket!.send.mockClear();
 		handle!.sendInput("x");
 		expect(sent()).toEqual([ACTIVE, "x"]);

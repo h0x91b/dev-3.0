@@ -25,6 +25,8 @@ terminal for everyone, with nothing in the UI saying why (h0x91b/dev-3.0#2000). 
   an overlay, not a row above the canvas: a row changed the terminal's own height, so the size
   a follower reported was a row short once it took over (caught in browser QA). The whole pill is one
   44px-tall button at the top: a small chip at the bottom edge was missed on a real phone.
+  `TerminalView` renders it inside its own wrapper, so it sits over the canvas on every surface
+  (the phone layout's container also holds the window switcher).
 - The redraw jiggle now fires only for a socket's FIRST resize report (a new viewer's first
   paint), and its 16ms restore re-applies the size current when it fires. Browser QA caught
   the old shape: a new follower's own report jiggled the PTY, and the restore of the captured

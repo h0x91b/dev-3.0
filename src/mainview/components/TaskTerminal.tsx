@@ -25,7 +25,6 @@ import TerminalWindowNav from "./TerminalWindowNav";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
 import NativeViewerBar from "./NativeViewerBar";
-import SharedSizeNotice from "./SharedSizeNotice";
 import {
 	mergeViewerStatus,
 	type NativeStreamRole,
@@ -116,8 +115,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		setRefusedReason(snapshot.refusedReason);
 	}, []);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
-	/** tmux: the shared terminal is sized for another viewer right now. */
-	const [sizedElsewhere, setSizedElsewhere] = useState(false);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
 	// The recovery offer came from hibernation, not from a session that died on
@@ -1176,7 +1173,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Tmux path (unchanged) ──────────────────────────────────────────────────
 
-	const sharedSizeNotice = ptyUrl && sizedElsewhere ? <SharedSizeNotice onFitHere={() => termHandle?.takeSize()} /> : null;
 
 	const terminalArea = ptyUrl ? (
 		<TerminalView
@@ -1188,7 +1184,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				consumePendingFocus(handle);
 			}}
 			onNativeStatus={handleNativeStatus}
-			onSharedSizing={setSizedElsewhere}
 			touchComposeMode={touchInput && !rawMode}
 			onScrolledIntoHistory={scrollSignalFor(TMUX_VIEW)}
 		/>
@@ -1225,7 +1220,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
 					{scrollToLatestFor(TMUX_VIEW, termHandle)}
-					{sharedSizeNotice}
 					{setupFailedNotice}
 				</div>
 			) : (
@@ -1235,7 +1229,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 						{ptyUrl && <ClosePanePicker taskId={taskId} />}
 						{scrollToLatestFor(TMUX_VIEW, termHandle)}
-						{sharedSizeNotice}
 						{setupFailedNotice}
 					</div>
 				</TerminalWindowNav>

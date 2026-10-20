@@ -31,14 +31,12 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
-const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), takeSize: vi.fn(), scrollToBottom: vi.fn() };
+const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom: vi.fn() };
 let terminalViewOnScrolledIntoHistory: ((scrolledUp: boolean) => void) | undefined;
-let terminalViewOnSharedSizing: ((sizedElsewhere: boolean) => void) | undefined;
 
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl, onReady, onScrolledIntoHistory, onSharedSizing }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void; onSharedSizing?: (v: boolean) => void }) => {
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void }) => {
 		terminalViewOnScrolledIntoHistory = onScrolledIntoHistory;
-		terminalViewOnSharedSizing = onSharedSizing;
 		if (onReady) {
 			setTimeout(() => onReady(terminalViewMockHandle), 0);
 		}
@@ -998,30 +996,6 @@ describe("TaskTerminal", () => {
 
 			expect(screen.queryByTestId("terminal-clone-failed-strip")).not.toBeInTheDocument();
 			expect(mockedApi.request.dismissCloneFailures).toHaveBeenCalledWith({ taskId: "t1" });
-		});
-	});
-
-	// h0x91b/dev-3.0#2000: a terminal sized for another viewer says so, and offers to fit here.
-	describe("Shared size notice", () => {
-		it("appears only while sized elsewhere and hands Fit here to the terminal", async () => {
-			const user = userEvent.setup();
-			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
-			await act(async () => {
-				renderTerminal();
-			});
-			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
-			await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-			expect(screen.queryByText("Sized for another viewer")).not.toBeInTheDocument();
-
-			act(() => terminalViewOnSharedSizing?.(true));
-			// The whole pill is the button: a tap on its label must take the size too.
-			await user.click(screen.getByText("Sized for another viewer"));
-			expect(terminalViewMockHandle.takeSize).toHaveBeenCalledTimes(1);
-			await user.click(screen.getByRole("button", { name: /Fit here/ }));
-			expect(terminalViewMockHandle.takeSize).toHaveBeenCalledTimes(2);
-
-			act(() => terminalViewOnSharedSizing?.(false));
-			expect(screen.queryByText("Sized for another viewer")).not.toBeInTheDocument();
 		});
 	});
 });

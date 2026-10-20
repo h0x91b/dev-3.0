@@ -12,7 +12,6 @@ import { BackIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { subscribeTerminalPaste, terminalPasteTarget } from "../terminal-paste-request";
 import FileExplorerFrame from "./FileExplorerFrame";
-import SharedSizeNotice from "./SharedSizeNotice";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProjectTerminalProps {
@@ -35,7 +34,6 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 	// Undefined off touch: its absence keeps the copy-mode poll from arming on a pointer.
 	const scrollSignal = touchInput ? setScrolledUp : undefined;
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
-	const [sizedElsewhere, setSizedElsewhere] = useState(false);
 	const [rawMode, setRawMode] = useState(false);
 	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 
@@ -164,7 +162,6 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 						taskId={sessionKey}
 						projectId={projectId}
 						onReady={setTermHandle}
-						onSharedSizing={setSizedElsewhere}
 						touchComposeMode={touchInput && !rawMode}
 						onScrolledIntoHistory={scrollSignal}
 					/>
@@ -176,7 +173,6 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 						</div>
 					</div>
 				)}
-				{ptyUrl && sizedElsewhere && <SharedSizeNotice onFitHere={() => termHandle?.takeSize()} />}
 				{scrolledUp && termHandle && (
 					<ScrollToLatestButton onClick={() => termHandle.scrollToBottom()} />
 				)}
