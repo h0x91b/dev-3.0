@@ -7,7 +7,7 @@ import type { TaskType } from "./task-type";
 import type { Project } from "./project";
 import type { ScheduledLaunch } from "./agent-launch";
 import type { ScheduledMessage } from "./scheduled-messages";
-import type { SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement } from "./package-scripts";
 import type { MergeCompletionPromptState, PreparingStage, TaskSessionState } from "./task-lifecycle";
 import type { TaskHistoryEntry } from "./task-display";
@@ -373,6 +373,8 @@ export interface Task {
 	 * directory together with any `--assets` files and an optional ZIP bundle.
 	 */
 	sharedArtifacts?: SharedArtifact[];
+	/** The task's one Live Artifact (`dev3 live publish` / `adopt`); see {@link LiveArtifact}. */
+	liveArtifact?: LiveArtifact;
 	/**
 	 * Set when the task was created by a scheduled Automation fire (or its
 	 * "Run now" action). Drives the clock provenance glyph on the task card and

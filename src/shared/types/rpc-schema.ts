@@ -11,6 +11,7 @@ import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
 import type { ReviewComment, ReviewReplyAuthor } from "../review";
+import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
 import type { AgentPromptDelivery } from "../agent-prompt-delivery";
 import type { AgentMessageLogPage } from "../agent-message-log";
@@ -32,7 +33,7 @@ import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
-import type { SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
 import type { TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
@@ -1284,6 +1285,25 @@ export type AppRPCSchema = {
 				params: { artifact: SharedArtifact };
 				response: void;
 			};
+			/** Live Artifact page operation from the viewer's frame, run as the user (`dev3.live.*`). Failures come back as a value so the frame can branch on `reason`. */
+			liveArtifactOp: {
+				params: { taskId: string; projectId?: string; op: string; args: Record<string, unknown> };
+				response: { ok: true; result: unknown } | { ok: false; reason: string; error: string };
+			};
+			/** The live page's loopback browser URL; starts the live server on first use. */
+			liveArtifactUrl: {
+				params: { taskId: string; projectId?: string };
+				response: { url: string };
+			};
+			openLiveArtifactInBrowser: {
+				params: { taskId: string; projectId?: string };
+				response: void;
+			};
+			/** Make live: an existing artifact version becomes the task's live page (replacing any previous one). */
+			adoptLiveArtifact: {
+				params: { taskId: string; projectId?: string; artifactId: string; version?: number };
+				response: LiveArtifact;
+			};
 			/** Remote mode: a sandboxed tab link over the artifact's stored folder (served by the remote server). */
 			createArtifactLink: {
 				params: { artifact: SharedArtifact };
@@ -2013,6 +2033,11 @@ export type AppRPCSchema = {
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
+			};
+			/** A Live Artifact store changed; the open viewer forwards it into the live page. */
+			liveArtifactChange: {
+				taskId: string;
+				changes: LiveChange[];
 			};
 			/**
 			 * Browser Web Notification request. Mirrors a native OS notification

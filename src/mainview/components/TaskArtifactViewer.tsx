@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import type { SharedArtifact, Task, TaskStatus } from "../../shared/types";
+import type { LiveArtifact, SharedArtifact, Task, TaskStatus } from "../../shared/types";
+import { isLiveViewerEntry, liveViewerEntry } from "../../shared/live-artifact";
 import { reviewCommentsForArtifact, type ReviewComment } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { useReviewSend } from "../review/useReviewSend";
@@ -12,6 +13,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
+import { confirm } from "../confirm";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 import type { ArtifactDraft } from "../utils/artifactBridge";
 import { isMac, isRemote } from "../utils/platform";
@@ -39,6 +41,8 @@ interface TaskArtifactViewerProps {
 	projectId?: string;
 	/** The live task record, when the host has it on screen — its `review` is what the pins are drawn from. */
 	task?: Pick<Task, "id" | "review">;
+	/** The task's Live Artifact, read fresh from the task record; shown as the last entry. */
+	live?: LiveArtifact;
 }
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
@@ -102,8 +106,18 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  * terminal — never for the docked panel, where the terminal is legitimately
  * visible beside it.
  */
-export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen = false, onClose, taskId, taskStatus, projectId, task }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initialIndex, offscreen = false, onClose, taskId, taskStatus, projectId, task, live }: TaskArtifactViewerProps) {
 	const t = useT();
+	// Keyed on what changes the document, not on the record's identity: every task
+	// update hands over a fresh `live` object, and re-composing on each one would
+	// reload the page (and wipe what the user is typing) for nothing.
+	const liveKey = live ? `${live.pageRev}\u0000${live.page.storedPath}\u0000${live.page.title}` : "";
+	const liveRef = useRef(live);
+	liveRef.current = live;
+	const liveEntry = useMemo(() => (liveRef.current ? liveViewerEntry(taskId, liveRef.current) : null), [taskId, liveKey]);
+	const artifacts = useMemo(() => (liveEntry ? [...sharedArtifacts, liveEntry] : sharedArtifacts), [sharedArtifacts, liveEntry]);
+	const artifactCountRef = useRef(artifacts.length);
+	artifactCountRef.current = artifacts.length;
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
 	const [error, setError] = useState(false);
@@ -174,8 +188,21 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	// and the viewer has to land on it rather than sit on whatever index it held.
 	useEffect(() => {
 		setPick(null);
-		setIndex(Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
-	}, [artifacts, initialIndex]);
+		setIndex(Math.max(0, Math.min(artifactCountRef.current - 1, initialIndex)));
+	}, [sharedArtifacts, initialIndex]);
+
+	const isLive = isLiveViewerEntry(group);
+	const isLiveRef = useRef(isLive);
+	isLiveRef.current = isLive;
+	const taskFinished = Boolean(taskStatus && TERMINAL_STATUSES.includes(taskStatus));
+	// Make live was pressed before the task record carried the new page: land on it once it does.
+	const [jumpToLive, setJumpToLive] = useState(false);
+	useEffect(() => {
+		if (!jumpToLive || !liveEntry) return;
+		setJumpToLive(false);
+		setPick(null);
+		setIndex(artifacts.length - 1);
+	}, [jumpToLive, liveEntry, artifacts.length]);
 
 	// What the user typed into a version's form and never sent. Held here rather
 	// than in the artifact because the frame is opaque-origin — every storage API
@@ -222,7 +249,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 				assetsRef.current = payload.assets;
 				setDownloadKind(payload.downloadKind);
 				const theme = themeRef.current === "follow" ? currentTheme() : themeRef.current;
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current, theme));
+				const livePage = isLiveViewerEntry(current) && liveRef.current ? { pageRev: liveRef.current.pageRev } : undefined;
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendRef.current, theme, livePage));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
@@ -231,6 +259,17 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	const postToFrame = useCallback((message: Record<string, unknown>) => {
 		frameRef.current?.post(message);
 	}, []);
+
+	// The live page learns about store changes (the agent's writes, another tab's) from here.
+	useEffect(() => {
+		if (!isLive) return;
+		function onLiveChange(event: Event) {
+			const detail = (event as CustomEvent<{ taskId: string; changes: unknown[] }>).detail;
+			if (detail?.taskId === taskId) postToFrame({ type: "dev3-live-change", changes: detail.changes });
+		}
+		window.addEventListener("rpc:liveArtifactChange", onLiveChange);
+		return () => window.removeEventListener("rpc:liveArtifactChange", onLiveChange);
+	}, [isLive, taskId, postToFrame]);
 
 	useEffect(() => {
 		postToFrame({ type: "dev3-artifact-comment-mode", on: commentMode && canComment });
@@ -334,6 +373,25 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 			// Keyboard events inside the sandboxed document never reach this window, so
 			// the artifact's own ⌘F handler asks us to open the bar.
 			if (data.type === "dev3-artifact-find-open") { openSearch(); return; }
+			// `dev3.live.*` from the live page: run as the user, answer into the frame.
+			if (data.type === "dev3-live-request") {
+				const request = data as unknown as { id?: unknown; op?: unknown; args?: unknown };
+				if (typeof request.id !== "number" || typeof request.op !== "string") return;
+				const id = request.id;
+				const op = request.op;
+				const reply = (payload: Record<string, unknown>) => frameRef.current?.post({ type: "dev3-live-result", id, ...payload });
+				if (!isLiveRef.current) { reply({ ok: false, reason: "unavailable" }); return; }
+				const args = request.args && typeof request.args === "object" ? request.args as Record<string, unknown> : {};
+				api.request.liveArtifactOp({ taskId, projectId, op, args })
+					.then((outcome) => {
+						reply(outcome);
+						if (op !== "send") return;
+						if (outcome.ok) toast.success(t("artifactViewer.messageSent"), { taskId });
+						else toast.error(t("artifactViewer.messageFailed"), { taskId });
+					})
+					.catch((err) => reply({ ok: false, reason: "failed", error: String(err) }));
+				return;
+			}
 			if (data.type === "dev3-artifact-comment-pick") {
 				const pick = (data as { pick?: ArtifactCommentPick }).pick;
 				if (!pick || typeof pick.selector !== "string") return;
@@ -426,7 +484,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 				toast.error(t("artifactViewer.imageSaveFailed"), { taskId });
 			}
 		}
-	}, [t, taskId, openSearch]);
+	}, [t, taskId, projectId, openSearch]);
 
 	const sendTheme = useCallback(() => {
 		const theme = themeMode === "follow" ? currentTheme() : themeMode;
@@ -576,10 +634,37 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 	// resolving. In remote mode that file lives on the host machine, so the tab
 	// loads it through a sandboxed link over the artifact's stored folder instead.
 	const openInBrowser = () => {
+		// The live page opens on the app's loopback server so it stays live in the
+		// tab. That server is unreachable from a remote browser, which gets the
+		// stored page as a static link instead.
+		if (isLive && !isRemote()) {
+			api.request.openLiveArtifactInBrowser({ taskId, projectId })
+				.catch(() => toast.error(t("artifactViewer.openInBrowserFailed"), { taskId }));
+			return;
+		}
 		const opened = isRemote()
 			? openLinkInNewTab(async () => (await api.request.createArtifactLink({ artifact: current })).viewUrl)
 			: api.request.openArtifactInBrowser({ artifact: current });
 		opened.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "artifactViewer.openInBrowserFailed"), { taskId }));
+	};
+	const canMakeLive = !isLive && !taskFinished && Boolean(group);
+	const makeLive = async () => {
+		if (!group) return;
+		if (liveEntry) {
+			const replace = await confirm({
+				title: t("artifactViewer.makeLiveReplaceTitle"),
+				message: t("artifactViewer.makeLiveReplaceMessage", { current: liveEntry.title, next: current.title }),
+				confirmLabel: t("artifactViewer.makeLiveReplaceConfirm"),
+			});
+			if (!replace) return;
+		}
+		try {
+			await api.request.adoptLiveArtifact({ taskId, projectId, artifactId: group.id, version: selectedVersion });
+			toast.success(t("artifactViewer.madeLive"), { taskId });
+			setJumpToLive(true);
+		} catch {
+			toast.error(t("artifactViewer.makeLiveFailed"), { taskId });
+		}
 	};
 	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
 	const themeName = themeMode === "follow"
@@ -618,7 +703,19 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 			>
 				<header className="relative flex flex-shrink-0 items-center gap-2 border-b border-edge bg-raised px-3 py-2">
 					<div className="min-w-0 flex-1">
-						<div className="truncate text-sm font-medium text-fg">{current.title}</div>
+						<div className="flex min-w-0 items-center gap-2">
+							{isLive && (
+								<span
+									data-testid="artifact-viewer-live-badge"
+									className="flex flex-shrink-0 items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-micro font-semibold uppercase tracking-wide text-success"
+									title={t("artifactViewer.liveHint")}
+								>
+									<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
+									{t("artifactViewer.liveBadge")}
+								</span>
+							)}
+							<div className="truncate text-sm font-medium text-fg">{current.title}</div>
+						</div>
 						<div className="truncate text-micro text-fg-muted">{current.name}</div>
 					</div>
 					{/* Everything but Close scrolls sideways once the panel is too narrow
@@ -674,6 +771,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, offscreen 
 						title={themeLabel}
 					><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
 					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={(downloadKind ?? (current.bundlePath ? "zip" : "html")) === "zip" ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
+					{canMakeLive && (
+						<button
+							type="button"
+							data-testid="artifact-viewer-make-live"
+							className={iconButton}
+							onClick={makeLive}
+							aria-label={t("artifactViewer.makeLive")}
+							title={t("artifactViewer.makeLive")}
+						><span style={{ fontFamily: ICON }}>{"\uf130"}</span></button>
+					)}
 					<button
 						type="button"
 						data-testid="artifact-viewer-open-browser"
