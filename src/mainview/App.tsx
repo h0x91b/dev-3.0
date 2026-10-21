@@ -11,7 +11,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -488,7 +488,7 @@ function App() {
 	// `paneless`: opened from a surface that has no workspace pane behind it (the
 	// task detail modal). Such a viewer is a popup for its whole life — it neither
 	// docks nor hides with the route, because there is no task screen it belongs to.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; projectId?: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; paneless?: boolean } | null>(null);
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; projectId?: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; paneless?: boolean; live?: LiveArtifact } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -2098,21 +2098,22 @@ function App() {
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, taskStatus, projectId, artifacts, index, paneless } = (e as CustomEvent).detail as {
+			const { taskId, taskStatus, projectId, artifacts, index, paneless, live } = (e as CustomEvent).detail as {
 				taskId: string;
 				taskStatus?: TaskStatus;
 				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
 				paneless?: boolean;
+				live?: LiveArtifact;
 			};
-			if (!taskId || !projectId || !artifacts?.length) return;
+			if (!taskId || !projectId || (!artifacts?.length && !live)) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 			// Opened for a task that is not on screen, or from over its diff? Then no
 			// pane offers a slot for it, so it lives as a popup — only a viewer that
 			// started docked may later hide itself when the route walks away from it.
 			const noPane = paneless === true || !routeShowsTaskWorkspace(routeRef.current, taskId);
-			setArtifactViewer({ taskId, projectId, taskStatus, artifacts, index: index ?? artifacts.length - 1, paneless: noPane });
+			setArtifactViewer({ taskId, projectId, taskStatus, artifacts: artifacts ?? [], index: index ?? artifacts.length - 1, paneless: noPane, live });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -3744,6 +3745,7 @@ function App() {
 					projectId={artifactViewer.projectId}
 					task={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)}
 					taskStatus={artifactViewer.taskStatus}
+					live={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)?.liveArtifact ?? artifactViewer.live}
 					artifacts={artifactViewer.artifacts}
 					initialIndex={artifactViewer.index}
 					offscreen={artifactOffscreen}

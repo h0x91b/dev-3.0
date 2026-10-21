@@ -37,6 +37,7 @@ import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { handleDevServerLogSink } from "./commands/dev-server-log-sink";
 import { handleShowImage, handleShowMedia } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
+import { handleLive } from "./commands/live";
 import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
@@ -131,6 +132,7 @@ Commands:
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-media <video|audio> [--caption "..."] [<path> ...]  Play MP4/WebM video and MP3/M4A/WAV/OGG audio (max 300 MB each) in the same viewer as show-image; never autoplays
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image, video and audio file under it
+  dev3 live <publish|adopt|url|status|list|get|set|patch|delete|events|ack|clear>  The task's one Live Artifact: a page replaced in place plus a store it shares with the agent (dev3 live for usage)
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
   dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json] [--follow [--interval <s>]]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane; --follow re-prints only changed screens
@@ -521,6 +523,8 @@ async function main(): Promise<void> {
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "artifact-template":
 				return await handleArtifactTemplate(args, socketPath, context);
+			case "live":
+				return await handleLive(subcommand, args, socketPath, context);
 			case "peek":
 				return await handlePeek(args, socketPath, context);
 			case "pane":

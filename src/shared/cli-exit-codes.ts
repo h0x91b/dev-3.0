@@ -39,6 +39,8 @@ export const CLI_EXIT_CODE_TASK_NOT_HIBERNATED = 37;
 export const CLI_EXIT_CODE_PR_WATCH_NO_PR = 38;
 export const CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN = 39;
 export const CLI_EXIT_CODE_SENDER_INBOX_BUSY = 40;
+export const CLI_EXIT_CODE_LIVE_REV_CONFLICT = 41;
+export const CLI_EXIT_CODE_LIVE_READ_ONLY = 42;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -281,5 +283,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_SENDER_INBOX_BUSY,
 		description:
 			"`dev3 sender inbox --client <cid>` or `dev3 sender ack` found another client holding that sender's reader lease, so NOTHING was read into a lease or acknowledged. The lease lapses 10 s after its holder's last wait. Do not take it over automatically: `--take-over` is for a person who knows the other reader is gone. Distinct from exit 1 so a second reader can back off instead of retrying in a loop.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LIVE_REV_CONFLICT",
+		code: CLI_EXIT_CODE_LIVE_REV_CONFLICT,
+		description:
+			"`dev3 live set|patch|delete --if-rev <n>` found the document at a different revision than the one passed (someone — usually the user on the live page — changed it since it was read), so NOTHING was written. The message names the current revision; re-read the document with `dev3 live get`, merge, and retry. Distinct from exit 1 so an agent can tell a lost race from a failed write.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LIVE_READ_ONLY",
+		code: CLI_EXIT_CODE_LIVE_READ_ONLY,
+		description:
+			"A `dev3 live` write (`publish`, `adopt`, `set`, `patch`, `delete`, `clear`) targeted a task that is completed or cancelled, so NOTHING changed: a finished task's live artifact is kept read-only, with its page and data still readable through `dev3 live status|get|list|events`. Distinct from exit 1 so an agent does not retry a write that can never succeed.",
 	},
 ] as const;

@@ -1,4 +1,5 @@
 import { isSharedAudio, isSharedClip, taskSharedMedia, type SharedArtifact, type SharedImage, type Task } from "../../shared/types";
+import { isLiveViewerEntry, liveViewerEntry } from "../../shared/live-artifact";
 import { latestArtifactVersion } from "../../shared/artifact-versions";
 import { useT, type TFunction } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
@@ -85,7 +86,9 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 export default function SharedOutputsList({ task, projectId }: SharedOutputsListProps) {
 	const t = useT();
 	const images: SharedImage[] = taskSharedMedia(task);
-	const artifacts: SharedArtifact[] = task.sharedArtifacts ?? [];
+	const shared: SharedArtifact[] = task.sharedArtifacts ?? [];
+	// The live page rides as the last row, the same order the viewer lists it in.
+	const artifacts: SharedArtifact[] = task.liveArtifact ? [...shared, liveViewerEntry(task.id, task.liveArtifact)] : shared;
 	if (images.length === 0 && artifacts.length === 0) return null;
 
 	return (
@@ -108,14 +111,19 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 								onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
 									// paneless: this list lives in the task detail modal, which has no
 									// workspace pane to dock into — the viewer stays a popup.
-									detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts, index: i, paneless: true },
+									detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts: shared, index: i, paneless: true, live: task.liveArtifact },
 								}))}
 							>
 								<span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
 									<ArtifactsIcon className="h-[1.125rem] w-[1.125rem]" />
 								</span>
 								<span className="min-w-0 flex-1">
-									<span className="block truncate text-sm font-medium text-fg-2 group-hover:text-fg">{artifact.title || artifact.name}</span>
+									<span className="flex min-w-0 items-center gap-2">
+										{isLiveViewerEntry(artifact) && (
+											<span className="flex-shrink-0 rounded-full bg-success/15 px-1.5 text-micro font-semibold uppercase text-success">{t("artifactViewer.liveBadge")}</span>
+										)}
+										<span className="block truncate text-sm font-medium text-fg-2 group-hover:text-fg">{artifact.title || artifact.name}</span>
+									</span>
 									<span className="mt-0.5 block truncate text-micro tabular-nums text-fg-muted">{artifactMeta(artifact, t)}</span>
 								</span>
 								<span className="flex-shrink-0 text-micro tabular-nums text-fg-muted">{formatStamp(artifact.createdAt)}</span>

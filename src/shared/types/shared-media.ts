@@ -161,6 +161,20 @@ export interface SharedArtifactVersion {
 }
 
 /**
+ * The task's single Live Artifact: a page that is replaced in place (no versions)
+ * plus a state store the page and the agent share (`dev3 live …`). `page` is an
+ * ordinary stored artifact record, so every artifact reader renders it unchanged.
+ * See `decisions/2026/10/21/live-artifact-per-task.md`.
+ */
+export interface LiveArtifact {
+	page: SharedArtifact;
+	/** Bumped on every publish or adopt, so open pages know to reload. */
+	pageRev: number;
+	createdAt: number;
+	updatedAt: number;
+}
+
+/**
  * A task-bound HTML artifact surfaced via `dev3 show-artifact`.
  *
  * The stored HTML contains the stable dev3 artifact theme contract. When

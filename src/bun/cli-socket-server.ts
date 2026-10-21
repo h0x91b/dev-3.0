@@ -8,6 +8,7 @@ import { agentHandlers } from "./cli-socket/agent-commands";
 import { automationHandlers } from "./cli-socket/automation-commands";
 import { boardMetadataHandlers } from "./cli-socket/board-metadata-commands";
 import { externalSenderHandlers } from "./cli-socket/external-sender-commands";
+import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
@@ -64,6 +65,7 @@ const handlers: Record<string, Handler> = {
 	...statsHandlers,
 	...systemHandlers,
 	...taskHandlers,
+	...liveHandlers,
 };
 
 export async function handleRequest(req: CliRequest, signal?: AbortSignal): Promise<CliResponse> {
