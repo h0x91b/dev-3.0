@@ -182,11 +182,11 @@ const SKILL_DEV_SERVER_CONTROL = `
 
 \`dev3 dev-server status\` and \`logs\` are low-risk. \`start\`, \`restart\` and \`stop\` have visible side effects — use them only when the user asked for dev-server control, the task is about \`devScript\`/ports, or you need the server up to verify a change; say what you are about to do first, and stop it again afterwards unless asked to keep it running.
 
-Need it actually serving (curl, browser QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120), bound by its own tree or published for it, so a containerised \`devScript\` counts as ready. Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process squatted an assigned port.
+Need it serving (curl, browser QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120); a containerised \`devScript\` counts. Never probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process squatted an assigned port.
 
 A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`stop api\`, \`restart api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`status\` prints a block per server, \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`.
 
-Each server's output also lands as text in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it, and it greps.
+Each server's output lands in \`<taskDir>/logs/dev-server*.log\`, fresh per start; \`dev3 dev-server logs [--lines N]\` tails it.
 `;
 /** When a report becomes a dev3 HTML artifact. Shared verbatim by the protocol and the `dev3-artifact` skill. */
 export const ARTIFACT_FORMAT_RULES = `Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included. Other meanings win: Claude Artifacts, CI/build artifacts, package outputs.
@@ -206,6 +206,8 @@ export const ARTIFACT_AUTHORING_STEPS = `\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the 
 Publish directly: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish lists exceptions.
 
 The same \`--title\` or stable \`--artifact-id <slug>\` adds a VERSION. Never invent \`report-v2.html\`; \`--new\` is for a different report. A link outside dev3: \`/dev3-share-artifact\` (gist).
+
+\`dev3 live\`: one **Live Artifact** per task, edited in place (REFERENCE.md § Live pages).
 `;
 
 const SKILL_ARTIFACTS = `

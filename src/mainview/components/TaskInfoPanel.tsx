@@ -162,6 +162,7 @@ function TaskInfoPanel({
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const sharedMedia = taskSharedMedia(task);
+	const artifactEntryCount = (task.sharedArtifacts?.length ?? 0) + (task.liveArtifact ? 1 : 0);
 	// Per-control hiding (§5.10) — each of these can be individually hidden
 	// (right-click "Hide") and restored from the panel's one restore control.
 	const spawnAgentHidden = useIsControlHidden("spawn-agent");
@@ -1548,20 +1549,20 @@ function TaskInfoPanel({
 								</button>
 							)}
 
-							{(task.sharedArtifacts?.length ?? 0) > 0 && (
+							{artifactEntryCount > 0 && (
 								<button
 									type="button"
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-											detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
+											detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts ?? [], index: artifactEntryCount - 1, live: task.liveArtifact },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}
 								>
 									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
-									<span className="text-xs font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
+									<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
 								</button>
 							)}
 						</div>

@@ -310,8 +310,10 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	}, [pending.signal, close]);
 
 	return (
+		// Above the artifact popup (z-70) and the help overlay (z-80): a confirmation
+		// raised from either must not open hidden behind the surface that asked for it.
 		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+			className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50"
 			onMouseDown={(e) => {
 				if (e.target !== e.currentTarget) return;
 				if (dismissOnBackdrop) close(false);

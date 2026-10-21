@@ -33,6 +33,8 @@ export const CLI_EXIT_CODE_RESUME_ALREADY_RUNNING = 31;
 export const CLI_EXIT_CODE_RESUME_UNAVAILABLE = 32;
 export const CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED = 33;
 export const CLI_EXIT_CODE_SPACE_REF_INVALID = 34;
+export const CLI_EXIT_CODE_LIVE_REV_CONFLICT = 35;
+export const CLI_EXIT_CODE_LIVE_READ_ONLY = 36;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -239,5 +241,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_SPACE_REF_INVALID,
 		description:
 			"A `dev3 projects add|clone` or `dev3 spaces …` command named a space it cannot use, so NOTHING was added, cloned, created or changed: a `--space` / positional space matched no space or more than one (a name two spaces share — pass the id), or `--new-space` / `spaces create` named a space that already exists (names compare case-insensitively). The message lists the existing spaces with their ids. Distinct from exit 1 so a caller can fall back to creating the space (`--new-space`, `dev3 spaces create`) or to joining the existing one, instead of treating it as a failed registration.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LIVE_REV_CONFLICT",
+		code: CLI_EXIT_CODE_LIVE_REV_CONFLICT,
+		description:
+			"`dev3 live set|patch|delete --if-rev <n>` found the document at a different revision than the one passed (someone — usually the user on the live page — changed it since it was read), so NOTHING was written. The message names the current revision; re-read the document with `dev3 live get`, merge, and retry. Distinct from exit 1 so an agent can tell a lost race from a failed write.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LIVE_READ_ONLY",
+		code: CLI_EXIT_CODE_LIVE_READ_ONLY,
+		description:
+			"A `dev3 live` write (`publish`, `adopt`, `set`, `patch`, `delete`, `clear`) targeted a task that is completed or cancelled, so NOTHING changed: a finished task's live artifact is kept read-only, with its page and data still readable through `dev3 live status|get|list|events`. Distinct from exit 1 so an agent does not retry a write that can never succeed.",
 	},
 ] as const;
