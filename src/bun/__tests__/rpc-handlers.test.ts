@@ -325,6 +325,10 @@ vi.mock("../repo-config", () => {
 	};
 });
 
+vi.mock("../project-autoconfig", () => ({
+	autoConfigureProject: vi.fn(async () => ({ written: ["devScript"] })),
+}));
+
 vi.mock("../agent-hooks", () => ({
 	setupAgentHooks: vi.fn(),
 }));
@@ -1718,6 +1722,36 @@ describe("handlers.addProject", () => {
 		expect(git.getDefaultBranch).toHaveBeenCalledWith("/tmp/test-project");
 	});
 
+	it("auto-configures only when asked, and reports the keys it wrote", async () => {
+		const { autoConfigureProject } = await import("../project-autoconfig");
+		const project = makeProject();
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+
+		const plain = await handlers.addProject({ path: "/tmp/test-project", name: "Test" });
+		expect(autoConfigureProject).not.toHaveBeenCalled();
+		expect(plain).not.toHaveProperty("autoConfigured");
+
+		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test", autoConfigure: true });
+		expect(autoConfigureProject).toHaveBeenCalledWith(project);
+		expect(result).toMatchObject({ ok: true, autoConfigured: { written: ["devScript"] } });
+	});
+
+	it("still adds the project when auto-configure fails", async () => {
+		const { autoConfigureProject } = await import("../project-autoconfig");
+		vi.mocked(autoConfigureProject).mockRejectedValueOnce(new Error("EACCES"));
+		const project = makeProject();
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+
+		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test", autoConfigure: true });
+		expect(result).toMatchObject({ ok: true, autoConfigured: { written: [], failed: true } });
+	});
+
 	it("succeeds even if default branch detection fails", async () => {
 		const project = makeProject();
 		vi.mocked(git.isGitRepo).mockResolvedValue(true);
@@ -2063,6 +2097,19 @@ describe("handlers.initAndAddProject", () => {
 
 		const result = await handlers.initAndAddProject({ path: "/tmp/messy", name: "Messy", initNonEmpty: true });
 		expect(result).toEqual({ ok: true, project, gitInit: offer });
+	});
+
+	it("auto-configures the folder it initialized when asked", async () => {
+		const { autoConfigureProject } = await import("../project-autoconfig");
+		const project = makeProject({ path: "/tmp/messy" });
+		vi.mocked(gitInit.probeGitInit).mockResolvedValue(offer);
+		vi.mocked(readdirSync).mockReturnValue(["src", "package.json"] as any);
+		vi.mocked(gitInit.initGitInPlace).mockResolvedValue({ ok: true, offer });
+		registerSucceeds(project);
+
+		const result = await handlers.initAndAddProject({ path: "/tmp/messy", name: "Messy", initNonEmpty: true, autoConfigure: true });
+		expect(autoConfigureProject).toHaveBeenCalledWith(project);
+		expect(result).toMatchObject({ ok: true, autoConfigured: { written: ["devScript"] }, gitInit: offer });
 	});
 
 	it("surfaces an initialization failure and registers nothing", async () => {

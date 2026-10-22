@@ -370,6 +370,7 @@ describe("saveSettings", () => {
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",
 			cloneBaseDirectory: "/tmp/clones",
+			autoConfigureNewProjects: true,
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },

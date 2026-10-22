@@ -608,4 +608,131 @@ describe("AddProjectModal", () => {
 			expect(screen.queryByText(branchClaim)).not.toBeInTheDocument();
 		});
 	});
+
+	describe("auto-configure switch", () => {
+		it("is off by default and adds projects without it", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: true as const, project: mockProject });
+			renderModal();
+
+			expect(screen.getByRole("switch", { name: "Auto-configure" })).toHaveAttribute("aria-checked", "false");
+			await user.click(screen.getByText("Browse..."));
+
+			expect(mockedApi.request.addProject).toHaveBeenCalledWith({ path: "/work/app" });
+		});
+
+		it("on: asks for auto-configure, remembers the choice, and announces what was saved", async () => {
+			const user = userEvent.setup();
+			const { toast } = await import("../../toast");
+			const success = vi.spyOn(toast, "success");
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				autoConfigured: { written: ["setupScript", "devScript"] },
+			});
+			renderModal();
+
+			await user.click(screen.getByRole("switch", { name: "Auto-configure" }));
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(expect.objectContaining({ autoConfigureNewProjects: true }));
+			await user.click(screen.getByText("Browse..."));
+
+			expect(mockedApi.request.addProject).toHaveBeenCalledWith({ path: "/work/app", autoConfigure: true });
+			expect(success).toHaveBeenCalledWith(
+				"my-repo: saved to .dev3/config.local.json: setup script, dev script. Edit in Project Settings.",
+				expect.anything(),
+			);
+		});
+
+		it("says so when the project was already configured", async () => {
+			const user = userEvent.setup();
+			const { toast } = await import("../../toast");
+			const info = vi.spyOn(toast, "info");
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				autoConfigured: { written: [], existingConfig: true },
+			});
+			renderModal();
+
+			await user.click(screen.getByRole("switch", { name: "Auto-configure" }));
+			await user.click(screen.getByText("Browse..."));
+
+			expect(info).toHaveBeenCalledWith("my-repo is already configured, so auto-configure left it as is.", expect.anything());
+		});
+
+		it("reports a failure as an error, not as nothing found", async () => {
+			const user = userEvent.setup();
+			const { toast } = await import("../../toast");
+			const error = vi.spyOn(toast, "error");
+			const info = vi.spyOn(toast, "info");
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				autoConfigured: { written: [], failed: true },
+			});
+			renderModal();
+
+			await user.click(screen.getByRole("switch", { name: "Auto-configure" }));
+			await user.click(screen.getByText("Browse..."));
+
+			expect(error).toHaveBeenCalledWith("my-repo: could not save auto-configured settings.", expect.anything());
+			expect(info).not.toHaveBeenCalled();
+		});
+
+		it("starts on when the user left it on last time", async () => {
+			mockedApi.request.getGlobalSettings.mockResolvedValueOnce({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				autoConfigureNewProjects: true,
+			} as Awaited<ReturnType<typeof api.request.getGlobalSettings>>);
+			renderModal();
+
+			expect(await screen.findByRole("switch", { name: "Auto-configure", checked: true })).toBeInTheDocument();
+		});
+
+		it("keeps a click made before the stored setting arrives", async () => {
+			const user = userEvent.setup();
+			let resolveSettings!: (value: Awaited<ReturnType<typeof api.request.getGlobalSettings>>) => void;
+			mockedApi.request.getGlobalSettings.mockImplementationOnce(() => new Promise((resolve) => { resolveSettings = resolve; }));
+			renderModal();
+
+			await user.click(screen.getByRole("switch", { name: "Auto-configure" }));
+			await act(async () => {
+				resolveSettings({
+					defaultAgentId: "builtin-claude",
+					defaultConfigId: "claude-default",
+					taskSortOrder: "oldest-first",
+					updateChannel: "stable",
+				} as Awaited<ReturnType<typeof api.request.getGlobalSettings>>);
+			});
+
+			expect(screen.getByRole("switch", { name: "Auto-configure", checked: true })).toBeInTheDocument();
+		});
+
+		it("sits below the tab strip, inside the Local and Clone panes", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			const tabs = screen.getByText("Local Folder").parentElement!;
+
+			for (const tab of ["Local Folder", "Clone from URL"]) {
+				await user.click(screen.getByText(tab));
+				const toggle = screen.getByRole("switch", { name: "Auto-configure" });
+				expect(tabs.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			}
+		});
+
+		it("is hidden on the New tab, where there is nothing to detect", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			await user.click(screen.getByText("New"));
+
+			expect(screen.queryByRole("switch", { name: "Auto-configure" })).not.toBeInTheDocument();
+		});
+	});
 });

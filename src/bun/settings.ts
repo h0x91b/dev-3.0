@@ -146,6 +146,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			? d.staticAccessCode.trim()
 			: undefined,
 		cloneBaseDirectory: d.cloneBaseDirectory ?? undefined,
+		autoConfigureNewProjects: d.autoConfigureNewProjects === true ? true : undefined,
 		customBinaryPaths: d.customBinaryPaths ?? undefined,
 		agentBinaryPaths: d.agentBinaryPaths ?? undefined,
 		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,

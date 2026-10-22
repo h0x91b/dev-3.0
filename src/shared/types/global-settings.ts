@@ -104,6 +104,8 @@ export interface GlobalSettings {
 	 */
 	staticAccessCode?: string;
 	cloneBaseDirectory?: string;
+	/** Last position of the Add Project dialog's auto-configure switch. Absent = off. */
+	autoConfigureNewProjects?: boolean;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
 	/**

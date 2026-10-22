@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName } from "../../shared/types";
-import type { GitInitOffer, Project } from "../../shared/types";
+import type { AutoConfigureKey, AutoConfigureResult, GitInitOffer, Project } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
-import { useT } from "../i18n";
+import { useT, type TranslationKey } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { trackEvent } from "../analytics";
 import posthog from "../posthog";
@@ -13,6 +13,12 @@ import { toast } from "../toast";
 import { confirm } from "../confirm";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import ProjectSpacesField, { applyDeferredSpaces, type DeferredSpaces } from "./ProjectSpacesField";
+import { ToggleSwitch } from "./project-settings/fields";
+
+const AUTO_CONFIGURE_LABELS = {
+	setupScript: "addProject.autoConfigSetup",
+	devScript: "addProject.autoConfigDev",
+} as const satisfies Record<AutoConfigureKey, TranslationKey>;
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -33,6 +39,10 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	const [opsName, setOpsName] = useState("");
 	const [creatingOps, setCreatingOps] = useState(false);
 	const [activeTab, setActiveTab] = useState<"local" | "clone" | "init">("local");
+	// Off unless the user turned it on last time - the choice is remembered in global settings.
+	const [autoConfigure, setAutoConfigure] = useState(false);
+	// A click before the stored value arrives wins over it.
+	const autoConfigureTouched = useRef(false);
 	const [gitUrl, setGitUrl] = useState("");
 	const [repoName, setRepoName] = useState("");
 	const [cloneBaseDir, setCloneBaseDir] = useState<string | null>(null);
@@ -74,6 +84,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 			if (settings.cloneBaseDirectory) {
 				setCloneBaseDir(settings.cloneBaseDirectory);
 			}
+			if (!autoConfigureTouched.current) setAutoConfigure(settings.autoConfigureNewProjects === true);
 		}).catch(() => {});
 	}, []);
 
@@ -118,17 +129,64 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	 * Settle an add attempt that came back with a git-init offer: confirm, then
 	 * initialize in place. `null` means the user declined and nothing changed.
 	 */
-	async function initAfterConfirm(offer: GitInitOffer): Promise<
-		{ ok: true; project: Project } | { ok: false; error: string } | null
+	async function initAfterConfirm(offer: GitInitOffer, withAutoConfigure: boolean): Promise<
+		{ ok: true; project: Project; autoConfigured?: AutoConfigureResult } | { ok: false; error: string } | null
 	> {
 		if (!(await confirmGitInit(offer))) return null;
-		const result = await api.request.initAndAddProject({ path: offer.path, initNonEmpty: true });
+		const result = await api.request.initAndAddProject({
+			path: offer.path,
+			initNonEmpty: true,
+			...(withAutoConfigure ? { autoConfigure: true } : {}),
+		});
 		if (result.ok) {
 			const key = offer.mode === "init" ? "addProject.gitInit.success" : "addProject.gitInit.successFirstCommit";
 			toast.success(t(key, { name: result.project.name }), { source: "dashboard" });
 		}
 		return result;
 	}
+
+	async function toggleAutoConfigure() {
+		autoConfigureTouched.current = true;
+		const next = !autoConfigure;
+		setAutoConfigure(next);
+		try {
+			const settings = await api.request.getGlobalSettings();
+			await api.request.saveGlobalSettings({ ...settings, autoConfigureNewProjects: next || undefined });
+		} catch {
+			// Remembering the choice is best-effort
+		}
+	}
+
+	// Says what auto-configure wrote, so a new .dev3 file never appears unannounced.
+	function reportAutoConfigured(project: Project, result: AutoConfigureResult | undefined) {
+		if (!result) return;
+		if (result.failed) {
+			toast.error(t("addProject.autoConfigFailed", { name: project.name }), { source: "dashboard" });
+			return;
+		}
+		if (result.existingConfig) {
+			toast.info(t("addProject.autoConfigExisting", { name: project.name }), { source: "dashboard" });
+			return;
+		}
+		const keys = result.written;
+		if (keys.length === 0) {
+			toast.info(t("addProject.autoConfigNothing", { name: project.name }), { source: "dashboard" });
+			return;
+		}
+		const fields = keys.map((key) => t(AUTO_CONFIGURE_LABELS[key])).join(", ");
+		toast.success(t("addProject.autoConfigDone", { name: project.name, fields }), { source: "dashboard" });
+	}
+
+	// Lives inside the Local and Clone panes, so the tab strip stays put on New, which has nothing to detect.
+	const autoConfigureSwitch = (
+		<div className="flex items-center justify-between gap-4">
+			<div className="space-y-0.5">
+				<span className="block text-fg-2 text-sm font-medium">{t("addProject.autoConfig")}</span>
+				<span className="block text-fg-3 text-xs leading-5">{t("addProject.autoConfigHint")}</span>
+			</div>
+			<ToggleSwitch checked={autoConfigure} ariaLabel={t("addProject.autoConfig")} onToggle={() => void toggleAutoConfigure()} />
+		</div>
+	);
 
 	async function handleBrowseLocal() {
 		if (browsing) return;
@@ -145,12 +203,13 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				// The backend names the project — see the addProject RPC comment.
 				const name = folder;
 				try {
-					const first = await api.request.addProject({ path: folder });
+					const first = await api.request.addProject({ path: folder, ...(autoConfigure ? { autoConfigure: true } : {}) });
 					const result = !first.ok && first.gitInit
-						? (await initAfterConfirm(first.gitInit)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
+						? (await initAfterConfirm(first.gitInit, autoConfigure)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
 						: first;
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
+						reportAutoConfigured(result.project, result.autoConfigured);
 						added.push(result.project);
 						void applyPendingSpaces(result.project.id);
 						trackEvent("project_added", { source: "local" });
@@ -199,7 +258,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		try {
 			const first = await api.request.initAndAddProject({ path: folder });
 			const result = !first.ok && first.gitInit
-				? (await initAfterConfirm(first.gitInit)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
+				? (await initAfterConfirm(first.gitInit, false)) ?? { ok: false as const, error: t("addProject.gitInit.declined") }
 				: first;
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
@@ -252,9 +311,11 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				baseDir: cloneBaseDir,
 				repoName: repoName.trim() || undefined,
 				progressId,
+				...(autoConfigure ? { autoConfigure: true } : {}),
 			});
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
+				reportAutoConfigured(result.project, result.autoConfigured);
 				void applyPendingSpaces(result.project.id);
 				trackEvent("project_added", { source: "clone" });
 				posthog.capture("project_added", { source: "clone" });
@@ -403,6 +464,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 						<p className="text-fg-3 text-sm">
 							{t("addProject.browseHint")}
 						</p>
+						{autoConfigureSwitch}
 						<button
 							onClick={handleBrowseLocal}
 							disabled={browsing}
@@ -490,6 +552,8 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 								{t("addProject.targetPath")} {targetPath}
 							</div>
 						)}
+
+						{autoConfigureSwitch}
 
 						{/* Live clone output (last lines of `git clone --progress`) */}
 						{cloning && (
