@@ -6451,7 +6451,7 @@ describe("handlers.resolvePrUrl", () => {
 		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: PR_URL });
 
 		expect(result).toEqual({ ok: true, branch: "origin/feat/login", number: 42, title: "My PR", isFork: false, error: null });
-		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "feat/login");
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "feat/login", undefined, { force: true, priority: true });
 		expect(git.fetchFork).not.toHaveBeenCalled();
 		// The full URL is passed straight to gh pr view.
 		expect(vi.mocked(github.runGitHub).mock.calls[0][2]).toContain(PR_URL);

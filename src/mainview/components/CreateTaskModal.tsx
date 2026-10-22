@@ -1228,6 +1228,8 @@ function prFailureMessage(result: PrResolveResponse, t: ReturnType<typeof useT>)
 			return t("createTask.prFailForeignRepo", { prRepo: result.prRepo ?? "", projectRepo: result.projectRepo ?? "" });
 		case "fork-fetch":
 			return t("createTask.prFailForkFetch");
+		case "origin-fetch":
+			return t("createTask.prFailOriginFetch", { error: result.error ?? "" });
 		case "not-found":
 			return t("createTask.prFailNotFound");
 		default:

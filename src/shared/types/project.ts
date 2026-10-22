@@ -370,6 +370,7 @@ export type PrResolveFailureReason =
 	| "no-github-remote"
 	| "foreign-repo"
 	| "fork-fetch"
+	| "origin-fetch"
 	| "not-found";
 
 export function withPresetPrompt(userText: string, prompt: string): string {

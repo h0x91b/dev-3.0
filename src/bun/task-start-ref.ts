@@ -64,6 +64,24 @@ async function explainPrFailure(
 	return { reason, prRepo, projectRepo };
 }
 
+/**
+ * Fetch a same-repo PR head and confirm `origin/<head>` exists. Returns why it is
+ * not usable, or null. `force`: this is an explicit request, so a fetch that failed
+ * minutes ago (backoff) must not stand in for a fresh answer, nor a cached stale ref.
+ */
+async function fetchPrHeadFromOrigin(projectPath: string, headRefName: string): Promise<string | null> {
+	const fetched = await git.fetchOrigin(projectPath, headRefName, undefined, { force: true, priority: true });
+	if (!fetched) {
+		const said = (git.lastOriginFetchError(projectPath, headRefName) ?? "").replace(/\s+/g, " ").trim();
+		const detail = said.length > 300 ? `${said.slice(0, 300)}…` : said;
+		return `git fetch origin ${headRefName} failed${detail ? `: ${detail}` : ""}`;
+	}
+	if (!(await git.refExists(projectPath, `refs/remotes/origin/${headRefName}`))) {
+		return `git fetch origin ${headRefName} succeeded, but origin/${headRefName} is still missing — check the origin fetch refspec`;
+	}
+	return null;
+}
+
 // Resolve a GitHub pull-request URL to a locally-fetched branch ref, ready to be
 // used as a task's `existingBranch`. Same-repo PRs resolve to `origin/<head>`;
 // cross-repo (fork) PRs are fetched via the fork-remote machinery and resolve to
@@ -112,7 +130,11 @@ export async function resolvePrUrl(params: { projectId: string; url: string }): 
 			return { ok: true, branch: `${forkOwner}/${headRefName}`, number, title, isFork: true, error: null };
 		}
 
-		await git.fetchOrigin(project.path, headRefName);
+		const originFailure = await fetchPrHeadFromOrigin(project.path, headRefName);
+		if (originFailure) {
+			log.warn("resolvePrUrl: origin fetch failed", { url, headRefName, error: originFailure });
+			return { ok: false, branch: null, number, title, isFork: false, error: originFailure, reason: "origin-fetch" };
+		}
 		log.info("← resolvePrUrl (origin)", { number, branch: `origin/${headRefName}` });
 		return { ok: true, branch: `origin/${headRefName}`, number, title, isFork: false, error: null };
 	} catch (err) {
@@ -132,8 +154,9 @@ function unresolved(message: string): Error {
  * indistinguishable in an exit code but not in a message, and "Failed to resolve
  * pull request" tells nobody whether to fix the number or run `gh auth login`.
  */
-export function describePrFailure(prRef: string, error: string): string {
-	switch (classifyPrFailure(error)) {
+export function describePrFailure(prRef: string, error: string, reason?: PrResolveFailureReason): string {
+	// A git fetch failure carries git's stderr, which the gh-oriented classifier misreads.
+	switch (reason === "origin-fetch" ? reason : classifyPrFailure(error)) {
 		case "gh-missing":
 			return "the GitHub CLI (`gh`) is not installed, so a pull request cannot be looked up. Install it, or pass --branch <ref> instead.";
 		case "gh-auth":
@@ -142,6 +165,8 @@ export function describePrFailure(prRef: string, error: string): string {
 			return "this project has no GitHub remote, so it has no pull requests. Pass --branch <ref> instead.";
 		case "fork-fetch":
 			return `${error} — the fork may have been deleted.`;
+		case "origin-fetch":
+			return `could not fetch the pull request's branch (${error}). Check that git can reach this repository, then retry.`;
 		default:
 			return `no pull request ${prRef} in this project (${error.trim()}).`;
 	}
@@ -177,7 +202,7 @@ export async function resolveTaskStartRef(request: StartRefRequest): Promise<str
 		}
 		const resolved = await resolvePrUrl({ projectId: project.id, url: trimmed });
 		if (!resolved.ok || !resolved.branch) {
-			throw unresolved(describePrFailure(trimmed, resolved.error ?? ""));
+			throw unresolved(describePrFailure(trimmed, resolved.error ?? "", resolved.reason));
 		}
 		log.info("resolved --pr to a ref", { pr: trimmed, ref: resolved.branch, isFork: resolved.isFork });
 		return resolved.branch;

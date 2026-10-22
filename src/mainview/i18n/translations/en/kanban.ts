@@ -87,6 +87,7 @@ const kanban = {
 	"createTask.prFailNoGithubRemote": "This project has no GitHub remote, so its pull requests can't be checked out. Pick a branch under “Use existing branch” instead.",
 	"createTask.prFailForeignRepo": "This pull request is in {prRepo}, but this project is {projectRepo}. Create the review from the {prRepo} project.",
 	"createTask.prFailForkFetch": "Couldn't fetch the branch from the fork — it may have been deleted.",
+	"createTask.prFailOriginFetch": "Couldn't fetch this pull request's branch from origin, so there is nothing to review yet. Check that git can reach the repository, then try again. Git said: {error}",
 	"createTask.prFailNotFound": "No pull request at this link. Check the number and try again.",
 	"createTask.prLinkInvalid": "That isn't a pull request link — it should end in /pull/ and a number.",
 	"createTask.reviewModeHint": "Pre-fills description with a code review prompt",

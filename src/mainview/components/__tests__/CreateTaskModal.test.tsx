@@ -1957,6 +1957,23 @@ describe("CreateTaskModal — task type presets", () => {
 		expect(await screen.findByRole("alert")).toHaveTextContent("Run gh auth login, then try again.");
 	});
 
+	it("says the branch fetch failed, quotes git, and keeps the review unlaunchable", async () => {
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: false, branch: null, number: 42, title: null, isFork: false,
+			error: "git fetch origin feat/x failed: ERROR: Repository not found.", reason: "origin-fetch",
+		});
+		renderModal();
+		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
+		await userEvent.type(await screen.findByLabelText("Pull request"), "https://github.com/o/r/pull/42{Enter}");
+
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Couldn't fetch this pull request's branch from origin");
+		expect(alert).toHaveTextContent("Git said: git fetch origin feat/x failed: ERROR: Repository not found.");
+		expect(alert).not.toHaveTextContent("No pull request at this link");
+		expect(screen.queryByText("origin/feat/x")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("Pull request")).toBeInTheDocument();
+	});
+
 	it("names both repositories when the link belongs to another project", async () => {
 		mockedApi.request.resolvePrUrl.mockResolvedValue({
 			ok: false, branch: null, number: null, title: null, isFork: false,

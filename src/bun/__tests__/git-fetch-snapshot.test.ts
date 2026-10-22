@@ -89,6 +89,7 @@ import {
 	fetchOrigin,
 	fetchOriginBranches,
 	fetchSshCommand,
+	lastOriginFetchError,
 	_resetFetchState,
 	saveDiffSnapshot,
 	taskDir,
@@ -256,6 +257,17 @@ describe("fetchOrigin", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it("remembers what git said about a failed branch fetch until one succeeds", async () => {
+		queueResponse(128, "", "ERROR: Repository not found.\nfatal: Could not read from remote repository.");
+		expect(await fetchOrigin("/repo", "feat/x")).toBe(false);
+		expect(lastOriginFetchError("/repo", "feat/x")).toContain("Repository not found");
+		expect(lastOriginFetchError("/repo", "other")).toBeNull();
+
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "feat/x", undefined, { force: true })).toBe(true);
+		expect(lastOriginFetchError("/repo", "feat/x")).toBeNull();
 	});
 
 	it("a successful fetch clears the failure backoff", async () => {

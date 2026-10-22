@@ -18,6 +18,7 @@ vi.mock("../git", () => ({
 	refExists: vi.fn(),
 	fetchFork: vi.fn(async () => true),
 	fetchOrigin: vi.fn(async () => true),
+	lastOriginFetchError: vi.fn(() => null),
 }));
 
 vi.mock("../logger", () => ({
@@ -48,6 +49,9 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(data.getProject).mockResolvedValue(PROJECT);
 	vi.mocked(git.fetchFork).mockResolvedValue(true);
+	vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+	vi.mocked(git.refExists).mockResolvedValue(true);
+	vi.mocked(git.lastOriginFetchError).mockReturnValue(null);
 });
 
 describe("resolveTaskStartRef", () => {
@@ -58,7 +62,8 @@ describe("resolveTaskStartRef", () => {
 
 		// The whole point of the flag. A pass-through here is the bug this replaces.
 		expect(ref).toBe("origin/fix/expand");
-		expect(git.fetchOrigin).toHaveBeenCalledWith("/repo", "fix/expand");
+		expect(git.fetchOrigin).toHaveBeenCalledWith("/repo", "fix/expand", undefined, { force: true, priority: true });
+		expect(git.refExists).toHaveBeenCalledWith("/repo", "refs/remotes/origin/fix/expand");
 	});
 
 	it("resolves a fork pull request to the fork remote's ref after fetching it", async () => {
@@ -108,7 +113,18 @@ describe("resolveTaskStartRef", () => {
 			.rejects.toThrow(/Could not fetch gone from fork someone/);
 	});
 
-	it("rejects --pr and --branch together", async () => {
+	it("rejects a same-repo pull request whose branch fetch failed, quoting git", async () => {
+		ghSays({ number: 5, headRefName: "feat/x", isCrossRepository: false });
+		vi.mocked(git.fetchOrigin).mockResolvedValue(false);
+		vi.mocked(git.lastOriginFetchError).mockReturnValue("ERROR: Repository not found.\nfatal: Could not read from remote repository.");
+
+		const rejection = resolveTaskStartRef({ project: PROJECT, pr: "5" });
+		await expect(rejection).rejects.toThrow(new RegExp(TASK_REF_UNRESOLVED_PREFIX));
+		await expect(rejection).rejects.toThrow(/could not fetch the pull request's branch \(git fetch origin feat\/x failed: ERROR: Repository not found\. fatal/);
+		await expect(rejection).rejects.not.toThrow(/no pull request|fork|gh auth login/);
+	});
+
+		it("rejects --pr and --branch together", async () => {
 		await expect(resolveTaskStartRef({ project: PROJECT, pr: "1", branch: "origin/x" }))
 			.rejects.toThrow(/pass one of them/);
 	});
@@ -220,6 +236,75 @@ describe("resolvePrUrl failure reasons", () => {
 
 		expect(result.reason).toBe("gh-auth");
 		expect(github.runGitHub).toHaveBeenCalledTimes(1);
+	});
+
+	describe("same-repo branch fetch", () => {
+		const URL = "https://github.com/acme/widgets/pull/12";
+		const prJson = JSON.stringify({ number: 12, title: "T", headRefName: "feat/y", isCrossRepository: false });
+
+		it("fails when the fetch fails and no ref was ever cached", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+			vi.mocked(git.fetchOrigin).mockResolvedValue(false);
+			vi.mocked(git.refExists).mockResolvedValue(false);
+			vi.mocked(git.lastOriginFetchError).mockReturnValue("fatal: could not read Username: terminal prompts disabled");
+
+			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
+
+			// Not gh-auth even though git's text mentions credentials: the reason is set, not guessed.
+			expect(result).toMatchObject({ ok: false, branch: null, number: 12, isFork: false, reason: "origin-fetch" });
+			expect(result.error).toBe("git fetch origin feat/y failed: fatal: could not read Username: terminal prompts disabled");
+			expect(github.runGitHub).toHaveBeenCalledTimes(1);
+		});
+
+		it("fails when the fetch fails even though a stale origin ref is cached", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+			vi.mocked(git.fetchOrigin).mockResolvedValue(false);
+			vi.mocked(git.refExists).mockResolvedValue(true);
+			vi.mocked(git.lastOriginFetchError).mockReturnValue("ERROR: Repository not found.");
+
+			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
+
+			expect(result).toMatchObject({ ok: false, branch: null, reason: "origin-fetch" });
+			expect(git.refExists).not.toHaveBeenCalled();
+		});
+
+		it("still fails without git's text, and caps a long one", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+			vi.mocked(git.fetchOrigin).mockResolvedValue(false);
+			expect((await resolvePrUrl({ projectId: "proj-1", url: URL })).error).toBe("git fetch origin feat/y failed");
+
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+			vi.mocked(git.lastOriginFetchError).mockReturnValue("x".repeat(1000));
+			expect((await resolvePrUrl({ projectId: "proj-1", url: URL })).error!.length).toBeLessThan(400);
+		});
+
+		it("fails when the fetch reports success but origin/<head> is absent", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+			vi.mocked(git.refExists).mockResolvedValue(false);
+
+			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
+
+			expect(result).toMatchObject({ ok: false, reason: "origin-fetch" });
+			expect(result.error).toContain("origin/feat/y is still missing");
+		});
+
+		it("resolves to origin/<head> when the fetch succeeds and the ref exists", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
+
+			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
+
+			expect(result).toEqual({ ok: true, branch: "origin/feat/y", number: 12, title: "T", isFork: false, error: null });
+		});
+
+		it("leaves the fork path on fetchFork alone", async () => {
+			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(JSON.stringify({ number: 3, headRefName: "z", headRepositoryOwner: { login: "f" }, isCrossRepository: true })));
+
+			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
+
+			expect(result).toMatchObject({ ok: true, branch: "f/z", isFork: true });
+			expect(git.fetchOrigin).not.toHaveBeenCalled();
+			expect(git.refExists).not.toHaveBeenCalled();
+		});
 	});
 
 	it("reads owner/repo only from a pull-request URL", () => {

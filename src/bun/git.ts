@@ -1707,7 +1707,7 @@ const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 // Failed fetches (dead remote, no network, auth issues) get an exponential
 // backoff so background pollers don't retry them on every tick. Without this,
 // a repo with an unreachable origin was re-fetched every poller cycle forever.
-const fetchLastFailure = new Map<string, { at: number; failures: number }>();
+const fetchLastFailure = new Map<string, { at: number; failures: number; stderr: string }>();
 const FETCH_FAILURE_BACKOFF_BASE_MS = 2 * 60_000;
 const FETCH_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
 
@@ -1815,6 +1815,11 @@ async function runGitFetch(projectPath: string, cmd: string[], timeoutMs: number
 	});
 }
 
+/** What git said when the latest fetch of `origin/<branch>` failed; null once a fetch succeeds. */
+export function lastOriginFetchError(projectPath: string, branch: string): string | null {
+	return fetchLastFailure.get(`${projectPath}:origin/${branch}`)?.stderr ?? null;
+}
+
 export async function fetchOrigin(
 	projectPath: string,
 	branch?: string,
@@ -1893,7 +1898,7 @@ async function fetchFromRemote(
 			});
 		} else {
 			const failures = (fetchLastFailure.get(cacheKey)?.failures ?? 0) + 1;
-			fetchLastFailure.set(cacheKey, { at: Date.now(), failures });
+			fetchLastFailure.set(cacheKey, { at: Date.now(), failures, stderr: result.stderr });
 			log.warn("fetchOrigin failed", {
 				projectPath,
 				branch,

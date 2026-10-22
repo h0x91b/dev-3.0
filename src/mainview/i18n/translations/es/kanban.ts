@@ -86,6 +86,7 @@ const kanban = {
 	"createTask.prFailNoGithubRemote": "Este proyecto no tiene un remoto de GitHub, así que no se pueden traer sus pull requests. Elige una rama en «Usar rama existente».",
 	"createTask.prFailForeignRepo": "Este pull request está en {prRepo}, pero este proyecto es {projectRepo}. Crea la revisión desde el proyecto {prRepo}.",
 	"createTask.prFailForkFetch": "No se pudo traer la rama del fork; puede que lo hayan borrado.",
+	"createTask.prFailOriginFetch": "No se pudo traer la rama de este pull request desde origin, así que aún no hay nada que revisar. Comprueba que git puede acceder al repositorio y vuelve a intentarlo. Git dijo: {error}",
 	"createTask.prFailNotFound": "No hay ningún pull request en este enlace. Revisa el número y vuelve a intentarlo.",
 	"createTask.prLinkInvalid": "Eso no es un enlace a un pull request — debe terminar en /pull/ y un número.",
 	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",

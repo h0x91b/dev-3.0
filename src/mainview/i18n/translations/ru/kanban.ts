@@ -88,6 +88,7 @@ const kanban = {
 	"createTask.prFailNoGithubRemote": "У этого проекта нет GitHub-remote, поэтому его pull request не взять. Выбери ветку в «Использовать существующую ветку».",
 	"createTask.prFailForeignRepo": "Этот pull request из {prRepo}, а проект — {projectRepo}. Создай ревью из проекта {prRepo}.",
 	"createTask.prFailForkFetch": "Не удалось скачать ветку из форка — возможно, его удалили.",
+	"createTask.prFailOriginFetch": "Не удалось скачать ветку этого pull request из origin, так что ревьюить пока нечего. Проверьте, что git имеет доступ к репозиторию, и попробуйте снова. Git ответил: {error}",
 	"createTask.prFailNotFound": "По этой ссылке нет pull request. Проверь номер и попробуй снова.",
 	"createTask.prLinkInvalid": "Это не ссылка на pull request — она должна заканчиваться на /pull/ и номер.",
 	"createTask.reviewModeHint": "Предзаполняет описание промптом для код-ревью",
