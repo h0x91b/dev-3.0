@@ -364,7 +364,7 @@ describe("missing agent binary — hooks belong to the agent, not the retry wrap
 			launchModel: undefined,
 		} as never);
 		const { setupAgentHooks } = await import("../agent-hooks");
-		vi.mocked(setupAgentHooks).mockResolvedValue("--hook /h/omp-status.ts");
+		vi.mocked(setupAgentHooks).mockResolvedValue({ flag: "--hook /h/omp-status.ts" });
 		vi.mocked(sharedPure.resolveBinaryPath).mockReturnValueOnce({ resolvedPath: undefined, customPathError: false });
 
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);

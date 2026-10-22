@@ -1,5 +1,6 @@
 import type { Project, Task } from "../shared/types";
-import { taskDir, virtualWorkDir } from "./git";
+import { taskDir } from "./git";
+import { folderWorkDir } from "./task-folder";
 import {
 	conversationDumpDir,
 	conversationDumpName,
@@ -7,6 +8,7 @@ import {
 	writeConversationDump,
 } from "./conversation-parse";
 import { createLogger } from "./logger";
+import { taskSessionIds } from "./task-sessions";
 
 /**
  * Archiving a task's conversations when the task reaches a terminal status.
@@ -36,12 +38,12 @@ export async function dumpTerminalTaskConversations(
 ): Promise<string[]> {
 	const workingDir = task.worktreePath
 		?? derivedWorktreePath
-		?? (project.kind === "virtual" ? task.opsWorkDir?.trim() || virtualWorkDir(project, task) : null);
+		?? folderWorkDir(project, task);
 	if (!workingDir) return [];
 
 	const written: string[] = [];
 	try {
-		const parsed = parseWorktreeConversations(workingDir);
+		const parsed = parseWorktreeConversations(workingDir, { sessionIds: taskSessionIds(project, task, workingDir) });
 		if (parsed.length === 0) return [];
 		const dir = conversationDumpDir(taskDir(project, task));
 		for (const { conversation } of parsed) {

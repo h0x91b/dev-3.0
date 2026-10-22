@@ -122,7 +122,14 @@ describe("resolveTaskStartRef", () => {
 
 	it("rejects --pr on a board with no git repository", async () => {
 		await expect(resolveTaskStartRef({ project: { ...PROJECT, kind: "virtual" } as Project, pr: "1" }))
-			.rejects.toThrow(/no git repository/);
+			.rejects.toThrow(/no git workflow/);
+	});
+
+	it("rejects --pr and --branch on a project with the git workflow off", async () => {
+		const gitless = { ...PROJECT, gitWorkflow: false } as Project;
+		await expect(resolveTaskStartRef({ project: gitless, pr: "1" })).rejects.toThrow(/no git workflow/);
+		await expect(resolveTaskStartRef({ project: gitless, branch: "origin/feat/x" })).rejects.toThrow(/no git workflow/);
+		expect(git.refExists).not.toHaveBeenCalled();
 	});
 
 	describe("--branch", () => {

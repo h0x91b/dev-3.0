@@ -94,6 +94,18 @@ describe("removeWorktree", () => {
 		await removeWorktree(project, task);
 	});
 
+	it("never removes the project folder itself, nor the branch it has checked out", async () => {
+		g("git checkout -b dev3/task-aaaaaaaa", repo.local);
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: repo.local, branchName: "dev3/task-aaaaaaaa" });
+
+		const outcome = await removeWorktree(project, task);
+
+		expect(outcome).toEqual({ deleted: [], kept: [] });
+		expect(existsSync(repo.local)).toBe(true);
+		expect(g("git branch --show-current", repo.local).trim()).toBe("dev3/task-aaaaaaaa");
+	});
+
 	it("removes worktree and deletes branch with original name", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);

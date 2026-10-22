@@ -1,5 +1,5 @@
 import type { PrResolveFailureReason, Project } from "../shared/types";
-import { TASK_REF_UNRESOLVED_PREFIX } from "../shared/types";
+import { hasGitWorkflow, TASK_REF_UNRESOLVED_PREFIX } from "../shared/types";
 import * as github from "./github";
 import * as git from "./git";
 import * as data from "./data";
@@ -168,8 +168,8 @@ export async function resolveTaskStartRef(request: StartRefRequest): Promise<str
 	const { project, pr, branch } = request;
 	if (pr && branch) throw unresolved("--pr and --branch name the same thing two ways — pass one of them.");
 	if (pr) {
-		if (project.kind === "virtual") {
-			throw unresolved("an Operations board has no git repository, so it has no pull requests.");
+		if (!hasGitWorkflow(project)) {
+			throw unresolved("this project has no git workflow, so it has no pull requests.");
 		}
 		const trimmed = pr.trim();
 		if (!/^\d+$/.test(trimmed) && !/^https?:\/\//.test(trimmed)) {
@@ -185,8 +185,8 @@ export async function resolveTaskStartRef(request: StartRefRequest): Promise<str
 	if (branch) {
 		const ref = branch.trim();
 		if (!ref) throw unresolved("--branch needs a ref.");
-		if (project.kind === "virtual") {
-			throw unresolved("an Operations board has no git repository, so it has no branches.");
+		if (!hasGitWorkflow(project)) {
+			throw unresolved("this project has no git workflow, so it has no branches.");
 		}
 		// Remote-tracking refs are checked under refs/remotes so `origin/main`
 		// cannot be satisfied by a local branch literally named `origin/main`.

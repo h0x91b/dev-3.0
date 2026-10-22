@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 			openImageFile: vi.fn(),
 			listAgentSkills: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			getAllProjectTasks: vi.fn().mockResolvedValue([]),
 		},
 	},
 	isElectrobun: false,
@@ -1533,6 +1534,43 @@ describe("CreateTaskModal — virtual (Operations) project", () => {
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Backup prod" });
+		});
+	});
+});
+
+describe("CreateTaskModal — project with the git workflow off", () => {
+	const gproject: Project = { ...mockProject, gitWorkflow: false };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+	});
+
+	it("shows the project folder instead of a branch choice, and no PR review", async () => {
+		renderModal({ project: gproject });
+		expect(screen.getByText("Working folder")).toBeInTheDocument();
+		expect(screen.getByText("/home/user/test-project")).toBeInTheDocument();
+		expect(screen.queryByText("Use existing branch")).not.toBeInTheDocument();
+		expect(await screen.findByTestId("task-type-coordinator")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-type-pr-review")).not.toBeInTheDocument();
+		expect(mockedApi.request.getProjectCurrentBranch).not.toHaveBeenCalled();
+	});
+
+	it("warns when another task is already running in the folder", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [{ ...mockTask, status: "in-progress", worktreePath: "/home/user/test-project" }] },
+		] as never);
+		renderModal({ project: gproject });
+		expect(await screen.findByText(/Another task is already running in this folder/)).toBeInTheDocument();
+	});
+
+	it("creates the task with no branch", async () => {
+		renderModal({ project: gproject });
+		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Map the Azure estate");
+		await userEvent.click(screen.getByText("Save"));
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Map the Azure estate" });
 		});
 	});
 });
