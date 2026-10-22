@@ -1,0 +1,1 @@
+Vitest now runs on the same Vite 8 the build uses, instead of a stale nested Vite 6 copy left over from the Vite 8 upgrade; this drops 55 lockfile entries (rollup, esbuild and their platform binaries).
