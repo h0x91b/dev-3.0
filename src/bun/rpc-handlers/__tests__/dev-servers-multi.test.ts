@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
 	buildProcessTree: vi.fn(async () => new Map<number, number[]>()),
 	collectDescendants: vi.fn(() => [] as number[]),
 	collectTaskPids: vi.fn(async () => new Set<number>()),
-	findPortHolders: vi.fn(async () => []),
+	findPortHolders: vi.fn(async () => [] as Array<{ port: number; pid: number; processName: string }>),
 	getLsofOutput: vi.fn(async () => ""),
 	getPortsForTask: vi.fn(() => []),
 	getSessionPanePids: vi.fn(async () => [] as number[]),
@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
 	terminatePidsVerified: vi.fn(async () => [] as number[]),
 	getResourceUsage: vi.fn(() => undefined),
 	writeLaunchScript: vi.fn(async () => {}),
+	findWorktreeContainerPorts: vi.fn(async (_worktreePath: string) => new Set<number>()),
 	// tmux singleton — every method the dev-server paths could reach
 	tmuxHasSession: vi.fn(async (_session: string) => false),
 	// How a tmux task's live dev servers are enumerated: one session per server.
@@ -101,6 +102,7 @@ vi.mock("../../port-scanner", () => ({
 	waitForPortsFree: mocks.waitForPortsFree,
 }));
 
+vi.mock("../../container-ports", () => ({ findWorktreeContainerPorts: mocks.findWorktreeContainerPorts }));
 vi.mock("../../process-reaper", () => ({ getPidCwd: mocks.getPidCwd, terminatePidsVerified: mocks.terminatePidsVerified }));
 vi.mock("../../resource-monitor", () => ({ getResourceUsage: mocks.getResourceUsage }));
 
@@ -145,6 +147,7 @@ vi.mock("../../tmux", async (importOriginal) => ({
 }));
 
 import { buildDevServerScript } from "../../dev-server-script";
+import { clearCarriedPublished } from "../../dev-server-ports";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../tmux-pty";
 
 const TASK_ID = "abcdef12-0000-0000-0000-000000000001";
@@ -185,6 +188,7 @@ beforeEach(() => {
 	mocks.terminatePidsVerified.mockResolvedValue([]);
 	mocks.waitForPortsFree.mockResolvedValue([]);
 	mocks.findPortHolders.mockResolvedValue([]);
+	mocks.findWorktreeContainerPorts.mockResolvedValue(new Set());
 	mocks.tmuxHasSession.mockResolvedValue(false);
 	mocks.tmuxListSessions.mockResolvedValue([]);
 	mocks.tmuxNewSessionDetached.mockResolvedValue({ stdout: "", stderr: "" });
@@ -286,6 +290,67 @@ describe("ports", () => {
 		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, all: true });
 
 		expect(mocks.allocatePorts).toHaveBeenCalledWith(TASK_ID, 4);
+	});
+});
+
+describe("a port Docker publishes", () => {
+	// Docker Desktop holds every published port under one long-lived PID, so the
+	// previous run's container, still stopping at start, looks like the new one.
+	const DOCKER = { port: 17501, pid: 1360, processName: "com.docker.backend" };
+
+	// A fresh app process: nothing remembered as published from an earlier run.
+	beforeEach(() => clearCarriedPublished(TASK_ID));
+
+	async function startWithDockerHolding(): Promise<void> {
+		declare({ devScript: "docker compose up", portCount: 1 });
+		mocks.getPortAssignments.mockReturnValue([17501]);
+		mocks.findPortHolders.mockResolvedValue([DOCKER]);
+		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
+		mocks.tmuxHasSession.mockResolvedValue(true);
+		mocks.getLsofOutput.mockResolvedValue("lsof");
+	}
+
+	it("counts this worktree's own container as the dev server's port", async () => {
+		mocks.findWorktreeContainerPorts.mockResolvedValue(new Set([17501]));
+
+		await startWithDockerHolding();
+		const [entry] = (await getDevServerStatus({ taskId: TASK_ID, projectId: PROJECT.id })).servers;
+
+		expect(mocks.findWorktreeContainerPorts).toHaveBeenCalledWith("/repo/wt");
+		expect(entry.publishedPorts).toEqual([DOCKER]);
+		expect(entry.portConflicts).toEqual([]);
+	});
+
+	it("keeps another project's container a conflict", async () => {
+		await startWithDockerHolding();
+		const [entry] = (await getDevServerStatus({ taskId: TASK_ID, projectId: PROJECT.id })).servers;
+
+		expect(mocks.findWorktreeContainerPorts).toHaveBeenCalledWith("/repo/wt");
+		expect(entry.publishedPorts).toEqual([]);
+		expect(entry.portConflicts).toEqual([DOCKER]);
+	});
+
+	it("a stop waits for this worktree's container to release its port", async () => {
+		declare({ devScript: "docker compose up", portCount: 1 });
+		mocks.getPortAssignments.mockReturnValue([17501]);
+		mocks.findPortHolders.mockResolvedValue([DOCKER]);
+		mocks.findWorktreeContainerPorts.mockResolvedValue(new Set([17501]));
+		liveSessions("dev3-dev-abcdef12");
+
+		await stopDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
+
+		expect(mocks.waitForPortsFree).toHaveBeenCalledWith([17501], 15_000);
+	});
+
+	it("a stop does not wait on another project's container", async () => {
+		declare({ devScript: "docker compose up", portCount: 1 });
+		mocks.getPortAssignments.mockReturnValue([17501]);
+		mocks.findPortHolders.mockResolvedValue([DOCKER]);
+		liveSessions("dev3-dev-abcdef12");
+
+		await stopDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
+
+		expect(mocks.waitForPortsFree).toHaveBeenCalledWith([], 3000);
 	});
 });
 

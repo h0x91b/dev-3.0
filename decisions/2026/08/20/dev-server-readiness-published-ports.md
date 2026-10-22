@@ -1,5 +1,7 @@
 # Dev-server readiness accepts ports published by another process
 
+> Partly superseded on 2026-10-22 by `decisions/2026/10/22/dev-server-own-compose-container-ports.md`: a pre-start holder that is this worktree's own compose container is no longer a squatter.
+
 ## Context
 
 `dev3 dev-server start --wait` polled `devServer.status` until `devPorts` was
