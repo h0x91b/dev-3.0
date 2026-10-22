@@ -243,6 +243,7 @@ html {
 	--awake-hover: 239 108 1;
 	--diff-search-highlight-from: 255 227 138;
 	--diff-search-highlight-to: 255 166 196;
+	--diff-search-highlight-ink: 6 9 22;
 
 	/* ---- Categorical chart palette (pie/series slices) ---- */
 	--chart-1: 68 150 255;
@@ -392,6 +393,7 @@ html {
 	--awake-hover: 161 72 8;
 	--diff-search-highlight-from: 250 204 21;
 	--diff-search-highlight-to: 236 72 153;
+	--diff-search-highlight-ink: 17 26 47;
 
 	/* ---- Categorical chart palette (pie/series slices) ---- */
 	--chart-1: 59 130 246;
@@ -2092,11 +2094,13 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 
 /* ⌘F find inside the file preview. Painted through the CSS Custom Highlight API,
    so the Markdown renderer's DOM is never touched (see utils/find-in-dom.ts). */
-::highlight(dev3-find) {
-	background-color: rgb(var(--diff-search-highlight-from) / 0.45);
-	color: inherit;
+::highlight(dev3-find),
+::highlight(dev3-diff-find) {
+	background-color: rgb(var(--diff-search-highlight-from) / 0.28);
+	color: rgb(var(--text-primary));
 }
-::highlight(dev3-find-active) {
-	background-color: rgb(var(--diff-search-highlight-to) / 0.85);
-	color: rgb(var(--surface-base));
+::highlight(dev3-find-active),
+::highlight(dev3-diff-find-active) {
+	background-color: rgb(var(--diff-search-highlight-from) / 0.9);
+	color: rgb(var(--diff-search-highlight-ink));
 }
