@@ -1,5 +1,5 @@
 /** Oh My Pi adapter (`omp`, can1357/oh-my-pi — a fork of pi). */
-import { OMP_SKILL_BODY } from "../agent-skill-content";
+import { OMP_SKILL_BODY, OMP_LEAN_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs } from "./common";
 import { hasOmpFlag, OMP_APPROVAL_MODE } from "./omp-flags";
 import { shellEscape, quoteIfUnsafe } from "./shell";
@@ -12,6 +12,7 @@ export const ompAdapter: AgentAdapter = {
 	// `--resume [id]` resolves an existing session id prefix or path.
 	supportsPreAssignedSessionId: false,
 	skillBody: OMP_SKILL_BODY,
+	leanSkillBody: OMP_LEAN_SKILL_BODY,
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {
@@ -43,7 +44,7 @@ export const ompAdapter: AgentAdapter = {
 			if (options?.systemPromptFile) {
 				args.push("--append-system-prompt", quoteIfUnsafe(options.systemPromptFile));
 			} else {
-				args.push("--append-system-prompt", shellEscape(OMP_SKILL_BODY));
+				args.push("--append-system-prompt", shellEscape(options?.protocolBody ?? OMP_SKILL_BODY));
 			}
 		}
 
