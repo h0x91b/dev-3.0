@@ -1,29 +1,34 @@
-import type { ComponentType } from "react";
-import { Claude, Codex, Cursor, Gemini, GithubCopilot, OpenCode } from "@lobehub/icons/es/icons";
 import type { CodingAgent } from "../../shared/types";
+import {
+	type AgentIcon,
+	ClaudeIcon,
+	CodexIcon,
+	CopilotIcon,
+	CursorIcon,
+	GeminiIcon,
+	OpenCodeIcon,
+} from "./agent-launcher-icons";
 
-type AgentLauncherIconComponent = ComponentType<any>;
-
-export function resolveAgentLauncherIcon(agent: CodingAgent): AgentLauncherIconComponent | null {
+export function resolveAgentLauncherIcon(agent: CodingAgent): AgentIcon | null {
 	const agentName = agent.name.toLowerCase();
 
 	if (agent.id === "builtin-claude" || agent.baseCommand === "claude" || agentName.includes("claude")) {
-		return Claude.Color;
+		return ClaudeIcon;
 	}
 	if (agent.id === "builtin-codex" || agent.baseCommand === "codex" || agentName.includes("codex")) {
-		return Codex.Color;
+		return CodexIcon;
 	}
 	if (agent.id === "builtin-gemini" || agent.baseCommand === "gemini" || agentName.includes("gemini")) {
-		return Gemini.Color;
+		return GeminiIcon;
 	}
 	if (agent.id === "builtin-cursor" || agentName.includes("cursor")) {
-		return Cursor.Avatar;
+		return CursorIcon;
 	}
 	if (agent.id === "builtin-opencode" || agent.baseCommand === "opencode" || agentName.includes("opencode")) {
-		return OpenCode.Avatar;
+		return OpenCodeIcon;
 	}
 	if (agent.id === "builtin-copilot" || agent.baseCommand === "copilot" || agentName.includes("copilot")) {
-		return GithubCopilot.Avatar;
+		return CopilotIcon;
 	}
 
 	return null;

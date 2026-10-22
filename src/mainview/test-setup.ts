@@ -1,5 +1,4 @@
 import "@testing-library/jest-dom/vitest";
-import { createElement } from "react";
 import { _resetPendingToastsForTests, _setToastArmDelayForTests } from "./toast";
 import { storageIsWritable } from "./utils/storage";
 
@@ -78,26 +77,6 @@ if (typeof window !== "undefined") {
 		}),
 	});
 }
-
-vi.mock("@lobehub/icons/es/icons", () => {
-	const makeIcon = (name: string) => {
-		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });
-		const Compound = Icon as typeof Icon & { Color: typeof Icon; Avatar: typeof Icon };
-		Compound.Color = (props: Record<string, unknown>) =>
-			createElement("svg", { "data-icon": `${name}-color`, ...props });
-		Compound.Avatar = (props: Record<string, unknown>) =>
-			createElement("svg", { "data-icon": `${name}-avatar`, ...props });
-		return Compound;
-	};
-
-	return {
-		Claude: makeIcon("claude"),
-		Codex: makeIcon("codex"),
-		Cursor: makeIcon("cursor"),
-		Gemini: makeIcon("gemini"),
-		OpenCode: makeIcon("opencode"),
-	};
-});
 
 // posthog.ts throws at import time when VITE_POSTHOG_KEY/HOST are unset, gated on
 // import.meta.env.DEV — which vitest always reports true. Mock it so every test file
