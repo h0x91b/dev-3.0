@@ -64,8 +64,7 @@ export function rollupCiStatus(rollup: unknown): PRCIStatus | null {
 
 /**
  * Count unresolved review threads from one or more GraphQL `reviewThreads`
- * node arrays. The GraphQL API is the source of truth because the REST-backed
- * `gh pr view/list --json` fields do not expose thread resolution.
+ * node arrays. GraphQL exposes the thread resolution that PR summary fields omit.
  */
 export function countUnresolvedReviewThreads(threads: unknown): number {
 	if (!Array.isArray(threads)) return 0;

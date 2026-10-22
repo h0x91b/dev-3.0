@@ -1,3 +1,5 @@
+Partially superseded on 2026-10-21 by `decisions/2026/10/21/refresh-saved-pr-history-after-branch-change.md`: the poller refreshes saved PR history across branch changes while retaining ownership checks for promotion and merge completion.
+
 # The comparison base survives a rename and retires when it dies
 
 ## Context

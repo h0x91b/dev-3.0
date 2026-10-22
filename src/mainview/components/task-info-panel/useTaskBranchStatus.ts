@@ -6,6 +6,7 @@ import {
 	type MergeRoute,
 	type Project,
 	type Task,
+	type TaskPRBadgeInfo,
 	resolveTaskCompareBaseBranch,
 } from "../../../shared/types";
 import { isLivePullRequest } from "../../utils/taskPrBadge";
@@ -97,6 +98,8 @@ export function useTaskBranchStatus({
 	const [pushing, setPushing] = useState(false);
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
+	const [prStatusEntry, setPrStatusEntry] = useState<{ taskId: string; status: TaskPRBadgeInfo } | null>(null);
+	const prStatus = prStatusEntry?.taskId === task.id ? prStatusEntry.status : null;
 	const mergeDialogShownRef = useRef<string | null>(null);
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
@@ -126,6 +129,57 @@ export function useTaskBranchStatus({
 			: readCachedBranchStatus(cacheKey);
 
 	const statusError = canShowStatus && errorEntry?.key === cacheKey ? errorEntry.message : null;
+
+	useEffect(() => {
+		if (!enabled) return;
+		function onPrStatus(event: Event) {
+			const detail = (event as CustomEvent).detail as {
+				projectId?: string;
+				taskId?: string;
+				prNumber: number | null;
+				prUrl: string | null;
+				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
+				ciStatus: TaskPRBadgeInfo["ciStatus"];
+				reviewState: TaskPRBadgeInfo["reviewState"];
+				reviewDecision?: TaskPRBadgeInfo["reviewDecision"];
+				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
+				mergeState: TaskPRBadgeInfo["mergeState"];
+				checks: TaskPRBadgeInfo["checks"];
+				prTitle: TaskPRBadgeInfo["prTitle"];
+				isDraft: TaskPRBadgeInfo["isDraft"];
+			};
+			if (detail.projectId !== project.id || detail.taskId !== task.id || detail.prNumber == null) return;
+			setPrStatusEntry({
+				taskId: task.id,
+				status: {
+					number: detail.prNumber,
+					url: detail.prUrl ?? "",
+					autoMergeEnabled: detail.autoMergeEnabled,
+					ciStatus: detail.ciStatus,
+					reviewState: detail.reviewState,
+					reviewDecision: detail.reviewDecision,
+					unresolvedCount: detail.unresolvedCount,
+					mergeState: detail.mergeState,
+					checks: detail.checks ?? [],
+					prTitle: detail.prTitle,
+					isDraft: detail.isDraft,
+				},
+			});
+		}
+		window.addEventListener("rpc:taskPrStatus", onPrStatus);
+		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
+	}, [enabled, project.id, task.id]);
+
+	const prNumber = branchStatus?.prNumber ?? task.prNumber;
+	useEffect(() => {
+		if (!canShowStatus || prNumber == null) return;
+		return startVisibilityAwarePoll({
+			fn: async () => {
+				await api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id, force: false }).catch(() => {});
+			},
+			intervalMs: 60_000,
+		});
+	}, [canShowStatus, prNumber, project.id, task.id]);
 
 	const applyStatus = useCallback((key: string, status: BranchStatus) => {
 		writeCachedBranchStatus(key, status);
@@ -361,13 +415,18 @@ export function useTaskBranchStatus({
 
 		setRefreshingStatus(true);
 		try {
-			const status = await requestBranchStatus({
+			const [status] = await Promise.all([requestBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 				compareRef: compareRef || undefined,
 				refresh: true,
-			}, BRANCH_STATUS_REFRESH_TIMEOUT_MS);
+			}, BRANCH_STATUS_REFRESH_TIMEOUT_MS),
+				task.prNumber != null
+					? api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id })
+					: Promise.resolve(),
+			]);
 			applyStatus(cacheKey, status);
+			if (status.prNumber != null && task.prNumber == null) await api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id, force: false });
 			// A manual click is a force re-check: re-offer completion even if the
 			// user dismissed the popup earlier for this same merged head.
 			await offerMergeCompletionIfMerged(status, { force: true });
@@ -376,7 +435,7 @@ export function useTaskBranchStatus({
 			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setRefreshingStatus(false);
-	}, [applyStatus, cacheKey, compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.worktreePath, t]);
+	}, [applyStatus, cacheKey, compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.prNumber, task.worktreePath, t]);
 
 	const handleRebase = useCallback(async () => {
 		if (rebasing) {
@@ -556,6 +615,7 @@ export function useTaskBranchStatus({
 	return {
 		baseBranch,
 		branchStatus,
+		prStatus,
 		compareRef,
 		committing,
 		creatingPR,

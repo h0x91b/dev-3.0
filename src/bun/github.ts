@@ -2,6 +2,8 @@ import type { GitHubAccount, GitHubCliStatus, Project } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { which } from "./which";
+import { getPullRequestSnapshot, readTaskPullRequest, type GitHubPullRequestSummary } from "./github-pr-status";
+export { readTaskPullRequest, listOpenPullRequests, getPullRequestSnapshot } from "./github-pr-status";
 
 const log = createLogger("github");
 
@@ -216,6 +218,7 @@ const tokenCache = new Map<string, { at: number; promise: Promise<string> }>();
 export function _resetGitHubAuthCache(): void {
 	authStatusCache = null;
 	tokenCache.clear();
+	graphqlRetryAt.clear();
 }
 
 export async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
@@ -417,16 +420,17 @@ export async function runGitHub(
 	return runGh(args, { cwd, env, timeoutMs: options?.timeoutMs });
 }
 
-/** What one `gh pr list --head` answer tells a caller. */
+/** Branch PR identity and its shared GraphQL status. */
 export interface OpenPullRequestProbe {
 	/**
 	 * The open PR whose head is this branch, or null when there is none. `title`
-	 * and `author` are what a review task is named after; both are null when gh
+	 * and `author` are what a review task is named after; both are null when GitHub
 	 * returned them empty, never a placeholder string.
 	 */
 	pr: { number: number; url: string; title: string | null; author: string | null } | null;
 	/** False ONLY when gh definitively said this is not a GitHub repo. */
 	isGitHub: boolean;
+	status?: GitHubPullRequestSummary;
 }
 
 /**
@@ -438,40 +442,21 @@ export async function findOpenPullRequest(
 	project: ProjectGitHubSelection,
 	cwd: string,
 	headBranch: string,
-	options?: { timeoutMs?: number },
+	options?: { timeoutMs?: number; force?: boolean; prNumber?: number | null },
 ): Promise<OpenPullRequestProbe> {
 	if (!headBranch) return { pr: null, isGitHub: true };
-	const result = await runGitHub(
-		project,
-		cwd,
-		["pr", "list", "--head", headBranch, "--state", "open", "--json", "number,url,title,author", "--limit", "1"],
-		{ timeoutMs: options?.timeoutMs },
-	);
-	const isGitHub = result.ok || !isNotAGitHubRepoError(result);
-	if (result.ok && result.stdout) {
-		try {
-			const prs = JSON.parse(result.stdout);
-			if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-				const author = prs[0].author as { name?: unknown; login?: unknown } | null | undefined;
-				// A GitHub display name is optional, the login never is, and the login is
-				// what a human recognises anyway when the name is missing.
-				const authorName = [author?.name, author?.login]
-					.find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
-				return {
-					pr: {
-						number: prs[0].number,
-						url: typeof prs[0].url === "string" ? prs[0].url : "",
-						title: typeof prs[0].title === "string" && prs[0].title.trim() ? prs[0].title : null,
-						author: authorName?.trim() ?? null,
-					},
-					isGitHub,
-				};
-			}
-		} catch (err) {
-			log.warn("Failed to parse gh pr list output", { error: String(err) });
-		}
-	}
-	return { pr: null, isGitHub };
+	const result = await readTaskPullRequest(project, cwd, headBranch, options?.prNumber, options);
+	const pr = result?.pr;
+	return {
+		pr: pr?.state === "OPEN" && pr.headRefName === headBranch ? {
+			number: pr.number,
+			url: pr.url,
+			title: pr.title || null,
+			author: pr.author?.name?.trim() || pr.author?.login || null,
+		} : null,
+		isGitHub: result?.isGitHub ?? true,
+		...(pr ? { status: pr } : {}),
+	};
 }
 
 export type PullRequestMergeMethod = "squash" | "merge" | "rebase";
@@ -519,60 +504,10 @@ export async function resolveMergeMethod(
 	}
 }
 
-// A merged PR never un-merges, so a terminal answer is cached for the process
-// lifetime; everything else expires so the 15s branch-status poll re-asks
-// without hammering the API.
-const PR_SNAPSHOT_TTL_MS = 60_000;
-const PR_MERGED_TIMEOUT_MS = 10_000;
-const prSnapshotCache = new Map<string, { at: number; snapshot: PullRequestSnapshot | null }>();
-
 /** Identity of one PR, as far as a task needs to trust it. */
 export interface PullRequestSnapshot {
-	/** `OPEN` / `MERGED` / `CLOSED`, uppercased. */
 	state: string;
-	/** The PR's head branch, so a caller can prove the PR is about its own work. */
 	headRefName: string;
-}
-
-/** Test-only: clear the PR snapshot cache. */
-export function _resetPullRequestMergedCache(): void {
-	prSnapshotCache.clear();
-}
-
-/**
- * State + head branch of one PR by number. Null when GitHub cannot answer
- * (offline, unauthenticated, non-GitHub remote, PR gone).
- */
-export async function getPullRequestSnapshot(
-	project: ProjectGitHubSelection,
-	cwd: string,
-	prNumber: number,
-): Promise<PullRequestSnapshot | null> {
-	const key = `${cwd}#${prNumber}`;
-	const cached = prSnapshotCache.get(key);
-	if (cached && (cached.snapshot?.state === "MERGED" || Date.now() - cached.at < PR_SNAPSHOT_TTL_MS)) {
-		return cached.snapshot;
-	}
-
-	let snapshot: PullRequestSnapshot | null = null;
-	try {
-		const result = await runGitHub(project, cwd, ["pr", "view", String(prNumber), "--json", "state,headRefName"], {
-			timeoutMs: PR_MERGED_TIMEOUT_MS,
-		});
-		if (result.ok && result.stdout) {
-			const parsed = JSON.parse(result.stdout);
-			if (typeof parsed?.state === "string") {
-				snapshot = {
-					state: parsed.state.toUpperCase(),
-					headRefName: typeof parsed.headRefName === "string" ? parsed.headRefName : "",
-				};
-			}
-		}
-	} catch (err) {
-		log.warn("getPullRequestSnapshot failed", { prNumber, error: String(err) });
-	}
-	prSnapshotCache.set(key, { at: Date.now(), snapshot });
-	return snapshot;
 }
 
 /**
@@ -631,4 +566,54 @@ export async function getGitHubShellExports(project: ProjectGitHubSelection): Pr
 
 	lines.push(`unset ${tokenVar}`);
 	return lines;
+}
+
+export class GitHubGraphQLError extends Error {
+	constructor(message: string, readonly errors: { type?: string; path?: (string | number)[] }[], readonly data?: unknown) { super(message); }
+}
+
+const graphqlRetryAt = new Map<string, number>();
+const RATE_LIMIT_MESSAGE = /rate limit|abuse detection/i;
+
+export async function queryGitHub<T>(
+	account: GitHubAccount,
+	query: string,
+	variables: Record<string, unknown>,
+	signal: AbortSignal,
+): Promise<T> {
+	const key = `${account.host}\0${account.login}`;
+	if (Date.now() < (graphqlRetryAt.get(key) ?? 0)) throw new Error("GitHub API rate limit: waiting before retry");
+	const token = await getAccountToken(account);
+	const host = account.host.toLowerCase();
+	const endpoint = isPublicGitHubHost(host) ? `https://api.${host}/graphql` : `https://${host}/api/graphql`;
+	const response = await fetch(endpoint, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "dev3" },
+		body: JSON.stringify({ query, variables }),
+		signal,
+		redirect: "error",
+	});
+	const retryAfter = response.headers.get("retry-after");
+	if (retryAfter || response.headers.get("x-ratelimit-remaining") === "0") {
+		const retryAt = retryAfter
+			? (Number.isFinite(Number(retryAfter)) ? Date.now() + Number(retryAfter) * 1000 : Date.parse(retryAfter))
+			: Number(response.headers.get("x-ratelimit-reset")) * 1000;
+		graphqlRetryAt.set(key, Math.max(Date.now() + 60_000, retryAt || 0));
+	}
+	if (!response.ok) {
+		if (response.status === 401) tokenCache.delete(key);
+		if (response.status === 429 || (response.status === 403 && RATE_LIMIT_MESSAGE.test(await response.text()))) {
+			graphqlRetryAt.set(key, Math.max(Date.now() + 60_000, graphqlRetryAt.get(key) ?? 0));
+		}
+		throw new Error(`GitHub GraphQL HTTP ${response.status}`);
+	}
+	const payload = await response.json() as { data?: T; errors?: { type?: string; message: string; path?: (string | number)[] }[] };
+	if (payload.errors?.length) {
+		if (payload.errors.some((error) => error.type === "RATE_LIMITED" || RATE_LIMIT_MESSAGE.test(error.message))) {
+			graphqlRetryAt.set(key, Math.max(Date.now() + 60_000, graphqlRetryAt.get(key) ?? 0));
+		}
+		throw new GitHubGraphQLError(`GitHub GraphQL: ${payload.errors.map((error) => error.message).join("; ")}`, payload.errors, payload.data);
+	}
+	if (!payload.data) throw new Error("GitHub GraphQL returned no data");
+	return payload.data;
 }

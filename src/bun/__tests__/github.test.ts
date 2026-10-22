@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const spawnMock = vi.fn();
 const whichMock = vi.fn();
@@ -40,6 +40,7 @@ vi.mock("../logger", () => ({
 }));
 
 describe("github", () => {
+	afterEach(() => vi.unstubAllGlobals());
 	beforeEach(() => {
 		vi.resetModules();
 		spawnMock.mockReset();
@@ -524,21 +525,109 @@ describe("github", () => {
 		}
 	});
 
+	describe("GraphQL transport", () => {
+		const account = { host: "github.com", login: "reader", active: true };
+		beforeEach(() => spawnMock.mockImplementation(() => fakeProc("reader-token")));
+
+		it.each([["github.com", "https://api.github.com/graphql"], ["team.ghe.com", "https://api.team.ghe.com/graphql"], ["git.example.com", "https://git.example.com/api/graphql"]])("uses the API endpoint for %s", async (host, endpoint) => {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { ok: true } })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub({ ...account, host }, "query { viewer { login } }", {}, AbortSignal.timeout(1000))).resolves.toEqual({ ok: true });
+			expect(fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer reader-token" }), redirect: "error" }));
+		});
+
+		it("rejects GraphQL errors even on HTTP 200, including partial data", async () => {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { ok: true }, errors: [{ message: "Unavailable field" }] })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow("Unavailable field");
+		});
+
+		it("does not rate-limit unrelated repositories after a permission-only 403", async () => {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("", { status: 403 })).mockResolvedValue(Response.json({ data: { ok: true } })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub(account, "q", { name: "restricted" }, AbortSignal.timeout(1000))).rejects.toThrow("HTTP 403");
+			await expect(queryGitHub(account, "q", { name: "accessible" }, AbortSignal.timeout(1000))).resolves.toEqual({ ok: true });
+			expect(fetch).toHaveBeenCalledTimes(2);
+		});
+
+		it.each([200, 403])("backs off on a secondary rate-limit message with HTTP %s and no retry header", async (status) => {
+			const body = status === 200 ? { errors: [{ message: "You have exceeded a secondary rate limit." }] } : { message: "You have exceeded a secondary rate limit." };
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body, { status })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow();
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow("rate limit");
+			expect(fetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("preserves GraphQL error paths and partial data for the PR reader", async () => {
+			const data = { repository: { open: { nodes: [{ number: 42 }] }, known: null } };
+			const errors = [{ type: "NOT_FOUND", path: ["repository", "known"], message: "No such PR" }];
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data, errors })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toMatchObject({ data, errors });
+		});
+
+		it("honors Retry-After and does not issue more requests while rate limited", async () => {
+			vi.useFakeTimers(); vi.setSystemTime(0);
+			try {
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("", { status: 429, headers: { "retry-after": "120" } })).mockResolvedValue(Response.json({ data: { ok: true } })));
+				const { queryGitHub } = await import("../github");
+				await expect(queryGitHub(account, "q", {}, new AbortController().signal)).rejects.toThrow("HTTP 429");
+				vi.setSystemTime(119_999);
+				await expect(queryGitHub(account, "q", {}, new AbortController().signal)).rejects.toThrow("rate limit");
+				expect(fetch).toHaveBeenCalledTimes(1);
+				vi.setSystemTime(120_000);
+				await expect(queryGitHub(account, "q", {}, new AbortController().signal)).resolves.toEqual({ ok: true });
+			} finally { vi.useRealTimers(); }
+		});
+
+		it("keeps the longer primary-limit reset when GraphQL also reports RATE_LIMITED", async () => {
+			vi.useFakeTimers(); vi.setSystemTime(0);
+			try {
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ errors: [{ type: "RATE_LIMITED", message: "limited" }] }, { headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "600" } })));
+				const { queryGitHub } = await import("../github");
+				await expect(queryGitHub(account, "q", {}, new AbortController().signal)).rejects.toThrow("limited");
+				vi.setSystemTime(120_000);
+				await expect(queryGitHub(account, "q", {}, new AbortController().signal)).rejects.toThrow("rate limit");
+				expect(fetch).toHaveBeenCalledTimes(1);
+			} finally { vi.useRealTimers(); }
+		});
+
+		it("invalidates a rejected token so the next request can use updated gh credentials", async () => {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("", { status: 401 })).mockResolvedValue(Response.json({ data: { ok: true } })));
+			const { queryGitHub } = await import("../github");
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow("HTTP 401");
+			await queryGitHub(account, "q", {}, AbortSignal.timeout(1000));
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+		});
+
+		it("passes cancellation to fetch and exposes a timeout as unavailable", async () => {
+			vi.stubGlobal("fetch", vi.fn(async (_url, options) => {
+				options.signal.throwIfAborted();
+				throw new Error("not reached");
+			}));
+			const { queryGitHub } = await import("../github");
+			const controller = new AbortController(); controller.abort(new Error("request timed out"));
+			await expect(queryGitHub(account, "q", {}, controller.signal)).rejects.toThrow("timed out");
+		});
+	});
+
 	describe("isPullRequestMerged", () => {
 		const PROJECT = { githubAuthHost: "github.com", githubAuthLogin: "h0x91b" };
 
 		function mockGhPrView(state: string | null, ok = true, headRefName = "feat/mine") {
 			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
 			spawnMock.mockImplementation((cmd: string[]) => {
-				if (cmd.join(" ") === "gh auth status --json hosts") {
-					return fakeProc(JSON.stringify({
-						hosts: { "github.com": [{ login: "h0x91b", host: "github.com", active: true, state: "success" }] },
-					}));
-				}
-				if (cmd[1] === "auth" && cmd[2] === "token") return fakeProc("secret-token\n");
-				if (!ok) return fakeProc("", "no such PR", 1);
-				return fakeProc(JSON.stringify({ state, headRefName }));
+				if (cmd[1] === "auth" && cmd[2] === "status") return fakeProc(JSON.stringify({
+					hosts: { "github.com": [{ login: "h0x91b", host: "github.com", active: true, state: "success" }] },
+				}));
+				if (cmd[1] === "auth" && cmd[2] === "token") return fakeProc("secret-token");
+				return fakeProc(JSON.stringify({ nameWithOwner: "h0x91b/dev-3.0", url: "https://github.com/h0x91b/dev-3.0" }));
 			});
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(ok ? { data: { repository: { known: {
+				number: 1077, url: "https://github.com/h0x91b/dev-3.0/pull/1077", state, headRefName, commits: { nodes: [] },
+				reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
+			} } } } : { errors: [{ message: "no such PR" }] })));
 		}
 
 		it("returns true for a merged PR on this branch", async () => {
@@ -561,36 +650,46 @@ describe("github", () => {
 
 		it("refuses a merged PR that belongs to another branch", async () => {
 			mockGhPrView("MERGED", true, "contributor/their-feature");
-			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
-			_resetPullRequestMergedCache();
+			const { isPullRequestMerged } = await import("../github");
 			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, "fix/mine")).resolves.toBe(false);
 		});
 
 		it("accepts a merged PR without an ownership check when no branch is known", async () => {
 			mockGhPrView("MERGED", true, "contributor/their-feature");
-			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
-			_resetPullRequestMergedCache();
+			const { isPullRequestMerged } = await import("../github");
 			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, null)).resolves.toBe(true);
 		});
 
 		it("reports state and head branch via getPullRequestSnapshot", async () => {
 			mockGhPrView("MERGED", true, "contributor/their-feature");
-			const { getPullRequestSnapshot, _resetPullRequestMergedCache } = await import("../github");
-			_resetPullRequestMergedCache();
+			const { getPullRequestSnapshot } = await import("../github");
 			await expect(getPullRequestSnapshot(PROJECT, "/tmp/wt", 1255)).resolves.toEqual({
 				state: "MERGED",
 				headRefName: "contributor/their-feature",
 			});
 		});
 
-		it("caches a merged answer instead of re-asking gh", async () => {
+		it("shares a recent merged answer instead of re-querying GitHub", async () => {
 			mockGhPrView("MERGED");
-			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
-			_resetPullRequestMergedCache();
+			const { isPullRequestMerged } = await import("../github");
 			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine");
 			const callsAfterFirst = spawnMock.mock.calls.length;
 			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine");
 			expect(spawnMock.mock.calls.length).toBe(callsAfterFirst);
+		});
+
+		it("keeps merged ownership proof after the rich status expires and GitHub goes offline", async () => {
+			vi.useFakeTimers(); vi.setSystemTime(0);
+			try {
+				mockGhPrView("MERGED");
+				const { isPullRequestMerged, readTaskPullRequest } = await import("../github");
+				await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(true);
+				vi.setSystemTime(60_001);
+				vi.mocked(fetch).mockRejectedValue(new Error("offline"));
+				expect(await readTaskPullRequest(PROJECT, "/tmp/wt", "", 1077)).toBeNull();
+				await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(true);
+				await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "other/branch")).resolves.toBe(false);
+			} finally { vi.useRealTimers(); }
 		});
 	});
 
@@ -662,53 +761,26 @@ describe("github", () => {
 		});
 
 		describe("findOpenPullRequest", () => {
-			it("returns the PR gh listed for the branch", async () => {
-				mockGhRepoView(JSON.stringify([{ number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475" }]));
+			it("uses GraphQL after gh resolves an SSH-alias repository", async () => {
+				mockGhRepoView(JSON.stringify({ nameWithOwner: "h0x91b/dev-3.0", url: "https://github.com/h0x91b/dev-3.0" }));
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { repository: { open: { nodes: [{
+					number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475", title: "Pin tmux", state: "OPEN", headRefName: "dev3/t",
+					author: { login: "h0x91b", name: "Arseny" }, commits: { nodes: [] },
+					reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
+				}] } } } })));
 				const { findOpenPullRequest } = await import("../github");
 				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t")).resolves.toEqual({
-					pr: { number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475", title: null, author: null },
-					isGitHub: true,
+					pr: { number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475", title: "Pin tmux", author: "Arseny" }, isGitHub: true, status: expect.objectContaining({ state: "OPEN", unresolvedCount: 0 }),
 				});
+				expect(spawnMock.mock.calls.some(([cmd]) => cmd[1] === "pr")).toBe(false);
+				expect(fetch).toHaveBeenCalledWith("https://api.github.com/graphql", expect.objectContaining({
+					headers: expect.objectContaining({ Authorization: "Bearer secret-token" }), redirect: "error",
+				}));
 			});
-
-			// The two fields a review task is named after. A GitHub display name is
-			// optional, so the login has to carry the naming when it is missing.
-			it("prefers the author's display name and falls back to the login", async () => {
-				const { findOpenPullRequest } = await import("../github");
-				mockGhRepoView(JSON.stringify([
-					{ number: 1, url: "u", title: "Pin tmux", author: { login: "h0x91b", name: "Arseny Pavlenko" } },
-				]));
-				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
-					pr: { title: "Pin tmux", author: "Arseny Pavlenko" },
-				});
-
-				mockGhRepoView(JSON.stringify([{ number: 1, url: "u", title: "", author: { login: "h0x91b", name: "" } }]));
-				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
-					pr: { title: null, author: "h0x91b" },
-				});
-
-				mockGhRepoView(JSON.stringify([{ number: 1, url: "u" }]));
-				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
-					pr: { title: null, author: null },
-				});
-			});
-
-			// Three different gh answers, one meaning for the caller: no PR. Merge reads
-			// this to choose its route, so "could not tell" must never read as "there is one".
-			it("reports no PR for an empty list, a failure, and unparsable output", async () => {
-				const { findOpenPullRequest } = await import("../github");
-				for (const [stdout, stderr, code] of [["[]", "", 0], ["", "gh: not found", 1], ["not json", "", 0]] as const) {
-					mockGhRepoView(stdout, stderr, code);
-					const probe = await findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t");
-					expect(probe.pr).toBeNull();
-				}
-			});
-
-			it("carries gh's non-GitHub verdict, and asks nothing without a branch", async () => {
+			it("preserves the non-GitHub verdict and skips empty branches", async () => {
 				mockGhRepoView("", "none of the git remotes configured for this repository point to a known GitHub host.", 1);
 				const { findOpenPullRequest } = await import("../github");
-				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t")).resolves.toEqual({ pr: null, isGitHub: false });
-
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toEqual({ pr: null, isGitHub: false });
 				spawnMock.mockClear();
 				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "")).resolves.toEqual({ pr: null, isGitHub: true });
 				expect(spawnMock).not.toHaveBeenCalled();

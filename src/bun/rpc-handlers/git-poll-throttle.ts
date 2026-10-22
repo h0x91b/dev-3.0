@@ -19,14 +19,14 @@
 
 export const ACTIVE_PROJECT_MERGE_INTERVAL_MS = 60_000;
 export const BACKGROUND_PROJECT_MERGE_INTERVAL_MS = 10 * 60_000;
-export const ACTIVE_PROJECT_PR_INTERVAL_MS = 5 * 60_000;
-export const BACKGROUND_PROJECT_PR_INTERVAL_MS = 15 * 60_000;
+export const ACTIVE_PROJECT_PR_INTERVAL_MS = 60_000;
+export const BACKGROUND_PROJECT_PR_INTERVAL_MS = 5 * 60_000;
 export const ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS = 60_000;
 export const BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS = 5 * 60_000;
 
 // Base tick of each poller's setInterval. Used for wake detection.
 export const MERGE_POLL_INTERVAL_MS = 60_000;
-export const PR_POLL_INTERVAL_MS = ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS;
+export const PR_POLL_INTERVAL_MS = 15_000;
 
 // Random drift added on top of the interval when rescheduling, so two checks
 // that once landed on the same tick gradually separate and never re-synchronise.

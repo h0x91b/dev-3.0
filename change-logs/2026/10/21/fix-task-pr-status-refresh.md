@@ -1,0 +1,3 @@
+Short: PR badges stay current
+
+PR badges keep their state and CI current after branch changes and while a task stays open, including narrow layouts. Regular reads use GraphQL with a shared one-minute cache and coalesced requests; boards check about every minute in the active project and every five minutes in the background, and PRs remain visible when CI cannot be read. Manual refresh requests fresh PR data alongside git fetch; transient failures retry on the next poll, confirmed merges survive API outages, and inaccessible or missing saved PRs cannot hide the current branch's open PR or pause unrelated repositories.

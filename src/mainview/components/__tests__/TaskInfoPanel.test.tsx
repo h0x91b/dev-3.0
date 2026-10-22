@@ -2847,6 +2847,58 @@ describe("TaskInfoPanel", () => {
 			}
 		});
 
+		it.each(["MERGED", "CLOSED"])("replaces an earlier open push when refresh reports %s", async (prState) => {
+			const pr = { prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" };
+			mockedApi.request.getBranchStatus.mockResolvedValue({ ...defaultBranchStatus, ...pr, prState: "OPEN", ahead: 3 });
+			await act(async () => { renderPanel(makeTask(pr)); });
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", { detail: {
+					projectId: "p1", taskId: "t1", ...pr, ciStatus: "success", reviewState: null,
+					unresolvedCount: 0, mergeState: { mergeable: "MERGEABLE", status: "CLEAN", state: "OPEN" },
+					checks: [], prTitle: "Earlier open status", isDraft: false,
+				} }));
+			});
+			mockedApi.request.getBranchStatus.mockResolvedValue({ ...defaultBranchStatus, prNumber: null, prUrl: null, prState: null, ahead: 3 });
+			mockedApi.request.refreshTaskPrStatus.mockImplementationOnce(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", { detail: {
+					projectId: "p1", taskId: "t1", ...pr, ciStatus: "success", reviewState: null,
+					unresolvedCount: 0, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: prState },
+					checks: [], prTitle: "Refreshed status", isDraft: false,
+				} }));
+				return { outcome: "updated" };
+			});
+			await act(async () => { fireEvent.click(screen.getAllByLabelText("Refresh branch status")[0]); });
+			await waitFor(() => {
+				for (const node of screen.getAllByRole("button").filter((button) => button.textContent?.includes("PR #42"))) {
+					expect(node).toHaveTextContent(`PR #42 — ${prState === "MERGED" ? "Merged" : "Closed"}`);
+				}
+			});
+		});
+
+		it("updates PR state and CI while the inspector stays open", async () => {
+			mockViewport(1440);
+			const pr = { prNumber: 42, prUrl: "https://github.com/test/repo/pull/42" };
+			mockedApi.request.getBranchStatus.mockResolvedValue({ ...defaultBranchStatus, ...pr, prState: "OPEN" });
+			await act(async () => { renderPanel(makeTask(pr)); });
+			for (const [state, ciStatus] of [["OPEN", "failure"], ["OPEN", "success"], ["MERGED", "success"]] as const) {
+				act(() => {
+					window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", { detail: {
+						projectId: "p1", taskId: "t1", ...pr, ciStatus, reviewState: null, unresolvedCount: 0,
+						mergeState: { mergeable: "MERGEABLE", status: ciStatus === "failure" ? "UNSTABLE" : "CLEAN", state },
+						checks: [{ name: "build", status: "COMPLETED", conclusion: ciStatus === "failure" ? "FAILURE" : "SUCCESS", detailsUrl: null }],
+						prTitle: "Status changes", isDraft: false,
+					} }));
+				});
+				for (const node of screen.getAllByRole("button").filter((button) => button.textContent?.includes("PR #42"))) {
+					expect(node).toHaveTextContent(`PR #42 — ${state === "MERGED" ? "Merged" : "Open"}`);
+				}
+				await userEvent.hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+				const popover = await screen.findByTestId("pr-status-popover");
+				expect(within(popover).getByText("build").closest("li")).toHaveTextContent(ciStatus === "failure" ? "Failed" : "Passed");
+				await userEvent.unhover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+			}
+		});
+
 		it("keeps the PR #42 badge neutral while nothing reports its state", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -3069,7 +3121,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", force: false });
 		});
 
 		it("opens PR URL in new tab when Open PR is clicked", async () => {

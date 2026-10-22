@@ -14,6 +14,7 @@ import {
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
+import { loadSettings } from "../settings";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
@@ -45,6 +46,7 @@ import {
 	persistTaskPrIdentity,
 	prepareMergeCompletionPrompt,
 	refreshTaskPrStatus,
+	reportTaskPrStatus,
 } from "../lifecycle/activities";
 import { getMergeCompletionFingerprint } from "../lifecycle/merge-fingerprint";
 import { resolvePrUrl } from "../task-start-ref";
@@ -264,19 +266,21 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	}
 	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
 	const ref = await resolveCompareRef(project, baseBranch, params.compareRef);
-	/**
-	 * PR detection, which doubles as the "can `gh` work here at all" probe. gh's
-	 * refusal on a non-GitHub remote is definitive and free — this call already
-	 * runs every poll — so no separate round trip is needed. Anything else (a
-	 * timeout, no auth, no gh) leaves `isGitHub` true; see
-	 * `github.isNotAGitHubRepoError` for why that polarity is the safe one.
-	 */
+	// PR discovery shares the rich status cache with the board and inspector.
 	const prDetection: Promise<github.OpenPullRequestProbe> = (async () => {
 		try {
 			const probe = await github.findOpenPullRequest(project, task.worktreePath!, branchForPush, {
-				timeoutMs: PR_DETECTION_TIMEOUT_MS,
+				timeoutMs: PR_DETECTION_TIMEOUT_MS, prNumber: task.prNumber,
 			});
 			if (probe.pr?.url) await persistTaskPrIdentity(project, task, probe.pr.number, probe.pr.url);
+			if (probe.status) {
+				try {
+					const settings = await loadSettings();
+					await reportTaskPrStatus(project, task, branchForPush, probe.status, settings.suggestCompletingTasksAfterMerge !== false, true);
+				} catch (err) {
+					log.warn("PR status publication failed (non-fatal)", { taskId: task.id, error: String(err) });
+				}
+			}
 			return probe;
 		} catch (err) {
 			log.warn("PR detection failed (non-fatal)", { error: String(err) });
@@ -564,7 +568,7 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 	let openPr: { number: number; url: string } | null = null;
 	try {
 		openPr = (await github.findOpenPullRequest(project, task.worktreePath, branchForMerge, {
-			timeoutMs: PR_DETECTION_TIMEOUT_MS,
+			timeoutMs: PR_DETECTION_TIMEOUT_MS, force: true,
 		})).pr;
 	} catch (err) {
 		// No gh, no auth, no network: fall through to the local route, which is what
@@ -935,25 +939,10 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 	const project = await data.getProject(params.projectId);
 
 	try {
-		const result = await github.runGitHub(
-			project,
-			project.path,
-			["pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "100"],
-		);
-		if (result.ok && result.stdout) {
-			const prs = JSON.parse(result.stdout);
-			if (Array.isArray(prs)) {
-				const infos: PRInfo[] = [];
-				for (const pr of prs) {
-					if (typeof pr.number === "number" && typeof pr.headRefName === "string" && typeof pr.url === "string") {
-						infos.push({ number: pr.number, url: pr.url, headRefName: pr.headRefName });
-					}
-				}
-				await persistProjectPrIdentities(project, infos);
-				log.info("← getProjectPRs", { count: infos.length });
-				return infos;
-			}
-		}
+		const infos = await github.listOpenPullRequests(project, project.path);
+		await persistProjectPrIdentities(project, infos);
+		log.info("← getProjectPRs", { count: infos.length });
+		return infos;
 	} catch (err) {
 		log.warn("getProjectPRs failed (non-fatal)", { error: String(err) });
 	}

@@ -77,6 +77,7 @@ vi.mock("../../lifecycle/activities", () => ({
 	persistTaskPrIdentity: vi.fn(),
 	prepareMergeCompletionPrompt: vi.fn(),
 	refreshTaskPrStatus: vi.fn(),
+	reportTaskPrStatus: vi.fn(),
 }));
 vi.mock("../../lifecycle/merge-fingerprint", () => ({ getMergeCompletionFingerprint: vi.fn() }));
 

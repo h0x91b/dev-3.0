@@ -4,7 +4,6 @@ import type { BranchStatus, Project, Task, TaskPRBadgeInfo } from "../../../shar
 import { earlierPullRequests } from "../../../shared/task-pull-requests";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
-import { api } from "../../rpc";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import { useViewportClamp } from "../../hooks/useViewportClamp";
 import { useReducedMotion } from "../../utils/useReducedMotion";
@@ -120,11 +119,10 @@ export default function TaskGitActions({
 	const branchTriggerRef = useRef<HTMLButtonElement>(null);
 	const branchMenuRef = useRef<HTMLDivElement>(null);
 	const { position: branchMenuClamped, visible: branchMenuVisible } = useViewportClamp(branchMenuRef, branchMenuPos);
-	const [pushedPRStatus, setPushedPRStatus] = useState<TaskPRBadgeInfo | null>(null);
-	const initialPrRefreshTaskRef = useRef<string | null>(null);
 	const {
 		baseBranch,
 		branchStatus,
+		prStatus: pushedPRStatus,
 		committing,
 		compareRef,
 		creatingPR,
@@ -151,50 +149,6 @@ export default function TaskGitActions({
 		isTaskActive,
 	});
 
-	// Switching tasks reuses this component instance (no `key={task.id}`), and
-	// `rpc:taskPrStatus` pushes arrive only for the task being viewed — so a
-	// status pushed while viewing the previous task would keep rendering its PR
-	// badge on the next task forever (a task without its own PR never gets an
-	// overwriting push). Clear it eagerly on every task switch.
-	useEffect(() => {
-		setPushedPRStatus(null);
-	}, [task.id]);
-
-	useEffect(() => {
-		function onPrStatus(event: Event) {
-			const detail = (event as CustomEvent).detail as {
-				projectId?: string;
-				taskId?: string;
-				prNumber: number | null;
-				prUrl: string | null;
-				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
-				ciStatus: TaskPRBadgeInfo["ciStatus"];
-				reviewState: TaskPRBadgeInfo["reviewState"];
-				reviewDecision?: TaskPRBadgeInfo["reviewDecision"];
-				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
-				mergeState: TaskPRBadgeInfo["mergeState"];
-				checks: TaskPRBadgeInfo["checks"];
-				prTitle: TaskPRBadgeInfo["prTitle"];
-				isDraft: TaskPRBadgeInfo["isDraft"];
-			};
-			if (detail.projectId !== project.id || detail.taskId !== task.id || detail.prNumber == null) return;
-			setPushedPRStatus({
-				number: detail.prNumber,
-				url: detail.prUrl ?? "",
-				autoMergeEnabled: detail.autoMergeEnabled,
-				ciStatus: detail.ciStatus,
-				reviewState: detail.reviewState,
-				reviewDecision: detail.reviewDecision,
-				unresolvedCount: detail.unresolvedCount,
-				mergeState: detail.mergeState,
-				checks: detail.checks ?? [],
-				prTitle: detail.prTitle,
-				isDraft: detail.isDraft,
-			});
-		}
-		window.addEventListener("rpc:taskPrStatus", onPrStatus);
-		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
-	}, [project.id, task.id]);
 
 	const prInfo = useMemo<TaskPRBadgeInfo | null>(
 		() => inspectorPRBadge(task, pushedPRStatus, branchStatus),
@@ -211,20 +165,6 @@ export default function TaskGitActions({
 		});
 	}, [branchStatus, compareRef, displayRef, onBranchStatusChange, prInfo, task.id]);
 
-	// A task can be opened after the background poller's last push. Once the
-	// branch check (or sticky task fields) identifies a PR, hydrate the inspector
-	// with the same rich status without requiring the user to press Refresh.
-	useEffect(() => {
-		if (!isTaskActive || !task.worktreePath || initialPrRefreshTaskRef.current === task.id) return;
-		const prNumber = task.prNumber ?? branchStatus?.prNumber;
-		const prUrl = task.prUrl ?? branchStatus?.prUrl;
-		if (prNumber == null || !prUrl) return;
-
-		initialPrRefreshTaskRef.current = task.id;
-		void api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id }).catch(() => {
-			if (initialPrRefreshTaskRef.current === task.id) initialPrRefreshTaskRef.current = null;
-		});
-	}, [branchStatus?.prNumber, branchStatus?.prUrl, isTaskActive, project.id, task.id, task.prNumber, task.prUrl, task.worktreePath]);
 
 	/**
 	 * Copy feedback is a toast, not a tooltip swap: the old confirmation lived

@@ -631,6 +631,7 @@ function TaskInfoPanel({
 		? {
 			taskId: task.id,
 			branchStatus: narrowGit.branchStatus,
+			prStatus: narrowGit.prStatus,
 			compareRef: narrowGit.compareRef || undefined,
 			compareLabel: narrowGit.displayRef,
 		}

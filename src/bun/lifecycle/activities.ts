@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type {
 	PRCIStatus,
 	PRInfo,
@@ -11,6 +12,7 @@ import { resolveTaskCompareBaseBranch, taskCompletesManually } from "../../share
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
+import type { GitHubPullRequestSummary } from "../github-pr-status";
 import { loadSettings } from "../settings";
 import { getActiveContext, getPushMessage, isAppForeground, log } from "../rpc-handlers/shared";
 import {
@@ -35,11 +37,9 @@ import {
 import { getMergeCompletionFingerprint } from "./merge-fingerprint";
 import {
 	computeSignalKey,
-	countUnresolvedReviewThreads,
 	mapReviewDecision,
 	normalizeChecks,
 	parseAutoMergeEnabled,
-	parseGitHubPullRequestUrl,
 	parseReviewDecision,
 	reasonForSignal,
 	rollupCiStatus,
@@ -53,8 +53,7 @@ import {
 import { activitiesFor } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 
-// Cap the PR-detection `gh` call: it holds a semaphore slot for its whole
-// duration, so a hung gh on a slow network must not stall branch-status globally.
+// Bound PR reads so a slow GitHub connection cannot stall status updates.
 export const PR_DETECTION_TIMEOUT_MS = 15_000;
 // Wall-clock of the previous tick, per poller, to detect host sleep gaps.
 let mergeLastTickAt = 0;
@@ -345,24 +344,8 @@ export function _resetPRPollerState(): void {
 	scheduleRandom = Math.random;
 }
 
-interface GitHubPullRequestSummary {
-	number?: unknown;
-	isDraft?: unknown;
-	autoMergeRequest?: unknown;
-	url?: unknown;
-	title?: unknown;
-	state?: unknown;
-	mergeable?: unknown;
-	mergeStateStatus?: unknown;
-	statusCheckRollup?: unknown;
-	reviewDecision?: unknown;
-	headRefName?: unknown;
-	headRefOid?: unknown;
-}
-
-const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title,headRefName,headRefOid";
-
 interface PolledPRStatus {
+	checkedAt?: number;
 	found: boolean;
 	ciStatus: PRCIStatus | null;
 	/** True when a PR's status was read and dispatched; false when GitHub reports no PR for this branch. */
@@ -405,85 +388,6 @@ function prPollInterval(isActiveForeground: boolean, taskId: string): number {
 		: intervalForTask(isActiveForeground, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
 }
 
-const REVIEW_THREADS_QUERY = `
-query($owner: String!, $name: String!, $number: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100, after: $after) {
-        nodes { isResolved }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}`;
-
-async function fetchUnresolvedReviewThreadCount(
-	project: Project,
-	worktreePath: string,
-	prUrl: string,
-	prNumber: number,
-): Promise<number | null> {
-	const repository = parseGitHubPullRequestUrl(prUrl);
-	if (!repository) return null;
-	const selectedHost = project.githubAuthHost?.trim().toLowerCase();
-	if (selectedHost && selectedHost !== repository.host.toLowerCase()) {
-		log.warn("PR review-thread lookup skipped because project and PR hosts differ", {
-			projectHost: selectedHost,
-			prHost: repository.host,
-			pr: prNumber,
-		});
-		return null;
-	}
-
-	let after: string | null = null;
-	let count = 0;
-	try {
-		for (let page = 0; page < 100; page++) {
-			const args = [
-				"api",
-				"graphql",
-				"--hostname",
-				repository.host,
-				"-f",
-				`query=${REVIEW_THREADS_QUERY}`,
-				"-F",
-				`owner=${repository.owner}`,
-				"-F",
-				`name=${repository.repo}`,
-				"-F",
-				`number=${prNumber}`,
-				"-F",
-				`after=${after ?? "null"}`,
-			];
-			const result = await github.runGitHub(project, worktreePath, args, { timeoutMs: PR_DETECTION_TIMEOUT_MS });
-			if (!result.ok || !result.stdout) return null;
-
-			const payload = JSON.parse(result.stdout) as {
-				data?: {
-					repository?: {
-						pullRequest?: {
-							reviewThreads?: {
-								nodes?: unknown;
-								pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-							};
-						} | null;
-					};
-				};
-				errors?: unknown;
-			};
-			if (payload.errors) return null;
-			const threads = payload.data?.repository?.pullRequest?.reviewThreads;
-			if (!threads) return null;
-			count += countUnresolvedReviewThreads(threads.nodes);
-			if (!threads.pageInfo?.hasNextPage || !threads.pageInfo.endCursor) return count;
-			after = threads.pageInfo.endCursor;
-		}
-	} catch (err) {
-		log.warn("PR review-thread lookup failed (non-fatal)", { pr: prNumber, error: String(err) });
-	}
-	return null;
-}
-
 /**
  * A merged PR proves only the head it merged. Commits made after it on the same
  * branch are unmerged follow-up work, so the completion offer waits — the same
@@ -501,7 +405,7 @@ async function mergedPrCoversHead(project: Project, task: Task, pr: GitHubPullRe
 	return status != null && !status.baseUnreachable && status.ahead === 0;
 }
 
-async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion: boolean): Promise<PolledPRStatus | null> {
+async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion: boolean, force = false): Promise<PolledPRStatus | null> {
 	if (!task.worktreePath) return null;
 	const branchName = await git.getCurrentBranch(task.worktreePath);
 	if (!branchName) return NO_PR;
@@ -512,81 +416,31 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 	// still needs the exact PR fetched by number.
 	if (unpushed === -1 && task.prNumber == null) return NO_PR;
 
-	const ghResult = await github.runGitHub(
-		project,
-		task.worktreePath,
-		[
-			"pr",
-			"list",
-			"--head",
-			branchName,
-			"--state",
-			"open",
-			"--json",
-			PR_STATUS_JSON_FIELDS,
-			"--limit",
-			"1",
-		],
-		{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
-	);
-	if (!ghResult.ok || !ghResult.stdout) return null;
+	const result = await github.readTaskPullRequest(project, task.worktreePath, branchName, task.prNumber, {
+		force, timeoutMs: PR_DETECTION_TIMEOUT_MS,
+	});
+	if (!result) return null;
+	const pr = result.pr;
+	if (!pr) return { ...NO_PR, checkedAt: result.checkedAt };
+	return { ...await reportTaskPrStatus(project, task, branchName, pr, suggestCompletion), checkedAt: result.checkedAt };
+}
 
-	let prs: GitHubPullRequestSummary[];
-	try {
-		prs = JSON.parse(ghResult.stdout);
-	} catch {
-		return null;
-	}
-	let pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
-	let isOpenPr = pr !== null;
-	if (!pr && task.prNumber != null) {
-		// An open-list lookup stops finding the PR after merge. Use the sticky
-		// number to fetch that exact PR so its URL and terminal state remain
-		// visible, even if the branch has since disappeared from GitHub.
-		const knownPrResult = await github.runGitHub(
-			project,
-			task.worktreePath,
-			["pr", "view", String(task.prNumber), "--json", PR_STATUS_JSON_FIELDS],
-			{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
-		);
-		if (knownPrResult.ok && knownPrResult.stdout) {
-			try {
-				const parsed = JSON.parse(knownPrResult.stdout);
-				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-					const known = parsed as GitHubPullRequestSummary;
-					// The stored number survives a branch rename, and a task grown out
-					// of a review task inherits the reviewed PR's number. Either way it
-					// can name somebody else's PR — take it only if its head is us.
-					if (typeof known.headRefName === "string" && known.headRefName !== branchName) {
-						log.info("Ignoring stored PR from a different branch", {
-							taskId: task.id.slice(0, 8), pr: task.prNumber, prHead: known.headRefName, branch: branchName,
-						});
-						return NO_PR;
-					}
-					pr = known;
-					isOpenPr = typeof pr.state === "string" && pr.state.toUpperCase() === "OPEN";
-				}
-			} catch {
-				return null;
-			}
-		} else {
-			// GitHub did not answer for a PR we know exists: that is an outage, not "no PR".
-			return null;
-		}
-	}
-	if (!pr) return NO_PR;
+export async function reportTaskPrStatus(
+	project: Project, task: Task, branchName: string, pr: GitHubPullRequestSummary,
+	suggestCompletion: boolean, skipUnchanged = false,
+): Promise<PolledPRStatus> {
+	const matchesBranch = pr.headRefName === branchName;
+	const isOpenPr = matchesBranch && pr.state === "OPEN";
 
 	const prNumber = typeof pr.number === "number" ? pr.number : task.prNumber ?? null;
 	const prUrl = typeof pr.url === "string" ? pr.url : task.prUrl ?? null;
-	if (prNumber === null) return null;
+	if (prNumber === null) throw new Error("PR status is missing its number");
 
 	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
 	const reviewDecision = parseReviewDecision(pr.reviewDecision);
 	const reviewState = mapReviewDecision(pr.reviewDecision);
 	const checks = normalizeChecks(pr.statusCheckRollup);
-	const unresolvedCount = prUrl
-		? await fetchUnresolvedReviewThreadCount(project, task.worktreePath, prUrl, prNumber)
-		: null;
+	const unresolvedCount = pr.unresolvedCount;
 	const mergeState: PRMergeState = {
 		mergeable: typeof pr.mergeable === "string" ? pr.mergeable.toUpperCase() : null,
 		status: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.toUpperCase() : null,
@@ -609,6 +463,11 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 		prTitle,
 		isDraft,
 	};
+	if (skipUnchanged && task.prStatusCache) {
+		const { cachedAt: _, ...saved } = task.prStatusCache;
+		if (isDeepStrictEqual(saved, freshStatus)) return { found: isOpenPr, ciStatus, reported: true };
+	}
+
 	const payload = {
 		projectId: project.id,
 		taskId: task.id,
@@ -627,7 +486,7 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 
 	// Raise the bell / native notification only on a *transition* to a new
 	// worthy signal. Unresolved-thread changes deliberately stay passive.
-	const signalKey = computeSignalKey(ciStatus, reviewState);
+	const signalKey = matchesBranch ? computeSignalKey(ciStatus, reviewState) : null;
 	const signalReason = signalKey ? reasonForSignal(ciStatus, reviewState) : undefined;
 	const isOpenNonDraft = isOpenPr && isDraft === false;
 	if (isOpenNonDraft && task.status === "review-by-user") {
@@ -651,7 +510,7 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 		signalKey,
 		...(signalReason ? { signalReason } : {}),
 	});
-	if (mergeState.state === "MERGED" && await mergedPrCoversHead(project, task, pr)) {
+	if (matchesBranch && mergeState.state === "MERGED" && await mergedPrCoversHead(project, task, pr)) {
 		const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 		await dispatchLifecycleFinding(project, task, {
 			type: "mergeDetected",
@@ -711,13 +570,18 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 		if (dueTasks.length === 0) continue;
 
 		for (const task of dueTasks) {
+			let checkedAt = now;
 			try {
 				const result = await pollTaskPrStatus(project, task, suggestCompletion);
-				if (result) lifecycleActorRuntime(task.id).prPending = result.found && result.ciStatus === "pending";
+				if (result) {
+					lifecycleActorRuntime(task.id).prPending = result.found && result.ciStatus === "pending";
+					checkedAt = result.checkedAt ?? now;
+				}
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
 			} finally {
-				lifecycleActorRuntime(task.id).prNextDue = nextDueAfterRun(now, prPollInterval(isActiveFg, task.id), scheduleRandom);
+				// Schedule from the shared sample so a cache hit cannot defer the next fetch by another minute.
+				lifecycleActorRuntime(task.id).prNextDue = checkedAt + prPollInterval(isActiveFg, task.id);
 			}
 		}
 	}
@@ -733,14 +597,14 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
  * One on-demand poll. The outcome tells the popover whether it now shows fresh
  * GitHub data, or still the last known status because GitHub did not answer.
  */
-export async function refreshTaskPrStatus(params: { taskId: string; projectId: string }): Promise<RefreshTaskPrStatusResult> {
+export async function refreshTaskPrStatus(params: { taskId: string; projectId: string; force?: boolean }): Promise<RefreshTaskPrStatusResult> {
 	if (!getPushMessage()) return { outcome: "skipped" };
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (project.kind === "virtual" || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return { outcome: "skipped" };
 	const settings = await loadSettings();
 	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
-	const result = await pollTaskPrStatus(project, task, suggestCompletion);
+	const result = await pollTaskPrStatus(project, task, suggestCompletion, params.force !== false);
 	const runtime = lifecycleActorRuntime(task.id);
 	if (result) runtime.prPending = result.found && result.ciStatus === "pending";
 	delete runtime.prNextDue;

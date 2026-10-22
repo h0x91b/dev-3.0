@@ -801,7 +801,7 @@ export type AppRPCSchema = {
 				response: UnsavedWork;
 			};
 			refreshTaskPrStatus: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; force?: boolean };
 				response: RefreshTaskPrStatusResult;
 			};
 			getTaskDiff: {
