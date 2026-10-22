@@ -1,0 +1,1 @@
+Added docs/ios/DESIGN.md and docs/ios/IMPLEMENTATION.md — a research-grounded design plan and a phased, fleet-executable implementation plan for a native iOS app that replaces the mobile web view as a remote client (native SwiftTerm terminal, QR pairing over the existing cookie-session protocol, board/task/diff surfaces mirroring the mobile UX doctrine).
