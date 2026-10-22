@@ -51,6 +51,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 import { _resetUserShellCacheForTests } from "../shell-env";
 import { TmuxMissingCwdError, TmuxSpawnError, tmuxConfigPath } from "../tmux";
 import {
@@ -222,6 +223,41 @@ describe("pty-server", () => {
 			const taskIdEnvIndex = args.indexOf(`DEV3_TASK_ID=${id}`);
 			expect(taskIdEnvIndex).toBeGreaterThan(-1);
 			expect(args[taskIdEnvIndex - 1]).toBe("-e");
+		});
+
+		it("keeps session env out of the tmux client process — it would become the server's global env", () => {
+			const id = track("task-env-proc-01");
+			createSession(id, "proj-1", "/tmp/test-cwd", "bash", { DEV3_TASK_ID: id, DEV3_TASK_SEQ: "14-1" });
+
+			const tmuxCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
+			);
+			const processEnv = (tmuxCall![1] as { env?: Record<string, string> }).env ?? {};
+			expect(processEnv.DEV3_TASK_ID).toBeUndefined();
+			expect(processEnv.DEV3_TASK_SEQ).toBeUndefined();
+			expect(tmuxCall![0]).toContain("DEV3_TASK_SEQ=14-1");
+		});
+
+		it("drops ENV_UNSET keys from the first pane with env -u and from later panes with set-environment -r", async () => {
+			vi.useFakeTimers();
+			const id = track("project-unset-01");
+			createSession(id, "proj-1", "/tmp/cwd", "/bin/zsh", { DEV3_TASK_SEQ: ENV_UNSET, DEV3_PROJECT_NAME: "base44" }, "my-socket", "project");
+
+			const tmuxCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
+			);
+			const args = tmuxCall![0] as string[];
+			expect(args[args.length - 1]).toBe("env -u DEV3_TASK_SEQ /bin/zsh");
+			expect(args).toContain("DEV3_PROJECT_NAME=base44");
+			expect(args.some((a) => a.startsWith("DEV3_TASK_SEQ="))).toBe(false);
+			mockSpawn.mockClear();
+
+			await vi.advanceTimersByTimeAsync(300);
+			const removals = mockSpawn.mock.calls
+				.map((c) => c[0])
+				.filter((cmd) => Array.isArray(cmd) && cmd.includes("set-environment") && cmd.includes("-r"));
+			expect(removals).toContainEqual(expect.arrayContaining(["set-environment", "-r", "DEV3_TASK_SEQ"]));
+			vi.useRealTimers();
 		});
 
 		it("uses custom tmux socket when provided", () => {

@@ -12,7 +12,7 @@ import { spawn } from "../../spawn";
 import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName, PANE_CURRENT_COMMAND_FORMAT } from "../../tmux";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { nativeTaskPanesAlive } from "../../native-task-panes";
-import { isActive, log } from "../shared-pure";
+import { buildProjectTerminalEnv, isActive, log } from "../shared-pure";
 import { sessionStateOrLostCodexPane } from "./resume";
 import { launchTaskPty } from "./task-launch";
 import { fileBrowserPaneIds, findTaskAcrossProjects, markTerminalAttached } from "./task-state";
@@ -261,7 +261,7 @@ export async function getProjectPtyUrl(params: { projectId: string }): Promise<s
 		if (!existsSync(project.path)) {
 			throw new Error(`Project path does not exist: ${project.path}`);
 		}
-		const env = await repoConfig.resolveProjectEnv(project, project.path);
+		const env = buildProjectTerminalEnv(project, await repoConfig.resolveProjectEnv(project, project.path));
 		pty.createSession(sessionKey, params.projectId, project.path, getUserShell(), env, DEFAULT_TMUX_SOCKET, "project");
 	}
 

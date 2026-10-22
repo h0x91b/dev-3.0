@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { AGENT_ENV_DEFAULTS, buildAgentEnv, buildTaskLifecycleEnv } from "../shared-pure";
+import { AGENT_ENV_DEFAULTS, TASK_SCOPED_ENV_KEYS, buildAgentEnv, buildProjectTerminalEnv, buildTaskLifecycleEnv } from "../shared-pure";
+import { ENV_UNSET } from "../../../shared/agent-accounts";
 import { nativeHostProcessName } from "../../native-terminal-registry/process-naming";
 import type { Project, Task } from "../../../shared/types";
 
@@ -53,6 +54,29 @@ describe("task lifecycle env — DEV3_TASK_SEQ", () => {
 		const env = buildTaskLifecycleEnv(project, task(), "/Users/arsenyp/.dev3.0/worktrees/slug/83bffcfd/worktree");
 		const name = nativeHostProcessName(SESSION, env);
 		for (const leak of ["secret", "worktrees", "arsenyp", "feat/", "11111111"]) expect(name).not.toContain(leak);
+	});
+});
+
+describe("Repo terminal env — its own project, no task", () => {
+	const base44 = { id: "p2", name: "base44", path: "/src/base44" } as Project;
+
+	it("names its own project and removes every task-scoped key", () => {
+		const env = buildProjectTerminalEnv(base44, { API_URL: "https://x" });
+		expect(env).toMatchObject({ API_URL: "https://x", DEV3_PROJECT_PATH: "/src/base44", DEV3_PROJECT_NAME: "base44" });
+		for (const key of TASK_SCOPED_ENV_KEYS) expect(env[key]).toBe(ENV_UNSET);
+	});
+
+	it("does not let repo env override the project identity", () => {
+		const env = buildProjectTerminalEnv(base44, { DEV3_PROJECT_NAME: "video-edit", DEV3_TASK_SEQ: "14-1" });
+		expect(env.DEV3_PROJECT_NAME).toBe("base44");
+		expect(env.DEV3_TASK_SEQ).toBe(ENV_UNSET);
+	});
+
+	it("removes every task lifecycle key that is not the project's", () => {
+		// A key added to buildTaskLifecycleEnv must also be cleared here, or it leaks again.
+		const projectKeys = new Set(["DEV3_PROJECT_PATH", "DEV3_PROJECT_NAME"]);
+		const taskKeys = Object.keys(buildTaskLifecycleEnv(project, task(), "/worktree")).filter((k) => !projectKeys.has(k));
+		expect([...TASK_SCOPED_ENV_KEYS].sort()).toEqual(taskKeys.sort());
 	});
 });
 

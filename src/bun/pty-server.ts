@@ -298,6 +298,16 @@ function computeTmuxSessionName(key: string, type: PtySessionType): string {
 }
 
 /**
+ * Prefix a pane command with `env -u` for each key: a new session's first pane
+ * starts from the server-global env, and `-e` can set a variable but never remove it.
+ */
+export function withUnsetEnv(command: string, keys: readonly string[]): string {
+	const names = keys.filter((key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key));
+	if (names.length === 0) return command;
+	return `env ${names.map((key) => `-u ${key}`).join(" ")} ${command}`;
+}
+
+/**
  * Does this session key address a project (quick shell) terminal rather than a
  * task? Keeps key-shape knowledge here, with the rest of the naming: a project
  * key has no dev-server sibling and no `dev3-<short>` task session.
@@ -2062,10 +2072,14 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		// split-windows. The post-spawn `set-environment` loop below stays
 		// as a fallback for the `-A` (attach to existing) path.
 		const envFlags: Record<string, string> = {};
+		const unsetKeys: string[] = [];
 		for (const [key, value] of Object.entries(session.env)) {
-			// ENV_UNSET entries can't ride on `-e` (it only sets); they are removed
-			// via `set-environment -r` below plus `unset` lines in the cmd script.
-			if (value === ENV_UNSET) continue;
+			// ENV_UNSET entries can't ride on `-e` (it only sets): the first pane
+			// drops them through `env -u`, later panes via `set-environment -r` below.
+			if (value === ENV_UNSET) {
+				unsetKeys.push(key);
+				continue;
+			}
 			envFlags[key] = value;
 		}
 		envFlags.DEV3_WORKTREE_ROOT = session.cwd;
@@ -2081,7 +2095,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			cwd: session.cwd,
 			attachIfExists: true,
 			envFlags,
-			command: tmuxCmd,
+			command: withUnsetEnv(tmuxCmd, unsetKeys),
 			terminal: {
 				cols,
 				rows,
@@ -2105,6 +2119,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					}
 				},
 			},
+			// No session env here: the client that happens to start the server makes
+			// its process env the server-global env every later session inherits —
+			// that is how one task's DEV3_TASK_SEQ reached every Repo terminal.
 			processEnv: {
 				TERM: "xterm-256color",
 				// Ensure tmux knows the client supports UTF-8.
@@ -2112,8 +2129,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				// without it tmux replaces non-ASCII chars with underscores.
 				LANG: process.env.LANG || "en_US.UTF-8",
 				HOME: process.env.HOME || "/",
-				// ENV_UNSET sentinels must never reach a real process env.
-				...Object.fromEntries(Object.entries(session.env).filter(([, v]) => v !== ENV_UNSET)),
 			},
 		});
 		log.debug("PTY: Bun.spawn returned", { taskId: shortId(session.taskId), pid: proc.pid, msSinceSpawn: Date.now() - spawnStartedAt });

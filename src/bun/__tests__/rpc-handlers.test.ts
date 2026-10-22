@@ -698,22 +698,24 @@ describe("runCleanupScript", () => {
 		// cwd that this very cleanup is about to delete (tmux 3.7 then ignores
 		// `-c` for all future panes). The script itself runs in the worktree via
 		// the `-c` flag asserted below.
-		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
-			cwd: "/tmp/test-dev3",
-			env: expect.objectContaining({
-				TERM: "xterm-256color",
-				DEV3_TASK_TITLE: "Ship it",
-				DEV3_TASK_ID: "task-123",
-				DEV3_PROJECT_NAME: "Alpha Project",
-				DEV3_PROJECT_PATH: "/tmp/project-root",
-				DEV3_WORKTREE_PATH: "/tmp/test-worktree",
-				DEV3_BRANCH_NAME: "dev3/task-test",
-				DEV3_TASK_STATUS: "completed",
-				DEV3_TASK_FROM_STATUS: "in-progress",
-				DEV3_TASK_TO_STATUS: "completed",
-			}),
-		});
+		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({ cwd: "/tmp/test-dev3" });
+		// The client env becomes the global env of a server it starts, so the task
+		// identity rides only on `-e` (asserted in the next tests), never on it.
+		expect((mockSpawn.mock.calls[0]?.[1] as { env?: Record<string, string> }).env?.DEV3_TASK_ID).toBeUndefined();
 		const cleanupArgs = mockSpawn.mock.calls[0]?.[0] as string[];
+		for (const pair of [
+			"DEV3_TASK_TITLE=Ship it",
+			"DEV3_TASK_ID=task-123",
+			"DEV3_PROJECT_NAME=Alpha Project",
+			"DEV3_PROJECT_PATH=/tmp/project-root",
+			"DEV3_WORKTREE_PATH=/tmp/test-worktree",
+			"DEV3_BRANCH_NAME=dev3/task-test",
+			"DEV3_TASK_STATUS=completed",
+			"DEV3_TASK_FROM_STATUS=in-progress",
+			"DEV3_TASK_TO_STATUS=completed",
+		]) {
+			expect(cleanupArgs[cleanupArgs.indexOf(pair) - 1]).toBe("-e");
+		}
 		const cFlagIndex = cleanupArgs.indexOf("-c");
 		expect(cFlagIndex).toBeGreaterThan(-1);
 		expect(cleanupArgs[cFlagIndex + 1]).toBe("/tmp/test-worktree");
@@ -729,13 +731,11 @@ describe("runCleanupScript", () => {
 
 		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "deleted" });
 
-		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
-			env: expect.objectContaining({
-				DEV3_TASK_STATUS: "deleted",
-				DEV3_TASK_FROM_STATUS: "in-progress",
-				DEV3_TASK_TO_STATUS: "deleted",
-			}),
-		});
+		expect(mockSpawn.mock.calls[0]?.[0]).toEqual(expect.arrayContaining([
+			"DEV3_TASK_STATUS=deleted",
+			"DEV3_TASK_FROM_STATUS=in-progress",
+			"DEV3_TASK_TO_STATUS=deleted",
+		]));
 	});
 
 	it("passes lifecycle env vars to tmux new-session via -e flags (no leak)", async () => {
@@ -9764,7 +9764,13 @@ describe("handlers.getProjectPtyUrl", () => {
 			// The resolved shell, not a pinned path: this suite mocks node:fs, so
 			// the resolver finds no candidate installed and last-resorts to /bin/sh.
 			getUserShell(),
-			{ API_URLS: "https://api.example.com,http://api.example.com" },
+			expect.objectContaining({
+				API_URLS: "https://api.example.com,http://api.example.com",
+				DEV3_PROJECT_PATH: "/tmp/test-project",
+				DEV3_PROJECT_NAME: project.name,
+				DEV3_TASK_ID: ENV_UNSET,
+				DEV3_TASK_SEQ: ENV_UNSET,
+			}),
 			"dev3",
 			"project",
 		);

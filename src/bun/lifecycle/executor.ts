@@ -632,8 +632,9 @@ export async function runCleanupScript(
 		cwd: task.worktreePath,
 		envFlags: cleanupEnv,
 		command: buildScriptRunnerCommand(scriptPath, { shellPath: getUserShell() }),
+		// Session env only via `-e`: a client env would become the global env of
+		// a server this cleanup session happens to start.
 		terminal: { cols: 220, rows: 50, data: () => {} },
-		processEnv: cleanupEnv,
 	});
 	await awaitCleanupSession(proc, socket, sessionName, taskId);
 }
