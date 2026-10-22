@@ -1,0 +1,31 @@
+diff --git a/dist/api/bun/index.ts b/dist/api/bun/index.ts
+index 8af542a997e3fb25cab3700875063cead1493f26..f73f682b17f74e5b0539be847772d1a266f52e0f 100644
+--- a/dist/api/bun/index.ts
++++ b/dist/api/bun/index.ts
+@@ -29,8 +29,6 @@ import * as PATHS from "./core/Paths";
+ import * as Socket from "./core/Socket";
+ import WGPU from "./webGPU";
+ import webgpu from "./webgpuAdapter";
+-import * as three from "three";
+-import * as babylon from "@babylonjs/core";
+ import type { ElectrobunConfig } from "./ElectrobunConfig";
+ import { GlobalShortcut, Screen, Session, WGPUBridge } from "./proc/native";
+ import type {
+@@ -223,8 +221,6 @@ export {
+ 	Socket,
+ 	WGPU,
+ 	webgpu,
+-	three,
+-	babylon,
+ 	GlobalShortcut,
+ 	Screen,
+ 	Session,
+@@ -255,8 +251,6 @@ const Electrobun = {
+ 	Socket,
+ 	WGPU,
+ 	webgpu,
+-	three,
+-	babylon,
+ };
+ 
+ // Electrobun

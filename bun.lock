@@ -49,6 +49,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
+  },
   "overrides": {
     "cytoscape": "3.34.0",
     "mermaid": "11.16.0",

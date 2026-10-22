@@ -87,3 +87,26 @@ describe("electrobun packaged Bun runtime", () => {
 		expect(source).not.toContain("prototypes/detached-pty");
 	});
 });
+
+describe("electrobun 3D engines stay out of the bundles", () => {
+	// electrobun/bun re-exports three and @babylonjs/core as namespaces, which no
+	// bundler can tree-shake: 11 MB in the main bundle and the CLI each. Our patch
+	// drops them; an electrobun bump that loses the patch must fail here, not ship.
+	// See decisions/2026/10/22/strip-electrobun-3d-engines.md.
+	const electrobunApi = () =>
+		readFileSync(fileURLToPath(new URL("../../../node_modules/electrobun/dist/api/bun/index.ts", import.meta.url)), "utf8");
+
+	it("the installed electrobun/bun entry imports neither three nor @babylonjs/core", () => {
+		const source = electrobunApi();
+		expect(source).toContain("export {");
+		expect(source).not.toMatch(/from\s+["']three["']/);
+		expect(source).not.toMatch(/from\s+["']@babylonjs\/core["']/);
+	});
+
+	it("dev3 code never reaches for the stripped namespaces", () => {
+		for (const entry of ["../index.ts", "../window-manager.ts"]) {
+			const source = readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf8");
+			expect(source).not.toMatch(/Electrobun\.(three|babylon)\b/);
+		}
+	});
+});
