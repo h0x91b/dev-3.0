@@ -101,6 +101,7 @@ const infoPanel = {
 	"infoPanel.mergeDisabledNoCommits": "Nada que mergear — no hay commits adelante",
 	"infoPanel.mergeDisabledUncommitted": "Nada que mergear — primero haz commit de los cambios sin commit",
 	"infoPanel.mergeDisabledBehind": "Primero haga rebase — la rama está atrás",
+	"infoPanel.mergeDisabledSharedFolder": "Fusione mediante un pull request: una fusión local haría commit en la carpeta compartida del proyecto",
 	"infoPanel.statusLoading": "Cargando estado de la rama...",
 	"infoPanel.statusLoadFailed": "El estado de la rama no se cargó",
 	"infoPanel.statusRetry": "Reintentar",

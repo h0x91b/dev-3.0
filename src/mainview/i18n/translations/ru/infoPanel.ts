@@ -107,6 +107,7 @@ const infoPanel = {
 	"infoPanel.mergeDisabledNoCommits": "Нечего мержить — нет коммитов впереди",
 	"infoPanel.mergeDisabledUncommitted": "Нечего мержить — сначала закоммить незакоммиченные изменения",
 	"infoPanel.mergeDisabledBehind": "Сначала сделай rebase — ветка позади",
+	"infoPanel.mergeDisabledSharedFolder": "Сливай через pull request: локальный merge закоммитит в общую папку проекта",
 	"infoPanel.statusLoading": "Загрузка статуса ветки...",
 	"infoPanel.statusLoadFailed": "Статус ветки не загрузился",
 	"infoPanel.statusRetry": "Повторить",

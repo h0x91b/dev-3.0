@@ -182,7 +182,7 @@ const help = {
 		"N variantes significa N agentes independientes resolviendo la misma tarea en paralelo, cada uno en su propio worktree y rama. Compara los resultados y quédate con el mejor — el resto se cancela.",
 	"help.modal.addProject.title": "Añadir un proyecto",
 	"help.modal.addProject.body":
-		"Apunta dev3 a un repo git local, clona uno remoto primero, o crea un tablero de Operaciones — un proyecto virtual cuyas tareas ejecutan agentes en carpetas gestionadas, sin git.",
+		"Apunta dev3 a un repo git local, clona uno remoto primero, o crea un tablero de Operaciones — un proyecto virtual cuyas tareas ejecutan agentes en carpetas gestionadas, sin git. Desactiva el flujo de git para añadir cualquier carpeta cuyas tareas se ejecuten directamente en ella.",
 	"help.modal.importConversations.title": "Importar conversaciones",
 	"help.modal.importConversations.body":
 		"Las conversaciones de Claude Code y Codex que se ejecutaron en la carpeta de este proyecto fuera de dev3 se convierten en tareas normales: un título, un resumen de la conversación como descripción y la etiqueta «imported». Claude titula sus propias conversaciones; una de Codex se titula con la primera petición. Lo reciente conserva un worktree; lo antiguo llega a Completado.",

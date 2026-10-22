@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, GITLESS_COORDINATOR_PROMPT, presetPromptForTaskType, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
 import { COORDINATOR_PROMPT_LIMIT } from "../../shared/agent-command-line-budget";
 
@@ -281,6 +281,7 @@ describe("COORDINATOR_PROMPT", () => {
 	// it (decisions/2026/10/16/coordinator-prompt-cap-6500.md). Headroom, not an invitation to pad.
 	it("stays within the coordinator prompt cap", () => {
 		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
+		expect(GITLESS_COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
 	});
 
 	it("never assumes the user's gender — it ships to every install as the default", () => {
@@ -289,6 +290,30 @@ describe("COORDINATOR_PROMPT", () => {
 
 	it("is English-only, so a locale file can never half-translate a behavioural rule", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/[Ѐ-ӿ]/);
+	});
+});
+
+// A gitless project's tasks may share one folder: there is no rebase, the second
+// writer overwrites the first, and done is a commit, not a merged PR.
+describe("GITLESS_COORDINATOR_PROMPT", () => {
+	it("tells the coordinator to sequence same-file work instead of relying on a rebase", () => {
+		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/tasks sharing a folder overwrite each other's edits, so never run two on one file at once/);
+		expect(GITLESS_COORDINATOR_PROMPT).not.toMatch(/rebase/);
+	});
+
+	it("accepts a commit as done, not a merged PR", () => {
+		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/seeing the artefact — its commit, or its saved files where the folder has no git/);
+		expect(GITLESS_COORDINATOR_PROMPT).not.toMatch(/merged PR/);
+	});
+
+	it("is the built-in brief only for a project without the git workflow", () => {
+		expect(presetPromptForTaskType("coordinator", { gitWorkflow: false }, null)).toBe(GITLESS_COORDINATOR_PROMPT);
+		expect(presetPromptForTaskType("coordinator", { kind: "virtual" }, null)).toBe(GITLESS_COORDINATOR_PROMPT);
+		expect(presetPromptForTaskType("coordinator", {}, null)).toBe(COORDINATOR_PROMPT);
+	});
+
+	it("never replaces a configured prompt", () => {
+		expect(presetPromptForTaskType("coordinator", { gitWorkflow: false }, { coordinatorPrompt: "Mine." })).toBe("Mine.");
 	});
 });
 

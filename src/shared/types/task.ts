@@ -343,6 +343,13 @@ export interface Task {
 	 * removed but a fixed folder is never auto-removed. Ignored for git projects.
 	 */
 	opsWorkDir?: string | null;
+	/**
+	 * For a git project with the git workflow off: this task gets its own worktree
+	 * and branch instead of sharing the project folder, and keeps the task-level
+	 * git tooling (diff, Git bar). Columns and review stay board-level. Chosen
+	 * while the task is in To Do; ignored on every other project kind.
+	 */
+	ownWorktree?: boolean;
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */

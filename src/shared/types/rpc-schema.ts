@@ -160,9 +160,11 @@ export type AppRPCSchema = {
 			addProject: {
 				/** `name` is optional: the backend derives it from the path, which is the
 				 *  only side that knows how to spell a path on its own platform. */
-				params: { path: string; name?: string };
-				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation). */
-				response: { ok: true; project: Project } | { ok: false; error: string; gitInit?: GitInitOffer };
+				/** `gitWorkflow: false` adds the folder with the git workflow off, git repository or not. */
+				params: { path: string; name?: string; gitWorkflow?: boolean };
+				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation).
+				 *  `notGitRepo` marks the refusal that `gitWorkflow: false` would lift. */
+				response: { ok: true; project: Project } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string };
@@ -534,7 +536,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; ownWorktree?: boolean };
 				response: Task;
 			};
 			hibernateTask: {
@@ -646,6 +648,7 @@ export type AppRPCSchema = {
 					labelIds?: string[];
 					existingBranch?: string | null;
 					draft?: boolean;
+					ownWorktree?: boolean;
 				};
 				response: Task;
 			};

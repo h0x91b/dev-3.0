@@ -445,6 +445,28 @@ describe("task create", () => {
 			expect(stderrOutput).not.toContain("someone else's code");
 		});
 
+		it("sends --worktree with --branch and says the task gets its own worktree", async () => {
+			mockSend.mockResolvedValue(okResp({ ...createdTask, existingBranch: "linux-build", ownWorktree: true }));
+
+			await handleTask("create", args([], { project: "proj-001", title: "Linux build", branch: "linux-build", worktree: "true" }), SOCKET, null);
+
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+				projectId: "proj-001",
+				title: "Linux build",
+				branch: "linux-build",
+				ownWorktree: true,
+			});
+			expect(stderrOutput).toContain("Runs in its own worktree");
+		});
+
+		it("rejects a value after --worktree before contacting the app", async () => {
+			await expect(
+				handleTask("create", args([], { project: "proj-001", title: "X", worktree: "Linux build" }), SOCKET, null),
+			).rejects.toThrow("EXIT_");
+			expect(stderrOutput).toContain("--worktree takes no value");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+
 		it("rejects --pr together with --branch before contacting the app", async () => {
 			await expect(
 				handleTask("create", args([], { project: "proj-001", title: "X", pr: "1", branch: "origin/x" }), SOCKET, null),

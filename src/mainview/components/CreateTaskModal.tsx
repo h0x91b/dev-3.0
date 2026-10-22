@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
+import { DEFAULT_PRIORITY, hasGitWorkflow, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -109,6 +109,14 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// Bumped when a save is blocked on the missing PR link, so the field explains why.
 	const [prLinkNudge, setPrLinkNudge] = useState(0);
 	const isVirtual = project.kind === "virtual";
+	// No branch, PR or review choice: the task runs in a folder, not a worktree.
+	const gitless = !hasGitWorkflow(project);
+	// Gitless git project only: this task gets its own worktree instead of the shared folder.
+	const [ownWorktree, setOwnWorktree] = useState(draftTask?.ownWorktree === true);
+	// Null while unknown. The choice is offered only when the folder has branches to start from.
+	const [folderHasBranches, setFolderHasBranches] = useState<boolean | null>(null);
+	const offersOwnWorktree = gitless && !isVirtual && folderHasBranches === true;
+	const usesOwnWorktree = offersOwnWorktree && ownWorktree;
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
@@ -260,11 +268,11 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// branch → enable review mode). Hidden once a branch is chosen, a preset is
 	// already chosen, this project has no git, or the user dismissed this URL.
 	const detectedPr = parsePrUrl(description);
-	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !isVirtual;
+	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !gitless;
 
 	// PR review without a branch has nothing to check out yet: the inline PR
 	// link field asks for one, and every non-draft save waits for it.
-	const reviewNeedsPr = taskType === "pr-review" && !selectedBranch && !isVirtual;
+	const reviewNeedsPr = taskType === "pr-review" && !selectedBranch && !gitless;
 
 	/** Resolve a PR link into its head branch and turn the form into a review. Returns an error, or null. */
 	async function resolvePrIntoReview(url: string): Promise<string | null> {
@@ -317,9 +325,33 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-		// Virtual ops have no git branch — skip the branch lookup entirely.
-		if (!isVirtual) void loadProjectCurrentBranch();
-	}, [loadProjectCurrentBranch, isVirtual]);
+		// Without the git workflow there is no branch to look up.
+		if (!gitless) void loadProjectCurrentBranch();
+	}, [loadProjectCurrentBranch, gitless]);
+
+	// Every shared-folder task of a gitless project runs in its folder: say so when one is live.
+	useEffect(() => {
+		if (!gitless || isVirtual) return;
+		let cancelled = false;
+		api.request.getAllProjectTasks().then((all) => {
+			const mine = all.find((p) => p.projectId === project.id);
+			const shared = (mine?.tasks ?? []).some(
+				(tk) => tk.worktreePath === project.path && tk.status !== "completed" && tk.status !== "cancelled",
+			);
+			if (!cancelled) setOpsFolderConflict(shared);
+		}).catch(() => {});
+		return () => { cancelled = true; };
+	}, [gitless, isVirtual, project.id, project.path]);
+
+	useEffect(() => {
+		setFolderHasBranches(null);
+		if (!gitless || isVirtual) return;
+		let cancelled = false;
+		api.request.listBranches({ projectId: project.id })
+			.then((branches) => { if (!cancelled) setFolderHasBranches(branches.length > 0); })
+			.catch(() => { if (!cancelled) setFolderHasBranches(false); });
+		return () => { cancelled = true; };
+	}, [gitless, isVirtual, project.id]);
 
 	async function handlePickOpsFolder() {
 		let folder: string | null;
@@ -349,7 +381,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		|| !!customTitle
 		|| selectedLabelIds.length > 0
 		|| priority !== DEFAULT_PRIORITY
-		|| branchTouched;
+		|| branchTouched
+		|| usesOwnWorktree;
 
 	const draftDirty = !!draftTask && (
 		description !== (draftTask.description ?? "")
@@ -357,6 +390,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		|| priority !== (draftTask.priority ?? DEFAULT_PRIORITY)
 		|| !sameLabelIds(selectedLabelIds, draftTask.labelIds ?? [])
 		|| (selectedBranch ?? null) !== (draftTask.existingBranch ?? null)
+		|| (offersOwnWorktree && ownWorktree !== (draftTask.ownWorktree === true))
 	);
 
 	function handleRequestClose() {
@@ -412,6 +446,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				labelIds: selectedLabelIds,
 				existingBranch: branch,
 				draft: keepDraft,
+				...(offersOwnWorktree ? { ownWorktree } : {}),
 			});
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_edited", { project_id: project.id, source: keepDraft ? "draft_save" : "draft_promote" });
@@ -447,6 +482,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(mode === "draft" ? { draft: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
+				...(usesOwnWorktree ? { ownWorktree: true } : {}),
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
 				// Only the coordinator preset is a persisted task type — PR review changes
 				// the prompt and nothing about the task (see TASK_TYPES).
@@ -529,9 +565,11 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 			return;
 		}
 
-		// Virtual ops have no git branch — commit directly with no branch choice.
-		if (isVirtual) {
-			await commit(null, mode);
+		// No git workflow, no branch: commit directly with no branch choice. An own
+		// worktree starts from the picked branch; the shared folder's own checkout
+		// is not a branch this task is continuing, so nothing is asked about it.
+		if (gitless) {
+			await commit(usesOwnWorktree ? selectedBranch : null, mode);
 			return;
 		}
 
@@ -819,7 +857,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				<TaskTypePicker
 					value={taskType}
 					onChange={handleTaskTypeChange}
-					reviewAvailable={!isVirtual}
+					reviewAvailable={!gitless}
 				/>
 
 				{reviewNeedsPr && (
@@ -948,6 +986,35 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						</div>
 						{opsFolderConflict && (
 							<p className="text-xs text-amber-500">{t("ops.create.workDirConflict")}</p>
+						)}
+					</div>
+				) : gitless ? (
+					<div className="space-y-1.5">
+						{offersOwnWorktree ? (
+							<WorkspaceModePicker value={usesOwnWorktree} onChange={setOwnWorktree} />
+						) : (
+							<span className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</span>
+						)}
+						{usesOwnWorktree ? (
+							<BranchSelector
+								projectId={project.id}
+								selectedBranch={selectedBranch}
+								onSelectBranch={(branch) => {
+									setSelectedBranch(branch);
+									setBranchTouched(true);
+								}}
+								isPrReview={false}
+								onPrResolved={() => {}}
+							/>
+						) : (
+							<>
+								<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-sm truncate">
+									<span className="text-fg font-mono streamer-private" title={project.path}>{project.path}</span>
+								</div>
+								{opsFolderConflict && (
+									<p className="text-xs text-amber-500">{t("createTask.projectFolderShared")}</p>
+								)}
+							</>
 						)}
 					</div>
 				) : (
@@ -1199,6 +1266,52 @@ function TaskTypePicker({ value, onChange, reviewAvailable }: TaskTypePickerProp
 			</div>
 			<p className="text-xs text-fg-3">
 				{t(hintKey[value])}
+			</p>
+		</div>
+	);
+}
+
+const WORKSPACE_MODES = [false, true] as const;
+
+/**
+ * Where a task of a gitless git project runs: the shared project folder, or a
+ * worktree of its own. A radiogroup like the task type, so the default is visible.
+ */
+function WorkspaceModePicker({ value, onChange }: { value: boolean; onChange: (ownWorktree: boolean) => void }) {
+	const t = useT();
+	const labelKey = (own: boolean) => own ? "createTask.workspaceOwnWorktree" : "createTask.workspaceProjectFolder";
+	return (
+		<div className="space-y-1.5">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+			<span className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</span>
+			<div
+				role="radiogroup"
+				aria-label={t("ops.create.workDirLabel")}
+				className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5"
+				onKeyDown={(event) => handleRadioGroupKeys(event, WORKSPACE_MODES, value, onChange)}
+			>
+				{WORKSPACE_MODES.map((own) => {
+					const active = own === value;
+					return (
+						<button
+							key={String(own)}
+							type="button"
+							role="radio"
+							aria-checked={active}
+							data-testid={own ? "workspace-own-worktree" : "workspace-project-folder"}
+							onClick={() => onChange(own)}
+							className={`px-3 py-1 text-xs font-semibold rounded-md transition-[background-color,color,transform] active:scale-[0.96] ${
+								active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg hover:bg-elevated"
+							}`}
+						>
+							{t(labelKey(own))}
+						</button>
+					);
+				})}
+			</div>
+			</div>
+			<p className="text-xs text-fg-3">
+				{t(value ? "createTask.workspaceOwnWorktreeHint" : "createTask.workspaceProjectFolderHint")}
 			</p>
 		</div>
 	);

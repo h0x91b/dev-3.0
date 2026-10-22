@@ -1,5 +1,5 @@
 import type { PrResolveFailureReason, Project } from "../shared/types";
-import { TASK_REF_UNRESOLVED_PREFIX } from "../shared/types";
+import { hasGitWorkflow, taskUsesWorktree, TASK_REF_UNRESOLVED_PREFIX } from "../shared/types";
 import * as github from "./github";
 import * as git from "./git";
 import * as data from "./data";
@@ -153,6 +153,8 @@ interface StartRefRequest {
 	pr?: string;
 	/** `--branch`: a local name, `origin/x`, or a fork remote's `owner/x`. */
 	branch?: string;
+	/** `--worktree`: the task gets its own worktree in a project with the git workflow off. */
+	ownWorktree?: boolean;
 }
 
 /**
@@ -165,11 +167,11 @@ interface StartRefRequest {
  * so a review task never lands quietly on `main`.
  */
 export async function resolveTaskStartRef(request: StartRefRequest): Promise<string | undefined> {
-	const { project, pr, branch } = request;
+	const { project, pr, branch, ownWorktree } = request;
 	if (pr && branch) throw unresolved("--pr and --branch name the same thing two ways — pass one of them.");
 	if (pr) {
-		if (project.kind === "virtual") {
-			throw unresolved("an Operations board has no git repository, so it has no pull requests.");
+		if (!hasGitWorkflow(project)) {
+			throw unresolved("this project has no git workflow, so it has no pull requests.");
 		}
 		const trimmed = pr.trim();
 		if (!/^\d+$/.test(trimmed) && !/^https?:\/\//.test(trimmed)) {
@@ -185,8 +187,8 @@ export async function resolveTaskStartRef(request: StartRefRequest): Promise<str
 	if (branch) {
 		const ref = branch.trim();
 		if (!ref) throw unresolved("--branch needs a ref.");
-		if (project.kind === "virtual") {
-			throw unresolved("an Operations board has no git repository, so it has no branches.");
+		if (!taskUsesWorktree(project, { ownWorktree })) {
+			throw unresolved("this project has no git workflow, so it has no branches. Pass --worktree to give the task its own.");
 		}
 		// Remote-tracking refs are checked under refs/remotes so `origin/main`
 		// cannot be satisfied by a local branch literally named `origin/main`.

@@ -180,6 +180,7 @@ export const taskHandlers: Record<string, Handler> = {
 		if (!title) throw new Error("title is required");
 		const prRef = typeof params.pr === "string" ? params.pr : undefined;
 		const branchRef = typeof params.branch === "string" ? params.branch : undefined;
+		const ownWorktree = params.ownWorktree === true;
 
 		let priority = undefined;
 		if (params.priority !== undefined) {
@@ -197,7 +198,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// What the task is ABOUT, resolved before it exists — creation derives
 		// foreignCode from this ref, and a ref set afterwards would leave the trust
 		// decision already made on the base branch (see task-start-ref.ts).
-		const existingBranch = await resolveTaskStartRef({ project, pr: prRef, branch: branchRef });
+		const existingBranch = await resolveTaskStartRef({ project, pr: prRef, branch: branchRef, ownWorktree });
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -215,6 +216,7 @@ export const taskHandlers: Record<string, Handler> = {
 			...(existingBranch ? { existingBranch } : {}),
 			...(priority ? { priority } : {}),
 			...(taskType ? { taskType } : {}),
+			...(ownWorktree ? { ownWorktree } : {}),
 		});
 		// If a separate title was given alongside a description, store it as customTitle.
 		// A role brief counts as a body too: without this the card would be named

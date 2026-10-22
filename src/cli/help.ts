@@ -135,7 +135,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -149,6 +149,9 @@ const COMMANDS: CommandHelp[] = [
 					"--branch <ref>        Start on a ref that is not a pull request: `origin/feat/x`,",
 					"                      a fork remote's `owner/feat/x`, or a local branch. Must",
 					"                      already exist locally — --pr fetches, --branch does not.",
+					"--worktree            Git workflow off: give this task its own worktree and",
+					"                      branch instead of the shared project folder. Combine with",
+					"                      --branch to start on an existing branch.",
 					"--type coordinator|pr-review|standard  Create the task with its type already set",
 					"                      (standard = no type, the default). The role preamble goes",
 					"                      into the description now, so a task launched straight away",

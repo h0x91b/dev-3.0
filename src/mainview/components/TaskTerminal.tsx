@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, hasGitWorkflow } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { debugLog } from "../debug-log";
@@ -237,7 +237,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		try {
 			// Same criterion as the launch guard, or a folder without `.git` would
 			// offer Resume, fail, and offer Resume again.
-			const state = await api.request.checkWorktreeState({ path: worktreePath, requireGit: project?.kind !== "virtual" });
+			const state = await api.request.checkWorktreeState({ path: worktreePath, requireGit: !!project && hasGitWorkflow(project) });
 			setError({
 				kind: state === "present" ? "session-ended" : state === "unreadable" ? "worktree-unreadable" : "worktree-gone",
 				path: worktreePath,

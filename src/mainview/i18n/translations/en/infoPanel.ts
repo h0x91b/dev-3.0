@@ -101,6 +101,7 @@ const infoPanel = {
 	"infoPanel.mergeDisabledNoCommits": "Nothing to merge — no commits ahead",
 	"infoPanel.mergeDisabledUncommitted": "Nothing to merge — commit the uncommitted changes first",
 	"infoPanel.mergeDisabledBehind": "Rebase first — branch is behind",
+	"infoPanel.mergeDisabledSharedFolder": "Merge through a pull request: a local merge would commit in the shared project folder",
 	"infoPanel.statusLoading": "Loading branch status...",
 	"infoPanel.statusLoadFailed": "Branch status failed to load",
 	"infoPanel.statusRetry": "Retry",
