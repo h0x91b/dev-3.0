@@ -540,6 +540,25 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	/** The wake screen's plain shell: no agent, and the saved panes stay resumable. */
+	async function handleWakeShell() {
+		setRestarting(true);
+		setRecoverable(null);
+		setHibernated(false);
+		try {
+			const url = await api.request.wakeTaskShell({ taskId });
+			if (isNative) await fetchPaneState(taskId);
+			else setPtyUrl(url);
+			trackEvent("session_recovered", { action: "wake_shell" });
+		} catch (err) {
+			console.error("[TaskTerminal] Wake with a plain shell failed:", err);
+			toast.error(err instanceof Error ? err.message : String(err));
+			await classifyAndSetError();
+		} finally {
+			setRestarting(false);
+		}
+	}
+
 	async function handleStartFresh() {
 		setRestarting(true);
 		setRecoverable(null);
@@ -745,7 +764,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								</button>
 							)}
 							<button
-								onClick={handleStartFresh}
+								onClick={hibernated ? handleWakeShell : handleStartFresh}
 								disabled={restarting}
 								className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
 							>

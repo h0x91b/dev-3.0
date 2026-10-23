@@ -122,7 +122,7 @@ const kanban = {
 	"task.hibernatedToastMem": "Tarea hibernada: se liberaron unos {mem}.",
 	"task.hibernateConfirmTitle": "\u00bfMatar esta sesi\u00f3n?",
 	"task.hibernateConfirmBody": "El agente, la terminal y el servidor de desarrollo se detendr\u00e1n. El worktree, tus cambios sin confirmar, la rama y la conversaci\u00f3n del agente se conservan; el historial de la terminal no, y no vuelve.",
-	"task.hibernateConfirmMulti": "Esta tarea ejecuta {count} agentes. Vuelven todos solo si la despiertas con \u00abReanudar la conversaci\u00f3n del agente\u00bb; despertarla con una terminal simple pierde para siempre cada agente adicional.",
+	"task.hibernateConfirmMulti": "Esta tarea ejecuta {count} agentes. Despertarla con \u00abDespertar y reanudar el agente\u00bb los recupera a todos; una shell simple no inicia ninguno, y sus conversaciones siguen guardadas.",
 	"task.hibernateConfirmCta": "Hibernar",
 	"task.hibernateFailed": "No se pudo hibernar la tarea: {error}",
 	"task.delete": "Eliminar",

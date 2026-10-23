@@ -708,6 +708,11 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: string;
 			};
+			/** Wake a hibernated task into a plain shell: no agent starts, and its saved panes stay for a later resume. */
+			wakeTaskShell: {
+				params: { taskId: string };
+				response: string;
+			};
 			/**
 			 * Re-run the project's `setupScript` in its own auxiliary pane, leaving the
 			 * agent and every other pane untouched. Clears the previous setup verdict and

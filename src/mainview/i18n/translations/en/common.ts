@@ -54,6 +54,13 @@ const common = {
 	"agentLaunch.decline": "Decline",
 	"agentLaunch.autoApproveIn": "Starts on its own in {time}",
 	"agentLaunch.autoResumeIn": "Resumes on its own in {time}",
+	"agentLaunch.titleHibernate": "Agent wants to hibernate this task",
+	"agentLaunch.titleWakeShell": "Agent wants to wake this task with a plain shell",
+	"agentLaunch.wakeShellNote": "Opens the task's terminal with a shell and no agent. The saved conversation stays, so the agent can still be resumed later.",
+	"agentLaunch.hibernating": "Hibernating…",
+	"agentLaunch.waking": "Waking…",
+	"agentLaunch.autoHibernateIn": "Hibernates on its own in {time}",
+	"agentLaunch.autoWakeIn": "Wakes on its own in {time}",
 	"agentLaunch.autoApproveHeld": "Waiting for your answer",
 
 	// Vimium-style hint navigation

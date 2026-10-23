@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
@@ -15,6 +15,8 @@ import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
 import { launchApprovalTimeoutMs } from "../launch-approval";
 import { handleTasks } from "./tasks";
+import { reportResumeOutcome } from "./agent";
+import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
 import { buildTaskShowJson } from "../task-json";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
@@ -1063,6 +1065,92 @@ async function taskTerminalBackend(args: ParsedArgs, socketPath: string, context
 	);
 }
 
+function formatFreed(bytes: number | null): string {
+	if (!bytes) return "";
+	const mb = bytes / (1024 * 1024);
+	return mb >= 1024 ? `, about ${(mb / 1024).toFixed(1)} GB freed` : `, about ${Math.round(mb)} MB freed`;
+}
+
+/** Both commands block on the launch dialog when an agent asks, so a timeout is not a failure to retry blindly. */
+async function sendSessionAction(socketPath: string, method: string, params: Record<string, unknown>, what: string): Promise<CliResponse> {
+	try {
+		return await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			exitError(`Timed out waiting for the ${what}`, "The approval dialog may still be open; a later approval still goes ahead. Running the same command again waits on that same request.");
+		}
+		throw err;
+	}
+}
+
+function sessionActionParams(args: ParsedArgs, context: CliContext | null, usage: string): Record<string, unknown> {
+	const taskId = resolveTaskId(args, context);
+	if (!taskId) exitUsage(usage);
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+	if (context?.taskId) params.sourceTaskId = context.taskId;
+	return params;
+}
+
+/**
+ * `dev3 task hibernate` — the session bar's Hibernate button. From inside a task
+ * (an agent asking) it goes through the launch dialog with its countdown; a
+ * person at a plain terminal hibernates directly.
+ */
+async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "json"]);
+	const json = "json" in args.flags;
+	const params = sessionActionParams(args, context, "Usage: dev3 task hibernate [<id>|--task <id>] [--json]");
+	const ownSession = targetsOwnSession(String(params.taskId), args, context);
+	if (params.sourceTaskId) {
+		process.stderr.write(ownSession
+			? "Asking the user in the app to hibernate THIS task — approving it ends this session.\n"
+			: "Asking the user in the app to hibernate that task...\n");
+	}
+	const resp = await sendSessionAction(socketPath, "task.hibernate", params, "hibernation");
+	if (!resp.ok) exitError(resp.error || "Failed to hibernate the task");
+	const result = resp.data as CliHibernateOutcome;
+	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+	switch (result.outcome) {
+		case "hibernated":
+			if (!json) process.stdout.write(`Hibernated task #${result.seq}${formatFreed(result.freedRssBytes)} — agent, terminal and dev server stopped; worktree kept. Wake it with dev3 task wake.\n`);
+			return;
+		case "nothing-to-free":
+			return exitError(`Nothing to hibernate in task #${result.seq}: ${result.message}`, undefined, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE);
+		case "declined":
+			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the hibernation", "Nothing was stopped.", CLI_EXIT_CODE_HIBERNATE_DECLINED);
+	}
+}
+
+/** `dev3 task wake --resume|--shell` — the wake screen's two buttons. */
+async function wakeTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "json"]);
+	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] | --shell [--json]";
+	const resume = "resume" in args.flags;
+	const shell = "shell" in args.flags;
+	if (resume === shell) exitUsage(`Pass exactly one of --resume or --shell.\n${usage}`);
+	if (shell && "allow-agent-latest" in args.flags) exitUsage("--allow-agent-latest only applies to --resume.");
+	const json = "json" in args.flags;
+	const params = sessionActionParams(args, context, usage);
+	params.mode = resume ? "resume" : "shell";
+	if (resume) params.allowAgentLatest = "allow-agent-latest" in args.flags;
+	const resp = await sendSessionAction(socketPath, "task.wake", params, "wake");
+	if (!resp.ok) exitError(resp.error || "Failed to wake the task");
+	const result = resp.data as CliWakeOutcome;
+	if (result.outcome === "resume") return reportResumeOutcome(result.resume, json);
+	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+	switch (result.outcome) {
+		case "woke-shell":
+			if (!json) process.stdout.write(`Woke task #${result.seq} with a plain shell (${result.backend}); the agent was not started and its saved conversation is kept.\n`);
+			return;
+		case "not-hibernated":
+			return exitError(`Task #${result.seq} is not hibernated — nothing to wake`, "A task whose terminal died without hibernating is brought back with dev3 agent resume.", CLI_EXIT_CODE_TASK_NOT_HIBERNATED);
+		case "declined":
+			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the wake request", "Nothing was woken.", CLI_EXIT_CODE_LAUNCH_DECLINED);
+	}
+}
+
 export async function handleTask(
 	subcommand: string | undefined,
 	args: ParsedArgs,
@@ -1082,6 +1170,10 @@ export async function handleTask(
 			return openTask(args, socketPath, context);
 		case "terminal-backend":
 			return taskTerminalBackend(args, socketPath, context);
+		case "hibernate":
+			return hibernateTaskCommand(args, socketPath, context);
+		case "wake":
+			return wakeTaskCommand(args, socketPath, context);
 		case "list":
 			// Alias: the enumerate command lives under the plural `tasks list`.
 			// `task list` is a natural mistype, so forward it transparently.
@@ -1089,7 +1181,7 @@ export async function handleTask(
 		default:
 			exitUsage(
 				`Unknown subcommand: task ${subcommand || "(none)"}` +
-				"\nAvailable: task show, task create, task update, task move, task open, task terminal-backend",
+				"\nAvailable: task show, task create, task update, task move, task open, task terminal-backend, task hibernate, task wake",
 			);
 	}
 }

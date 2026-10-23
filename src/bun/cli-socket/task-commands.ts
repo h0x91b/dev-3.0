@@ -24,6 +24,15 @@ async function projectRegistration() {
 	return import("../project-registration");
 }
 
+/** The task whose agent sent the request; null for a person at a terminal. */
+async function sessionActionRequester(params: Record<string, unknown>): Promise<Task | null> {
+	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceId) return null;
+	const found = await resolveTaskAcrossProjects(sourceId);
+	if (!found) throw new Error("Unknown requesting task — cannot attribute the request.");
+	return found.task;
+}
+
 function stringList(value: unknown): string[] {
 	return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
@@ -548,6 +557,25 @@ export const taskHandlers: Record<string, Handler> = {
 			// nothing more — it is never reset consent (that is `task.requestReset`).
 			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
+	},
+
+	// `dev3 task hibernate` / `dev3 task wake`. An agent asking (sourceTaskId)
+	// gets the launch dialog with its auto-approve countdown; a person at a
+	// terminal acts directly, as if they had clicked the button.
+	"task.hibernate": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const requester = await sessionActionRequester(params);
+		const { hibernateCliTask } = await import("../cli-task-session");
+		return hibernateCliTask({ project, task, requester });
+	},
+
+	"task.wake": async (params) => {
+		const mode = params.mode;
+		if (mode !== "shell" && mode !== "resume") throw new Error('mode must be "shell" or "resume"');
+		const { project, task } = await resolveTaskFromParams(params);
+		const requester = await sessionActionRequester(params);
+		const { wakeCliTask } = await import("../cli-task-session");
+		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true });
 	},
 
 	// Agent-initiated request to complete a task. Blocks until the user

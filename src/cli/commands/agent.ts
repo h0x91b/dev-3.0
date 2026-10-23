@@ -98,7 +98,11 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 		throw err;
 	}
 	if (!resp.ok) return exitError(resp.error || "Failed to resume the task");
-	const result = resp.data as CliResumeOutcome;
+	reportResumeOutcome(resp.data as CliResumeOutcome, json);
+}
+
+/** Shared with `dev3 task wake --resume`, which reports the same outcome with the same exit codes. */
+export function reportResumeOutcome(result: CliResumeOutcome, json: boolean): void {
 	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	switch (result.outcome) {
 		case "resumed": {

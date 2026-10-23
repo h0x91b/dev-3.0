@@ -127,6 +127,34 @@ describe("AgentLaunchRequestModal", () => {
 		expect(api.request.updateAgentLaunchChoice).not.toHaveBeenCalled();
 	});
 
+	it("shows a hibernate request with what survives, no agent choice, and its own countdown", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({
+			canAddVariants: false,
+			autoApproveAt: Date.now() + 5 * 60_000,
+			sessionAction: { kind: "hibernate", paneCount: 2 },
+		}));
+		expect(await screen.findByRole("heading", { name: "Agent wants to hibernate this task" })).toBeInTheDocument();
+		const body = screen.getByTestId("agent-launch-session-action");
+		expect(body).toHaveTextContent("the terminal scrollback is not");
+		expect(body).toHaveTextContent("This task is running 2 agents");
+		expect(screen.getByTestId("agent-launch-countdown")).toHaveTextContent(/Hibernates on its own in (5:00|4:59)/);
+		expect(screen.queryByTestId("agent-config-picker")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("agent-launch-add-variant")).not.toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toHaveTextContent("Hibernate");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, undefined);
+	});
+
+	it("shows a plain-shell wake request", async () => {
+		renderModal(makeRequest({ canAddVariants: false, sessionAction: { kind: "wake-shell" } }));
+		expect(await screen.findByRole("heading", { name: "Agent wants to wake this task with a plain shell" })).toBeInTheDocument();
+		expect(screen.getByTestId("agent-launch-session-action")).toHaveTextContent("no agent");
+		expect(screen.getByTestId("agent-launch-accept")).toHaveTextContent("Wake with a plain shell");
+	});
+
 	it("names the asking task and the task to be launched", async () => {
 		renderModal();
 
