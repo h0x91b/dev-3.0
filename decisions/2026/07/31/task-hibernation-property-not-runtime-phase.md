@@ -1,3 +1,5 @@
+Superseded in part on 2026-10-23 by `decisions/2026/10/23/cli-hibernate-wake-through-launch-approval.md`: waking with a plain shell now uses `wakeTaskShell` (no agent, `sessionState` kept), not `restartTask`, and the CLI can hibernate and wake.
+
 # 184 — Task hibernation is a property, not a runtime phase
 
 ## Context

@@ -2500,7 +2500,7 @@ function App() {
 	) => {
 		const { requestId } = request;
 		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
-		if (approved && !request.spawn && !request.resume) {
+		if (approved && !request.spawn && !request.resume && !request.sessionAction) {
 			trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });
 			const variantCount = launch?.variants.length ?? 1;
 			if (variantCount > 1) trackEvent("task_spawned", { agent_requested: true, variant_count: variantCount });

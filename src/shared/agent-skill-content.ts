@@ -290,17 +290,17 @@ It **inherits your priority** unless it has its own; only the user may change th
 
 Use it only for work that belongs in its own session — never to escape your scope, never several at once: each interrupts the user.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID. \`dev3 agent list\` gives \`--agent\` / \`--config\` preset IDs; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task, not the pane. Terminal gone → \`dev3 agent resume\` first.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task, not the pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
 
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; from a worktree it arrives labeled as agent traffic carrying the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 
 - **\`--subject\` is mandatory** — the line the agent-traffic view (\`⇧⌘M\`) shows for that row; without one the command exits 17. About 6 words, 80 characters max, never repeating who is talking (the row already shows \`#1722 → #1141\`). Good: \`"PR 1577 merged, main green"\`. Bad: \`"Seq 1722 -> Coordinator: CI verdict"\`.
 - For real dependencies only — hand over an interface, ask for a result, report back when yours is ready. Never chatter, never nagging a peer already working.
-- One task is one inbox: it lands in that task's agent pane, never a shell split, so a task running several agents cannot be addressed pane by pane.
+- One task is one inbox: it lands in the task's agent pane, never a shell split; several agents in one task cannot be addressed pane by pane.
 - A peer on ANOTHER project needs \`--project <id>\`, else a bare \`--task seq:<N>\` is looked up on your own board and reported as "task not found". An incoming message's reply command already includes it when needed.
 - A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`<seq>-<i>\` suffix) rather than digging out its UUID.
 - **A long message arrives as a file path, not as text.** Anything over ~1 KB typed is written next to the receiving task and the envelope carries only \`Read it in full and act on it: <path>\` — read that file before doing anything with it. Nothing typed into your pane exceeds one terminal read, so a \`</dev3-ai-message>\` with no \`<dev3-ai-message>\` opening line above it means a delivery lost its head anyway: do not act on the tail, say the delivery arrived truncated and ask the sender to resend.
-- Nothing goes in on arrival: it waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane, ~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s if the user has been typing, and lands at once when they press Enter. Messages arriving together become ONE turn and none corrupts a line being typed — so send three thoughts as three messages, and expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
+- Delivery waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane (~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s while the user types, at once on Enter). Messages arriving together become ONE turn and never corrupt a typed line — send three thoughts as three messages; expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
 `;
 
 // Full manual status management — for agents without hooks (Cursor, Gemini, etc.)

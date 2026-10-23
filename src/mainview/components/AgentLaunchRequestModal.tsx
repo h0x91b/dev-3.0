@@ -189,8 +189,11 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	// list: the first offending row names itself in the warning, and any of them
 	// blocks the launch — a group that starts three worktrees and two agents is
 	// worse than a launch that refuses.
-	// A resume restores the saved harnesses and offers no choice, so there is nothing to vet here.
-	const missing = request.resume ? undefined : variants
+	// A resume restores the saved harnesses and a session action starts none, so
+	// neither offers a choice and there is nothing to vet here.
+	const sessionAction = request.sessionAction;
+	const noAgentChoice = request.resume != null || sessionAction != null;
+	const missing = noAgentChoice ? undefined : variants
 		.map((variant, index) => ({ index, agent: agents.find((a) => a.id === variant.agentId) }))
 		.find(({ agent }) => agent && agentAvailability.some((a) => a.agentId === agent.id && !a.installed));
 	const selectedAgent = missing?.agent;
@@ -207,7 +210,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	function handleLaunch() {
 		if (agentNotInstalled) return;
 		setLaunching(true);
-		onRespond(true, request.resume ? undefined : { variants, ...(request.spawn ? {} : { priority }) });
+		onRespond(true, noAgentChoice ? undefined : { variants, ...(request.spawn ? {} : { priority }) });
 	}
 
 	// The backdrop deliberately does not dismiss: a CLI is blocked on this answer,
@@ -246,7 +249,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					</div>
 
 					<h2 id="agent-launch-title" className="text-fg text-lg font-semibold">
-						{request.resume ? t("agentLaunch.titleResume") : request.spawn ? t("agentLaunch.titleSpawn") : request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
+						{sessionAction?.kind === "hibernate" ? t("agentLaunch.titleHibernate")
+							: sessionAction?.kind === "wake-shell" ? t("agentLaunch.titleWakeShell")
+							: request.resume ? t("agentLaunch.titleResume") : request.spawn ? t("agentLaunch.titleSpawn") : request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
 					</h2>
 
 					<p className="text-fg-2 text-sm leading-relaxed">
@@ -262,7 +267,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						seqLabel={request.subject.seqLabel}
 						projectName={request.subject.projectName}
 						priority={priority}
-						onPriorityChange={request.spawn || request.resume ? undefined : (next) => {
+						onPriorityChange={request.spawn || noAgentChoice ? undefined : (next) => {
 							setPriority(next);
 							reportChoice({ variants, priority: next });
 						}}
@@ -278,12 +283,23 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					{request.spawn?.handoff && <p className="text-fg-3 text-xs">{t("agentLaunch.spawnHandoff")}</p>}
 
 					{/* Only speaks up under real pressure, and the forecast scales with
-					    the variant count — same banner the Launch modal shows. */}
-					<div className="empty:hidden">
-						<MemoryPressureBanner launchCount={request.resume ? request.resume.panes.length : variants.length} />
-					</div>
+					    the variant count — same banner the Launch modal shows. A session
+					    action starts no agent, so it has nothing to forecast. */}
+					{!sessionAction && (
+						<div className="empty:hidden">
+							<MemoryPressureBanner launchCount={request.resume ? request.resume.panes.length : variants.length} />
+						</div>
+					)}
 
-					{request.resume ? (
+					{sessionAction ? (
+						<p data-testid="agent-launch-session-action" className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">
+							{sessionAction.kind === "wake-shell"
+								? t("agentLaunch.wakeShellNote")
+								: sessionAction.paneCount > 1
+									? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(sessionAction.paneCount) })}`
+									: t("task.hibernateConfirmBody")}
+						</p>
+					) : request.resume ? (
 						<div className="space-y-2" data-testid="agent-launch-resume-panes">
 							<p className="text-fg-3 text-xs">{t("agentLaunch.resumeNote")}</p>
 							<ul className="space-y-1.5">
@@ -405,7 +421,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							// drown everything else in the dialog.
 							aria-live="off"
 						>
-							{t(request.resume ? "agentLaunch.autoResumeIn" : "agentLaunch.autoApproveIn", { time: formatCountdown(secondsLeft) })}
+							{t(sessionAction?.kind === "hibernate" ? "agentLaunch.autoHibernateIn"
+								: sessionAction?.kind === "wake-shell" ? "agentLaunch.autoWakeIn"
+								: request.resume ? "agentLaunch.autoResumeIn" : "agentLaunch.autoApproveIn", { time: formatCountdown(secondsLeft) })}
 						</p>
 					)}
 					{/* A countdown that simply vanishes reads as a glitch; say why it is
@@ -449,7 +467,11 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						    three-variant group under a bare "Launch" is a surprise the user
 						    pays for in worktrees. */}
 						{launching
-							? request.resume ? t("agentLaunch.resuming") : t("agentLaunch.launching")
+							? sessionAction?.kind === "hibernate" ? t("agentLaunch.hibernating")
+								: sessionAction?.kind === "wake-shell" ? t("agentLaunch.waking")
+								: request.resume ? t("agentLaunch.resuming") : t("agentLaunch.launching")
+							: sessionAction?.kind === "hibernate" ? t("task.hibernateConfirmCta")
+							: sessionAction?.kind === "wake-shell" ? t("terminal.wakeShell")
 							: request.resume ? t("agentLaunch.resume")
 							: variants.length > 1
 								? t.plural("agentLaunch.launchVariants", variants.length)

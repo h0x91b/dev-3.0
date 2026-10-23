@@ -270,8 +270,9 @@ export async function launchTaskPty(
 		branchName?: string;
 		accountId?: string | null;
 		codexHome?: string;
-		/** Open the pane with this line instead of the agent, keeping the stored panes untouched. */
-		agentRefusal?: string;
+		/** Open a plain shell headed by this line instead of the agent, keeping the stored panes
+		 *  untouched: a Codex reopen that cannot pick a conversation, or a wake with a plain shell. */
+		shellNotice?: string;
 		/** A resume whose pane has no conversation left of its own: start it on this
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
@@ -339,7 +340,7 @@ export async function launchTaskPty(
 		// snapshots fall back to the task selection; undefined uses the default.
 		const cmdOptions: agents.CommandOptions = { accountId };
 		let freshSessionId: string | null = null;
-		if (!resume && !skipSessionPersist && !opts?.agentRefusal) {
+		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
 		}
 
@@ -356,10 +357,10 @@ export async function launchTaskPty(
 			cmdOptions.sessionId = freshSessionId;
 		}
 
-		if (opts?.agentRefusal) {
-			// A refusal is a normal launch that runs no agent: throwing here would
-			// fail the preparation and let its cleanup remove the worktree.
-			tmuxCmd = launchDialect().print(opts.agentRefusal);
+		if (opts?.shellNotice) {
+			// A normal launch that runs no agent: throwing instead would fail a
+			// preparation and let its cleanup remove the worktree.
+			tmuxCmd = launchDialect().print(opts.shellNotice);
 			extraEnv = {};
 		} else if (agentId) {
 			log.info("Resolving command for agent", { agentId, configId });
@@ -396,7 +397,7 @@ export async function launchTaskPty(
 
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
-		if (!skipSessionPersist && !opts?.agentRefusal) {
+		if (!skipSessionPersist && !opts?.shellNotice) {
 			const effectiveSessionId = resumeFresh ? opts?.freshSessionId
 				: resume ? sessionId
 				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null);

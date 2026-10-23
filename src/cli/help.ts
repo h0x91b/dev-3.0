@@ -9,7 +9,7 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_VIDEO_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
-import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -226,6 +226,36 @@ const COMMANDS: CommandHelp[] = [
 					"Without an id, targets the current worktree's task.",
 					"Honors the split-vs-fullscreen task open-mode preference.",
 					"Reopens a window when the app sits window-less in the dock.",
+				],
+			},
+			{
+				name: "hibernate",
+				usage: "dev3 task hibernate [<id>] [--task <id>] [--json]",
+				summary: "Park a task to free memory — the session bar's Hibernate button.",
+				details: [
+					"Stops the agent, the terminal and the dev server and releases the ports. Keeps the",
+					"worktree, uncommitted changes, branch, notes, PR state and the agent's transcript;",
+					"terminal scrollback is lost. The card greys out and sinks below live tasks.",
+					"From a task worktree (an agent asking) the user approves it in the app first; the",
+					`launch auto-approval countdown applies. Decline exits ${CLI_EXIT_CODE_HIBERNATE_DECLINED} and stops nothing.`,
+					"Hibernating your own task ends this session once approved.",
+					"Outside a task worktree, hibernates directly, as if the user had clicked the button.",
+					`Already hibernated, a draft, not active, or no live terminal exits ${CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE}.`,
+					"--json          Print the outcome; a refusal carries a `reason`.",
+				],
+			},
+			{
+				name: "wake",
+				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] | --shell [--json]",
+				summary: "Wake a hibernated task — the wake screen's two buttons.",
+				details: [
+					"--resume        Wake and resume the agent's saved conversation; same outcome, output",
+					`                and exit codes as dev3 agent resume (${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} / ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}).`,
+					"--shell         Wake with a plain shell: no agent starts, and the saved conversation",
+					"                stays for a later Resume Session / dev3 agent resume.",
+					"The dev server stays down either way; start it with dev3 dev-server start.",
+					`From another task's worktree, asks the user to approve in the app; decline exits ${CLI_EXIT_CODE_LAUNCH_DECLINED}.`,
+					`A task that is not hibernated exits ${CLI_EXIT_CODE_TASK_NOT_HIBERNATED}; nothing is launched.`,
 				],
 			},
 		],

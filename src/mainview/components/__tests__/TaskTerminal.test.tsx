@@ -11,6 +11,7 @@ vi.mock("../../rpc", () => ({
 			getPtyUrl: vi.fn(),
 			resumeTask: vi.fn(),
 			restartTask: vi.fn(),
+			wakeTaskShell: vi.fn(),
 			rerunSetupScript: vi.fn(),
 			dismissSetupFailure: vi.fn(),
 			dismissCloneFailures: vi.fn(),
@@ -503,6 +504,27 @@ describe("TaskTerminal", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
 			});
+		});
+
+		it("wakes a hibernated task into a plain shell, never restarting its agent", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				hibernated: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			mockedApi.request.wakeTaskShell.mockResolvedValue("ws://localhost:9999?session=t1");
+
+			await act(async () => {
+				renderTerminal();
+			});
+			await waitFor(() => expect(screen.getByText("Wake with a plain shell")).toBeInTheDocument());
+			await act(async () => {
+				await user.click(screen.getByText("Wake with a plain shell"));
+			});
+
+			expect(mockedApi.request.wakeTaskShell).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
 		});
 
 		it("calls restartTask when clicking Start Fresh", async () => {

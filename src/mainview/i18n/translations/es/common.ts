@@ -54,6 +54,13 @@ const common = {
 	"agentLaunch.decline": "Rechazar",
 	"agentLaunch.autoApproveIn": "Se inicia solo en {time}",
 	"agentLaunch.autoResumeIn": "Se reanuda solo en {time}",
+	"agentLaunch.titleHibernate": "El agente quiere hibernar esta tarea",
+	"agentLaunch.titleWakeShell": "El agente quiere despertar esta tarea con una shell simple",
+	"agentLaunch.wakeShellNote": "Abre la terminal de la tarea con una shell y sin agente. La conversación guardada se conserva, así que el agente puede reanudarse más tarde.",
+	"agentLaunch.hibernating": "Hibernando…",
+	"agentLaunch.waking": "Despertando…",
+	"agentLaunch.autoHibernateIn": "Se hiberna sola en {time}",
+	"agentLaunch.autoWakeIn": "Se despierta sola en {time}",
 	"agentLaunch.autoApproveHeld": "Esperando tu respuesta",
 
 	// Navegación estilo Vimium

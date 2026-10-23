@@ -122,7 +122,7 @@ const kanban = {
 	"task.hibernatedToastMem": "Task hibernated — about {mem} freed.",
 	"task.hibernateConfirmTitle": "Kill this session?",
 	"task.hibernateConfirmBody": "The agent, the terminal and the dev server are stopped. Your worktree, uncommitted changes, branch and the agent transcript are kept — the terminal scrollback is not, and it does not come back.",
-	"task.hibernateConfirmMulti": "This task is running {count} agents. They all return only if you wake it with \u201cResume agent conversation\u201d — waking with a plain shell drops every extra agent for good.",
+	"task.hibernateConfirmMulti": "This task is running {count} agents. Waking it with \u201cWake and resume agent\u201d brings them all back; a plain shell starts none of them, and their conversations stay saved.",
 	"task.hibernateConfirmCta": "Hibernate",
 	"task.hibernateFailed": "Couldn’t hibernate the task — try again. ({error})",
 	"task.delete": "Delete",

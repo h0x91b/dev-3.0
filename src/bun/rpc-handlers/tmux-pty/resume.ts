@@ -13,6 +13,7 @@ import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { nativeTaskPanesAlive, stopNativeTaskPanes } from "../../native-task-panes";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
+import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
@@ -432,5 +433,32 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
 	log.info("← restartTask", { url });
+	return url;
+}
+
+/**
+ * The wake screen's "plain shell": the task's terminal comes back with a shell
+ * and no agent. Unlike {@link restartTask} it neither re-runs the brief nor
+ * clears `sessionState`, so every saved pane can still be resumed later.
+ */
+export async function wakeTaskShell(params: { taskId: string }): Promise<string> {
+	log.info("→ wakeTaskShell", { taskId: params.taskId.slice(0, 8) });
+	const { task, project } = await findTaskAcrossProjects(params.taskId);
+	if (!task || !project || !task.worktreePath) {
+		throw new Error(`Cannot wake: task ${params.taskId} not found or has no worktree`);
+	}
+	if (!task.hibernated) throw new Error(`Cannot wake: task ${params.taskId} is not hibernated`);
+	await wakeIfHibernated(project, task);
+	if (pty.hasSession(params.taskId)) {
+		await pty.destroySessionAwaited(params.taskId);
+	}
+	const resolvedProject = project.kind === "virtual"
+		? project
+		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	await launchTaskPty(resolvedProject, task, task.worktreePath, null, null, false, false, { shellNotice: WAKE_SHELL_NOTICE });
+	await markTerminalAttached(project, task);
+	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+	log.info("← wakeTaskShell", { url });
 	return url;
 }
