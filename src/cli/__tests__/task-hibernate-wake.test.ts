@@ -87,6 +87,14 @@ describe("task hibernate", () => {
 		expect(stderrOutput).toContain("Nothing was stopped");
 	});
 
+	// `--json seq:12` parses as json="seq:12" with NO positional left, which
+	// would fall back to the worktree's own task and kill THIS session.
+	it("refuses a valueless flag that swallowed the id", async () => {
+		expect(await exitCode(handleTask("hibernate", args([], { json: "seq:12" }), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(stderrOutput).toContain("--json takes no value");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("prints the outcome as JSON with --json", async () => {
 		const outcome = { outcome: "hibernated", taskId: OTHER_ID, seq: 12, freedRssBytes: null };
 		mockSend.mockResolvedValue(ok(outcome));
@@ -100,6 +108,12 @@ describe("task wake", () => {
 		expect(await exitCode(handleTask("wake", args([OTHER_ID]), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(await exitCode(handleTask("wake", args([OTHER_ID], { resume: "true", shell: "true" }), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(await exitCode(handleTask("wake", args([OTHER_ID], { shell: "true", "allow-agent-latest": "true" }), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it.each(["resume", "shell", "allow-agent-latest", "json"])("refuses --%s when it swallowed the id", async (flag) => {
+		expect(await exitCode(handleTask("wake", args([], { [flag]: "seq:12", shell: flag === "shell" ? "seq:12" : "true" }), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(stderrOutput).toContain(`--${flag} takes no value`);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 

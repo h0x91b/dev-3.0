@@ -1083,6 +1083,20 @@ async function sendSessionAction(socketPath: string, method: string, params: Rec
 	}
 }
 
+/**
+ * A valueless flag swallows the next word, so `--json seq:12` leaves no
+ * positional and the id falls back to the worktree's own task — the wrong
+ * session gets hibernated or woken, silently.
+ */
+function rejectFlagValues(args: ParsedArgs, flags: readonly string[], usage: string): void {
+	for (const flag of flags) {
+		const value = args.flags[flag];
+		if (value !== undefined && value !== "true") {
+			exitUsage(`--${flag} takes no value (got "${value}"). The id goes first.\n${usage}`);
+		}
+	}
+}
+
 function sessionActionParams(args: ParsedArgs, context: CliContext | null, usage: string): Record<string, unknown> {
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) exitUsage(usage);
@@ -1100,8 +1114,10 @@ function sessionActionParams(args: ParsedArgs, context: CliContext | null, usage
  */
 async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "json"]);
+	const usage = "Usage: dev3 task hibernate [<id>|--task <id>] [--json]";
+	rejectFlagValues(args, ["json"], usage);
 	const json = "json" in args.flags;
-	const params = sessionActionParams(args, context, "Usage: dev3 task hibernate [<id>|--task <id>] [--json]");
+	const params = sessionActionParams(args, context, usage);
 	const ownSession = targetsOwnSession(String(params.taskId), args, context);
 	if (params.sourceTaskId) {
 		process.stderr.write(ownSession
@@ -1127,6 +1143,7 @@ async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, contex
 async function wakeTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "json"]);
 	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] | --shell [--json]";
+	rejectFlagValues(args, ["resume", "shell", "allow-agent-latest", "json"], usage);
 	const resume = "resume" in args.flags;
 	const shell = "shell" in args.flags;
 	if (resume === shell) exitUsage(`Pass exactly one of --resume or --shell.\n${usage}`);

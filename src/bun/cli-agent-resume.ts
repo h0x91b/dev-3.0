@@ -1,10 +1,7 @@
-import type { AgentLaunchRequest, Project, Task } from "../shared/types";
-import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
+import type { Project, Task } from "../shared/types";
+import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
-import { createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
-import { getTask } from "./data";
-import { loadSettings } from "./settings";
-import { getPushMessage } from "./rpc-handlers/shared-pure";
+import { askSessionApproval, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
 import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { assertTaskWorkspacePresent } from "./task-workspace-guard";
@@ -17,8 +14,6 @@ interface ResumeOptions {
 	/** Let a pane with no saved id resume the harness's own latest conversation. */
 	allowAgentLatest: boolean;
 }
-
-const pendingResumes = new Map<string, { signature: string; result: Promise<CliResumeOutcome> }>();
 
 function unavailable(task: Task, reason: ResumeUnavailableReason, message: string, panes?: ResumePaneReport[]): CliResumeOutcome {
 	return { outcome: "unavailable", taskId: task.id, seq: task.seq, reason, message, ...(panes ? { panes } : {}) };
@@ -42,22 +37,13 @@ async function preflight(project: Project, task: Task): Promise<{ refused: CliRe
 	return { panes: saved.panes.map(({ agentId, configId, sessionId }) => ({ agentId, configId, sessionId })) };
 }
 
-async function askUser(project: Project, task: Task, requester: Task, panes: ResumeDialogPane[]): Promise<{ approved: boolean; stale?: boolean }> {
-	const push = getPushMessage();
-	if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
-	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error("Another launch approval is pending for this task — answer it before resuming.");
-	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs: agentLaunchAutoApproveMs(await loadSettings()) });
-	const request: AgentLaunchRequest = {
-		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
-		scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
-		subject: buildTaskDialogSubject(task, project), defaultPriority: task.priority ?? DEFAULT_PRIORITY,
-		canAddVariants: false, autoApproveAt, resume: { panes },
-	};
-	setAgentLaunchDialog(request);
-	push("agentLaunchRequested", request);
-	// Any agent pick a dialog reports back is ignored: a resume restores the saved harness, config and account.
-	const answer = await decision;
-	return { approved: answer.approved, ...(answer.stale ? { stale: true } : {}) };
+/** A resume restores the saved harness, config and account, so the dialog offers no agent choice. */
+function askUser(project: Project, task: Task, requester: Task, panes: ResumeDialogPane[]) {
+	return askSessionApproval({
+		project, task, requester,
+		subject: { resume: { panes } },
+		alreadyPending: "Another launch approval is pending for this task — answer it before resuming.",
+	});
 }
 
 async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
@@ -68,10 +54,7 @@ async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	if (requester) {
 		const answer = await askUser(project, task, requester, checked.panes);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
-		current = await getTask(project, task.id);
-		if (current.worktreePath !== task.worktreePath || current.lifecycleStartedAt !== task.lifecycleStartedAt) {
-			throw new Error("The target task's run changed while waiting — nothing was resumed.");
-		}
+		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was resumed.");
 		// Somebody may have clicked Resume Session while the dialog was open.
 		const again = await preflight(project, current);
 		if ("refused" in again) return again.refused;
@@ -86,15 +69,10 @@ async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	}
 }
 
+const joinOrRun = perTaskJoiner("Another resume request is pending for this task — wait for its answer first.");
+
 /** Retries join the whole operation, approval included: one answer resumes once. */
-export async function resumeCliAgent(opts: ResumeOptions): Promise<CliResumeOutcome> {
+export function resumeCliAgent(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	const signature = JSON.stringify({ requester: opts.requester?.id ?? null, allowAgentLatest: opts.allowAgentLatest });
-	const existing = pendingResumes.get(opts.task.id);
-	if (existing) {
-		if (existing.signature !== signature) throw new Error("Another resume request is pending for this task — wait for its answer first.");
-		return existing.result;
-	}
-	const result = performResume(opts);
-	pendingResumes.set(opts.task.id, { signature, result });
-	try { return await result; } finally { pendingResumes.delete(opts.task.id); }
+	return joinOrRun(opts.task.id, signature, () => performResume(opts));
 }

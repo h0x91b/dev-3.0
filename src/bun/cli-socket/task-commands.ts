@@ -17,20 +17,11 @@ import { taskPeek } from "../task-peek";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
 	return import("../project-registration");
-}
-
-/** The task whose agent sent the request; null for a person at a terminal. */
-async function sessionActionRequester(params: Record<string, unknown>): Promise<Task | null> {
-	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
-	if (!sourceId) return null;
-	const found = await resolveTaskAcrossProjects(sourceId);
-	if (!found) throw new Error("Unknown requesting task — cannot attribute the request.");
-	return found.task;
 }
 
 function stringList(value: unknown): string[] {
@@ -564,7 +555,7 @@ export const taskHandlers: Record<string, Handler> = {
 	// terminal acts directly, as if they had clicked the button.
 	"task.hibernate": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const requester = await sessionActionRequester(params);
+		const requester = await resolveRequesterTask(params);
 		const { hibernateCliTask } = await import("../cli-task-session");
 		return hibernateCliTask({ project, task, requester });
 	},
@@ -573,7 +564,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const mode = params.mode;
 		if (mode !== "shell" && mode !== "resume") throw new Error('mode must be "shell" or "resume"');
 		const { project, task } = await resolveTaskFromParams(params);
-		const requester = await sessionActionRequester(params);
+		const requester = await resolveRequesterTask(params);
 		const { wakeCliTask } = await import("../cli-task-session");
 		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true });
 	},
