@@ -1675,6 +1675,24 @@ export async function getHeadSha(worktreePath: string): Promise<string | null> {
 	return result.stdout.trim() || null;
 }
 
+/**
+ * What every remote last had for `branch` (`refs/remotes/<remote>/<branch>`): the
+ * commits it has pushed. Not the upstream, which on a task branch is usually `origin/main`.
+ */
+export async function getRemoteBranchTips(worktreePath: string, branch: string): Promise<string[]> {
+	const result = await run(
+		["git", "for-each-ref", "--format=%(refname) %(objectname)", `refs/remotes/*/${branch}`],
+		worktreePath,
+	);
+	if (!result.ok) return [];
+	// The glob also matches a deeper path (`refs/remotes/a/b/<branch>`); keep only `<remote>/<branch>`.
+	return result.stdout.split("\n").flatMap((line) => {
+		const [ref = "", sha = ""] = line.trim().split(" ");
+		const rest = ref.slice("refs/remotes/".length);
+		return sha && rest.slice(rest.indexOf("/") + 1) === branch ? [sha] : [];
+	});
+}
+
 export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
 	const result = await run(["git", "status", "--porcelain"], worktreePath);
 	if (!result.ok) return false;

@@ -33,6 +33,7 @@ export const CLI_EXIT_CODE_RESUME_ALREADY_RUNNING = 31;
 export const CLI_EXIT_CODE_RESUME_UNAVAILABLE = 32;
 export const CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED = 33;
 export const CLI_EXIT_CODE_SPACE_REF_INVALID = 34;
+export const CLI_EXIT_CODE_PR_WATCH_NO_PR = 35;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -239,5 +240,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_SPACE_REF_INVALID,
 		description:
 			"A `dev3 projects add|clone` or `dev3 spaces …` command named a space it cannot use, so NOTHING was added, cloned, created or changed: a `--space` / positional space matched no space or more than one (a name two spaces share — pass the id), or `--new-space` / `spaces create` named a space that already exists (names compare case-insensitively). The message lists the existing spaces with their ids. Distinct from exit 1 so a caller can fall back to creating the space (`--new-space`, `dev3 spaces create`) or to joining the existing one, instead of treating it as a failed registration.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PR_WATCH_NO_PR",
+		code: CLI_EXIT_CODE_PR_WATCH_NO_PR,
+		description:
+			"`dev3 pr watch` found no pull request to watch, so NOTHING was subscribed: the task's branch has no open PR (or GitHub did not answer in time), or `--pr <N>` is not that open PR. Watching follows the open PR of the task's own branch only; a review target is not supported. Open the PR first (`dev3 pr create`), then run it again. Distinct from exit 1 so an agent that opened a PR a moment ago can retry once GitHub lists it instead of treating this as a failed command.",
 	},
 ] as const;

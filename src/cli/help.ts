@@ -989,7 +989,7 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "pr",
-		summary: "Open a pull request for the branch checked out here, and set its auto-merge (needs an authenticated `gh`).",
+		summary: "Open a pull request for the branch checked out here, set its auto-merge, or watch it (create and auto-merge need an authenticated `gh`).",
 		subcommands: [
 			{
 				name: "create",
@@ -1026,6 +1026,27 @@ const COMMANDS: CommandHelp[] = [
 					"The pull request goes BEFORE the switch (`dev3 pr auto-merge 1722 --off`):",
 					"a bare --off swallows the next token, so `--off 1722` is refused, not guessed.",
 					"`gh` missing or logged out exits 23, a blocked TLS check 28, same as `pr create`.",
+				],
+			},
+			{
+				name: "watch",
+				usage: "dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off|--list]",
+				summary: "Ask dev3 to message you when this task's PR finishes CI or is merged; returns at once.",
+				details: [
+					"--until ci       (default) One message when every check GitHub lists for the PR's current",
+					"                 head has finished, green or red; also when the PR is merged or closed first.",
+					"                 Checks GitHub has not listed yet cannot be waited for.",
+					"--until merged   One message when the PR is merged or closed. A red CI on the way is",
+					"                 reported once per head and the watch stays.",
+					"--pr <N>         A safety check: must be the open PR of this task's own branch. Watching",
+					"                 follows that PR only (a review target is not supported). With no open PR,",
+					"                 or any other number, it exits 35 and subscribes nothing.",
+					"--off            Remove every watch of the task. --list prints them.",
+					"The command stores the subscription in the app and exits; dev3 types the message into",
+					"this agent when it is quiet. Never poll `gh` or set a timer for it.",
+					"A repo with no CI checks never ends a `ci` watch (no run to finish): use --until merged.",
+					"A new push moves the watch to the new head. One watch per --until; repeating replaces it.",
+					"Needs the running app.",
 				],
 			},
 		],

@@ -52,6 +52,7 @@ import {
 } from "./service";
 import { activitiesFor } from "./machine";
 import { lifecycleStateFromTask } from "./state";
+import { runPrWatches } from "../pr-watch-runner";
 
 // Cap the PR-detection `gh` call: it holds a semaphore slot for its whole
 // duration, so a hung gh on a slow network must not stall branch-status globally.
@@ -399,8 +400,10 @@ export async function persistProjectPrIdentities(project: Project, prs: PRInfo[]
 	}
 }
 
-function prPollInterval(isActiveForeground: boolean, taskId: string): number {
-	return lifecycleActorRuntime(taskId).prPending
+function prPollInterval(isActiveForeground: boolean, task: Task): number {
+	// An agent waiting on a `dev3 pr watch` is waiting while the user looks elsewhere, so the 60 s cadence holds in the background too.
+	if ((task.prWatches?.length ?? 0) > 0) return ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS;
+	return lifecycleActorRuntime(task.id).prPending
 		? intervalForTask(isActiveForeground, ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS, BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS)
 		: intervalForTask(isActiveForeground, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
 }
@@ -651,6 +654,14 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 		signalKey,
 		...(signalReason ? { signalReason } : {}),
 	});
+	if (task.prWatches?.length) {
+		try {
+			const headRefOid = typeof pr.headRefOid === "string" ? pr.headRefOid : null;
+			await runPrWatches(project, task.id, { number: prNumber, state: mergeState.state, headRefOid, checks }, prUrl ?? "");
+		} catch (err) {
+			log.warn("PR watch evaluation failed", { taskId: task.id.slice(0, 8), error: String(err) });
+		}
+	}
 	if (mergeState.state === "MERGED" && await mergedPrCoversHead(project, task, pr)) {
 		const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 		await dispatchLifecycleFinding(project, task, {
@@ -694,7 +705,7 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 		const isActiveFg = foreground && project.id === activeProjectId;
 		const dueTasks = candidates.filter((task) => {
 			liveTaskIds.add(task.id);
-			const interval = prPollInterval(isActiveFg, task.id);
+			const interval = prPollInterval(isActiveFg, task);
 			const runtime = lifecycleActorRuntime(task.id);
 			let scheduled = runtime.prNextDue;
 			if (scheduled === undefined) {
@@ -717,7 +728,7 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
 			} finally {
-				lifecycleActorRuntime(task.id).prNextDue = nextDueAfterRun(now, prPollInterval(isActiveFg, task.id), scheduleRandom);
+				lifecycleActorRuntime(task.id).prNextDue = nextDueAfterRun(now, prPollInterval(isActiveFg, task), scheduleRandom);
 			}
 		}
 	}

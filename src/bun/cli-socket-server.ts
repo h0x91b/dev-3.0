@@ -9,6 +9,7 @@ import { automationHandlers } from "./cli-socket/automation-commands";
 import { boardMetadataHandlers } from "./cli-socket/board-metadata-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
+import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
 import { log, type Handler } from "./cli-socket/shared";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
@@ -56,6 +57,7 @@ const handlers: Record<string, Handler> = {
 	...automationHandlers,
 	...uiHandlers,
 	...messageHandlers,
+	...prWatchHandlers,
 	...systemHandlers,
 	...taskHandlers,
 };

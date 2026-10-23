@@ -170,6 +170,7 @@ function resetTaskUpdates(): Partial<Task> {
 		// Messages queued for the stopped agent belong to the run that ended; a
 		// deferred start (`scheduledLaunch`) is the card's own and stays.
 		scheduledMessages: null,
+		prWatches: null,
 		lifecycleStartedAt: undefined,
 	};
 }

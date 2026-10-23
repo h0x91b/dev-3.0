@@ -28,38 +28,38 @@ export function parseGitHubPullRequestUrl(url: string): { host: string; owner: s
  * `success`. Empty / unrecognized ⇒ `null` (no checks → no badge).
  */
 export function rollupCiStatus(rollup: unknown): PRCIStatus | null {
-	if (!Array.isArray(rollup) || rollup.length === 0) return null;
-	let anyPending = false;
-	let sawKnown = false;
-	for (const check of rollup) {
-		if (!check || typeof check !== "object") continue;
-		const c = check as Record<string, unknown>;
-		// CheckRun: { status: COMPLETED|IN_PROGRESS|QUEUED..., conclusion: SUCCESS|FAILURE|... }
-		// StatusContext: { state: SUCCESS|FAILURE|PENDING|ERROR }
-		const status = typeof c.status === "string" ? c.status.toUpperCase() : null;
-		const conclusion = typeof c.conclusion === "string" ? c.conclusion.toUpperCase() : null;
-		const state = typeof c.state === "string" ? c.state.toUpperCase() : null;
-		sawKnown = true;
-		if (status && status !== "COMPLETED") {
-			anyPending = true;
-			continue;
-		}
-		const verdict = conclusion ?? state;
-		if (!verdict) {
-			anyPending = true;
-			continue;
-		}
-		if (verdict === "PENDING" || verdict === "EXPECTED" || verdict === "QUEUED" || verdict === "IN_PROGRESS") {
-			anyPending = true;
-			continue;
-		}
-		// SUCCESS / NEUTRAL / SKIPPED are non-blocking; everything else is a failure.
-		if (verdict !== "SUCCESS" && verdict !== "NEUTRAL" && verdict !== "SKIPPED") {
-			return "failure";
-		}
+	const checks = normalizeChecks(rollup);
+	if (checks.length === 0) return null;
+	const { failed, pending } = summarizeChecks(checks);
+	if (failed.length > 0) return "failure";
+	return pending > 0 ? "pending" : "success";
+}
+
+const PENDING_VERDICTS = new Set(["PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS"]);
+// SUCCESS / NEUTRAL / SKIPPED are non-blocking; everything else is a failure.
+const PASSING_VERDICTS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+
+/**
+ * One check as passed, failed or still running. A CheckRun carries
+ * `status` + `conclusion`; a StatusContext carries only `state`, which
+ * `normalizeChecks` files under `conclusion`.
+ */
+function classifyCheck(check: PRCheckInfo): "passed" | "failed" | "pending" {
+	if (check.status && check.status !== "COMPLETED") return "pending";
+	if (!check.conclusion || PENDING_VERDICTS.has(check.conclusion)) return "pending";
+	return PASSING_VERDICTS.has(check.conclusion) ? "passed" : "failed";
+}
+
+/** Counts and failed names for a list of checks; a run is finished only when `pending` is 0. */
+export function summarizeChecks(checks: PRCheckInfo[]): { total: number; pending: number; failed: string[] } {
+	let pending = 0;
+	const failed: string[] = [];
+	for (const check of checks) {
+		const verdict = classifyCheck(check);
+		if (verdict === "pending") pending += 1;
+		else if (verdict === "failed") failed.push(check.name);
 	}
-	if (!sawKnown) return null;
-	return anyPending ? "pending" : "success";
+	return { total: checks.length, pending, failed };
 }
 
 /**

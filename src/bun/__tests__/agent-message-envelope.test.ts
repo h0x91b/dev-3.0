@@ -3,12 +3,16 @@ import {
 	agentReplyCommand,
 	agentReplyRef,
 	heldBatchSenders,
+	prStatusSubject,
 	seqIsShared,
 	wrapAgentMessage,
 	wrapArtifactMessage,
 	wrapHeldBatchPointer,
+	wrapPrStatusMessage,
 } from "../../shared/agent-message-envelope";
 import { utf8Length } from "../../shared/pane-input";
+import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES } from "../../shared/types";
+import type { PrStatusNotice } from "../../shared/pr-watch";
 
 const PROJECT_A = "aaaaaaaa-1111-2222-3333-444455556666";
 const PROJECT_B = "bbbbbbbb-1111-2222-3333-444455556666";
@@ -271,5 +275,63 @@ describe("wrapHeldBatchPointer — the one envelope typed for a held backlog", (
 
 	it("answers null when even the bare path does not fit", () => {
 		expect(wrapHeldBatchPointer(3, ["seq:1"], `/${"p".repeat(1_000)}`, 1_000)).toBeNull();
+	});
+});
+
+describe("wrapPrStatusMessage", () => {
+	const URL = "https://github.com/acme/app/pull/2041";
+	const failed: PrStatusNotice = { kind: "ci-failed", sha: "1a2b3c4d5e6f", failedCount: 2, totalChecks: 14 };
+
+	it("tells a red CI with the short sha and counts, points at gh for the names, and says whether a watch stays", () => {
+		const out = wrapPrStatusMessage({ prNumber: 2041, url: URL, notices: [failed], remaining: ["merged"] });
+		expect(out).toBe(
+			[
+				"<dev3-pr-status>",
+				"PR #2041: CI finished on 1a2b3c4: 2 of 14 checks GitHub listed failed; see `gh pr checks 2041`.",
+				URL,
+				"Watch until merged stays active. Act per your task rules.",
+				"</dev3-pr-status>",
+			].join("\n"),
+		);
+	});
+
+	it("leaves the completion offer to dev3 when the PR merged, and says no watch is left", () => {
+		const out = wrapPrStatusMessage({ prNumber: 5, url: URL, notices: [{ kind: "merged" }], remaining: [] });
+		expect(out).toContain("PR #5 merged. dev3 handles the completion offer; do not request task completion yourself.\n");
+		expect(out).toContain("No watch is left. Act per your task rules.");
+	});
+
+	it("words green as what was true: all the checks GitHub listed finished and passed", () => {
+		const text = (notice: PrStatusNotice) => wrapPrStatusMessage({ prNumber: 5, url: URL, notices: [notice], remaining: [] });
+		expect(text({ kind: "ci-passed", sha: "abcdef0123", totalChecks: 9 })).toContain("PR #5: CI finished on abcdef0: all 9 checks GitHub listed passed.");
+		expect(text({ kind: "closed" })).toContain("PR #5 closed without merge.");
+	});
+
+	it("collapses identical notices into one sentence", () => {
+		const out = wrapPrStatusMessage({ prNumber: 2041, url: URL, notices: [failed, failed], remaining: [] });
+		expect(out.match(/CI finished/g)).toHaveLength(1);
+	});
+
+	it("drops a url that is not an https link", () => {
+		const out = wrapPrStatusMessage({ prNumber: 1, url: "javascript:alert(1)", notices: [{ kind: "merged" }], remaining: [] });
+		expect(out).not.toContain("javascript");
+	});
+
+	it("never carries anything beyond dev3's own words", () => {
+		const out = wrapPrStatusMessage({ prNumber: 2041, url: URL, notices: [failed], remaining: ["ci", "merged"] });
+		expect(out.split("\n")).toHaveLength(5);
+		expect(out).toContain("Watch until ci and merged stays active.");
+	});
+
+	it("stays under the spill threshold in the worst case", () => {
+		const notice: PrStatusNotice = { kind: "ci-failed", sha: "abcdef0", failedCount: 999, totalChecks: 9999 };
+		const url = `https://github.com/${"o".repeat(39)}/${"r".repeat(100)}/pull/999999`;
+		const out = wrapPrStatusMessage({ prNumber: 999999, url, notices: [notice, { kind: "merged" }, { kind: "closed" }], remaining: ["ci", "merged"] });
+		expect(utf8Length(out)).toBeLessThanOrEqual(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES);
+	});
+
+	it("names the event in the traffic-log subject", () => {
+		expect(prStatusSubject(2041, [failed])).toBe("PR #2041: CI failed");
+		expect(prStatusSubject(2041, [{ kind: "closed" }])).toBe("PR #2041: closed without merge");
 	});
 });

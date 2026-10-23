@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../pane-input", () => ({ pinTaskPane: vi.fn() }));
 vi.mock("../port-scanner", () => ({ collectProcessInfo: vi.fn() }));
@@ -16,7 +16,7 @@ import { collectProcessInfo } from "../port-scanner";
 import { spawn } from "../spawn";
 import { nativeTaskPanesState } from "../native-task-panes";
 import { tmux } from "../tmux";
-import { captureScheduledMessageAuthor, resolveScheduledMessageAuthorPane, taskMainAgentLiveness } from "../scheduled-message-author";
+import { captureScheduledMessageAuthor, liveAgentPaneIds, resolveScheduledMessageAuthorPane, taskMainAgentLiveness } from "../scheduled-message-author";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
 /** A synthetic machine: processes plus the tmux panes (root pid each) on one server generation. */
@@ -150,6 +150,87 @@ describe("captureScheduledMessageAuthor — who may own a self-reminder", () => 
 			paneId: "pane-2", sessionId: null, paneToken: "native-s2", agentProcess: sig(201),
 		});
 		expect(pinTaskPane).not.toHaveBeenCalled();
+	});
+});
+
+describe("liveAgentPaneIds — which panes really run an agent", () => {
+	const nativePanes = (...rows: Array<[string, number, boolean]>) =>
+		vi.mocked(nativeTaskPanesState).mockResolvedValue({
+			taskId: "task-1", layout: "", activePaneId: "pane-1",
+			panes: rows.map(([paneId, shellPid, alive]) => ({ paneId, sessionId: `s-${paneId}`, hostPid: 90, shellPid, cols: 80, rows: 24, alive })),
+		});
+	const native = (extra: Partial<Task> = {}) => task([pane("pane-1", null)], { terminalBackend: "native", ...extra } as Partial<Task>);
+
+	it("tmux: counts recorded panes that exist and run an agent, not a stale record nor a shell split", async () => {
+		expect(await liveAgentPaneIds(task([pane("%1", "conv-a"), pane("%dead", "conv-x")]))).toEqual(["%1"]);
+	});
+
+	it("tmux: a stale record beside a live shell split means no agent pane at all", async () => {
+		expect(await liveAgentPaneIds(task([pane("%dead", "conv-x")]))).toEqual([]);
+	});
+
+	it("tmux: an agent that exited into a shell no longer counts", async () => {
+		agentExits(100);
+		expect(await liveAgentPaneIds(task([pane("%1", "conv-a")]))).toEqual([]);
+	});
+
+	it("tmux: a shell running a foreground program is not an agent, alone or beside one", async () => {
+		procs.push({ pid: 600, ppid: 50, args: "-zsh" }, { pid: 601, ppid: 600, args: "tail -f /tmp/dev-server.log" });
+		panes["%6"] = 600;
+
+		expect(await liveAgentPaneIds(task([pane("%6", null)]))).toEqual([]);
+		expect(await liveAgentPaneIds(task([pane("%1", "conv-a"), pane("%6", null)]))).toEqual(["%1"]);
+	});
+
+	it("native: a split's own shell (`$SHELL`, no argv) running a program is not an agent beside a real one", async () => {
+		procs.push({ pid: 600, ppid: 50, args: "/bin/zsh" }, { pid: 601, ppid: 600, args: "bun test" });
+		nativePanes(["pane-1", 100, true], ["pane-2", 600, true]);
+		expect(await liveAgentPaneIds(native())).toEqual(["pane-1"]);
+	});
+
+	it("tmux: both recorded agents count", async () => {
+		expect(await liveAgentPaneIds(task())).toEqual(["%1", "%2"]);
+	});
+
+	it("tmux: a recorded entry with no pane id yet makes the answer unknown", async () => {
+		expect(await liveAgentPaneIds(task([pane(null, null)]))).toBeNull();
+	});
+
+	it("native: counts extra agent panes that sessionState never recorded", async () => {
+		nativePanes(["pane-1", 100, true], ["pane-2", 200, true]);
+		expect(await liveAgentPaneIds(native())).toEqual(["pane-1", "pane-2"]);
+	});
+
+	it("native: a lone agent pane need not be called pane-1, and a shell split is not an agent", async () => {
+		procs.push({ pid: 500, ppid: 50, args: "-zsh" }); // an idle shell split
+		nativePanes(["pane-1", 500, true], ["pane-3", 200, true]);
+		expect(await liveAgentPaneIds(native())).toEqual(["pane-3"]);
+	});
+
+	it("native: a dead pane is skipped", async () => {
+		nativePanes(["pane-1", 100, false], ["pane-2", 200, true]);
+		expect(await liveAgentPaneIds(native())).toEqual(["pane-2"]);
+	});
+
+	it("is unknown when the process table cannot be read", async () => {
+		vi.mocked(collectProcessInfo).mockResolvedValue({ tree: new Map(), cmdlines: new Map(), resources: new Map() });
+		expect(await liveAgentPaneIds(task())).toBeNull();
+	});
+
+	describe("on Windows, which has no process table", () => {
+		const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+		beforeEach(() => Object.defineProperty(process, "platform", { value: "win32", configurable: true }));
+		afterEach(() => { if (realPlatform) Object.defineProperty(process, "platform", realPlatform); });
+
+		it("a lone coordinator pane is the agent", async () => {
+			nativePanes(["pane-1", 100, true]);
+			expect(await liveAgentPaneIds(native())).toEqual(["pane-1"]);
+		});
+
+		it("anything more is unknown rather than guessed", async () => {
+			nativePanes(["pane-1", 100, true], ["pane-2", 200, true]);
+			expect(await liveAgentPaneIds(native())).toBeNull();
+		});
 	});
 });
 

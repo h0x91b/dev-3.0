@@ -55,9 +55,10 @@ export type AgentMessageLogKind = "immediate" | "scheduled";
  * acting in this app — never derived from a row's shape. A null sender is NOT the
  * user: it is also a dev3 hand-off, an artifact form submit, and a `dev3 message`
  * run outside a worktree, which are three different things wearing the same face.
- * Absent therefore means unknown, and a reader must treat it as unknown.
+ * Absent therefore means unknown, and a reader must treat it as unknown. `"dev3"` is
+ * the app itself speaking on a subscription an agent made (`dev3 pr watch`).
  */
-export type AgentMessageOrigin = "user";
+export type AgentMessageOrigin = "user" | "dev3";
 
 /**
  * The one place that answers "did the user send this?".

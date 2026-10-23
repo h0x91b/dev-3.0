@@ -9,7 +9,8 @@ import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shar
 import { CLI_EXIT_CODE_GH_TLS_UNVERIFIED, CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
 
 const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
-       dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]`;
+       dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]
+       dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off|--list]`;
 
 /** Merge strategies `gh pr merge` accepts; `--auto-merge` with no value means squash. */
 const MERGE_METHODS = ["squash", "merge", "rebase"] as const;
@@ -64,6 +65,7 @@ export const realPrDeps: PrDeps = {
 /**
  * `dev3 pr` — the pull-request verbs that used to be a hand-written `gh` recipe:
  * `create` (push + open, footer included) and `auto-merge` (set or clear it).
+ * `watch` is the odd one out: it needs the app, so `main.ts` routes it to `pr-watch.ts`.
  *
  * It is `gh` end to end and deliberately so: `gh` is the only forge client dev3
  * speaks, and an unauthenticated `gh` is refused up front (exit 23) rather than
@@ -166,19 +168,22 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	process.stdout.write(`Pull request ${url || "created (gh printed no URL)"}\n`);
 	if (base) process.stdout.write(`Base         ${base}\n`);
 
-	if (!mergeMethod) return;
-
-	// Auto-merge is a second call, so the PR exists either way: a repo with the
-	// strategy disabled must not read as "no pull request was opened".
-	const mergeTarget = url ? [url] : [];
-	const merged = deps.run("gh", ["pr", "merge", "--auto", `--${mergeMethod}`, ...mergeTarget], cwd);
-	if (merged.status !== 0) {
-		exitError(
-			`The pull request was created but auto-merge (${mergeMethod}) could not be enabled`,
-			ghFailureDetail(merged),
-		);
+	if (mergeMethod) {
+		// Auto-merge is a second call, so the PR exists either way: a repo with the
+		// strategy disabled must not read as "no pull request was opened".
+		const mergeTarget = url ? [url] : [];
+		const merged = deps.run("gh", ["pr", "merge", "--auto", `--${mergeMethod}`, ...mergeTarget], cwd);
+		if (merged.status !== 0) {
+			exitError(
+				`The pull request was created but auto-merge (${mergeMethod}) could not be enabled`,
+				ghFailureDetail(merged),
+			);
+		}
+		process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
 	}
-	process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
+	if (context?.taskId) {
+		process.stdout.write("Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n");
+	}
 }
 
 /**
@@ -187,7 +192,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
  * read as "off is not set" and silently did the OPPOSITE — it ENABLED auto-merge on
  * the branch's own pull request. A refusal cannot do that; it names the fix instead.
  */
-function requireValuelessFlag(args: ParsedArgs, flag: string): boolean {
+export function requireValuelessFlag(args: ParsedArgs, flag: string): boolean {
 	const raw = args.flags[flag];
 	if (raw === undefined) return false;
 	if (raw === "true") return true;

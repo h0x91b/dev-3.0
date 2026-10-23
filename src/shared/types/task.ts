@@ -8,6 +8,7 @@ import type { Project } from "./project";
 import type { ScheduledLaunch } from "./agent-launch";
 import type { ScheduledMessage } from "./scheduled-messages";
 import type { KeepAliveState } from "./keep-alive";
+import type { PrWatch } from "../pr-watch";
 import type { SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement } from "./package-scripts";
 import type { MergeCompletionPromptState, PreparingStage, TaskSessionState } from "./task-lifecycle";
@@ -410,6 +411,11 @@ export interface Task {
 	 * See {@link ScheduledMessage}.
 	 */
 	scheduledMessages?: ScheduledMessage[] | null;
+	/**
+	 * `dev3 pr watch` subscriptions: the app messages the agent once when the
+	 * watched PR event happens, then removes the watch. At most one per kind.
+	 */
+	prWatches?: PrWatch[] | null;
 	/**
 	 * Cumulative wall-clock time (ms) the task has spent in each status,
 	 * finalized on every status transition (see `applyTaskUpdate` in data.ts).

@@ -1281,7 +1281,13 @@ function applyTaskUpdate(
 		(currentTask.status === "completed" || currentTask.status === "cancelled" || !currentTask.lifecycleStartedAt)
 			? now
 			: undefined;
-	const updatesWithLifecycle = lifecycleStartedAt ? { ...updates, lifecycleStartedAt } : updates;
+	// A finished task has nobody left to message: its `dev3 pr watch` subscriptions end with it.
+	const endsTask = statusChanged && (updates.status === "completed" || updates.status === "cancelled");
+	const updatesWithLifecycle: Partial<Task> = {
+		...updates,
+		...(lifecycleStartedAt ? { lifecycleStartedAt } : {}),
+		...(endsTask ? { prWatches: null } : {}),
+	};
 
 	// When the builtin status changes, finalize the wall-clock spent in the status
 	// being left (credited to `statusDurations`) and stamp `statusEnteredAt` for the

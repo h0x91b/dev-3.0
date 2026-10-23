@@ -398,7 +398,7 @@ export async function sendMessageImmediately(
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-	opts: { hold?: boolean; subject?: string | null; origin?: AgentMessageOrigin } = {},
+	opts: { hold?: boolean; subject?: string | null; origin?: AgentMessageOrigin; author?: ScheduledMessageAuthor | null } = {},
 ): Promise<AgentPromptDelivery & { spilledPath: string | null }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
@@ -418,6 +418,7 @@ export async function sendMessageImmediately(
 		...(source ? { source } : {}),
 		...(opts.origin ? { origin: opts.origin } : {}),
 		...(spilledPath ? { spilledPath } : {}),
+		...(opts.author ? { author: opts.author } : {}),
 	};
 	const delivery = await deliverToTarget(task, message, opts.hold !== false);
 	await recordMessageAttempt(task, message, delivery);

@@ -1,3 +1,4 @@
+import type { PrStatusNotice, PrWatchUntil } from "./pr-watch";
 import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
 
 /**
@@ -93,6 +94,58 @@ export function wrapArtifactMessage(
 		"</message>",
 		"</dev3-artifact-message>",
 	].join("\n");
+}
+
+function prNoticeSentence(prNumber: number, notice: PrStatusNotice): string {
+	switch (notice.kind) {
+		case "merged":
+			return `PR #${prNumber} merged. dev3 handles the completion offer; do not request task completion yourself.`;
+		case "closed":
+			return `PR #${prNumber} closed without merge.`;
+		case "ci-passed":
+			return `PR #${prNumber}: CI finished on ${notice.sha.slice(0, 7)}: all ${notice.totalChecks} checks GitHub listed passed.`;
+		case "ci-failed":
+			// No check names: they are written by whoever owns the workflow file, and this text lands in the agent's prompt.
+			return `PR #${prNumber}: CI finished on ${notice.sha.slice(0, 7)}: ${notice.failedCount} of ${notice.totalChecks} checks GitHub listed failed; see \`gh pr checks ${prNumber}\`.`;
+	}
+}
+
+const PR_NOTICE_SUBJECT: Record<PrStatusNotice["kind"], string> = {
+	"ci-passed": "CI passed",
+	"ci-failed": "CI failed",
+	merged: "merged",
+	closed: "closed without merge",
+};
+
+/** The agent-traffic-log subject for a PR status message. */
+export function prStatusSubject(prNumber: number, notices: readonly PrStatusNotice[]): string {
+	return `PR #${prNumber}: ${notices[0] ? PR_NOTICE_SUBJECT[notices[0].kind] : "status"}`;
+}
+
+/**
+ * The message dev3 itself types into an agent's pane when a `dev3 pr watch`
+ * subscription fires. Not a task talking, so no `<reply-with>`.
+ *
+ * Only dev3's own words, the PR number, its URL, a short SHA and check counts go
+ * in. Never the PR title, a review or a comment: fork authors write those, and this
+ * text lands in the agent's prompt. It must stay under
+ * `AGENT_MESSAGE_SPILL_THRESHOLD_BYTES`.
+ */
+export function wrapPrStatusMessage(input: {
+	prNumber: number;
+	url: string;
+	notices: readonly PrStatusNotice[];
+	/** Kinds of watch that remain on the task after this message. */
+	remaining: readonly PrWatchUntil[];
+}): string {
+	const sentences = [...new Set(input.notices.map((notice) => prNoticeSentence(input.prNumber, notice)))];
+	const lines = ["<dev3-pr-status>", ...sentences];
+	if (/^https:\/\/\S+$/.test(input.url)) lines.push(input.url);
+	lines.push(
+		`${input.remaining.length > 0 ? `Watch until ${input.remaining.join(" and ")} stays active.` : "No watch is left."} Act per your task rules.`,
+		"</dev3-pr-status>",
+	);
+	return lines.join("\n");
 }
 
 /**

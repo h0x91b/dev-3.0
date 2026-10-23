@@ -26,7 +26,7 @@ import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "./cli-exit-codes";
  * replaced rather than softened.
  */
 export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
-	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later.`;
+	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged]\`: dev3 messages you; never poll gh or set timers.`;
 
 	if (!deepLinkSchemeRegistered(platform)) {
 		return `${command} **It adds no origin-task footer here — and nor do you:** \`dev3://\` opens the app on macOS only, so it would be a dead link in a public PR.`;
@@ -55,7 +55,7 @@ If the first user request invokes \`dev3-bug-hunter\` and says you run inside an
 const SKILL_SESSION_START_CHECKLIST = `
 ## Session-start checklist
 
-Run it the moment you understand what the task is, usually right after the user's first real message. **Hard gate: finish it before ending your first turn** — the work itself may proceed in the same turn, but none of these may be skipped.
+Run it once you understand the task, usually right after the user's first real message. **Hard gate: finish it before ending your first turn**; the work may proceed in the same turn.
 
 1. **Branch** — rename if it matches \`dev3/task-*\` (Branch naming, below).
 2. **Title** — replace a scratch placeholder (\`Scratch — HH:MM\`) or a truncated auto-generated title with a concise imperative. Skip only if user-edited.
@@ -80,7 +80,7 @@ const SKILL_TITLE_GENERATION = `
 
 The title is auto-generated from the description's first 80 characters. If it ends with "…" or runs longer than ~6 words, replace it with a concise imperative — never a copy of the description: \`dev3 task update --title "Fix auth race condition"\`.
 
-**Respect user-edited titles.** If \`dev3 current\` marks one \`(user-edited — do NOT rename)\`, skip the rename whatever its length or wording, and never pass \`--force\`.
+**Respect user-edited titles.** If \`dev3 current\` marks one \`(user-edited — do NOT rename)\`, skip the rename and never pass \`--force\`.
 
 \`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label set\`).
 
@@ -104,7 +104,7 @@ A **coordinator** task manages other tasks instead of doing their work: dashed g
 
 ## Editing a description never reaches a running agent
 
-\`--type\` is the ONLY flag that tells a live agent anything. The description is delivered as the agent's first prompt at launch and nothing re-delivers it — not a resume, not a push — so \`dev3 task update --description\` on a running task changes the board only. Correcting a live brief takes both: the \`--description\` edit for the record, and \`dev3 message --task <id> --subject "brief updated"\`. Not yet started → the edit alone.
+\`--type\` is the ONLY flag that tells a live agent anything. The description is delivered as the agent's first prompt at launch and nothing re-delivers it, so \`dev3 task update --description\` on a running task changes the board only. Correcting a live brief takes both: the \`--description\` edit for the record, and \`dev3 message --task <id> --subject "brief updated"\`. Not yet started → the edit alone.
 `;
 
 const SKILL_CUSTOM_COLUMNS = `

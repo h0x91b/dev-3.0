@@ -122,6 +122,16 @@ describe("dev3 pr create — happy path", () => {
 		expect(stdoutOutput).toContain(PR_URL);
 	});
 
+	it("points a task's agent at `dev3 pr watch` after the URL, and not outside a task", async () => {
+		await handlePr("create", args({ title: "T" }), ctx(), deps().deps);
+		expect(stdoutOutput).toContain("dev3 pr watch");
+		expect(stdoutOutput.indexOf(PR_URL)).toBeLessThan(stdoutOutput.indexOf("dev3 pr watch"));
+
+		stdoutOutput = "";
+		await handlePr("create", args({ title: "T" }), null, deps().deps);
+		expect(stdoutOutput).not.toContain("dev3 pr watch");
+	});
+
 	it("finds the URL even when gh prints chatter around it", async () => {
 		const { deps: d } = deps({
 			"gh pr create": ok(`Creating pull request for feat/thing into main\n\n${PR_URL}\n`),

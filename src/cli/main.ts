@@ -26,6 +26,7 @@ import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
+import { handlePrWatch } from "./commands/pr-watch";
 import { handlePane } from "./commands/pane";
 import { handleAgent } from "./commands/agent";
 import { handlePaneExec } from "./commands/pane-exec";
@@ -330,7 +331,7 @@ async function main(): Promise<void> {
 	if (command === "install-skills") {
 		return await handleInstallSkills();
 	}
-	if (command === "pr") {
+	if (command === "pr" && subcommand !== "watch") {
 		// Pure git + gh against the checked-out branch: the app has nothing to say
 		// about it, and opening a pull request must work while dev3 is closed.
 		return await handlePr(subcommand, args, context);
@@ -454,6 +455,9 @@ async function main(): Promise<void> {
 				// `vents` takes no subcommand — its first positional is the vent
 				// name, so re-parse from the raw args without the subcommand split.
 				return await handleVents(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath);
+			case "pr":
+				// Only `pr watch` gets here; the other verbs returned above.
+				return await handlePrWatch(args, socketPath, context);
 			case "overview":
 				return await handleOverview(subcommand, args, socketPath, context);
 				case "keep-alive":
