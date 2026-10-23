@@ -53,6 +53,12 @@ export interface DevServerEntry {
 	 */
 	extraEnvKeys: string[];
 	/**
+	 * Arguments appended to this server's script by the last start
+	 * (`dev3 dev-server start -- --own-db`), in full: unlike env they are shown,
+	 * so a secret belongs in `--env`. Empty for an ordinary start.
+	 */
+	scriptArgs: string[];
+	/**
 	 * Where THIS server's output is mirrored as plain text
 	 * (`<taskDir>/logs/dev-server.log`, or `dev-server-<name>.log`) — the file
 	 * `dev3 dev-server logs` reads and an agent greps instead of attaching to a

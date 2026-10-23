@@ -15,6 +15,12 @@ export interface ParsedArgs {
 	 * `parseArgs` rather than a literal, or it sees no repeats at all.
 	 */
 	repeated?: Record<string, string[]>;
+	/**
+	 * Everything after the first bare `--`, verbatim: literal arguments for the
+	 * command's target (`dev3 dev-server start -- --own-db`). Undefined when
+	 * there is no `--`; `[]` when `--` has nothing after it.
+	 */
+	passthrough?: string[];
 }
 
 /**
@@ -30,6 +36,10 @@ export function extractInstanceFlag(args: string[]): { rest: string[]; value: st
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
+		if (arg === "--") {
+			rest.push(...args.slice(i));
+			break;
+		}
 		if (arg === INSTANCE_FLAG) {
 			const next = args[i + 1];
 			if (next !== undefined && !next.startsWith("--")) {
@@ -60,8 +70,14 @@ export function parseArgs(args: string[]): ParsedArgs {
 		(repeated[key] ??= []).push(value);
 	};
 
+	let passthrough: string[] | undefined;
+
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
+		if (arg === "--") {
+			passthrough = args.slice(i + 1);
+			break;
+		}
 		if (arg.startsWith("--")) {
 			const eqIdx = arg.indexOf("=");
 			if (eqIdx !== -1) {
@@ -81,7 +97,7 @@ export function parseArgs(args: string[]): ParsedArgs {
 		}
 	}
 
-	return { flags, positional, repeated };
+	return { flags, positional, repeated, ...(passthrough ? { passthrough } : {}) };
 }
 
 /**
@@ -89,6 +105,7 @@ export function parseArgs(args: string[]): ParsedArgs {
  * - Values starting with "@" are treated as file paths; the file content replaces the value.
  * - "@@" at the start is an escape: "@@foo" becomes literal "@foo".
  * - Boolean flags (value === "true") are never resolved.
+ * - `passthrough` is carried over untouched.
  * - Throws with a descriptive message if a referenced file cannot be read.
  */
 export function resolveFileArgs(args: ParsedArgs): ParsedArgs {
@@ -100,6 +117,8 @@ export function resolveFileArgs(args: ParsedArgs): ParsedArgs {
 		repeated: Object.fromEntries(
 			Object.entries(args.repeated ?? {}).map(([key, values]) => [key, values.map(resolveValue)]),
 		),
+		// Literal arguments for the target command: an `@file` here is not ours to read.
+		...(args.passthrough ? { passthrough: args.passthrough } : {}),
 	};
 }
 

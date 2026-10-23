@@ -27,6 +27,11 @@ export interface DevServerScriptOptions {
 	 */
 	envGroups: Record<string, string>[];
 	/**
+	 * Appended to the end of the script, each argument quoted for the dialect —
+	 * so for a multi-line script they reach its last line.
+	 */
+	scriptArgs?: string[];
+	/**
 	 * tmux only: the command that detaches the outer viewer client before this
 	 * pane closes, which keeps the inner tmux redraw from corrupting the outer
 	 * one. A native pane has no nesting and no tmux binary, so it passes null —
@@ -52,7 +57,9 @@ export function buildDevServerScript(options: DevServerScriptOptions): string {
 		...envParagraphs,
 		// Only the user's command is traced: the exports above are dev3's business.
 		d.traceOn(),
-		options.devScript,
+		options.scriptArgs?.length
+			? `${options.devScript.trimEnd()} ${options.scriptArgs.map(d.nativeArg).join(" ")}`
+			: options.devScript,
 		d.captureExitCode(EXIT_CODE_VAR),
 		d.traceOff(),
 		...d.branchOnFailure(EXIT_CODE_VAR, { fail: indentLines(2, [failNotice, d.readKey()]) }),

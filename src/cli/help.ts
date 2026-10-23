@@ -576,34 +576,37 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "start",
-				usage: "dev3 dev-server start [task-id] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
+				usage: "dev3 dev-server start [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...] [-- <script args>...]",
 				summary:
 					"Start a dev server. Name one of the project's declared servers, or --all for every one; with neither it starts"
 					+ " the default server (the project's devScript), or the only declared server when there is no default."
 					+ " --wait blocks until it is listening on a port assigned to it (default timeout 120s)."
 					+ " --env passes extra variables to the script (repeatable); it overrides the project's own env but never"
-					+ " DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*.",
+					+ " DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*."
+					+ " Arguments after -- are appended to the script, each shell-quoted; name one server (not --all)."
+					+ " `status` shows them in full, so pass secrets with --env.",
 			},
 			{
 				name: "stop",
-				usage: "dev3 dev-server stop [task-id] [server] [--all]",
+				usage: "dev3 dev-server stop [task-id | --task <id>] [server] [--all]",
 				summary: "Stop one dev server, or --all of them (verified: waits until its processes are dead and ports released).",
 			},
 			{
 				name: "restart",
-				usage: "dev3 dev-server restart [task-id] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...]",
+				usage: "dev3 dev-server restart [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...] [-- <script args>...]",
 				summary:
 					"Restart one dev server, or --all of them. --wait blocks until the NEW server is listening on a port assigned to it."
-					+ " Without --env it reuses the env of the last start; with --env it replaces it. A stop clears it.",
+					+ " Without --env it reuses the env of the last start; with --env it replaces it. A stop clears it."
+					+ " Script arguments after -- work like on start: omitted reuses the last ones, `restart --` with nothing after it clears them.",
 			},
 			{
 				name: "status",
-				usage: "dev3 dev-server status [task-id]",
+				usage: "dev3 dev-server status [task-id | --task <id>]",
 				summary: "Show every declared dev server of a task with its state, ports and conflicts (default subcommand).",
 			},
 			{
 				name: "logs",
-				usage: "dev3 dev-server logs [task-id] [--lines N]",
+				usage: "dev3 dev-server logs [task-id | --task <id>] [--lines N]",
 				summary:
 					"Print the tail of the dev server's own output. It is mirrored as plain text to"
 					+ " <taskDir>/logs/dev-server.log (the path is in `status`), so you can grep it instead of"
@@ -1143,8 +1146,10 @@ export type HelpResolution =
 	| { action: "none" };
 
 export function resolveHelp(rawArgs: string[]): HelpResolution {
-	const wantsHelp = rawArgs.includes("--help") || rawArgs.includes("-h");
-	const positionals = rawArgs.filter((a) => !a.startsWith("-"));
+	// Anything after a bare `--` is literal script arguments, never ours.
+	const own = rawArgs.includes("--") ? rawArgs.slice(0, rawArgs.indexOf("--")) : rawArgs;
+	const wantsHelp = own.includes("--help") || own.includes("-h");
+	const positionals = own.filter((a) => !a.startsWith("-"));
 	const command = positionals[0];
 	const subcommand = positionals[1];
 

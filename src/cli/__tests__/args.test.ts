@@ -174,3 +174,31 @@ describe("parseArgs repeated flags", () => {
 		expect(parseArgs(["--wait", "--timeout", "5"]).repeated).toEqual({ wait: ["true"], timeout: ["5"] });
 	});
 });
+
+describe("parseArgs passthrough", () => {
+	it("is undefined without a bare --", () => {
+		expect(parseArgs(["start", "--wait"]).passthrough).toBeUndefined();
+	});
+
+	it("takes everything after the first -- verbatim, without parsing it as flags", () => {
+		const result = parseArgs(["start", "--", "--own-db", "a b", "--", "@file"]);
+		expect(result.passthrough).toEqual(["--own-db", "a b", "--", "@file"]);
+		expect(result.positional).toEqual(["start"]);
+		expect(result.flags).toEqual({});
+	});
+
+	it("is an empty list when -- has nothing after it", () => {
+		expect(parseArgs(["--"]).passthrough).toEqual([]);
+	});
+
+	it("does not swallow -- as the value of a preceding flag", () => {
+		const result = parseArgs(["--wait", "--", "--x"]);
+		expect(result.flags).toEqual({ wait: "true" });
+		expect(result.passthrough).toEqual(["--x"]);
+	});
+
+	it("survives resolveFileArgs without @file resolution", () => {
+		const resolved = resolveFileArgs(parseArgs(["--", "@/nonexistent/file", "@@x"]));
+		expect(resolved.passthrough).toEqual(["@/nonexistent/file", "@@x"]);
+	});
+});

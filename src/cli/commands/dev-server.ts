@@ -3,7 +3,7 @@ import { DEV_SERVER_LOG_DEFAULT_LINES, DEV_SERVER_LOG_MAX_LINES } from "../../sh
 import { readDevServerLogTail } from "../../bun/dev-server-log";
 import { CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID, CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { parseDevServerEnvPair } from "../../shared/dev-server-env";
-import { DEV_SERVER_NAME_PATTERN, DEV_SERVER_NAME_REQUIRED_CODE } from "../../shared/dev-servers";
+import { DEV_SERVER_NAME_PATTERN, DEV_SERVER_NAME_REQUIRED_CODE, formatDevServerArgs } from "../../shared/dev-servers";
 import { isInstanceLossError, sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -82,6 +82,7 @@ function legacyEntry(raw: DevServerStatus & Partial<DevServerEntry>): DevServerE
 		publishedPorts: raw.publishedPorts ?? [],
 		portConflicts: raw.portConflicts ?? [],
 		extraEnvKeys: raw.extraEnvKeys ?? [],
+		scriptArgs: raw.scriptArgs ?? [],
 		resourceUsage: raw.resourceUsage,
 	});
 }
@@ -96,6 +97,7 @@ function normalizeEntry(entry: DevServerEntry): DevServerEntry {
 		publishedPorts: entry.publishedPorts ?? [],
 		portConflicts: entry.portConflicts ?? [],
 		extraEnvKeys: entry.extraEnvKeys ?? [],
+		scriptArgs: entry.scriptArgs ?? [],
 	};
 }
 
@@ -149,13 +151,18 @@ function looksLikeTaskRef(raw: string): boolean {
 function resolveTarget(args: ParsedArgs, context: CliContext | null): { taskId?: string; server?: string } {
 	const positionals = args.positional.filter((value) => value.length > 0);
 	const flagServer = args.flags.server;
-	let taskRef = args.flags.id;
+	const flagTask = args.flags.task || args.flags["task-id"] || args.flags.id;
+	let positionalTask: string | undefined;
 	let server = typeof flagServer === "string" && flagServer !== "true" ? flagServer : undefined;
 	for (const value of positionals) {
-		if (!taskRef && looksLikeTaskRef(value)) taskRef = value;
+		if (!positionalTask && looksLikeTaskRef(value)) positionalTask = value;
 		else if (!server) server = value;
 		else exitUsage(`Unexpected argument: ${value}`);
 	}
+	if (flagTask && positionalTask && flagTask !== positionalTask) {
+		exitUsage(`Two different tasks given: --task ${flagTask} and ${positionalTask} — pass one`);
+	}
+	const taskRef = flagTask || positionalTask;
 	if (server && !DEV_SERVER_NAME_PATTERN.test(server)) {
 		exitUsage(`"${server}" is not a valid dev server name (lowercase letters, digits and dashes)`);
 	}
@@ -253,6 +260,9 @@ function printStatusDetails(status: DevServerStatus): void {
 			// up in transcripts, screenshots and CI logs.
 			...(entry.extraEnvKeys.length > 0
 				? [["Extra Env:", entry.extraEnvKeys.join(", ")] as [string, string]]
+				: []),
+			...(entry.scriptArgs.length > 0
+				? [["Script Args:", formatDevServerArgs(entry.scriptArgs)] as [string, string]]
 				: []),
 			...(entry.resourceUsage
 				? [
@@ -405,6 +415,15 @@ async function runAction(
 	if (all && server) {
 		exitUsage(`dev-server ${action} takes either a server name or --all, not both`);
 	}
+	const scriptArgs = args.passthrough;
+	if (scriptArgs !== undefined) {
+		if (action !== "start" && action !== "restart") {
+			exitUsage(`dev-server ${action} takes no script arguments (only start and restart do)`);
+		}
+		if (all) {
+			exitUsage(`Script arguments go to one dev server — name it instead of using --all: dev3 dev-server ${action} <server> -- <args>`);
+		}
+	}
 
 	const params: Record<string, unknown> = { taskId };
 	const projectId = resolveProjectId(args.flags.project, context);
@@ -415,6 +434,7 @@ async function runAction(
 	if (action === "start" || action === "restart") {
 		const env = collectEnvFlag(args, action);
 		if (env) params.env = env;
+		if (scriptArgs !== undefined) params.args = scriptArgs;
 	} else if (args.repeated?.env) {
 		exitUsage(`dev-server ${action} takes no --env (only start and restart do)`);
 	}
@@ -431,18 +451,33 @@ async function runAction(
 	if (!resp.ok) failAction(action, resp.error);
 
 	const status = asStatus(resp.data);
+	if (scriptArgs !== undefined) failIfArgsIgnored(resp.data, actedOn(status, server, false));
 	printStatusLine(action, status, server, all);
 	printStatusDetails(status);
 
 	if ((action === "start" || action === "restart") && args.flags.wait !== undefined) {
-		// Poll without `env`: the values are already delivered, and re-sending a
+		// Poll without `env` and `args`: they are already delivered, and re-sending a
 		// possibly-secret value on every 500ms status read buys nothing.
-		const { env: _env, server: _server, all: _all, ...statusParams } = params;
+		const { env: _env, args: _args, server: _server, all: _all, ...statusParams } = params;
 		const watch = all
 			? status.servers.map((entry) => entry.name)
 			: [actedOn(status, server, false)];
 		await waitForDevServerReady(socketRef, statusParams, parseWaitTimeout(args), watch);
 	}
+}
+
+/**
+ * An app older than this CLI starts the server and silently drops `args`. Only a
+ * `scriptArgs` field on the acted-on entry proves the app understood them.
+ */
+function failIfArgsIgnored(data: unknown, name: string): void {
+	const servers = (data as Partial<DevServerStatus> | null)?.servers;
+	const entry = servers?.find((candidate) => candidate.name === name);
+	if (Array.isArray(entry?.scriptArgs)) return;
+	exitError(
+		"The running dev3 app is older than this CLI and ignored the script arguments,"
+		+ " so the dev server runs without them. Update the dev3 app.",
+	);
 }
 
 /**
@@ -455,6 +490,7 @@ async function runAction(
  * ordinary state look like a failure.
  */
 async function runLogs(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	if (args.passthrough !== undefined) exitUsage("dev-server logs takes no script arguments (only start and restart do)");
 	const { taskId, server } = resolveTarget(args, context);
 	if (!taskId) exitUsage("Usage: dev3 dev-server logs [task-id] [server-name] [--lines N]");
 

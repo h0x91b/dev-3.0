@@ -14,6 +14,10 @@
  * properties chosen are the ones whose absence is silent rather than loud.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildDevServerScript } from "../dev-server-script";
 
 const realPlatform = process.platform;
@@ -124,5 +128,38 @@ describe("Windows dev-server wrapper (properties)", () => {
 		asPlatform("win32");
 		const script = buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [], tmuxDetachCommand: null });
 		expect(script).toContain(DEV_SCRIPT);
+	});
+});
+
+describe("dev-server script args", () => {
+	it("appends the quoted args to the end of the user's command", () => {
+		asPlatform("darwin");
+		const script = buildDevServerScript({ devScript: "bun run dev\n", envGroups: [], scriptArgs: ["--own-db", "a b", "it's"] });
+		expect(script).toContain("\nbun run dev '--own-db' 'a b' 'it'\\''s'\nEXIT_CODE=$?");
+	});
+
+	it("leaves the command untouched without args", () => {
+		asPlatform("darwin");
+		const withEmpty = buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [], scriptArgs: [] });
+		expect(withEmpty).toBe(buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [] }));
+	});
+
+	// Runs the generated file under the real shell: hostile args must arrive as
+	// literal arguments, never as syntax.
+	it.skipIf(process.platform === "win32")("passes hostile args to the command as literal text", () => {
+		asPlatform("darwin");
+		const dir = mkdtempSync(join(tmpdir(), "dev3-script-args-"));
+		try {
+			const args = ["a b", "it's", `x; touch ${dir}/pwned`, `$(touch ${dir}/pwned2)`];
+			const script = buildDevServerScript({ devScript: "printf '%s\\n'", envGroups: [], scriptArgs: args });
+			const file = join(dir, "run.sh");
+			writeFileSync(file, script);
+			const out = execFileSync("/bin/sh", [file], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+			expect(out.split("\n").slice(0, -1)).toEqual(args);
+			expect(existsSync(join(dir, "pwned"))).toBe(false);
+			expect(existsSync(join(dir, "pwned2"))).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

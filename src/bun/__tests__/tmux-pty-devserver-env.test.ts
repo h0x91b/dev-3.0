@@ -198,6 +198,7 @@ vi.mock("../dev-server-script", () => ({
 // clear ordering is what the restart tests exercise.
 vi.mock("../dev-server-env-store", () => {
 	const saved = new Map<string, Record<string, string>>();
+	const savedArgs = new Map<string, string[]>();
 	const key = (taskId: string, server: string) => `${taskId}::${server}`;
 	return {
 		saveDevServerEnv: vi.fn((taskId: string, server: string, env: Record<string, string>) => {
@@ -206,13 +207,19 @@ vi.mock("../dev-server-env-store", () => {
 		}),
 		readDevServerEnv: vi.fn((taskId: string, server: string) => saved.get(key(taskId, server)) ?? {}),
 		clearDevServerEnv: vi.fn((taskId: string, server: string) => { saved.delete(key(taskId, server)); }),
+		saveDevServerArgs: vi.fn((taskId: string, server: string, args: string[]) => {
+			if (args.length === 0) savedArgs.delete(key(taskId, server));
+			else savedArgs.set(key(taskId, server), args);
+		}),
+		readDevServerArgs: vi.fn((taskId: string, server: string) => savedArgs.get(key(taskId, server)) ?? []),
+		clearDevServerArgs: vi.fn((taskId: string, server: string) => { savedArgs.delete(key(taskId, server)); }),
 		__saved: saved,
 	};
 });
 
 import * as data from "../data";
 import { buildDevServerScript } from "../dev-server-script";
-import { clearDevServerEnv, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
+import { clearDevServerArgs, clearDevServerEnv, readDevServerArgs, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
 import * as portPool from "../port-pool";
 import { buildTaskLifecycleEnv } from "../rpc-handlers/shared-pure";
 import { resolveOperationalProjectConfig } from "../rpc-handlers/settings-config";
@@ -269,6 +276,7 @@ function effectiveEnv(): Record<string, string> {
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(clearDevServerEnv)(TASK_ID, "dev");
+	vi.mocked(clearDevServerArgs)(TASK_ID, "dev");
 	vi.mocked(data.getProject).mockResolvedValue(makeProject());
 	vi.mocked(data.getTask).mockResolvedValue(makeTask());
 	vi.mocked(resolveOperationalProjectConfig).mockResolvedValue({
@@ -374,5 +382,78 @@ describe("dev-server --env across a restart", () => {
 
 		expect(readDevServerEnv(TASK_ID, "dev")).toEqual({});
 		expect(callerEnvGroup()).toEqual({});
+	});
+});
+
+/** The `scriptArgs` the last pane script was built with. */
+function lastScriptArgs(): string[] | undefined {
+	const calls = vi.mocked(buildDevServerScript).mock.calls;
+	return calls[calls.length - 1][0].scriptArgs;
+}
+
+describe("dev-server script args", () => {
+	it("hands the args to the script builder and remembers them", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db", "a b"] });
+
+		expect(lastScriptArgs()).toEqual(["--own-db", "a b"]);
+		expect(readDevServerArgs(TASK_ID, "dev")).toEqual(["--own-db", "a b"]);
+	});
+
+	it("a restart with no args reuses the last start's args", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
+
+		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(lastScriptArgs()).toEqual(["--own-db"]);
+	});
+
+	it("a restart with new args replaces them, and an empty list clears them", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
+
+		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--other"] });
+		expect(lastScriptArgs()).toEqual(["--other"]);
+
+		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1", args: [] });
+		expect(lastScriptArgs()).toEqual([]);
+		expect(readDevServerArgs(TASK_ID, "dev")).toEqual([]);
+	});
+
+	it("a plain start clears the stored args, like env", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
+
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(readDevServerArgs(TASK_ID, "dev")).toEqual([]);
+	});
+
+	it("a stop clears them", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
+
+		await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });
+
+		expect(readDevServerArgs(TASK_ID, "dev")).toEqual([]);
+	});
+
+	it.each([
+		["a non-array", "--x"],
+		["a non-string item", ["--x", 1]],
+		["an item with a NUL", ["a\0b"]],
+	])("rejects %s before anything starts", async (_label, args) => {
+		await expect(
+			runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: args as unknown as string[] }),
+		).rejects.toThrow("list of strings");
+		await expect(
+			restartDevServer({ taskId: TASK_ID, projectId: "proj-1", args: args as unknown as string[] }),
+		).rejects.toThrow("list of strings");
+		expect(buildDevServerScript).not.toHaveBeenCalled();
+	});
+
+	it("rejects args together with all", async () => {
+		await expect(
+			runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--x"], all: true }),
+		).rejects.toThrow("name it");
+		await expect(
+			restartDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--x"], all: true }),
+		).rejects.toThrow("name it");
 	});
 });

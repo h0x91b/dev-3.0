@@ -75,6 +75,8 @@ export const systemHandlers: Record<string, Handler> = {
 			taskId: task.id,
 			projectId: project.id,
 			env: readEnvParam(params),
+			// Validated by the handler: it is also reachable from the renderer.
+			args: params.args as string[] | undefined,
 			...readServerParams(params),
 		});
 	},
@@ -90,6 +92,8 @@ export const systemHandlers: Record<string, Handler> = {
 			taskId: task.id,
 			projectId: project.id,
 			env: readEnvParam(params),
+			// Validated by the handler: it is also reachable from the renderer.
+			args: params.args as string[] | undefined,
 			...readServerParams(params),
 		});
 	},

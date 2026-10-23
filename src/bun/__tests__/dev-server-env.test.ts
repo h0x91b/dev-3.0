@@ -140,4 +140,25 @@ describe("dev-server env store", () => {
 		expect(readDevServerEnv("task-6", "dev")).toEqual({ FRONT: "1" });
 		expect(readDevServerEnv("task-6", "api")).toEqual({});
 	});
+
+	it("round-trips script args, per server, and clears them on an empty list", async () => {
+		const { saveDevServerArgs, readDevServerArgs, clearDevServerArgs } = await store();
+		saveDevServerArgs("task-7", "dev", ["--own-db", "a b"]);
+		saveDevServerArgs("task-7", "api", ["--verbose"]);
+		expect(readDevServerArgs("task-7", "dev")).toEqual(["--own-db", "a b"]);
+		expect(readDevServerArgs("task-7", "api")).toEqual(["--verbose"]);
+		saveDevServerArgs("task-7", "dev", []);
+		expect(readDevServerArgs("task-7", "dev")).toEqual([]);
+		clearDevServerArgs("task-7", "api");
+		expect(readDevServerArgs("task-7", "api")).toEqual([]);
+	});
+
+	it("reads [] for a missing, corrupt or non-string-array args file", async () => {
+		const { readDevServerArgs } = await store();
+		expect(readDevServerArgs("task-8", "dev")).toEqual([]);
+		for (const body of ["{not json", `{"a":1}`, `["ok", 1]`]) {
+			writeFileSync(join(root, "dev3-task-8-dev-server-args.json"), body, "utf-8");
+			expect(readDevServerArgs("task-8", "dev")).toEqual([]);
+		}
+	});
 });

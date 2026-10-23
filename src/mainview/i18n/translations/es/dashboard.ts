@@ -103,6 +103,7 @@ const dashboard = {
 	"header.devServerStartTitle": "Servidor dev detenido: haz clic para iniciar",
 	"header.devServerStartingTitle": "Servidor dev iniciando…",
 	"header.devServerRunningTitle": "Servidor dev en ejecución: haz clic para ver opciones",
+	"header.devServerArgsTitle": "Iniciado con argumentos: {args}",
 	"header.fileBrowser": "Explorador",
 	"header.changelog": "Registro de cambios",
 	"header.changelogLabel": "Change Log",

@@ -188,6 +188,9 @@ vi.mock("../dev-server-env-store", () => ({
 	saveDevServerEnv: vi.fn(),
 	readDevServerEnv: vi.fn(() => ({})),
 	clearDevServerEnv: vi.fn(),
+	saveDevServerArgs: vi.fn(),
+	readDevServerArgs: vi.fn(() => []),
+	clearDevServerArgs: vi.fn(),
 }));
 
 import * as data from "../data";

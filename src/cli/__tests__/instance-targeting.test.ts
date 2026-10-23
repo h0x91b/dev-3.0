@@ -65,6 +65,11 @@ describe("extractInstanceFlag", () => {
 			.toEqual({ rest: ["task", "update", "--type", "coordinator"], value: "self" });
 	});
 
+	it("leaves everything after a bare -- alone, even a literal --instance", () => {
+		expect(extractInstanceFlag(["dev-server", "start", "--instance", "self", "--", "--instance", "x"]))
+			.toEqual({ rest: ["dev-server", "start", "--", "--instance", "x"], value: "self" });
+	});
+
 	it("accepts the --instance=value spelling", () => {
 		expect(extractInstanceFlag(["task", "show", "--instance=task:aabbccdd"]))
 			.toEqual({ rest: ["task", "show"], value: "task:aabbccdd" });

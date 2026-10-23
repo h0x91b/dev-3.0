@@ -95,6 +95,11 @@ describe("resolveHelp — routing decision", () => {
 		expect(resolveHelp([])).toEqual({ action: "top" });
 	});
 
+	it("ignores --help after a bare -- : it belongs to the script", () => {
+		expect(resolveHelp(["dev-server", "start", "--", "--help"])).toEqual({ action: "none" });
+		expect(resolveHelp(["dev-server", "start", "--help", "--", "-h"]).action).toBe("command");
+	});
+
 	it("bare --help → top-level help", () => {
 		expect(resolveHelp(["--help"])).toEqual({ action: "top" });
 		expect(resolveHelp(["-h"])).toEqual({ action: "top" });

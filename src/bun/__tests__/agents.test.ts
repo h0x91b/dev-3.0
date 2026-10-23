@@ -602,8 +602,9 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 			makeCtx({ taskDescription: "" }),
 		);
 
-		// No positional prompt — codex opens an empty interactive window …
-		expect(cmd).not.toMatch(/ -- /);
+		// No positional prompt — codex opens an empty interactive window … (the
+		// protocol text itself may quote ` -- `, so it is cut out first)
+		expect(cmd.replace(/-c 'developer_instructions=.*"'/s, "")).not.toMatch(/ -- /);
 		// … but the protocol is still delivered out-of-band (developer message),
 		// which is exactly what scratch tasks were missing with prompt-append.
 		expect(cmd).toContain("-c 'developer_instructions=");

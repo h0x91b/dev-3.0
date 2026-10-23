@@ -54,6 +54,16 @@ export interface DevServerResolution {
 	errors: string[];
 }
 
+const PLAIN_ARG = /^[A-Za-z0-9._/:@=+,-]+$/;
+
+/**
+ * Script arguments as one display line: plain words stay bare, the rest is
+ * single-quoted. Inline because platform-launch pulls node modules into the renderer.
+ */
+export function formatDevServerArgs(args: string[]): string {
+	return args.map((arg) => (PLAIN_ARG.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`)).join(" ");
+}
+
 /** The environment variable one named port is delivered in. */
 export function devServerPortEnvKey(portName: string): string {
 	return `DEV3_PORT_${portName.toUpperCase().replaceAll("-", "_")}`;

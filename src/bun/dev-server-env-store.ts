@@ -1,6 +1,6 @@
 /**
- * The extra environment one dev-server run was started with, so a later
- * `restart` can repeat it.
+ * The extra environment and script arguments one dev-server run was started
+ * with, so a later `restart` can repeat them.
  *
  * On disk rather than in memory, in the task's temp directory next to the
  * generated wrapper script: the run outlives the app process (a surviving tmux
@@ -50,4 +50,34 @@ export function readDevServerEnv(taskId: string, server: string): Record<string,
 
 export function clearDevServerEnv(taskId: string, server: string): void {
 	rmSync(storePath(taskId, server), { force: true });
+}
+
+function argsStorePath(taskId: string, server: string): string {
+	const suffix = server === DEFAULT_DEV_SERVER_NAME ? "dev-server-args.json" : `dev-server-args-${server}.json`;
+	return dev3TaskTempPath(taskId, suffix);
+}
+
+/** Remember the script arguments of one dev server's run; an empty list clears them. */
+export function saveDevServerArgs(taskId: string, server: string, args: string[]): void {
+	if (args.length === 0) {
+		clearDevServerArgs(taskId, server);
+		return;
+	}
+	const path = argsStorePath(taskId, server);
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, JSON.stringify(args), "utf-8");
+}
+
+/** The script arguments of the last start, or `[]` for a missing or malformed file. */
+export function readDevServerArgs(taskId: string, server: string): string[] {
+	try {
+		const parsed = JSON.parse(readFileSync(argsStorePath(taskId, server), "utf-8"));
+		return Array.isArray(parsed) && parsed.every((item) => typeof item === "string") ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+export function clearDevServerArgs(taskId: string, server: string): void {
+	rmSync(argsStorePath(taskId, server), { force: true });
 }

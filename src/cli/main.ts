@@ -106,7 +106,7 @@ Commands:
   dev3 conversations handoff [--for claude|codex]  Retell this conversation as one message for another agent
   dev3 import [--json]                  Put the Claude Code conversation you are running inside onto the board as a task
                                          (takes nothing: the working directory picks the project, CLAUDE_CODE_SESSION_ID picks the conversation)
-  dev3 dev-server start [task-id] [--env KEY=VALUE ...]  Start a task dev server (--env is repeatable, passed to the devScript)
+  dev3 dev-server start [task-id] [--env KEY=VALUE ...] [-- <script args>...]  Start a task dev server (--env is repeatable; args after -- are appended to the script)
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
   dev3 dev-server status [task-id]      Show task dev server status
@@ -231,7 +231,8 @@ async function main(): Promise<void> {
 		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
 
-	if (rawArgs.includes("--version") || rawArgs.includes("-v")) {
+	const ownArgs = rawArgs.includes("--") ? rawArgs.slice(0, rawArgs.indexOf("--")) : rawArgs;
+	if (ownArgs.includes("--version") || ownArgs.includes("-v")) {
 		process.stdout.write(`dev3 v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
 		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { DevServerStatus, Project, Task } from "../../../shared/types";
-import { resolveDevServers } from "../../../shared/dev-servers";
+import { formatDevServerArgs, resolveDevServers } from "../../../shared/dev-servers";
 import { api } from "../../rpc";
 import { traceDevServerOp, type DevServerTrace } from "../../dev-server-trace";
 
@@ -53,12 +53,13 @@ const DEV_SERVER_POLL_MS = 4500;
 
 interface DevServerMenuProps {
 	position: { top: number; left: number };
+	scriptArgs: string[];
 	onRestart: () => void;
 	onStop: () => void;
 	onClose: () => void;
 }
 
-function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuProps) {
+function DevServerMenu({ position, scriptArgs, onRestart, onStop, onClose }: DevServerMenuProps) {
 	const t = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const { position: menuPos, visible } = useViewportClamp(menuRef, position);
@@ -86,6 +87,15 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
 				{t("header.devServerRunning")}
 			</div>
+			{scriptArgs.length > 0 && (
+				<div
+					className="px-3 -mt-1 pb-2 font-mono text-xs text-fg-3 truncate max-w-[16rem]"
+					title={t("header.devServerArgsTitle", { args: formatDevServerArgs(scriptArgs) })}
+					data-testid="dev-server-args"
+				>
+					{formatDevServerArgs(scriptArgs)}
+				</div>
+			)}
 			<button
 				onClick={onRestart}
 				className="header-anim w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
@@ -156,8 +166,9 @@ function DevServerList({ position, servers, status, busy, onStart, onStop, onRes
 				const entry = status?.servers.find((candidate) => candidate.name === server.name);
 				const running = entry?.running === true;
 				const port = entry?.devPorts[0]?.port ?? entry?.publishedPorts[0]?.port ?? null;
+				const argsText = running && entry && entry.scriptArgs.length > 0 ? formatDevServerArgs(entry.scriptArgs) : null;
 				return (
-					<div key={server.name} data-testid={`dev-server-row-${server.name}`} className="flex items-center gap-2 px-3 py-1.5">
+					<div key={server.name} data-testid={`dev-server-row-${server.name}`} className="flex flex-wrap items-center gap-x-2 px-3 py-1.5">
 						<span
 							className={`w-2 h-2 rounded-full flex-shrink-0 ${running ? "bg-success" : "bg-fg-muted/40"}`}
 							aria-hidden
@@ -197,6 +208,15 @@ function DevServerList({ position, servers, status, busy, onStart, onStop, onRes
 							>
 								{t("header.devServerStart")}
 							</button>
+						)}
+						{argsText !== null && (
+							<div
+								className="basis-full pl-4 font-mono text-xs text-fg-3 truncate"
+								title={t("header.devServerArgsTitle", { args: argsText })}
+								data-testid={`dev-server-args-${server.name}`}
+							>
+								{argsText}
+							</div>
 						)}
 					</div>
 				);
@@ -383,6 +403,16 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			setDevServerMenuPos({ top: rect.bottom + 4, left: rect.left });
 		}
 		setDevServerMenuOpen(true);
+		void loadMenuStatus();
+	}
+
+	/** Fills the menu's args line; display only, so a failed read just leaves it out. */
+	async function loadMenuStatus() {
+		try {
+			setDevStatus((await api.request.getDevServerStatus({ taskId: task.id, projectId: project.id })) ?? null);
+		} catch {
+			// no args line
+		}
 	}
 
 	async function startDevServerNow() {
@@ -654,6 +684,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			{devServerMenuOpen && createPortal(
 				<DevServerMenu
 					position={devServerMenuPos}
+					scriptArgs={devStatus?.servers.find((entry) => entry.running)?.scriptArgs ?? []}
 					onRestart={handleDevServerRestart}
 					onStop={handleDevServerStop}
 					onClose={() => setDevServerMenuOpen(false)}

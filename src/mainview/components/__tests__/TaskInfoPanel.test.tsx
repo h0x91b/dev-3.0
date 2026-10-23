@@ -211,6 +211,7 @@ const defaultDevServerStatus: DevServerStatus = {
 		publishedPorts: [],
 		portConflicts: [],
 		extraEnvKeys: [],
+		scriptArgs: [],
 	}],
 };
 
@@ -1404,6 +1405,38 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});
 
+		it("shows the script args of the running dev server in the menu", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+			mockedApi.request.getDevServerStatus.mockResolvedValue({
+				...defaultDevServerStatus,
+				servers: [{ ...defaultDevServerStatus.servers[0], scriptArgs: ["--own-db", "a b"] }],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+
+			const line = await screen.findByTestId("dev-server-args");
+			expect(line.textContent).toBe("--own-db 'a b'");
+			expect(line.getAttribute("title")).toBe("Started with arguments: --own-db 'a b'");
+		});
+
+		it("shows no args line in the menu when the server runs without args", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(defaultDevServerStatus);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+
+			await screen.findByText("Dev server is already running");
+			expect(screen.queryByTestId("dev-server-args")).toBeNull();
+		});
+
 		it("restarts dev server via restartDevServer (stop → delay → start)", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
@@ -1559,6 +1592,27 @@ describe("TaskInfoPanel", () => {
 			expect(apiRow.textContent).toContain(":55930");
 			expect(apiRow.textContent).toContain("Stop");
 			expect(screen.getByTestId("dev-server-row-dev").textContent).toContain("Start");
+		});
+
+		it("shows a running server's script args under its row, and nothing for one without", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.getDevServerStatus.mockResolvedValue({
+				...multiStatus,
+				servers: [
+					{ ...multiStatus.servers[0], running: true },
+					{ ...multiStatus.servers[1], scriptArgs: ["--verbose", "x y"] },
+				],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: multiProject });
+			});
+			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
+
+			const line = await screen.findByTestId("dev-server-args-api");
+			expect(line.textContent).toBe("--verbose 'x y'");
+			expect(screen.queryByTestId("dev-server-args-dev")).toBeNull();
 		});
 
 		it("starts only the server whose row was clicked", async () => {

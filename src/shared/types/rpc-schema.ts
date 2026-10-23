@@ -748,11 +748,13 @@ export type AppRPCSchema = {
 			// to the lifecycle DEV3_* vars and the assigned ports, and dev3-owned
 			// names are dropped outright (see `sanitizeDevServerEnv`). Omitting it on
 			// a start clears whatever the previous run was given.
+			// `args` are appended to the script, each shell-quoted; omitting them on a
+			// start clears the previous run's. Not allowed together with `all`.
 			// `server` names ONE declared dev server; absent means the default
 			// (`devScript`), or the only declared server when there is no default.
 			// `all` fans the action out over every declared server instead.
 			runDevServer: {
-				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
@@ -764,9 +766,10 @@ export type AppRPCSchema = {
 				response: DevServerStatus;
 			};
 			// Omitting `env` REUSES the extra env of the run being restarted, which is
-			// what keeps the UI's Restart button on the same configuration.
+			// what keeps the UI's Restart button on the same configuration. `args`
+			// behaves the same way: omitted reuses, `[]` clears.
 			restartDevServer: {
-				params: { taskId: string; projectId: string; env?: Record<string, string>; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
 				response: DevServerStatus;
 			};
 			getDevServerStatus: {
