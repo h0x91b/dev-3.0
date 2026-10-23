@@ -141,7 +141,7 @@ describe("reopen of a Codex task", () => {
 		// The project-default agent is what launchTaskPty would run, so that is what is checked.
 		expect(chooseTaskCodexConversations.mock.calls[0][2]).toEqual([expect.objectContaining({ agentId: "builtin-codex", sessionId: null })]);
 		expect(launchArgs()[6]).toBe(false);
-		expect(launchArgs()[7]).toMatchObject({ agentRefusal: reason });
+		expect(launchArgs()[7]).toMatchObject({ shellNotice: reason });
 		expect(launchArgs()[7]).not.toHaveProperty("sessionId");
 		expect(pushCliAttention).toHaveBeenCalledWith({ taskId: TASK_ID, projectId: "proj-1", reason });
 		// Success, not preparationFailed: no To Do move, no cleanup script, worktree kept.
@@ -161,7 +161,7 @@ describe("reopen of a Codex task", () => {
 		const ops = { ...project, kind: "virtual" } as unknown as Project;
 		const outcome = await executeLifecycleEffect(reopen(), { ...context(task()), project: ops } as unknown as LifecycleExecutionContext);
 		expect(launchArgs()[6]).toBe(false);
-		expect(launchArgs()[7]).toMatchObject({ agentRefusal: "Cannot resume Codex: not recorded" });
+		expect(launchArgs()[7]).toMatchObject({ shellNotice: "Cannot resume Codex: not recorded" });
 		expect(outcome).toMatchObject({ followUp: { type: "preparationSucceeded" } });
 	});
 

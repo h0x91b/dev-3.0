@@ -431,7 +431,7 @@ async function setTaskHidden(params: { taskId: string; projectId: string; hidden
  * from the resource monitor's last poll (up to 10s stale), which is why the
  * toast quoting it says "about".
  */
-async function hibernateTask(params: { taskId: string; projectId: string }): Promise<{ task: Task; freedRssBytes: number | null }> {
+export async function hibernateTask(params: { taskId: string; projectId: string }): Promise<{ task: Task; freedRssBytes: number | null }> {
 	log.info("→ hibernateTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);

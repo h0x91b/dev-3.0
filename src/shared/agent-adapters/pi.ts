@@ -28,7 +28,9 @@ export const piAdapter: AgentAdapter = {
 		// without asking, by design, so permissionMode and maxBudgetUsd emit nothing.
 		if (config?.effort) args.push("--thinking", config.effort);
 
-		if (!resume && !options?.skipSystemPrompt) {
+		// On resume too: the session file does not keep an appended system prompt,
+		// so a resumed session without the flag runs with no dev3 protocol at all.
+		if (!options?.skipSystemPrompt) {
 			// pi reads the value as a file when it names one, which keeps the body
 			// out of argv (h0x91b/dev-3.0#1734) and under the Windows ceiling.
 			if (options?.systemPromptFile) {

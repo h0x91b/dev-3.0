@@ -56,6 +56,13 @@ const common = {
 	"agentLaunch.decline": "Отказать",
 	"agentLaunch.autoApproveIn": "Запустится сам через {time}",
 	"agentLaunch.autoResumeIn": "Возобновится само через {time}",
+	"agentLaunch.titleHibernate": "Агент хочет заморозить эту задачу",
+	"agentLaunch.titleWakeShell": "Агент хочет разбудить задачу с чистым шеллом",
+	"agentLaunch.wakeShellNote": "Откроет терминал задачи с шеллом и без агента. Сохранённый разговор останется, агента можно будет продолжить позже.",
+	"agentLaunch.hibernating": "Замораживаю…",
+	"agentLaunch.waking": "Бужу…",
+	"agentLaunch.autoHibernateIn": "Заморозится само через {time}",
+	"agentLaunch.autoWakeIn": "Проснётся само через {time}",
 	"agentLaunch.autoApproveHeld": "Ждёт вашего ответа",
 
 	// Навигация в стиле Vimium

@@ -36,7 +36,9 @@ export const ompAdapter: AgentAdapter = {
 			args.push("--thinking", config.effort);
 		}
 
-		if (!resume && !options?.skipSystemPrompt) {
+		// On resume too: the session file does not keep an appended system prompt,
+		// so a resumed session without the flag runs with no dev3 protocol at all.
+		if (!options?.skipSystemPrompt) {
 			// One flag, either form: omp reads the value as a file when it names one.
 			// Keeping the body out of argv matters beyond the Windows ceiling — an
 			// inline copy is what `pkill -f` matches against (h0x91b/dev-3.0#1734).

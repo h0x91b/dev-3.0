@@ -999,8 +999,7 @@ function TaskInfoPanel({
 	async function handleHibernate() {
 		// Confirmed, unlike every other reversible action: killing the session is
 		// the one part hibernation cannot undo. Extra agent panes come back only
-		// through "Resume agent conversation" — waking with a plain shell clears
-		// sessionState and drops them for good (see restartTask in tmux-pty.ts).
+		// through "Wake and resume agent"; a plain-shell wake starts none of them.
 		const paneCount = task.sessionState?.panes?.length ?? 0;
 		const confirmed = await confirm({
 			title: t("task.hibernateConfirmTitle"),

@@ -1,4 +1,5 @@
 import type { ResumeDialogPane } from "../agent-resume";
+import type { AgentSessionAction } from "../task-hibernate";
 import type { TaskStatus } from "./task-status";
 import { DEFAULT_PRIORITY, type TaskPriority } from "./task-priority";
 import type { Task } from "./task";
@@ -103,6 +104,8 @@ export interface AgentLaunchRequest {
 	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean };
 	/** `dev3 agent resume`: restore these saved panes exactly — the dialog offers no agent choice. */
 	resume?: { panes: ResumeDialogPane[] };
+	/** `dev3 task hibernate` / `dev3 task wake --shell`: act on the task's session — the dialog offers no agent choice. */
+	sessionAction?: AgentSessionAction;
 	/**
 	 * Agent/config the requesting agent suggested with `--agent`/`--config`,
 	 * already validated. Only preselects the picker — the user still decides.

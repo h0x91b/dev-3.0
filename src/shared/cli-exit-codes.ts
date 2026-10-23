@@ -33,6 +33,9 @@ export const CLI_EXIT_CODE_RESUME_ALREADY_RUNNING = 31;
 export const CLI_EXIT_CODE_RESUME_UNAVAILABLE = 32;
 export const CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED = 33;
 export const CLI_EXIT_CODE_SPACE_REF_INVALID = 34;
+export const CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE = 35;
+export const CLI_EXIT_CODE_HIBERNATE_DECLINED = 36;
+export const CLI_EXIT_CODE_TASK_NOT_HIBERNATED = 37;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -239,5 +242,23 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_SPACE_REF_INVALID,
 		description:
 			"A `dev3 projects add|clone` or `dev3 spaces …` command named a space it cannot use, so NOTHING was added, cloned, created or changed: a `--space` / positional space matched no space or more than one (a name two spaces share — pass the id), or `--new-space` / `spaces create` named a space that already exists (names compare case-insensitively). The message lists the existing spaces with their ids. Distinct from exit 1 so a caller can fall back to creating the space (`--new-space`, `dev3 spaces create`) or to joining the existing one, instead of treating it as a failed registration.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE",
+		code: CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE,
+		description:
+			"`dev3 task hibernate` found nothing running to free, so NOTHING was stopped: the task is already hibernated, a draft, not in an active column, has no worktree, or has no live terminal. With `--json` the result carries a `reason` (`already-hibernated`, `draft`, `not-active`, `no-worktree`, `not-running`). A task whose terminal is gone after a restart can be brought back with `dev3 agent resume`. Distinct from exit 1 so a coordinator parking many tasks can treat an already-parked one as done.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_HIBERNATE_DECLINED",
+		code: CLI_EXIT_CODE_HIBERNATE_DECLINED,
+		description:
+			"`dev3 task hibernate` was run from inside a task (an agent asked) and the user did NOT approve it in the app: they declined, or the task's run ended before anyone answered. NOTHING was stopped — the agent, terminal and dev server keep running. An unanswered dialog approves itself after the configured launch auto-approval delay, so this code always means a human said no, or the run was gone. Distinct from exit 10, which a declined launch, resume or plain-shell wake returns.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_TASK_NOT_HIBERNATED",
+		code: CLI_EXIT_CODE_TASK_NOT_HIBERNATED,
+		description:
+			"`dev3 task wake` was aimed at a task that is not hibernated, so NOTHING was launched or changed. A live task needs no wake; a task whose terminal died without being hibernated is resumed with `dev3 agent resume`. Distinct from exit 1 so a coordinator waking several tasks can treat an already-awake one as done.",
 	},
 ] as const;

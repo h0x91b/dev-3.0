@@ -17,7 +17,7 @@ import { taskPeek } from "../task-peek";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -548,6 +548,25 @@ export const taskHandlers: Record<string, Handler> = {
 			// nothing more — it is never reset consent (that is `task.requestReset`).
 			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
+	},
+
+	// `dev3 task hibernate` / `dev3 task wake`. An agent asking (sourceTaskId)
+	// gets the launch dialog with its auto-approve countdown; a person at a
+	// terminal acts directly, as if they had clicked the button.
+	"task.hibernate": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const requester = await resolveRequesterTask(params);
+		const { hibernateCliTask } = await import("../cli-task-session");
+		return hibernateCliTask({ project, task, requester });
+	},
+
+	"task.wake": async (params) => {
+		const mode = params.mode;
+		if (mode !== "shell" && mode !== "resume") throw new Error('mode must be "shell" or "resume"');
+		const { project, task } = await resolveTaskFromParams(params);
+		const requester = await resolveRequesterTask(params);
+		const { wakeCliTask } = await import("../cli-task-session");
+		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true });
 	},
 
 	// Agent-initiated request to complete a task. Blocks until the user
