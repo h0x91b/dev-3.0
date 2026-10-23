@@ -525,10 +525,12 @@ describe("launchArgs — omp", () => {
 		expect(cmd).toBe("omp --approval-mode always-ask --append-system-prompt /home/u/.dev3.0/data/agent-prompts/omp.md -- 'Fix the login bug'");
 		expect(cmd).not.toContain("<OMP_BODY>");
 	});
-	it("resumes without re-sending the prompt or the protocol, approval tier included", () => {
-		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c --approval-mode always-ask");
+	// omp's session file keeps no appended system prompt: a resume without the
+	// flag ran with no dev3 protocol (verified on omp, 2026-10-23).
+	it("resumes without re-sending the prompt, but with the protocol and the approval tier", () => {
+		expect(launch("omp", cfg(), { resume: true })).toBe("omp -c --approval-mode always-ask --append-system-prompt <OMP_BODY>");
 		expect(launch("omp", cfg({ model: "sonnet", permissionMode: "bypassPermissions" }), { resume: true, sessionId: "sid" }))
-			.toBe("omp --resume sid --model sonnet --approval-mode yolo");
+			.toBe("omp --resume sid --model sonnet --approval-mode yolo --append-system-prompt <OMP_BODY>");
 	});
 });
 
@@ -548,9 +550,9 @@ describe("launchArgs — pi", () => {
 		expect(cmd).toBe("pi --append-system-prompt /home/u/.dev3.0/data/agent-prompts/pi.md -- 'Fix the login bug'");
 		expect(cmd).not.toContain("<PI_BODY>");
 	});
-	it("resumes the pinned session, or the latest one, without prompt or protocol", () => {
-		expect(launch("pi", cfg({ model: "m" }), { resume: true, sessionId: "sid-1" })).toBe("pi --session-id sid-1 --model m");
-		expect(launch("pi", cfg(), { resume: true })).toBe("pi -c");
+	it("resumes the pinned session, or the latest one, without the prompt but with the protocol", () => {
+		expect(launch("pi", cfg({ model: "m" }), { resume: true, sessionId: "sid-1" })).toBe("pi --session-id sid-1 --model m --append-system-prompt <PI_BODY>");
+		expect(launch("pi", cfg(), { resume: true })).toBe("pi -c --append-system-prompt <PI_BODY>");
 	});
 	it("keeps a description that opens with @ from being read as a file to attach", () => {
 		const cmd = getAgentAdapter("pi").launchArgs("pi", cfg(), { ...CTX, taskDescription: "@src/a.ts is broken" }).join(" ");
