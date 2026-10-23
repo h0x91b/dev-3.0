@@ -1105,8 +1105,8 @@ async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, contex
 	const ownSession = targetsOwnSession(String(params.taskId), args, context);
 	if (params.sourceTaskId) {
 		process.stderr.write(ownSession
-			? "Asking the user in the app to hibernate THIS task — approving it ends this session.\n"
-			: "Asking the user in the app to hibernate that task...\n");
+			? "Requesting hibernation of THIS task — if it is running, the user approves it in the app, and that ends this session.\n"
+			: "Requesting hibernation — if the task is running, the user approves it in the app first...\n");
 	}
 	const resp = await sendSessionAction(socketPath, "task.hibernate", params, "hibernation");
 	if (!resp.ok) exitError(resp.error || "Failed to hibernate the task");
