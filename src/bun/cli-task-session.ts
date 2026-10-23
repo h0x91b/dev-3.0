@@ -1,11 +1,8 @@
-import type { AgentLaunchRequest, Project, Task } from "../shared/types";
-import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
+import type { Project, Task } from "../shared/types";
+import { ACTIVE_STATUSES } from "../shared/types";
 import type { AgentSessionAction, CliHibernateOutcome, CliWakeOutcome, HibernateRefusalReason } from "../shared/task-hibernate";
-import { createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
 import { resumeCliAgent } from "./cli-agent-resume";
-import { getTask } from "./data";
-import { loadSettings } from "./settings";
-import { getPushMessage } from "./rpc-handlers/shared-pure";
+import { askSessionApproval, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
 import { hibernateTask } from "./rpc-handlers/task-lifecycle";
 import { taskTerminalAlive, wakeTaskShell } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
@@ -31,36 +28,16 @@ async function hibernatePreflight(task: Task): Promise<CliHibernateOutcome | nul
 	return null;
 }
 
-/**
- * Same dialog, queue and auto-approve countdown as an agent asking to launch or
- * resume another task: one `launch` request per task, so a hibernate and a
- * resume can never both be pending on the same session.
- */
-async function askUser(project: Project, task: Task, requester: Task, action: AgentSessionAction): Promise<{ approved: boolean; stale?: boolean }> {
-	const push = getPushMessage();
-	if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
-	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error("Another approval is pending for this task — answer it first.");
-	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs: agentLaunchAutoApproveMs(await loadSettings()) });
-	const request: AgentLaunchRequest = {
-		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
-		scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
-		subject: buildTaskDialogSubject(task, project), defaultPriority: task.priority ?? DEFAULT_PRIORITY,
-		canAddVariants: false, autoApproveAt, sessionAction: action,
-	};
-	setAgentLaunchDialog(request);
-	push("agentLaunchRequested", request);
-	const answer = await decision;
-	return { approved: answer.approved, ...(answer.stale ? { stale: true } : {}) };
+/** Same dialog, queue and countdown as an agent asking to launch or resume another task. */
+function askUser(project: Project, task: Task, requester: Task, action: AgentSessionAction) {
+	return askSessionApproval({
+		project, task, requester,
+		subject: { sessionAction: action },
+		alreadyPending: "Another approval is pending for this task — answer it first.",
+	});
 }
 
-/** The approved request must still be about the run the dialog showed. */
-async function sameRunAfterApproval(project: Project, task: Task): Promise<Task> {
-	const current = await getTask(project, task.id);
-	if (current.worktreePath !== task.worktreePath || current.lifecycleStartedAt !== task.lifecycleStartedAt) {
-		throw new Error("The target task's run changed while waiting — nothing was done.");
-	}
-	return current;
-}
+const RUN_CHANGED = "The target task's run changed while waiting — nothing was done.";
 
 async function performHibernate({ project, task, requester }: SessionActionOptions): Promise<CliHibernateOutcome> {
 	const early = await hibernatePreflight(task);
@@ -69,7 +46,7 @@ async function performHibernate({ project, task, requester }: SessionActionOptio
 	if (requester) {
 		const answer = await askUser(project, task, requester, { kind: "hibernate", paneCount: task.sessionState?.panes?.length ?? 1 });
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
-		current = await sameRunAfterApproval(project, task);
+		current = await sameRunAfterApproval(project, task, RUN_CHANGED);
 		const again = await hibernatePreflight(current);
 		if (again) return again;
 	}
@@ -83,35 +60,24 @@ async function performWakeShell({ project, task, requester }: SessionActionOptio
 	if (requester) {
 		const answer = await askUser(project, task, requester, { kind: "wake-shell" });
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
-		current = await sameRunAfterApproval(project, task);
+		current = await sameRunAfterApproval(project, task, RUN_CHANGED);
 		if (!current.hibernated) return { outcome: "not-hibernated", taskId: current.id, seq: current.seq };
 	}
 	await wakeTaskShell({ taskId: current.id });
 	return { outcome: "woke-shell", taskId: current.id, seq: current.seq, backend: taskTerminalBackendIdentity(current) };
 }
 
-const pendingByTask = new Map<string, { signature: string; result: Promise<unknown> }>();
-
 /** Retries join the whole operation, approval included: one answer acts once. */
-function joinOrRun<T>(task: Task, signature: string, run: () => Promise<T>): Promise<T> {
-	const existing = pendingByTask.get(task.id);
-	if (existing) {
-		if (existing.signature !== signature) throw new Error("Another session request is pending for this task — wait for its answer first.");
-		return existing.result as Promise<T>;
-	}
-	const result = run();
-	pendingByTask.set(task.id, { signature, result });
-	return result.finally(() => pendingByTask.delete(task.id));
-}
+const joinOrRun = perTaskJoiner("Another session request is pending for this task — wait for its answer first.");
 
 /** `dev3 task hibernate`: what the session bar's Hibernate button does, asked first when an agent requests it. */
 export function hibernateCliTask(opts: SessionActionOptions): Promise<CliHibernateOutcome> {
-	return joinOrRun(opts.task, `hibernate:${opts.requester?.id ?? ""}`, () => performHibernate(opts));
+	return joinOrRun(opts.task.id, `hibernate:${opts.requester?.id ?? ""}`, () => performHibernate(opts));
 }
 
 /** `dev3 task wake --shell|--resume`: the wake screen's two buttons. */
 export async function wakeCliTask(opts: SessionActionOptions & { mode: "shell" | "resume"; allowAgentLatest: boolean }): Promise<CliWakeOutcome> {
-	if (opts.mode === "shell") return joinOrRun(opts.task, `wake-shell:${opts.requester?.id ?? ""}`, () => performWakeShell(opts));
+	if (opts.mode === "shell") return joinOrRun(opts.task.id, `wake-shell:${opts.requester?.id ?? ""}`, () => performWakeShell(opts));
 	if (!opts.task.hibernated) return { outcome: "not-hibernated", taskId: opts.task.id, seq: opts.task.seq };
 	return { outcome: "resume", resume: await resumeCliAgent({ project: opts.project, task: opts.task, requester: opts.requester, allowAgentLatest: opts.allowAgentLatest }) };
 }

@@ -172,6 +172,19 @@ export async function requirePaneTask(params: Record<string, unknown>): Promise<
 	return found;
 }
 
+/**
+ * The task whose agent sent this request (`sourceTaskId`), or null for a person
+ * at a plain terminal. An id that resolves to nothing is an error rather than a
+ * silent "nobody asked", which would skip the user's approval entirely.
+ */
+export async function resolveRequesterTask(params: Record<string, unknown>, what = "request"): Promise<Task | null> {
+	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceId) return null;
+	const found = await resolveTaskAcrossProjects(sourceId);
+	if (!found) throw new Error(`Unknown requesting task — cannot attribute the ${what}.`);
+	return found.task;
+}
+
 /** A task for `dev3 review`: scoped to a project when the CLI knows it, else found across projects. */
 export async function resolveReviewTask(taskId: string, projectId: string | undefined): Promise<{ project: Project; task: Task }> {
 	if (projectId) {

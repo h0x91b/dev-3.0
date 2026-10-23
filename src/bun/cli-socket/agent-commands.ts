@@ -7,7 +7,7 @@ import { loadSettings } from "../settings";
 import { CodexQuestionState } from "../codex-question-state";
 import { capturePaneSession } from "./pane-sessions";
 import { log, type Handler } from "./shared";
-import { requirePaneTask, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
+import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams } from "./task-resolution";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -39,9 +39,7 @@ export const agentHandlers: Record<string, Handler> = {
 	"agent.spawn": async (params) => {
 		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
 		const { project, task } = await requirePaneTask(params);
-		const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId : "";
-		const requester = sourceId ? await resolveTaskAcrossProjects(sourceId) : null;
-		if (sourceId && !requester) throw new Error("Unknown requesting task — cannot attribute the launch request.");
+		const requester = await resolveRequesterTask(params, "launch request");
 		for (const key of ["agentId", "configId", "prompt"]) {
 			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
 		}
@@ -49,7 +47,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (params.configId && !params.agentId) throw new Error("configId requires agentId.");
 		const { spawnCliAgent } = await import("../cli-agent-spawn");
 		return spawnCliAgent({
-			project, task, requester: requester?.task ?? null,
+			project, task, requester,
 			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
 		});
@@ -59,11 +57,9 @@ export const agentHandlers: Record<string, Handler> = {
 			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness, config and account.`);
 		}
 		const { project, task } = await requirePaneTask(params);
-		const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId : "";
-		const requester = sourceId ? await resolveTaskAcrossProjects(sourceId) : null;
-		if (sourceId && !requester) throw new Error("Unknown requesting task — cannot attribute the resume request.");
+		const requester = await resolveRequesterTask(params, "resume request");
 		const { resumeCliAgent } = await import("../cli-agent-resume");
-		return resumeCliAgent({ project, task, requester: requester?.task ?? null, allowAgentLatest: params.allowAgentLatest === true });
+		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true });
 	},
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
