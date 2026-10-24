@@ -394,6 +394,8 @@ export interface ResolvedTerminalPath {
 export type FilePreviewResult =
 	| { kind: "text"; content: string; truncated: boolean; size: number }
 	| { kind: "image"; dataUrl: string; size: number }
+	/** Played from a `getFileMediaUrl` stream; the bytes never travel over RPC. */
+	| { kind: "media"; media: "audio" | "video"; mime: string; size: number }
 	| { kind: "binary"; size: number }
 	| { kind: "too-large"; size: number }
 	| { kind: "directory" }

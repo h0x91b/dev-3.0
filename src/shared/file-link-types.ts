@@ -31,15 +31,32 @@ export const FILE_LINK_CONTENT_TYPES: Readonly<Record<string, string>> = {
 	".ico": "image/x-icon",
 	".pdf": "application/pdf",
 	".mp4": "video/mp4",
+	".m4v": "video/mp4",
 	".webm": "video/webm",
+	".mov": "video/quicktime",
 	".mp3": "audio/mpeg",
+	".m4a": "audio/mp4",
+	".aac": "audio/aac",
 	".wav": "audio/wav",
+	".flac": "audio/flac",
 	".ogg": "audio/ogg",
+	".oga": "audio/ogg",
+	".opus": "audio/ogg",
 	".woff": "font/woff",
 	".woff2": "font/woff2",
 	".ttf": "font/ttf",
 	".otf": "font/otf",
 };
+
+/**
+ * Files the in-app preview plays through `<audio>`/`<video>`, streamed from a
+ * `/file/` link rather than read over RPC. Whether the engine can decode one is
+ * asked at runtime (`canPlayType` + the element's error), never promised here.
+ */
+export function previewMediaKind(path: string): "audio" | "video" | null {
+	const type = FILE_LINK_CONTENT_TYPES[fileLinkExt(path)] ?? "";
+	return type.startsWith("audio/") ? "audio" : type.startsWith("video/") ? "video" : null;
+}
 
 /** Pages whose relative CSS/images/scripts need the link to cover their folder. */
 export const FILE_LINK_PAGE_EXTS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".svg"]);
@@ -74,6 +91,7 @@ export const TAB_VIEWABLE_EXTS: ReadonlySet<string> = new Set(
 export const WINDOWS_OPEN_SAFE_EXTS: ReadonlySet<string> = new Set([
 	".html", ".htm", ".svg", ".md", ".markdown", ".txt", ".log", ".json",
 	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".mp4", ".webm", ".mp3", ".wav", ".ogg",
+	".m4v", ".mov", ".m4a", ".aac", ".flac", ".oga", ".opus",
 ]);
 
 /** Lower-case extension including the dot, or "" — works on POSIX and Windows paths alike. */

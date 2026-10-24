@@ -34,6 +34,7 @@ import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { cloneDirNameProblem } from "../../shared/project-registration";
 import { clipboardImageToPng } from "../clipboard-image";
 import { sharedVideoUrlPath } from "../shared-video-stream";
+import { mintPreviewMediaLink } from "./terminal-paths";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
@@ -865,6 +866,11 @@ async function getSharedVideoUrl(params: { path: string }): Promise<{ url: strin
 	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
 }
 
+async function getFileMediaUrl(params: { path: string }): Promise<{ url: string; path: string }> {
+	const path = await mintPreviewMediaLink(params.path);
+	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+}
+
 async function readArtifactContent(params: { artifact: SharedArtifact }) {
 	return { ...loadSharedArtifactContent(params.artifact), downloadKind: sharedArtifactDownloadKind(params.artifact) };
 }
@@ -1117,6 +1123,7 @@ export const appHandlers = {
 	uploadImageBase64,
 	readImageBase64,
 	getSharedVideoUrl,
+	getFileMediaUrl,
 	readArtifactContent,
 	readArtifactDownload,
 	openArtifactInBrowser,

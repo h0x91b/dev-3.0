@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 
@@ -54,7 +54,7 @@ vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [s
 const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn(async (_path: string) => {}) }));
 vi.mock("../../wsl-host", () => wsl);
 
-import { isUnder, terminalPathHandlers as appHandlers } from "../terminal-paths";
+import { isUnder, mintPreviewMediaLink, terminalPathHandlers as appHandlers } from "../terminal-paths";
 import { resolveFileLinkPath } from "../../file-links";
 
 beforeAll(() => {
@@ -296,6 +296,38 @@ describe("readFilePreview", () => {
 		expect(result.kind).toBe("image");
 		if (result.kind === "image") {
 			expect(result.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
+		}
+	});
+});
+
+describe("audio and video previews", () => {
+	it("hands media of any size to the player instead of the text cap, without reading it", async () => {
+		const mp3 = join(tmp, "vodka.mp3");
+		writeFileSync(mp3, "");
+		truncateSync(mp3, 7 * 1024 * 1024);
+		expect(await appHandlers.readFilePreview({ path: mp3 })).toEqual({ kind: "media", media: "audio", mime: "audio/mpeg", size: 7 * 1024 * 1024 });
+		const clip = join(tmp, "clip.webm");
+		writeFileSync(clip, "webm");
+		expect(await appHandlers.readFilePreview({ path: clip })).toEqual({ kind: "media", media: "video", mime: "video/webm", size: 4 });
+		expect((await appHandlers.readFilePreview({ path: join(tmp, "notes.txt") })).kind).toBe("text");
+	});
+
+	it("mints a stream link for media under the preview's own gate, and for nothing else", async () => {
+		const mp3 = join(tmp, "vodka.mp3");
+		writeFileSync(mp3, "ID3");
+		const link = await mintPreviewMediaLink(mp3);
+		expect(link).toMatch(/^\/file\/[^/]+\/vodka\.mp3$/);
+		expect(resolveFileLinkPath(link)).toBe(realpathSync(mp3));
+		await expect(mintPreviewMediaLink(join(tmp, "notes.txt"))).rejects.toThrow("Not an audio or video file");
+		await expect(mintPreviewMediaLink("/etc/hosts")).rejects.toThrow("outside the allowed");
+		await expect(mintPreviewMediaLink("vodka.mp3")).rejects.toThrow("Invalid file path");
+		// The name says audio, the real target is a text file: the link would serve that text.
+		const disguised = join(tmp, "notes-link.mp3");
+		symlinkSync(join(tmp, "notes.txt"), disguised);
+		try {
+			await expect(mintPreviewMediaLink(disguised)).rejects.toThrow("Not an audio or video file");
+		} finally {
+			unlinkSync(disguised);
 		}
 	});
 });

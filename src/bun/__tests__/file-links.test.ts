@@ -295,6 +295,25 @@ describe("streaming slots", () => {
 		expect(openFileLinkResponses()).toBe(0);
 	});
 
+	it("serves only audio and video on the desktop's media-only route — never a page beside the PTY socket", async () => {
+		const mediaOnly = (path: string, init: { headers?: Record<string, string> } = {}) => {
+			const url = new URL(`http://x${path}`);
+			return serveFileLink(new Request(url, init), url, { mediaOnly: true });
+		};
+		const { base } = reportLink();
+		expect((await mediaOnly(`${base}index.html`)).status).toBe(404);
+		expect((await mediaOnly(`${base}ten.txt`)).status).toBe(404);
+		expect((await mediaOnly(`${base}blob.dat`)).status).toBe(404);
+		writeFileSync(join(REPORT, "track.mp3"), Buffer.alloc(3 * 1024 * 1024, 7));
+		expect((await mediaOnly(`${base}track.mp3?download=1`)).status).toBe(404);
+		const seek = await mediaOnly(`${base}track.mp3`, { headers: { range: "bytes=2097152-" } });
+		expect(seek.status).toBe(206);
+		expect(seek.headers.get("content-type")).toBe("audio/mpeg");
+		expect(seek.headers.get("content-range")).toBe(`bytes 2097152-${2097152 + 1024 * 1024 - 1}/${3 * 1024 * 1024}`);
+		expect((await seek.arrayBuffer()).byteLength).toBe(1024 * 1024);
+		expect(openFileLinkResponses()).toBe(0);
+	});
+
 	it("does not hang on a FIFO planted in the folder", async () => {
 		if (process.platform === "win32") return;
 		const fifo = join(REPORT, "pipe");

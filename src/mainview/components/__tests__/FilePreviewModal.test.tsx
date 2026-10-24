@@ -7,6 +7,7 @@ import { installImmediateIntersectionObserver } from "../../test-utils/immediate
 import type { FilePreviewResult } from "../../../shared/types";
 
 const readFilePreview = vi.fn<(params: { path: string }) => Promise<FilePreviewResult>>();
+const getFileMediaUrl = vi.fn(async ({ path }: { path: string }) => ({ url: `/file/tok${path}`, path: `/file/tok${path}` }));
 
 const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
 
@@ -30,6 +31,9 @@ vi.mock("../../rpc", () => ({
 		request: {
 			get readFilePreview() {
 				return readFilePreview;
+			},
+			get getFileMediaUrl() {
+				return getFileMediaUrl;
 			},
 			openTerminalPath: vi.fn(),
 			createFileLink: vi.fn(),
@@ -597,5 +601,109 @@ describe("FilePreviewModal image review", () => {
 		fireEvent.load(img);
 		expect(screen.queryByTestId("file-image-review-overlay")).not.toBeInTheDocument();
 		expect(screen.queryByTestId("file-review")).not.toBeInTheDocument();
+	});
+});
+
+describe("FilePreviewModal audio and video", () => {
+	const MB = 1024 * 1024;
+	let canPlay: ReturnType<typeof vi.spyOn>;
+	let pause: ReturnType<typeof vi.spyOn>;
+	let load: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		canPlay = vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("maybe");
+		pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+		load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+	});
+	afterEach(() => {
+		canPlay.mockRestore();
+		pause.mockRestore();
+		load.mockRestore();
+	});
+
+	it("plays a 7 MB MP3 from a stream link with native controls instead of calling it too large", async () => {
+		readFilePreview.mockResolvedValue({ kind: "media", media: "audio", mime: "audio/mpeg", size: 7 * MB });
+		renderModal("/cache/vodka.mp3");
+		const audio = await screen.findByTestId("file-preview-audio");
+		expect(getFileMediaUrl).toHaveBeenCalledWith({ path: "/cache/vodka.mp3" });
+		expect(audio.tagName).toBe("AUDIO");
+		expect(audio).toHaveAttribute("src", "/file/tok/cache/vodka.mp3");
+		expect(audio).toHaveAttribute("controls");
+		expect(audio).toHaveAttribute("preload", "metadata");
+		expect(audio).not.toHaveAttribute("autoplay");
+		expect(audio).toHaveAttribute("aria-label", "vodka.mp3");
+		expect(canPlay).toHaveBeenCalledWith("audio/mpeg");
+		expect(screen.queryByText(/too large/)).not.toBeInTheDocument();
+		expect(screen.getByText("MP3 · 7 MB")).toBeInTheDocument();
+		// The fallbacks stay: the remote footer still hands the file to the browser.
+		expect(screen.getByText("Open in new tab")).toBeInTheDocument();
+		expect(screen.getByText("Download")).toBeInTheDocument();
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "notice");
+	});
+
+	it("stops playback and drops the stream when the preview closes", async () => {
+		readFilePreview.mockResolvedValue({ kind: "media", media: "audio", mime: "audio/mpeg", size: 7 * MB });
+		const { unmount } = renderModal("/cache/vodka.mp3");
+		const audio = await screen.findByTestId("file-preview-audio");
+		unmount();
+		expect(pause).toHaveBeenCalled();
+		expect(audio).not.toHaveAttribute("src");
+		expect(load).toHaveBeenCalled();
+	});
+
+	it("releases the old file when the preview switches to another one", async () => {
+		readFilePreview.mockImplementation(async ({ path }) => ({ kind: "media", media: path.endsWith(".mp4") ? "video" : "audio", mime: path.endsWith(".mp4") ? "video/mp4" : "audio/mpeg", size: MB }));
+		const view = renderModal("/cache/vodka.mp3");
+		const audio = await screen.findByTestId("file-preview-audio");
+		view.rerender(
+			<I18nProvider>
+				<FilePreviewModal path="/cache/clip.mp4" onClose={view.onClose} />
+			</I18nProvider>,
+		);
+		const video = await screen.findByTestId("file-preview-video");
+		expect(audio).not.toHaveAttribute("src");
+		expect(pause).toHaveBeenCalled();
+		expect(video).toHaveAttribute("src", "/file/tok/cache/clip.mp4");
+		expect(getFileMediaUrl).toHaveBeenLastCalledWith({ path: "/cache/clip.mp4" });
+	});
+
+	it("plays video inline in the content-sized dialog, expandable, and says when only the sound can play", async () => {
+		readFilePreview.mockResolvedValue({ kind: "media", media: "video", mime: "video/mp4", size: 120 * MB });
+		renderModal("/cache/clip.mp4");
+		const video = await screen.findByTestId("file-preview-video");
+		expect(video).toHaveAttribute("controls");
+		expect(video).toHaveAttribute("playsinline");
+		expect(video).not.toHaveAttribute("autoplay");
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "fit");
+		expect(screen.getByTestId("file-preview-expand")).toBeInTheDocument();
+		Object.defineProperty(video, "videoWidth", { value: 0, configurable: true });
+		fireEvent.loadedMetadata(video);
+		expect(screen.getByText(/No playable video track/)).toBeInTheDocument();
+	});
+
+	it("does not promise a codec the engine refuses — no stream, the external-open fallbacks stay", async () => {
+		canPlay.mockReturnValue("");
+		readFilePreview.mockResolvedValue({ kind: "media", media: "video", mime: "video/quicktime", size: 40 * MB });
+		renderModal("/cache/take.mov");
+		expect(await screen.findByText("This app can't play MOV files. Open it in another app instead.")).toBeInTheDocument();
+		expect(getFileMediaUrl).not.toHaveBeenCalled();
+		expect(screen.queryByTestId("file-preview-video")).not.toBeInTheDocument();
+		// One line of text is a notice, not a stage: no screen-wide dialog, no Expand.
+		expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "notice");
+		expect(screen.queryByTestId("file-preview-expand")).not.toBeInTheDocument();
+		expect(screen.getByText("Download")).toBeInTheDocument();
+	});
+
+	it("reports a damaged file or a refused stream instead of a silent player", async () => {
+		readFilePreview.mockResolvedValue({ kind: "media", media: "audio", mime: "audio/mpeg", size: MB });
+		const { unmount } = renderModal("/cache/broken.mp3");
+		fireEvent.error(await screen.findByTestId("file-preview-audio"));
+		expect(screen.getByRole("alert")).toHaveTextContent("Couldn't play this file");
+		unmount();
+
+		getFileMediaUrl.mockRejectedValueOnce(new Error("Path is outside the allowed directories"));
+		renderModal("/cache/elsewhere.mp3");
+		expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't stream this file: Path is outside the allowed directories");
 	});
 });

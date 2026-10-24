@@ -686,6 +686,11 @@ function initBrowserApi(): ApiShape {
 			return result ? { url: result.path, path: result.path } : null;
 		},
 
+		async getFileMediaUrl(params: { path: string }) {
+			const result = await rpcRequest("getFileMediaUrl", params);
+			return { url: result.path, path: result.path };
+		},
+
 		async hideApp(): Promise<void> {
 			// No-op in browser
 		},

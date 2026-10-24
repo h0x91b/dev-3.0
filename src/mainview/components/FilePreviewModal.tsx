@@ -15,6 +15,7 @@ import { ImageRegionOverlay, regionLabel, type Region } from "../review/ImageReg
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { MarkdownDocument } from "./pr-review/markdown";
+import FilePreviewMedia from "./FilePreviewMedia";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
@@ -128,6 +129,8 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const [wrapLines, toggleWrapLines] = usePersistedFlag(WRAP_KEY, true);
 	const [expanded, toggleExpanded] = usePersistedFlag(EXPANDED_KEY, false);
 	const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
+	const [mediaUnplayable, setMediaUnplayable] = useState(false);
+	const markMediaUnplayable = useCallback(() => setMediaUnplayable(true), []);
 	const [canOpenOnWindows, setCanOpenOnWindows] = useState(false);
 	const highlightRef = useRef<HTMLDivElement | null>(null);
 	const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -269,6 +272,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		setPreview(null);
 		setShowRaw(false);
 		setImageDims(null);
+		setMediaUnplayable(false);
 		api.request
 			.readFilePreview({ path })
 			.then((result) => {
@@ -407,6 +411,19 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						</p>
 					</div>
 				);
+			case "media":
+				return (
+					<FilePreviewMedia
+						key={path}
+						path={path}
+						fileName={fileName}
+						media={preview.media}
+						mime={preview.mime}
+						size={preview.size}
+						expanded={expanded}
+						onUnplayable={markMediaUnplayable}
+					/>
+				);
 			case "binary":
 				return (
 					<p className="text-fg-3 text-sm p-6">
@@ -461,10 +478,10 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 
 	const fileMissing = preview?.kind === "not-found";
 	const isFile = !!preview && preview.kind !== "not-found" && preview.kind !== "directory";
-	// A one-line notice (binary, missing, too large) stays a small dialog. Content
-	// hugs its own height up to the screen, or fills the screen once expanded — the
-	// size changes only when the user asks, never while they read.
-	const showsContent = !preview || preview.kind === "text" || preview.kind === "image";
+	// A one-line notice (binary, missing, too large) — or an audio player — stays a
+	// small dialog. Content hugs its own height up to the screen, or fills the screen
+	// once expanded — the size changes only when the user asks, never while they read.
+	const showsContent = !preview || preview.kind === "text" || preview.kind === "image" || (preview.kind === "media" && preview.media === "video" && !mediaUnplayable);
 	const size = !showsContent ? "notice" : expanded ? "expanded" : "fit";
 	const fitHeight = useFitHeightFloor(trapRef, size === "fit", `${path}:${size}`);
 	const sizeClass = {

@@ -1335,6 +1335,11 @@ export type AppRPCSchema = {
 				params: { path: string; download?: boolean };
 				response: { url: string };
 			};
+			/** A Range-capable stream of a previewed audio/video file: `url` on the desktop's loopback server, `path` on the remote origin. */
+			getFileMediaUrl: {
+				params: { path: string };
+				response: { url: string; path: string };
+			};
 			/** Whether the server runs under WSL and can open files on that Windows desktop. */
 			getWindowsHostOpen: {
 				params: void;

@@ -24,6 +24,7 @@ import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge
 import { randomUUID } from "node:crypto";
 import { createLogger } from "./logger";
 import { SHARED_VIDEO_ROUTE, serveSharedVideo } from "./shared-video-stream";
+import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import {
@@ -2289,6 +2290,12 @@ const ptyServer = Bun.serve({
 					log.error("Shared video stream failed", { error: String(err) });
 					return new Response("Internal error", { status: 500 });
 				});
+			}
+
+			if (url.pathname.startsWith(FILE_LINK_ROUTE)) {
+				// The desktop preview's audio/video: loopback only, media only (never a page on this origin).
+				if (!isLoopbackAddress(server.requestIP(req)?.address)) return new Response("Forbidden", { status: 403 });
+				return serveFileLink(req, url, { mediaOnly: true });
 			}
 
 			log.debug("PTY server fetch", { url: req.url });

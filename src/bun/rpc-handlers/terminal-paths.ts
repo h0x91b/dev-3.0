@@ -7,7 +7,7 @@ import { Utils } from "../electrobun-platform";
 import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
-import { FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt } from "../../shared/file-link-types";
+import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -304,6 +304,9 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 	if (st.isDirectory()) return { kind: "directory" };
 	if (!st.isFile()) return { kind: "not-found" };
 	const size = st.size;
+	// Any size: the player streams ranges, so the text cap does not apply.
+	const media = previewMediaKind(params.path);
+	if (media) return { kind: "media", media, mime: FILE_LINK_CONTENT_TYPES[fileLinkExt(params.path)]!, size };
 	const ext = params.path.split(".").pop()?.toLowerCase() ?? "";
 	const imageMime = PREVIEW_IMAGE_MIME[ext];
 	if (imageMime) {
@@ -392,6 +395,19 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	const checkout = await folderLinkCheckout(path, realFile);
 	if (!checkout) return { url: mintFileLink({ kind: "file", path: realFile }, { resolved: true }) };
 	return { url: await mintFolderLink(realFile, checkout) };
+}
+
+/**
+ * A view link for the preview's `<audio>`/`<video>`, under the same gate as
+ * `createFileLink`. Media only — by the requested name and by its real target —
+ * because the desktop serves these from the loopback PTY server.
+ */
+export async function mintPreviewMediaLink(rawPath: string): Promise<string> {
+	const path = absolutePath(rawPath);
+	await assertPreviewableFile(path, realOr(join(DEV3_HOME, "worktrees")));
+	const realFile = realpathSync.native(path);
+	if (!previewMediaKind(path) || !previewMediaKind(realFile)) throw new Error("Not an audio or video file");
+	return mintFileLink({ kind: "file", path: realFile }, { resolved: true });
 }
 
 /** Whether this server can open files on the Windows desktop it runs under (WSL interop). */

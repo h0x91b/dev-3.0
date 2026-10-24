@@ -358,8 +358,12 @@ function plain(status: number, body: string, extra: Record<string, string> = {})
 	return new Response(body, { status, headers: { ...PLAIN_HEADERS, ...extra } });
 }
 
-/** Serves `/file/<token>/<rel>`; `?download=1` turns any file into an attachment. */
-export async function serveFileLink(req: Request, url: URL): Promise<Response> {
+/**
+ * Serves `/file/<token>/<rel>`; `?download=1` turns any file into an attachment.
+ * `mediaOnly`: the desktop's loopback route, which shares an origin with the PTY
+ * WebSocket, so it plays audio/video and never renders a page.
+ */
+export async function serveFileLink(req: Request, url: URL, { mediaOnly = false } = {}): Promise<Response> {
 	if (req.method !== "GET" && req.method !== "HEAD") return plain(405, "Method Not Allowed");
 	const target = resolveFileLinkTarget(url.pathname);
 	if (!target) return plain(404, "Not Found");
@@ -373,6 +377,7 @@ export async function serveFileLink(req: Request, url: URL): Promise<Response> {
 		const sniffed = await fileLinkContentType(path, handle);
 		const download = url.searchParams.get("download") === "1" || ATTACHMENT_ONLY_EXTS.has(fileLinkExt(path));
 		const contentType = download ? "application/octet-stream" : sniffed;
+		if (mediaOnly && !UNSANDBOXED_MEDIA.test(contentType)) return plain(404, "Not Found");
 		const headers: Record<string, string> = {
 			"Content-Type": contentType,
 			"X-Content-Type-Options": "nosniff",
