@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { claudeSessionWatches } from "./claude-session-watch";
 /**
  * Headless entry point for `dev3 remote`.
  *
@@ -586,6 +587,7 @@ setOnPaneExited((taskId, paneId) => {
 function shutdown(signal: string): void {
 	log.info(`Received ${signal}, shutting down`);
 	stopAgentMessageLogWatches();
+	claudeSessionWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();

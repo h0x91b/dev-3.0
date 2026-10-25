@@ -42,6 +42,7 @@ import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
@@ -313,14 +314,15 @@ async function main(): Promise<void> {
 		);
 	}
 	if (command === "hook" && subcommand === "claude-prompt") {
-		// Internal: Claude Code's UserPromptSubmit, read for recording and the
-		// pane's resume pointer. It never blocks or fails the prompt — the status
-		// move is a separate entry on the same event.
+		// Record the prompt and start its lifecycle observation atomically.
 		return await handleClaudePrompt(
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,
 		);
+	}
+	if (command === "hook" && subcommand === "claude-turn-ended") {
+		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-stop-failure") {
 		// Internal: Claude Code fires StopFailure instead of Stop when an API error

@@ -315,12 +315,8 @@ export function writeCopilotHooks(copilotHome: string): boolean {
 	return updateCopilotSettings(copilotHome, (settings) => mergeCopilotHooks(settings));
 }
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
-/**
- * Reads the submitted prompt off stdin so agent traffic can show the human who
- * started a turn. A SECOND entry beside the status move rather than a rewrite of
- * it: every task's board status depends on that command, and folding a new job
- * into it would put recording and status sync in one blast radius.
- */
+// Serialize prompt recording, working status and native session observation so
+// a late interruption event cannot overwrite the following prompt.
 export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
 /**
  * Answers Claude Code's `SessionStart` with the task's recent notes. Its own
@@ -452,7 +448,10 @@ function buildStopGroups(
 	// when automatic review is off, and its reviewer shares these hooks (#1803).
 	return [
 		{
-			hooks: [{ type: "command", command: move(stopTarget, "--if-status in-progress") }],
+			hooks: [
+				{ type: "command", command: move(stopTarget, "--if-status in-progress") },
+				{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 },
+			],
 		},
 		{
 			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
@@ -516,7 +515,6 @@ export function buildClaudeHooks(
 			},
 		],
 		UserPromptSubmit: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
 			{
 				hooks: [{
 					type: "command",
@@ -535,6 +533,7 @@ export function buildClaudeHooks(
 			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
 		Stop: buildStopGroups(stopTarget, dialect),
+		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],
 		// No matcher: every API error that killed the turn leaves the agent idle at
 		// its prompt, so all of them belong in front of the user. The handler owns
 		// the app-offline case and always exits 0 — Claude ignores its exit code
