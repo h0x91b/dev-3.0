@@ -12,6 +12,28 @@ function assistant(
 }
 
 describe("buildClaudeUsageDays", () => {
+	it("ignores an invalid first snapshot and moves a completed response into its final local day", () => {
+		const start = new Date(2026, 6, 1, 23, 59).toISOString();
+		const end = new Date(2026, 6, 2, 0, 1).toISOString();
+		const { days } = buildClaudeUsageDays([
+			assistant("m", "r", "unknown", "invalid", { input_tokens: 99 }),
+			assistant("m", "r", "unknown", start, { input_tokens: 1_000_000, output_tokens: 10 }),
+			assistant("m", "r", "claude-sonnet-4-6", end, { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+		]);
+		expect(days).toHaveLength(1);
+		expect(days[0]).toMatchObject({ date: "2026-07-02", inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 18, fullyPriced: true });
+	});
+
+	it.each([false, true])("counts the final streamed response once across transcript copies (reversed: %s)", (reversed) => {
+		const entries = [
+			assistant("streamed", "request", "claude-sonnet-4-6", "2026-07-01T12:00:00Z", { input_tokens: 1_000_000, output_tokens: 10 }),
+			assistant("streamed", "request", "claude-sonnet-4-6", "2026-07-01T12:00:01Z", { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+		];
+		const { days } = buildClaudeUsageDays(reversed ? entries.reverse() : entries);
+		expect(days).toHaveLength(1);
+		expect(days[0]).toMatchObject({ inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 18 });
+	});
+
 	it("buckets by local day, dedups by message+request id, and prices per model", () => {
 		const entries = [
 			assistant("m1", "r1", "claude-opus-4-8", "2026-06-30T12:00:00Z", { input_tokens: 1_000_000, output_tokens: 0 }),
@@ -124,6 +146,24 @@ function codexUsage(timestamp: string, last: Record<string, unknown>, total: Rec
 }
 
 describe("buildCodexUsageDays", () => {
+	it("ignores repeated cumulative snapshots at new timestamps, even after a model change", () => {
+		const last = { input_tokens: 1_000_000, cached_input_tokens: 500_000, output_tokens: 100_000 };
+		const total = { ...last };
+		const { days } = buildCodexUsageDays([
+			codexModel("gpt-5.1-codex", "2026-07-01T12:00:00Z"),
+			codexUsage("2026-07-01T12:01:00Z", last, total),
+			codexUsage("2026-07-01T12:02:00Z", last, total),
+			codexModel("gpt-5.4-mini", "2026-07-02T12:00:00Z"),
+			codexUsage("2026-07-02T12:01:00Z", last, total),
+			codexUsage("2026-07-02T12:02:00Z", last, { input_tokens: 2_000_000, cached_input_tokens: 1_000_000, output_tokens: 200_000 }),
+		]);
+		expect(days).toHaveLength(2);
+		expect(days[0]).toMatchObject({ inputTokens: 500_000, cacheReadInputTokens: 500_000, outputTokens: 100_000 });
+		expect(days[1]).toMatchObject({ inputTokens: 500_000, cacheReadInputTokens: 500_000, outputTokens: 100_000 });
+		expect(days[0].costUsd).toBeCloseTo(1.6875);
+		expect(days[1].costUsd).toBeCloseTo(0.8625);
+	});
+
 	it("sums per-turn deltas, tracks model changes, and dedups repeated rollout events", () => {
 		const duplicate = codexUsage(
 			"2026-07-01T12:05:00Z",

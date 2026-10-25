@@ -1,5 +1,7 @@
 # Codex rollout usage uses per-turn deltas
 
+Updated on 2026-10-25 by `decisions/2026/10/25/productivity-usage-snapshot-accounting.md`: unchanged cumulative snapshots suppress replayed deltas, and usage includes managed homes and archives.
+
 ## Context
 
 Codex writes local `token_count` events under `~/.codex/sessions/YYYY/MM/DD/`. Each event contains both cumulative session totals and the latest turn's token usage, while model selection arrives separately in `turn_context` events.

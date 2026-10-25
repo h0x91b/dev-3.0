@@ -8,6 +8,7 @@ import { getBusyTaskShortIds, getSystemMemorySnapshot, resolveTaskConsumers } fr
 import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
 import { nativeModelIdForWireName } from "../../shared/model-catalog";
 import { loadModelCatalog } from "../model-catalog-store";
+import { listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -24,10 +25,9 @@ function claudeProjectsDir(): string {
 	return join(base, "projects");
 }
 
-/** Root of Codex rollout sessions, honouring CODEX_HOME. */
-function codexSessionsDir(): string {
-	const base = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
-	return join(base, "sessions");
+/** Root of Codex state, honouring CODEX_HOME. */
+function codexHome(): string {
+	return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
 }
 
 /** Recursively collect every *.jsonl transcript under the projects dir. Never throws. */
@@ -75,12 +75,18 @@ function foldJsonlFiles(
 export async function getAgentUsage(): Promise<AgentUsageReport> {
 	const claudeState = newUsageState();
 	const claudeFiles: string[] = [];
-	collectTranscriptFiles(claudeProjectsDir(), claudeFiles);
+	for (const dir of new Set([claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))])) {
+		collectTranscriptFiles(dir, claudeFiles);
+	}
 	foldJsonlFiles(claudeFiles, claudeState, foldClaudeEntry);
 
 	const codexState = newUsageState();
 	const codexFiles: string[] = [];
-	collectTranscriptFiles(codexSessionsDir(), codexFiles, true);
+	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
+		for (const store of ["sessions", "archived_sessions"]) {
+			collectTranscriptFiles(join(home, store), codexFiles, true);
+		}
+	}
 	foldJsonlFiles(codexFiles, codexState, foldCodexEntry, beginCodexRollout);
 
 	// A routed session's transcript names the catalog wire name, which the rate

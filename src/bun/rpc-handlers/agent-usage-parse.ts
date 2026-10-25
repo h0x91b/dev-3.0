@@ -17,14 +17,21 @@ export interface UsageState {
 	byDateModel: Map<string, Map<string, TokenCounts>>;
 	/** date -> local-midnight epoch ms */
 	startMsByDate: Map<string, number>;
-	/** dedup: `${message.id}:${requestId}` already counted */
+	/** Codex events already counted across copied rollout files. */
 	seen: Set<string>;
+	/** Latest usage snapshot for each Claude response, including streamed updates. */
+	claudeMessages: Map<string, { date: string; startMs: number; model: string; counts: TokenCounts; timestamp: number }>;
+	/** Cumulative snapshots already counted in the current Codex rollout. */
+	codexCumulativeSeen: Set<string>;
 	/** Model selected by the latest Codex turn_context in the current rollout. */
 	codexModel: string;
 }
 
 export function newUsageState(): UsageState {
-	return { byDateModel: new Map(), startMsByDate: new Map(), seen: new Set(), codexModel: "gpt-5" };
+	return {
+		byDateModel: new Map(), startMsByDate: new Map(), seen: new Set(),
+		claudeMessages: new Map(), codexCumulativeSeen: new Set(), codexModel: "gpt-5",
+	};
 }
 
 function pad2(n: number): string {
@@ -80,34 +87,50 @@ export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 	const usage = msg?.usage as Record<string, unknown> | undefined;
 	if (!msg || !usage || typeof e.timestamp !== "string") return;
 
-	// Dedup: the same assistant message can appear across resumed/summary transcripts.
-	const dedupKey = `${String(msg.id ?? "")}:${String(e.requestId ?? "")}`;
-	if (dedupKey !== ":" && state.seen.has(dedupKey)) return;
-	if (dedupKey !== ":") state.seen.add(dedupKey);
-
 	const day = localDayOf(e.timestamp);
 	if (!day) return;
 	const model = typeof msg.model === "string" ? msg.model : "unknown";
 
-	const acc = countsFor(state, day.date, day.startMs, model);
 	const cacheCreation = usage.cache_creation as Record<string, unknown> | undefined;
 	const cacheTotal = finiteNumber(usage.cache_creation_input_tokens);
 	const cache5m = finiteNumber(cacheCreation?.ephemeral_5m_input_tokens);
 	const cache1h = finiteNumber(cacheCreation?.ephemeral_1h_input_tokens);
 	// Keep unsplit writes at the default 5m rate, including any partial split's remainder.
 	const unsplitCache = Math.max(0, cacheTotal - cache5m - cache1h);
-	acc.inputTokens += finiteNumber(usage.input_tokens);
-	acc.outputTokens += finiteNumber(usage.output_tokens);
-	acc.cacheCreationInputTokens += cacheTotal;
-	acc.cacheReadInputTokens += finiteNumber(usage.cache_read_input_tokens);
-	acc.cacheCreation5mInputTokens! += cache5m + unsplitCache;
-	acc.cacheCreation1hInputTokens! += cache1h;
+	const counts: TokenCounts = {
+		inputTokens: finiteNumber(usage.input_tokens),
+		outputTokens: finiteNumber(usage.output_tokens),
+		cacheCreationInputTokens: cacheTotal,
+		cacheReadInputTokens: finiteNumber(usage.cache_read_input_tokens),
+		cacheCreation5mInputTokens: cache5m + unsplitCache,
+		cacheCreation1hInputTokens: cache1h,
+	};
+	const dedupKey = msg.id || e.requestId ? JSON.stringify([msg.id ?? "", e.requestId ?? ""]) : null;
+	const previous = dedupKey ? state.claudeMessages.get(dedupKey) : undefined;
+	const timestamp = Date.parse(e.timestamp);
+	// Streamed content blocks share response identity; retain the final token snapshot
+	// even when an older copy is encountered later in another transcript.
+	if (previous && (previous.timestamp > timestamp ||
+		(previous.timestamp === timestamp && previous.counts.outputTokens > counts.outputTokens))) return;
+	if (previous) {
+		const acc = countsFor(state, previous.date, previous.startMs, previous.model);
+		for (const key of Object.keys(previous.counts) as (keyof TokenCounts)[]) acc[key]! -= previous.counts[key] ?? 0;
+		if (Object.values(acc).every((value) => value === 0)) {
+			const models = state.byDateModel.get(previous.date)!;
+			models.delete(previous.model);
+			if (models.size === 0) state.byDateModel.delete(previous.date);
+		}
+	}
+	const acc = countsFor(state, day.date, day.startMs, model);
+	for (const key of Object.keys(counts) as (keyof TokenCounts)[]) acc[key]! += counts[key] ?? 0;
+	if (dedupKey) state.claudeMessages.set(dedupKey, { ...day, model, counts, timestamp });
 }
 
 /** Reset per-file Codex context while preserving accumulated usage and dedup state. */
 export function beginCodexRollout(state: UsageState): void {
 	// Very old rollouts predate turn_context; ccusage also falls back to gpt-5 for them.
 	state.codexModel = "gpt-5";
+	state.codexCumulativeSeen.clear();
 }
 
 /**
@@ -136,6 +159,15 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 	const cachedInput = Math.min(input, Math.max(0, finiteNumber(usage.cached_input_tokens)));
 	const output = Math.max(0, finiteNumber(usage.output_tokens));
 	if (input === 0 && cachedInput === 0 && output === 0) return;
+
+	// Codex re-emits the last delta when only rate limits change. An unchanged
+	// cumulative total identifies that replay even when its timestamp/model changes.
+	const total = info?.total_token_usage as Record<string, unknown> | undefined;
+	const cumulativeValues = [total?.input_tokens, total?.output_tokens, total?.cached_input_tokens ?? 0, total?.cache_write_input_tokens ?? 0];
+	const cumulativeKey = cumulativeValues.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
+		? cumulativeValues.join(":") : null;
+	if (cumulativeKey && state.codexCumulativeSeen.has(cumulativeKey)) return;
+	if (cumulativeKey) state.codexCumulativeSeen.add(cumulativeKey);
 
 	// Rollouts have no message id. Timestamp + delta + active model is stable across
 	// copied/resumed rollout files while still distinguishing ordinary turns.
