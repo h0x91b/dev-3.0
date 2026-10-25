@@ -146,6 +146,23 @@ function codexUsage(timestamp: string, last: Record<string, unknown>, total: Rec
 }
 
 describe("buildCodexUsageDays", () => {
+	it("retains the legacy prefix and then counts native response snapshots without their legacy echo", () => {
+		const native = (output: number, timestamp: string) => ({
+			type: "token_usage_record", timestamp,
+			payload: { response_id: "response-1", usage: { input_tokens: 1_000_000, cached_input_tokens: 500_000, cache_write_input_tokens: 100_000, output_tokens: output } },
+		});
+		const { days } = buildCodexUsageDays([
+			codexModel("gpt-5.1-codex", "2026-07-01T12:00:00Z"),
+			codexUsage("2026-07-01T12:01:00Z", { input_tokens: 1_000_000, output_tokens: 0 }),
+			native(10, "2026-07-01T12:02:00Z"),
+			native(100_000, "2026-07-01T12:03:00Z"),
+			codexUsage("2026-07-01T12:04:00Z", { input_tokens: 1_000_000, cached_input_tokens: 500_000, output_tokens: 100_000 }),
+		]);
+		expect(days).toHaveLength(1);
+		expect(days[0]).toMatchObject({ inputTokens: 1_400_000, cacheReadInputTokens: 500_000, cacheCreationInputTokens: 100_000, outputTokens: 100_000 });
+		expect(days[0].costUsd).toBeCloseTo(2.96875, 6);
+	});
+
 	it("ignores repeated cumulative snapshots at new timestamps, even after a model change", () => {
 		const last = { input_tokens: 1_000_000, cached_input_tokens: 500_000, output_tokens: 100_000 };
 		const total = { ...last };

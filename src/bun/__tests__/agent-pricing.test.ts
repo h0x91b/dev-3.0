@@ -67,6 +67,7 @@ describe("resolveModelRate", () => {
 	});
 
 	it("prices the GPT-6 lineup at its short-context API rates", () => {
+		expect(resolveModelRate("gpt-6.1-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.1 });
 		expect(resolveModelRate("gpt-6-astra")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheRead: 1 });
 		expect(resolveModelRate("gpt-6-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.2 });
 		expect(resolveModelRate("gpt-6-luna")).toMatchObject({ input: 0.1, output: 0.5, cacheWrite5m: 0.125, cacheRead: 0.01 });
@@ -85,6 +86,16 @@ describe("resolveModelRate", () => {
 });
 
 describe("computeTokenCostUsd", () => {
+	it("uses refreshed model and cache rates supplied by the caller", () => {
+		const { costUsd, priced } = computeTokenCostUsd("new-model", {
+			inputTokens: 1_000_000, outputTokens: 1_000_000,
+			cacheCreationInputTokens: 2_000_000, cacheReadInputTokens: 1_000_000,
+			cacheCreation5mInputTokens: 1_000_000, cacheCreation1hInputTokens: 1_000_000,
+		}, () => ({ input: 2, output: 5, cacheRead: 0.25, cacheWrite5m: 3, cacheWrite1h: 4 }));
+		expect(priced).toBe(true);
+		expect(costUsd).toBe(14.25);
+	});
+
 	it("computes cost from input/output tokens at API rates", () => {
 		const tokens: TokenCounts = {
 			inputTokens: 1_000_000,

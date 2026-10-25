@@ -1,243 +1,170 @@
-import { computeTokenCostUsd, type TokenCounts } from "../../shared/agent-pricing";
+import { computeTokenCostUsd, resolveModelRate, type ModelRate, type TokenCounts } from "../../shared/agent-pricing";
 import type { AgentUsageDay, AgentUsageSource } from "../../shared/types";
 
-/**
- * Pure aggregation of Claude Code transcripts and Codex rollouts — no fs, no
- * logging, no electrobun. Kept separate from the handler so it is trivially
- * unit-testable.
- *
- * Each `type:"assistant"` transcript line carries `message.usage` (input/output/
- * cache tokens), `message.model`, `message.id`, `requestId`, and a `timestamp`.
- * We dedup by message+request id (resumed/summary transcripts repeat lines),
- * bucket into local calendar days, and price per model.
- */
+/** Content-free response snapshots; identities let history survive source-log cleanup. */
+export interface UsageRecord {
+	model: string;
+	timestamp: number;
+	counts: TokenCounts;
+}
 
 export interface UsageState {
-	/** date (YYYY-MM-DD) -> model id -> accumulated token counts */
-	byDateModel: Map<string, Map<string, TokenCounts>>;
-	/** date -> local-midnight epoch ms */
-	startMsByDate: Map<string, number>;
-	/** Codex events already counted across copied rollout files. */
-	seen: Set<string>;
-	/** Latest usage snapshot for each Claude response, including streamed updates. */
-	claudeMessages: Map<string, { date: string; startMs: number; model: string; counts: TokenCounts; timestamp: number }>;
-	/** Cumulative snapshots already counted in the current Codex rollout. */
+	records: Map<string, UsageRecord>;
 	codexCumulativeSeen: Set<string>;
-	/** Model selected by the latest Codex turn_context in the current rollout. */
 	codexModel: string;
+	codexNativeStarted: boolean;
+	codexSession: string;
 }
 
 export function newUsageState(): UsageState {
 	return {
-		byDateModel: new Map(), startMsByDate: new Map(), seen: new Set(),
-		claudeMessages: new Map(), codexCumulativeSeen: new Set(), codexModel: "gpt-5",
+		records: new Map(), codexCumulativeSeen: new Set(), codexModel: "gpt-5",
+		codexNativeStarted: false, codexSession: "",
 	};
 }
 
-function pad2(n: number): string {
-	return n < 10 ? `0${n}` : String(n);
-}
-
-/** Local calendar date + local-midnight epoch ms for an ISO timestamp. */
-function localDayOf(iso: string): { date: string; startMs: number } | null {
-	const t = Date.parse(iso);
-	if (Number.isNaN(t)) return null;
-	const d = new Date(t);
-	const date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-	const startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-	return { date, startMs };
-}
-
-function emptyCounts(): TokenCounts {
-	return {
-		inputTokens: 0,
-		outputTokens: 0,
-		cacheCreationInputTokens: 0,
-		cacheReadInputTokens: 0,
-		cacheCreation5mInputTokens: 0,
-		cacheCreation1hInputTokens: 0,
-	};
+function record(value: unknown): Record<string, unknown> | undefined {
+	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function finiteNumber(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+	return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-function countsFor(state: UsageState, date: string, startMs: number, model: string): TokenCounts {
-	let models = state.byDateModel.get(date);
-	if (!models) {
-		models = new Map();
-		state.byDateModel.set(date, models);
-		state.startMsByDate.set(date, startMs);
-	}
-	let acc = models.get(model);
-	if (!acc) {
-		acc = emptyCounts();
-		models.set(model, acc);
-	}
-	return acc;
+function timestampOf(entry: Record<string, unknown>): number | null {
+	const value = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+	return Number.isFinite(value) ? value : null;
 }
 
-/** Fold one parsed transcript line into the accumulator. Ignores non-assistant / malformed lines. */
+/** A response can appear as several streaming snapshots and in several copied logs. */
+export function mergeUsageRecord(state: UsageState, key: string, next: UsageRecord): void {
+	const previous = state.records.get(key);
+	if (previous && (previous.timestamp > next.timestamp ||
+		(previous.timestamp === next.timestamp && previous.counts.outputTokens > next.counts.outputTokens))) return;
+	state.records.set(key, next);
+}
+
 export function foldClaudeEntry(state: UsageState, entry: unknown): void {
-	if (!entry || typeof entry !== "object") return;
-	const e = entry as Record<string, unknown>;
-	if (e.type !== "assistant") return;
-	const msg = e.message as Record<string, unknown> | undefined;
-	const usage = msg?.usage as Record<string, unknown> | undefined;
-	if (!msg || !usage || typeof e.timestamp !== "string") return;
-
-	const day = localDayOf(e.timestamp);
-	if (!day) return;
+	const e = record(entry);
+	if (!e || e.type !== "assistant") return;
+	const msg = record(e.message);
+	const usage = record(msg?.usage);
+	const timestamp = timestampOf(e);
+	if (!msg || !usage || timestamp === null) return;
 	const model = typeof msg.model === "string" ? msg.model : "unknown";
-
-	const cacheCreation = usage.cache_creation as Record<string, unknown> | undefined;
+	if (model === "<synthetic>") return;
+	const cacheCreation = record(usage.cache_creation);
 	const cacheTotal = finiteNumber(usage.cache_creation_input_tokens);
 	const cache5m = finiteNumber(cacheCreation?.ephemeral_5m_input_tokens);
 	const cache1h = finiteNumber(cacheCreation?.ephemeral_1h_input_tokens);
-	// Keep unsplit writes at the default 5m rate, including any partial split's remainder.
-	const unsplitCache = Math.max(0, cacheTotal - cache5m - cache1h);
 	const counts: TokenCounts = {
 		inputTokens: finiteNumber(usage.input_tokens),
 		outputTokens: finiteNumber(usage.output_tokens),
 		cacheCreationInputTokens: cacheTotal,
 		cacheReadInputTokens: finiteNumber(usage.cache_read_input_tokens),
-		cacheCreation5mInputTokens: cache5m + unsplitCache,
+		cacheCreation5mInputTokens: cache5m + Math.max(0, cacheTotal - cache5m - cache1h),
 		cacheCreation1hInputTokens: cache1h,
 	};
-	const dedupKey = msg.id || e.requestId ? JSON.stringify([msg.id ?? "", e.requestId ?? ""]) : null;
-	const previous = dedupKey ? state.claudeMessages.get(dedupKey) : undefined;
-	const timestamp = Date.parse(e.timestamp);
-	// Streamed content blocks share response identity; retain the final token snapshot
-	// even when an older copy is encountered later in another transcript.
-	if (previous && (previous.timestamp > timestamp ||
-		(previous.timestamp === timestamp && previous.counts.outputTokens > counts.outputTokens))) return;
-	if (previous) {
-		const acc = countsFor(state, previous.date, previous.startMs, previous.model);
-		for (const key of Object.keys(previous.counts) as (keyof TokenCounts)[]) acc[key]! -= previous.counts[key] ?? 0;
-		if (Object.values(acc).every((value) => value === 0)) {
-			const models = state.byDateModel.get(previous.date)!;
-			models.delete(previous.model);
-			if (models.size === 0) state.byDateModel.delete(previous.date);
-		}
-	}
-	const acc = countsFor(state, day.date, day.startMs, model);
-	for (const key of Object.keys(counts) as (keyof TokenCounts)[]) acc[key]! += counts[key] ?? 0;
-	if (dedupKey) state.claudeMessages.set(dedupKey, { ...day, model, counts, timestamp });
+	const identity = msg.id || e.requestId ? [msg.id ?? "", e.requestId ?? ""]
+		: [e.uuid ?? timestamp, model, counts];
+	mergeUsageRecord(state, `claude:${JSON.stringify(identity)}`, { model, timestamp, counts });
 }
 
-/** Reset per-file Codex context while preserving accumulated usage and dedup state. */
+/** Reset only the per-file context, retaining usage from previous files. */
 export function beginCodexRollout(state: UsageState): void {
-	// Very old rollouts predate turn_context; ccusage also falls back to gpt-5 for them.
 	state.codexModel = "gpt-5";
 	state.codexCumulativeSeen.clear();
+	state.codexNativeStarted = false;
+	state.codexSession = "";
 }
 
-/**
- * Fold one Codex rollout entry. `last_token_usage` is the per-turn delta;
- * `total_token_usage` is cumulative for the session and must never be summed.
- */
 export function foldCodexEntry(state: UsageState, entry: unknown): void {
-	if (!entry || typeof entry !== "object") return;
-	const e = entry as Record<string, unknown>;
-	const payload = e.payload as Record<string, unknown> | undefined;
-	if (!payload) return;
-
+	const e = record(entry);
+	const payload = record(e?.payload);
+	if (!e || !payload) return;
+	if (e.type === "session_meta") {
+		state.codexSession = typeof payload.id === "string" ? payload.id : "";
+		return;
+	}
 	if (e.type === "turn_context") {
 		if (typeof payload.model === "string" && payload.model.trim()) state.codexModel = payload.model;
 		return;
 	}
-
-	if (e.type !== "event_msg" || payload.type !== "token_count" || typeof e.timestamp !== "string") return;
-	const info = payload.info as Record<string, unknown> | undefined;
-	const usage = info?.last_token_usage as Record<string, unknown> | undefined;
-	if (!usage) return;
-	const day = localDayOf(e.timestamp);
-	if (!day) return;
-
-	const input = Math.max(0, finiteNumber(usage.input_tokens));
-	const cachedInput = Math.min(input, Math.max(0, finiteNumber(usage.cached_input_tokens)));
-	const output = Math.max(0, finiteNumber(usage.output_tokens));
-	if (input === 0 && cachedInput === 0 && output === 0) return;
-
-	// Codex re-emits the last delta when only rate limits change. An unchanged
-	// cumulative total identifies that replay even when its timestamp/model changes.
-	const total = info?.total_token_usage as Record<string, unknown> | undefined;
-	const cumulativeValues = [total?.input_tokens, total?.output_tokens, total?.cached_input_tokens ?? 0, total?.cache_write_input_tokens ?? 0];
-	const cumulativeKey = cumulativeValues.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
-		? cumulativeValues.join(":") : null;
-	if (cumulativeKey && state.codexCumulativeSeen.has(cumulativeKey)) return;
-	if (cumulativeKey) state.codexCumulativeSeen.add(cumulativeKey);
-
-	// Rollouts have no message id. Timestamp + delta + active model is stable across
-	// copied/resumed rollout files while still distinguishing ordinary turns.
-	const dedupKey = `codex:${e.timestamp}:${state.codexModel}:${input}:${cachedInput}:${output}`;
-	if (state.seen.has(dedupKey)) return;
-	state.seen.add(dedupKey);
-
-	const acc = countsFor(state, day.date, day.startMs, state.codexModel);
-	// Codex input_tokens includes cached input. Split it so dashboard totals and
-	// pricing count every token exactly once.
-	acc.inputTokens += Math.max(0, input - cachedInput);
-	acc.outputTokens += output;
-	acc.cacheReadInputTokens += cachedInput;
+	const native = e.type === "token_usage_record";
+	if (!native && (e.type !== "event_msg" || payload.type !== "token_count" || state.codexNativeStarted)) return;
+	const info = record(payload.info);
+	const usage = native ? record(payload.usage) : record(info?.last_token_usage);
+	const timestamp = timestampOf(e);
+	if (!usage || timestamp === null) return;
+	const input = finiteNumber(usage.input_tokens);
+	const cachedInput = Math.min(input, finiteNumber(usage.cached_input_tokens));
+	const cacheWrite = Math.min(input - cachedInput, finiteNumber(usage.cache_write_input_tokens));
+	const output = finiteNumber(usage.output_tokens);
+	if (input === 0 && output === 0) return;
+	let key: string;
+	if (native) {
+		// Keep the legacy prefix of upgraded rollouts; subsequent token_count events
+		// echo native responses and must not add a second charge.
+		state.codexNativeStarted = true;
+		key = `codex-native:${typeof payload.response_id === "string" && payload.response_id
+			? payload.response_id : JSON.stringify([state.codexSession, timestamp, usage])}`;
+	} else {
+		const total = record(info?.total_token_usage);
+		const values = [total?.input_tokens, total?.output_tokens, total?.cached_input_tokens ?? 0, total?.cache_write_input_tokens ?? 0];
+		const cumulative = values.every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0) ? values.join(":") : null;
+		if (cumulative && state.codexCumulativeSeen.has(cumulative)) return;
+		if (cumulative) state.codexCumulativeSeen.add(cumulative);
+		const identity = cumulative && state.codexSession ? [state.codexSession, cumulative]
+			: [timestamp, state.codexModel, input, cachedInput, cacheWrite, output];
+		key = `codex-legacy:${JSON.stringify(identity)}`;
+	}
+	mergeUsageRecord(state, key, {
+		model: state.codexModel, timestamp,
+		counts: {
+			inputTokens: input - cachedInput - cacheWrite,
+			outputTokens: output, cacheReadInputTokens: cachedInput, cacheCreationInputTokens: cacheWrite,
+		},
+	});
 }
 
-/**
- * Collapse the per-(date,model) accumulator into per-day rows with priced cost.
- *
- * `pricingId` translates a model string from the transcript into the id the rate
- * table knows. A routed session records a catalog wire name, whose second half is
- * a name the user invented, so without the translation the whole day reads as
- * unpriced. Left as identity when no catalog is available (tests, no routing).
- */
+/** Reprice retained raw counts on every report, including newly recognised models. */
 export function finalizeUsage(
 	state: UsageState,
 	source: AgentUsageSource,
 	pricingId: (model: string) => string = (model) => model,
+	resolveRate: (model: string) => ModelRate | null = resolveModelRate,
 ): { days: AgentUsageDay[]; hasUnpriced: boolean } {
-	const days: AgentUsageDay[] = [];
+	const byDate = new Map<string, AgentUsageDay>();
 	let hasUnpriced = false;
-
-	for (const [date, models] of state.byDateModel) {
-		const row: AgentUsageDay = {
-			date,
-			startMs: state.startMsByDate.get(date) ?? Date.parse(`${date}T00:00:00`),
-			source,
-			inputTokens: 0,
-			outputTokens: 0,
-			cacheCreationInputTokens: 0,
-			cacheReadInputTokens: 0,
-			costUsd: 0,
-			fullyPriced: true,
-		};
-		for (const [model, counts] of models) {
-			row.inputTokens += counts.inputTokens;
-			row.outputTokens += counts.outputTokens;
-			row.cacheCreationInputTokens += counts.cacheCreationInputTokens;
-			row.cacheReadInputTokens += counts.cacheReadInputTokens;
-			const { costUsd, priced } = computeTokenCostUsd(pricingId(model), counts);
-			row.costUsd += costUsd;
-			if (!priced) {
-				row.fullyPriced = false;
-				hasUnpriced = true;
-			}
+	for (const { model, timestamp, counts } of state.records.values()) {
+		const d = new Date(timestamp);
+		const startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+		const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+		let row = byDate.get(date);
+		if (!row) {
+			row = {
+				date, startMs, source, inputTokens: 0, outputTokens: 0,
+				cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 0, fullyPriced: true,
+			};
+			byDate.set(date, row);
 		}
-		days.push(row);
+		row.inputTokens += counts.inputTokens;
+		row.outputTokens += counts.outputTokens;
+		row.cacheCreationInputTokens += counts.cacheCreationInputTokens;
+		row.cacheReadInputTokens += counts.cacheReadInputTokens;
+		const { costUsd, priced } = computeTokenCostUsd(pricingId(model), counts, resolveRate);
+		row.costUsd += costUsd;
+		if (!priced) { row.fullyPriced = false; hasUnpriced = true; }
 	}
-
-	days.sort((a, b) => a.startMs - b.startMs);
-	return { days, hasUnpriced };
+	return { days: [...byDate.values()].sort((a, b) => a.startMs - b.startMs), hasUnpriced };
 }
 
-/** Pure convenience for tests: fold a flat list of transcript entries into day rows. */
 export function buildClaudeUsageDays(entries: unknown[]): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const state = newUsageState();
 	for (const entry of entries) foldClaudeEntry(state, entry);
 	return finalizeUsage(state, "claude");
 }
 
-/** Pure convenience for tests: fold one rollout's entries into Codex day rows. */
 export function buildCodexUsageDays(entries: unknown[]): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const state = newUsageState();
 	beginCodexRollout(state);

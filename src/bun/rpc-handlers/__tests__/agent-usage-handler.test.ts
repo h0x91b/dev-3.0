@@ -41,6 +41,7 @@ function registerAccounts(claude: string[], codex: string[]): void {
 }
 
 beforeEach(() => {
+	vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
 	tempRoot = testHome;
 	mkdirSync(tempRoot, { recursive: true });
 	vi.stubEnv("CLAUDE_CONFIG_DIR", join(tempRoot, "claude"));
@@ -49,10 +50,30 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
 	rmSync(tempRoot, { recursive: true, force: true });
 });
 
 describe("getAgentUsage", () => {
+	it("keeps accumulated usage when an older log disappears while new usage is added", async () => {
+		const entry = (id: string, input: number) => ({
+			type: "assistant", requestId: id, timestamp: "2026-10-20T12:00:00Z",
+			message: { id, model: "claude-sonnet-4-6", usage: { input_tokens: input } },
+		});
+		const oldFile = join(tempRoot, "claude", "projects", "repo", "old.jsonl");
+		const liveFile = join(tempRoot, "claude", "projects", "repo", "live.jsonl");
+		writeJsonl(oldFile, [entry("old", 1_000_000)]);
+		writeJsonl(liveFile, [entry("live", 1_000_000)]);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(6);
+		rmSync(oldFile);
+		writeJsonl(liveFile, [entry("live", 1_000_000), entry("new", 500_000)]);
+		const next = await getAgentUsage();
+		expect(next.days[0]).toMatchObject({ inputTokens: 2_500_000, costUsd: 7.5 });
+		expect((await getAgentUsage()).days[0].costUsd).toBe(7.5);
+		rmSync(liveFile);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(7.5);
+	});
+
 	it("retains archived Codex usage from default and managed homes without duplicating copied events", async () => {
 		registerAccounts([], ["managed"]);
 		const managed = join(defaultAccountPaths().accountsDir, "codex", "managed");

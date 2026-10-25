@@ -57,6 +57,7 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	// --- OpenAI / Codex ---
 	// Preview models without public API pricing are deliberately omitted.
 	// GPT-6 short-context rates; the long-context tier (2x) is not modelled.
+	{ match: (id) => id.includes("gpt-6.1-sol"), rate: { input: 2, output: 10, cacheRead: 0.1 } },
 	{ match: (id) => id.includes("gpt-6-astra"), rate: { input: 10, output: 50, cacheRead: 1 } },
 	{ match: (id) => id.includes("gpt-6-sol"), rate: { input: 2, output: 10, cacheRead: 0.2 } },
 	{ match: (id) => id.includes("gpt-6-luna"), rate: { input: 0.1, output: 0.5, cacheRead: 0.01 } },
@@ -138,8 +139,12 @@ export function resolveModelRate(modelId: string): ModelRate | null {
  * Returns `{ costUsd: 0, priced: false }` when the model is unknown so the UI can
  * flag that some usage could not be priced instead of silently under-counting.
  */
-export function computeTokenCostUsd(modelId: string, tokens: TokenCounts): { costUsd: number; priced: boolean } {
-	const rate = resolveModelRate(modelId);
+export function computeTokenCostUsd(
+	modelId: string,
+	tokens: TokenCounts,
+	resolveRate: (modelId: string) => ModelRate | null = resolveModelRate,
+): { costUsd: number; priced: boolean } {
+	const rate = resolveRate(modelId);
 	if (!rate) return { costUsd: 0, priced: false };
 
 	// Split cache-creation into 5m / 1h when the finer breakdown is available;

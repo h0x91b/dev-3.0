@@ -9,6 +9,8 @@ import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper
 import { nativeModelIdForWireName } from "../../shared/model-catalog";
 import { loadModelCatalog } from "../model-catalog-store";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
+import { retainUsageHistory } from "../agent-usage-history";
+import { getPricingResolver } from "../agent-pricing-refresh";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -94,8 +96,10 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
 
-	const claude = finalizeUsage(claudeState, "claude", pricingId);
-	const codex = finalizeUsage(codexState, "codex", pricingId);
+	const retained = await retainUsageHistory({ claude: claudeState, codex: codexState });
+	const resolveRate = await getPricingResolver();
+	const claude = finalizeUsage(retained.claude, "claude", pricingId, resolveRate);
+	const codex = finalizeUsage(retained.codex, "codex", pricingId, resolveRate);
 	const days = [...claude.days, ...codex.days].sort(
 		(a, b) => a.startMs - b.startMs || a.source.localeCompare(b.source),
 	);

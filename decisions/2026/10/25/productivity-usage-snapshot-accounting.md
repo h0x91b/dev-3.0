@@ -1,5 +1,7 @@
 # Productivity usage snapshot accounting
 
+Extended by `decisions/2026/10/25/retained-usage-and-refreshable-prices.md`: raw response snapshots survive source-log cleanup, native Codex records replace their legacy echoes, and rates refresh independently of app releases.
+
 ## Context
 
 Productivity Stats reconstructs API-equivalent costs from local agent logs. The dashboard parser differed from the separate harness audit: it counted repeated Codex deltas and discarded Claude response updates, and its filesystem scan omitted managed accounts and Codex archives.
