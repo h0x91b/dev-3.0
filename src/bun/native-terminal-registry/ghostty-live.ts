@@ -66,14 +66,15 @@ export interface NativeSemanticState {
 const wasmPath = fileURLToPath(new URL("../../../node_modules/ghostty-web/dist/ghostty-vt.wasm", import.meta.url));
 const packagePath = fileURLToPath(new URL("../../../node_modules/ghostty-web/package.json", import.meta.url));
 
-const GHOSTTY_VERSION = "0.4.0" as const;
-export const LIVE_PARSER_ID = `ghostty-web@${GHOSTTY_VERSION}` as const;
+const GHOSTTY_VERSION = "0.4.0-dev3.1" as const;
+// Persisted parser identity stays compatible with readers from earlier app versions.
+export const LIVE_PARSER_ID = "ghostty-web@0.4.0" as const;
 
 function assertGhosttyPackageVersion(): void {
 	const metadata = JSON.parse(readFileSync(packagePath, "utf8")) as { version?: unknown };
 	if (metadata.version !== GHOSTTY_VERSION) {
 		throw new Error(
-			`Native-session live parser requires ${LIVE_PARSER_ID}; installed ghostty-web is ${String(metadata.version)}`,
+			`Native-session live parser requires ghostty-web@${GHOSTTY_VERSION}; installed ghostty-web is ${String(metadata.version)}`,
 		);
 	}
 }

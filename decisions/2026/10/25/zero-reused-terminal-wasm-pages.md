@@ -12,6 +12,8 @@ Rebuilding Ghostty `5714ed07` with the wrapper's API patch and Zig 0.15.2 reprod
 
 Apply only `patches/ghostty-web/page-zeroing.patch`, preserving the original core/API and ReleaseSmall target. `scripts/ghostty-core/build.ts` verifies pinned inputs and output hashes; the package tooling preserves pristine npm files plus the existing ESM disposal patch and replaces all four WASM copies, including the ESM payload used by `init()`. Install the reproducible local archive through `package.json`/`bun.lock`, and run actual default-loader regressions in kill-bounded child processes.
 
+The headless prototype and native registry loaders require exactly `0.4.0-dev3.1`; their persisted parser identity remains `ghostty-web@0.4.0` because this repair preserves the state contract. This keeps older readers compatible without relaxing the package gate to a version range; snapshot/replay and N-2 tests cover that boundary.
+
 ## Risks
 
 Zeroing adds memory-bandwidth work; finite workload measurements cannot bound every terminal history or prove the field freeze solved. The repair leaves unrelated upstream defects and the existing exact-right-margin combining-mark behavior unchanged. Rebuilds were verified on macOS arm64; other build hosts fail closed on differing hashes, and the committed WASM package is shared across runtime platforms.

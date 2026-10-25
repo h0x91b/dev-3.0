@@ -54,11 +54,12 @@ strategies, and parser identities are rejected. Version 1 is experiment data,
 not a persistence promise; a bounded native snapshot must use a new version and
 define compatibility before it can enter user state.
 
-The spike asserts that the installed `ghostty-web` package is exactly 0.4.0
-before creating a core. The repository may retain its production-compatible
-semver range, but a lockfile upgrade cannot silently create state under a false
-parser identity; the isolated spike fails and requires an explicit format
-review.
+The spike requires exactly `ghostty-web@0.4.0-dev3.1` before creating a core.
+This reviewed page-zeroing repair preserves the parser data contract, so the
+snapshot identity remains `ghostty-web@0.4.0`, as it does for the native registry's
+persisted state and older readers. Other package versions still fail closed and
+require an explicit format review; the package build revision and persisted
+parser identity are deliberately separate.
 
 The semantic comparison covers the active buffer, hidden primary buffer,
 dimensions, cursor position and presentation, title, relevant modes, visible

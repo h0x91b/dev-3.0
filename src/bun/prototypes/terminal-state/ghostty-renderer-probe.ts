@@ -42,14 +42,15 @@ const packagePath = fileURLToPath(
 	new URL("../../../../node_modules/ghostty-web/package.json", import.meta.url),
 );
 
-const GHOSTTY_VERSION = "0.4.0" as const;
-export const GHOSTTY_PARSER_ID = `ghostty-web@${GHOSTTY_VERSION}` as const;
+const GHOSTTY_VERSION = "0.4.0-dev3.1" as const;
+// The repaired package preserves the parser data contract used by existing snapshots.
+export const GHOSTTY_PARSER_ID = "ghostty-web@0.4.0" as const;
 
 function assertGhosttyPackageVersion(): void {
 	const metadata = JSON.parse(readFileSync(packagePath, "utf8")) as { version?: unknown };
 	if (metadata.version !== GHOSTTY_VERSION) {
 		throw new Error(
-			`Terminal-state spike requires ${GHOSTTY_PARSER_ID}; installed ghostty-web is ${String(metadata.version)}`,
+			`Terminal-state spike requires ghostty-web@${GHOSTTY_VERSION}; installed ghostty-web is ${String(metadata.version)}`,
 		);
 	}
 }
