@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
+import { readHostClipboardImage } from "../clipboard-image-reader";
 import type { AgentSkillInfo, AutoConfigureResult, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
@@ -789,12 +790,11 @@ async function saveUploadedFile(
 /** null = no image on the clipboard; throws when there is one that cannot be saved. */
 async function pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
 	log.info("→ pasteClipboardImage", { projectId: params.projectId.slice(0, 8) });
-	const formats = Utils.clipboardAvailableFormats();
+	const { formats, image: clipboardData } = await readHostClipboardImage();
 	if (!formats.includes("image")) {
 		log.info("← pasteClipboardImage: no image in clipboard");
 		return null;
 	}
-	const clipboardData = Utils.clipboardReadImage();
 	if (!clipboardData || clipboardData.length === 0) {
 		log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
 		throw new Error("The clipboard reports an image but it could not be read");

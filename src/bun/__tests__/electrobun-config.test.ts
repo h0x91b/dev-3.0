@@ -44,6 +44,14 @@ describe("electrobun bundled resources", () => {
 		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("clonefile-worker.ts");
 	});
 
+	it("ships the clipboard image worker to the path the desktop host loads", () => {
+		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
+		expect(buildCli).toContain('"src/bun/workers/clipboard-image-worker.ts"');
+		const index = readFileSync(fileURLToPath(new URL("../index.ts", import.meta.url)), "utf-8");
+		expect(index, "cause: Linux clipboard reads fell back to the host thread in packaged builds. fix: configureClipboardImageWorker with the workers/ path").toContain('"workers", "clipboard-image-worker.js"');
+		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("clipboard-image-worker.ts");
+	});
+
 	// The copy map is an allow-list, so a public asset absent from it is served as
 	// the SPA index.html instead of itself. That shipped twice: the favicons, then
 	// sw.js + manifest.webmanifest, which silently killed Web Push in every

@@ -27,6 +27,7 @@ export function cliBuildPlan(platform: NodeJS.Platform): CliBuildPlan {
 export const WORKER_ENTRIES = [
 	"src/bun/workers/conversation-handoff-worker.ts",
 	"src/bun/workers/clonefile-worker.ts",
+	"src/bun/workers/clipboard-image-worker.ts",
 ];
 
 function runOrExit(command: string[], label: string): void {

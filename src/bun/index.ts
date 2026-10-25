@@ -61,6 +61,7 @@ import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
+import { configureClipboardImageWorker } from "./clipboard-image-reader";
 import { shouldActivateLaunchWindow } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import type { WindowState } from "./window-state";
@@ -428,6 +429,7 @@ const url = await getMainViewUrl();
 log.info("Loading URL", { url });
 configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
 configureClonefileWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clonefile-worker.js"));
+configureClipboardImageWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clipboard-image-worker.js"));
 configureFreezeDiagnostics({
 	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
 	version: APP_VERSION, build: lastBuildTime,

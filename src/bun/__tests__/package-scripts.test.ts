@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsePackageScripts, detectRunner, resolveRunnerCommand } from "../package-scripts";
 import { devPlan, devRunEnv, devShell, headlessCommand, headlessRunEnv, linuxHasWebkit, qaScopeMode } from "../../../scripts/dev";
+import { WORKER_ENTRIES } from "../../../scripts/build-cli";
 
 describe("package-scripts", () => {
 	let tmp: string;
@@ -211,7 +212,7 @@ describe("package-scripts", () => {
 		it("builds the renderer and workers but no desktop bundle", () => {
 			const flat = devPlan("dev", "bun", "headless").map((s) => s.command.join(" "));
 			expect(flat).toContain("bun node_modules/vite/bin/vite.js build");
-			expect(flat.filter((c) => c.includes("--outdir dist/workers"))).toHaveLength(2);
+			expect(flat.filter((c) => c.includes("--outdir dist/workers"))).toHaveLength(WORKER_ENTRIES.length);
 			expect(flat.some((c) => c.includes("electrobun") || c.includes("scripts/build-cli.ts"))).toBe(false);
 		});
 
