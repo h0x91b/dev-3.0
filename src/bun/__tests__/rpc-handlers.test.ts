@@ -35,6 +35,8 @@ vi.mock("electrobun/bun", () => ({
 		showNotification: vi.fn(),
 		openFileDialog: vi.fn(),
 		quit: vi.fn(),
+		clipboardAvailableFormats: vi.fn(() => []),
+		clipboardReadImage: vi.fn(() => null),
 	},
 	Updater: {
 		localInfo: {
@@ -936,6 +938,44 @@ describe("uploadFileBase64", () => {
 		// The suffix itself must be at most 200 bytes
 		const suffix = basename.replace(/^upload-\d+-[0-9a-f]{4}-/, "");
 		expect(Buffer.byteLength(suffix, "utf8")).toBeLessThanOrEqual(200);
+	});
+});
+
+describe("pasteClipboardImage", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ path: "/tmp/project-root" }));
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+	});
+
+	it("returns null when the clipboard holds no image, the quiet 'nothing to paste' answer", async () => {
+		vi.mocked(Utils.clipboardAvailableFormats).mockReturnValue(["text"]);
+		expect(await handlers.pasteClipboardImage({ projectId: "proj-1" })).toBeNull();
+		expect(Utils.clipboardReadImage).not.toHaveBeenCalled();
+	});
+
+	it("saves a PNG clipboard image into the project uploads", async () => {
+		vi.mocked(Utils.clipboardAvailableFormats).mockReturnValue(["image"]);
+		vi.mocked(Utils.clipboardReadImage).mockReturnValue(PNG);
+		const result = await handlers.pasteClipboardImage({ projectId: "proj-1" });
+		expect(result?.path).toMatch(/^\/tmp\/test-dev3\/worktrees\/tmp-project-root\/uploads\/upload-\d+-[0-9a-f]{4}\.png$/);
+	});
+
+	it("throws, not null, when the clipboard reports an image it cannot read", async () => {
+		// An empty Linux paste treats null as "no image" and stays quiet, so a real
+		// failure must be distinguishable or it becomes a silent drop (h0x91b/dev-3.0#2041).
+		vi.mocked(Utils.clipboardAvailableFormats).mockReturnValue(["image"]);
+		vi.mocked(Utils.clipboardReadImage).mockReturnValue(null);
+		await expect(
+			handlers.pasteClipboardImage({ projectId: "proj-1" }),
+			"cause: an unreadable clipboard image returned null, indistinguishable from an empty clipboard. fix: throw from pasteClipboardImage",
+		).rejects.toThrow(/could not be read/);
+
+		vi.mocked(Utils.clipboardReadImage).mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+		await expect(handlers.pasteClipboardImage({ projectId: "proj-1" })).rejects.toThrow(/format/);
+		expect((globalThis as any).Bun.write).not.toHaveBeenCalled();
 	});
 });
 

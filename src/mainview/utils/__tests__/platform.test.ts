@@ -96,3 +96,15 @@ describe("isTouchPrimary", () => {
 		expect(isTouchPrimary()).toBe(true);
 	});
 });
+
+describe("isLinux", () => {
+	it("is true for desktop Linux only", async () => {
+		const { isLinux } = await import("../platform");
+		setPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
+		expect(isLinux()).toBe(true);
+		setPlatform("Linux armv8l", "Mozilla/5.0 (Linux; Android 14)");
+		expect(isLinux()).toBe(false);
+		setPlatform("MacIntel", "Mozilla/5.0 (Macintosh)");
+		expect(isLinux()).toBe(false);
+	});
+});

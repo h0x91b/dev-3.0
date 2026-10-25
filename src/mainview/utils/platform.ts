@@ -52,3 +52,10 @@ export function isTouchPrimary(): boolean {
 	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
 	return window.matchMedia("(pointer: coarse)").matches;
 }
+
+/** Desktop Linux. Android's UA also says "Linux", so it is excluded. */
+export function isLinux(): boolean {
+	if (typeof navigator === "undefined") return false;
+	const ua = navigator.userAgent || "";
+	return /Linux/.test(navigator.platform || "") && !ua.includes("Android");
+}

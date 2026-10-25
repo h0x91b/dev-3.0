@@ -1689,8 +1689,10 @@ function dispatchPaste(
 	text: string,
 	items: Array<{ type: string }> = [],
 	files: File[] = [],
+	opts: { trusted?: boolean } = {},
 ) {
 	const event = new Event("paste", { bubbles: true, cancelable: true });
+	if (opts.trusted) Object.defineProperty(event, "isTrusted", { value: true });
 	Object.defineProperty(event, "clipboardData", {
 		value: {
 			getData: (type: string) => (type === "text/plain" ? text : ""),
@@ -1863,6 +1865,109 @@ describe("TerminalView – paste routing", () => {
 			expect(mockedUploadFileBase64).toHaveBeenCalled();
 		});
 		expect(mockPaste).not.toHaveBeenCalled();
+	});
+});
+
+// h0x91b/dev-3.0#2041: WebKitGTK delivers a clipboard-image paste as a trusted event with
+// no types, items, files or text, so the Linux desktop shell asks the host clipboard.
+describe("TerminalView – Linux desktop paste with an empty payload", () => {
+	function linuxDesktop() {
+		Object.defineProperty(globalThis, "navigator", {
+			value: { platform: "Linux x86_64", userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15" },
+			writable: true,
+			configurable: true,
+		});
+		(window as unknown as Record<string, unknown>).__electrobunWebviewId = 1;
+	}
+
+	beforeEach(async () => {
+		mockPaste.mockClear();
+		mockedPasteClipboardImage.mockReset();
+		mockedUploadFileBase64.mockReset();
+		const { toast } = await import("../toast");
+		vi.mocked(toast.error).mockClear();
+		linuxDesktop();
+	});
+
+	afterEach(() => {
+		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+		delete (window as unknown as Record<string, unknown>).__electrobunWebviewId;
+	});
+
+	it("reads the host clipboard image and types its escaped path, once", async () => {
+		mockedPasteClipboardImage.mockResolvedValue({ path: "/tmp/up loads/upload-1-abcd.png" } as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault, stopImmediate } = dispatchPaste(terminal, "", [], [], { trusted: true });
+
+		expect(
+			mockedPasteClipboardImage,
+			"cause: an empty WebKitGTK paste never reached the host clipboard. fix: call pasteClipboardImage when shouldReadHostClipboardImage(e)",
+		).toHaveBeenCalledTimes(1);
+		expect(preventDefault).toHaveBeenCalled();
+		expect(stopImmediate, "cause: ghostty's own handler still ran and warned 'No text in clipboard'. fix: stopImmediatePropagation on the host-clipboard branch").toHaveBeenCalled();
+		await waitFor(() => {
+			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/up\\ loads/upload-1-abcd.png");
+		});
+		expect(lastWebSocket?.send, "cause: the image path was typed twice. fix: one host read per paste").toHaveBeenCalledTimes(1);
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet when the host clipboard holds no image either", async () => {
+		mockedPasteClipboardImage.mockResolvedValue(null);
+		const { toast } = await import("../toast");
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "", [], [], { trusted: true });
+
+		await waitFor(() => expect(mockedPasteClipboardImage).toHaveBeenCalled());
+		await act(async () => { await Promise.resolve(); });
+		expect(toast.error, "cause: an ordinary empty Ctrl+V raised an error toast. fix: treat a null reply as 'nothing to paste'").not.toHaveBeenCalled();
+	});
+
+	it("shows the image-paste error when the host clipboard image cannot be read", async () => {
+		mockedPasteClipboardImage.mockRejectedValue(new Error("The clipboard reports an image but it could not be read"));
+		const { toast } = await import("../toast");
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "", [], [], { trusted: true });
+
+		await waitFor(() => {
+			expect(toast.error, "cause: a failed host clipboard read was dropped silently. fix: toast imagePaste.failed for failed/timeout results").toHaveBeenCalled();
+		});
+	});
+
+	it("leaves ordinary text on the bracketed path without touching the host clipboard", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "hello", [], [], { trusted: true });
+
+		expect(mockPaste).toHaveBeenCalledWith("hello");
+		expect(mockedPasteClipboardImage).not.toHaveBeenCalled();
+	});
+
+	it("ignores a script-dispatched empty paste, so only a real user paste reads the clipboard", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault } = dispatchPaste(terminal, "");
+
+		expect(mockedPasteClipboardImage, "cause: an untrusted paste event read the host clipboard. fix: require event.isTrusted").not.toHaveBeenCalled();
+		expect(preventDefault).not.toHaveBeenCalled();
+	});
+
+	it("never reads the host clipboard from a browser tab, whose host is another machine", async () => {
+		delete (window as unknown as Record<string, unknown>).__electrobunWebviewId;
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "", [], [], { trusted: true });
+
+		expect(mockedPasteClipboardImage, "cause: remote mode read the dev3 host's clipboard. fix: gate on !isRemote()").not.toHaveBeenCalled();
 	});
 });
 

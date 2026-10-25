@@ -1,5 +1,7 @@
 # 216 — Convert Windows clipboard DIB bytes to PNG ourselves
 
+> Superseded in part on 2026-10-25 by `decisions/2026/10/25/linux-webkitgtk-paste-reads-host-clipboard.md`: layer 1 does not hold on WebKitGTK (Linux desktop), which delivers image pastes empty, so there the host clipboard is the primary path.
+
 ## Context
 
 Pasting a screenshot on Windows produced nothing usable. Two independent causes sat behind one symptom, both inside "read the host clipboard from the bun process":

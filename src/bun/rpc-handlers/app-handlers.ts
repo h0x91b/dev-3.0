@@ -786,6 +786,7 @@ async function saveUploadedFile(
 	return { path: fullPath };
 }
 
+/** null = no image on the clipboard; throws when there is one that cannot be saved. */
 async function pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
 	log.info("→ pasteClipboardImage", { projectId: params.projectId.slice(0, 8) });
 	const formats = Utils.clipboardAvailableFormats();
@@ -796,7 +797,7 @@ async function pasteClipboardImage(params: { projectId: string }): Promise<{ pat
 	const clipboardData = Utils.clipboardReadImage();
 	if (!clipboardData || clipboardData.length === 0) {
 		log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
-		return null;
+		throw new Error("The clipboard reports an image but it could not be read");
 	}
 	// Windows hands back raw CF_DIB bytes, not PNG — convert before saving.
 	const converted = clipboardImageToPng(clipboardData);
@@ -806,7 +807,7 @@ async function pasteClipboardImage(params: { projectId: string }): Promise<{ pat
 			len: clipboardData.length,
 			head: Array.from(clipboardData.subarray(0, 8)),
 		});
-		return null;
+		throw new Error("The clipboard image is not in a format that can be saved");
 	}
 	return saveUploadedFile(params.projectId, converted.png, { mimeType: "image/png" });
 }

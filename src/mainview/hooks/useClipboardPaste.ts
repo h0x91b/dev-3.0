@@ -3,6 +3,7 @@ import { api } from "../rpc";
 import { isLargeTextPaste, uploadPastedText } from "../utils/uploadPastedText";
 import { useAttachUpload } from "./useAttachUpload";
 import { imageFilesFromClipboard } from "../utils/clipboardImageFiles";
+import { readHostClipboardImage, shouldReadHostClipboardImage } from "../utils/hostClipboardImage";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 
@@ -69,6 +70,20 @@ export function useClipboardPaste(
 				}).catch(() => {
 					if (!mountedRef.current) return;
 					toast.error(t("imagePaste.failed"), { projectId });
+					setIsPasting(false);
+					setPasteKind(null);
+				});
+				return;
+			}
+
+			if (projectId && shouldReadHostClipboardImage(e)) {
+				e.preventDefault();
+				setIsPasting(true);
+				setPasteKind("image");
+				void readHostClipboardImage(projectId).then((result) => {
+					if (!mountedRef.current) return;
+					if (result.kind === "image") onPathPasted(result.path);
+					else if (result.kind !== "none") toast.error(t("imagePaste.failed"), { projectId });
 					setIsPasting(false);
 					setPasteKind(null);
 				});

@@ -59,6 +59,7 @@ import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { imageFilesFromClipboard } from "./utils/clipboardImageFiles";
+import { readHostClipboardImage, shouldReadHostClipboardImage } from "./utils/hostClipboardImage";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
 import { spaceDroppedPaths } from "./terminal-drop-spacing";
@@ -2672,6 +2673,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					}).catch((err) => {
 						console.error("[TerminalView] Image paste failed:", err);
 						toast.error(t("imagePaste.failed"), { taskId });
+					});
+					return;
+				}
+
+				if (shouldReadHostClipboardImage(e)) {
+					e.preventDefault();
+					e.stopImmediatePropagation();
+					void readHostClipboardImage(projectId).then((result) => {
+						if (result.kind === "image") sendPathToPty(result.path);
+						else if (result.kind !== "none") {
+							console.error("[TerminalView] Host clipboard image paste failed:", result);
+							toast.error(t("imagePaste.failed"), { taskId });
+						}
 					});
 					return;
 				}
