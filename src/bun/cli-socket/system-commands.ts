@@ -7,10 +7,14 @@ import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "../ag
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "../pane-input-native";
 import type { PaneInputProgram } from "../../shared/pane-input";
 import * as repoConfig from "../repo-config";
+import { LAUNCH_ACTIVATE_METHOD, handleLaunchActivate } from "../launch-handoff";
 import { log, type Handler } from "./shared";
 import { readEnvParam, readServerParams, resolveTaskFromParams } from "./task-resolution";
 
 export const systemHandlers: Record<string, Handler> = {
+	// A second Linux desktop launch asking this instance to show a window instead.
+	[LAUNCH_ACTIVATE_METHOD]: async (params) => handleLaunchActivate(params),
+
 	// Cross-instance notification: another dev-3.0 instance changed data.
 	// Re-read from disk and push to local renderer only (no re-broadcast).
 	"_notify": async (params) => {

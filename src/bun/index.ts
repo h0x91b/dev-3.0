@@ -70,6 +70,8 @@ import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
+import { decideLaunchActivation, handOffToRunningInstance, requestOverUnixSocket, setLaunchActivationHost, shouldTryLaunchHandoff } from "./launch-handoff";
+import { discoverPeerSockets } from "./instance-broadcast";
 
 const log = createLogger("main");
 
@@ -102,6 +104,17 @@ let lastBuildTime = BUILD_TIME;
 log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
+
+// ── Linux: a relaunch hands off to the running instance (issue #2039) ──
+// Before anything writes shared state: a window-less instance left behind by
+// a closed window opens a window instead of a second backend starting.
+if (shouldTryLaunchHandoff({ platform: process.platform, env: process.env })) {
+	const takenOverBy = await handOffToRunningInstance({ peers: discoverPeerSockets, request: requestOverUnixSocket, bundle: PATHS.VIEWS_FOLDER });
+	if (takenOverBy) {
+		log.info("A running instance opened its window for this launch — exiting", { endpoint: takenOverBy });
+		await hardExit(0);
+	}
+}
 
 // ── Search PATH, before ANY binary lookup ──
 // Windows spells the variable `Path`; a JS env object need not fold the case, and
@@ -520,6 +533,24 @@ async function openMainWindow(restore?: WindowState, activate = true) {
 // this module.
 setOpenNewWindow(() => {
 	void openMainWindow();
+});
+
+// The other half of the launch handoff above: a newcomer of this same install
+// asks us for a window. Bring one back if none is open, else raise the focused one.
+setLaunchActivationHost((bundle) => {
+	const decision = decideLaunchActivation({
+		platform: process.platform,
+		bundle,
+		ownBundle: PATHS.VIEWS_FOLDER,
+		hostTaskId: process.env.DEV3_TASK_ID || null,
+		windowCount: getWindowCount(),
+	});
+	if (decision.activated) {
+		log.info("Launch handoff accepted", { opening: decision.open === true });
+		if (decision.open) void openMainWindow();
+		else focusFocusedWindow();
+	}
+	return { activated: decision.activated, reason: decision.reason };
 });
 
 // Reopen every window the last session ended with, each on its own saved

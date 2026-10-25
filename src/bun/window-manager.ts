@@ -8,6 +8,7 @@ import { loadWindowStates, saveWindowStates, resolveRestoreFrame, displayContain
 import { isFreshStartMode } from "./fresh-start";
 import { isQuitConfirmed } from "./quit-manager";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
+import { disableGtkFrameSync } from "./gtk-frame-sync";
 
 const log = createLogger("window-manager");
 
@@ -366,6 +367,10 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 			}, 200);
 		});
 	}
+
+	// Linux only: the GTK toplevel is realized by dom-ready. A reload re-fires
+	// the event; the flag is per window and re-clearing it is harmless.
+	win.webview.on("dom-ready", () => disableGtkFrameSync(win.ptr as unknown as number, id));
 
 	if (opts.onDomReady) {
 		win.webview.on("dom-ready", () => opts.onDomReady!(win));
