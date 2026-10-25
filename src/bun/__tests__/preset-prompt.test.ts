@@ -210,6 +210,16 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/`dev3 peek` is still the only way/);
 	});
 
+	// A child stuck on a question rarely pings the coordinator, and dev3 has no
+	// key-input command, so the rule must not promise one or a revision field.
+	it("sweeps unhandled waiting rows without inventing key input", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/WAITING ROWS NEED YOU, notified or not, those waiting at your start too/);
+		expect(COORDINATOR_PROMPT).toMatch(/act only on a move or question\/result not yet handled/);
+		expect(COORDINATOR_PROMPT).toMatch(/Within approved scope, decide and unblock; else escalate/);
+		expect(COORDINATOR_PROMPT).toMatch(/No key input: answer free-text prompts by `dev3 message`, then peek/);
+		expect(COORDINATOR_PROMPT).toMatch(/never a blind Enter or user-only approval/);
+	});
+
 	// `dev3 events` (Seq 1738) is a POSITION, not a feed: a coordinator that reads
 	// it as "the last couple of hours" loses exactly the stretch it was away for.
 	// Each assertion below pins one half of that contract.
