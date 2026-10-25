@@ -185,7 +185,7 @@ const help = {
 		"Apunta dev3 a un repo git local, clona uno remoto primero, o crea un tablero de Operaciones — un proyecto virtual cuyas tareas ejecutan agentes en carpetas gestionadas, sin git. Activa la configuración automática para guardar en .dev3/config.local.json los comandos de instalación y de desarrollo que encuentre dev3.",
 	"help.modal.importConversations.title": "Importar conversaciones",
 	"help.modal.importConversations.body":
-		"Las conversaciones de Claude Code y Codex que se ejecutaron en la carpeta de este proyecto fuera de dev3 se convierten en tareas normales: un título, un resumen de la conversación como descripción y la etiqueta «imported». Claude titula sus propias conversaciones; una de Codex se titula con la primera petición. Lo reciente conserva un worktree; lo antiguo llega a Completado.",
+		"Las conversaciones de Claude Code y Codex que se ejecutaron en la carpeta de este proyecto fuera de dev3 se convierten en tareas normales: un título, un resumen de la conversación como descripción y la etiqueta «imported». Claude titula sus propias conversaciones; una de Codex se titula con la primera petición. Lo reciente conserva un worktree; lo antiguo llega a Completado. ¿Cambiaste de idea? Ajustes del proyecto → Conversaciones de agentes elimina las tareas importadas que aún no tienen trabajo.",
 	"help.modal.spawnAgent.title": "Añadir un agente",
 	"help.modal.spawnAgent.body":
 		"Añade un segundo agente a la sesión existente de esta tarea — mismo worktree, misma terminal. Útil para pasar el relevo a otro modelo o correr un ayudante junto al agente principal.",

@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
 	refExists: vi.fn(),
 	createWorktree: vi.fn(),
 	resolveProjectConfig: vi.fn(),
+	deleteTask: vi.fn(),
+	assertWorkspaceReclaimable: vi.fn(),
 	push: vi.fn(),
 }));
 
@@ -29,9 +31,18 @@ vi.mock("../../data", () => ({
 	updateTask: mocks.updateTask,
 	updateProjectWith: mocks.updateProjectWith,
 }));
-vi.mock("../../git", () => ({ refExists: mocks.refExists, createWorktree: mocks.createWorktree }));
+vi.mock("../../git", () => {
+	class WorkspaceReclaimRefusedError extends Error {}
+	return {
+		refExists: mocks.refExists,
+		createWorktree: mocks.createWorktree,
+		assertWorkspaceReclaimable: mocks.assertWorkspaceReclaimable,
+		WorkspaceReclaimRefusedError,
+	};
+});
 vi.mock("../../repo-config", () => ({ resolveProjectConfig: mocks.resolveProjectConfig }));
 vi.mock("../../conversation-import", () => ({ scanImportableConversations: mocks.scanImportableConversations }));
+vi.mock("../task-lifecycle", () => ({ deleteTask: mocks.deleteTask }));
 vi.mock("../shared", () => ({
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	getPushMessage: () => mocks.push,
@@ -135,6 +146,8 @@ beforeEach(() => {
 	mocks.addTask.mockImplementation(async (_p: Project, description: string, status: string, extras: Record<string, unknown>) =>
 		createdTask(description, status, extras));
 	mocks.updateTask.mockImplementation(async (_p: Project, id: string, updates: Partial<Task>) => ({ id, ...updates } as Task));
+	mocks.deleteTask.mockResolvedValue(undefined);
+	mocks.assertWorkspaceReclaimable.mockResolvedValue(undefined);
 });
 
 describe("scanImportableConversations", () => {
@@ -314,5 +327,104 @@ describe("markConversationImportOffered", () => {
 		});
 		const { project } = await conversationImportHandlers.markConversationImportOffered({ projectId: "p1" });
 		expect(project.conversationImportOfferedAt).toBe("2026-01-01T00:00:00.000Z");
+	});
+});
+
+describe("removeImportedTasks", () => {
+	const imported = (id: string, over: Partial<Task> = {}) =>
+		({ id, title: `Imported ${id}`, status: "user-questions", agentId: null, worktreePath: null, importedSessionId: `sess-${id}`, ...over }) as unknown as Task;
+	const own = { id: "mine", title: "My own task", status: "in-progress", agentId: null, importedSessionId: null } as unknown as Task;
+	const remove = (taskIds: string[]) => conversationImportHandlers.removeImportedTasks({ projectId: "p1", taskIds });
+
+	it("deletes the confirmed imported tasks, in any column, and nothing else", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a"), own, imported("b", { status: "completed" })]);
+
+		const result = await remove(["a", "mine", "b"]);
+
+		expect(result).toEqual({ removedTaskIds: ["a", "b"], kept: [], problems: [] });
+		expect(mocks.deleteTask.mock.calls.map(([params]) => params)).toEqual([
+			{ taskId: "a", projectId: "p1" },
+			{ taskId: "b", projectId: "p1" },
+		]);
+	});
+
+	it("leaves an imported task alone when it was not in the confirmed list", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a"), imported("arrived-later")]);
+		const result = await remove(["a"]);
+		expect(result.removedTaskIds).toEqual(["a"]);
+		expect(mocks.deleteTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps an imported task an agent has worked on", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a", { agentId: "builtin-claude", status: "in-progress" })]);
+		const result = await remove(["a"]);
+		expect(result.removedTaskIds).toEqual([]);
+		expect(result.kept).toEqual([{ title: "Imported a", reason: "an agent has worked on it" }]);
+		expect(mocks.deleteTask).not.toHaveBeenCalled();
+	});
+
+	it("keeps an imported task whose worktree holds work, and checks only real worktrees", async () => {
+		const { WorkspaceReclaimRefusedError } = await import("../../git");
+		mocks.assertWorkspaceReclaimable.mockImplementation(async (path: string) => {
+			if (path === "/wt/dirty") throw new (WorkspaceReclaimRefusedError as unknown as new (m: string) => Error)("folder /wt/dirty has uncommitted or untracked files");
+		});
+		mocks.loadTasks.mockResolvedValue([
+			imported("dirty", { worktreePath: "/wt/dirty" }),
+			imported("clean", { worktreePath: "/wt/clean" }),
+			imported("none"),
+		]);
+
+		const result = await remove(["dirty", "clean", "none"]);
+
+		expect(result.removedTaskIds).toEqual(["clean", "none"]);
+		expect(result.kept).toEqual([{ title: "Imported dirty", reason: "folder /wt/dirty has uncommitted or untracked files" }]);
+		expect(mocks.assertWorkspaceReclaimable.mock.calls.map(([path]) => path)).toEqual(["/wt/dirty", "/wt/clean"]);
+	});
+
+	it("tells every open surface about each removed task", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a")]);
+		await remove(["a"]);
+		expect(mocks.push).toHaveBeenCalledWith("taskRemoved", { projectId: "p1", taskId: "a" });
+	});
+
+	it("carries on past a task that cannot be removed and reports it", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a"), imported("b")]);
+		mocks.deleteTask.mockRejectedValueOnce(new Error("worktree is locked"));
+
+		const result = await remove(["a", "b"]);
+
+		expect(result.removedTaskIds).toEqual(["b"]);
+		expect(result.problems).toEqual([{ title: "Imported a", error: "Error: worktree is locked" }]);
+		expect(mocks.push).not.toHaveBeenCalledWith("taskRemoved", { projectId: "p1", taskId: "a" });
+	});
+
+	it("counts a task deleted elsewhere mid-loop as removed, not as a failure", async () => {
+		mocks.loadTasks
+			.mockResolvedValueOnce([imported("a")])
+			.mockResolvedValueOnce([]);
+		mocks.deleteTask.mockRejectedValueOnce(new Error("Task not found: a"));
+
+		const result = await remove(["a"]);
+
+		expect(result).toEqual({ removedTaskIds: ["a"], kept: [], problems: [] });
+	});
+
+	it("refuses a second removal for the same project while one is running", async () => {
+		let finish: () => void = () => {};
+		mocks.loadTasks.mockResolvedValue([imported("a")]);
+		mocks.deleteTask.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+
+		const first = remove(["a"]);
+		await vi.waitFor(() => expect(mocks.deleteTask).toHaveBeenCalled());
+		await expect(remove(["a"])).rejects.toThrow("already being removed");
+		finish();
+		await expect(first).resolves.toMatchObject({ removedTaskIds: ["a"] });
+	});
+
+	it("does nothing when nothing confirmed is imported", async () => {
+		mocks.loadTasks.mockResolvedValue([own]);
+		const result = await remove(["mine"]);
+		expect(result).toEqual({ removedTaskIds: [], kept: [], problems: [] });
+		expect(mocks.deleteTask).not.toHaveBeenCalled();
 	});
 });

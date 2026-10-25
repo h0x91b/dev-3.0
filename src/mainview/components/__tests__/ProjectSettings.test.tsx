@@ -27,6 +27,7 @@ vi.mock("../../rpc", () => ({
 					{ login: "h0x91b-work", host: "github.com", active: false },
 				],
 			}),
+			removeImportedTasks: vi.fn().mockResolvedValue({ removedTaskIds: [], kept: [], problems: [] }),
 			updateProjectSettings: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", path: "/tmp/test", defaultBaseBranch: "main", setupScript: "", devScript: "", cleanupScript: "", createdAt: "" }),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
@@ -791,6 +792,79 @@ describe("ProjectSettings", () => {
 			// Middle rows can move both ways.
 			expect(screen.getAllByLabelText("Move label up")[1]).not.toBeDisabled();
 			expect(screen.getAllByLabelText("Move label down")[1]).not.toBeDisabled();
+		});
+	});
+
+	describe("removing imported tasks", () => {
+		// No worktrees: these cases are about which cards go, not the Worktree tab.
+		const plainTask: Task = { ...mockTaskWithWorktree, status: "completed", worktreePath: null, branchName: null };
+		const importedTask = (id: string): Task => ({ ...plainTask, id, title: "Same title", importedSessionId: `sess-${id}` });
+		const ownTask: Task = { ...plainTask, id: "own", title: "Mine" };
+
+		async function renderWithDispatch(tasks: Task[]) {
+			const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
+			await act(async () => {
+				render(
+					<I18nProvider>
+						<ProjectSettings projectId={mockProject.id} projects={[mockProject]} tasks={tasks} dispatch={dispatch} navigate={vi.fn() as (route: Route) => void} />
+					</I18nProvider>,
+				);
+			});
+			return dispatch;
+		}
+
+		it("is not offered when the board has no imported tasks", async () => {
+			await renderWithDispatch([ownTask]);
+			expect(screen.queryByRole("button", { name: /imported task/ })).not.toBeInTheDocument();
+		});
+
+		it("asks first, sends exactly the confirmed tasks, and drops only the ones the backend removed", async () => {
+			const { confirm } = await import("../../confirm");
+			const { toast } = await import("../../toast");
+			const info = vi.spyOn(toast, "info");
+			const error = vi.spyOn(toast, "error");
+			vi.mocked(api.request.removeImportedTasks).mockResolvedValueOnce({
+				removedTaskIds: ["a"],
+				kept: [{ title: "Same title", reason: "an agent has worked on it" }],
+				problems: [{ title: "Same title", error: "locked" }],
+			});
+			const user = userEvent.setup();
+			const dispatch = await renderWithDispatch([importedTask("a"), importedTask("b"), importedTask("c"), ownTask]);
+
+			await user.click(screen.getByRole("button", { name: "Remove 3 imported tasks…" }));
+
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, message: expect.stringContaining("3 imported tasks") }));
+			expect(api.request.removeImportedTasks).toHaveBeenCalledWith({ projectId: "proj-1", taskIds: ["a", "b", "c"] });
+			expect(dispatch).toHaveBeenCalledWith({ type: "removeTask", taskId: "a", projectId: "proj-1" });
+			expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "removeTask", taskId: "b" }));
+			expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "removeTask", taskId: "own" }));
+			expect(info).toHaveBeenCalledWith(expect.stringContaining("Kept 1 imported task"), expect.anything());
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("Could not remove 1 imported task"), expect.anything());
+		});
+
+		it("reports a failed request and lets the user try again", async () => {
+			const { toast } = await import("../../toast");
+			const error = vi.spyOn(toast, "error");
+			vi.mocked(api.request.removeImportedTasks).mockRejectedValueOnce(new Error("timed out"));
+			const user = userEvent.setup();
+			await renderWithDispatch([importedTask("a")]);
+
+			await user.click(screen.getByRole("button", { name: "Remove 1 imported task…" }));
+
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("timed out"), expect.anything());
+			expect(screen.getByRole("button", { name: "Remove 1 imported task…" })).not.toBeDisabled();
+		});
+
+		it("removes nothing when the confirmation is declined", async () => {
+			const { confirm } = await import("../../confirm");
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			vi.mocked(api.request.removeImportedTasks).mockClear();
+			const user = userEvent.setup();
+			await renderWithDispatch([importedTask("a")]);
+
+			await user.click(screen.getByRole("button", { name: "Remove 1 imported task…" }));
+
+			expect(api.request.removeImportedTasks).not.toHaveBeenCalled();
 		});
 	});
 

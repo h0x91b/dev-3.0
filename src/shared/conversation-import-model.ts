@@ -48,3 +48,12 @@ export interface ImportConversationsResult {
 	/** Human-readable trouble, one line each, for the caller to surface. */
 	problems: { title: string; error: string }[];
 }
+
+export interface RemoveImportedTasksResult {
+	/** The tasks that are gone, so a renderer can drop exactly those cards. */
+	removedTaskIds: string[];
+	/** Imported tasks left alone because they hold work, with the reason, one line each. */
+	kept: { title: string; reason: string }[];
+	/** Tasks that could not be removed, one line each, for the caller to surface. */
+	problems: { title: string; error: string }[];
+}

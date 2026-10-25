@@ -1,7 +1,7 @@
 import type { InterfaceOnboardingRequest, InterfaceOnboardingResponse } from "../interface-onboarding";
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "../conversation-search-core";
-import type { ImportConversationsResult, ImportableConversationView } from "../conversation-import-model";
+import type { ImportConversationsResult, ImportableConversationView, RemoveImportedTasksResult } from "../conversation-import-model";
 import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-model";
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
@@ -526,6 +526,15 @@ export type AppRPCSchema = {
 			markConversationImportOffered: {
 				params: { projectId: string };
 				response: { project: Project };
+			};
+			/**
+			 * Delete the given imported tasks with their worktrees and branches. Tasks
+			 * without `importedSessionId` are never touched; one an agent has run in, or
+			 * whose worktree holds uncommitted work or unique commits, is kept and listed.
+			 */
+			removeImportedTasks: {
+				params: { projectId: string; taskIds: string[] };
+				response: RemoveImportedTasksResult;
 			};
 			createTask: {
 				/**

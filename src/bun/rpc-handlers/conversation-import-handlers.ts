@@ -1,4 +1,5 @@
 import type { Label, Project, Task } from "../../shared/types";
+import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as repoConfig from "../repo-config";
@@ -9,9 +10,11 @@ import {
 	IMPORTED_LABEL_NAME,
 	type ImportConversationsResult,
 	type ImportableConversationView,
+	type RemoveImportedTasksResult,
 } from "../../shared/conversation-import-model";
 import { firstUserRequest, renderImportedDescription } from "../../shared/conversation-render";
 import { getPushMessage, log } from "./shared";
+import { deleteTask } from "./task-lifecycle";
 
 /**
  * Turning the Claude Code and Codex conversations that ran in a project's own
@@ -189,8 +192,85 @@ async function markConversationImportOfferedHandler(
 	return { project };
 }
 
+/**
+ * Why an imported task is kept rather than removed: it is no longer just an
+ * import. Null when it is safe to delete.
+ */
+async function workKeptIn(task: Task): Promise<string | null> {
+	// The import never launches an agent, so an agent id means someone did.
+	if (task.agentId) return "an agent has worked on it";
+	if (!task.worktreePath) return null;
+	try {
+		await git.assertWorkspaceReclaimable(task.worktreePath);
+		return null;
+	} catch (err) {
+		return err instanceof git.WorkspaceReclaimRefusedError ? err.message : String(err);
+	}
+}
+
+/** Projects with a removal in flight — a second click must not race the first loop. */
+const removalsInFlight = new Set<string>();
+
+/**
+ * Undo an import: delete the imported tasks the user confirmed, through the
+ * same lifecycle path as a single delete, so each one's terminal, worktree and
+ * branch go with it. Only tasks that are still nothing but an import go: one an
+ * agent has run in, or whose worktree holds uncommitted work or commits found
+ * nowhere else, is kept and reported. Tasks without `importedSessionId` are
+ * never touched, whatever ids are passed. The conversations stay in the agents'
+ * own history, so a later import can offer them again.
+ */
+async function removeImportedTasksHandler(
+	params: { projectId: string; taskIds: string[] },
+): Promise<RemoveImportedTasksResult> {
+	log.info("→ removeImportedTasks", { projectId: params.projectId.slice(0, 8), requested: params.taskIds.length });
+	if (removalsInFlight.has(params.projectId)) {
+		throw new Error("Imported tasks are already being removed for this project");
+	}
+	removalsInFlight.add(params.projectId);
+	try {
+		const project = await data.getProject(params.projectId);
+		// Exactly what the user confirmed, and only what is still an import.
+		const wanted = new Set(params.taskIds);
+		const imported = (await data.loadTasks(project)).filter((task) => wanted.has(task.id) && !!task.importedSessionId);
+
+		const removedTaskIds: string[] = [];
+		const kept: { title: string; reason: string }[] = [];
+		const problems: { title: string; error: string }[] = [];
+		const push = getPushMessage();
+		// One at a time: each delete takes git locks on the same repository.
+		for (const task of imported) {
+			const title = getTaskTitle(task);
+			const reason = await workKeptIn(task);
+			if (reason) {
+				kept.push({ title, reason });
+				continue;
+			}
+			try {
+				await deleteTask({ taskId: task.id, projectId: project.id });
+			} catch (err) {
+				// Deleted elsewhere while this loop ran — gone is what was asked for.
+				const stillThere = (await data.loadTasks(project)).some((t) => t.id === task.id);
+				if (stillThere) {
+					log.error("Removing an imported task failed", { taskId: task.id.slice(0, 8), error: String(err) });
+					problems.push({ title, error: String(err) });
+					continue;
+				}
+			}
+			removedTaskIds.push(task.id);
+			push?.("taskRemoved", { projectId: project.id, taskId: task.id });
+		}
+
+		log.info("← removeImportedTasks", { removed: removedTaskIds.length, kept: kept.length, problems: problems.length });
+		return { removedTaskIds, kept, problems };
+	} finally {
+		removalsInFlight.delete(params.projectId);
+	}
+}
+
 export const conversationImportHandlers = {
 	scanImportableConversations: scanImportableConversationsHandler,
 	importConversations: importConversationsHandler,
 	markConversationImportOffered: markConversationImportOfferedHandler,
+	removeImportedTasks: removeImportedTasksHandler,
 };

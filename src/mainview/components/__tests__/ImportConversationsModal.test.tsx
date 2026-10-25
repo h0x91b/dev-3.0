@@ -175,6 +175,21 @@ describe("ImportConversationsModal", () => {
 		expect(mocks.markOffered).not.toHaveBeenCalled();
 	});
 
+	it("offers to start fresh on dev3's own offer, importing nothing", async () => {
+		const user = userEvent.setup();
+		const props = renderModal({ autoOffer: true });
+		await user.click(await screen.findByRole("button", { name: "Start fresh" }));
+		expect(props.onClose).toHaveBeenCalled();
+		expect(mocks.importConversations).not.toHaveBeenCalled();
+		expect(screen.getByTestId("import-conversations-skip-note")).toBeInTheDocument();
+	});
+
+	it("keeps a plain Cancel when the user opened the dialog themselves", async () => {
+		renderModal();
+		expect(await screen.findByRole("button", { name: "Cancel" })).toBeInTheDocument();
+		expect(screen.queryByTestId("import-conversations-skip-note")).not.toBeInTheDocument();
+	});
+
 	it("records nothing when the user opened the dialog themselves", async () => {
 		renderModal();
 		expect(await screen.findByTestId("import-conversations-all")).toBeChecked();

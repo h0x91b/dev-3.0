@@ -224,6 +224,13 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 						)}
 
 						<p className="text-fg-muted text-xs leading-5">{t("importConversations.hint")}</p>
+						{/* The unprompted offer right after adding a project: skipping must read
+										as a real choice, not as backing out of adding the project. */}
+						{autoOffer && (
+							<p className="text-fg-muted text-xs leading-5" data-testid="import-conversations-skip-note">
+								{t("importConversations.skipNote")}
+							</p>
+						)}
 						{/* Only where it applies: a list where every agent named its own
 										session should not explain a fallback nobody used. */}
 						{conversations.some((c) => c.titledFromRequest) && (
@@ -241,7 +248,9 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 						disabled={importing}
 						className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg disabled:opacity-50"
 					>
-						{empty || scanError ? t("importConversations.close") : t("importConversations.cancel")}
+						{empty || scanError
+							? t("importConversations.close")
+							: autoOffer ? t("importConversations.skip") : t("importConversations.cancel")}
 					</button>
 					{!empty && !scanError && (
 						<button

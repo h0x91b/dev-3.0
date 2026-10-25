@@ -119,6 +119,8 @@ function ProjectSettings({
 	// Operations boards only have the Board tab (no git → no Project/Worktree
 	// config); never let a deep-linked initialTab strand them on a hidden git tab.
 	const [importingConversations, setImportingConversations] = useState(false);
+	const [removingImported, setRemovingImported] = useState(false);
+	const importedTaskCount = useMemo(() => tasks.filter((task) => !!task.importedSessionId).length, [tasks]);
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
 		project?.kind === "virtual"
 			? (initialTab === "automations" ? "automations" : "global")
@@ -503,6 +505,48 @@ function ProjectSettings({
 			toast.error(t("labels.failedUpdate", { error: String(err) }), { projectId });
 		}
 		setLabelSaving(null);
+	}
+
+	async function handleRemoveImportedTasks() {
+		// Deletes worktrees and branches with no undo — always ask, and say how many.
+		const confirmed = await confirm({
+			title: t("projectSettings.removeImportedTitle"),
+			message: t.plural("projectSettings.removeImportedMessage", importedTaskCount, { count: importedTaskCount }),
+			confirmLabel: t("projectSettings.removeImportedConfirm"),
+			danger: true,
+		});
+		if (!confirmed) return;
+		setRemovingImported(true);
+		try {
+			// Exactly the tasks the dialog counted — not whatever is imported by the time it runs.
+			const taskIds = tasks.filter((task) => !!task.importedSessionId).map((task) => task.id);
+			const result = await api.request.removeImportedTasks({ projectId, taskIds });
+			// The backend also pushes `taskRemoved` per task; this keeps this window
+			// in step even before those arrive.
+			for (const taskId of result.removedTaskIds) dispatch({ type: "removeTask", taskId, projectId });
+			const removed = result.removedTaskIds.length;
+			if (removed > 0) {
+				toast.success(t.plural("projectSettings.removedImported", removed, { count: removed }), { projectId });
+			}
+			// One summary each, not a toast per task — a big import can keep dozens.
+			const [firstKept] = result.kept;
+			if (firstKept) {
+				toast.info(t.plural("projectSettings.keptImported", result.kept.length, {
+					count: result.kept.length,
+					first: t("importConversations.problem", { title: firstKept.title, error: firstKept.reason }),
+				}), { projectId });
+			}
+			const [firstProblem] = result.problems;
+			if (firstProblem) {
+				toast.error(t.plural("projectSettings.removeImportedProblems", result.problems.length, {
+					count: result.problems.length,
+					first: t("importConversations.problem", { title: firstProblem.title, error: firstProblem.error }),
+				}), { projectId });
+			}
+		} catch (err) {
+			toast.error(t("projectSettings.removeImportedFailed", { error: String(err) }), { projectId });
+		}
+		setRemovingImported(false);
 	}
 
 	async function handleDeleteLabel(labelId: string) {
@@ -940,6 +984,18 @@ function ProjectSettings({
 								>
 									{t("projectSettings.importConversationsBtn")}
 								</button>
+								{importedTaskCount > 0 && (
+									<button
+										type="button"
+										onClick={() => void handleRemoveImportedTasks()}
+										disabled={removingImported}
+										className="ml-2 px-4 py-2 bg-raised border border-edge rounded-xl text-danger text-sm hover:border-danger/50 transition-colors disabled:opacity-50"
+									>
+										{removingImported
+											? t("projectSettings.removingImported")
+											: t.plural("projectSettings.removeImportedBtn", importedTaskCount, { count: importedTaskCount })}
+									</button>
+								)}
 								</SettingsSection>
 							)}
 
