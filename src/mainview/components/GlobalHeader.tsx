@@ -9,6 +9,7 @@ import { parseDisplayVersion } from "../../shared/update-channel";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { groupProjectsForSwitcher } from "../utils/spaceGroups";
+import { projectLastActivityMs } from "../utils/projectActivity";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
 import { HighlightedText } from "./PaletteShell";
@@ -181,6 +182,12 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
 	const activeSwitcherRowRef = useRef<HTMLButtonElement>(null);
 	const countsCacheTimeRef = useRef<number>(0);
+	// Last task activity per project, fetched with the counts. The open menu ranks
+	// Home by ONE snapshot per opening: a first fetch may still fill an untouched
+	// menu, but nothing reshuffles rows once ranked or once the user steers.
+	const projectActivityRef = useRef<Record<string, number>>({});
+	const [switcherActivity, setSwitcherActivity] = useState<Record<string, number>>({});
+	const switcherRankFrozenRef = useRef(false);
 
 	// Open Remote Access instantly: fetch only the local QR (never the blocking
 	// tunnel-start path) so the modal opens on the first click, then flag the
@@ -340,11 +347,13 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		let cancelled = false;
 		async function fetchCounts() {
 			const counts: Record<string, number> = {};
+			const activity: Record<string, number> = {};
 			await Promise.all(
 				projects.filter((p) => !p.deleted).map(async (p) => {
 					try {
 						const fetchedTasks = await api.request.getTasks({ projectId: p.id });
 						counts[p.id] = fetchedTasks.filter((ft) => ACTIVE_STATUSES.includes(ft.status)).length;
+						activity[p.id] = projectLastActivityMs(fetchedTasks);
 					} catch {
 						counts[p.id] = 0;
 					}
@@ -352,6 +361,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			);
 			if (!cancelled) {
 				setProjectTaskCounts(counts);
+				projectActivityRef.current = activity;
+				if (!switcherRankFrozenRef.current) {
+					switcherRankFrozenRef.current = true;
+					setSwitcherActivity(activity);
+				}
 				countsCacheTimeRef.current = Date.now();
 			}
 		}
@@ -371,6 +385,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		setProjectQuery("");
 		setSwitcherIndex(0);
 		setSwitcherKeyNav(false);
+		switcherRankFrozenRef.current = Object.keys(projectActivityRef.current).length > 0;
+		setSwitcherActivity(projectActivityRef.current);
 	}, [showProjectDropdown]);
 
 	// Closing the prompt by any route — X, Postpone, "see all changes" — postpones:
@@ -581,7 +597,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	// Spaces group the switcher exactly as they group the dashboard, except the
 	// current project's own space is hoisted first. null = no space holds a
 	// visible project, and the flat list below stays byte-identical to today's.
-	const switcherGroups = groupProjectsForSwitcher(availableProjects, spacesFile, currentProjectId);
+	const switcherGroups = groupProjectsForSwitcher(availableProjects, spacesFile, currentProjectId, switcherActivity);
 
 	// ---- The switcher's search ----
 	// Same matcher and same haystack as the ⇧⌘K palette (name first, then the
@@ -633,6 +649,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 			e.preventDefault();
 			if (switcherRows.length === 0) return;
+			switcherRankFrozenRef.current = true;
 			setSwitcherKeyNav(true);
 			const step = e.key === "ArrowDown" ? 1 : -1;
 			setSwitcherIndex((switcherActive + step + switcherRows.length) % switcherRows.length);
@@ -929,6 +946,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 														setProjectQuery(e.target.value);
 														setSwitcherIndex(0);
 														setSwitcherKeyNav(false);
+														switcherRankFrozenRef.current = true;
 													}}
 													onKeyDown={handleSwitcherSearchKeyDown}
 													placeholder={t("projectSwitch.placeholder")}

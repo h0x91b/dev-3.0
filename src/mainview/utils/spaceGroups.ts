@@ -1,4 +1,5 @@
 import { isBuiltinOpsProject, orderSpaces, type Project, type Space, type SpacesFile } from "../../shared/types";
+import { orderByRecentActivity } from "./projectActivity";
 import { projectSearchHaystack } from "./projectSearchHaystack";
 
 /**
@@ -56,15 +57,22 @@ export function groupProjectsForDashboard(
  * so its neighbours are the first rows under the cursor. Returns null when no
  * space holds a visible project — the caller keeps its flat list.
  *
+ * Home is the leftover pile nobody arranged, so `activity` (project id → last
+ * activity ms) ranks it most recent first. Space groups keep their curated order.
+ *
  * The builtin Operations board is excluded here; the caller keeps it pinned.
  */
 export function groupProjectsForSwitcher(
 	visibleProjects: Project[],
 	file: SpacesFile,
 	currentProjectId: string | null,
+	activity: Record<string, number> = {},
 ): DashboardGroup[] | null {
-	const groups = groupProjectsForDashboard(visibleProjects, file);
-	if (groups === null) return null;
+	const grouped = groupProjectsForDashboard(visibleProjects, file);
+	if (grouped === null) return null;
+	const groups = grouped.map((group) =>
+		group.space === null ? { space: null, projects: orderByRecentActivity(group.projects, activity) } : group,
+	);
 	if (!currentProjectId) return groups;
 
 	const current: DashboardGroup[] = [];

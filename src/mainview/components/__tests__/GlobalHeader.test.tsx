@@ -605,6 +605,102 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
+	describe("Home ranked by recent task activity", () => {
+		const dormant: Project = { ...project2, id: "p-dormant", name: "Dormant Project" };
+		const never: Project = { ...project2, id: "p-never", name: "Never Project" };
+		const finished: Project = { ...project2, id: "p-finished", name: "Finished Project" };
+		const busy: Project = { ...project2, id: "p-busy", name: "Busy Project" };
+		// Board order deliberately puts the stale ones first.
+		const boardOrder = [project1, dormant, never, finished, busy];
+		const tasksOf: Record<string, Task[]> = {
+			p1: [{ id: "a", status: "in-progress", createdAt: "2026-10-20T00:00:00Z" } as Task],
+			// A forgotten agent woken by a broadcast: fresh movedAt/updatedAt, old start.
+			"p-dormant": [{
+				id: "d", status: "review-by-user", createdAt: "2026-06-01T00:00:00Z",
+				lifecycleStartedAt: "2026-06-01T00:00:00Z", movedAt: "2026-10-25T10:31:00Z", updatedAt: "2026-10-25T10:31:00Z",
+			} as Task],
+			"p-finished": [{ id: "f", status: "completed", createdAt: "2026-10-01T00:00:00Z", movedAt: "2026-10-23T00:00:00Z" } as Task],
+			"p-busy": [{ id: "b", status: "in-progress", createdAt: "2026-10-24T00:00:00Z", lifecycleStartedAt: "2026-10-24T00:00:00Z" } as Task],
+		};
+
+		beforeEach(() => {
+			// p1 alone sits in a space; everything else falls into Home.
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [{ id: "sp_dev", name: "Dev Space", parentId: null, projectIds: ["p1"], createdAt: 1 }],
+				order: ["sp_dev"],
+			});
+		});
+
+		function rowNames(menu: HTMLElement) {
+			return within(menu)
+				.getAllByTestId("switcher-row")
+				.map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
+		}
+
+		it("lists active and recently finished projects above dormant and never-used ones", async () => {
+			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => tasksOf[projectId] ?? []);
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, boardOrder);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await within(menu).findByText("Dev Space");
+			await vi.waitFor(() =>
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Busy Project", "Finished Project", "Dormant Project", "Never Project"]),
+			);
+		});
+
+		it("keeps the ranked order while searching — search filters, never re-ranks", async () => {
+			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => tasksOf[projectId] ?? []);
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, boardOrder);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await vi.waitFor(() => expect(rowNames(menu)[1]).toBe("Busy Project"));
+			await user.type(screen.getByTestId("project-switcher-search"), "project");
+			expect(rowNames(menu)).toEqual(["Project Alpha", "Busy Project", "Finished Project", "Dormant Project", "Never Project"]);
+		});
+
+		it("does not reshuffle rows the keyboard is already walking; the next opening is ranked", async () => {
+			let release: () => void = () => {};
+			const gate = new Promise<void>((resolve) => { release = resolve; });
+			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => {
+				await gate;
+				return tasksOf[projectId] ?? [];
+			});
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, boardOrder, navigate);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await within(menu).findByText("Dev Space");
+			const input = screen.getByTestId("project-switcher-search");
+			await user.type(input, "{ArrowDown}");
+			await act(async () => { release(); await gate; });
+			await screen.findAllByText("1 active");
+
+			expect(rowNames(menu)).toEqual(["Project Alpha", "Dormant Project", "Never Project", "Finished Project", "Busy Project"]);
+			await user.type(input, "{Enter}");
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p-dormant" });
+
+			// Reopen: the cached activity ranks Home from the first frame.
+			await user.click(getChevronButton());
+			const reopened = await screen.findByRole("menu");
+			expect(rowNames(reopened)).toEqual(["Project Alpha", "Busy Project", "Finished Project", "Dormant Project", "Never Project"]);
+		});
+
+		it("keeps board order when no space exists — there is no Home pile to rank", async () => {
+			mockedApi.request.getSpaces.mockResolvedValue({ version: 1, spaces: [], order: [] });
+			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => tasksOf[projectId] ?? []);
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, boardOrder);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await screen.findAllByText("1 active");
+			expect(rowNames(menu)).toEqual(["Project Alpha", "Dormant Project", "Never Project", "Finished Project", "Busy Project"]);
+		});
+	});
+
 	it("shows downloading indicator when updateDownloadStatus is downloading", () => {
 		renderHeader(
 			{ screen: "dashboard" },

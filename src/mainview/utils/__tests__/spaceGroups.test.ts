@@ -155,6 +155,14 @@ describe("groupProjectsForSwitcher", () => {
 		expect(out[out.length - 1].space).toBeNull();
 	});
 
+	it("ranks Home by recent activity and leaves space groups in their curated order", () => {
+		const file = fileOf([sp("sp_1", ["a", "b"])]);
+		const many = [proj("a"), proj("b"), proj("dormant"), proj("never"), proj("busy")];
+		const out = groupProjectsForSwitcher(many, file, "a", { a: 1, b: 9, dormant: 2, busy: 7 })!;
+		expect(out[0].projects.map((p) => p.id)).toEqual(["a", "b"]);
+		expect(out[1].projects.map((p) => p.id)).toEqual(["busy", "dormant", "never"]);
+	});
+
 	it("keeps dashboard order when there is no current project", () => {
 		const file = fileOf([sp("sp_1", ["a"]), sp("sp_2", ["b"])]);
 		const out = groupProjectsForSwitcher(projects, file, null)!;
