@@ -55,6 +55,44 @@ afterEach(() => {
 });
 
 describe("getAgentUsage", () => {
+	it("preserves catalog pricing identity after a routed model is renamed or replaced", async () => {
+		const catalogFile = join(tempRoot, ".dev3.0", "model-catalog.json");
+		mkdirSync(dirname(catalogFile), { recursive: true });
+		const catalog = (modelId: string) => ({
+			providers: [{ id: "router", kind: "openrouter", label: "OpenRouter" }],
+			models: [{ id: "route", providerId: "router", name: "my-label", modelId }],
+		});
+		writeFileSync(catalogFile, JSON.stringify(catalog("openai/gpt-6.1-sol")));
+		writeJsonl(join(tempRoot, "claude", "projects", "repo", "route.jsonl"), [{
+			type: "assistant", requestId: "routed", timestamp: "2026-10-20T12:00:00Z",
+			message: { id: "routed", model: "openrouter/my-label", usage: { input_tokens: 1_000_000 } },
+		}]);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
+		writeFileSync(catalogFile, JSON.stringify(catalog("gpt-6-astra")));
+		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
+		rmSync(catalogFile);
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+	});
+
+	it("reconciles a previously retained legacy echo when its native response arrives later", async () => {
+		const file = join(tempRoot, "codex", "sessions", "rollout-upgraded.jsonl");
+		const usage = { input_tokens: 1_000_000, output_tokens: 0 };
+		const prefix = [
+			{ type: "session_meta", payload: { id: "session" } },
+			{ type: "turn_context", payload: { model: "gpt-6.1-sol" } },
+			{ type: "event_msg", timestamp: "2026-10-20T12:00:00Z", payload: { type: "token_count", info: { last_token_usage: usage, total_token_usage: usage } } },
+		];
+		writeJsonl(file, prefix);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
+		writeJsonl(file, [...prefix, {
+			type: "token_usage_record", timestamp: "2026-10-20T12:00:01Z",
+			payload: { response_id: "native", usage, thread_token_usage: usage },
+		}]);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
+		writeJsonl(file, prefix);
+		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
+	});
+
 	it("keeps accumulated usage when an older log disappears while new usage is added", async () => {
 		const entry = (id: string, input: number) => ({
 			type: "assistant", requestId: id, timestamp: "2026-10-20T12:00:00Z",

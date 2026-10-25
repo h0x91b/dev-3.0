@@ -1,4 +1,4 @@
-import { buildClaudeUsageDays, buildCodexUsageDays, finalizeUsage, foldClaudeEntry, newUsageState } from "../agent-usage-parse";
+import { beginCodexRollout, buildClaudeUsageDays, buildCodexUsageDays, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState } from "../agent-usage-parse";
 
 // Midday-UTC timestamps so local-day bucketing is stable across test-runner timezones.
 function assistant(
@@ -146,6 +146,96 @@ function codexUsage(timestamp: string, last: Record<string, unknown>, total: Rec
 }
 
 describe("buildCodexUsageDays", () => {
+	it.each(["legacy-first", "native-first", "alternating"])("reconciles matching legacy/native cumulative snapshots: %s", (order) => {
+		const one = { input_tokens: 1_000_000, output_tokens: 0 };
+		const two = { input_tokens: 500_000, output_tokens: 0 };
+		const total = { input_tokens: 1_500_000, output_tokens: 0 };
+		const legacy = [codexUsage("2026-07-01T12:01:00Z", one, one), codexUsage("2026-07-01T12:02:00Z", two, total)];
+		const native = [
+			{ type: "token_usage_record", timestamp: "2026-07-01T12:01:00Z", payload: { response_id: "one", usage: one, thread_token_usage: one } },
+			{ type: "token_usage_record", timestamp: "2026-07-01T12:02:00Z", payload: { response_id: "two", usage: two, thread_token_usage: total } },
+		];
+		const state = newUsageState();
+		beginCodexRollout(state);
+		const entries = order === "legacy-first" ? [...legacy, ...native]
+			: order === "native-first" ? [...native, ...legacy] : [legacy[0], native[0], legacy[1], native[1]];
+		for (const entry of [
+			{ type: "session_meta", payload: { id: "session" } },
+			codexModel("gpt-6-sol", "2026-07-01T12:00:00Z"),
+			...entries,
+		]) foldCodexEntry(state, entry);
+		expect(finalizeUsage(state, "codex").days[0]).toMatchObject({ inputTokens: 1_500_000, costUsd: 3 });
+		expect(state.superseded.size).toBe(2);
+	});
+
+	it("resets native cumulative tracking for copied rollout files without recounting responses", () => {
+		const state = newUsageState();
+		const usage = { input_tokens: 1_000_000, output_tokens: 0 };
+		const native = { type: "token_usage_record", timestamp: "2026-07-01T12:00:00Z", payload: { response_id: "one", usage } };
+		for (const entries of [[native], [codexUsage(native.timestamp, usage, usage), native]]) {
+			beginCodexRollout(state);
+			foldCodexEntry(state, { type: "session_meta", payload: { id: "session" } });
+			foldCodexEntry(state, codexModel("gpt-6-sol", native.timestamp));
+			for (const entry of entries) foldCodexEntry(state, entry);
+		}
+		expect(finalizeUsage(state, "codex").days[0]).toMatchObject({ inputTokens: 1_000_000, costUsd: 2 });
+		expect(state.superseded.size).toBe(1);
+	});
+
+	it("uses running native response totals when thread cumulative usage is absent", () => {
+		const one = { input_tokens: 1_000_000, output_tokens: 0 };
+		const { days } = buildCodexUsageDays([
+			codexModel("gpt-6-sol", "2026-07-01T12:00:00Z"),
+			codexUsage("2026-07-01T12:01:00Z", one, one),
+			{ type: "token_usage_record", timestamp: "2026-07-01T12:01:00Z", payload: { response_id: "one", usage: one } },
+		]);
+		expect(days[0]).toMatchObject({ inputTokens: 1_000_000, costUsd: 2 });
+	});
+
+	it("retains unmatched historical legacy usage before a native upgrade", () => {
+		const old = { input_tokens: 1_000_000, output_tokens: 0 };
+		const { days } = buildCodexUsageDays([
+			codexModel("gpt-6-sol", "2026-07-01T12:00:00Z"),
+			codexUsage("2026-07-01T12:01:00Z", old, old),
+			{ type: "token_usage_record", timestamp: "2026-07-01T12:02:00Z", payload: {
+				response_id: "new", usage: old, thread_token_usage: { input_tokens: 2_000_000, output_tokens: 0 },
+			} },
+		]);
+		expect(days[0]).toMatchObject({ inputTokens: 2_000_000, costUsd: 4 });
+	});
+
+	it("keeps the original day and model when copied legacy snapshots replay next month", () => {
+		const state = newUsageState();
+		const usage = { input_tokens: 1_000_000, output_tokens: 0 };
+		for (const [timestamp, model] of [["2026-07-01T12:00:00Z", "gpt-6-sol"], ["2026-08-01T12:00:00Z", "gpt-6-astra"]]) {
+			beginCodexRollout(state);
+			foldCodexEntry(state, { type: "session_meta", payload: { id: "session" } });
+			foldCodexEntry(state, codexModel(model, timestamp));
+			foldCodexEntry(state, codexUsage(timestamp, usage, usage));
+		}
+		expect(finalizeUsage(state, "codex").days).toMatchObject([{ date: "2026-07-01", inputTokens: 1_000_000, costUsd: 2 }]);
+	});
+
+	it("marks covered identities superseded even when their old log is absent from the next scan", () => {
+		const state = newUsageState();
+		const usage = { input_tokens: 1_000_000, output_tokens: 0 };
+		beginCodexRollout(state);
+		foldCodexEntry(state, { type: "session_meta", payload: { id: "session" } });
+		foldCodexEntry(state, codexUsage("2026-07-01T12:00:00Z", usage, usage));
+		const oldKey = [...state.records.keys()][0];
+		beginCodexRollout(state);
+		foldCodexEntry(state, { type: "session_meta", payload: { id: "session" } });
+		foldCodexEntry(state, { type: "token_usage_record", timestamp: "2026-07-01T12:00:00Z", payload: {
+			response_id: "one", usage, thread_token_usage: usage,
+		} });
+		expect(state.superseded.has(oldKey)).toBe(true);
+		expect(state.records.has(oldKey)).toBe(false);
+		beginCodexRollout(state);
+		foldCodexEntry(state, { type: "session_meta", payload: { id: "session" } });
+		foldCodexEntry(state, codexUsage("2026-08-01T12:00:00Z", usage, usage));
+		expect(state.records.has(oldKey)).toBe(false);
+	});
+
 	it("retains the legacy prefix and then counts native response snapshots without their legacy echo", () => {
 		const native = (output: number, timestamp: string) => ({
 			type: "token_usage_record", timestamp,

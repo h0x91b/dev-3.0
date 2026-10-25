@@ -24,6 +24,27 @@ beforeEach(() => mkdirSync(historyHome, { recursive: true }));
 afterEach(() => rmSync(historyHome, { recursive: true, force: true }));
 
 describe("retainUsageHistory", () => {
+	it("keeps the original native pricing identity after a catalog label is reused", async () => {
+		const first = states("routed", "openrouter/my-label");
+		for (const usage of first.claude.records.values()) usage.pricingModel = "gpt-6.1-sol";
+		await retainUsageHistory(first);
+		const later = states("routed", "openrouter/my-label");
+		for (const usage of later.claude.records.values()) usage.pricingModel = "gpt-6-astra";
+		const retained = await retainUsageHistory(later);
+		expect(finalizeUsage(retained.claude, "claude", () => "unknown-model").days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+	});
+
+	it("does not resurrect a retained legacy echo after native reconciliation", async () => {
+		const legacy = states("echo");
+		const key = [...legacy.claude.records.keys()][0];
+		await retainUsageHistory(legacy);
+		const correction = states("native");
+		correction.claude.superseded.add(key);
+		await retainUsageHistory(correction);
+		const replay = await retainUsageHistory(legacy);
+		expect(finalizeUsage(replay.claude, "claude").days[0].inputTokens).toBe(1_000_000);
+	});
+
 	it("merges concurrent reports without losing disjoint responses", async () => {
 		await Promise.all([retainUsageHistory(states("one")), retainUsageHistory(states("two"))]);
 		const retained = await retainUsageHistory({ claude: newUsageState(), codex: newUsageState() });

@@ -10,7 +10,7 @@ All and MTD costs were rebuilt from surviving transcript files and a bundled pri
 
 ## Decision
 
-`agent-usage-history.ts` retains identified raw token snapshots in additive `agent-usage-history-v1.json`, merging under a cross-process lock and writing atomically; unknown/corrupt formats stay untouched. `agent-usage-parse.ts` keeps a rollout's legacy prefix, then uses native response identities without summing their legacy echoes. `agent-pricing-refresh.ts` fetches the complete [models.dev feed](https://github.com/anomalyco/models.dev/blob/dev/README.md) daily with bounded requests and retries, validating prices and retaining last-known rates in `agent-pricing-v1.json`; bundled prices remain the offline fallback.
+`agent-usage-history.ts` retains identified raw token snapshots in additive `agent-usage-history-v1.json`, merging under a cross-process lock and writing atomically; unknown/corrupt formats stay untouched. `agent-usage-parse.ts` reconciles legacy echoes against native cumulative totals in either event order and keeps unmatched legacy history; persisted superseded identities prevent old echoes returning on subsequent scans. Repeated legacy snapshots keep their original date, and resolved catalog model identities survive label changes. `agent-pricing-refresh.ts` fetches the complete [models.dev feed](https://github.com/anomalyco/models.dev/blob/dev/README.md) daily with bounded requests and retries, validating prices and retaining last-known rates in `agent-pricing-v1.json`; bundled prices remain the offline fallback.
 
 ## Risks
 

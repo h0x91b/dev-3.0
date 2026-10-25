@@ -95,6 +95,12 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	// table has never heard of; price it as the provider's own model instead.
 	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
+	for (const state of [claudeState, codexState]) {
+		for (const usage of state.records.values()) {
+			const native = nativeModelIdForWireName(catalog, usage.model);
+			if (native) usage.pricingModel = native;
+		}
+	}
 
 	const retained = await retainUsageHistory({ claude: claudeState, codex: codexState });
 	const resolveRate = await getPricingResolver();

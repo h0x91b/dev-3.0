@@ -25,7 +25,8 @@ function readRecord(value: unknown): UsageRecord {
 		if (typeof n !== "number" || !Number.isFinite(n) || n < 0) throw new Error("Invalid usage history count");
 		counts[key] = n;
 	}
-	return { model: r.model, timestamp: r.timestamp, counts };
+	if (r.pricingModel !== undefined && typeof r.pricingModel !== "string") throw new Error("Invalid usage pricing identity");
+	return { model: r.model, timestamp: r.timestamp, counts, ...(r.pricingModel ? { pricingModel: r.pricingModel } : {}) };
 }
 
 function readHistory(): States {
@@ -39,6 +40,9 @@ function readHistory(): States {
 	if (parsed?.version !== 1) throw new Error("Unsupported usage history version");
 	const states = { claude: newUsageState(), codex: newUsageState() };
 	for (const source of ["claude", "codex"] as const) {
+		const superseded = parsed.superseded?.[source] ?? [];
+		if (!Array.isArray(superseded) || superseded.some((key: unknown) => typeof key !== "string")) throw new Error("Invalid superseded usage identities");
+		for (const key of superseded) states[source].superseded.add(key);
 		if (!Array.isArray(parsed[source])) throw new Error("Invalid usage history source");
 		for (const pair of parsed[source]) {
 			if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") throw new Error("Invalid usage history identity");
@@ -54,11 +58,14 @@ export async function retainUsageHistory(current: States): Promise<States> {
 		return await withFileLock(HISTORY_FILE, async () => {
 			const retained = readHistory();
 			for (const source of ["claude", "codex"] as const) {
+				for (const key of current[source].superseded) retained[source].superseded.add(key);
+				for (const key of retained[source].superseded) retained[source].records.delete(key);
 				for (const [key, value] of current[source].records) mergeUsageRecord(retained[source], key, value);
 			}
 			mkdirSync(DEV3_HOME, { recursive: true });
 			await atomicWriteFile(HISTORY_FILE, JSON.stringify({
 				version: 1, claude: [...retained.claude.records], codex: [...retained.codex.records],
+				superseded: { claude: [...retained.claude.superseded], codex: [...retained.codex.superseded] },
 			}));
 			return retained;
 		}, { staleThreshold: 120_000 });

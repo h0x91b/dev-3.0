@@ -4,13 +4,21 @@ import type { AgentUsageDay, AgentUsageSource } from "../../shared/types";
 /** Content-free response snapshots; identities let history survive source-log cleanup. */
 export interface UsageRecord {
 	model: string;
+	pricingModel?: string;
 	timestamp: number;
 	counts: TokenCounts;
 }
 
+type CodexTotals = [number, number, number, number];
+
 export interface UsageState {
 	records: Map<string, UsageRecord>;
+	superseded: Set<string>;
 	codexCumulativeSeen: Set<string>;
+	codexLegacyByCumulative: Map<string, Set<string>>;
+	codexNativeCumulative: Set<string>;
+	codexNativeSnapshots: Map<string, CodexTotals>;
+	codexNativeTotals: CodexTotals;
 	codexModel: string;
 	codexNativeStarted: boolean;
 	codexSession: string;
@@ -18,7 +26,9 @@ export interface UsageState {
 
 export function newUsageState(): UsageState {
 	return {
-		records: new Map(), codexCumulativeSeen: new Set(), codexModel: "gpt-5",
+		records: new Map(), superseded: new Set(), codexCumulativeSeen: new Set(), codexModel: "gpt-5",
+		codexLegacyByCumulative: new Map(), codexNativeCumulative: new Set(),
+		codexNativeSnapshots: new Map(), codexNativeTotals: [0, 0, 0, 0],
 		codexNativeStarted: false, codexSession: "",
 	};
 }
@@ -38,10 +48,13 @@ function timestampOf(entry: Record<string, unknown>): number | null {
 
 /** A response can appear as several streaming snapshots and in several copied logs. */
 export function mergeUsageRecord(state: UsageState, key: string, next: UsageRecord): void {
+	if (state.superseded.has(key)) return;
 	const previous = state.records.get(key);
-	if (previous && (previous.timestamp > next.timestamp ||
-		(previous.timestamp === next.timestamp && previous.counts.outputTokens > next.counts.outputTokens))) return;
-	state.records.set(key, next);
+	const legacy = key.startsWith("codex-legacy:");
+	const keepPrevious = previous && (legacy ? previous.timestamp <= next.timestamp
+		: previous.timestamp > next.timestamp ||
+			previous.timestamp === next.timestamp && previous.counts.outputTokens > next.counts.outputTokens);
+	state.records.set(key, { ...(keepPrevious ? previous : next), pricingModel: previous?.pricingModel ?? next.pricingModel });
 }
 
 export function foldClaudeEntry(state: UsageState, entry: unknown): void {
@@ -74,8 +87,26 @@ export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 export function beginCodexRollout(state: UsageState): void {
 	state.codexModel = "gpt-5";
 	state.codexCumulativeSeen.clear();
+	state.codexLegacyByCumulative.clear();
+	state.codexNativeCumulative.clear();
+	state.codexNativeSnapshots.clear();
+	state.codexNativeTotals = [0, 0, 0, 0];
 	state.codexNativeStarted = false;
 	state.codexSession = "";
+}
+
+function cumulativeSignature(usage: Record<string, unknown> | undefined): string | null {
+	const values = [usage?.input_tokens, usage?.output_tokens, usage?.cached_input_tokens ?? 0, usage?.cache_write_input_tokens ?? 0];
+	return values.every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0) ? values.join(":") : null;
+}
+
+function supersedeLegacy(state: UsageState, cumulative: string): void {
+	const keys = new Set(state.codexLegacyByCumulative.get(cumulative));
+	if (state.codexSession) keys.add(`codex-legacy:${JSON.stringify([state.codexSession, cumulative])}`);
+	for (const key of keys) {
+		state.superseded.add(key);
+		state.records.delete(key);
+	}
 }
 
 export function foldCodexEntry(state: UsageState, entry: unknown): void {
@@ -91,7 +122,7 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 		return;
 	}
 	const native = e.type === "token_usage_record";
-	if (!native && (e.type !== "event_msg" || payload.type !== "token_count" || state.codexNativeStarted)) return;
+	if (!native && (e.type !== "event_msg" || payload.type !== "token_count")) return;
 	const info = record(payload.info);
 	const usage = native ? record(payload.usage) : record(info?.last_token_usage);
 	const timestamp = timestampOf(e);
@@ -103,20 +134,33 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 	if (input === 0 && output === 0) return;
 	let key: string;
 	if (native) {
-		// Keep the legacy prefix of upgraded rollouts; subsequent token_count events
-		// echo native responses and must not add a second charge.
 		state.codexNativeStarted = true;
 		key = `codex-native:${typeof payload.response_id === "string" && payload.response_id
 			? payload.response_id : JSON.stringify([state.codexSession, timestamp, usage])}`;
+		const values: CodexTotals = [input, output, cachedInput, cacheWrite];
+		const previous = state.codexNativeSnapshots.get(key);
+		for (let i = 0; i < values.length; i++) state.codexNativeTotals[i] += values[i] - (previous?.[i] ?? 0);
+		state.codexNativeSnapshots.set(key, values);
+		const cumulative = cumulativeSignature(record(payload.thread_token_usage)) ?? state.codexNativeTotals.join(":");
+		state.codexNativeCumulative.add(cumulative);
+		supersedeLegacy(state, cumulative);
 	} else {
-		const total = record(info?.total_token_usage);
-		const values = [total?.input_tokens, total?.output_tokens, total?.cached_input_tokens ?? 0, total?.cache_write_input_tokens ?? 0];
-		const cumulative = values.every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0) ? values.join(":") : null;
+		const cumulative = cumulativeSignature(record(info?.total_token_usage));
+		if (!cumulative && state.codexNativeStarted) return;
 		if (cumulative && state.codexCumulativeSeen.has(cumulative)) return;
 		if (cumulative) state.codexCumulativeSeen.add(cumulative);
 		const identity = cumulative && state.codexSession ? [state.codexSession, cumulative]
 			: [timestamp, state.codexModel, input, cachedInput, cacheWrite, output];
 		key = `codex-legacy:${JSON.stringify(identity)}`;
+		if (cumulative) {
+			let keys = state.codexLegacyByCumulative.get(cumulative);
+			if (!keys) state.codexLegacyByCumulative.set(cumulative, keys = new Set());
+			keys.add(key);
+			if (state.codexNativeCumulative.has(cumulative)) {
+				supersedeLegacy(state, cumulative);
+				return;
+			}
+		}
 	}
 	mergeUsageRecord(state, key, {
 		model: state.codexModel, timestamp,
@@ -136,7 +180,7 @@ export function finalizeUsage(
 ): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const byDate = new Map<string, AgentUsageDay>();
 	let hasUnpriced = false;
-	for (const { model, timestamp, counts } of state.records.values()) {
+	for (const { model, pricingModel, timestamp, counts } of state.records.values()) {
 		const d = new Date(timestamp);
 		const startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 		const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -152,7 +196,7 @@ export function finalizeUsage(
 		row.outputTokens += counts.outputTokens;
 		row.cacheCreationInputTokens += counts.cacheCreationInputTokens;
 		row.cacheReadInputTokens += counts.cacheReadInputTokens;
-		const { costUsd, priced } = computeTokenCostUsd(pricingId(model), counts, resolveRate);
+		const { costUsd, priced } = computeTokenCostUsd(pricingModel ?? pricingId(model), counts, resolveRate);
 		row.costUsd += costUsd;
 		if (!priced) { row.fullyPriced = false; hasUnpriced = true; }
 	}
