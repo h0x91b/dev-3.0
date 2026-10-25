@@ -113,6 +113,60 @@ describe("project-autoconfig", () => {
 			expect(exclude.split("\n").filter((line) => line === ".dev3/config.local.json")).toHaveLength(1);
 		});
 
+		it("keeps existing exclude rules and appends after a missing final newline", async () => {
+			gitInit();
+			write("package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+			writeFileSync(join(tmp, ".git/info/exclude"), "# mine\n*.log");
+
+			await autoConfigureProject(project());
+
+			expect(readFileSync(join(tmp, ".git/info/exclude"), "utf-8")).toBe("# mine\n*.log\n.dev3/config.local.json\n");
+		});
+
+		it.each([
+			["a plain subfolder", "web"],
+			["a deep subfolder", "apps/web"],
+			["glob, escape and comment characters", "#a/!b/c [x]*?\\d"],
+			["spaces and non-ASCII", " lead/wéb app"],
+		])("ignores the local config of a project in %s of the repository", async (_label, subdir) => {
+			gitInit();
+			write(".gitignore", "node_modules\n");
+			mkdirSync(join(tmp, subdir), { recursive: true });
+			writeFileSync(join(tmp, subdir, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
+			writeFileSync(join(tmp, "sibling.json"), "{}");
+			gitCommitAll();
+			const nested = project({ path: join(tmp, subdir) });
+
+			expect(await autoConfigureProject(nested)).toEqual({ written: ["setupScript", "devScript"] });
+			await autoConfigureProject(nested);
+
+			const configPath = `${subdir}/.dev3/config.local.json`;
+			expect(g(`git check-ignore --no-index -q -- '${configPath.replaceAll("'", "'\\''")}' && echo ignored`, tmp).trim()).toBe("ignored");
+			expect(gitStatus()).toBe("");
+			expect(readFileSync(join(tmp, ".gitignore"), "utf-8")).toBe("node_modules\n");
+			const rules = readFileSync(join(tmp, ".git/info/exclude"), "utf-8").split("\n").filter((line) => line.endsWith("config.local.json"));
+			expect(rules).toHaveLength(1);
+			// The rule is anchored to the subfolder, so the same file elsewhere stays visible.
+			mkdirSync(join(tmp, ".dev3"));
+			write(".dev3/config.local.json", "{}");
+			expect(gitStatus()).toBe("?? .dev3/");
+		});
+
+		it("ignores the local config of a project inside a linked worktree", async () => {
+			gitInit();
+			mkdirSync(join(tmp, "web"));
+			write("web/package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+			gitCommitAll();
+			const linked = join(tmp, "linked");
+			g(`git worktree add -q ${linked} -b side`, tmp);
+
+			await autoConfigureProject(project({ path: join(linked, "web") }));
+
+			expect(existsSync(join(linked, "web/.dev3/config.local.json"))).toBe(true);
+			expect(g("git status --porcelain", linked).trim()).toBe("");
+			expect(readFileSync(join(tmp, ".git/info/exclude"), "utf-8")).toContain("\nweb/.dev3/config.local.json\n");
+		});
+
 		it("never touches a project that already has a .dev3 config", async () => {
 			write("package.json", JSON.stringify({ scripts: { dev: "vite" } }));
 			mkdirSync(join(tmp, ".dev3"));

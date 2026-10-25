@@ -52,19 +52,29 @@ export function detectProjectConfig(projectPath: string): Pick<Dev3RepoConfig, A
 	return config;
 }
 
+/** Escape a literal path for a gitignore pattern: glob characters, and a leading `#` or `!`. */
+function gitignoreLiteral(path: string): string {
+	return path.replace(/[\\*?[]/g, "\\$&").replace(/^[#!]/, "\\$&");
+}
+
 /**
  * Ignore `entry` through the clone's own `info/exclude`, which is never committed,
  * so auto-configure leaves the tracked `.gitignore` and `git status` untouched.
+ * The rule is anchored at the repository root, so a project in a subfolder gets its prefix.
  */
 async function excludeLocally(projectPath: string, entry: string): Promise<void> {
-	const res = await git.run(["git", "rev-parse", "--git-path", "info/exclude"], projectPath);
+	// One call, prefix on the second line: trimming the whole output keeps a prefix's leading spaces.
+	const res = await git.run(["git", "rev-parse", "--git-path", "info/exclude", "--show-prefix"], projectPath);
 	if (!res.ok) throw new Error(`git rev-parse failed: ${res.stderr || "unknown error"}`);
-	const excludePath = isAbsolute(res.stdout) ? res.stdout : join(projectPath, res.stdout);
+	const [gitPath, prefix = "", ...rest] = res.stdout.split("\n");
+	if (rest.length > 0) throw new Error("Project path contains a newline, which info/exclude cannot express");
+	const excludePath = isAbsolute(gitPath) ? gitPath : join(projectPath, gitPath);
+	const rule = gitignoreLiteral(prefix + entry);
 	const content = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
-	if (content.split("\n").some((line) => line.trim() === entry)) return;
+	if (content.split("\n").some((line) => line.trimEnd() === rule)) return;
 	mkdirSync(dirname(excludePath), { recursive: true });
 	const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-	writeFileSync(excludePath, `${content}${separator}${entry}\n`);
+	writeFileSync(excludePath, `${content}${separator}${rule}\n`);
 }
 
 /**
