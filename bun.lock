@@ -16,7 +16,7 @@
         "bidi-js": "^1.0.3",
         "electrobun": "1.18.1",
         "fuzzysort": "^3.1.0",
-        "ghostty-web": "0.4.0",
+        "ghostty-web": "file:patches/ghostty-web/ghostty-web-0.4.0-dev3.1.tgz",
         "js-toml": "1.1.0",
         "marked": "^18.0.6",
         "mermaid": "11.16.0",
@@ -49,9 +49,6 @@
         "vitest": "4.1.6",
       },
     },
-  },
-  "patchedDependencies": {
-    "ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch",
   },
   "overrides": {
     "cytoscape": "3.34.0",
@@ -1020,7 +1017,7 @@
 
     "get-value": ["get-value@2.0.6", "", {}, "sha512-Ln0UQDlxH1BapMu3GPtf7CuYNwRZf2gwCuPqbyG6pB8WfmFpzqcy4xtAaAMUhnNqjMKTiCPZG2oMT3YSx8U2NA=="],
 
-    "ghostty-web": ["ghostty-web@0.4.0", "", {}, "sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg=="],
+    "ghostty-web": ["ghostty-web@patches/ghostty-web/ghostty-web-0.4.0-dev3.1.tgz", {}, "sha512-xqJBc45WYFLAe70gB4kK+xhYIF5NTmwfkZrR/JmFV8qWujjDEQ0M9PSgfEmbv9yWzS5pOtTBVxjpXNmBWgqTjw=="],
 
     "giscus": ["giscus@1.6.0", "", { "dependencies": { "lit": "^3.2.1" } }, "sha512-Zrsi8r4t1LVW950keaWcsURuZUQwUaMKjvJgTCY125vkW6OiEBkatE7ScJDbpqKHdZwb///7FVC21SE3iFK3PQ=="],
 

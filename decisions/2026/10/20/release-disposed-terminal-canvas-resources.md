@@ -1,5 +1,7 @@
 # Release disposed terminal handlers and canvas backing stores
 
+Superseded on 2026-10-25 by `decisions/2026/10/25/zero-reused-terminal-wasm-pages.md` for dependency delivery only: the same ESM cleanup patch is now baked into a verified local package; its behavior and rationale remain unchanged.
+
 ## Context
 
 The installed macOS renderer had a reported 15–17 GiB footprint dominated by graphics resources. Task switches recreate `TerminalView`; removing its canvas nodes alone does not make their backing stores reclaimable while document handlers still retain the terminal.

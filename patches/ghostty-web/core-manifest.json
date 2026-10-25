@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "wrapperCommit": "9e4e126d89ac3537d2b2ebec075849851566de9f",
+    "coreCommit": "5714ed07a1012573261b7b7e3ed2add9c1504496",
+    "archive": {
+      "url": "https://codeload.github.com/ghostty-org/ghostty/tar.gz/5714ed07a1012573261b7b7e3ed2add9c1504496",
+      "sha256": "55cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790"
+    },
+    "apiPatch": {
+      "url": "https://raw.githubusercontent.com/coder/ghostty-web/9e4e126d89ac3537d2b2ebec075849851566de9f/patches/ghostty-wasm-api.patch",
+      "sha256": "f31af279803c0812de70003a42385880c03dd4dcac48a31b265cd417d1e78818"
+    }
+  },
+  "build": {
+    "zigVersion": "0.15.2",
+    "target": "wasm32-freestanding",
+    "optimize": "ReleaseSmall",
+    "versionString": "1.3.0-dev+5714ed07",
+    "toolchains": {
+      "aarch64-macos": {
+        "url": "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz",
+        "sha256": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b"
+      },
+      "x86_64-macos": {
+        "url": "https://ziglang.org/download/0.15.2/zig-x86_64-macos-0.15.2.tar.xz",
+        "sha256": "375b6909fc1495d16fc2c7db9538f707456bfc3373b14ee83fdd3e22b3d43f7f"
+      },
+      "aarch64-linux": {
+        "url": "https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz",
+        "sha256": "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f"
+      },
+      "x86_64-linux": {
+        "url": "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz",
+        "sha256": "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239"
+      }
+    },
+    "patches": [
+      {
+        "path": "patches/ghostty-web/page-zeroing.patch",
+        "sha256": "4ceb929553887a60d907b9d7fc3efb2deca2edaf416b031ffa87b8652db63c13"
+      }
+    ]
+  },
+  "package": {
+    "name": "ghostty-web",
+    "upstreamVersion": "0.4.0",
+    "version": "0.4.0-dev3.1",
+    "upstreamUrl": "https://registry.npmjs.org/ghostty-web/-/ghostty-web-0.4.0.tgz",
+    "upstreamIntegrity": "sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg==",
+    "upstreamWasmSha256": "d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a",
+    "wasmSha256": "466b669ea4539dff14988db36d1f7ac59b24ac817d63e364cf308b90934a851a",
+    "disposalPatch": {
+      "path": "patches/ghostty-web@0.4.0.patch",
+      "sha256": "b15ca90bde84a063f4f74b0801e78321383a6727677bcb8a218f924e7fd4f1d5"
+    },
+    "archivePath": "patches/ghostty-web/ghostty-web-0.4.0-dev3.1.tgz",
+    "archiveSha256": "51903c6e95ddf7315f6431cec49445c9f1db17e79e2d9b891c6ff6b3348ffcdb"
+  }
+}

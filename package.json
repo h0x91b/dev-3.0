@@ -86,7 +86,7 @@
 		"bidi-js": "^1.0.3",
 		"electrobun": "1.18.1",
 		"fuzzysort": "^3.1.0",
-		"ghostty-web": "0.4.0",
+		"ghostty-web": "file:patches/ghostty-web/ghostty-web-0.4.0-dev3.1.tgz",
 		"js-toml": "1.1.0",
 		"marked": "^18.0.6",
 		"mermaid": "11.16.0",
@@ -121,8 +121,5 @@
 		"typescript": "6.0.3",
 		"vite": "8.0.13",
 		"vitest": "4.1.6"
-	},
-	"patchedDependencies": {
-		"ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch"
 	}
 }

@@ -1,0 +1,37 @@
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -4,6 +4,7 @@
+ const PageList = @This();
+ 
+ const std = @import("std");
++const builtin = @import("builtin");
+ const build_options = @import("terminal_options");
+ const Allocator = std.mem.Allocator;
+ const assert = @import("../quirks.zig").inlineAssert;
+@@ -338,10 +339,9 @@
+         const page_buf = try pool.pages.create();
+         // no errdefer because the pool deinit will clean these up
+ 
+-        // In runtime safety modes we have to memset because the Zig allocator
+-        // interface will always memset to 0xAA for undefined. In non-safe modes
+-        // we use a page allocator and the OS guarantees zeroed memory.
+-        if (comptime std.debug.runtime_safety) @memset(page_buf, 0);
++        // WASM can reuse dirty freed pages; native release page allocation is zeroed.
++        // Safe-mode allocators also require clearing their undefined fill.
++        if (comptime builtin.target.cpu.arch.isWasm() or std.debug.runtime_safety) @memset(page_buf, 0);
+ 
+         // Initialize the first set of pages to contain our viewport so that
+         // the top of the first page is always the active area.
+@@ -2673,9 +2673,9 @@
+     else
+         page_alloc.free(page_buf);
+ 
+-    // Required only with runtime safety because allocators initialize
+-    // to undefined, 0xAA.
+-    if (comptime std.debug.runtime_safety) @memset(page_buf, 0);
++    // WASM reuses dirty pages, including enlarged reflow pages.
++    // Safe-mode allocators also require clearing their undefined fill.
++    if (comptime builtin.target.cpu.arch.isWasm() or std.debug.runtime_safety) @memset(page_buf, 0);
+ 
+     page.* = .{
+         .data = .initBuf(.init(page_buf), layout),
