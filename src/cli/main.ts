@@ -66,8 +66,8 @@ Commands:
                                          (always shows current overview; --notes inlines note bodies, --history shows title/overview change log; --json prints a stable object)
   dev3 task move [--task <id>] --status <status> [--agent <id> [--config <id>]]  Change task status
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
-  dev3 task hibernate [--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
-  dev3 task wake [--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
+  dev3 task hibernate [<id>|--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
+  dev3 task wake [<id>|--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
   dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|standard]  Update task fields
   dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard]  Create a new task (To Do)
                                          (--pr <n> starts the worktree on that pull request's branch and implies --type pr-review)

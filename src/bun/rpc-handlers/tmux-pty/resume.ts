@@ -12,6 +12,7 @@ import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { nativeTaskPanesAlive, stopNativeTaskPanes } from "../../native-task-panes";
+import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
@@ -356,7 +357,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						// in this worktree's own store, so the origin goes with the old one.
 						const resumed = sessionId ?? prior.sessionId;
 						const originCwd = resumed === prior.sessionId ? prior.sessionOriginCwd : undefined;
-						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd };
+						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {
@@ -448,6 +449,8 @@ export async function wakeTaskShell(params: { taskId: string }): Promise<string>
 		throw new Error(`Cannot wake: task ${params.taskId} not found or has no worktree`);
 	}
 	if (!task.hibernated) throw new Error(`Cannot wake: task ${params.taskId} is not hibernated`);
+	// Before the flag clears: a launch that then throws would strand the task awake with no terminal.
+	assertTaskWorkspacePresent(project, task.worktreePath);
 	await wakeIfHibernated(project, task);
 	if (pty.hasSession(params.taskId)) {
 		await pty.destroySessionAwaited(params.taskId);

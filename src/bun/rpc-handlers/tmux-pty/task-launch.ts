@@ -270,8 +270,8 @@ export async function launchTaskPty(
 		branchName?: string;
 		accountId?: string | null;
 		codexHome?: string;
-		/** Open a plain shell headed by this line instead of the agent, keeping the stored panes
-		 *  untouched: a Codex reopen that cannot pick a conversation, or a wake with a plain shell. */
+		/** Open a plain shell headed by this line instead of the agent, parking the stored panes
+		 *  for a later resume: a Codex reopen that cannot pick a conversation, or a wake with a plain shell. */
 		shellNotice?: string;
 		/** A resume whose pane has no conversation left of its own: start it on this
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
@@ -431,6 +431,11 @@ export async function launchTaskPty(
 			} catch (err) {
 				log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 			}
+		} else if (!skipSessionPersist && opts?.shellNotice && task.sessionState?.panes.length) {
+			// No live pane runs these any more: their paneIds name the dead session, and
+			// the pane reconciler would drop every entry the moment a split exits.
+			const panes = task.sessionState.panes.map((pane) => ({ ...pane, paneId: null, parked: true }));
+			await data.updateTask(project, task.id, { sessionState: { panes } });
 		}
 
 		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
@@ -476,7 +481,10 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+	// A plain shell runs no agent, so there is nothing to trust — and nothing to write into ~/.claude.json.
+	if (!opts?.shellNotice) {
+		await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+	}
 
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
 	// agent's own command line — applied after the retry wrapper below, `--hook`
@@ -816,22 +824,23 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const livePaneIds = new Set(await pty.listPaneIds(taskId, socket));
 
+		// Parked entries belong to no live pane (a plain-shell wake): never adopted, never dropped.
 		// Step 1: remove entries with a known paneId that is no longer alive
-		let surviving = panes.filter(p => !p.paneId || livePaneIds.has(p.paneId));
+		let surviving = panes.filter(p => p.parked || !p.paneId || livePaneIds.has(p.paneId));
 
 		// Step 2: try to assign paneId to null entries via 1:1 matching
 		const matchedIds = new Set(surviving.filter(p => p.paneId).map(p => p.paneId!));
 		const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
-		const nullEntries = surviving.filter(p => !p.paneId);
+		const nullEntries = surviving.filter(p => !p.paneId && !p.parked);
 
 		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
 			// High confidence: the one unmatched live pane is the one null entry's agent
-			nullEntries[0] = { ...nullEntries[0], paneId: unmatchedLive[0] };
-			surviving = surviving.map(p => !p.paneId ? nullEntries[0] : p);
+			const adopted = { ...nullEntries[0], paneId: unmatchedLive[0] };
+			surviving = surviving.map(p => p === nullEntries[0] ? adopted : p);
 			log.info("Reconciled paneId for unmatched entry", { taskId: taskId.slice(0, 8), paneId: unmatchedLive[0] });
 		} else if (unmatchedLive.length === 0 && nullEntries.length > 0) {
 			// No live panes left to match — these agents are dead
-			surviving = surviving.filter(p => !!p.paneId);
+			surviving = surviving.filter(p => p.parked || !!p.paneId);
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {

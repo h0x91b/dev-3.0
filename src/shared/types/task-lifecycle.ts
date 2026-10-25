@@ -74,6 +74,10 @@ export interface PaneSessionEntry {
 	 *  recovery must look there, not in the task's own worktree store. Absent on every
 	 *  pane whose session began where the task lives. */
 	sessionOriginCwd?: string | null;
+	/** Saved for a later resume while no live pane runs it — a task woken with a
+	 *  plain shell. The pane reconciler never adopts or drops a parked entry; a
+	 *  resume of this pane clears the flag. */
+	parked?: boolean;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

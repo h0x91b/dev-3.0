@@ -11428,6 +11428,58 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 });
 
+// PR #2049 review: the saved panes kept the dead session's paneIds, so closing one
+// split in the woken shell dropped every saved conversation (before 2, after 0).
+describe("wakeTaskShell parks the saved panes", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const saved = [
+		{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "s-main", paneId: "%9001" },
+		{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "s-extra", paneId: "%9002" },
+	];
+
+	function arrange() {
+		const project = makeProject();
+		const task = makeTask({ hibernated: true, sessionState: { panes: saved } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		return { project, task };
+	}
+
+	it("opens a shell with no agent, writes no trust, and keeps both conversations through a split's exit", async () => {
+		const { project, task } = arrange();
+		await handlers.wakeTaskShell({ taskId: task.id });
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+		expect(agents.ensureClaudeTrust).not.toHaveBeenCalled();
+		const parked = (await data.getTask(project, task.id)).sessionState?.panes;
+		expect(parked).toEqual(saved.map((pane) => ({ ...pane, paneId: null, parked: true })));
+
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual(parked);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual(parked);
+
+		await handlers.resumeTask({ taskId: task.id });
+		const resumed = (await data.getTask(project, task.id)).sessionState?.panes ?? [];
+		expect(resumed).toHaveLength(2);
+		expect(resumed.filter((pane) => pane.parked)).toEqual([]);
+	});
+
+	it("an unparked entry beside parked ones is still reconciled on its own", async () => {
+		const { project, task } = arrange();
+		await handlers.wakeTaskShell({ taskId: task.id });
+		const spawned = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "s-new", paneId: "%3" };
+		const parked = (await data.getTask(project, task.id)).sessionState!.panes;
+		await data.updateTask(project, task.id, { sessionState: { panes: [...parked, spawned] } });
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%0"]);
+		await handlePaneExited(task.id, "%3");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual(parked);
+	});
+});
+
 // The tasks that already lost their record before the capture fix: nothing will
 // report their conversation again, so wake looks it up in the worktree's stores.
 describe("wake of a Codex task whose pane record was lost", () => {

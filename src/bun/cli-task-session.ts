@@ -6,6 +6,7 @@ import { askSessionApproval, perTaskJoiner, sameRunAfterApproval } from "./cli-s
 import { hibernateTask } from "./rpc-handlers/task-lifecycle";
 import { taskTerminalAlive, wakeTaskShell } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
+import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 
 interface SessionActionOptions {
 	project: Project;
@@ -56,6 +57,8 @@ async function performHibernate({ project, task, requester }: SessionActionOptio
 
 async function performWakeShell({ project, task, requester }: SessionActionOptions): Promise<CliWakeOutcome> {
 	if (!task.hibernated) return { outcome: "not-hibernated", taskId: task.id, seq: task.seq };
+	// Refused before the dialog: an approval that ends in "worktree is missing" asked for nothing.
+	assertTaskWorkspacePresent(project, task.worktreePath);
 	let current = task;
 	if (requester) {
 		const answer = await askUser(project, task, requester, { kind: "wake-shell" });

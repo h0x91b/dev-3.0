@@ -7,6 +7,7 @@ vi.mock("../rpc-handlers/task-lifecycle", () => ({ hibernateTask: vi.fn() }));
 vi.mock("../rpc-handlers/tmux-pty", () => ({ taskTerminalAlive: vi.fn(), wakeTaskShell: vi.fn() }));
 vi.mock("../cli-agent-resume", () => ({ resumeCliAgent: vi.fn() }));
 vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
+vi.mock("../task-workspace-guard", () => ({ assertTaskWorkspacePresent: vi.fn() }));
 import { hibernateCliTask, wakeCliTask } from "../cli-task-session";
 import { getTask } from "../data";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
@@ -14,6 +15,8 @@ import { hibernateTask } from "../rpc-handlers/task-lifecycle";
 import { taskTerminalAlive, wakeTaskShell } from "../rpc-handlers/tmux-pty";
 import { resumeCliAgent } from "../cli-agent-resume";
 import { _resetAgentRequestsForTests, resolveAgentRequest, voidAgentRequest } from "../agent-requests";
+import { askSessionApproval } from "../cli-session-approval";
+import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 
 const project = { id: "project-1", name: "Fixture", path: "/repo" } as Project;
 const panes = [
@@ -140,6 +143,13 @@ describe("dev3 task wake", () => {
 		expect(wakeTaskShell).toHaveBeenCalledWith({ taskId: task.id });
 	});
 
+	it("--shell refuses a missing worktree before asking anybody", async () => {
+		vi.mocked(assertTaskWorkspacePresent).mockImplementationOnce(() => { throw new Error("The task's worktree is missing"); });
+		await expect(wakeCliTask({ project, task: hibernated, requester, mode: "shell", allowAgentLatest: false })).rejects.toThrow("worktree is missing");
+		expect(push).not.toHaveBeenCalled();
+		expect(wakeTaskShell).not.toHaveBeenCalled();
+	});
+
 	it("--shell from another task asks first, and a decline wakes nothing", async () => {
 		vi.mocked(getTask).mockResolvedValue(hibernated);
 		const declined = wakeCliTask({ project, task: hibernated, requester, mode: "shell", allowAgentLatest: false });
@@ -152,5 +162,18 @@ describe("dev3 task wake", () => {
 		await answer(true);
 		await expect(approved).resolves.toMatchObject({ outcome: "woke-shell" });
 		expect(wakeTaskShell).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("askSessionApproval", () => {
+	it("refuses a second request that arrives while the first is still being created, instead of joining its answer", async () => {
+		const ask = (subject: Parameters<typeof askSessionApproval>[0]["subject"]) =>
+			askSessionApproval({ project, task, requester, subject, alreadyPending: "already pending" });
+		const hibernate = ask({ sessionAction: { kind: "hibernate", paneCount: 2 } });
+		const resume = ask({ resume: { panes: [] } });
+		await expect(resume).rejects.toThrow("already pending");
+		expect(push.mock.calls.filter(([name]) => name === "agentLaunchRequested")).toHaveLength(1);
+		await answer(true);
+		await expect(hibernate).resolves.toEqual({ approved: true });
 	});
 });

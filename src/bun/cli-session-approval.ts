@@ -36,8 +36,11 @@ export async function askSessionApproval(opts: {
 	const { project, task, requester } = opts;
 	const push = getPushMessage();
 	if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
+	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+	// Checked in the same tick as the create: across an await a second request would
+	// pass too, then JOIN the first one's decision — one approval acting twice.
 	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error(opts.alreadyPending);
-	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs: agentLaunchAutoApproveMs(await loadSettings()) });
+	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs });
 	const request: AgentLaunchRequest = {
 		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
 		scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
