@@ -14,17 +14,23 @@ describe("global quit proxy cleanup", () => {
 		expect(cleanup?.body, "runGlobalQuitCleanup moved; update this focused bootstrap test").toBeDefined();
 
 		// Execute the actual cleanup body without booting Electrobun or its pollers.
-		const names = new Set<string>(["log"]);
+		const names = new Set<string>(["log", "claudeSessionWatches"]);
 		const visit = (node: ts.Node): void => {
 			if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) names.add(node.expression.text);
 			ts.forEachChild(node, visit);
 		};
 		visit(cleanup!);
 		const kill = vi.fn();
-		const values = [...names].map((name) => name === "log" ? { info: vi.fn(), warn: vi.fn() } : name === "killModelSidecarNow" ? kill : vi.fn());
+		const closeWatches = vi.fn();
+		const values = [...names].map((name) => {
+			if (name === "log") return { info: vi.fn(), warn: vi.fn() };
+			if (name === "claudeSessionWatches") return { close: closeWatches };
+			return name === "killModelSidecarNow" ? kill : vi.fn();
+		});
 		const javascript = ts.transpileModule(cleanup!.getText(), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 		const run = new Function(...names, `${javascript}; return runGlobalQuitCleanup;`)(...values) as () => void;
 		run();
+		expect(closeWatches).toHaveBeenCalledExactlyOnceWith();
 		expect(kill).toHaveBeenCalledExactlyOnceWith();
 	});
 });
