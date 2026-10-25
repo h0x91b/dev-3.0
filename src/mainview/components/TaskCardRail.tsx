@@ -7,14 +7,29 @@ import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
 import Tooltip from "./Tooltip";
 
 /**
- * How many upright letters a rail can stack before it out-grows a short card.
- * An upright letter is ~11px tall, and the shortest card body is ~110px once the
+ * How many letters a rail can stack before it out-grows a short card.
+ * A stacked letter is 14.4px tall, and the shortest card body is ~120px once the
  * ring, the bell slot and the ✓ have taken their share.
  */
 export const RAIL_LABEL_MAX = 8;
 
-const RAIL_LABEL_CLASS =
-	"max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]";
+/**
+ * One grapheme per line instead of `writing-mode: vertical-rl` + `text-orientation:
+ * upright`: WebKitGTK advances upright glyphs by their horizontal width, so the
+ * letters overlapped on Linux with every font (issue #2040). A 1.44em cell is the
+ * step Chromium and WKWebView gave an upright letter, so nothing moves elsewhere.
+ */
+const RAIL_LABEL_CLASS = "flex max-h-32 flex-col items-center overflow-hidden font-mono text-dense font-extrabold leading-none";
+const RAIL_LETTER_CLASS = "block h-[1.44em] leading-[1.44em]";
+
+type GraphemeSegmenter = { segment(input: string): Iterable<{ segment: string }> };
+const Segmenter = (Intl as unknown as { Segmenter?: new (locale?: string, options?: { granularity: "grapheme" }) => GraphemeSegmenter }).Segmenter;
+const graphemeSegmenter = Segmenter ? new Segmenter(undefined, { granularity: "grapheme" }) : null;
+
+/** User-perceived characters: "é" written as e + U+0301, or a ZWJ emoji, stays one cell. */
+export function splitGraphemes(text: string): string[] {
+	return graphemeSegmenter ? Array.from(graphemeSegmenter.segment(text), (s) => s.segment) : Array.from(text);
+}
 
 /** Short, uppercase rail forms of the built-in statuses. The full label stays in
  *  the rail's accessible name and tooltip, and in the Move-to menu. */
@@ -35,10 +50,23 @@ const RAIL_LABEL_KEY: Record<TaskStatus, TranslationKey> = {
  */
 export function shortenForRail(name: string, max: number = RAIL_LABEL_MAX): string {
 	const trimmed = name.trim();
-	if (trimmed.length <= max) return trimmed.toUpperCase();
+	if (splitGraphemes(trimmed).length <= max) return trimmed.toUpperCase();
 	const firstWord = trimmed.split(/\s+/)[0];
-	if (firstWord.length <= max) return firstWord.toUpperCase();
-	return trimmed.slice(0, max).trim().toUpperCase();
+	if (splitGraphemes(firstWord).length <= max) return firstWord.toUpperCase();
+	return splitGraphemes(trimmed).slice(0, max).join("").trim().toUpperCase();
+}
+
+/** The stacked rail word. Hidden from assistive tech: the button's name carries the full label. */
+function RailWord({ label, color, className = "" }: { label: string; color: string; className?: string }) {
+	return (
+		<span data-testid="task-card-rail-word" aria-hidden="true" className={`${RAIL_LABEL_CLASS} ${className}`} style={{ color }}>
+			{splitGraphemes(label).map((glyph, i) => (
+				<span key={i} className={RAIL_LETTER_CLASS}>
+					{glyph.trim() ? glyph : "\u00a0"}
+				</span>
+			))}
+		</span>
+	);
 }
 
 interface TaskCardRailProps {
@@ -111,7 +139,7 @@ export default function TaskCardRail({
 	// own padding claim ~58px before the word starts. With `autoLabel` the word is
 	// taken out of flow (see below), so the height it measures never includes the
 	// word itself — otherwise the first fit would latch and the row could not shrink.
-	const neededForLabel = 58 + railLabel.length * 14.4;
+	const neededForLabel = 58 + splitGraphemes(railLabel).length * 14.4;
 	useLayoutEffect(() => {
 		if (!autoLabel) return;
 		const el = railRef.current;
@@ -159,22 +187,16 @@ export default function TaskCardRail({
 						</span>
 					)}
 
-					{/* Upright stacked letters — read straight down, never rotated. The
-					    accessible name above carries the full label, so the visual
-					    abbreviation is hidden from assistive tech. */}
+					{/* Upright stacked letters — read straight down, never rotated. */}
 					{labelFits &&
 						(autoLabel ? (
 							// Out of flow: the word must never add to the height that decides
 							// whether it fits, or a row that once had room keeps it forever.
 							<span className="relative flex min-h-0 w-full flex-1 justify-center overflow-hidden">
-								<span aria-hidden="true" className={`absolute top-0 ${RAIL_LABEL_CLASS}`} style={{ color }}>
-									{railLabel}
-								</span>
+								<RailWord label={railLabel} color={color} className="absolute top-0" />
 							</span>
 						) : (
-							<span aria-hidden="true" className={RAIL_LABEL_CLASS} style={{ color }}>
-								{railLabel}
-							</span>
+							<RailWord label={railLabel} color={color} />
 						))}
 				</button>
 			</Tooltip>

@@ -428,7 +428,7 @@ describe("TaskCard", () => {
 			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
 			expect(screen.getByText("Run")).toBeInTheDocument();
 			// The rail prints the short form; the full column label is its a11y name.
-			expect(screen.getByText("TODO")).toBeInTheDocument();
+			expect(screen.getByTestId("task-card-rail-word")).toHaveTextContent("TODO");
 			expect(statusTrigger()).toHaveAccessibleName(/To Do/);
 		});
 

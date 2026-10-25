@@ -612,8 +612,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 		// instead of describing it. The name lives in the tooltip and aria-label.
 		expect(within(activeRail).getByRole("img", { name: "Stage 2 of 7" })).toBeInTheDocument();
 		expect(within(inactiveRail).getByRole("img", { name: "Stage 5 of 7" })).toBeInTheDocument();
-		expect(activeRail.querySelector("[class*=vertical-rl]")).toBeNull();
-		expect(inactiveRail.querySelector("[class*=vertical-rl]")).toBeNull();
+		expect(within(activeRail).queryByTestId("task-card-rail-word")).toBeNull();
+		expect(within(inactiveRail).queryByTestId("task-card-rail-word")).toBeNull();
 
 		// The busy sheen rides only the working row, never the review one.
 		expect(activeRail.querySelector(".animate-rail-flow")).not.toBeNull();
