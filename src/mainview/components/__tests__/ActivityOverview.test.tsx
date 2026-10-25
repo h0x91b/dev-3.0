@@ -734,7 +734,7 @@ describe("ActivityOverview accessibility and copy regressions", () => {
 		// dead tab stop, since Enter/Space do nothing and the step buttons own
 		// the keyboard path.
 		expect(screen.queryByRole("button", { name: /drag to reorder/i })).toBeNull();
-		const handle = container.querySelector('[draggable="true"][role="presentation"]');
+		const handle = container.querySelector('[data-reorder-grip][role="presentation"]');
 		expect(handle).not.toBeNull();
 		expect(handle?.getAttribute("tabindex")).toBeNull();
 	});
@@ -873,8 +873,9 @@ describe("ActivityOverview — spaces grouping", () => {
 // A row carrying tasks and a footer is ~300px tall, so a handful of them never
 // fit on one screen: the user had to scroll to the drop target with the pointer
 // held down. While a drag is in flight every row that can take it is one line.
-describe("ActivityOverview — dragging a project collapses the list", () => {
+describe("ActivityOverview — dragging a project", () => {
 	const second: Project = { ...mockProject, id: "p2", name: "Second Project", path: "/tmp/second" };
+	const third: Project = { ...mockProject, id: "p3", name: "Third Project", path: "/tmp/third" };
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -887,68 +888,147 @@ describe("ActivityOverview — dragging a project collapses the list", () => {
 			spaces: [{ id: "sp_a", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 }],
 			order: ["sp_a"],
 		});
+		mockedApi.request.reorderSpaceProjects.mockResolvedValue({} as never);
 	});
 
-	function gripOf(projectName: string) {
-		const row = screen.getByText(projectName).closest('[data-help-id="dashboard.project-row"]')!;
-		return row.querySelector('[title="Drag to reorder project"]')!;
+	afterEach(() => {
+		fireEvent.keyDown(window, { key: "Escape" });
+	});
+
+	function rowOf(projectName: string) {
+		return screen.getByText(projectName).closest<HTMLElement>('[data-help-id="dashboard.project-row"]')!;
 	}
 
-	async function startDragging(projectName: string) {
-		fireEvent.dragStart(gripOf(projectName), { dataTransfer: { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: "" } });
-		await waitFor(() => expect(screen.getByText(projectName).closest("[data-compact]")).not.toBeNull());
+	function gripOf(projectName: string) {
+		return rowOf(projectName).querySelector<HTMLElement>("[data-reorder-grip]")!;
+	}
+
+	/** happy-dom has no layout: stack the rows 60px apart, 50px tall. */
+	function layOutRows() {
+		document.querySelectorAll<HTMLElement>('[data-help-id="dashboard.project-row"]').forEach((row, i) => {
+			row.getBoundingClientRect = () => ({ top: i * 60, bottom: i * 60 + 50, left: 0, right: 600, width: 600, height: 50, x: 0, y: i * 60, toJSON: () => ({}) });
+		});
+	}
+
+	function startDragging(projectName: string, clientY = 10) {
+		layOutRows();
+		fireEvent.pointerDown(gripOf(projectName), { button: 0, pointerId: 1, clientX: 5, clientY });
+		fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: clientY + 8 });
 	}
 
 	it("drops the task rows and the board footer for the duration of the drag", async () => {
 		renderWithProjects([mockProject, second]);
 		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		await startDragging("My Project");
+		startDragging("My Project");
 		expect(screen.queryByText(getTaskTitle(mockTask))).not.toBeInTheDocument();
 		expect(screen.queryByTestId("project-open-board-p1")).not.toBeInTheDocument();
 		expect(screen.queryByTestId("project-open-board-p2")).not.toBeInTheDocument();
 		// The one thing a row being reordered is for: which project it is.
-		expect(screen.getByText("My Project")).toBeInTheDocument();
 		expect(screen.getByText("Second Project")).toBeInTheDocument();
 	});
 
 	it("hides the path so the row is a single line", async () => {
 		renderWithProjects([mockProject, second]);
 		expect(await screen.findByTitle("/home/user/my-project")).toBeInTheDocument();
-		await startDragging("My Project");
-		expect(screen.queryByTitle("/home/user/my-project")).not.toBeInTheDocument();
+		startDragging("My Project");
+		expect(within(rowOf("Second Project")).queryByTitle("/tmp/second")).not.toBeInTheDocument();
 	});
 
-	it("restores the full rows when the drag ends", async () => {
+	// The preview has to match the rows it moves between, and the slot it left
+	// has to read as empty rather than as a second copy of the same project.
+	it("carries a compact, inert copy of the row and leaves an empty slot behind", async () => {
 		renderWithProjects([mockProject, second]);
-		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		await startDragging("My Project");
-		fireEvent.dragEnd(gripOf("My Project"));
-		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		expect(screen.getByTestId("project-open-board-p1")).toBeInTheDocument();
+		await screen.findByText(getTaskTitle(mockTask));
+		startDragging("My Project");
+		const preview = document.querySelector<HTMLElement>("[data-reorder-preview]")!;
+		expect(preview).toHaveAttribute("aria-hidden", "true");
+		expect(preview).toHaveAttribute("data-compact");
+		expect(preview.querySelector("[data-testid]")).toBeNull();
+		expect(rowOf("Second Project").hasAttribute("data-reorder-placeholder")).toBe(false);
+		expect(document.querySelectorAll("[data-reorder-placeholder]")).toHaveLength(1);
 	});
 
-	// Collapsing inside dragstart is what broke the drag: Chromium ends it on the
-	// spot and WebKit turns the gesture into a text selection.
-	it("does not touch the list inside dragstart itself", async () => {
+	it("does not start a drag on a press without movement", async () => {
 		renderWithProjects([mockProject, second]);
-		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		const setData = vi.fn();
-		const setDragImage = vi.fn();
-		fireEvent.dragStart(gripOf("My Project"), { dataTransfer: { setData, setDragImage, effectAllowed: "" } });
-		expect(setData).toHaveBeenCalledWith("text/plain", "space-project:sp_a:p1");
-		expect(setDragImage.mock.calls[0][0]).toHaveAttribute("data-project-row-header");
-		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		await waitFor(() => expect(screen.queryByText(getTaskTitle(mockTask))).not.toBeInTheDocument());
-	});
-
-	it("never collapses a drag the browser cancelled before the collapse landed", async () => {
-		renderWithProjects([mockProject, second]);
-		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
-		fireEvent.dragStart(gripOf("My Project"), { dataTransfer: { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: "" } });
-		fireEvent.dragEnd(gripOf("My Project"));
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		await screen.findByText(getTaskTitle(mockTask));
+		layOutRows();
+		fireEvent.pointerDown(gripOf("My Project"), { button: 0, pointerId: 1, clientX: 5, clientY: 10 });
+		fireEvent.pointerUp(window, { pointerId: 1, clientX: 5, clientY: 10 });
 		expect(document.querySelector("[data-compact]")).toBeNull();
+		expect(mockedApi.request.reorderSpaceProjects).not.toHaveBeenCalled();
+	});
+
+	it("drops into the slot the list shows and renders the new order at once", async () => {
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+			version: 1,
+			spaces: [{ id: "sp_a", name: "Client X", parentId: null, projectIds: ["p1", "p2", "p3"], createdAt: 1 }],
+			order: ["sp_a"],
+		});
+		renderWithProjects([mockProject, second, third]);
+		await screen.findByText("Third Project");
+		await screen.findByText(getTaskTitle(mockTask));
+		startDragging("My Project");
+		// The preview's middle (107) passes row 2's middle (85), not row 3's (145).
+		fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: 100 });
+		fireEvent.pointerUp(window, { pointerId: 1, clientX: 5, clientY: 100 });
+		expect(mockedApi.request.reorderSpaceProjects).toHaveBeenCalledWith({ spaceId: "sp_a", projectIds: ["p2", "p1", "p3"] });
+		const names = [...document.querySelectorAll('[data-help-id="dashboard.project-row"]')].map((row) => row.textContent);
+		expect(names[0]).toContain("Second Project");
+		expect(names[1]).toContain("My Project");
+		expect(document.querySelector("[data-reorder-preview]")).toBeNull();
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+	});
+
+	it("puts everything back without reordering when Escape cancels the drag", async () => {
+		renderWithProjects([mockProject, second]);
+		await screen.findByText(getTaskTitle(mockTask));
+		startDragging("My Project");
+		fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: 100 });
+		fireEvent.keyDown(window, { key: "Escape" });
+		fireEvent.pointerUp(window, { pointerId: 1, clientX: 5, clientY: 100 });
+		expect(mockedApi.request.reorderSpaceProjects).not.toHaveBeenCalled();
+		expect(document.querySelector("[data-compact]")).toBeNull();
+		expect(document.querySelector("[data-reorder-preview]")).toBeNull();
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+	});
+
+	// An open overlay swallows Escape from its own capture listener; the drag's
+	// listener has to run before it, or Escape would close the overlay and the
+	// release would still drop.
+	it("cancels on Escape even when an earlier capture listener would swallow it", async () => {
+		const swallow = (event: KeyboardEvent) => event.stopImmediatePropagation();
+		window.addEventListener("keydown", swallow, true);
+		try {
+			renderWithProjects([mockProject, second]);
+			await screen.findByText(getTaskTitle(mockTask));
+			startDragging("My Project");
+			fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: 100 });
+			fireEvent.keyDown(window, { key: "Escape" });
+			fireEvent.pointerUp(window, { pointerId: 1, clientX: 5, clientY: 100 });
+			expect(mockedApi.request.reorderSpaceProjects).not.toHaveBeenCalled();
+		} finally {
+			window.removeEventListener("keydown", swallow, true);
+		}
+	});
+
+	// Without spaces the list is the global order, and the Operations board is
+	// pinned above it: dragging past the top lands under the pin, never above it.
+	it("keeps a flat-list drop below the pinned Operations board", async () => {
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 1, spaces: [], order: [] });
+		const ops: Project = { ...mockProject, id: "ops", name: "Operations", path: "", kind: "virtual", builtin: true };
+		const onReorderProjects = vi.fn();
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[ops, mockProject, second]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} onReorderProjects={onReorderProjects} />
+			</I18nProvider>,
+		);
+		await screen.findByText(getTaskTitle(mockTask));
+		layOutRows();
+		fireEvent.pointerDown(gripOf("Second Project"), { button: 0, pointerId: 1, clientX: 5, clientY: 130 });
+		fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: 138 });
+		fireEvent.pointerMove(window, { pointerId: 1, clientX: 5, clientY: -200 });
+		fireEvent.pointerUp(window, { pointerId: 1, clientX: 5, clientY: -200 });
+		expect(onReorderProjects).toHaveBeenCalledWith(["ops", "p2", "p1"]);
 	});
 
 	it("keeps the reorder controls out of text selection", async () => {

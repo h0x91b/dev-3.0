@@ -2110,3 +2110,24 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	background-color: rgb(var(--diff-search-highlight-from) / 0.9);
 	color: rgb(var(--diff-search-highlight-ink));
 }
+
+/* ---- Project reorder drag (useReorderDrag) ----------------------------------
+   The slot the dragged row will land in reads as an empty, accent-dashed hole;
+   the row itself travels as a lifted clone under the pointer. */
+[data-reorder-placeholder] {
+	border-style: dashed;
+	border-color: rgb(var(--accent) / 0.6);
+	background-color: rgb(var(--accent) / 0.08);
+}
+[data-reorder-placeholder] > * {
+	visibility: hidden;
+}
+.reorder-preview {
+	border-color: rgb(var(--border-active));
+	box-shadow: var(--shadow-popover);
+}
+html[data-reordering],
+html[data-reordering] * {
+	cursor: grabbing !important;
+	user-select: none !important;
+}

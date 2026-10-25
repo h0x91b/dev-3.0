@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Dispatch, DragEvent } from "react";
+import { useState, useEffect, useCallback } from "react";
+import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -17,7 +17,7 @@ import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
 import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import SpaceGroupedProjects, { type RowReorderCtx } from "./SpaceGroupedProjects";
 import { getStatusLabel } from "../utils/statusLabel";
-import { scheduleCompactDrag } from "../utils/compactDrag";
+import { useReorderDrag, type ReorderScope } from "../hooks/useReorderDrag";
 import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -134,9 +134,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// makes "Open board" worth clicking instead of a decorative arrow.
 	const [todoByProject, setTodoByProject] = useState<Map<string, number>>(new Map());
 	const [loading, setLoading] = useState(true);
-	const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
-	const [dropTarget, setDropTarget] = useState<{ projectId: string; side: DropSide } | null>(null);
-	const cancelPendingCollapse = useRef<(() => void) | null>(null);
+	const reorderDrag = useReorderDrag();
 	// Narrow viewport: HTML5 drag and the up/down step buttons are unusable on
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
@@ -395,24 +393,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		void onReorderProjects(projectIds);
 	}
 
-	function handleDragOver(event: DragEvent<HTMLDivElement>, projectId: string) {
-		if (!draggedProjectId || draggedProjectId === projectId) return;
-		event.preventDefault();
-		event.dataTransfer.dropEffect = "move";
-		const rect = event.currentTarget.getBoundingClientRect();
-		const side: DropSide = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-		setDropTarget({ projectId, side });
-	}
-
-	function handleDrop(event: DragEvent<HTMLDivElement>, projectId: string) {
-		event.preventDefault();
-		const sourceProjectId = draggedProjectId ?? event.dataTransfer.getData("text/plain").replace(/^project:/, "");
-		const side = dropTarget?.projectId === projectId ? dropTarget.side : "before";
-		setDraggedProjectId(null);
-		setDropTarget(null);
-		reorderProject(sourceProjectId, projectId, side);
-	}
-
 	function moveProjectByStep(projectId: string, step: -1 | 1) {
 		const index = visibleProjects.findIndex((project) => project.id === projectId);
 		const target = visibleProjects[index + step];
@@ -420,16 +400,22 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		reorderProject(projectId, target.id, step < 0 ? "before" : "after");
 	}
 
-	function renderProjectRow(project: Project, index: number, reorder?: RowReorderCtx, groupSpaceId?: string | null) {
+	/** Flat order: every visible row, with the pinned Operations board held at the top. */
+	function flatScope(ids: string[], key = "projects"): ReorderScope {
+		return { key, ids, minIndex: key === "projects" && hasPinnedBuiltin ? 1 : 0, commit: reorderProject };
+	}
+
+	function renderProjectRow(project: Project, index: number, reorder?: RowReorderCtx, groupSpaceId?: string | null, scope: ReorderScope = reorder?.scope ?? flatScope(visibleProjects.map((p) => p.id))) {
 		const tasks = tasksByProject.get(project.id) ?? [];
 		const hasActiveTasks = tasks.length > 0;
 		const todoCount = todoByProject.get(project.id) ?? 0;
-		const isDragged = reorder ? reorder.isDragged : draggedProjectId === project.id;
+		const dragScopeActive = reorderDrag.active?.scope === scope.key;
+		const isDragged = dragScopeActive && reorderDrag.active?.id === project.id;
 		// A drag is in flight in this row's reorder scope: every row that can take
 		// the drop shrinks to one line for the duration. A row with five tasks is
 		// ~300px tall, so a list of them never fits on one screen — the drop target
 		// was somewhere the user had to scroll to while holding the pointer down.
-		const compact = reorder ? reorder.groupDragActive : draggedProjectId !== null;
+		const compact = dragScopeActive;
 		// Also picks this row's help topic: the git project-row copy does not
 		// describe a board that has no git, and "Code-driven tasks · no git" was
 		// the whole explanation a first-run user got for it.
@@ -449,12 +435,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		const cannotMoveDown = reorder
 			? !reorder.canMoveDown
 			: !onReorderProjects || index === visibleProjects.length - 1 || cannotReorder;
-		const showDropBefore = reorder
-			? reorder.showDropBefore
-			: dropTarget?.projectId === project.id && dropTarget.side === "before";
-		const showDropAfter = reorder
-			? reorder.showDropAfter
-			: dropTarget?.projectId === project.id && dropTarget.side === "after";
 
 		// A task is "in" a custom column only when its customColumnId still
 		// resolves to a live column; a dangling id (deleted column) falls back
@@ -508,14 +488,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 			<div
 				key={project.id}
 				data-help-id={isBuiltinOps ? "dashboard.ops-board" : "dashboard.project-row"}
-				className={`relative bg-raised border border-edge overflow-hidden transition-opacity ${compact ? "rounded-xl" : "rounded-2xl"} ${isDragged ? "opacity-60" : ""}`}
+				ref={reorderDrag.rowRef(scope.key, project.id)}
+				className={`relative bg-raised border border-edge overflow-hidden ${compact ? "rounded-xl" : "rounded-2xl"}`}
 				data-compact={compact || undefined}
-				onDragOver={reorder ? reorder.onDragOver : (event) => handleDragOver(event, project.id)}
-				onDragLeave={reorder ? reorder.onDragLeave : () => setDropTarget((current) => current?.projectId === project.id ? null : current)}
-				onDrop={reorder ? reorder.onDrop : (event) => handleDrop(event, project.id)}
+				data-reorder-placeholder={isDragged || undefined}
 			>
-				{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
-				{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 				{/* Project header */}
 				<div data-project-row-header className={`group flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 					{/* Reorder cluster — desktop only. On touch, drag and the
@@ -538,32 +515,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    stop telling keyboard users to perform a gesture. */}
 						<span
 							role="presentation"
-							draggable={dragEnabled}
-							onDragStart={(event) => {
-								if (!dragEnabled) return;
-								event.dataTransfer.setData("text/plain", reorder ? reorder.dragData : `project:${project.id}`);
-								event.dataTransfer.effectAllowed = "move";
-								// The default ghost is the grip glyph alone; show which project moves.
-								const header = event.currentTarget.closest<HTMLElement>("[data-project-row-header]") ?? event.currentTarget;
-								const rect = header.getBoundingClientRect();
-								event.dataTransfer.setDragImage(header, event.clientX - rect.left, event.clientY - rect.top);
-								cancelPendingCollapse.current?.();
-								cancelPendingCollapse.current = scheduleCompactDrag(
-									header,
-									reorder ? reorder.onDragStart : () => setDraggedProjectId(project.id),
-								);
-							}}
-							onDragEnd={() => {
-								cancelPendingCollapse.current?.();
-								cancelPendingCollapse.current = null;
-								if (reorder) {
-									reorder.onDragEnd();
-									return;
-								}
-								setDraggedProjectId(null);
-								setDropTarget(null);
-							}}
-							className={`p-1.5 rounded-lg text-fg-3 transition-colors ${dragEnabled ? "cursor-grab active:cursor-grabbing hover:text-fg hover:bg-elevated" : "cursor-default opacity-60"}`}
+							onPointerDown={dragEnabled ? (event) => reorderDrag.begin(event, scope, project.id) : undefined}
+							data-reorder-grip={dragEnabled || undefined}
+							className={`p-1.5 rounded-lg text-fg-3 transition-colors touch-none ${dragEnabled ? "cursor-grab active:cursor-grabbing hover:text-fg hover:bg-elevated" : "cursor-default opacity-60"}`}
 							title={dragEnabled ? t("dashboard.reorderProject") : undefined}
 						>
 							<span
@@ -1075,7 +1029,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							spaceOrder={spaces.map((s) => s.id)}
 							selectedSpaceId={selectedSpaceId}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
-							renderBottomBlockProject={(p) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id))}
+							renderBottomBlockProject={(p, block) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), undefined, undefined, flatScope(block.map((b) => b.id), "no-space"))}
 						/>
 					</>
 				)}

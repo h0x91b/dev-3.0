@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
@@ -288,30 +288,64 @@ describe("SpaceGroupedProjects — nothing to reorder", () => {
 		}
 	});
 
-	// Dragging is only worth doing if the list you are dropping into fits on the
-	// screen, so every row that can take THIS drop collapses — and no other, since
-	// a drop across groups would change membership and is refused.
-	it("collapses only the group whose row is being dragged", () => {
-		const flags = new Map<string, boolean>();
+	// A drag never crosses groups — that would change membership — so each
+	// space hands its rows a reorder scope of its own members only.
+	it("scopes each space's rows to that space's members", () => {
+		const scopes = new Map<string, { key: string; ids: string[] }>();
 		renderWith(groups, (p, ctx, spaceId) => {
-			flags.set(`${spaceId}:${p.id}`, ctx.groupDragActive);
-			return (
-				<div
-					key={`${spaceId}:${p.id}`}
-					data-testid={`row-${spaceId}-${p.id}`}
-					draggable
-					onDragStart={ctx.onDragStart}
-				>
-					{p.name}
-				</div>
-			);
+			scopes.set(`${spaceId}:${p.id}`, { key: ctx.scope.key, ids: ctx.scope.ids });
+			return <div key={`${spaceId}:${p.id}`}>{p.name}</div>;
 		});
-		fireEvent.dragStart(screen.getByTestId("row-sp_a-p1"), {
-			dataTransfer: { setData: vi.fn(), effectAllowed: "" },
+		expect(scopes.get("sp_a:p1")).toEqual({ key: "space:sp_a", ids: ["p1", "p2"] });
+		expect(scopes.get("sp_b:p1")).toEqual({ key: "space:sp_b", ids: ["p1"] });
+	});
+
+	// The confirming spaces push lands a beat later; until then the old order
+	// would flash back under the row that was just dropped.
+	it("shows a dropped order at once and drops the stand-in once the push confirms it", async () => {
+		let commit: RowReorderCtx["scope"]["commit"] = () => {};
+		const renderProject = (p: Project, ctx: RowReorderCtx, spaceId: string | null) => {
+			if (spaceId === "sp_a" && p.id === "p1") commit = ctx.scope.commit;
+			return <div data-testid={`row-${spaceId}-${p.id}`}>{p.name}</div>;
+		};
+		const view = (g: DashboardGroup[]) => (
+			<I18nProvider>
+				<SpaceGroupedProjects
+					groups={g}
+					sensitiveProjectIds={new Set()}
+					needsYouCountOf={() => 0}
+					workingCountOf={() => 0}
+					renderProject={renderProject}
+					renderBottomBlockProject={(p) => <div>{p.name}</div>}
+				/>
+			</I18nProvider>
+		);
+		const { rerender } = render(view(groups));
+		act(() => commit("p1", "p2", "after"));
+		const order = () => [...screen.getByTestId("space-group-sp_a").querySelectorAll("[data-testid^=row-sp_a]")].map((el) => el.textContent);
+		expect(order()).toEqual(["p2", "p1"]);
+		expect(api.request.reorderSpaceProjects).toHaveBeenCalledWith({ spaceId: "sp_a", projectIds: ["p2", "p1"] });
+		const confirmed: DashboardGroup[] = [
+			{ space: sp("sp_a", "Alpha", ["p2", "p1"]), projects: [proj("p2"), proj("p1")] },
+			...groups.slice(1),
+		];
+		rerender(view(confirmed));
+		expect(order()).toEqual(["p2", "p1"]);
+		// The stand-in is gone: a later server order is shown as-is.
+		rerender(view(groups));
+		expect(order()).toEqual(["p1", "p2"]);
+	});
+
+	it("puts the old order back and says so when the reorder fails", async () => {
+		vi.mocked(api.request.reorderSpaceProjects).mockRejectedValueOnce(new Error("disk full"));
+		let commit: RowReorderCtx["scope"]["commit"] = () => {};
+		renderWith(groups, (p, ctx, spaceId) => {
+			if (spaceId === "sp_a" && p.id === "p1") commit = ctx.scope.commit;
+			return <div data-testid={`row-${spaceId}-${p.id}`}>{p.name}</div>;
 		});
-		expect(flags.get("sp_a:p1")).toBe(true);
-		expect(flags.get("sp_a:p2")).toBe(true);
-		expect(flags.get("sp_b:p1")).toBe(false);
+		act(() => commit("p1", "p2", "after"));
+		const order = () => [...screen.getByTestId("space-group-sp_a").querySelectorAll("[data-testid^=row-sp_a]")].map((el) => el.textContent);
+		await waitFor(() => expect(order()).toEqual(["p1", "p2"]));
 	});
 
 	it("does not reorder spaces when a header is dragged", () => {

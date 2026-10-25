@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { isSpaceSensitive, type Project, type Space } from "../../shared/types";
 import { HOME_GROUP_ID, type DashboardGroup } from "../utils/spaceGroups";
 import { MASK_CLASS } from "../sensitive-projects";
@@ -7,6 +7,7 @@ import { toast } from "../toast";
 import { useT } from "../i18n";
 import SpaceHeaderMenu from "./SpaceHeaderMenu";
 import SpaceIcon from "./SpaceIcon";
+import type { ReorderScope } from "../hooks/useReorderDrag";
 
 const LS_COLLAPSED_SPACES = "dev3-collapsed-spaces";
 
@@ -47,21 +48,9 @@ export interface RowReorderCtx {
 	/** False when the group holds one project — nothing to reorder, so the whole
 	 *  grip + up/down cluster is hidden rather than shown inert. */
 	showReorder: boolean;
-	isDragged: boolean;
-	/** A row in THIS group is being dragged, so every row here collapses to one
-	 *  line. Scoped to the group because only this group accepts the drop. */
-	groupDragActive: boolean;
 	dragEnabled: boolean;
-	/** `text/plain` payload the row's grip puts on the drag. */
-	dragData: string;
-	/** Marks the drag in flight. The row calls it after `dragstart`, never inside. */
-	onDragStart: () => void;
-	onDragEnd: () => void;
-	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-	onDragLeave: () => void;
-	onDrop: (event: DragEvent<HTMLDivElement>) => void;
-	showDropBefore: boolean;
-	showDropAfter: boolean;
+	/** The rows a drag from this row moves among — this space's members only. */
+	scope: ReorderScope;
 	canMoveUp: boolean;
 	canMoveDown: boolean;
 	onMoveUp: () => void;
@@ -122,8 +111,22 @@ function SpaceGroupedProjects({
 }: SpaceGroupedProjectsProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
-	const [dragged, setDragged] = useState<{ spaceId: string; projectId: string } | null>(null);
-	const [dropTarget, setDropTarget] = useState<{ spaceId: string; projectId: string; side: "before" | "after" } | null>(null);
+	// A reorder shows at once; the spaces push that confirms it lands later.
+	const [pendingOrder, setPendingOrder] = useState<ReadonlyMap<string, string[]>>(new Map());
+
+	useEffect(() => {
+		setPendingOrder((prev) => {
+			if (prev.size === 0) return prev;
+			const next = new Map(prev);
+			for (const [spaceId, ids] of prev) {
+				const space = groups.find((g) => g.space?.id === spaceId)?.space;
+				const wanted = new Set(ids);
+				const stored = space?.projectIds.filter((id) => wanted.has(id)) ?? [];
+				if (!space || stored.join("\0") === ids.join("\0")) next.delete(spaceId);
+			}
+			return next.size === prev.size ? prev : next;
+		});
+	}, [groups]);
 
 	// Deliberately keyed on `selectedSpaceId` alone: a manual re-collapse while
 	// this space is still selected must stick, not get undone by this effect
@@ -156,50 +159,36 @@ function SpaceGroupedProjects({
 		const targetIdx = ids.indexOf(targetId);
 		if (targetIdx === -1) return;
 		ids.splice(side === "after" ? targetIdx + 1 : targetIdx, 0, sourceId);
+		setPendingOrder((prev) => new Map(prev).set(spaceId, ids));
 		try {
 			await api.request.reorderSpaceProjects({ spaceId, projectIds: ids });
 		} catch (err) {
+			setPendingOrder((prev) => {
+				const next = new Map(prev);
+				next.delete(spaceId);
+				return next;
+			});
 			toast.error(t("spaces.failedUpdate", { error: String(err) }));
 		}
 	}
 
+	function withPendingOrder(spaceId: string, members: Project[]): Project[] {
+		const ids = pendingOrder.get(spaceId);
+		if (!ids) return members;
+		const rank = new Map(ids.map((id, i) => [id, i]));
+		return [...members].sort((a, b) => (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length));
+	}
+
 	function rowCtx(spaceId: string, members: Project[], project: Project, index: number): RowReorderCtx {
-		const isTarget = dropTarget?.spaceId === spaceId && dropTarget.projectId === project.id;
 		const canReorder = members.length > 1;
 		return {
 			showReorder: canReorder,
-			isDragged: dragged?.spaceId === spaceId && dragged.projectId === project.id,
-			groupDragActive: dragged?.spaceId === spaceId,
 			dragEnabled: canReorder,
-			dragData: `space-project:${spaceId}:${project.id}`,
-			onDragStart: () => setDragged({ spaceId, projectId: project.id }),
-			onDragEnd: () => {
-				setDragged(null);
-				setDropTarget(null);
+			scope: {
+				key: `space:${spaceId}`,
+				ids: members.map((p) => p.id),
+				commit: (sourceId, targetId, side) => void reorderWithinSpace(spaceId, members, sourceId, targetId, side),
 			},
-			onDragOver: (event) => {
-				// Cross-group drops are a no-op: membership is not drag's job.
-				if (!dragged || dragged.spaceId !== spaceId || dragged.projectId === project.id) return;
-				event.preventDefault();
-				event.dataTransfer.dropEffect = "move";
-				const rect = event.currentTarget.getBoundingClientRect();
-				const side = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-				setDropTarget({ spaceId, projectId: project.id, side });
-			},
-			onDragLeave: () => {
-				setDropTarget((cur) => (cur?.spaceId === spaceId && cur.projectId === project.id ? null : cur));
-			},
-			onDrop: (event) => {
-				event.preventDefault();
-				if (!dragged || dragged.spaceId !== spaceId) return;
-				const side = isTarget ? dropTarget.side : "before";
-				const source = dragged.projectId;
-				setDragged(null);
-				setDropTarget(null);
-				void reorderWithinSpace(spaceId, members, source, project.id, side);
-			},
-			showDropBefore: !!isTarget && dropTarget.side === "before",
-			showDropAfter: !!isTarget && dropTarget.side === "after",
 			canMoveUp: index > 0,
 			canMoveDown: index < members.length - 1,
 			onMoveUp: () => {
@@ -323,9 +312,9 @@ function SpaceGroupedProjects({
 						</div>
 						{!isCollapsed && (
 							<div className={ROWS_CLASS}>
-								{group.projects.map((project, index) => (
+								{withPendingOrder(space.id, group.projects).map((project, index, members) => (
 									<div key={`${space.id}:${project.id}`}>
-										{renderProject(project, rowCtx(space.id, group.projects, project, index), space.id)}
+										{renderProject(project, rowCtx(space.id, members, project, index), space.id)}
 									</div>
 								))}
 							</div>
