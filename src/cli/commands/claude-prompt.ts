@@ -1,5 +1,8 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { claudeConfigLocation } from "../../shared/claude-config-dir";
 
 /**
  * What Claude Code hands a `UserPromptSubmit` hook on stdin. Verified against
@@ -32,22 +35,14 @@ function parsePayload(rawInput: string): ClaudePromptPayload | null {
  * pointer current. A `claude -p` run from inside the pane inherits $TMUX_PANE
  * but is not the pane's conversation; Claude marks it `sdk-cli`.
  */
-function reportingPaneId(env: NodeJS.ProcessEnv): string | undefined {
+export function claudeHookPaneId(env: NodeJS.ProcessEnv): string | undefined {
 	const entrypoint = env.CLAUDE_CODE_ENTRYPOINT;
 	if (entrypoint && entrypoint !== "cli") return undefined;
-	return env.TMUX_PANE || undefined;
+	return env.DEV3_PANE_ID?.trim() || env.TMUX_PANE?.trim() || undefined;
 }
 
-/**
- * Internal adapter for Claude Code's `UserPromptSubmit` hook: report the
- * submission so agent traffic can show a human message, and which pane's
- * conversation it was, so that pane resumes the right one.
- *
- * The task's status is moved by the OTHER entry on the same event, which is
- * untouched. This one is pure recording, so every path here is quiet and
- * successful — a hook that exited non-zero would erase the user's prompt, and a
- * traffic row is never worth that.
- */
+// One serialized prompt event arms native session observation and marks work
+// active, so a queued idle event cannot overwrite the following prompt.
 export async function handleClaudePrompt(
 	rawInput: string,
 	socketPath: string | null,
@@ -56,7 +51,7 @@ export async function handleClaudePrompt(
 ): Promise<void> {
 	const payload = parsePayload(rawInput);
 	if (!payload || !socketPath || !context?.taskId) return;
-	const paneId = reportingPaneId(env);
+	const paneId = claudeHookPaneId(env);
 
 	try {
 		const response = await sendRequest(socketPath, "task.promptSubmitted", {
@@ -67,6 +62,7 @@ export async function handleClaudePrompt(
 			...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 			...(payload.promptId ? { submissionId: payload.promptId } : {}),
 			...(paneId ? { paneId } : {}),
+			...(paneId ? { sessionStateDirectory: join(claudeConfigLocation(env, homedir(), process.cwd()).dir, "sessions") } : {}),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude prompt hook: ${response.error || "recording failed"}\n`);

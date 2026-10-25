@@ -1,7 +1,7 @@
 /**
  * Claude Code's `UserPromptSubmit` adapter. It reports a submission and the
- * pane it came from, nothing else — the task's status is moved by the other
- * entry on the same event, which this must never be able to disturb.
+ * pane it came from. The backend serializes its working status with native
+ * session observation so a late idle event cannot overwrite a new prompt.
  *
  * Payload shape verified against claude 2.1.267: `prompt` and `prompt_id` are
  * both present, and `prompt_id` is what makes exactly-once provable.
@@ -75,6 +75,14 @@ describe("handleClaudePrompt", () => {
 		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, { TMUX_PANE: "%7", CLAUDE_CODE_ENTRYPOINT: "cli" });
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-1", paneId: "%7" });
+	});
+
+	it("registers the native pane and project-pinned session directory", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, {
+			DEV3_PANE_ID: "pane-1", CLAUDE_CONFIG_DIR: "/fixture/pinned", CLAUDE_CODE_ENTRYPOINT: "cli",
+		});
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "pane-1", sessionStateDirectory: "/fixture/pinned/sessions" });
 	});
 
 	it("does not claim the pane for a `claude -p` run from inside it", async () => {

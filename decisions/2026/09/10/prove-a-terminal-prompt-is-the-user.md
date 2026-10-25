@@ -1,5 +1,8 @@
 # Prove a terminal prompt is the user by subtraction, with receipts
 
+Partially superseded on 2026-10-25 by `decisions/2026/10/25/claude-native-idle-after-interruption.md`: Claude prompt recording and working status now share one serialized handler; the origin rules below are unchanged.
+
+
 ## Context
 
 Agent traffic shows agents talking to each other. The human who starts most of those turns is

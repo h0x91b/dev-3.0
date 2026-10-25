@@ -35,8 +35,8 @@ describe("buildClaudeHooks", () => {
 		expect(hooks).toHaveProperty("PostToolUse");
 		expect(hooks).toHaveProperty("PermissionRequest");
 		expect(hooks).toHaveProperty("Stop");
-		// Two entries: the status move, plus the recorder that reads the prompt.
-		expect(hooks.UserPromptSubmit).toHaveLength(2);
+		// One atomic handler records the prompt and starts lifecycle observation.
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
@@ -54,25 +54,9 @@ describe("buildClaudeHooks", () => {
 		expect(group.hooks[0].command).not.toContain("task move");
 	});
 
-	it("UserPromptSubmit hook moves to in-progress with --if-status-not guard", () => {
+	it("submits prompts through one atomic lifecycle handler", () => {
 		const hooks = buildClaudeHooks();
-		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
-
-		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
-		expect(cmd).not.toContain("review-by-user");
-	});
-
-	it("records the prompt from a SECOND entry, leaving the status move untouched", () => {
-		const hooks = buildClaudeHooks();
-		const [move, record] = hooks.UserPromptSubmit;
-
-		// The status move is what every task's board position depends on, so the
-		// recorder is added beside it rather than folded into it.
-		expect(move!.hooks[0]!.command).toContain("task move --status in-progress");
-		expect(record!.hooks[0]!.command).toBe(`${DEV3_CLI} hook claude-prompt`);
-		expect(record!.hooks[0]!.timeout).toBe(5);
+		expect(hooks.UserPromptSubmit).toEqual([{ hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-prompt`, timeout: 5 }] }]);
 	});
 
 	it("PreToolUse hook moves to in-progress with --if-status-not guard", () => {
@@ -172,7 +156,7 @@ describe("buildClaudeHooks", () => {
 
 	it("working hooks allow transition from review-by-user (user feedback resumes agent)", () => {
 		const hooks = buildClaudeHooks();
-		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
+		const cmd = hooks.PreToolUse[0].hooks[0].command;
 
 		// review-by-user must NOT be excluded — when user leaves feedback
 		// and the agent resumes, the hook should move the task back to in-progress
@@ -187,7 +171,7 @@ describe("buildClaudeHooks", () => {
 		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
 
 		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai");
-		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai");
+		expect(userCmd).toContain("hook claude-prompt");
 		expect(preCmd).not.toContain("review-by-user");
 		expect(userCmd).not.toContain("review-by-user");
 	});
@@ -212,7 +196,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
@@ -254,7 +238,7 @@ describe("buildClaudeHooks", () => {
 	it("working hooks keep the move guard before the offline fallback", () => {
 		const hooks = buildClaudeHooks();
 
-		for (const event of ["PreToolUse", "PostToolUse", "UserPromptSubmit"] as const) {
+		for (const event of ["PreToolUse", "PostToolUse"] as const) {
 			const cmd = hooks[event][0].hooks[0].command;
 			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
 		}
@@ -318,8 +302,8 @@ describe("mergeClaudeHooks", () => {
 
 		expect(result.hooks).toBeDefined();
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-		// Two entries: the status move, plus the recorder that reads the prompt.
-		expect(hooks.UserPromptSubmit).toHaveLength(2);
+		// One atomic handler records the prompt and starts lifecycle observation.
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
@@ -373,8 +357,8 @@ describe("mergeClaudeHooks", () => {
 		const second = mergeClaudeHooks(first as Record<string, unknown>);
 		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
-		// Two entries: the status move, plus the recorder that reads the prompt.
-		expect(hooks.UserPromptSubmit).toHaveLength(2);
+		// One atomic handler records the prompt and starts lifecycle observation.
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(2);
@@ -581,8 +565,8 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		// Two entries: the status move, plus the recorder that reads the prompt.
-		expect(hooks.UserPromptSubmit).toHaveLength(2);
+		// One atomic handler records the prompt and starts lifecycle observation.
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toContain("task move --status");
 		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
@@ -627,7 +611,7 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("hook claude-prompt");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
 
@@ -734,6 +718,7 @@ describe("writeClaudeHooks", () => {
 			"PostToolUse",
 			"PermissionRequest",
 			"Stop",
+			"SessionEnd",
 			"StopFailure",
 		]);
 		expect(content.permissions.allow).toEqual([
@@ -948,7 +933,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix });
 		const working = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]`;
 
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
@@ -989,7 +974,7 @@ describe("Windows hook output", () => {
 		expect(cli).toBe('"C:/Users/John Doe/.dev3.0/bin/dev3.exe"');
 		const working = `${cli} task move --status in-progress --if-status-not review-by-ai --tolerate-app-offline`;
 
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${cli} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
@@ -1108,6 +1093,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 		"PostToolUse",
 		"PermissionRequest",
 		"Stop",
+		"SessionEnd",
 		"StopFailure",
 	];
 
@@ -1153,10 +1139,10 @@ describe("mergeClaudeHooks with malformed settings", () => {
 
 	it("leaves an unrelated event alone even when its value is malformed", () => {
 		const merged = mergeClaudeHooks({
-			hooks: { SessionEnd: "whatever" },
+			hooks: { Notification: "whatever" },
 		}) as { hooks: Record<string, unknown> };
 
-		expect(merged.hooks.SessionEnd).toBe("whatever");
+		expect(merged.hooks.Notification).toBe("whatever");
 	});
 
 	it("drops a malformed group without dropping the rest of the event", () => {

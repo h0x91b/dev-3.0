@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { claudeSessionWatches } from "./claude-session-watch";
 import Electrobun, {
 	ApplicationMenu,
 	PATHS,
@@ -839,6 +840,7 @@ function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
 	stopFreezeDiagnostics();
 	stopAgentMessageLogWatches();
+	claudeSessionWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
