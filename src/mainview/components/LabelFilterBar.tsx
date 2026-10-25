@@ -7,6 +7,7 @@ import HelpSpot from "./HelpSpot";
 import type { FilterFunnelGroup } from "../utils/taskFacets";
 import { isFacetTokenActive, toggleFacetToken } from "../utils/taskSearch";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { toastClearanceRef } from "../toast-clearance";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
@@ -166,7 +167,7 @@ function LabelFilterBar({
 	// let the funnel own all filtering (it opens a bottom sheet on narrow).
 	if (narrow) {
 		return (
-			<div className="flex items-center gap-2 px-3 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
+			<div ref={toastClearanceRef} className="flex items-center gap-2 px-3 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
 				<div className="relative flex-1 min-w-0">
 					<svg
 						className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-3 pointer-events-none"
@@ -217,7 +218,7 @@ function LabelFilterBar({
 	}
 
 	return (
-		<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pt-2 pb-1.5 border-b border-edge/50" data-help-id="board.filter-bar">
+		<div ref={toastClearanceRef} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pt-2 pb-1.5 border-b border-edge/50" data-help-id="board.filter-bar">
 			{/* Search + funnel: the funnel sits snug against the search's right edge. */}
 			<div className="flex items-center gap-1 flex-shrink-0">
 				<div className="relative w-56">

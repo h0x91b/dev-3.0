@@ -17,6 +17,8 @@ const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
  * for the bottom-left.
  */
 const DECLARED_OWNERS: Record<string, string> = {
+	// Takes its `top` from the toolbars on screen, through `style`. Any class-based
+	// claim on this corner is therefore a second owner and fails the check below.
 	"top-right": "src/mainview/toast.tsx",
 	// Positions itself through `style` for the safe-area insets, so the class
 	// scanner below cannot see it. Declared here instead.

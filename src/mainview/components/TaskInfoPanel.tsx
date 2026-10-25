@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "../toast";
+import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo } from "../../shared/types";
@@ -191,6 +192,14 @@ function TaskInfoPanel({
 	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
 	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
+	const setPanelRef = useCallback((node: HTMLDivElement | null) => {
+		panelRef.current = node;
+		const release = toastClearanceRef(node);
+		return () => {
+			release?.();
+			panelRef.current = null;
+		};
+	}, []);
 	const panelWidth = useContainerWidth(panelRef);
 	const tight = panelWidth > 0 && panelWidth < TIGHT_PANEL_WIDTH;
 	const dragging = useRef(false);
@@ -1385,7 +1394,7 @@ function TaskInfoPanel({
 	// same kebab→sheet pattern used in the global header.
 	if (narrow) {
 		return (
-			<div className="flex-shrink-0 border-b border-edge glass-header">
+			<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
 				{diffFilesPopover}
 				{fileOpenInMenuPortal}
 				{statusSheet}
@@ -1605,7 +1614,7 @@ function TaskInfoPanel({
 
 	return (
 		<div
-			ref={panelRef}
+			ref={setPanelRef}
 			className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
 			style={{ height }}
 		>

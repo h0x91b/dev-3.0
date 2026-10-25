@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LabelFilterBar from "../LabelFilterBar";
+import { ToastHost } from "../../toast";
 import { I18nProvider } from "../../i18n";
 import type { Label } from "../../../shared/types";
 import type { FilterFunnelGroup } from "../../utils/taskFacets";
@@ -239,5 +240,24 @@ describe("LabelFilterBar — narrow viewport", () => {
 		await userEvent.click(screen.getByTestId("filter-funnel-button"));
 		expect(screen.getByTestId("filter-funnel-sheet")).toBeInTheDocument();
 		expect(screen.getByRole("checkbox", { name: "Bug" })).toBeInTheDocument();
+	});
+});
+
+describe("LabelFilterBar — the toast stack never covers it", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it("registers the bar as chrome, so toasts start below it", () => {
+		const original = HTMLElement.prototype.getBoundingClientRect;
+		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+			if (this.dataset.helpId !== "board.filter-bar") return original.call(this);
+			return { left: 0, right: window.innerWidth, top: 82, bottom: 126, x: 0, y: 82, width: window.innerWidth, height: 44, toJSON: () => ({}) } as DOMRect;
+		});
+		render(
+			<I18nProvider>
+				<LabelFilterBar labels={LABELS} searchQuery="" onSearchChange={vi.fn()} filterGroups={GROUPS} />
+				<ToastHost />
+			</I18nProvider>,
+		);
+		expect(document.querySelector<HTMLElement>("[data-toast-stack]")?.style.top).toBe("126px");
 	});
 });

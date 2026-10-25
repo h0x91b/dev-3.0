@@ -48,6 +48,7 @@ import SessionsScreen from "./components/SessionsScreen";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
+import { toastClearanceRef } from "./toast-clearance";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
@@ -3098,7 +3099,7 @@ function App() {
 			{terminalImmersiveVisible ? (
 				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 			) : (
-				<header aria-label={t("nav.appHeader")}>
+				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")}>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 					<GlobalHeader
 						route={route}

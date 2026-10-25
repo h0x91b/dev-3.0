@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactElement } from "react";
 import { act, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../i18n";
 import { createPortal } from "react-dom";
 import { _setToastArmDelayForTests, setToastSuppressed, taskToastContext, ToastHost, toast, usePinnedToastSlot } from "../toast";
+import { toastClearanceRef } from "../toast-clearance";
 
 /** `ToastHost` localizes its dismiss label, so every render needs the provider. */
 function render(ui: ReactElement) {
@@ -861,6 +864,173 @@ describe("ToastHost — the pinned slot owns the corner with the toasts", () => 
 		expect(pinned.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
+});
+
+describe("ToastHost — the stack starts below the visible toolbars", () => {
+	type Box = { left: number; right: number; top: number; bottom: number };
+	let restore: Array<() => void> = [];
+
+	function setWindow(width: number, height: number): void {
+		const w = window.innerWidth;
+		const h = window.innerHeight;
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+		Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+		restore.push(() => {
+			Object.defineProperty(window, "innerWidth", { configurable: true, value: w });
+			Object.defineProperty(window, "innerHeight", { configurable: true, value: h });
+		});
+	}
+
+	/** A toolbar row whose layout box the test controls through `data-box`. */
+	function Chrome({ box, testId }: { box: Box; testId?: string }) {
+		return <div ref={toastClearanceRef} data-testid={testId} data-box={JSON.stringify(box)} />;
+	}
+
+	function stack(): HTMLElement {
+		const el = document.querySelector<HTMLElement>("[data-toast-stack]");
+		if (!el) throw new Error("toast stack not found");
+		return el;
+	}
+
+	beforeEach(() => {
+		const original = HTMLElement.prototype.getBoundingClientRect;
+		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+			const raw = this.dataset.box;
+			if (!raw) return original.call(this);
+			const { left, right, top, bottom } = JSON.parse(raw) as Box;
+			return { left, right, top, bottom, x: left, y: top, width: right - left, height: bottom - top, toJSON: () => ({}) } as DOMRect;
+		});
+		setWindow(1440, 900);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		for (const undo of restore.reverse()) undo();
+		restore = [];
+	});
+
+	it("sits under the lowest toolbar that reaches into its column, with its height capped to the window", () => {
+		render(
+			<>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				<Chrome box={{ left: 0, right: 1440, top: 82, bottom: 150 }} />
+				<Chrome box={{ left: 0, right: 1440, top: 150, bottom: 183 }} />
+				<ToastHost />
+			</>,
+		);
+		expect(stack().style.top).toBe("183px");
+		expect(stack().style.maxHeight).toBe("calc(100dvh - 183px)");
+		expect(stack().className).toContain("overflow-y-auto");
+	});
+
+	it("ignores chrome left of the toast column and chrome that is collapsed to nothing", () => {
+		render(
+			<>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				{/* A split view's task toolbar on the left half never sits under a toast. */}
+				<Chrome box={{ left: 0, right: 700, top: 82, bottom: 300 }} />
+				<Chrome box={{ left: 0, right: 1440, top: 82, bottom: 82 }} />
+				<ToastHost />
+			</>,
+		);
+		expect(stack().style.top).toBe("82px");
+	});
+
+	it("moves back up when a toolbar leaves the screen, and down when one arrives", () => {
+		const { rerender } = render(
+			<>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				<Chrome box={{ left: 0, right: 1440, top: 82, bottom: 126 }} />
+				<ToastHost />
+			</>,
+		);
+		expect(stack().style.top).toBe("126px");
+
+		rerender(
+			<I18nProvider>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				<ToastHost />
+			</I18nProvider>,
+		);
+		expect(stack().style.top).toBe("82px");
+	});
+
+	it("re-measures when the window resizes and a toolbar wraps onto a second row", () => {
+		render(
+			<>
+				<Chrome testId="bar" box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				<ToastHost />
+			</>,
+		);
+		expect(stack().style.top).toBe("82px");
+
+		screen.getByTestId("bar").dataset.box = JSON.stringify({ left: 0, right: 600, top: 0, bottom: 120 });
+		setWindow(600, 900);
+		act(() => window.dispatchEvent(new Event("resize")));
+		expect(stack().style.top).toBe("120px");
+	});
+
+	it("re-measures when a toast arrives, because chrome can move without resizing", async () => {
+		render(
+			<>
+				<Chrome testId="bar" box={{ left: 0, right: 1440, top: 0, bottom: 82 }} />
+				<ToastHost />
+			</>,
+		);
+		screen.getByTestId("bar").dataset.box = JSON.stringify({ left: 0, right: 1440, top: 40, bottom: 122 });
+		act(() => toast.info("Dev server restarted"));
+		await screen.findByRole("alert");
+		expect(stack().style.top).toBe("122px");
+	});
+
+	it("keeps room for a card on a short window instead of pushing the stack off screen", () => {
+		setWindow(1440, 300);
+		render(
+			<>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 280 }} />
+				<ToastHost />
+			</>,
+		);
+		// 300px window minus the 8rem (128px) a card is always left.
+		expect(stack().style.top).toBe("172px");
+	});
+
+	it("starts at the very top when no chrome is registered", () => {
+		render(<ToastHost />);
+		expect(stack().style.top).toBe("0px");
+	});
+
+	// Each surface is chrome some screen shows at the top; unwiring one silently puts
+	// toasts back over its buttons on that screen only.
+	it.each([
+		["App.tsx", "<header ref={toastClearanceRef}"],
+		["components/TaskInfoPanel.tsx", "toastClearanceRef(node)"],
+		["components/TaskInfoPanel.tsx", "ref={setPanelRef}"],
+		["components/ProjectTerminal.tsx", "ref={toastClearanceRef}"],
+	])("keeps %s registered as toast clearance (%s)", (file, wiring) => {
+		const source = readFileSync(resolve(__dirname, "..", file), "utf-8");
+		expect(source).toContain(wiring);
+	});
+
+	it("lets clicks through everywhere except the cards, and keeps their controls working", async () => {
+		render(
+			<>
+				<Chrome box={{ left: 0, right: 1440, top: 0, bottom: 150 }} />
+				<ToastHost />
+			</>,
+		);
+		act(() => {
+			toast.info("first", { durationMs: 60_000 });
+			toast.success("second", { durationMs: 60_000 });
+		});
+		await screen.findAllByRole("alert");
+		expect(stack().className).toContain("pointer-events-none");
+		for (const card of stack().querySelectorAll("[data-toast-card]")) {
+			expect(card.closest(".pointer-events-auto")).not.toBeNull();
+		}
+		await userEvent.click(screen.getByRole("button", { name: /Clear all/ }));
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	});
 });
 
 describe("toast stack stability", () => {
