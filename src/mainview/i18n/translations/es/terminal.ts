@@ -292,6 +292,7 @@ const terminal = {
 	// File path links in terminal output (Cmd/Ctrl+Click)
 	"terminal.pathLinkFolderBrowser": "Las carpetas no se pueden abrir desde el navegador — usa la aplicación de escritorio.",
 	"terminal.pathLinkOpenFailed": "No se pudo abrir la ruta: {error}",
+	"terminal.legacyTmuxServer": "Las terminales de las tareas siguen en un servidor tmux de una ejecución anterior de dev-3.0, así que pueden perder el acceso a Documentos o Escritorio. Pasarán a la configuración corregida cuando ese servidor se reinicie, por ejemplo al cerrar sesión.",
 	"terminal.fileLinkNotFound": "No se puede abrir {path}: no existe o está fuera de las carpetas permitidas.",
 	"terminal.fileLinkUnreadable": "Ese enlace no es una ruta de archivo legible: {uri}",
 	"terminal.deepLinkNotFound": "No hay nada que abrir en {uri}: esa tarea, proyecto o espacio ya no existe.",

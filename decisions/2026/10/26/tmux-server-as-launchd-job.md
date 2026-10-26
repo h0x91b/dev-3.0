@@ -27,10 +27,17 @@ client would have handed a self-started server, `ProcessType=Interactive`), boot
 `gui/<uid>`, deletes the file and waits up to 2 s for the socket. The job is not in
 `~/Library/LaunchAgents`, so it never runs at login and leaves nothing to uninstall. A live or
 unanswering server is never touched; any failure logs and lets tmux start its own server as before.
+The binary is resolved through symlinks first, so the `~/.dev3.0/bin/tmux` shim counts as the bundle
+it points at. `-D` turns tmux's `exit-empty` off; a `session-created` hook in the dev3 config
+(`src/bun/tmux/config.ts`) turns it back on once a session exists, so the server still exits after
+the last session closes. `predatesLaunchdServer` flags a live server launchd does not own, and the
+renderer shows a one-time warning toast (`getTmuxServerNotice`) because such a server stays exposed
+until it restarts.
 
 ## Risks
 
-- `-D` turns tmux's `exit-empty` off, so an idle server now lives until log-out or `kill-server`.
+- A server created by an older dev3 keeps the flaw until it restarts; the first update ships the
+  fix without protecting terminals that are already open.
 - An update that changes the tmux binary's code was not verified, only a byte-identical swap.
 - Homebrew/PATH/custom tmux keep the old start: tccd would judge them as themselves and they would
   lose the access they inherit from a live app. The native backend's detached host has the same flaw.

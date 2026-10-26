@@ -4,10 +4,12 @@ import {
 	buildLaunchdPlist,
 	ensureLaunchdServer,
 	launchdLabel,
+	predatesLaunchdServer,
 	usesLaunchdServer,
 } from "../launchd-server";
 
 const BUNDLED = "/Applications/dev-3.0.app/Contents/Resources/app/tmux/tmux";
+const SHIM = "/Users/u/.dev3.0/bin/tmux";
 const OPTS = { binary: BUNDLED, socket: "dev3", configFile: "/tmp/dev3-tmux.conf", cwd: "/Users/u/.dev3.0", env: { PATH: "/bin" } };
 
 type Probe = "alive" | "absent" | "timeout" | "weird";
@@ -35,6 +37,7 @@ function fakeDeps(over: { probes?: Probe[]; bootstrapExit?: number; writeThrows?
 		},
 		removeFile: (path) => removed.push(path),
 		sleep: () => {},
+		realpath: (path) => (path === SHIM ? BUNDLED : path.startsWith("/") ? path : null),
 	};
 	const launchctl = () => calls.filter((c) => c[0] === "launchctl").map((c) => c.slice(0, 2).join(" "));
 	return { deps, calls, files, removed, launchctl };
@@ -83,6 +86,14 @@ describe("ensureLaunchdServer", () => {
 		expect(f.calls).toEqual([]);
 	});
 
+	it("follows the ~/.dev3.0/bin shim into the bundle and launches the real binary", () => {
+		const f = fakeDeps({ probes: ["absent", "alive"] });
+		expect(ensureLaunchdServer({ ...OPTS, binary: SHIM }, f.deps)).toBe("started");
+		const plist = [...f.files.values()][0];
+		expect(plist).toContain(`<string>${BUNDLED}</string>`);
+		expect(plist).not.toContain(SHIM);
+	});
+
 	it("never touches launchd when a server is alive or the probe is inconclusive", () => {
 		for (const probe of ["alive", "timeout", "weird"] as const) {
 			const f = fakeDeps({ probes: [probe] });
@@ -117,5 +128,30 @@ describe("ensureLaunchdServer", () => {
 		const f = fakeDeps({ probes: ["absent"] });
 		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("fallback");
 		expect(f.launchctl()).toEqual(["launchctl bootout", "launchctl bootstrap", "launchctl bootout"]);
+	});
+});
+
+describe("predatesLaunchdServer", () => {
+	function deps(server: { exitCode: number; pid?: string }, job: { exitCode: number; out?: string }): LaunchdServerDeps {
+		const enc = (text: string) => new TextEncoder().encode(text);
+		return {
+			...fakeDeps().deps,
+			spawnSync: (cmd) => cmd[0] === "launchctl"
+				? { exitCode: job.exitCode, stdout: enc(job.out ?? "") }
+				: { exitCode: server.exitCode, stdout: enc(server.pid ?? "") },
+		};
+	}
+	const JOB = (pid: number) => `gui/502/dev3.tmux.dev3 = {\n\tstate = running\n\tpid = ${pid}\n\t\tstate = active\n}`;
+
+	it("flags a live server that launchd does not own", () => {
+		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 113 }))).toBe(true);
+		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: JOB(999) }))).toBe(true);
+	});
+
+	it("stays quiet for a launchd-owned, missing or unreadable server", () => {
+		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: JOB(16123) }))).toBe(false);
+		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 1 }, { exitCode: 113 }))).toBe(false);
+		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "garbage" }, { exitCode: 113 }))).toBe(false);
+		expect(predatesLaunchdServer({ ...OPTS, binary: "/opt/homebrew/bin/tmux" }, deps({ exitCode: 0, pid: "1" }, { exitCode: 113 }))).toBe(false);
 	});
 });

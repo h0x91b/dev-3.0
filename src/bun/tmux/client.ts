@@ -27,7 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
-import { ensureLaunchdServer } from "./launchd-server";
+import { ensureLaunchdServer, predatesLaunchdServer } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
 import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
@@ -151,6 +151,11 @@ export class TmuxClient {
 	/** Resolve a candidate path that may be the dev3 PATH shim (see ./binary). */
 	dereferenceShim(binaryPath: string): string | undefined {
 		return dereferenceTmuxShim(binaryPath);
+	}
+
+	/** A running server an older dev3 daemonized, outside launchd (macOS bundled tmux only). */
+	serverPredatesLaunchd(opts?: SocketOpt): boolean {
+		return predatesLaunchdServer({ binary: getTmuxBinary(), socket: opts?.socket ?? this.defaultSocket });
 	}
 
 	/** Version skew detected against the live server, when no compatible client was found. */

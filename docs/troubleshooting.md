@@ -121,9 +121,9 @@ Technical Support describes the same weak link for helpers that daemonize
 **Fixed for the bundled tmux:** dev-3.0 now starts that server as a per-user launchd job, which
 macOS treats as its own responsible process and credits to the dev-3.0 app, so the app's existing
 grants keep working after restarts and updates. A server started by an older version keeps the old
-behaviour until it exits: closing every task terminal is not enough (the server outlives them), so
-it switches over at your next log-out, or at once if you run `tmux -L dev3 kill-server` and accept
-losing every running task terminal. Homebrew, PATH and custom tmux binaries still start the old way,
+behaviour until it exits — dev-3.0 shows a warning toast at launch while one is running. It exits
+on its own once no task has a terminal open, at your next log-out, or at once if you run
+`tmux -L dev3 kill-server` and accept losing every running task terminal. Homebrew, PATH and custom tmux binaries still start the old way,
 because macOS would judge them as themselves rather than as dev-3.0 — for those, and for an old
 server you cannot restart yet, the Full Disk Access workaround below still applies.
 

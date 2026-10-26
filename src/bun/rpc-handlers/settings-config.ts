@@ -660,6 +660,12 @@ async function getRosettaWarning(): Promise<RosettaWarningInfo> {
 	return info;
 }
 
+async function getTmuxServerNotice(): Promise<{ predatesLaunchd: boolean }> {
+	const predatesLaunchd = tmux.serverPredatesLaunchd();
+	if (predatesLaunchd) log.warn("tmux server predates the launchd start; task terminals can still lose folder access");
+	return { predatesLaunchd };
+}
+
 async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
 	log.info("-> checkGhAvailable");
 	const status = await github.getGitHubCliStatus();
@@ -817,6 +823,7 @@ export const settingsConfigHandlers = {
 	getTelemetryProfile,
 	checkSystemRequirements,
 	getRosettaWarning,
+	getTmuxServerNotice,
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,

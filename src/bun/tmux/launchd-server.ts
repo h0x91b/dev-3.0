@@ -11,7 +11,7 @@
  * resolves it to the app's bundle id, so the user's existing grants apply.
  * See decisions/2026/10/26/tmux-server-as-launchd-job.md.
  */
-import { unlinkSync, writeFileSync } from "node:fs";
+import { realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "../logger";
 import { spawnSync as defaultSpawnSync } from "../spawn";
 import { dev3TempPath } from "../temp-paths";
@@ -25,6 +25,7 @@ const READY_POLL_MS = 20;
 
 type SpawnSyncFn = (cmd: string[], opts?: Record<string, unknown>) => {
 	exitCode: number | null;
+	stdout?: Uint8Array | Buffer;
 	stderr?: Uint8Array | Buffer;
 	exitedDueToTimeout?: boolean;
 };
@@ -36,6 +37,8 @@ export interface LaunchdServerDeps {
 	writeFile: (path: string, contents: string) => void;
 	removeFile: (path: string) => void;
 	sleep: (ms: number) => void;
+	/** Resolves the ~/.dev3.0/bin shim to the bundle it points at; null when unresolvable. */
+	realpath: (path: string) => string | null;
 }
 
 const defaultDeps: LaunchdServerDeps = {
@@ -49,6 +52,13 @@ const defaultDeps: LaunchdServerDeps = {
 		} catch { /* already gone */ }
 	},
 	sleep: (ms) => Bun.sleepSync(ms),
+	realpath: (path) => {
+		try {
+			return realpathSync(path);
+		} catch {
+			return null;
+		}
+	},
 };
 
 /**
@@ -134,8 +144,9 @@ export function ensureLaunchdServer(
 	opts: { binary: string; socket: string; configFile: string; cwd: string; env: Record<string, string | undefined> },
 	deps: LaunchdServerDeps = defaultDeps,
 ): "started" | "skipped" | "fallback" {
-	if (!usesLaunchdServer(deps.platform, opts.binary)) return "skipped";
-	if (probeServer(opts.binary, opts.socket, deps) !== "absent") return "skipped";
+	const binary = deps.realpath(opts.binary);
+	if (!binary || !usesLaunchdServer(deps.platform, binary)) return "skipped";
+	if (probeServer(binary, opts.socket, deps) !== "absent") return "skipped";
 
 	const label = launchdLabel(opts.socket);
 	const domain = `gui/${deps.uid}`;
@@ -143,7 +154,7 @@ export function ensureLaunchdServer(
 	try {
 		// A job left loaded by a server that already exited blocks a new bootstrap (EIO).
 		deps.spawnSync(["launchctl", "bootout", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore" });
-		deps.writeFile(plistPath, buildLaunchdPlist({ ...opts, label }));
+		deps.writeFile(plistPath, buildLaunchdPlist({ ...opts, binary, label }));
 		const boot = deps.spawnSync(["launchctl", "bootstrap", domain, plistPath], {
 			stdout: "ignore",
 			stderr: "pipe",
@@ -162,7 +173,7 @@ export function ensureLaunchdServer(
 	}
 
 	for (let waited = 0; waited < READY_TIMEOUT_MS; waited += READY_POLL_MS) {
-		if (probeServer(opts.binary, opts.socket, deps) === "alive") {
+		if (probeServer(binary, opts.socket, deps) === "alive") {
 			log.info("tmux server started as a launchd job", { label, waitedMs: waited });
 			return "started";
 		}
@@ -172,4 +183,36 @@ export function ensureLaunchdServer(
 	deps.spawnSync(["launchctl", "bootout", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore" });
 	log.warn("launchd tmux server did not come up; tmux will start its own server", { label });
 	return "fallback";
+}
+
+/**
+ * True when a bundled-tmux server is running on `socket` but launchd does not
+ * own it — a server an older dev3 daemonized, still exposed to the TCC loss
+ * until it restarts. Any doubt answers false: this only drives a hint.
+ */
+export function predatesLaunchdServer(
+	opts: { binary: string; socket: string },
+	deps: LaunchdServerDeps = defaultDeps,
+): boolean {
+	const binary = deps.realpath(opts.binary);
+	if (!binary || !usesLaunchdServer(deps.platform, binary)) return false;
+	const server = deps.spawnSync([binary, "-L", opts.socket, "display-message", "-p", "#{pid}"], {
+		stdout: "pipe",
+		stderr: "ignore",
+		timeout: PROBE_TIMEOUT_MS,
+	});
+	if (server.exitCode !== 0 || server.exitedDueToTimeout) return false;
+	const serverPid = Number(new TextDecoder().decode(server.stdout ?? new Uint8Array()).trim());
+	if (!Number.isInteger(serverPid) || serverPid <= 0) return false;
+
+	const job = deps.spawnSync(["launchctl", "print", `gui/${deps.uid}/${launchdLabel(opts.socket)}`], {
+		stdout: "pipe",
+		stderr: "ignore",
+		timeout: PROBE_TIMEOUT_MS,
+	});
+	if (job.exitedDueToTimeout) return false;
+	const jobPid = job.exitCode === 0
+		? Number(/^\s*pid = (\d+)/m.exec(new TextDecoder().decode(job.stdout ?? new Uint8Array()))?.[1])
+		: NaN;
+	return jobPid !== serverPid;
 }

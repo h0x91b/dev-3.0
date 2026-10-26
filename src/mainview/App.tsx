@@ -734,6 +734,17 @@ function App() {
 			.catch((err) => console.error("Failed to check Rosetta status:", err));
 	}, []);
 
+	// A tmux server an older dev3 started outside launchd can still lose folder
+	// access (decisions/2026/10/26/tmux-server-as-launchd-job.md). Once per launch.
+	useEffect(() => {
+		api.request
+			.getTmuxServerNotice()
+			.then(({ predatesLaunchd }) => {
+				if (predatesLaunchd) toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
+			})
+			.catch((err) => console.error("Failed to check the tmux server:", err));
+	}, []);
+
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
 	const navigationGuardRef = useRef<NavigationGuard | null>(null);
 	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);

@@ -913,6 +913,11 @@ export type AppRPCSchema = {
 				params: void;
 				response: RosettaWarningInfo;
 			};
+			/** macOS: task terminals still run on a tmux server started outside launchd. */
+			getTmuxServerNotice: {
+				params: void;
+				response: { predatesLaunchd: boolean };
+			};
 			checkGhAvailable: {
 				params: void;
 				response: { available: boolean; notInstalled: boolean };

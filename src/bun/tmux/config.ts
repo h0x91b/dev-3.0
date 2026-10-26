@@ -172,6 +172,12 @@ bind -n C-DC if -F '#{alternate_on}' 'send-keys C-DC' 'send-keys M-d'
 # task sessions, so a global option would let tasks clobber each other's value.
 set-hook -g after-select-pane 'set -F ${TMUX_LAST_AGENT_PANE_OPTION} "#{?${TMUX_AGENT_PANE_OPTION},#{pane_id},#{${TMUX_LAST_AGENT_PANE_OPTION}}}"'
 
+# A launchd-started server runs with "tmux -D", which turns exit-empty off; turn it
+# back on once a session exists so the server still exits after the last one closes.
+# Turning it on before the first session would exit the waiting server at once.
+# See decisions/2026/10/26/tmux-server-as-launchd-job.md.
+set-hook -g session-created[99] 'set -s exit-empty on'
+
 # Pane border style
 set -g pane-border-lines double
 

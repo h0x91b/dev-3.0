@@ -309,6 +309,7 @@ const terminal = {
 	// File path links in terminal output (Cmd/Ctrl+Click)
 	"terminal.pathLinkFolderBrowser": "Папки нельзя открыть из браузера — используйте настольное приложение.",
 	"terminal.pathLinkOpenFailed": "Не удалось открыть путь: {error}",
+	"terminal.legacyTmuxServer": "Терминалы задач всё ещё работают на сервере tmux от предыдущего запуска dev-3.0, поэтому могут потерять доступ к «Документам» или «Рабочему столу». Исправленная схема включится после перезапуска этого сервера — например, после выхода из системы.",
 	"terminal.fileLinkNotFound": "Не удалось открыть {path} — файла нет или он вне разрешённых папок.",
 	"terminal.fileLinkUnreadable": "Эта ссылка не похожа на путь к файлу: {uri}",
 	"terminal.deepLinkNotFound": "Нечего открывать по {uri} — этой задачи, проекта или пространства больше нет.",
