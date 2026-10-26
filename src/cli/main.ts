@@ -40,6 +40,7 @@ import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
+import { handleCursorUsage } from "./commands/cursor-usage";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
@@ -243,6 +244,11 @@ async function main(): Promise<void> {
 
 	const command = rawArgs[0];
 	const subcommand = rawArgs[1] && !rawArgs[1].startsWith("--") ? rawArgs[1] : undefined;
+	if (command === "hook" && subcommand === "cursor-usage") {
+		try { handleCursorUsage(await Bun.stdin.text()); }
+		catch { /* Accounting remains successful if stdin cannot be read. */ }
+		return;
+	}
 	const restArgs = subcommand ? rawArgs.slice(2) : rawArgs.slice(1);
 	const args = resolveFileArgs(parseArgs(restArgs));
 

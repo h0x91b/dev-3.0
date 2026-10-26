@@ -219,9 +219,12 @@ describe("hooksSpec", () => {
 	it("pi is a bare pi spec (the executor turns it into --extension <extension>)", () => {
 		expect(piAdapter.hooksSpec()).toEqual({ kind: "pi" });
 	});
-	it("Gemini / Cursor / OpenCode / Generic install no hooks", () => {
+	it("Cursor installs accounting hooks while keeping its generic lifecycle prompt", () => {
+		expect(cursorAdapter.hooksSpec()).toEqual({ kind: "cursor" });
+		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
+	});
+	it("Gemini / OpenCode / Generic install no hooks", () => {
 		expect(geminiAdapter.hooksSpec()).toBeNull();
-		expect(cursorAdapter.hooksSpec()).toBeNull();
 		expect(opencodeAdapter.hooksSpec()).toBeNull();
 		expect(genericAdapter.hooksSpec()).toBeNull();
 	});

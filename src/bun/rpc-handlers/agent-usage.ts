@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentUsageReport, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
+import type { AgentUsageReport, AgentUsageSource, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { getBusyTaskShortIds, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
@@ -11,14 +11,18 @@ import { loadModelCatalog } from "../model-catalog-store";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
 import { retainUsageHistory } from "../agent-usage-history";
 import { getPricingResolver } from "../agent-pricing-refresh";
+import { DEV3_HOME } from "../paths";
+import { resolveCopilotHome } from "../copilot-config";
+import { collectGeminiUsage } from "../usage-collectors/gemini";
+import { collectCursorUsage } from "../usage-collectors/cursor";
+import { collectCopilotUsage } from "../usage-collectors/copilot";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
 /**
  * Agent usage (tokens + API-equivalent cost) reconstructed from LOCAL on-disk
- * agent state — no API calls. Covers Claude Code transcripts and Codex rollout
- * JSONL files, the same local sources the `ccusage` tool uses. Pure aggregation
- * lives in `agent-usage-parse.ts`; this file only walks the filesystem.
+ * agent state. Covers Claude, Codex, Gemini, Cursor hooks and Copilot accounting.
+ * Usage stays local; public pricing refreshes independently of the raw records.
  */
 
 /** Root of Claude Code's projects dir, honouring CLAUDE_CONFIG_DIR (used by the account switcher). */
@@ -90,26 +94,39 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 		}
 	}
 	foldJsonlFiles(codexFiles, codexState, foldCodexEntry, beginCodexRollout);
+	const states = {
+		claude: claudeState, codex: codexState,
+		gemini: newUsageState(), cursor: newUsageState(), copilot: newUsageState(),
+	};
+	const collectors = [
+		() => collectGeminiUsage(states.gemini, homedir()),
+		() => collectCursorUsage(states.cursor, DEV3_HOME),
+		() => collectCopilotUsage(states.copilot, resolveCopilotHome()),
+	];
+	for (const collect of collectors) {
+		try { collect(); }
+		catch (error) { log.warn("Agent usage source unavailable", { error: String(error) }); }
+	}
 
 	// A routed session's transcript names the catalog wire name, which the rate
 	// table has never heard of; price it as the provider's own model instead.
 	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
-	for (const state of [claudeState, codexState]) {
+	for (const state of Object.values(states)) {
 		for (const usage of state.records.values()) {
 			const native = nativeModelIdForWireName(catalog, usage.model);
 			if (native) usage.pricingModel = native;
 		}
 	}
 
-	const retained = await retainUsageHistory({ claude: claudeState, codex: codexState });
+	const retained = await retainUsageHistory(states);
 	const resolveRate = await getPricingResolver();
-	const claude = finalizeUsage(retained.claude, "claude", pricingId, resolveRate);
-	const codex = finalizeUsage(retained.codex, "codex", pricingId, resolveRate);
-	const days = [...claude.days, ...codex.days].sort(
+	const reports = (Object.entries(retained) as [AgentUsageSource, UsageState][])
+		.map(([source, state]) => finalizeUsage(state, source, pricingId, resolveRate));
+	const days = reports.flatMap((report) => report.days).sort(
 		(a, b) => a.startMs - b.startMs || a.source.localeCompare(b.source),
 	);
-	const hasUnpriced = claude.hasUnpriced || codex.hasUnpriced;
+	const hasUnpriced = reports.some((report) => report.hasUnpriced);
 	log.info("getAgentUsage computed", {
 		claudeFiles: claudeFiles.length,
 		codexFiles: codexFiles.length,

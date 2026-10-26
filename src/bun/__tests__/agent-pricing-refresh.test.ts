@@ -13,6 +13,7 @@ function feed(input = 3, output = 12) {
 	return {
 		openai: { models: { "gpt-6.1-sol": { cost: { input, output, cache_read: 0.15, cache_write: 4 } } } },
 		anthropic: { models: { "claude-new": { cost: { input: 4, output: 20, cache_read: 0.4, cache_write: 5 } } } },
+		google: { models: { "gemini-test": { cost: { input: 1.5, output: 6, cache_read: 0.15 } } } },
 		openrouter: { models: { "openai/gpt-6.1-sol": { cost: { input: 7, output: 21, cache_read: 0.7 } } } },
 	};
 }
@@ -43,6 +44,50 @@ afterEach(() => {
 });
 
 describe("daily agent pricing refresh", () => {
+	it("refreshes a recent older pricing catalog once when Google support is added", async () => {
+		writeFileSync(join(dir, "agent-pricing-v1.json"), JSON.stringify({ version: 1, fetchedAt: now, rates: {
+			"openai:gpt-6.1-sol": { input: 2, output: 10, cacheRead: 0.1, cacheWrite5m: 2.5, cacheWrite1h: 4 },
+		} }));
+		expect((await resolver())("gemini-test")?.input).toBe(1.5);
+		await resolver();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("prices exact Google models and retains their rates offline across restarts", async () => {
+		const rate = await resolver();
+		expect(rate("gemini-test")).toMatchObject({ input: 1.5, output: 6, cacheRead: 0.15 });
+		expect(rate("google/gemini-test")).toMatchObject({ input: 1.5, output: 6 });
+		expect(rate("unrelated-vendor/gemini-test")).toBeNull();
+		vi.resetModules();
+		now += DAY_MS;
+		fetchMock.mockRejectedValue(new Error("offline"));
+		expect((await resolver())("gemini-test")).toMatchObject({ input: 1.5, output: 6 });
+	});
+
+	it("keeps Google direct and OpenRouter model prices separate", async () => {
+		const data = feed();
+		Object.assign(data.openrouter.models, { "google/gemini-test": { cost: { input: 9, output: 18 } } });
+		fetchMock.mockResolvedValue(reply(data));
+		const rate = await resolver();
+		expect(rate("gemini-test")?.input).toBe(1.5);
+		expect(rate("openrouter/google/gemini-test")?.input).toBe(9);
+	});
+
+	it("normalizes known Copilot and Cursor Claude version aliases without guessing unrelated models", async () => {
+		const data = feed();
+		Object.assign(data.anthropic.models, {
+			"claude-sonnet-4-6": { cost: { input: 8, output: 24 } },
+			"claude-opus-4-5": { cost: { input: 12, output: 36 } },
+		});
+		fetchMock.mockResolvedValue(reply(data));
+		const rate = await resolver();
+		expect(rate("claude-sonnet-4.6")?.input).toBe(8);
+		expect(rate("sonnet-4.6")?.input).toBe(8);
+		expect(rate("anthropic/claude-sonnet-4.6")?.input).toBe(8);
+		expect(rate("claude-4.5-opus-high-thinking")?.input).toBe(12);
+		for (const id of ["composer-1", "default", "auto-smart", "gemini-unlisted"]) expect(rate(id)).toBeNull();
+	});
+
 	it("applies public input, output and cache-write updates to token costs without a release", async () => {
 		const rate = await resolver();
 		expect(rate("gpt-6.1-sol")).toEqual({ input: 3, output: 12, cacheRead: 0.15, cacheWrite5m: 4, cacheWrite1h: 6 });

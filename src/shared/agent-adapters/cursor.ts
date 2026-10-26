@@ -83,10 +83,8 @@ export const cursorAdapter: AgentAdapter = {
 
 		if (!resume) {
 			let prompt = buildTaskPrompt(config?.appendPrompt, ctx);
-			// Cursor has no out-of-band system-prompt channel and no automatic
-			// hooks, so inject the generic dev3 protocol via the prompt — but only
-			// when there is an actual task prompt (empty/scratch launches open an
-			// interactive window instead).
+			// Cursor delivers the generic lifecycle protocol through the task prompt.
+			// Empty/scratch launches open an interactive window instead.
 			if (prompt) prompt = `${prompt}\n\n${GENERIC_SKILL_BODY}`;
 			if (prompt) args.push("--", shellEscape(prompt));
 		}
@@ -99,7 +97,7 @@ export const cursorAdapter: AgentAdapter = {
 	},
 
 	hooksSpec() {
-		return null;
+		return { kind: "cursor" };
 	},
 
 	exitProgram() {

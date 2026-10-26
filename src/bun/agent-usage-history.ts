@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TokenCounts } from "../shared/agent-pricing";
+import type { AgentUsageSource } from "../shared/types";
 import { atomicWriteFile } from "./atomic-write";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
@@ -10,7 +11,8 @@ import { mergeUsageRecord, newUsageState, type UsageRecord, type UsageState } fr
 const log = createLogger("agent-usage-history");
 const HISTORY_FILE = join(DEV3_HOME, "agent-usage-history-v1.json");
 const COUNT_KEYS = ["inputTokens", "outputTokens", "cacheCreationInputTokens", "cacheReadInputTokens", "cacheCreation5mInputTokens", "cacheCreation1hInputTokens"] as const;
-type States = { claude: UsageState; codex: UsageState };
+type LegacyStates = { claude: UsageState; codex: UsageState };
+type States = Partial<Record<AgentUsageSource, UsageState>>;
 
 function readRecord(value: unknown): UsageRecord {
 	if (!value || typeof value !== "object") throw new Error("Invalid usage history record");
@@ -26,10 +28,27 @@ function readRecord(value: unknown): UsageRecord {
 		counts[key] = n;
 	}
 	if (r.pricingModel !== undefined && typeof r.pricingModel !== "string") throw new Error("Invalid usage pricing identity");
-	return { model: r.model, timestamp: r.timestamp, counts, ...(r.pricingModel ? { pricingModel: r.pricingModel } : {}) };
+	if (r.cumulativeScope !== undefined && (typeof r.cumulativeScope !== "string" || !r.cumulativeScope)) throw new Error("Invalid cumulative usage scope");
+	return {
+		model: r.model, timestamp: r.timestamp, counts,
+		...(r.pricingModel ? { pricingModel: r.pricingModel } : {}),
+		...(r.cumulativeScope ? { cumulativeScope: r.cumulativeScope } : {}),
+	};
 }
 
-function readHistory(): States {
+function restoreState(records: unknown, superseded: unknown = []): UsageState {
+	const state = newUsageState();
+	if (!Array.isArray(superseded) || superseded.some((key: unknown) => typeof key !== "string")) throw new Error("Invalid superseded usage identities");
+	for (const key of superseded) state.superseded.add(key);
+	if (!Array.isArray(records)) throw new Error("Invalid usage history source");
+	for (const pair of records) {
+		if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") throw new Error("Invalid usage history identity");
+		mergeUsageRecord(state, pair[0], readRecord(pair[1]));
+	}
+	return state;
+}
+
+function readHistory(): LegacyStates {
 	let raw: string;
 	try { raw = readFileSync(HISTORY_FILE, "utf8"); }
 	catch (error) {
@@ -40,27 +59,24 @@ function readHistory(): States {
 	if (parsed?.version !== 1) throw new Error("Unsupported usage history version");
 	const states = { claude: newUsageState(), codex: newUsageState() };
 	for (const source of ["claude", "codex"] as const) {
-		const superseded = parsed.superseded?.[source] ?? [];
-		if (!Array.isArray(superseded) || superseded.some((key: unknown) => typeof key !== "string")) throw new Error("Invalid superseded usage identities");
-		for (const key of superseded) states[source].superseded.add(key);
-		if (!Array.isArray(parsed[source])) throw new Error("Invalid usage history source");
-		for (const pair of parsed[source]) {
-			if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") throw new Error("Invalid usage history identity");
-			mergeUsageRecord(states[source], pair[0], readRecord(pair[1]));
-		}
+		states[source] = restoreState(parsed[source], parsed.superseded?.[source] ?? []);
 	}
 	return states;
 }
 
-/** Merge by response identity, never by daily maxima: missing logs must not offset new work. */
-export async function retainUsageHistory(current: States): Promise<States> {
+function mergeState(retained: UsageState, current: UsageState): UsageState {
+	for (const key of current.superseded) retained.superseded.add(key);
+	for (const key of retained.superseded) retained.records.delete(key);
+	for (const [key, value] of current.records) mergeUsageRecord(retained, key, value);
+	return retained;
+}
+
+async function retainLegacyHistory(current: States): Promise<States> {
 	try {
 		return await withFileLock(HISTORY_FILE, async () => {
 			const retained = readHistory();
 			for (const source of ["claude", "codex"] as const) {
-				for (const key of current[source].superseded) retained[source].superseded.add(key);
-				for (const key of retained[source].superseded) retained[source].records.delete(key);
-				for (const [key, value] of current[source].records) mergeUsageRecord(retained[source], key, value);
+				if (current[source]) mergeState(retained[source], current[source]);
 			}
 			mkdirSync(DEV3_HOME, { recursive: true });
 			await atomicWriteFile(HISTORY_FILE, JSON.stringify({
@@ -74,4 +90,45 @@ export async function retainUsageHistory(current: States): Promise<States> {
 		log.warn("Usage history unavailable; returning current logs", { error: String(error) });
 		return current;
 	}
+}
+
+async function retainAdditionalHistory(source: "gemini" | "cursor" | "copilot", current: UsageState): Promise<UsageState> {
+	const file = join(DEV3_HOME, `agent-usage-history-${source}-v1.json`);
+	try {
+		return await withFileLock(file, async () => {
+			let retained = newUsageState();
+			try {
+				const parsed = JSON.parse(readFileSync(file, "utf8"));
+				if (parsed?.version !== 1) throw new Error("Unsupported usage history version");
+				retained = restoreState(parsed.records, parsed.superseded ?? []);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+			mergeState(retained, current);
+			mkdirSync(DEV3_HOME, { recursive: true });
+			await atomicWriteFile(file, JSON.stringify({ version: 1, records: [...retained.records], superseded: [...retained.superseded] }));
+			return retained;
+		}, { staleThreshold: 120_000 });
+	} catch (error) {
+		log.warn("Usage history unavailable; returning current logs", { source, error: String(error) });
+		return current;
+	}
+}
+
+/** Keep new agent stores separate so older two-source writers cannot erase their history. */
+export async function retainUsageHistory<S extends AgentUsageSource>(current: Record<S, UsageState>): Promise<Record<S, UsageState>> {
+	const requested: States = current;
+	const result: States = { ...current };
+	const work: Promise<void>[] = [];
+	if (requested.claude || requested.codex) {
+		work.push(retainLegacyHistory(requested).then((retained) => {
+			for (const source of ["claude", "codex"] as const) if (requested[source]) result[source] = retained[source];
+		}));
+	}
+	for (const source of ["gemini", "cursor", "copilot"] as const) {
+		const state = requested[source];
+		if (state) work.push(retainAdditionalHistory(source, state).then((retained) => { result[source] = retained; }));
+	}
+	await Promise.all(work);
+	return result as Record<S, UsageState>;
 }

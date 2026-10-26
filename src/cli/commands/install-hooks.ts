@@ -4,6 +4,7 @@ import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 import { writeOmpStatusExtension } from "../../shared/omp-status-extension";
 import { writePiStatusExtension } from "../../shared/pi-status-extension";
 import { resolveDev3Home } from "../../shared/dev3-home";
+import { writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
 
@@ -41,9 +42,11 @@ export async function handleInstallHooks(): Promise<void> {
 	const codexSymlink = writeCodexHooks(worktreePath);
 	const ompExtensionPath = writeOmpStatusExtension();
 	const piExtensionPath = writePiStatusExtension();
+	const cursorUsageHooks = await writeCursorUsageHooks();
 	for (const link of [claudeSymlink, codexSymlink]) {
 		if (link) process.stderr.write(`Warning: ${link} is a symlink; dev3 does not write through it, so the hooks under it were not installed.\n`);
 	}
+	process.stdout.write(`${cursorUsageHooks.status === "skipped" ? "Skipped" : "Installed"} Cursor usage hooks → ${cursorUsageHooks.path}${cursorUsageHooks.reason ? ` (${cursorUsageHooks.reason})` : ""}\n`);
 
 	if (claudeSymlink) {
 		process.stdout.write(`Skipped Claude Code hooks → ${claudeSettingsPath} (symlink)\n`);

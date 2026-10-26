@@ -61,11 +61,11 @@ export interface ProductivityStats {
 // ---- Agent usage (tokens & cost) ----
 
 /** Which coding agent a usage row was parsed from. */
-export type AgentUsageSource = "claude" | "codex";
+export type AgentUsageSource = "claude" | "codex" | "gemini" | "cursor" | "copilot";
 
 /**
  * One agent's token usage for a single local calendar day, as reconstructed from
- * on-disk agent state (Claude transcripts / Codex rollouts). No API calls.
+ * on-disk agent state or content-free usage hooks.
  * The renderer buckets these client-side per the selected dashboard range.
  */
 export interface AgentUsageDay {

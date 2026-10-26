@@ -1,4 +1,4 @@
-import { beginCodexRollout, buildClaudeUsageDays, buildCodexUsageDays, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState } from "../agent-usage-parse";
+import { beginCodexRollout, buildClaudeUsageDays, buildCodexUsageDays, finalizeUsage, foldClaudeEntry, foldCodexEntry, mergeUsageRecord, newUsageState } from "../agent-usage-parse";
 
 // Midday-UTC timestamps so local-day bucketing is stable across test-runner timezones.
 function assistant(
@@ -127,6 +127,79 @@ describe("buildClaudeUsageDays", () => {
 		const { days, hasUnpriced } = buildClaudeUsageDays([{ type: "user" }, null, 42]);
 		expect(days).toEqual([]);
 		expect(hasUnpriced).toBe(false);
+	});
+});
+
+describe("cumulative usage checkpoints", () => {
+	function checkpoint(input: number, timestamp: string, model = "gpt-6-sol", scope = "session") {
+		return { model, timestamp: Date.parse(timestamp), cumulativeScope: scope, counts: {
+			inputTokens: input, outputTokens: input / 2, cacheReadInputTokens: input / 4, cacheCreationInputTokens: 0,
+		} };
+	}
+
+	it("differences retained checkpoints before bucketing across month boundaries", () => {
+		const state = newUsageState();
+		mergeUsageRecord(state, "copilot:one", checkpoint(20, "2026-10-31T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:two", checkpoint(30, "2026-11-01T12:00:00Z"));
+		expect(finalizeUsage(state, "copilot").days).toMatchObject([
+			{ date: "2026-10-31", inputTokens: 20, outputTokens: 10, cacheReadInputTokens: 5 },
+			{ date: "2026-11-01", inputTokens: 10, outputTokens: 5, cacheReadInputTokens: 2.5 },
+		]);
+	});
+
+	it("sorts out-of-order checkpoints and ignores lower or repeated cumulative snapshots", () => {
+		const state = newUsageState();
+		mergeUsageRecord(state, "copilot:latest", checkpoint(40, "2026-11-03T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:first", checkpoint(20, "2026-11-01T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:lower", checkpoint(10, "2026-11-02T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:duplicate", checkpoint(40, "2026-11-04T12:00:00Z"));
+		expect(finalizeUsage(state, "copilot").days).toMatchObject([
+			{ date: "2026-11-01", inputTokens: 20 }, { date: "2026-11-03", inputTokens: 20 },
+		]);
+	});
+
+	it("keeps cumulative scopes and models independent", () => {
+		const state = newUsageState();
+		for (const [key, model, scope] of [["one", "gpt-6-sol", "session"], ["two", "gpt-6-astra", "session"], ["three", "gpt-6-sol", "other-session"]]) {
+			mergeUsageRecord(state, key, checkpoint(20, "2026-11-01T12:00:00Z", model, scope));
+		}
+		expect(finalizeUsage(state, "copilot").days[0].inputTokens).toBe(60);
+	});
+
+	it("replaces repeated checkpoint identities without resumming prior totals", () => {
+		const state = newUsageState();
+		mergeUsageRecord(state, "copilot:one", checkpoint(20, "2026-10-31T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:one", checkpoint(40, "2026-10-31T12:00:00Z"));
+		mergeUsageRecord(state, "copilot:two", checkpoint(60, "2026-11-01T12:00:00Z"));
+		expect(finalizeUsage(state, "copilot").days.map((day) => day.inputTokens)).toEqual([40, 20]);
+	});
+
+	it("keeps Cursor generation usage on its original day across fuller later snapshots", () => {
+		const state = newUsageState();
+		const first = checkpoint(20, "2026-10-31T12:00:00Z");
+		const later = checkpoint(40, "2026-11-01T12:00:00Z");
+		mergeUsageRecord(state, "cursor:generation", { ...first, cumulativeScope: undefined });
+		mergeUsageRecord(state, "cursor:generation", { ...later, cumulativeScope: undefined });
+		expect(finalizeUsage(state, "cursor").days).toMatchObject([{ date: "2026-10-31", inputTokens: 40 }]);
+	});
+
+	it("keeps Cursor per-counter maxima when later stop events and retained rescans report smaller snapshots", () => {
+		const state = newUsageState();
+		const first = {
+			model: "gpt-6-sol", timestamp: Date.parse("2026-10-31T12:00:00Z"),
+			counts: { inputTokens: 100, outputTokens: 80, cacheReadInputTokens: 200, cacheCreationInputTokens: 50 },
+		};
+		mergeUsageRecord(state, "cursor:generation", first);
+		mergeUsageRecord(state, "cursor:generation", {
+			...first, timestamp: Date.parse("2026-11-01T12:00:00Z"),
+			counts: { inputTokens: 60, outputTokens: 10, cacheReadInputTokens: 300, cacheCreationInputTokens: 20 },
+		});
+		const rescanned = newUsageState();
+		mergeUsageRecord(rescanned, "cursor:generation", state.records.get("cursor:generation")!);
+		mergeUsageRecord(rescanned, "cursor:generation", { ...first, counts: { inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 1 } });
+		expect(finalizeUsage(rescanned, "cursor").days).toMatchObject([{
+			date: "2026-10-31", inputTokens: 100, outputTokens: 80, cacheReadInputTokens: 300, cacheCreationInputTokens: 50,
+		}]);
 	});
 });
 

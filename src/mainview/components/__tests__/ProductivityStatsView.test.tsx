@@ -223,6 +223,24 @@ describe("ProductivityStatsView", () => {
 		expect(await screen.findByText("Productivity")).toBeInTheDocument();
 		expect(screen.queryByText("~API cost")).not.toBeInTheDocument();
 	});
+
+	it("includes Gemini, Cursor and Copilot usage in the displayed total", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		const now = new Date();
+		const startMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		mockUsage.mockResolvedValue({
+			days: (["gemini", "cursor", "copilot"] as const).map((source, index) => ({
+				date: now.toISOString().slice(0, 10), startMs, source,
+				inputTokens: 1_000_000, outputTokens: 0,
+				cacheCreationInputTokens: 0, cacheReadInputTokens: 0,
+				costUsd: index + 2, fullyPriced: true,
+			})),
+			generatedAt: now.toISOString(), hasUnpricedModels: false,
+		});
+		renderView();
+		expect(await screen.findByText("$9.00")).toBeInTheDocument();
+		expect(screen.getByTitle(/Gemini CLI, Cursor Agent and GitHub Copilot CLI/)).toBeInTheDocument();
+	});
 });
 
 describe("ProductivityStatsView narrow viewport", () => {

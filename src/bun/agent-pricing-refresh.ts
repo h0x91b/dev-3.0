@@ -8,10 +8,11 @@ const FEED_URL = "https://models.dev/api.json";
 const CACHE_FILE = join(DEV3_HOME, "agent-pricing-v1.json");
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
-const PROVIDERS = ["openai", "anthropic", "openrouter"] as const;
+const CATALOG_REVISION = 1;
+const PROVIDERS = ["openai", "anthropic", "google", "openrouter"] as const;
 const RATE_FIELDS = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h"] as const;
 type Rates = Record<string, ModelRate>;
-interface PricingCache { version: 1; fetchedAt: number; rates: Rates }
+interface PricingCache { version: 1; catalogRevision?: number; fetchedAt: number; rates: Rates }
 
 let cache: PricingCache | null = null;
 let loaded = false;
@@ -36,9 +37,18 @@ function validModelId(value: string): boolean {
 	return /^[a-zA-Z0-9][a-zA-Z0-9._/:\[\]-]{0,199}$/.test(value);
 }
 
+function canonicalNativeId(id: string): string {
+	const legacyClaude = /^claude-(\d+(?:\.\d+)?)-(opus|sonnet|haiku)(?:-(?:thinking|low|medium|high|xhigh|max))*$/.exec(id);
+	if (legacyClaude) return `claude-${legacyClaude[2]}-${legacyClaude[1].replaceAll(".", "-")}`;
+	const claude = /^(?:claude-)?(opus|sonnet|haiku)-(\d+(?:[.-]\d+)?)(?:-(?:thinking|low|medium|high|xhigh|max))*$/.exec(id);
+	if (claude) return `claude-${claude[1]}-${claude[2].replaceAll(".", "-")}`;
+	return id;
+}
+
 function bundledRate(id: string): ModelRate | null {
-	if (id.includes("/") && !/^(openai|anthropic|deepseek|z-ai|qwen|moonshotai)\//.test(id)) return null;
-	return resolveModelRate(id);
+	if (!id.includes("/")) return resolveModelRate(canonicalNativeId(id));
+	const prefix = /^(openai|anthropic|google|deepseek|z-ai|qwen|moonshotai)\//.exec(id);
+	return prefix ? resolveModelRate(canonicalNativeId(id.slice(prefix[0].length))) : null;
 }
 
 function readCachedRates(value: unknown): PricingCache | null {
@@ -51,7 +61,10 @@ function readCachedRates(value: unknown): PricingCache | null {
 	for (const [key, rate] of Object.entries(rawRates)) {
 		if (PROVIDERS.some((provider) => key.startsWith(`${provider}:`)) && validModelId(key) && validRate(rate)) rates[key] = rate;
 	}
-	return Object.keys(rates).length ? { version: 1, fetchedAt: stored.fetchedAt as number, rates } : null;
+	return Object.keys(rates).length ? {
+		version: 1, fetchedAt: stored.fetchedAt as number, rates,
+		catalogRevision: stored.catalogRevision === CATALOG_REVISION ? CATALOG_REVISION : 0,
+	} : null;
 }
 
 async function loadCache(): Promise<void> {
@@ -111,7 +124,7 @@ async function readFeed(response: Response): Promise<unknown> {
 async function refresh(): Promise<void> {
 	if (!loaded) await loadCache();
 	const now = Date.now();
-	if (now < nextAttemptAt || cache && now - cache.fetchedAt < DAY_MS) return;
+	if (now < nextAttemptAt || cache && cache.catalogRevision === CATALOG_REVISION && now - cache.fetchedAt < DAY_MS) return;
 	try {
 		// A fixed full-feed GET discloses no model choices, account state, or local content.
 		const response = await fetch(FEED_URL, {
@@ -119,7 +132,7 @@ async function refresh(): Promise<void> {
 			signal: AbortSignal.timeout(5_000),
 		});
 		const rates = feedRates(await readFeed(response));
-		const updated: PricingCache = { version: 1, fetchedAt: now, rates: { ...cache?.rates, ...rates } };
+		const updated: PricingCache = { version: 1, catalogRevision: CATALOG_REVISION, fetchedAt: now, rates: { ...cache?.rates, ...rates } };
 		await mkdir(DEV3_HOME, { recursive: true });
 		await atomicWriteFile(CACHE_FILE, JSON.stringify(updated));
 		cache = updated;
@@ -139,10 +152,12 @@ export async function getPricingResolver(): Promise<(modelId: string) => ModelRa
 	return (modelId) => {
 		const id = modelId.trim().toLowerCase().replace(/\[\d+[km]\]$/, "");
 		const routedId = id.startsWith("openrouter/") ? id.slice("openrouter/".length) : id;
-		const nativePrefix = !id.startsWith("openrouter/") && /^(openai|anthropic)\//.exec(id);
+		const nativePrefix = !id.startsWith("openrouter/") && /^(openai|anthropic|google)\//.exec(id);
+		const nativeId = canonicalNativeId(nativePrefix ? id.slice(nativePrefix[0].length) : id);
 		const rate = id.includes("/")
-			? rates[`openrouter:${routedId}`] ?? (nativePrefix ? rates[`${nativePrefix[1]}:${id.slice(nativePrefix[0].length)}`] : undefined)
-			: rates[`openai:${id}`] ?? rates[`anthropic:${id}`];
+			? rates[`openrouter:${routedId}`] ?? (nativePrefix ? rates[`${nativePrefix[1]}:${nativeId}`] : undefined)
+			: rates[`openai:${id}`] ?? rates[`anthropic:${id}`] ?? rates[`google:${id}`]
+				?? rates[`openai:${nativeId}`] ?? rates[`anthropic:${nativeId}`] ?? rates[`google:${nativeId}`];
 		return rate ?? bundledRate(routedId);
 	};
 }

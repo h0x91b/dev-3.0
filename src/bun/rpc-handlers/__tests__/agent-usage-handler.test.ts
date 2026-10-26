@@ -22,6 +22,7 @@ vi.mock("node:os", async (importOriginal) => ({
 
 import { getAgentUsage } from "../agent-usage";
 import { defaultAccountPaths } from "../../agent-accounts";
+import { recordCursorHookUsage } from "../../usage-collectors/cursor";
 
 let tempRoot: string;
 
@@ -46,6 +47,8 @@ beforeEach(() => {
 	mkdirSync(tempRoot, { recursive: true });
 	vi.stubEnv("CLAUDE_CONFIG_DIR", join(tempRoot, "claude"));
 	vi.stubEnv("CODEX_HOME", join(tempRoot, "codex"));
+	vi.stubEnv("GEMINI_CLI_HOME", tempRoot);
+	vi.stubEnv("COPILOT_HOME", join(tempRoot, ".copilot"));
 });
 
 afterEach(() => {
@@ -55,6 +58,42 @@ afterEach(() => {
 });
 
 describe("getAgentUsage", () => {
+	it("merges all five runtimes and retains added collectors after their source files disappear", async () => {
+		const timestamp = "2026-10-20T12:00:00Z";
+		writeJsonl(join(tempRoot, "claude", "projects", "repo", "session.jsonl"), [{
+			type: "assistant", requestId: "claude", timestamp,
+			message: { id: "claude", model: "claude-sonnet-4-6", usage: { input_tokens: 1_000_000 } },
+		}]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-session.jsonl"), [
+			{ type: "turn_context", payload: { model: "gpt-6.1-sol" } },
+			{ type: "token_usage_record", timestamp, payload: { response_id: "codex", usage: { input_tokens: 1_000_000, output_tokens: 0 } } },
+		]);
+		const geminiRoot = join(tempRoot, ".gemini");
+		const geminiFile = join(geminiRoot, "tmp", "project", "chats", "session.json");
+		mkdirSync(dirname(geminiFile), { recursive: true });
+		writeFileSync(geminiFile, JSON.stringify({ sessionId: "gemini", messages: [{
+			id: "message", type: "gemini", timestamp, model: "gemini-unpriced-fixture",
+			tokens: { input: 1_000_000, output: 0 }, content: "private gemini text",
+		}] }));
+		writeJsonl(join(tempRoot, ".copilot", "session-state", "session", "events.jsonl"), [{
+			id: "shutdown", type: "session.shutdown", timestamp, data: {
+				sessionStartTime: Date.parse(timestamp) - 60_000,
+				modelMetrics: { "gpt-6.1-sol": { usage: { inputTokens: 1_000_000, outputTokens: 0 } } },
+			},
+		}]);
+		expect(recordCursorHookUsage({
+			hook_event_name: "afterAgentResponse", conversation_id: "cursor", generation_id: "generation",
+			model: "gpt-6.1-sol", input_tokens: 1_000_000, output_tokens: 0, text: "private cursor text",
+		}, Date.parse(timestamp), join(tempRoot, ".dev3.0"))).toBe(true);
+		const first = await getAgentUsage();
+		expect(first.days.map((row) => row.source).sort()).toEqual(["claude", "codex", "copilot", "cursor", "gemini"]);
+		expect(first.days.reduce((sum, row) => sum + row.inputTokens, 0)).toBe(5_000_000);
+		expect(first.days.reduce((sum, row) => sum + row.costUsd, 0)).toBe(9);
+		expect(first.hasUnpricedModels).toBe(true);
+		for (const root of [geminiRoot, join(tempRoot, ".copilot"), join(tempRoot, ".dev3.0", "usage")]) rmSync(root, { recursive: true });
+		expect((await getAgentUsage()).days).toEqual(first.days);
+	});
+
 	it("preserves catalog pricing identity after a routed model is renamed or replaced", async () => {
 		const catalogFile = join(tempRoot, ".dev3.0", "model-catalog.json");
 		mkdirSync(dirname(catalogFile), { recursive: true });

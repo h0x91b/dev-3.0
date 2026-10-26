@@ -5,6 +5,7 @@ import type { AgentUsageDay, AgentUsageSource } from "../../shared/types";
 export interface UsageRecord {
 	model: string;
 	pricingModel?: string;
+	cumulativeScope?: string;
 	timestamp: number;
 	counts: TokenCounts;
 }
@@ -54,7 +55,21 @@ export function mergeUsageRecord(state: UsageState, key: string, next: UsageReco
 	const keepPrevious = previous && (legacy ? previous.timestamp <= next.timestamp
 		: previous.timestamp > next.timestamp ||
 			previous.timestamp === next.timestamp && previous.counts.outputTokens > next.counts.outputTokens);
-	state.records.set(key, { ...(keepPrevious ? previous : next), pricingModel: previous?.pricingModel ?? next.pricingModel });
+	const merged: UsageRecord = {
+		...(keepPrevious ? previous : next),
+		pricingModel: previous?.pricingModel ?? next.pricingModel,
+		cumulativeScope: previous?.cumulativeScope ?? next.cumulativeScope,
+	};
+	if (previous && key.startsWith("cursor:")) {
+		merged.timestamp = Math.min(previous.timestamp, next.timestamp);
+		if (previous.model === next.model) {
+			merged.counts = { ...previous.counts, ...next.counts };
+			for (const token of Object.keys(merged.counts) as (keyof TokenCounts)[]) {
+				merged.counts[token] = Math.max(previous.counts[token] ?? 0, next.counts[token] ?? 0);
+			}
+		}
+	}
+	state.records.set(key, merged);
 }
 
 export function foldClaudeEntry(state: UsageState, entry: unknown): void {
@@ -171,6 +186,34 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 	});
 }
 
+function recordsForReport(state: UsageState): UsageRecord[] {
+	const records: UsageRecord[] = [];
+	const checkpoints = new Map<string, UsageRecord[]>();
+	for (const snapshot of state.records.values()) {
+		if (!snapshot.cumulativeScope) { records.push(snapshot); continue; }
+		const key = JSON.stringify([snapshot.cumulativeScope, snapshot.model]);
+		let group = checkpoints.get(key);
+		if (!group) checkpoints.set(key, group = []);
+		group.push(snapshot);
+	}
+	for (const group of checkpoints.values()) {
+		const highWater: Partial<TokenCounts> = {};
+		group.sort((a, b) => a.timestamp - b.timestamp);
+		for (const snapshot of group) {
+			const counts = { ...snapshot.counts };
+			for (const key of Object.keys(counts) as (keyof TokenCounts)[]) {
+				const total = counts[key] ?? 0;
+				counts[key] = Math.max(0, total - (highWater[key] ?? 0));
+				highWater[key] = Math.max(total, highWater[key] ?? 0);
+			}
+			if (counts.inputTokens + counts.outputTokens + counts.cacheReadInputTokens + counts.cacheCreationInputTokens > 0) {
+				records.push({ ...snapshot, counts });
+			}
+		}
+	}
+	return records;
+}
+
 /** Reprice retained raw counts on every report, including newly recognised models. */
 export function finalizeUsage(
 	state: UsageState,
@@ -180,7 +223,7 @@ export function finalizeUsage(
 ): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const byDate = new Map<string, AgentUsageDay>();
 	let hasUnpriced = false;
-	for (const { model, pricingModel, timestamp, counts } of state.records.values()) {
+	for (const { model, pricingModel, timestamp, counts } of recordsForReport(state)) {
 		const d = new Date(timestamp);
 		const startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 		const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

@@ -28,6 +28,7 @@ export type HooksSpec =
 	| { kind: "claude"; stopTarget?: TaskStatus; permissionMode?: PermissionMode }
 	| { kind: "codex" }
 	| { kind: "copilot" }
+	| { kind: "cursor" }
 	| { kind: "omp" }
 	| { kind: "pi" };
 
