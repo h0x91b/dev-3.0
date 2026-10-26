@@ -246,6 +246,17 @@ describe("dev3 stats memory", () => {
 		expect(stdout).toContain("Pressure:  normal");
 		expect(stdout).toContain("a27b4229");
 	});
+
+	it("marks a live task the board cannot name instead of printing an empty title", async () => {
+		const gib = 1024 ** 3;
+		mockSend.mockResolvedValue(ok({
+			headroom: gib, used: gib, total: 2 * gib, cached: 0, pressure: "warn", pressureEstimated: false, swapUsed: 0,
+			swapTotal: 0, swapping: false, topConsumers: [], appRss: gib, activeTaskCount: 1, tasksRssApprox: gib,
+			medianTaskRss: gib, topTasks: [{ shortId: "deadbeef", taskId: null, title: "", projectId: "", rss: gib }],
+		} satisfies SystemMemorySnapshot));
+		await handleStats("memory", args(), SOCKET, CTX);
+		expect(stdout).toMatch(/deadbeef\s+1\.0 GB\s+-/);
+	});
 });
 
 describe("dev3 approvals list", () => {

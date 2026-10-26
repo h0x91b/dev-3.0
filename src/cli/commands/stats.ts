@@ -230,7 +230,7 @@ async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 	out(`Tasks:     ${snapshot.activeTaskCount} live, ~${gb(snapshot.tasksRssApprox)} (upper bound)`);
 	if (snapshot.topTasks.length > 0) {
 		out("");
-		printTable(["TASK", "RSS", "TITLE"], snapshot.topTasks.map((t) => [t.shortId, gb(t.rss), truncate(t.title, 60)]));
+		printTable(["TASK", "RSS", "TITLE"], snapshot.topTasks.map((t) => [t.shortId, gb(t.rss), truncate(t.title || "-", 60)]));
 	}
 }
 
