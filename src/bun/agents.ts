@@ -38,6 +38,7 @@ import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
 import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
 import { rememberPinnedClaudeConfigDir } from "./claude-config-dirs";
+import { updateClaudeJson } from "./claude-json-update";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
 import { autoAgentFamily, isKnownAgentCommand } from "../shared/agent-adapters/families";
 import type { AdapterLaunchOptions, CodexLaunchRuntime } from "../shared/agent-adapters/types";
@@ -1388,28 +1389,25 @@ export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefi
 	}
 }
 
-/** Mark `resolvedPath` as trusted inside one `.claude.json` file (idempotent). */
+/**
+ * Mark `resolvedPath` as trusted inside one `.claude.json` file (idempotent),
+ * under Claude Code's own lock so a concurrent Claude save keeps the entry (#2034).
+ */
 async function writeClaudeTrustEntry(claudeJsonPath: string, resolvedPath: string): Promise<void> {
-	const file = Bun.file(claudeJsonPath);
-	let data: any = {};
-	if (await file.exists()) {
-		data = await file.json();
-	}
+	const result = await updateClaudeJson(claudeJsonPath, (data) => {
+		const projects = isPlainRecord(data.projects) ? data.projects : {};
+		data.projects = projects;
+		const existing = isPlainRecord(projects[resolvedPath]) ? projects[resolvedPath] : undefined;
+		if (existing?.hasTrustDialogAccepted) return false;
+		projects[resolvedPath] = { ...TRUST_ENTRY, ...(existing ?? {}), hasTrustDialogAccepted: true };
+		return true;
+	});
+	if (result === "written") log.info("Registered worktree as trusted", { file: claudeJsonPath, path: resolvedPath });
+	else if (result !== "unchanged") log.warn("Could not register worktree trust", { file: claudeJsonPath, path: resolvedPath, result });
+}
 
-	if (!data.projects) {
-		data.projects = {};
-	}
-
-	if (!data.projects[resolvedPath]?.hasTrustDialogAccepted) {
-		data.projects[resolvedPath] = {
-			...TRUST_ENTRY,
-			...(data.projects[resolvedPath] || {}),
-			hasTrustDialogAccepted: true,
-		};
-
-		await Bun.write(claudeJsonPath, JSON.stringify(data, null, 2));
-		log.info("Registered worktree as trusted", { file: claudeJsonPath, path: resolvedPath });
-	}
+function isPlainRecord(value: unknown): value is Record<string, any> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
