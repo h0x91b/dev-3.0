@@ -291,7 +291,7 @@ const terminal = {
 	// File path links in terminal output (Cmd/Ctrl+Click)
 	"terminal.pathLinkFolderBrowser": "Folders can't be opened from the browser — use the desktop app.",
 	"terminal.pathLinkOpenFailed": "Couldn't open path: {error}",
-	"terminal.legacyTmuxServer": "Task terminals still run on a tmux server from an earlier dev-3.0 run, so they can lose access to Documents or Desktop. They switch to the fixed setup when that server restarts, for example after you log out.",
+	"terminal.legacyTmuxServer": "Task terminals still run on a tmux server from an earlier dev-3.0 run, so they can lose access to Documents or Desktop. They switch to the fixed setup when that server restarts: close every task terminal, or log out.",
 	"terminal.fileLinkNotFound": "Can't open {path} — it's missing, or outside the allowed folders.",
 	"terminal.fileLinkUnreadable": "That link isn't a readable file path: {uri}",
 	"terminal.deepLinkNotFound": "Nothing to open for {uri} — that task, project or space is gone.",

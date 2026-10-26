@@ -22,9 +22,13 @@ app. A disclaimed server whose bundle was swapped and the original deleted kept 
 
 `ensureLaunchdServer` (`src/bun/tmux/launchd-server.ts`) runs before the two server-starting client
 calls (`TmuxClient.newSessionDetached`, `spawnAttachedSession`). On macOS with a bundled tmux, if the
-socket has no server it writes a 0600 plist (`tmux -D -L <socket> -f <config>`, the environment the
-client would have handed a self-started server, `ProcessType=Interactive`), bootstraps it into
-`gui/<uid>`, deletes the file and waits up to 2 s for the socket. The job is not in
+socket has no server it writes a plist (`tmux -D -L <socket> -f <config>`, the environment the
+client would have handed a self-started server, the app's `NumberOfFiles` limits, because launchd's
+default soft limit of 256 would reach every pane, `ProcessType=Interactive`) into a fresh `mkdtemp`
+directory with `wx`, bootstraps it into `gui/<uid>`, deletes the directory and waits up to 2 s for the
+socket. The label hashes the full socket path, so instances with different `TMUX_TMPDIR`s never share
+a job. A job that is still running when its socket does not answer (a deleted socket file) is never
+booted out: it gets SIGUSR1, which makes tmux recreate the socket. Every `launchctl` call has a timeout. The job is not in
 `~/Library/LaunchAgents`, so it never runs at login and leaves nothing to uninstall. A live or
 unanswering server is never touched; any failure logs and lets tmux start its own server as before.
 The binary is resolved through symlinks first, so the `~/.dev3.0/bin/tmux` shim counts as the bundle
