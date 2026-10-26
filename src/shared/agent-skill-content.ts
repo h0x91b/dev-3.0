@@ -94,7 +94,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Task type
 
-A **coordinator** task manages other tasks instead of doing their work: dashed green card, sorts above every priority band, never auto-completes. A **pr-review** task is only named on the card. A **board-cleanup** task passively audits open tasks and recommends complete/cancel/keep/investigate actions; current project by default, all projects only on explicit request. It always completes manually and never wakes or messages other agents during inspection. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets or clears it, rewriting the description's role preamble and telling the running agent; \`dev3 task create --title "..." --type <same>\` starts one with its role set.
+**coordinator**: manages tasks, dashed green card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
 
 **Never promote or demote a task on your own initiative — least of all yourself.** Same protected class as priority.
 
