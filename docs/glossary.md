@@ -5,6 +5,8 @@ records — do not drift to synonyms. When a term changes meaning, change it her
 
 ## Task lifecycle
 
+- **Board cleanup** — a task type (`board-cleanup`) whose built-in brief passively audits open work and recommends COMPLETE, CANCEL, KEEP or INVESTIGATE. Scoped to its project unless the user explicitly requests all projects; a central audit may live on Operations. It never wakes or messages the agents being audited, does not receive the coordinator sort lift, and always completes manually. Read-only behavior is an agent instruction, not a tool sandbox; destructive actions still use the normal approval flow after an explicit user selection.
+
 - **Column** — the task's Kanban placement: a built-in `status` plus an optional custom-column ID. Users, hooks, and agents request column changes; the lifecycle machine accepts or rejects them from fresh task state.
 - **Runtime** — the actor-owned execution phase (`idle`, `preparing`, `running`, or `tearing-down`), independent of the column. `Task.runtimeState` is only a persisted recovery hint and must be verified against tmux/worktree reality at boot.
 - **Activity** — a watcher declared by lifecycle state, such as `mergeWatch` or `prWatch`. Activities deliver findings back through the task mailbox; they never write task status directly.

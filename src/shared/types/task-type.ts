@@ -4,14 +4,8 @@ import type { Task } from "./task";
 
 // ---- Task type ----
 
-/**
- * Every task type dev3 stores. `coordinator` runs the other tasks; `pr-review`
- * looks at someone's changes. They are not equally loud on purpose: a coordinator
- * is marked with a border and lifted above every priority, while a PR review is
- * only named on the card — it is an ordinary task with a job, not a task that
- * outranks the board.
- */
-export const TASK_TYPES = ["coordinator", "pr-review"] as const;
+/** Named agent roles; only coordinators receive a sort lift. */
+export const TASK_TYPES = ["coordinator", "pr-review", "board-cleanup"] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -25,19 +19,11 @@ export function isCoordinatorTask(task: { taskType?: TaskType | null }): boolean
 	return task.taskType === "coordinator";
 }
 
-/**
- * Does the human own this task's completion? True for the explicit "I decide"
- * flag and unconditionally for a coordinator, whose whole job outlives any
- * single branch it happens to have merged.
- *
- * Derived rather than stored, so no writer — CLI, agent hook, or a future UI
- * toggle — can leave a coordinator auto-completing. Every merge-detection path
- * must ask this, never `task.manualCompletion` directly.
- */
+/** Derived so no writer can accidentally enable merge completion for an audit or coordinator. */
 export function taskCompletesManually(
 	task: { manualCompletion?: boolean; taskType?: TaskType | null },
 ): boolean {
-	return task.manualCompletion === true || isCoordinatorTask(task);
+	return task.manualCompletion === true || isCoordinatorTask(task) || task.taskType === "board-cleanup";
 }
 
 /**

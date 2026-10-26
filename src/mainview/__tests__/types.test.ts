@@ -841,6 +841,12 @@ describe("task type", () => {
 		expect(taskCompletesManually({ taskType: "coordinator", manualCompletion: false })).toBe(true);
 	});
 
+	it("keeps cleanup completion manual without lifting its priority", () => {
+		expect(normalizeTaskType(" Board-Cleanup ")).toBe("board-cleanup");
+		expect(taskCompletesManually({ taskType: "board-cleanup", manualCompletion: false })).toBe(true);
+		expect(compareTaskSortRank({ priority: "P3", taskType: "board-cleanup" }, { priority: "P0" })).toBeGreaterThan(0);
+	});
+
 	it("leaves an ordinary task's completion policy to its own flag", () => {
 		expect(taskCompletesManually({})).toBe(false);
 		expect(taskCompletesManually({ manualCompletion: true })).toBe(true);

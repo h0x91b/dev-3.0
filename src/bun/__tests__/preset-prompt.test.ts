@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
+import { BOARD_CLEANUP_PROMPT, presetPromptForTaskType, presetPromptSourceForTaskType, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, resolvePresetPrompt, reviewTaskTitle, reviewTitleTopic } from "../../shared/types";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED } from "../../shared/cli-exit-codes";
 import { COORDINATOR_PROMPT_LIMIT } from "../../shared/agent-command-line-budget";
 
@@ -399,5 +399,31 @@ describe("reviewTitleTopic", () => {
 		expect(reviewTitleTopic(null)).toBe("");
 		expect(reviewTitleTopic("   \n ")).toBe("");
 		expect(reviewTitleTopic("feat:")).toBe("");
+	});
+});
+
+
+describe("board cleanup brief", () => {
+	it("does not inherit a coordinator or review override", () => {
+		const overrides = { coordinatorPrompt: "Delegate everything", reviewModePrompt: "Review code" };
+		expect(presetPromptForTaskType("board-cleanup", overrides, overrides)).toBe(BOARD_CLEANUP_PROMPT);
+		expect(presetPromptSourceForTaskType("board-cleanup", overrides, overrides)).toBe("built-in");
+	});
+
+	it("keeps inspection passive, project-scoped and evidence-driven", () => {
+		expect(BOARD_CLEANUP_PROMPT).toContain("Default to this task's project only");
+		expect(BOARD_CLEANUP_PROMPT).toContain("being on Operations alone does NOT grant all-project scope");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Do not start, wake, resume, message, interrupt, hibernate or spawn agents");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Page through EVERY open task");
+		expect(BOARD_CLEANUP_PROMPT).toContain("COMPLETE, CANCEL, KEEP or INVESTIGATE");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Age alone is never a reason to cancel");
+		expect(BOARD_CLEANUP_PROMPT).toContain("A local commit, passing tests or an open PR is insufficient");
+	});
+
+	it("requires exact chat approval before even opening destructive dialogs", () => {
+		expect(BOARD_CLEANUP_PROMPT).toContain("never submit completion/cancellation requests merely to obtain approval");
+		expect(BOARD_CLEANUP_PROMPT).toContain("After explicit approval in chat, re-read each selected task");
+		expect(BOARD_CLEANUP_PROMPT).toContain("stop if evidence changed");
+		expect(BOARD_CLEANUP_PROMPT).toContain("save its actionable conclusions in your own");
 	});
 });

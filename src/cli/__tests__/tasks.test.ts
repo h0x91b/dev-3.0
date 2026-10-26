@@ -93,6 +93,36 @@ afterEach(() => {
 });
 
 describe("tasks list", () => {
+
+	it("filters closed tasks before paging without dropping drafts or custom columns", async () => {
+		const base = TASKS[0]!;
+		mockSend.mockResolvedValue(okResp([
+			{ ...base, id: "done", status: "completed", seq: 99 },
+			{ ...base, id: "cancelled", status: "cancelled", seq: 98 },
+			{ ...base, id: "draft", status: "todo", draft: true, seq: 4 },
+			{ ...base, id: "parked", hibernated: true, status: "user-questions", seq: 3 },
+			{ ...base, id: "custom", customColumnId: "custom", status: "in-progress", seq: 2 },
+		]));
+		await handleTasks("list", { positional: [], flags: { open: "true", json: "true", limit: "2", offset: "1" } }, SOCKET, CTX);
+		const page = JSON.parse(stdoutOutput);
+		expect(page).toMatchObject({ schemaVersion: 1, total: 3, offset: 1, limit: 2 });
+		expect(page.tasks.map((task: { id: string }) => task.id)).toEqual(["parked", "draft"]);
+		expect(page.tasks[0].hibernated).toBe(true);
+		expect(page.tasks[1].draft).toBe(true);
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: CTX.projectId });
+	});
+
+	it("returns an empty structured page with the correct total", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+		await handleTasks("list", { positional: [], flags: { open: "true", json: "true", offset: "100" } }, SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput)).toEqual({ schemaVersion: 1, tasks: [], total: TASKS.length, offset: 100, limit: 50 });
+	});
+
+	it("rejects contradictory open and terminal filters without a request", async () => {
+		await expect(handleTasks("list", { positional: [], flags: { open: "true", status: "completed" } }, SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
 	it("lists tasks with explicit --project", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 

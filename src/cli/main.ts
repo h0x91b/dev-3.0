@@ -70,8 +70,8 @@ Commands:
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task hibernate [<id>|--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
   dev3 task wake [<id>|--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
-  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|standard]  Update task fields
-  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard]  Create a new task (To Do)
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]  Update task fields
+  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard]  Create a new task (To Do)
                                          (--pr <n> starts the worktree on that pull request's branch and implies --type pr-review)
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
@@ -97,7 +97,7 @@ Commands:
   dev3 label add <id> [<id>...] [--task <task>]  Add labels, keeping the existing ones
   dev3 label remove <id> [<id>...] [--task <task>]  Remove only these labels
   dev3 label set --clear [--task <id>]  Remove all labels from a task
-  dev3 tasks list [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
+  dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
   dev3 automations list                 List project automations (scheduled agent runs)
   dev3 automations show <id>            Automation details + run history
   dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]

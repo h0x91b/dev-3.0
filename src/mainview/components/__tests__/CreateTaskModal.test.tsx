@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import CreateTaskModal from "../CreateTaskModal";
 import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
-import { COORDINATOR_PROMPT, type GlobalSettings, type Project, type Task, type SystemMemorySnapshot } from "../../../shared/types";
+import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, type GlobalSettings, type Project, type Task, type SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -1841,6 +1841,46 @@ describe("CreateTaskModal — task type presets", () => {
 		renderModal();
 		expect(await screen.findByTestId("task-type-standard")).toHaveAttribute("aria-checked", "true");
 		expect(description().value).toBe("");
+	});
+
+	it("creates a cleanup audit without extra typing and gives it a useful title", async () => {
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, taskType: "board-cleanup" });
+		renderModal();
+		await userEvent.click(await screen.findByTestId("task-type-board-cleanup"));
+		await waitFor(() => expect(description().value).toBe(BOARD_CLEANUP_PROMPT));
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({
+			taskType: "board-cleanup", title: "Board cleanup", description: BOARD_CLEANUP_PROMPT,
+		})));
+	});
+
+	it("keeps the built-in cleanup title when settings cannot load", async () => {
+		mockedApi.request.getGlobalSettings.mockRejectedValueOnce(new Error("Offline"));
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, taskType: "board-cleanup" });
+		renderModal();
+		await userEvent.click(await screen.findByTestId("task-type-board-cleanup"));
+		await waitFor(() => expect(description().value).toBe(BOARD_CLEANUP_PROMPT));
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Board cleanup", taskType: "board-cleanup" })));
+	});
+
+	it("keeps central scope text when switching away from cleanup", async () => {
+		renderModal({ project: { ...mockProject, kind: "virtual" } });
+		await userEvent.type(description(), "Audit all projects.");
+		await userEvent.click(await screen.findByTestId("task-type-board-cleanup"));
+		await waitFor(() => expect(description().value).toBe(BOARD_CLEANUP_PROMPT + "\n\n---\n\nAudit all projects."));
+		await userEvent.click(screen.getByTestId("task-type-standard"));
+		await waitFor(() => expect(description().value).toBe("Audit all projects."));
+	});
+
+	it("restores a cleanup draft and persists a changed role on save", async () => {
+		mockedApi.request.editTask.mockResolvedValue(mockTask);
+		renderModal({ draftTask: { ...mockTask, draft: true, taskType: "board-cleanup", description: BOARD_CLEANUP_PROMPT + "\n\n---\n\nAudit this board." } });
+		expect(await screen.findByTestId("task-type-board-cleanup")).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(screen.getByTestId("task-type-standard"));
+		await waitFor(() => expect(description().value).toBe("Audit this board."));
+		await userEvent.click(screen.getByRole("button", { name: "Save as draft" }));
+		await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(expect.objectContaining({ taskType: null, description: "Audit this board." })));
 	});
 
 	it("injects the coordinator preamble and keeps the user's own text below a separator", async () => {

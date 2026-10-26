@@ -938,6 +938,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
+				{task.taskType === "board-cleanup" && (
+					<Tooltip content={t("task.boardCleanupBadge")} detail={t("task.boardCleanupHint")}>
+						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3">
+							{t("task.boardCleanupBadge")}
+						</span>
+					</Tooltip>
+				)}
 				{isDraft && (
 					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
 						<span

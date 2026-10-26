@@ -135,7 +135,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -149,12 +149,12 @@ const COMMANDS: CommandHelp[] = [
 					"--branch <ref>        Start on a ref that is not a pull request: `origin/feat/x`,",
 					"                      a fork remote's `owner/feat/x`, or a local branch. Must",
 					"                      already exist locally — --pr fetches, --branch does not.",
-					"--type coordinator|pr-review|standard  Create the task with its type already set",
+					"--type coordinator|pr-review|board-cleanup|standard  Create the task with its type already set",
 					"                      (standard = no type, the default). The role preamble goes",
 					"                      into the description now, so a task launched straight away",
 					"                      is told what it is. Same values as `task update --type`.",
-					"                      coordinator = manages other tasks; pr-review = reviews code",
-					"                      somebody else wrote, and needs --pr to have anything to read.",
+					"                      coordinator = manages tasks; board-cleanup = passive board audit.",
+					"                      pr-review = reviews someone else's code; use --pr to check it out.",
 					'Review a pull request:  dev3 task create --pr 1497 --title "Review of #1497"',
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
@@ -170,7 +170,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]',
 				summary: "Update a task's title, description, priority, completion policy, or type.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -180,7 +180,7 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest) of this task only; its variants keep theirs.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
-					"--type coordinator|pr-review|standard  Set the task's type, or clear it with standard.",
+					"--type coordinator|pr-review|board-cleanup|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
 					"--print-role          With --type, on YOUR OWN task only: print the role brief to stdout",
@@ -266,12 +266,14 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 tasks list [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>]",
+				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>]",
 				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
 					"Highest priority first inside each group, exactly as the board ranks a column; newest (highest seq) breaks ties.",
 					"The PRI column is the task's priority, P0 (highest) … P4 (lowest).",
 					"--status <s>       Filter by status.",
+					"--open            Exclude completed and cancelled tasks before paging; never wakes agents.",
+					"--json            Versioned inventory: tasks, total, offset and limit (including empty pages).",
 					"--label <id>       Filter by label id (8-char prefix works).",
 					"--priority <list>  Keep only these priorities, comma-separated: --priority P0,P1.",
 					"--sort priority|seq  Order inside each group (default priority).",

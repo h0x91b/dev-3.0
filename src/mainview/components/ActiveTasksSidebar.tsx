@@ -390,6 +390,7 @@ function ActiveTasksSidebar({
 				standard: t("createTask.taskTypeStandard"),
 				coordinator: t("createTask.taskTypeCoordinator"),
 				"pr-review": t("createTask.taskTypeReview"),
+				"board-cleanup": t("createTask.taskTypeCleanup"),
 			},
 		}),
 		[scopedTasks, resolver, priorityCandidates, statusCandidates, t],

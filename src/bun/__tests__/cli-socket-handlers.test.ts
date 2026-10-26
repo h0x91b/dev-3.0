@@ -1,6 +1,6 @@
 import codexQuestionHookTrace from "./fixtures/codex-0.154-question-hooks.json";
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type TaskMovement, type SharedArtifact, type SharedImage } from "../../shared/types";
+import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type TaskMovement, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -1827,6 +1827,13 @@ describe("task.create", () => {
 			expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), task.id, { customTitle: "Review PR 42" });
 		});
 
+		it("creates a cleanup role with its passive brief and preserves explicit scope", async () => {
+			wireCreate();
+			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Cleanup", description: "Audit all projects.", taskType: "board-cleanup" }));
+			expect(resp.ok).toBe(true);
+			expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ taskType: "board-cleanup", description: withPresetPrompt("Audit all projects.", BOARD_CLEANUP_PROMPT) }));
+		});
+
 		it("carries a priority alongside the type", async () => {
 			wireCreate();
 
@@ -2888,6 +2895,19 @@ describe("task.update", () => {
 			expect(updates.description!.startsWith(DEFAULT_PR_REVIEW_PROMPT)).toBe(true);
 			expect(updates.description).not.toContain(COORDINATOR_PROMPT);
 			expect(updates.description!.endsWith("look at this branch")).toBe(true);
+		});
+
+		it("replaces a coordinator brief with cleanup and delivers the correct new brief", async () => {
+			const project = makeProject();
+			const task = makeTask({ taskType: "coordinator", description: withPresetPrompt("Audit this board.", COORDINATOR_PROMPT) });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+			const resp = await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: project.id, taskType: "board-cleanup" }));
+			expect(resp.ok).toBe(true);
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+			expect(updates.description).toBe(withPresetPrompt("Audit this board.", BOARD_CLEANUP_PROMPT));
+			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("a BOARD CLEANUP adviser");
 		});
 
 		it("says plainly when there is no session to tell", async () => {

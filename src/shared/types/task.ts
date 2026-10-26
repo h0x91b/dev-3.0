@@ -319,21 +319,7 @@ export interface Task {
 	 * every pre-existing task, so older app versions see an ordinary task.
 	 */
 	foreignCode?: boolean;
-	/**
-	 * What kind of task this is, when the kind carries behaviour. A property of
-	 * the task, not a column and not a runtime phase. Only `"coordinator"` exists:
-	 * a task whose job is to run other tasks. It forbids nothing at the data
-	 * layer, and gates exactly three things — the card is marked, a live one sorts
-	 * above every priority band ({@link COORDINATOR_SORT_OFFSET}), and its
-	 * completion always belongs to the human ({@link taskCompletesManually}),
-	 * because a coordinator outlives any branch it merged.
-	 *
-	 * Set at creation from the task-type picker, and flipped either way afterwards
-	 * with `dev3 task update --type`. The CLI keeps the preamble in the
-	 * description in step with the field, so the badge never claims a role the
-	 * agent behind it was never told about. Absent on every pre-existing task, so
-	 * older app versions see an ordinary task.
-	 */
+	/** Role brief injected at creation; cleanup and coordinator tasks always complete manually. */
 	taskType?: TaskType | null;
 	/**
 	 * "Keep alive" — the user asked dev3 to auto-revive this task's agent when its

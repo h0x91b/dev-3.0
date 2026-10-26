@@ -374,6 +374,12 @@ describe("task create", () => {
 		});
 	});
 
+	it("creates the cleanup role with an explicit central-audit brief", async () => {
+		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "board-cleanup" }));
+		await handleTask("create", args([], { project: "proj-001", title: "Board cleanup", description: "Audit all projects.", type: "board-cleanup" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "Board cleanup", description: "Audit all projects.", taskType: "board-cleanup" });
+	});
+
 	it("omits taskType for --type standard", async () => {
 		mockSend.mockResolvedValue(okResp(createdTask));
 
@@ -390,7 +396,7 @@ describe("task create", () => {
 		await expect(
 			handleTask("create", args([], { project: "proj-001", title: "New task", type: "reviewer" }), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--type must be one of coordinator, pr-review or standard");
+		expect(stderrOutput).toContain("--type must be one of coordinator, pr-review, board-cleanup or standard");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 

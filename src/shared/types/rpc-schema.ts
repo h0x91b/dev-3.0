@@ -652,6 +652,7 @@ export type AppRPCSchema = {
 					labelIds?: string[];
 					existingBranch?: string | null;
 					draft?: boolean;
+					taskType?: TaskType | null;
 				};
 				response: Task;
 			};

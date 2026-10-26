@@ -342,7 +342,7 @@ export const taskHandlers: Record<string, Handler> = {
 				taskTypeChange = {
 					next,
 					agentPrompt: preamble
-						? `Your role just changed: this task is now ${next === "coordinator" ? "the COORDINATOR of this board" : "a PR REVIEW"}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n\n${preamble}`
+						? `Your role just changed: this task is now ${next === "coordinator" ? "the COORDINATOR of this board" : next === "board-cleanup" ? "a BOARD CLEANUP adviser" : "a PR REVIEW"}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n\n${preamble}`
 						: "Your role just changed: this task no longer carries a special role. The role brief you were given no longer applies — you are an ordinary task agent again and may do the work yourself.",
 				};
 			}

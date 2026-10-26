@@ -1,7 +1,7 @@
 import type { PosixShellResolution, ShellFlavor } from "../posix-shell";
 import type { TaskType } from "./task-type";
 import type { ColumnAgentConfig } from "./column-agents";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT } from "./prompts";
+import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT } from "./prompts";
 import type { GlobalSettings } from "./global-settings";
 import type { CustomColumn, Label } from "./labels-columns";
 
@@ -350,6 +350,7 @@ export function presetPromptForTaskType(
 	project: Pick<Project, "coordinatorPrompt" | "reviewModePrompt">,
 	settings: Pick<GlobalSettings, "coordinatorPrompt" | "reviewModePrompt"> | null | undefined,
 ): string {
+	if (type === "board-cleanup") return BOARD_CLEANUP_PROMPT;
 	return type === "coordinator"
 		? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, COORDINATOR_PROMPT)
 		: resolvePresetPrompt(project.reviewModePrompt, settings?.reviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
@@ -363,6 +364,7 @@ export function presetPromptSourceForTaskType(
 	project: Pick<Project, "coordinatorPrompt" | "reviewModePrompt">,
 	settings: Pick<GlobalSettings, "coordinatorPrompt" | "reviewModePrompt"> | null | undefined,
 ): PresetPromptSource {
+	if (type === "board-cleanup") return "built-in";
 	const field = type === "coordinator" ? "coordinatorPrompt" : "reviewModePrompt";
 	if (project[field]?.trim()) return "project";
 	if (settings?.[field]?.trim()) return "settings";

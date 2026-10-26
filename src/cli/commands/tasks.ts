@@ -66,6 +66,9 @@ export async function handleTasks(
 	context: CliContext | null,
 ): Promise<void> {
 	if (subcommand === "list" || !subcommand) {
+		if (args.flags.open !== undefined && (args.flags.status === "completed" || args.flags.status === "cancelled")) {
+			exitUsage("--open cannot be combined with a completed or cancelled --status.");
+		}
 		const projectId = resolveProjectId(args.flags.project, context);
 		if (!projectId) {
 			exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
@@ -107,6 +110,9 @@ export async function handleTasks(
 		if (!resp.ok) exitError(resp.error || "Failed to list tasks");
 
 		let tasks = resp.data as Task[];
+		if (args.flags.open !== undefined) {
+			tasks = tasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
+		}
 
 		// Client-side label filter (server returns all tasks, we filter here)
 		if (args.flags.label) {
@@ -134,6 +140,21 @@ export async function handleTasks(
 		// Defaults to the newest DEFAULT_LIST_LIMIT so large boards don't flood.
 		const total = tasks.length;
 		const page = tasks.slice(offset, offset + limit);
+
+		if (args.flags.json !== undefined) {
+			const rows = page.map((task) => ({
+				id: task.id, seq: task.seq, projectId: task.projectId,
+				title: getTaskTitle(task), status: task.status,
+				customColumnId: task.customColumnId ?? null,
+				priority: task.priority ?? DEFAULT_PRIORITY,
+				taskType: task.taskType ?? null,
+				draft: task.draft === true, hibernated: task.hibernated === true,
+				runtimeState: task.runtimeState ?? null,
+				updatedAt: task.updatedAt,
+			}));
+			process.stdout.write(`${JSON.stringify({ schemaVersion: 1, tasks: rows, total, offset, limit }, null, 2)}\n`);
+			return;
+		}
 
 		if (page.length === 0) {
 			if (total === 0) {

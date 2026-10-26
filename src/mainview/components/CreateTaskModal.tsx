@@ -37,7 +37,7 @@ type SubmitMode = "save" | "run" | "scratch" | "draft";
  */
 type PresetTaskType = TaskType;
 type TaskTypeChoice = "standard" | PresetTaskType;
-const PRESET_TASK_TYPES: readonly TaskTypeChoice[] = ["standard", "coordinator", "pr-review"];
+const PRESET_TASK_TYPES: readonly TaskTypeChoice[] = ["standard", "coordinator", "pr-review", "board-cleanup"];
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -103,7 +103,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const [checkedProjectCurrentBranch, setCheckedProjectCurrentBranch] = useState(false);
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
 	const [pendingSubmitMode, setPendingSubmitMode] = useState<SubmitMode | null>(null);
-	const [taskType, setTaskType] = useState<TaskTypeChoice>("standard");
+	const [taskType, setTaskType] = useState<TaskTypeChoice>(draftTask?.taskType ?? "standard");
 	const [dismissedPrUrl, setDismissedPrUrl] = useState<string | null>(null);
 	const [prApplying, setPrApplying] = useState(false);
 	// Bumped when a save is blocked on the missing PR link, so the field explains why.
@@ -307,13 +307,13 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	 * the user's own text below it — otherwise every coordinator task is called
 	 * "You are the COORDINATOR of this board: a manager who owns an outcome...".
 	 */
-	const activePresetPrompt = taskType !== "standard" && presetSettings
+	const activePresetPrompt = taskType !== "standard"
 		? presetPrompt(taskType, presetSettings)
 		: null;
 	const titleSource = activePresetPrompt ? withoutPresetPrompt(description, activePresetPrompt) : description;
 	const generatedTitle = titleSource.trim()
 		? titleFromDescription(titleSource)
-		: "";
+		: taskType === "board-cleanup" ? t("createTask.taskTypeCleanup") : "";
 
 	useEffect(() => {
 		textareaRef.current?.focus();
@@ -353,6 +353,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 
 	const draftDirty = !!draftTask && (
 		description !== (draftTask.description ?? "")
+		|| taskType !== (draftTask.taskType ?? "standard")
 		|| (customTitle ?? null) !== (draftTask.customTitle ?? null)
 		|| priority !== (draftTask.priority ?? DEFAULT_PRIORITY)
 		|| !sameLabelIds(selectedLabelIds, draftTask.labelIds ?? [])
@@ -412,6 +413,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				labelIds: selectedLabelIds,
 				existingBranch: branch,
 				draft: keepDraft,
+				...((taskType === "standard" ? null : taskType) !== (draftTask.taskType ?? null)
+					? { taskType: taskType === "standard" ? null : taskType } : {}),
 			});
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_edited", { project_id: project.id, source: keepDraft ? "draft_save" : "draft_promote" });
@@ -448,9 +451,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
-				// Only the coordinator preset is a persisted task type — PR review changes
-				// the prompt and nothing about the task (see TASK_TYPES).
-				...(taskType !== "standard" ? { taskType } : {}),
+				// Persist the role alongside its standing brief.
+				...(mode !== "scratch" && taskType !== "standard" ? { taskType } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
@@ -1157,11 +1159,13 @@ function TaskTypePicker({ value, onChange, reviewAvailable }: TaskTypePickerProp
 		standard: "createTask.taskTypeStandard",
 		coordinator: "createTask.taskTypeCoordinator",
 		"pr-review": "createTask.taskTypeReview",
+		"board-cleanup": "createTask.taskTypeCleanup",
 	} as const;
 	const hintKey = {
 		standard: "createTask.taskTypeStandardHint",
 		coordinator: "createTask.taskTypeCoordinatorHint",
 		"pr-review": "createTask.reviewModeHint",
+		"board-cleanup": "createTask.taskTypeCleanupHint",
 	} as const;
 
 	return (
@@ -1173,7 +1177,7 @@ function TaskTypePicker({ value, onChange, reviewAvailable }: TaskTypePickerProp
 			<div
 				role="radiogroup"
 				aria-label={t("createTask.taskType")}
-				className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5"
+				className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5"
 				onKeyDown={(event) => handleRadioGroupKeys(event, options, value, onChange)}
 			>
 				{options.map((type) => {

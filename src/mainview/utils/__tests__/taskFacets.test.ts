@@ -143,7 +143,7 @@ describe("buildFilterGroups", () => {
 		{ facet: "priority", value: "P3", label: "P3 — Low" },
 		{ facet: "priority", value: "P4", label: "P4 — Lowest" },
 	];
-	const candidates = { priorityCandidates, statusCandidates, flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar", hibernated: "Hibernated", keptAlive: "Kept alive" }, typeLabels: { standard: "Standard", coordinator: "Coordinator", "pr-review": "PR review" } };
+	const candidates = { priorityCandidates, statusCandidates, flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar", hibernated: "Hibernated", keptAlive: "Kept alive" }, typeLabels: { standard: "Standard", coordinator: "Coordinator", "pr-review": "PR review", "board-cleanup": "Board cleanup" } };
 
 	function resolverFor(): FacetResolver {
 		const labelsById: Record<string, Label[]> = {
@@ -255,7 +255,7 @@ describe("buildFilterGroups — SPACES group", () => {
 		priorityCandidates: [{ facet: "priority" as const, value: "P2", label: "P2 — Normal" }],
 		statusCandidates: [{ facet: "status" as const, value: "in-progress", label: "Agent is Working" }],
 		flagLabels: { attention: "Needs attention", port: "Has running port", home: "Home", hidden: "Hidden from sidebar", hibernated: "Hibernated", keptAlive: "Kept alive" },
-		typeLabels: { standard: "Standard", coordinator: "Coordinator", "pr-review": "PR review" },
+		typeLabels: { standard: "Standard", coordinator: "Coordinator", "pr-review": "PR review", "board-cleanup": "Board cleanup" },
 	};
 
 	it("lists every space present in the pool, alphabetically, after STATUS", () => {
