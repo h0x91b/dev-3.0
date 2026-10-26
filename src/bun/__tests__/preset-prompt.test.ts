@@ -411,19 +411,19 @@ describe("board cleanup brief", () => {
 	});
 
 	it("keeps inspection passive, project-scoped and evidence-driven", () => {
-		expect(BOARD_CLEANUP_PROMPT).toContain("Default to this task's project only");
-		expect(BOARD_CLEANUP_PROMPT).toContain("being on Operations alone does NOT grant all-project scope");
-		expect(BOARD_CLEANUP_PROMPT).toContain("Do not start, wake, resume, message, interrupt, hibernate or spawn agents");
-		expect(BOARD_CLEANUP_PROMPT).toContain("Page through EVERY open task");
-		expect(BOARD_CLEANUP_PROMPT).toContain("COMPLETE, CANCEL, KEEP or INVESTIGATE");
-		expect(BOARD_CLEANUP_PROMPT).toContain("Age alone is never a reason to cancel");
-		expect(BOARD_CLEANUP_PROMPT).toContain("A local commit, passing tests or an open PR is insufficient");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Scope: this project; all projects ONLY on explicit request");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Operations alone grants no wider scope");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Audit is read-only: no waking, starting, resuming, spawning, messaging, interrupting or mutating other agents/tasks");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Page EVERY open task");
+		for (const action of ["COMPLETE:", "CANCEL:", "KEEP:", "INVESTIGATE:"]) expect(BOARD_CLEANUP_PROMPT).toContain(action);
+		expect(BOARD_CLEANUP_PROMPT).toContain("Age, silence, review status, local commits, tests and open PRs prove nothing");
+		expect(BOARD_CLEANUP_PROMPT).toContain("code PRs merged, no remaining scope/unique work");
 	});
 
 	it("requires exact chat approval before even opening destructive dialogs", () => {
-		expect(BOARD_CLEANUP_PROMPT).toContain("never submit completion/cancellation requests merely to obtain approval");
-		expect(BOARD_CLEANUP_PROMPT).toContain("After explicit approval in chat, re-read each selected task");
-		expect(BOARD_CLEANUP_PROMPT).toContain("stop if evidence changed");
-		expect(BOARD_CLEANUP_PROMPT).toContain("save its actionable conclusions in your own");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Get exact task/action approval in chat BEFORE destructive requests");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Re-read selected targets, re-check preservation/runtime");
+		expect(BOARD_CLEANUP_PROMPT).toContain("stop if changed");
+		expect(BOARD_CLEANUP_PROMPT).toContain("Publish report + own durable");
 	});
 });

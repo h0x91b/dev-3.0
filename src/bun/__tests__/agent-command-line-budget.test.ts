@@ -6,7 +6,7 @@ import {
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY } from "../../shared/agent-skill-content";
-import { COORDINATOR_PROMPT } from "../../shared/types";
+import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT } from "../../shared/types";
 import { __setCodexProfileV2Override, resolveAgentCommand, type TemplateContext } from "../agents";
 import type { CodingAgent } from "../../shared/types";
 
@@ -119,6 +119,21 @@ describe("the whole Windows command line fits", () => {
 			}
 		});
 	}
+
+	it.each(["codex", "agent", "opencode"])("cleanup leaves room for a user brief on Windows: %s", async (command) => {
+		asPlatform("win32");
+		vi.resetModules();
+		const launch = await import("../agents");
+		launch.__setCodexProfileV2Override(false);
+		try {
+			const cmd = await launch.resolveAgentCommand(agent(command), undefined, {
+				...fullSizeContext(), taskDescription: BOARD_CLEANUP_PROMPT + "\n\n---\n\n" + "x".repeat(2500),
+			});
+			expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT - 150);
+		} finally {
+			launch.__setCodexProfileV2Override(null);
+		}
+	});
 
 	// A preset preamble (`COORDINATOR_PROMPT`) is prepended to the task DESCRIPTION,
 	// so it spends the same line the protocol body does — and nothing enforces the
