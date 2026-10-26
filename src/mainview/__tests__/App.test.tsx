@@ -18,6 +18,7 @@ vi.mock("../rpc", () => ({
 			getAllProjectTasks: vi.fn().mockResolvedValue([]),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
+			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			// Opening a project board asks once whether there is anything to import.
@@ -321,6 +322,23 @@ describe("App keyboard shortcuts", () => {
 	// `rpc:showQuitDialog` to ask the renderer to confirm. Cmd+Q is caught in the
 	// renderer (WKWebView swallows the native accelerator) and forwarded to bun
 	// via `requestQuit`, which runs the same gate.
+	describe("tmux server notice", () => {
+		const HINT = /tmux server from an earlier dev-3.0 run/;
+
+		it("warns once when task terminals run on a server that predates the launchd start", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true });
+			await renderApp();
+			expect(await screen.findByText(HINT)).toBeInTheDocument();
+			expect(api.request.getTmuxServerNotice).toHaveBeenCalledTimes(1);
+		});
+
+		it("stays silent when the server is launchd-owned", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false });
+			await renderApp();
+			expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+		});
+	});
+
 	describe("quit confirmation dialog", () => {
 		function requestQuitDialog() {
 			act(() => {
