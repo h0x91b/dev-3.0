@@ -1,0 +1,225 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { handleApprovals, handleStats, productivityEventActiveSince, usageDayOverlapsSince } from "../commands/stats";
+import type { CliContext } from "../context";
+import type { ParsedArgs } from "../args";
+import type { AgentUsageDay, CliResponse, ProductivityStatEvent, SystemMemorySnapshot } from "../../shared/types";
+import type { AgentRateLimitsReport } from "../../shared/rate-limits";
+import type { PendingApprovalSummary } from "../../shared/agent-approval";
+import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_USAGE_ERROR } from "../../shared/cli-exit-codes";
+
+vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
+
+import { sendRequest } from "../socket-client";
+const mockSend = vi.mocked(sendRequest);
+
+const SOCKET = "/tmp/test.sock";
+const CTX: CliContext = { projectId: "proj-001", taskId: "aaaaaaaa-1111-2222-3333-444444444444", socketPath: SOCKET };
+const PROJECT_A = "aaaaaaaa-0000-0000-0000-000000000001";
+const PROJECT_B = "bbbbbbbb-0000-0000-0000-000000000002";
+
+// Typed against the app's own types: renaming a field there breaks lint here,
+// which is the warning that the --json contract is about to change.
+function statEvent(overrides: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
+	return {
+		taskId: "t1", seq: 12, projectId: PROJECT_A, projectName: "dev-3.0", projectKind: "git", title: "Add stats CLI",
+		status: "completed", createdAt: "2026-10-01T10:00:00.000Z", movedAt: "2026-10-02T10:00:00.000Z",
+		lifecycleStartedAt: null, insertions: 120, deletions: 30, files: 4, liveStats: false, agentId: null,
+		groupId: null, variantIndex: null, statusEnteredAt: null, focusMs: 0, focusByHour: {}, movements: [],
+		movementsDropped: 0, hibernated: false, configId: null,
+		...overrides,
+	};
+}
+
+function usageDay(overrides: Partial<AgentUsageDay> = {}): AgentUsageDay {
+	return {
+		date: "2026-10-20", startMs: Date.parse("2026-10-20T00:00:00.000Z"), source: "claude", inputTokens: 1500,
+		outputTokens: 2_500_000, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 3.5, fullyPriced: true,
+		...overrides,
+	};
+}
+
+function approval(overrides: Partial<PendingApprovalSummary> = {}): PendingApprovalSummary {
+	return {
+		requestId: "r1", kind: "complete", taskId: "task-1", projectId: PROJECT_A, taskTitle: "Finish", seqLabel: "42",
+		projectName: "dev-3.0", requesterSeq: null, requesterTitle: null, requesterSenderId: null, createdAt: 1_000,
+		autoApproveAt: null, heldByUser: false,
+		...overrides,
+	};
+}
+
+const ok = (data: unknown): CliResponse => ({ id: "x", ok: true, data });
+const fail = (error: string): CliResponse => ({ id: "x", ok: false, error });
+const args = (flags: Record<string, string> = {}): ParsedArgs => ({ positional: [], flags });
+const json = () => JSON.parse(stdout);
+
+let stdout: string;
+let stderr: string;
+let spies: Array<{ mockRestore(): void }>;
+
+beforeEach(() => {
+	stdout = "";
+	stderr = "";
+	spies = [
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => { stdout += String(chunk); return true; }),
+		vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => { stderr += String(chunk); return true; }),
+		vi.spyOn(process, "exit").mockImplementation((code?: string | number | null) => { throw new Error(`EXIT_${code ?? 0}`); }),
+	];
+	mockSend.mockReset();
+});
+
+afterEach(() => spies.forEach((spy) => spy.mockRestore()));
+
+describe("dev3 stats productivity", () => {
+	it("prints a versioned JSON object, across all projects by default", async () => {
+		mockSend.mockResolvedValue(ok({ events: [statEvent(), statEvent({ taskId: "t2", projectId: PROJECT_B })], generatedAt: "G" }));
+		await handleStats("productivity", args({ json: "true" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.productivity", {});
+		expect(json()).toMatchObject({ schemaVersion: 1, generatedAt: "G", since: null, projectId: null });
+		expect(json().events).toHaveLength(2);
+		expect(json().events[0].seq).toBe(12);
+	});
+
+	it("narrows by --project and --since", async () => {
+		mockSend.mockResolvedValue(ok({
+			events: [
+				statEvent({ taskId: "old" }),
+				statEvent({ taskId: "fresh", movedAt: new Date().toISOString() }),
+				statEvent({ taskId: "other-project", projectId: PROJECT_B, movedAt: new Date().toISOString() }),
+			],
+			generatedAt: "G",
+		}));
+		await handleStats("productivity", args({ json: "true", project: PROJECT_A, since: "7d" }), SOCKET, CTX);
+		expect(json().events.map((e: ProductivityStatEvent) => e.taskId)).toEqual(["fresh"]);
+		expect(json().projectId).toBe(PROJECT_A);
+		expect(json().since).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+	});
+
+	it("refuses an unparseable --since before asking the app", async () => {
+		await expect(handleStats("productivity", args({ since: "last week" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("renders a table with a totals line", async () => {
+		mockSend.mockResolvedValue(ok({ events: [statEvent()], generatedAt: "G" }));
+		await handleStats("productivity", args(), SOCKET, CTX);
+		expect(stdout).toContain("Add stats CLI");
+		expect(stdout).toContain("1 task: 1 completed, +120 -30 lines.");
+	});
+
+	it("tells the user to update an app that predates the method", async () => {
+		mockSend.mockResolvedValue(fail("Unknown method: stats.productivity"));
+		await expect(handleStats("productivity", args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
+		expect(stderr).toContain("older than this CLI");
+	});
+});
+
+describe("activity filters", () => {
+	it("counts a task touched after the cutoff by any timestamp, including a movement", () => {
+		const since = "2026-10-10T00:00:00.000Z";
+		expect(productivityEventActiveSince(statEvent(), since)).toBe(false);
+		expect(productivityEventActiveSince(statEvent({ movements: [{ at: "2026-10-11T00:00:00.000Z", to: "in-progress" }] }), since)).toBe(true);
+		expect(productivityEventActiveSince(statEvent({ statusEnteredAt: "2026-10-10T00:00:00.000Z" }), since)).toBe(true);
+	});
+
+	it("keeps a usage day the cutoff falls inside", () => {
+		expect(usageDayOverlapsSince(usageDay(), "2026-10-20T18:00:00.000Z")).toBe(true);
+		expect(usageDayOverlapsSince(usageDay(), "2026-10-21T00:00:00.000Z")).toBe(false);
+	});
+});
+
+describe("dev3 stats usage", () => {
+	it("prints days with the unpriced flag", async () => {
+		mockSend.mockResolvedValue(ok({ days: [usageDay()], generatedAt: "G", hasUnpricedModels: true }));
+		await handleStats("usage", args({ json: "true" }), SOCKET, CTX);
+		expect(json()).toMatchObject({ schemaVersion: 1, hasUnpricedModels: true, since: null, days: [{ source: "claude", costUsd: 3.5 }] });
+	});
+
+	it("has no --project, and says why", async () => {
+		await expect(handleStats("usage", args({ project: PROJECT_A }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(stderr).toContain("per agent and day");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("renders tokens compactly and the total cost", async () => {
+		mockSend.mockResolvedValue(ok({ days: [usageDay()], generatedAt: "G", hasUnpricedModels: false }));
+		await handleStats("usage", args(), SOCKET, CTX);
+		expect(stdout).toContain("2.5M");
+		expect(stdout).toContain("Total API-equivalent cost: $3.50.");
+	});
+});
+
+describe("dev3 stats limits", () => {
+	const report: AgentRateLimitsReport = {
+		generatedAt: 5,
+		snapshots: [{
+			source: "claude", accountId: null, capturedAt: 4, windows: [{ id: "five_hour", usedPercent: 41.6, resetsAt: 9, windowMinutes: 300 }],
+			creditsBalance: null, monthlyCredits: null, planType: null,
+		}],
+	};
+
+	it("keeps capturedAt in JSON and defaults sessions to an empty list", async () => {
+		mockSend.mockResolvedValue(ok(report));
+		await handleStats("limits", args({ json: "true" }), SOCKET, CTX);
+		expect(json()).toMatchObject({ schemaVersion: 1, generatedAt: 5, sessions: [], snapshots: [{ capturedAt: 4 }] });
+	});
+
+	it("renders one row per window", async () => {
+		mockSend.mockResolvedValue(ok(report));
+		await handleStats("limits", args(), SOCKET, CTX);
+		expect(stdout).toContain("five_hour");
+		expect(stdout).toContain("42%");
+	});
+});
+
+describe("dev3 stats memory", () => {
+	it("reports a not-yet-sampled monitor as snapshot null", async () => {
+		mockSend.mockResolvedValue(ok(null));
+		await handleStats("memory", args({ json: "true" }), SOCKET, CTX);
+		expect(json()).toEqual({ schemaVersion: 1, snapshot: null });
+	});
+
+	it("renders pressure and the heaviest tasks", async () => {
+		const gib = 1024 ** 3;
+		const snapshot: SystemMemorySnapshot = {
+			headroom: 8 * gib, used: 24 * gib, total: 32 * gib, cached: 2 * gib, pressure: "normal", pressureEstimated: false,
+			swapUsed: 0, swapTotal: 0, swapping: false, topConsumers: [], appRss: gib, activeTaskCount: 1,
+			tasksRssApprox: 3 * gib, medianTaskRss: 3 * gib,
+			topTasks: [{ shortId: "a27b4229", taskId: "a27b4229-full", title: "Stats CLI", projectId: PROJECT_A, rss: 3 * gib }],
+		};
+		mockSend.mockResolvedValue(ok(snapshot));
+		await handleStats("memory", args(), SOCKET, CTX);
+		expect(stdout).toContain("Pressure:  normal");
+		expect(stdout).toContain("a27b4229");
+	});
+});
+
+describe("dev3 approvals list", () => {
+	it("prints pending requests, filtered by --project", async () => {
+		mockSend.mockResolvedValue(ok({ requests: [approval(), approval({ requestId: "r2", projectId: PROJECT_B })] }));
+		await handleApprovals("list", args({ json: "true", project: PROJECT_A }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "approvals.list", {});
+		expect(json()).toMatchObject({ schemaVersion: 1, projectId: PROJECT_A, requests: [{ requestId: "r1" }] });
+		expect(json().requests).toHaveLength(1);
+	});
+
+	it("names who asked for a launch", async () => {
+		mockSend.mockResolvedValue(ok({ requests: [
+			approval({ kind: "launch", requesterSeq: 33 }),
+			approval({ requestId: "r2", kind: "launch", requesterSenderId: "openclaw", heldByUser: true }),
+		] }));
+		await handleApprovals("list", args(), SOCKET, CTX);
+		expect(stdout).toContain("#33");
+		expect(stdout).toContain("sender openclaw");
+		expect(stdout).toContain("held by user");
+	});
+
+	it("needs the list verb", async () => {
+		await expect(handleApprovals(undefined, args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+	});
+});
+
+describe("dev3 stats", () => {
+	it("rejects an unknown subcommand", async () => {
+		await expect(handleStats("tokens", args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+	});
+});

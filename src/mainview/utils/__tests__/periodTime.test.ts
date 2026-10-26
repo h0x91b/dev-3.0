@@ -12,6 +12,7 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 	idc += 1;
 	return {
 		taskId: `t${idc}`,
+		seq: 1,
 		projectId: "p1",
 		projectName: "Proj",
 		projectKind: "git",

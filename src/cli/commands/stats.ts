@@ -1,0 +1,264 @@
+import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot } from "../../shared/types";
+import type { AgentRateLimitsReport } from "../../shared/rate-limits";
+import type { PendingApprovalSummary } from "../../shared/agent-approval";
+import { parseEventCursor } from "../../shared/board-events";
+import { sendRequest } from "../socket-client";
+import { exitError, exitUsage, printTable } from "../output";
+import type { ParsedArgs } from "../args";
+import { expandShortProjectId, type CliContext } from "../context";
+import { rejectUnknownFlags } from "../flag-validation";
+
+/**
+ * `--json` output is a public contract like `task show --json`: additive changes
+ * keep the version, removing or renaming a field bumps it.
+ */
+export const STATS_JSON_SCHEMA_VERSION = 1;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_HUMAN_ROWS = 50;
+
+function printJson(payload: Record<string, unknown>): void {
+	process.stdout.write(`${JSON.stringify({ schemaVersion: STATS_JSON_SCHEMA_VERSION, ...payload }, null, 2)}\n`);
+}
+
+/** `--since 7d` / a date / a cursor-style instant, resolved to ISO; null when not given. */
+function readSince(args: ParsedArgs): string | null {
+	const raw = args.flags.since;
+	if (raw === undefined) return null;
+	if (raw === "true") exitUsage("--since needs a value, e.g. --since 7d");
+	const since = parseEventCursor(raw);
+	if (!since) exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w) or a date (2026-10-01).`);
+	return since;
+}
+
+function readProject(args: ParsedArgs, context: CliContext | null): string | null {
+	const raw = args.flags.project;
+	if (raw === undefined) return null;
+	if (raw === "true") exitUsage("--project needs a project id");
+	return expandShortProjectId(raw, context);
+}
+
+async function request<T>(socketPath: string, method: string, what: string): Promise<T> {
+	const resp = await sendRequest(socketPath, method, {});
+	if (!resp.ok) {
+		if ((resp.error ?? "").startsWith("Unknown method:")) {
+			exitError(resp.error!, `The running dev3 app is older than this CLI and has no \`${what}\`. Update or restart the app, then retry.`);
+		}
+		exitError(resp.error || `Failed to read ${what}`);
+	}
+	return resp.data as T;
+}
+
+/** A task counts when anything happened to it at or after `since`. */
+export function productivityEventActiveSince(event: ProductivityStatEvent, since: string): boolean {
+	const sinceMs = Date.parse(since);
+	const after = (iso: string | null) => iso !== null && Date.parse(iso) >= sinceMs;
+	return after(event.createdAt) || after(event.movedAt) || after(event.statusEnteredAt)
+		|| event.movements.some((m) => after(m.at));
+}
+
+/** A day counts when any part of it falls at or after `since`. */
+export function usageDayOverlapsSince(day: AgentUsageDay, since: string): boolean {
+	return day.startMs + DAY_MS > Date.parse(since);
+}
+
+function lastActivity(event: ProductivityStatEvent): string {
+	return event.movedAt ?? event.createdAt;
+}
+
+function truncate(text: string, max: number): string {
+	const line = text.replace(/\s+/g, " ").trim();
+	return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
+}
+
+function formatWhen(ms: number | string | null): string {
+	if (ms === null) return "-";
+	return new Date(ms).toLocaleString("en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function gb(bytes: number): string {
+	return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function tokens(n: number): string {
+	if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+	if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+	if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+	return String(n);
+}
+
+function moreLine(shown: number, total: number): void {
+	if (total > shown) process.stdout.write(`… ${total - shown} more not shown — use --json for all of them.\n`);
+}
+
+async function productivity(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "since", "json"]);
+	const since = readSince(args);
+	const projectId = readProject(args, context);
+	const stats = await request<ProductivityStats>(socketPath, "stats.productivity", "stats productivity");
+	const events = stats.events.filter((e) =>
+		(!projectId || e.projectId === projectId) && (!since || productivityEventActiveSince(e, since)));
+
+	if (args.flags.json === "true") {
+		printJson({ generatedAt: stats.generatedAt, since, projectId, events });
+		return;
+	}
+	if (events.length === 0) {
+		process.stdout.write("No tasks\n");
+		return;
+	}
+	const sorted = [...events].sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)));
+	const shown = sorted.slice(0, MAX_HUMAN_ROWS);
+	printTable(
+		["SEQ", "STATUS", "PROJECT", "+", "-", "FILES", "LAST MOVE", "TITLE"],
+		shown.map((e) => [
+			String(e.seq), e.status, truncate(e.projectName, 18), String(e.insertions), String(e.deletions),
+			String(e.files), formatWhen(lastActivity(e)), truncate(e.title, 50),
+		]),
+	);
+	moreLine(shown.length, sorted.length);
+	const completed = events.filter((e) => e.status === "completed").length;
+	const insertions = events.reduce((sum, e) => sum + e.insertions, 0);
+	const deletions = events.reduce((sum, e) => sum + e.deletions, 0);
+	process.stdout.write(
+		`\n${events.length} task${events.length === 1 ? "" : "s"}${since ? ` active since ${since}` : ""}: ` +
+		`${completed} completed, +${insertions} -${deletions} lines.\n`,
+	);
+}
+
+async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
+	rejectUnknownFlags(args, ["project", "since", "json"]);
+	if (args.flags.project !== undefined) {
+		exitUsage("dev3 stats usage has no --project: agent usage is recorded per agent and day, not per project or task.");
+	}
+	const since = readSince(args);
+	const report = await request<AgentUsageReport>(socketPath, "stats.usage", "stats usage");
+	const days = since ? report.days.filter((d) => usageDayOverlapsSince(d, since)) : report.days;
+
+	if (args.flags.json === "true") {
+		printJson({ generatedAt: report.generatedAt, since, hasUnpricedModels: report.hasUnpricedModels, days });
+		return;
+	}
+	if (days.length === 0) {
+		process.stdout.write("No agent usage recorded\n");
+		return;
+	}
+	const newestFirst = [...days].reverse();
+	const shown = newestFirst.slice(0, MAX_HUMAN_ROWS);
+	printTable(
+		["DATE", "AGENT", "INPUT", "OUTPUT", "CACHE WRITE", "CACHE READ", "COST (API $)"],
+		shown.map((d) => [
+			d.date, d.source, tokens(d.inputTokens), tokens(d.outputTokens), tokens(d.cacheCreationInputTokens),
+			tokens(d.cacheReadInputTokens), `${d.costUsd.toFixed(2)}${d.fullyPriced ? "" : "+"}`,
+		]),
+	);
+	moreLine(shown.length, newestFirst.length);
+	const cost = days.reduce((sum, d) => sum + d.costUsd, 0);
+	process.stdout.write(`\nTotal API-equivalent cost: $${cost.toFixed(2)}${days.some((d) => !d.fullyPriced) ? " (lower bound: some models have no known price, marked +)" : ""}.\n`);
+}
+
+async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
+	rejectUnknownFlags(args, ["json"]);
+	const report = await request<AgentRateLimitsReport>(socketPath, "stats.limits", "stats limits");
+
+	if (args.flags.json === "true") {
+		printJson({ generatedAt: report.generatedAt, snapshots: report.snapshots, sessions: report.sessions ?? [] });
+		return;
+	}
+	if (report.snapshots.length === 0) {
+		process.stdout.write("No rate-limit readings yet\n");
+		return;
+	}
+	const rows = report.snapshots.flatMap((s) => {
+		const account = s.accountId ?? "system";
+		if (s.windows.length === 0) return [[s.source, account, "-", "no limits reported", "-", formatWhen(s.capturedAt)]];
+		return s.windows.map((w) => [
+			s.source, account, w.id, `${Math.round(w.usedPercent)}%`, formatWhen(w.resetsAt), formatWhen(s.capturedAt),
+		]);
+	});
+	printTable(["AGENT", "ACCOUNT", "WINDOW", "USED", "RESETS", "CAPTURED"], rows);
+}
+
+async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
+	rejectUnknownFlags(args, ["json"]);
+	const snapshot = await request<SystemMemorySnapshot | null>(socketPath, "stats.memory", "stats memory");
+
+	if (args.flags.json === "true") {
+		printJson({ snapshot });
+		return;
+	}
+	if (!snapshot) {
+		process.stdout.write("The memory monitor has not sampled yet — retry in a few seconds.\n");
+		return;
+	}
+	const out = (line: string) => process.stdout.write(`${line}\n`);
+	out(`Pressure:  ${snapshot.pressure}${snapshot.pressureEstimated ? " (estimated)" : ""}`);
+	out(`Headroom:  ${gb(snapshot.headroom)} of ${gb(snapshot.total)} (used ${gb(snapshot.used)}, cached ${gb(snapshot.cached)})`);
+	out(`Swap:      ${gb(snapshot.swapUsed)} of ${gb(snapshot.swapTotal)}${snapshot.swapping ? ", swapping now" : ""}`);
+	out(`dev3 app:  ${gb(snapshot.appRss)}`);
+	out(`Tasks:     ${snapshot.activeTaskCount} live, ~${gb(snapshot.tasksRssApprox)} (upper bound)`);
+	if (snapshot.topTasks.length > 0) {
+		out("");
+		printTable(["TASK", "RSS", "TITLE"], snapshot.topTasks.map((t) => [t.shortId, gb(t.rss), truncate(t.title, 60)]));
+	}
+}
+
+async function approvalsList(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "json"]);
+	const projectId = readProject(args, context);
+	const { requests } = await request<{ requests: PendingApprovalSummary[] }>(socketPath, "approvals.list", "approvals list");
+	const pending = projectId ? requests.filter((r) => r.projectId === projectId) : requests;
+
+	if (args.flags.json === "true") {
+		printJson({ projectId, requests: pending });
+		return;
+	}
+	if (pending.length === 0) {
+		process.stdout.write("No pending approvals\n");
+		return;
+	}
+	printTable(
+		["KIND", "SEQ", "PROJECT", "TASK", "ASKED BY", "SINCE", "AUTO-APPROVES"],
+		pending.map((r) => [
+			r.kind,
+			r.seqLabel ?? r.taskId.slice(0, 8),
+			truncate(r.projectName ?? r.projectId.slice(0, 8), 18),
+			truncate(r.taskTitle ?? "-", 40),
+			r.requesterSenderId ? `sender ${r.requesterSenderId}` : r.requesterSeq !== null ? `#${r.requesterSeq}` : "-",
+			formatWhen(r.createdAt),
+			r.heldByUser ? "held by user" : formatWhen(r.autoApproveAt),
+		]),
+	);
+}
+
+const STATS_SUBCOMMANDS = ["productivity", "usage", "limits", "memory"] as const;
+
+export async function handleStats(
+	subcommand: string | undefined,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+): Promise<void> {
+	switch (subcommand) {
+		case "productivity":
+			return productivity(args, socketPath, context);
+		case "usage":
+			return usage(args, socketPath);
+		case "limits":
+			return limits(args, socketPath);
+		case "memory":
+			return memory(args, socketPath);
+		default:
+			exitUsage(`Usage: dev3 stats <${STATS_SUBCOMMANDS.join("|")}> [--json]`);
+	}
+}
+
+export async function handleApprovals(
+	subcommand: string | undefined,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+): Promise<void> {
+	if (subcommand !== "list") exitUsage("Usage: dev3 approvals list [--project <id>] [--json]");
+	return approvalsList(args, socketPath, context);
+}

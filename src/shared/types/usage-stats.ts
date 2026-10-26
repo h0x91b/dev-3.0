@@ -10,6 +10,8 @@ import type { TaskMovement } from "./task-notes";
  */
 export interface ProductivityStatEvent {
 	taskId: string;
+	/** Per-project sequential id, as `dev3 task show <seq>` takes it. */
+	seq: number;
 	projectId: string;
 	projectName: string;
 	projectKind: "git" | "virtual";

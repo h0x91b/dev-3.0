@@ -12,6 +12,7 @@ import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
 import { log, type Handler } from "./cli-socket/shared";
+import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
 import { uiHandlers } from "./cli-socket/ui-commands";
@@ -60,6 +61,7 @@ const handlers: Record<string, Handler> = {
 	...messageHandlers,
 	...externalSenderHandlers,
 	...prWatchHandlers,
+	...statsHandlers,
 	...systemHandlers,
 	...taskHandlers,
 };

@@ -19,6 +19,7 @@ const DAY = 86_400_000;
 function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 	return {
 		taskId: "t" + Math.round(Math.random() * 1e9),
+		seq: 1,
 		projectId: "p1",
 		projectName: "Proj A",
 		projectKind: "git",

@@ -37,3 +37,29 @@ export interface AgentApprovalNotAttached {
 export function isAgentApprovalNotAttached(data: unknown): data is AgentApprovalNotAttached {
 	return typeof data === "object" && data !== null && (data as { attached?: unknown }).attached === false;
 }
+
+/**
+ * One request still waiting for the user, as `dev3 approvals list` reports it.
+ * Read-only: listing never shows, holds or answers a dialog.
+ */
+export interface PendingApprovalSummary {
+	requestId: string;
+	kind: "complete" | "cancel" | "reset" | "launch";
+	taskId: string;
+	projectId: string;
+	/** Null when the dialog payload has not reached the request yet. */
+	taskTitle: string | null;
+	seqLabel: string | null;
+	projectName: string | null;
+	/** `launch` only: the task that asked, when a task asked. */
+	requesterSeq: number | null;
+	requesterTitle: string | null;
+	/** `launch` only: the registered external sender that asked, if one did. */
+	requesterSenderId: string | null;
+	/** Epoch ms. */
+	createdAt: number;
+	/** Epoch ms the request approves itself, or null when it never will. */
+	autoApproveAt: number | null;
+	/** A user touched the dialog, so only an explicit answer settles it. */
+	heldByUser: boolean;
+}

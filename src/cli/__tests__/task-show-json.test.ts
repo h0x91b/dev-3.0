@@ -78,8 +78,8 @@ describe("task show --json", () => {
 
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
-			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "id",
-			"labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prUrl", "priority",
+			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "hibernated", "id",
+			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prStatus", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
@@ -102,6 +102,25 @@ describe("task show --json", () => {
 		]);
 	});
 
+	it("carries the PR poller's reading as a projection, plus hibernation and keep-alive", () => {
+		const json = buildTaskShowJson({
+			...TASK,
+			hibernated: true,
+			keepAlive: { enabled: true },
+			prStatusCache: {
+				number: 12, url: "https://github.com/o/r/pull/12", ciStatus: "failure", reviewState: null,
+				unresolvedCount: 2, mergeState: { mergeable: "MERGEABLE", status: "BLOCKED" }, checks: [],
+				prTitle: "Fix", isDraft: false, cachedAt: "2026-10-27T00:00:00Z",
+			},
+		} as Task);
+		expect(json.prStatus).toEqual({
+			number: 12, ciStatus: "failure", reviewDecision: null, mergeState: { mergeable: "MERGEABLE", status: "BLOCKED" },
+			isDraft: false, autoMergeEnabled: null, unresolvedCount: 2, cachedAt: "2026-10-27T00:00:00Z",
+		});
+		expect(json.hibernated).toBe(true);
+		expect(json.keepAlive).toEqual({ enabled: true, status: "watching" });
+	});
+
 	it("adds notes and history only when asked", async () => {
 		await handleTask("show", args(["aaaaaaaa"], { json: "true", notes: "true", history: "true" }), SOCKET, null);
 		const parsed = JSON.parse(stdout);
@@ -112,7 +131,7 @@ describe("task show --json", () => {
 
 	it("fills absent optionals with null/defaults instead of dropping the key", () => {
 		const bare = { ...TASK, labelIds: undefined, notes: undefined, branchName: null, priority: undefined, overview: null, userOverview: null } as unknown as Task;
-		expect(buildTaskShowJson(bare)).toMatchObject({ labelIds: [], noteCount: 0, branch: null, priority: "P3", overview: null, movedAt: null });
+		expect(buildTaskShowJson(bare)).toMatchObject({ labelIds: [], noteCount: 0, branch: null, priority: "P3", overview: null, movedAt: null, prStatus: null, hibernated: false, keepAlive: null });
 	});
 
 	it("the plain form is unchanged and is not JSON", async () => {

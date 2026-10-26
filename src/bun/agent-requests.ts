@@ -1,4 +1,5 @@
 import type { AgentLaunchChoice, AgentLaunchRequest, TaskDialogSubject } from "../shared/types";
+import type { PendingApprovalSummary } from "../shared/agent-approval";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -33,6 +34,8 @@ interface PendingAgentRequest {
 	kind: AgentRequestKind;
 	taskId: string;
 	projectId: string;
+	/** Epoch ms the request was created. */
+	createdAt: number;
 	decision: Promise<AgentRequestDecision>;
 	resolve: (decision: AgentRequestDecision) => void;
 	/** Present when the caller supplied one; absent kinds are not replayable. */
@@ -131,7 +134,7 @@ export function createAgentRequest(
 	const autoApproveAfterMs = opts.autoApproveAfterMs ?? 0;
 	const autoApproveAt = autoApproveAfterMs > 0 ? Date.now() + autoApproveAfterMs : null;
 	const entry: PendingAgentRequest = {
-		requestId, kind, taskId, projectId, decision, resolve, autoApproveAt,
+		requestId, kind, taskId, projectId, createdAt: Date.now(), decision, resolve, autoApproveAt,
 		autoApproveMs: autoApproveAfterMs,
 		...(opts.dialog ? { dialog: opts.dialog } : {}),
 	};
@@ -244,6 +247,29 @@ export function listPendingAgentRequests(
 		out.push({ requestId: entry.requestId, taskId: entry.taskId, projectId: entry.projectId, dialog: entry.dialog });
 	}
 	return out;
+}
+
+/** Every pending request of every kind, oldest first, for `dev3 approvals list`. */
+export function listPendingApprovalSummaries(): PendingApprovalSummary[] {
+	return [...pendingByRequestId.values()].map((entry) => {
+		const launch = entry.launchDialog;
+		const subject = entry.dialog?.subject ?? launch?.subject;
+		return {
+			requestId: entry.requestId,
+			kind: entry.kind,
+			taskId: entry.taskId,
+			projectId: entry.projectId,
+			taskTitle: entry.dialog?.taskTitle ?? launch?.taskTitle ?? null,
+			seqLabel: subject?.seqLabel ?? null,
+			projectName: subject?.projectName ?? null,
+			requesterSeq: launch && !launch.requesterSender ? launch.requesterSeq : null,
+			requesterTitle: launch && !launch.requesterSender ? launch.requesterTitle : null,
+			requesterSenderId: launch?.requesterSender?.senderId ?? null,
+			createdAt: entry.createdAt,
+			autoApproveAt: entry.autoApproveAt,
+			heldByUser: entry.heldByUser === true,
+		};
+	}).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export function setAgentLaunchDialog(request: AgentLaunchRequest): void {

@@ -9,6 +9,7 @@ import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
 import { handleReview } from "./commands/review";
 import { handleEvents } from "./commands/events";
+import { handleApprovals, handleStats } from "./commands/stats";
 import { handleVents } from "./commands/vents";
 import { handleOverview } from "./commands/overview";
 import { handleKeepAlive } from "./commands/keep-alive";
@@ -466,6 +467,10 @@ async function main(): Promise<void> {
 				// `events` takes no subcommand — re-parse from the raw args so a
 				// stray positional is reported instead of silently swallowed.
 				return await handleEvents(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
+			case "stats":
+				return await handleStats(subcommand, args, socketPath, context);
+			case "approvals":
+				return await handleApprovals(subcommand, args, socketPath, context);
 			case "vents":
 				// `vents` takes no subcommand — its first positional is the vent
 				// name, so re-parse from the raw args without the subcommand split.

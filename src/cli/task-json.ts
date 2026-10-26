@@ -1,4 +1,4 @@
-import type { Task, TaskHistoryEntry, TaskNote } from "../shared/types";
+import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote } from "../shared/types";
 import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually } from "../shared/types";
 import { allPullRequests } from "../shared/task-pull-requests";
 
@@ -39,12 +39,45 @@ export interface TaskShowJson {
 	prUrl: string | null;
 	/** Every PR the task has had, newest first; `prNumber` is the current one. */
 	pullRequests: Array<{ number: number; url: string; title: string | null; state: string | null }>;
+	/**
+	 * The PR poller's last reading, or null before its first one. `number` says
+	 * which PR it describes — compare it with `prNumber` before trusting it.
+	 */
+	prStatus: {
+		number: number;
+		ciStatus: PRCIStatus | null;
+		reviewDecision: PRReviewDecision | null;
+		mergeState: PRMergeState | null;
+		isDraft: boolean | null;
+		autoMergeEnabled: boolean | null;
+		unresolvedCount: number | null;
+		cachedAt: string;
+	} | null;
+	/** The agent, terminal and dev server are stopped until the task is woken. */
+	hibernated: boolean;
+	/** `status` is the watchdog state: watching, reviving or gave-up. */
+	keepAlive: { enabled: boolean; status: string } | null;
 	createdAt: string;
 	updatedAt: string;
 	movedAt: string | null;
 	noteCount: number;
 	notes?: Array<Pick<TaskNote, "id" | "source" | "content" | "createdAt" | "updatedAt">>;
 	history?: Array<Pick<TaskHistoryEntry, "at" | "changed" | "title" | "overview">>;
+}
+
+function prStatusJson(task: Task): TaskShowJson["prStatus"] {
+	const cache = task.prStatusCache;
+	if (!cache) return null;
+	return {
+		number: cache.number,
+		ciStatus: cache.ciStatus,
+		reviewDecision: cache.reviewDecision ?? null,
+		mergeState: cache.mergeState,
+		isDraft: cache.isDraft,
+		autoMergeEnabled: cache.autoMergeEnabled ?? null,
+		unresolvedCount: cache.unresolvedCount,
+		cachedAt: cache.cachedAt,
+	};
 }
 
 export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?: boolean } = {}): TaskShowJson {
@@ -75,6 +108,9 @@ export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?:
 		pullRequests: allPullRequests(task).map(({ number, url, title, state }) => ({
 			number, url, title: title ?? null, state: state ?? null,
 		})),
+		prStatus: prStatusJson(task),
+		hibernated: task.hibernated === true,
+		keepAlive: task.keepAlive ? { enabled: task.keepAlive.enabled, status: task.keepAlive.status ?? "watching" } : null,
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		movedAt: task.movedAt ?? null,

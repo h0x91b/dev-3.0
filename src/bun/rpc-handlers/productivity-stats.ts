@@ -20,6 +20,7 @@ export function toStatEvent(
 	const diff: RawDiff = liveDiff ?? task.completedDiffStats ?? { files: 0, insertions: 0, deletions: 0 };
 	return {
 		taskId: task.id,
+		seq: task.seq,
 		projectId: project.id,
 		projectName: project.name,
 		projectKind: project.kind === "virtual" ? "virtual" : "git",
