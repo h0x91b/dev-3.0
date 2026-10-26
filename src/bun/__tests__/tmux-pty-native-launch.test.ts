@@ -193,6 +193,7 @@ vi.mock("../spawn", () => ({
 
 vi.mock("../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
 vi.mock("../../shared/agent-hooks", () => ({ claudeSessionStartHookInstalled: vi.fn(() => true) }));
+vi.mock("../hook-cli-capability", () => ({ hookCliSupports: vi.fn(async () => true) }));
 vi.mock("../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn(() => ({ DEV3_ARTIFACT_DIR: "/tmp/art" })) }));
 
 vi.mock("../rpc-handlers/shared-pure", () => ({
@@ -242,6 +243,7 @@ import { tmux } from "../tmux";
 
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { claudeSessionStartHookInstalled } from "../../shared/agent-hooks";
+import { hookCliSupports } from "../hook-cli-capability";
 import { agentSessionRecord, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const { launchTaskPty, tmuxPtyHandlers } = await import("../rpc-handlers/tmux-pty");
@@ -741,6 +743,17 @@ describe("launch registration of a fresh Claude session", () => {
 		vi.mocked(claudeSessionStartHookInstalled).mockReturnValue(false);
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 		expect(exitReports()).toEqual([]);
+	});
+
+	it("registers nothing when the shared hook CLI predates the receipts — today's handoff, no unknown-command exit line", async () => {
+		vi.mocked(hookCliSupports).mockImplementation(async (method) => method !== "agent.sessionStarted");
+		try {
+			await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		} finally {
+			vi.mocked(hookCliSupports).mockImplementation(async () => true);
+		}
+		expect(exitReports()).toEqual([]);
+		expect(agentSessionRecord(TASK_ID, persistedSessionId())).toBeNull();
 	});
 
 	it("registers nothing for a harness without Claude's hooks", async () => {

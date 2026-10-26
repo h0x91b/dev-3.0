@@ -89,6 +89,7 @@ export async function deliverLaunchHandoff(opts: {
 	const shortId = opts.childTaskId.slice(0, 8);
 	let badged = false;
 	let failingSince: number | null = null;
+	let boundSessionId: string | null = null;
 
 	while (now() < startedAt + STARTUP_CEILING_MS) {
 		try {
@@ -103,18 +104,27 @@ export async function deliverLaunchHandoff(opts: {
 			if (!task.preparing && panes.length > 0) {
 				const sessionId = panes[0]?.sessionId ?? null;
 				const launched = sessionId ? agentSessionRecord(task.id, sessionId) : null;
+				if (boundSessionId && sessionId !== boundSessionId) {
+					// Relaunched under us: the note was meant for the agent that is gone, and a
+					// peer relaunch brings its own handoff — typing ours too would duplicate it.
+					log.info("Handoff abandoned — the launched agent was replaced", { taskId: shortId });
+					notifyUndelivered(project, task, "This task was launched by an agent, but its agent was restarted before the handoff note could be delivered.");
+					return false;
+				}
 				if (!launched?.launchedAt) {
 					if (now() >= startedAt + MAX_WAIT_MS) break;
 					return await sendHandoff(project, task, opts, null);
 				}
+				boundSessionId = sessionId;
+				// Exit wins over start: whatever the agent reported, its pane is a bare shell now.
+				if (launched.exitedAt !== null) {
+					log.warn("Handoff abandoned — the agent exited before the note was delivered", { taskId: shortId, exitCode: launched.exitCode });
+					notifyUndelivered(project, task, "This task was launched by an agent, but its agent exited before the handoff note could be delivered.");
+					return false;
+				}
 				if (launched.startedAt !== null) {
 					const target: ScheduledMessageTarget | null = launched.paneId ? { kind: "pane", paneId: launched.paneId } : null;
 					return await sendHandoff(project, task, opts, target);
-				}
-				if (launched.exitedAt !== null) {
-					log.warn("Handoff abandoned — the agent exited before its session started", { taskId: shortId, exitCode: launched.exitCode });
-					notifyUndelivered(project, task, "This task was launched by an agent, but its agent exited before the handoff note could be delivered.");
-					return false;
 				}
 				if (!badged && now() >= startedAt + MAX_WAIT_MS) {
 					badged = true;

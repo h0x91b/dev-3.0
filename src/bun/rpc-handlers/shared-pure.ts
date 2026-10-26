@@ -15,7 +15,7 @@ import {
 } from "../../shared/platform-launch";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
-import { resolveDev3CliPath } from "../../shared/dev3-cli-path";
+import { hookCliFilePath } from "../hook-cli-capability";
 import { broadcastToOtherInstances } from "../instance-broadcast";
 import { realpathSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -103,12 +103,12 @@ export function generatedScriptName(base: string): string {
 
 /**
  * How a launch wrapper tells the app its agent process ended — `dev3 hook
- * agent-exited`, with the exit code appended by `buildCmdScript`. The session id
- * is the one this spawn pre-assigned, so the report names exactly one agent.
+ * agent-exited`, with the exit code appended by `buildCmdScript`. The same CLI
+ * file the hooks run, whose support the launch checked. The session id is the one
+ * this spawn pre-assigned, so the report names exactly one agent.
  */
 export function agentExitReportArgv(taskId: string, sessionId: string): string[] {
-	const cli = process.platform === "win32" ? resolveDev3CliPath() : `${DEV3_HOME}/bin/dev3`;
-	return [cli, "hook", "agent-exited", "--task", taskId, "--session", sessionId];
+	return [hookCliFilePath(), "hook", "agent-exited", "--task", taskId, "--session", sessionId];
 }
 
 export function buildCmdScript(

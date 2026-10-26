@@ -14,6 +14,10 @@
  * In memory only: an app restart forgets it, and both readers then do nothing.
  */
 
+/** Socket methods the hook CLI sends; also the strings `hookCliSupports` looks for. */
+export const AGENT_SESSION_STARTED_METHOD = "agent.sessionStarted";
+export const AGENT_EXITED_METHOD = "agent.exited";
+
 export interface AgentSessionRecord {
 	launchedAt: number | null;
 	startedAt: number | null;

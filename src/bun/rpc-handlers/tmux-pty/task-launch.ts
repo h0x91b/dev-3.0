@@ -23,7 +23,8 @@ import { noteDev3TypedPrompt } from "../../agent-typed-prompt-claims";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../../temp-paths";
 import { stopSetupFailureWatch, watchSetupFailure } from "../../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
-import { noteAgentLaunched } from "../../agent-session-receipts";
+import { AGENT_EXITED_METHOD, AGENT_SESSION_STARTED_METHOD, noteAgentLaunched } from "../../agent-session-receipts";
+import { hookCliSupports } from "../../hook-cli-capability";
 import { claudeSessionStartHookInstalled } from "../../../shared/agent-hooks";
 import { openAuxPane } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, agentExitReportArgv, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
@@ -511,7 +512,10 @@ export async function launchTaskPty(
 	let exitReport: string[] | undefined;
 	if (trackedSessionId && agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily)
 		&& getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec()?.kind === "claude"
-		&& claudeSessionStartHookInstalled(worktreePath)) {
+		&& claudeSessionStartHookInstalled(worktreePath)
+		// An older shared CLI sends neither receipt: gating on it would drop the
+		// handoff and print "Unknown command" at every exit, so keep today's path.
+		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
 		noteAgentLaunched(task.id, trackedSessionId);
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
 	}

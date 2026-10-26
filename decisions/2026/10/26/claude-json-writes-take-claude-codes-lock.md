@@ -21,8 +21,9 @@ From the Claude Code 2.1.310 binary and on disk: Claude saves `.claude.json` und
 ## Risks
 
 - Claude builds that skip the lock, Claude's own compromised-lock writes, and Claude's unlocked fallback can still erase an entry. The handoff gate is what keeps the dialog safe when they do.
-- An older installed CLI sends no receipt, so a peer-launched Claude gets a badge and a toast instead of its note. The CLI also prints "Unknown command" on exit. The app reinstalls its CLI at startup.
-- Receipts live in memory. After an app restart nothing is registered, so both readers fall back to the old behaviour or do nothing.
+- Hooks run the shared `~/.dev3.0/bin/dev3`, which a dev build never writes and which the last-started installed version owns. A launch registers its session only when that CLI carries both receipt method names (`src/bun/hook-cli-capability.ts`, one cached scan, about 30 ms on a 66 MB CLI). With an older CLI nothing changes: the pre-fix handoff (still exposed to the dialog), no exit report, no "Unknown command" line. Measured on the installed v1.61.0 CLI: the scan answers false.
+- Receipts and the handoff live in memory. An app restart while a handoff waits drops that note silently — the same as before this change — and no reader acts on a pre-restart session.
+- Gate-opening evidence is keyed by the spawn's session id: SessionStart, or a later prompt or turn end from that same session. Measured: when trust is declined (Enter or Esc), none of SessionStart, SessionEnd, UserPromptSubmit, Stop, Pre/PostToolUse, PermissionRequest, StopFailure or Notification fires. An exit always wins over a start, so nothing is typed into the bare shell.
 - A live lock that never frees blocks a launch for up to 12 s before a verified unlocked write.
 
 ## Alternatives considered

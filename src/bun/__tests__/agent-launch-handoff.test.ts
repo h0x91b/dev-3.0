@@ -202,6 +202,30 @@ describe("deliverLaunchHandoff — a launched Claude session", () => {
 		expect(pushCliToast.mock.calls[0]![0].message).toMatch(/exited before/);
 	});
 
+	it("types nothing once the agent exited, even after its session had started", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 3_000) {
+				noteAgentSessionStarted("child-1234", SESSION, "%1");
+				noteAgentExited("child-1234", SESSION, 0);
+			}
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("abandons, with a toast, when the task is relaunched under a new session before the note lands", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 10_000) {
+				getTask.mockResolvedValue(liveTask({ sessionState: { panes: [{ paneId: "%2", sessionId: "relaunch", agentCmd: "claude" }] } }));
+				noteAgentLaunched("child-1234", "relaunch");
+				noteAgentSessionStarted("child-1234", "relaunch", "%2");
+			}
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast.mock.calls[0]![0].message).toMatch(/restarted/);
+	});
+
 	it("gives a send that keeps failing after the receipt the ordinary budget, not the boot ceiling", async () => {
 		noteAgentSessionStarted("child-1234", SESSION, "%1");
 		sendMessageImmediately.mockRejectedValue(new Error("no live agent session"));
