@@ -905,3 +905,47 @@ describe("missing pane cwd backstop", () => {
 		expect(spawnFn).toHaveBeenCalledTimes(3);
 	});
 });
+
+describe("server pre-start hook", () => {
+	function hookedClient() {
+		const order: string[] = [];
+		const ensureServer = vi.fn(() => {
+			order.push("ensure");
+			return "skipped" as const;
+		});
+		const spawnFn = vi.fn(() => {
+			order.push("spawn");
+			return makeProc();
+		});
+		const client = new TmuxClient({ cwdExists: () => true, spawn: spawnFn as never, ensureServer, socket: "dflt" });
+		return { client, ensureServer, order };
+	}
+
+	it("runs before an attached session with the env a self-started server would inherit", () => {
+		const { client, ensureServer, order } = hookedClient();
+		client.spawnAttachedSession({
+			sessionName: "s",
+			configFile: "/tmp/conf",
+			cwd: "/wt",
+			terminal: { cols: 1, rows: 1, data: vi.fn() },
+			processEnv: { TERM: "xterm-256color" },
+		});
+		expect(order).toEqual(["ensure", "spawn"]);
+		expect(ensureServer).toHaveBeenCalledWith(expect.objectContaining({
+			socket: "dflt",
+			configFile: "/tmp/conf",
+			cwd: DEV3_HOME,
+			env: expect.objectContaining({ TERM: "xterm-256color", HOME: process.env.HOME }),
+		}));
+	});
+
+	it("runs before a detached session on its socket with the active config", async () => {
+		const { client, ensureServer, order } = hookedClient();
+		await client.newSessionDetached({ socket: "s9", sessionName: "s", cwd: "/wt" });
+		expect(order).toEqual(["ensure", "spawn"]);
+		expect(ensureServer).toHaveBeenCalledWith(expect.objectContaining({
+			socket: "s9",
+			configFile: activeTmuxConfigPath(),
+		}));
+	});
+});

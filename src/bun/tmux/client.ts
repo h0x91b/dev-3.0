@@ -27,6 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
+import { ensureLaunchdServer } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
 import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
@@ -42,6 +43,8 @@ export interface TmuxClientOptions {
 	cwdExists?: (path: string) => boolean;
 	/** Default tmux socket for calls that don't pass one. */
 	socket?: string;
+	/** Pre-start hook for server-starting commands — defaults to the macOS launchd start. */
+	ensureServer?: typeof ensureLaunchdServer;
 }
 
 interface SocketOpt {
@@ -109,11 +112,13 @@ export class TmuxMissingCwdError extends Error {
 export class TmuxClient {
 	private readonly spawnFn: SpawnFn;
 	private readonly cwdExists: (path: string) => boolean;
+	private readonly ensureServer: typeof ensureLaunchdServer;
 	readonly defaultSocket: string;
 
 	constructor(opts: TmuxClientOptions = {}) {
 		this.spawnFn = opts.spawn ?? defaultSpawn;
 		this.cwdExists = opts.cwdExists ?? existsSync;
+		this.ensureServer = opts.ensureServer ?? ensureLaunchdServer;
 		this.defaultSocket = opts.socket ?? DEFAULT_TMUX_SOCKET;
 	}
 
@@ -191,6 +196,21 @@ export class TmuxClient {
 		await this.runChecked(socket, args);
 	}
 
+	/**
+	 * Give a server-starting command a launchd-owned server to connect to (macOS,
+	 * bundled tmux only). `env` is what the client would have handed a server it
+	 * started itself, so panes see the same global environment either way.
+	 */
+	private startServerIfMissing(socket: string | undefined, configFile: string, env: Record<string, string | undefined>): void {
+		this.ensureServer({
+			binary: getTmuxBinary(),
+			socket: socket ?? this.defaultSocket,
+			configFile,
+			cwd: tmuxClientCwd(),
+			env,
+		});
+	}
+
 	// ── Sessions ───────────────────────────────────────────────────────
 
 	/** `has-session -t` — true when the session exists on the socket. */
@@ -245,7 +265,9 @@ export class TmuxClient {
 		// /etc/tmux.conf + ~/.tmux.conf and the user's personal settings leak
 		// into the dev3 server (decisions/2026/08/02/isolate-tmux-config.md).
 		this.assertPaneCwd(opts.cwd);
-		const args = ["-f", activeTmuxConfigPath(), "new-session", "-d"];
+		const configFile = activeTmuxConfigPath();
+		this.startServerIfMissing(opts.socket, configFile, process.env);
+		const args = ["-f", configFile, "new-session", "-d"];
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);
 		}
@@ -295,6 +317,7 @@ export class TmuxClient {
 		processEnv?: Record<string, string>;
 	} & SocketOpt): SpawnedProcess {
 		this.assertPaneCwd(opts.cwd);
+		this.startServerIfMissing(opts.socket, opts.configFile, { ...process.env, ...opts.processEnv });
 		const args = ["-f", opts.configFile, "new-session"];
 		if (opts.attachIfExists) args.push("-A");
 		args.push("-c", opts.cwd);

@@ -11,6 +11,7 @@
  * - alt-click.ts   pure logic for the Alt/Option-click cursor-move gesture
  * - socket-files.ts  the socket FILE on disk: path resolution + sweep decision
  * - socket-sweep.ts  the IO shell that applies that decision at startup
+ * - launchd-server.ts  macOS: start the server as a launchd job (TCC attribution)
  * - errors.ts      TmuxError / TmuxSpawnError
  *
  * HARD RULE: never spawn `tmux` directly outside this module — always go

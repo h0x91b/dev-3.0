@@ -1,5 +1,7 @@
 # `dev3 doctor` probes repository access from the terminal's own process
 
+> Partly superseded on 2026-10-26 by `decisions/2026/10/26/tmux-server-as-launchd-job.md`: the cause is now established (a daemonized server whose starting app has exited fails TCC attribution) and the bundled tmux server starts as a launchd job. The doctor check itself is unchanged.
+
 ## Context
 
 On 2026-10-03 task terminals on macOS lost access to projects under `~/Desktop`: Git printed `not a git repository` and `ls ~/Desktop` gave `Operation not permitted`, while the app's own Git calls kept working. Granting Full Disk Access to the bundled `tmux` binary restored access; toggling the app's entry did not.
