@@ -2648,6 +2648,18 @@ function App() {
 				: null;
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
+		if (!taskId) return;
+		let lastReport = 0;
+		const reportActivity = () => {
+			if (Date.now() - lastReport < 5_000) return;
+			lastReport = Date.now();
+			void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
+		};
+		const events = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
+		for (const event of events) window.addEventListener(event, reportActivity, { passive: true, capture: true });
+		return () => {
+			for (const event of events) window.removeEventListener(event, reportActivity, { capture: true });
+		};
 	}, [state.route]);
 
 	// Publish the sensitive ids so surfaces that only know a projectId (tmux

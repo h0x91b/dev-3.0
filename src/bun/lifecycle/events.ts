@@ -109,7 +109,7 @@ export type LifecycleEvent =
 	 */
 	| { type: "resetRequested"; consent: TaskResetConsent }
 	| { type: "resetFailed"; error: string }
-	| { type: "hibernateRequested" }
+	| { type: "hibernateRequested"; inactivity?: { lastActivityAt: number; timeoutMinutes: number } }
 	| { type: "wakeRequested" }
 	| {
 		type: "preparationStageChanged";
