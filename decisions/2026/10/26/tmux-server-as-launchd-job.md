@@ -36,6 +36,10 @@ until it restarts.
 
 ## Risks
 
+- The grant inheritance is observed, not documented: Apple only promises that a launchd job is its own
+  responsible process, not that tccd credits a binary inside `dev3.app` to the app's bundle id. If a
+  macOS release stops doing that, terminals lose access with no fallback (the bootstrap still
+  succeeds); re-check `ls ~/Documents` in a task terminal after major macOS updates.
 - A server created by an older dev3 keeps the flaw until it restarts; the first update ships the
   fix without protecting terminals that are already open.
 - An update that changes the tmux binary's code was not verified, only a byte-identical swap.
