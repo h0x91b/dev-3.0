@@ -326,5 +326,7 @@ turning it off in Settings removes only the device you are on.
   arguments — see [Local diagnostic logs](diagnostic-logs.md).
 - SSH port-forwarding exposes nothing publicly and reuses your existing SSH credentials. It is
   the right default for anything sensitive.
+- External senders (`dev3 message --as-sender`, `dev3 sender inbox`) speak only over the local
+  CLI socket, never through the remote server or its tunnel; see the glossary.
 
 `dev3 remote --help` prints the complete flag reference.

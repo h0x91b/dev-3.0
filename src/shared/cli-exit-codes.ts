@@ -37,6 +37,8 @@ export const CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE = 35;
 export const CLI_EXIT_CODE_HIBERNATE_DECLINED = 36;
 export const CLI_EXIT_CODE_TASK_NOT_HIBERNATED = 37;
 export const CLI_EXIT_CODE_PR_WATCH_NO_PR = 38;
+export const CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN = 39;
+export const CLI_EXIT_CODE_SENDER_INBOX_BUSY = 40;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -104,7 +106,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",
 		code: CLI_EXIT_CODE_DELIVERY_UNCONFIRMED,
 		description:
-			"`dev3 message` sent the text but no backend could confirm it arrived (the native terminal host cannot acknowledge input, or a tmux send stopped mid-program). The message may well have landed, so DO NOT re-send it — a re-send is a second submit into a live agent. Distinct from exit 1, which means nothing was sent.",
+			"`dev3 message` sent the text but no backend could confirm it arrived (the native terminal host cannot acknowledge input, or a tmux send stopped mid-program), or any `dev3 message` form (immediate, `--in`/`--at`, `--to-sender`) lost its connection to the app after the request was sent (reset, broken pipe, empty or unreadable response, timeout). The message may well have landed, so DO NOT re-send it — a re-send is a second submit into a live agent. Distinct from exit 1, which means nothing was sent.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_PRUNE_INCOMPLETE",
@@ -267,5 +269,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PR_WATCH_NO_PR,
 		description:
 			"`dev3 pr watch` found no pull request to watch, so NOTHING was subscribed: the task's branch has no open PR (or GitHub did not answer in time), or `--pr <N>` is not that open PR. Watching follows the open PR of the task's own branch only; a review target is not supported. Open the PR first (`dev3 pr create`), then run it again. Distinct from exit 1 so an agent that opened a PR a moment ago can retry once GitHub lists it instead of treating this as a failed command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN",
+		code: CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN,
+		description:
+			"`--as-sender <id>` or `--to-sender <id>` named an external sender that is not registered in `~/.dev3.0/external-senders.json`, so NOTHING was sent, written or started. Senders are added by hand to that file (`{\"senders\": {\"<id>\": {\"label\": \"…\"}}}`); the app never writes it. Distinct from exit 1 so a sender can tell \"I am not registered\" from a failed send.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_SENDER_INBOX_BUSY",
+		code: CLI_EXIT_CODE_SENDER_INBOX_BUSY,
+		description:
+			"`dev3 sender inbox --client <cid>` or `dev3 sender ack` found another client holding that sender's reader lease, so NOTHING was read into a lease or acknowledged. The lease lapses 10 s after its holder's last wait. Do not take it over automatically: `--take-over` is for a person who knows the other reader is gone. Distinct from exit 1 so a second reader can back off instead of retrying in a loop.",
 	},
 ] as const;

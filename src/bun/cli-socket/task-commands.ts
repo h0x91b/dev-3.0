@@ -1,4 +1,4 @@
-import type { CustomColumn, PresetPromptSource, Project, Task, TaskStatus, TaskType } from "../../shared/types";
+import type { AgentMessageSource, CustomColumn, PresetPromptSource, Project, Task, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import type { DeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
@@ -16,8 +16,8 @@ import { syncTaskBranchName } from "../task-branch-sync";
 import { taskPeek } from "../task-peek";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
-import { log, type Handler } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, withArchivedHistory, withSenderAgent } from "./task-resolution";
+import { log, type Handler, withSenderVariant } from "./shared";
+import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withSenderAgent } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -460,7 +460,7 @@ export const taskHandlers: Record<string, Handler> = {
 	"task.addLabels": (params) => changeTaskLabels(params, "add"),
 	"task.removeLabels": (params) => changeTaskLabels(params, "remove"),
 
-	"task.move": async (params) => {
+	...withSenderVariant("task.move", async (params) => {
 		const taskId = params.taskId as string;
 		const newStatus = params.newStatus as string;
 		if (!taskId) throw new Error("taskId is required");
@@ -512,7 +512,10 @@ export const taskHandlers: Record<string, Handler> = {
 		// explicit go-ahead plus their agent pick, so it detours through the
 		// approval dialog. An agent moving its OWN task (every status hook) and a
 		// human at a terminal (no sourceTaskId) both stay on the silent path.
-		const requester = await resolveAgentMessageSource(params, task.id);
+		// A registered external sender (`--as-sender`) starting a task gets the same
+		// dialog an agent does — and its auto-approve setting. No opt-out.
+		const sender = senderRequester(params);
+		const requester = sender ?? await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
 		const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
 		// A task's own agent never starts its To Do card again: after a reset the
@@ -530,7 +533,7 @@ export const taskHandlers: Record<string, Handler> = {
 				project,
 				task,
 				targetStatus: builtinStatus,
-				requester: await withSenderAgent(requester, params),
+				requester: sender ?? await withSenderAgent(requester as AgentMessageSource, params),
 				launcherNote: launcherHandoffNote(params),
 				suggested: await resolveLaunchSuggestion(params),
 			});
@@ -548,7 +551,7 @@ export const taskHandlers: Record<string, Handler> = {
 			// nothing more — it is never reset consent (that is `task.requestReset`).
 			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
-	},
+	}),
 
 	// `dev3 task hibernate` / `dev3 task wake`. An agent asking (sourceTaskId)
 	// gets the launch dialog with its auto-approve countdown; a person at a

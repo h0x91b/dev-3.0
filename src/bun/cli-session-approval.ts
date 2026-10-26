@@ -1,9 +1,27 @@
 import type { AgentLaunchRequest, Project, Task } from "../shared/types";
 import { agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
+import { type ExternalSenderRequester, isExternalSenderRequester } from "../shared/external-senders";
 import { createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
+
+/** Who asked: another task's agent, or a registered external sender. */
+export type LaunchRequester = Task | ExternalSenderRequester;
+
+/** The dialog's "asked by" fields. A sender has no seq, so the dialog names it instead. */
+export function launchRequesterFields(requester: LaunchRequester): Pick<AgentLaunchRequest, "requesterSeq" | "requesterTitle" | "requesterSender"> {
+	if (isExternalSenderRequester(requester)) {
+		return { requesterSeq: 0, requesterTitle: requester.label, requesterSender: requester };
+	}
+	return { requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester) };
+}
+
+/** A stable key for joining retries of one request. */
+export function launchRequesterKey(requester: LaunchRequester | null): string | null {
+	if (!requester) return null;
+	return isExternalSenderRequester(requester) ? `sender:${requester.senderId}` : requester.id;
+}
 
 /** What this request is about, beyond the task: the only field that differs per command. */
 export type SessionApprovalSubject = Pick<AgentLaunchRequest, "resume"> | Pick<AgentLaunchRequest, "sessionAction">;
@@ -28,7 +46,7 @@ export interface SessionApprovalAnswer {
 export async function askSessionApproval(opts: {
 	project: Project;
 	task: Task;
-	requester: Task;
+	requester: LaunchRequester;
 	subject: SessionApprovalSubject;
 	/** Raised when a request of this kind is already waiting for this task. */
 	alreadyPending: string;
@@ -43,7 +61,7 @@ export async function askSessionApproval(opts: {
 	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs });
 	const request: AgentLaunchRequest = {
 		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
-		scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
+		scratch: false, ...launchRequesterFields(requester),
 		subject: buildTaskDialogSubject(task, project), defaultPriority: task.priority ?? DEFAULT_PRIORITY,
 		canAddVariants: false, autoApproveAt, ...opts.subject,
 	};

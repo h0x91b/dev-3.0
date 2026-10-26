@@ -21,9 +21,12 @@ import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../../shared/agent-message-hold-timing";
+import { exitOnSenderError, readSenderFlag } from "./sender";
 
 const USAGE =
-	'Usage: dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm[Z|±hh:mm]>] [--task <id>] [--variant <i>] [--agent <handle>]\n' +
+	'Usage: dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm[Z|±hh:mm]>] [--task <id>] [--variant <i>] [--agent <handle>] [--json]\n' +
+	'       dev3 message --as-sender <id> --subject "<what it is about>" "text" [--task <id>] [--json]\n' +
+	'       dev3 message --to-sender <id> [--in-reply-to <message-id>] --subject "<what it is about>" "text" [--json]\n' +
 	"       dev3 message --list [--json] [--task <id>]   |   dev3 message --cancel <id> [--task <id>]";
 
 /** How a delivery names the agent it reached, by the role dev3 launched it in. */
@@ -127,7 +130,10 @@ export async function handleMessage(
 	context: CliContext | null,
 ): Promise<void> {
 	if (isScheduledQueueCommand(args)) return handleScheduledQueue(args, socketPath, context);
-	rejectUnknownFlags(args, ["task", "task-id", "project", "in", "at", "message", "variant", "subject", "agent"]);
+	rejectUnknownFlags(args, [
+		"task", "task-id", "project", "in", "at", "message", "variant", "subject", "agent", "json", "as-sender", "to-sender", "in-reply-to",
+	]);
+	const json = "json" in args.flags;
 
 	const rawText = singleTextInput(args, "message") ?? "";
 	const text = (rawText === "-" ? await readStdin() : rawText).trim();
@@ -145,6 +151,13 @@ export async function handleMessage(
 	if ("in" in args.flags && !hasIn) exitUsage("--in needs a duration, e.g. --in 30m or --in 2h30m.");
 	if ("at" in args.flags && !hasAt) exitUsage("--at needs a time, e.g. --at 14:00.");
 	if (hasIn && hasAt) exitUsage("Use either --in or --at, not both.");
+
+	const toSender = readSenderFlag(args, "to-sender", context);
+	if (toSender) return replyToSender(args, socketPath, context, { senderId: toSender, text, subject, json, scheduled: hasIn || hasAt });
+	if ("in-reply-to" in args.flags) exitUsage("--in-reply-to only applies to a reply with --to-sender <id>.");
+	const asSender = readSenderFlag(args, "as-sender", context);
+	if (asSender && (hasIn || hasAt)) exitUsage("--as-sender cannot be combined with --in or --at: a sender's message is sent now or not at all.");
+	if (asSender && "agent" in args.flags) exitUsage("--as-sender cannot be combined with --agent: a sender's message goes to the task's main agent.");
 
 	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
@@ -169,15 +182,20 @@ export async function handleMessage(
 	// ends and skips wrapping when a task messages itself).
 	if (context?.taskId) params.sourceTaskId = context.taskId;
 	Object.assign(params, senderAgentParams(context));
+	if (asSender) params.asSender = asSender;
 
 	// Bare form → send immediately.
 	if (!hasIn && !hasAt) {
-		const resp = await sendRequest(socketPath, "message.send", params);
-		if (!resp.ok) exitError(resp.error || "Failed to send message");
+		const method = asSender ? "message.sendAsSender" : "message.send";
+		const resp = await requestWithVerdict(socketPath, method, params, json, NOT_DELIVERED);
+		if (!resp.ok) {
+			failWithVerdict(json, NOT_DELIVERED, resp.error, "Failed to send message");
+		}
 		const data = resp.data as {
 			taskId: string;
 			status?: AgentPromptDeliveryStatus;
 			detail?: string;
+			messageId?: string;
 			paneId?: string;
 			agentRole?: string;
 			replyUnavailable?: string;
@@ -186,6 +204,11 @@ export async function handleMessage(
 		const role = data.agentRole ? AGENT_ROLE_LABELS[data.agentRole] : undefined;
 		const recipient = data.paneId ? ` (${role ? `${role}, ` : ""}pane ${data.paneId})` : "";
 		process.stderr.write(replyUnavailableNotice(data.replyUnavailable));
+		if (json) {
+			process.stdout.write(`${JSON.stringify({ status: data.status ?? "delivered", messageId: data.messageId ?? null })}\n`);
+			if (data.status === "unconfirmed") process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
+			return;
+		}
 		// "Unconfirmed" is its own exit code, never an error: the text may well have
 		// landed, and an agent that read a failure here would re-send it — a second
 		// submit into a live agent is worse than not knowing.
@@ -226,11 +249,15 @@ export async function handleMessage(
 	}
 
 	params.at = at.toISOString();
-	const resp = await sendRequest(socketPath, "message.schedule", params);
-	if (!resp.ok) exitError(resp.error || "Failed to schedule message");
+	const resp = await requestWithVerdict(socketPath, "message.schedule", params, json, NOT_SCHEDULED);
+	if (!resp.ok) failWithVerdict(json, NOT_SCHEDULED, resp.error, "Failed to schedule message");
 	const data = resp.data as { taskId: string; pending: number; messageId?: string; replyUnavailable?: string };
 	const shortTask = data.taskId.slice(0, 8);
 	process.stderr.write(replyUnavailableNotice(data.replyUnavailable));
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ status: "scheduled", messageId: data.messageId ?? null, at: at.toISOString() })}\n`);
+		return;
+	}
 	process.stdout.write(
 		`Message scheduled for ${describeScheduledTime(at, now)} (in ${formatCountdown(at.getTime() - now)}) on task ${shortTask}.\n`,
 	);
@@ -238,4 +265,104 @@ export async function handleMessage(
 	if (data.messageId) {
 		process.stdout.write(`Id ${data.messageId.slice(0, 8)} — cancel with: dev3 message --cancel ${data.messageId.slice(0, 8)} --task ${shortTask}\n`);
 	}
+}
+
+/**
+ * The connection was accepted and then lost — reset, broken pipe, closed with no
+ * answer, or no answer in time. The app may well have typed the message, so this
+ * is "unconfirmed", never "failed": a re-send would be a second submit.
+ */
+function isResponseLost(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	const code = (err as NodeJS.ErrnoException).code;
+	return err.name === "EmptyResponseError" || code === "ECONNRESET" || code === "EPIPE"
+		|| err.message.startsWith("Socket timeout")
+		// The app already handled the request; only its answer is unreadable.
+		|| err.message.startsWith("Invalid JSON response");
+}
+
+/** The `--json` verdict when nothing went through, per form. */
+const NOT_DELIVERED = { status: "not-delivered", messageId: null };
+const NOT_SCHEDULED = { status: "not-scheduled", messageId: null };
+const NOT_POSTED = { status: "not-posted", itemId: null };
+
+/**
+ * One request, with `--json` printing exactly one verdict on every way out. A
+ * lost transport after sending exits 11 (unconfirmed — a re-send would be a second
+ * submit). Anything else thrown never reached the app (refused connect, stale
+ * endpoint): the verdict says so, and main.ts picks the exit code (2).
+ */
+async function requestWithVerdict(
+	socketPath: string,
+	method: string,
+	params: Record<string, unknown>,
+	json: boolean,
+	failed: Record<string, unknown>,
+) {
+	try {
+		return await sendRequest(socketPath, method, params);
+	} catch (err) {
+		if (isResponseLost(err)) {
+			if (json) process.stdout.write(`${JSON.stringify({ ...failed, status: "unconfirmed" })}\n`);
+			else process.stdout.write("The connection to the app was lost after the request was sent, so it could not be confirmed. Check the task before sending it again.\n");
+			process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
+		}
+		if (json) process.stdout.write(`${JSON.stringify(failed)}\n`);
+		throw err;
+	}
+}
+
+/** The app answered with an error: print the verdict, then exit with the matching code. */
+function failWithVerdict(json: boolean, failed: Record<string, unknown>, error: string | undefined, fallback: string): never {
+	if (json) process.stdout.write(`${JSON.stringify({ ...failed, error: error ?? fallback })}\n`);
+	exitOnSenderError(error);
+	exitError(error || fallback);
+}
+
+/**
+ * The `--json` verdict for an app that could not even be discovered, printed by
+ * main.ts before it exits 2 — this command never runs then. Null when the
+ * invocation asked for no JSON or is not a send (`--list` / `--cancel`).
+ */
+export function unreachableAppVerdict(rawArgs: readonly string[]): string | null {
+	const json = rawArgs.some((a) => a === "--json" || a.startsWith("--json="));
+	if (!json || rawArgs.includes("--list") || rawArgs.includes("--cancel")) return null;
+	const form = rawArgs.some((a) => a === "--to-sender" || a.startsWith("--to-sender="))
+		? NOT_POSTED
+		: rawArgs.some((a) => a === "--in" || a === "--at" || a.startsWith("--in=") || a.startsWith("--at="))
+			? NOT_SCHEDULED
+			: NOT_DELIVERED;
+	return JSON.stringify(form);
+}
+
+/**
+ * `dev3 message --to-sender <id>`: a task's agent answers an external sender. The
+ * reply goes into that sender's inbox (`dev3 sender inbox`), not into a pane.
+ */
+async function replyToSender(
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+	opts: { senderId: string; text: string; subject: string; json: boolean; scheduled: boolean },
+): Promise<void> {
+	if (!context?.taskId) exitUsage("--to-sender only works from inside a task worktree: the reply names the task that wrote it.");
+	for (const flag of ["task", "task-id", "variant", "as-sender"]) {
+		if (flag in args.flags) exitUsage(`--to-sender cannot be combined with --${flag}.`);
+	}
+	if (opts.scheduled) exitUsage("--to-sender cannot be combined with --in or --at.");
+	const inReplyTo = args.flags["in-reply-to"] && args.flags["in-reply-to"] !== "true" ? args.flags["in-reply-to"] : undefined;
+	const resp = await requestWithVerdict(socketPath, "sender.post", {
+		senderId: opts.senderId,
+		sourceTaskId: context.taskId,
+		text: opts.text,
+		subject: opts.subject,
+		...(inReplyTo ? { inReplyTo } : {}),
+	}, opts.json, NOT_POSTED);
+	if (!resp.ok) failWithVerdict(opts.json, NOT_POSTED, resp.error, "Failed to reply to the sender");
+	const data = resp.data as { itemId: string };
+	if (opts.json) {
+		process.stdout.write(`${JSON.stringify({ status: "posted", itemId: data.itemId })}\n`);
+		return;
+	}
+	process.stdout.write(`Reply written to the inbox of external sender ${opts.senderId} (item ${data.itemId.slice(0, 8)}).\n`);
 }

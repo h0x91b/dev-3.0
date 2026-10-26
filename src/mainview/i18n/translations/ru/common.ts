@@ -46,6 +46,7 @@ const common = {
 	"agentLaunch.title": "Агент хочет запустить эту задачу",
 	"agentLaunch.titleScratch": "Агент просит scratch-задачу",
 	"agentLaunch.requestedBy": "Просит задача #{seq} — {title}",
+	"agentLaunch.requestedBySender": "Просит внешний отправитель {label} ({id})",
 	"agentLaunch.scratchHasNoPrompt": "Запускается без промпта. Инструкции пришлёт агент, который её попросил.",
 	"agentLaunch.launch": "Запустить",
 	"agentLaunch.launchVariants_one": "Запустить {count} вариант",

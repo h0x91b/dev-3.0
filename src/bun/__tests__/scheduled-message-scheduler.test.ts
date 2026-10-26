@@ -663,3 +663,26 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		expect(holdMessageForPane).not.toHaveBeenCalled();
 	});
 });
+
+describe("sendMessageImmediately as an external sender", () => {
+	it("wraps the text in the sender envelope with its message id and reply command", async () => {
+		const result = await sendMessageImmediately(makeTask() as never, "hello from outside", null, null, {
+			subject: "ping",
+			externalSender: { id: "openclaw:home:main", label: "OpenClaw <main>" },
+		});
+		const calls = vi.mocked(holdMessageForAgentPane).mock.calls;
+		const text = calls[calls.length - 1]![1];
+		expect(text).toContain('<from-sender id="openclaw:home:main">OpenClaw &lt;main&gt;</from-sender>');
+		expect(text).toContain(`<message-id>${result.messageId}</message-id>`);
+		expect(text).toContain(
+			`<reply-with>dev3 message --to-sender openclaw:home:main --in-reply-to ${result.messageId} --subject "what your reply is about" "your reply"</reply-with>`,
+		);
+		expect(text).not.toContain("<from-task>");
+	});
+
+	it("never announces a sender's message as task-to-task traffic", async () => {
+		pushFn.mockClear();
+		await sendMessageImmediately(makeTask() as never, "hi", null, null, { externalSender: { id: "cli", label: "cli" } });
+		expect(pushFn.mock.calls.filter(([name]) => name === "agentMessage")).toEqual([]);
+	});
+});

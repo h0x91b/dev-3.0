@@ -90,6 +90,41 @@ export function wrapAgentMessage(
 	return lines.join("\n");
 }
 
+/** An external sender's message as it reaches the envelope: who, and the id to reply to. */
+export interface ExternalSenderStamp {
+	id: string;
+	label: string;
+	messageId: string;
+}
+
+/**
+ * Wrap a message an external sender (`dev3 message --as-sender <id>`) wrote. Same
+ * tag family as {@link wrapAgentMessage}, so the receiver reads it as agent traffic
+ * and not as the user. The id is self-asserted — it attributes, it does not prove.
+ * The reply command lands in that sender's inbox, not in a task.
+ */
+export function wrapExternalSenderMessage(text: string, sender: ExternalSenderStamp, subject?: string): string {
+	const lines = [
+		"<dev3-ai-message>",
+		`<from-sender id="${escapeXmlText(sender.id)}">${escapeXmlText(sender.label)}</from-sender>`,
+		`<message-id>${sender.messageId}</message-id>`,
+	];
+	if (subject) lines.push(`<subject>${escapeXmlText(subject)}</subject>`);
+	lines.push(
+		`<reply-with>${externalSenderReplyCommand(sender.id, sender.messageId)}</reply-with>`,
+		"<message>",
+		text,
+		"</message>",
+		"</dev3-ai-message>",
+	);
+	return lines.join("\n");
+}
+
+/** The command a task's agent runs to answer an external sender. */
+export function externalSenderReplyCommand(senderId: string, messageId: string): string {
+	return `dev3 message --to-sender ${senderId} --in-reply-to ${messageId} --subject "${REPLY_SUBJECT_PLACEHOLDER}" "your reply"`;
+}
+
 /**
  * Wrap text a human submitted from inside an HTML artifact. The agent published
  * that artifact, so it needs to know which one answered and which version the
@@ -239,13 +274,14 @@ export function seqIsShared(task: { id: string; seq: number }, boardTasks: Array
 	return boardTasks.some((t) => t.seq === task.seq && t.id !== task.id);
 }
 
-const FROM_TASK_RE = /<from-task>([^<]+)<\/from-task>/;
+const SENDER_REF_RE = /<from-task>([^<]+)<\/from-task>|<from-sender id="([^"]+)">/;
 
 /** The sender address of each envelope, first-seen order, duplicates dropped; non-envelopes add nothing. */
 export function heldBatchSenders(texts: readonly string[]): string[] {
 	const senders: string[] = [];
 	for (const text of texts) {
-		const ref = FROM_TASK_RE.exec(text)?.[1];
+		const match = SENDER_REF_RE.exec(text);
+		const ref = match?.[1] ?? match?.[2];
 		if (ref && !senders.includes(ref)) senders.push(ref);
 	}
 	return senders;

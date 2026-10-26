@@ -1,7 +1,7 @@
 import type { Project, Task } from "../shared/types";
 import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
-import { askSessionApproval, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
+import { askSessionApproval, type LaunchRequester, launchRequesterKey, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
 import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { assertTaskWorkspacePresent } from "./task-workspace-guard";
@@ -9,8 +9,8 @@ import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 interface ResumeOptions {
 	project: Project;
 	task: Task;
-	/** The task whose agent asked; null for a person at a terminal, who is the one clicking. */
-	requester: Task | null;
+	/** The task's agent or external sender that asked; null for a person at a terminal, who is the one clicking. */
+	requester: LaunchRequester | null;
 	/** Let a pane with no saved id resume the harness's own latest conversation. */
 	allowAgentLatest: boolean;
 }
@@ -38,7 +38,7 @@ async function preflight(project: Project, task: Task): Promise<{ refused: CliRe
 }
 
 /** A resume restores the saved harness, config and account, so the dialog offers no agent choice. */
-function askUser(project: Project, task: Task, requester: Task, panes: ResumeDialogPane[]) {
+function askUser(project: Project, task: Task, requester: LaunchRequester, panes: ResumeDialogPane[]) {
 	return askSessionApproval({
 		project, task, requester,
 		subject: { resume: { panes } },
@@ -73,6 +73,6 @@ const joinOrRun = perTaskJoiner("Another resume request is pending for this task
 
 /** Retries join the whole operation, approval included: one answer resumes once. */
 export function resumeCliAgent(opts: ResumeOptions): Promise<CliResumeOutcome> {
-	const signature = JSON.stringify({ requester: opts.requester?.id ?? null, allowAgentLatest: opts.allowAgentLatest });
+	const signature = JSON.stringify({ requester: launchRequesterKey(opts.requester), allowAgentLatest: opts.allowAgentLatest });
 	return joinOrRun(opts.task.id, signature, () => performResume(opts));
 }

@@ -7,6 +7,7 @@ import { cliTransportFor, startCliListener } from "./cli-listener";
 import { agentHandlers } from "./cli-socket/agent-commands";
 import { automationHandlers } from "./cli-socket/automation-commands";
 import { boardMetadataHandlers } from "./cli-socket/board-metadata-commands";
+import { externalSenderHandlers } from "./cli-socket/external-sender-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
@@ -57,19 +58,20 @@ const handlers: Record<string, Handler> = {
 	...automationHandlers,
 	...uiHandlers,
 	...messageHandlers,
+	...externalSenderHandlers,
 	...prWatchHandlers,
 	...systemHandlers,
 	...taskHandlers,
 };
 
-export async function handleRequest(req: CliRequest): Promise<CliResponse> {
+export async function handleRequest(req: CliRequest, signal?: AbortSignal): Promise<CliResponse> {
 	const handler = handlers[req.method];
 	if (!handler) {
 		return { id: req.id, ok: false, error: `Unknown method: ${req.method}` };
 	}
 
 	try {
-		const result = await handler(req.params);
+		const result = await handler(req.params, { signal });
 		return { id: req.id, ok: true, data: result };
 	} catch (err) {
 		return { id: req.id, ok: false, error: String(err instanceof Error ? err.message : err) };

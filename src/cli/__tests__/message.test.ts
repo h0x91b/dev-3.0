@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleMessage } from "../commands/message";
+import { handleMessage, unreachableAppVerdict } from "../commands/message";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { CliResponse } from "../../shared/types";
@@ -439,6 +439,124 @@ describe("message — --variant", () => {
 			handleMessage(args(["ping"], { task: "seq:490", variant: "one" }), SOCKET, CTX),
 		).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toMatch(/Invalid --variant/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("message — --json and lost transports", () => {
+	it("prints status and message id as JSON", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", messageId: "m-123", taskId: CTX.taskId }));
+		await handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "held", messageId: "m-123" });
+	});
+
+	it("exits 11 with JSON when the app reports an unconfirmed send", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "unconfirmed", messageId: "m-1", taskId: CTX.taskId }));
+		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_11");
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "unconfirmed", messageId: "m-1" });
+	});
+
+	it.each([
+		["an empty response", Object.assign(new Error("Empty response from server"), { name: "EmptyResponseError" })],
+		["a reset connection", Object.assign(new Error("reset"), { code: "ECONNRESET" })],
+		["a broken pipe", Object.assign(new Error("pipe"), { code: "EPIPE" })],
+		["a socket timeout", new Error("Socket timeout (30s)")],
+		["an unreadable answer", new Error("Invalid JSON response: {oops")],
+	])("maps %s after sending to exit 11 (unconfirmed), never a re-send prompt", async (_name, err) => {
+		mockSend.mockRejectedValue(err);
+		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_11");
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "unconfirmed", messageId: null });
+	});
+
+	it("leaves a connect that never happened to the app-not-running exit, saying not-delivered in JSON", async () => {
+		mockSend.mockRejectedValue(new Error("APP_NOT_RUNNING"));
+		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("APP_NOT_RUNNING");
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "not-delivered", messageId: null });
+	});
+
+	it("prints a not-delivered verdict when the app refuses the send", async () => {
+		mockSend.mockResolvedValue(errResp("Could not deliver the message — the task has no live agent session."));
+		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_1");
+		expect(JSON.parse(stdoutOutput)).toEqual({
+			status: "not-delivered",
+			messageId: null,
+			error: "Could not deliver the message — the task has no live agent session.",
+		});
+	});
+
+	it("prints a not-delivered verdict for a stale endpoint, then leaves the exit to main", async () => {
+		mockSend.mockRejectedValue(Object.assign(new Error("STALE_ENDPOINT"), { name: "StaleEndpointError" }));
+		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("STALE_ENDPOINT");
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "not-delivered", messageId: null });
+	});
+
+	it("names the right verdict for an app that could not even be discovered", () => {
+		expect(unreachableAppVerdict(["message", "--json", "--subject", "s", "hi"])).toBe('{"status":"not-delivered","messageId":null}');
+		expect(unreachableAppVerdict(["message", "--json", "--in", "5m", "hi"])).toBe('{"status":"not-scheduled","messageId":null}');
+		expect(unreachableAppVerdict(["message", "--json", "--to-sender", "cli", "hi"])).toBe('{"status":"not-posted","itemId":null}');
+		expect(unreachableAppVerdict(["message", "--json=true", "hi"])).toBe('{"status":"not-delivered","messageId":null}');
+		expect(unreachableAppVerdict(["message", "--subject", "s", "hi"])).toBeNull();
+		expect(unreachableAppVerdict(["message", "--list", "--json"])).toBeNull();
+	});
+
+	it("prints the scheduled id as JSON", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1, messageId: "sched-1" }));
+		await handleMessage(args(["later"], { in: "10m", json: "true" }), SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput)).toMatchObject({ status: "scheduled", messageId: "sched-1" });
+	});
+});
+
+describe("message — external senders", () => {
+	it("sends --as-sender from outside a task with no source task", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", messageId: "m-9", taskId: "bbbbbbbb-1" }));
+		await handleMessage(args(["status?"], { task: "seq:4", project: "proj-002", "as-sender": "openclaw:home:main", json: "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "message.sendAsSender", expect.objectContaining({ asSender: "openclaw:home:main", taskId: "seq:4" }));
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("sourceTaskId");
+	});
+
+	it("refuses --as-sender inside a task worktree", async () => {
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses --as-sender with --in or --at", async () => {
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", in: "5m" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", at: "14:00" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses a malformed sender id before reaching the app", async () => {
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "Bad Id" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+	});
+
+	it("exits 39 for a sender the registry does not know", async () => {
+		mockSend.mockResolvedValue(errResp('Unknown external sender "ghost". Register it in …'));
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "ghost" }), SOCKET, null)).rejects.toThrow("EXIT_39");
+	});
+
+	it("fails closed on an app that predates senders: exit 1, never a success", async () => {
+		mockSend.mockResolvedValue(errResp("Unknown method: message.sendAsSender"));
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", json: "true" }), SOCKET, null)).rejects.toThrow("EXIT_1");
+		expect(JSON.parse(stdoutOutput)).toMatchObject({ status: "not-delivered", messageId: null });
+		expect(stderrOutput).toContain("predates external senders");
+	});
+
+	it("posts --to-sender from a task into the sender inbox", async () => {
+		mockSend.mockResolvedValue(okResp({ senderId: "cli", itemId: "item-1" }));
+		await handleMessage(args(["done"], { "to-sender": "cli", "in-reply-to": "m-9", json: "true" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "sender.post", {
+			senderId: "cli",
+			sourceTaskId: CTX.taskId,
+			text: "done",
+			subject: SUBJECT,
+			inReplyTo: "m-9",
+		});
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "posted", itemId: "item-1" });
+	});
+
+	it("refuses --to-sender outside a task, and --in-reply-to without it", async () => {
+		await expect(handleMessage(args(["done"], { "to-sender": "cli" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		await expect(handleMessage(args(["done"], { "in-reply-to": "m" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

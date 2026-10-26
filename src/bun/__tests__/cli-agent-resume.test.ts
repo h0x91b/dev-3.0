@@ -154,3 +154,14 @@ describe("dev3 agent resume", () => {
 		expect(resumeTaskSession).not.toHaveBeenCalled();
 	});
 });
+
+describe("dev3 agent resume --as-sender", () => {
+	it("asks the user through the same dialog, naming the external sender", async () => {
+		const sender = { senderId: "openclaw:home:main", label: "OpenClaw main (home)" };
+		const pending = resumeCliAgent({ project, task, requester: sender, allowAgentLatest: false });
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		expect(push.mock.calls[0][1]).toMatchObject({ requesterSender: sender, requesterTitle: "OpenClaw main (home)", resume: expect.anything() });
+		resolveAgentRequest(push.mock.calls[0][1].requestId, { approved: true } as any);
+		await expect(pending).resolves.toEqual({ outcome: "resumed", resume: resumed });
+	});
+});

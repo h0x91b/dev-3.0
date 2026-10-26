@@ -23,12 +23,13 @@ import { LOCAL_HELP, expandLocalAlias, localHostError } from "./commands/local";
 import { handleGui } from "./commands/gui";
 import { handleConversations, handleImportCurrentSession, resolveImportTarget } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
-import { handleMessage } from "./commands/message";
+import { handleMessage, unreachableAppVerdict } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
 import { handlePrWatch } from "./commands/pr-watch";
 import { handlePane } from "./commands/pane";
 import { handleAgent } from "./commands/agent";
+import { handleSender } from "./commands/sender";
 import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
@@ -432,6 +433,9 @@ async function main(): Promise<void> {
 		socketPath = await resolveSocketPathWithRetry();
 	}
 	if (!socketPath) {
+		// `dev3 message --json` promises one parseable verdict, even when it never ran.
+		const verdict = command === "message" ? unreachableAppVerdict(rawArgs) : null;
+		if (verdict) process.stdout.write(`${verdict}\n`);
 		exitAppNotRunning({
 			stage: "discovery",
 			tolerate: tolerateAppOffline,
@@ -509,6 +513,8 @@ async function main(): Promise<void> {
 				return await handlePane(subcommand, args, socketPath, context);
 			case "agent":
 				return await handleAgent(subcommand, args, socketPath, context);
+			case "sender":
+				return await handleSender(subcommand, args, socketPath, context);
 			case "ui":
 				return await handleUi(subcommand, args, socketPath, context);
 			default:

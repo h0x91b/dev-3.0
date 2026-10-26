@@ -5,10 +5,11 @@ import {
 	captureScheduledMessageAuthor,
 	resolveScheduledMessageAuthorPane,
 } from "../scheduled-message-author";
+import { requireExternalSender } from "../external-senders";
 import { toScheduledMessageListing } from "../../shared/scheduled-message-listing";
 import { decodeAgentHandle } from "../../shared/agent-handle";
 import type { AgentMessageSource, ScheduledMessageAuthor } from "../../shared/types";
-import type { Handler } from "./shared";
+import { type Handler, withSenderVariant } from "./shared";
 import { messageVariantIndex, resolveAgentMessageSource, resolveTaskFromParams, withSenderAgent } from "./task-resolution";
 
 /**
@@ -35,23 +36,29 @@ function replyNotice(source: AgentMessageSource | null): { replyUnavailable?: st
 }
 
 export const messageHandlers: Record<string, Handler> = {
-
 	// `dev3 message "text"` (no time flag): deliver a message into the task's live
 	// agent immediately. Throws only when nothing was sent; an unconfirmed send
 	// travels back as its own status so the CLI reports it as neither.
-	"message.send": async (params) => {
+	...withSenderVariant("message.send", async (params) => {
 		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
 		const text = ((params.text as string) ?? "").toString();
 		// The app's half of the subject gate. The CLI checks it first and reports it
 		// better, so reaching this means an older `dev3` binary that never learned
 		// the flag — it gets the same explanation instead of writing a mute row.
 		const subject = requireMessageSubject(params.subject, text);
+		// `--as-sender`: a registered outside agent. The CLI refuses it inside a task,
+		// so a request carrying both is not one this handler should guess about. It
+		// always lands on the main agent: `--agent` addresses are for agents inside dev3.
+		const externalSender = params.asSender === undefined ? null : requireExternalSender(params.asSender);
+		if (externalSender && params.sourceTaskId) throw new Error("--as-sender cannot be used from inside a task worktree.");
+		if (externalSender && params.agentHandle != null) throw new Error("--as-sender cannot be combined with --agent: a sender's message goes to the task's main agent.");
 		const author = addressedAgent(params);
-		const source = await stampedSource(params, task.id);
-		const delivery = await sendMessageImmediately(task, text, null, source, { subject, author });
+		const source = externalSender ? null : await stampedSource(params, task.id);
+		const delivery = await sendMessageImmediately(task, text, null, source, { subject, author, externalSender });
 		return {
 			delivered: true,
 			status: delivery.status,
+			messageId: delivery.messageId,
 			...(delivery.detail === undefined ? {} : { detail: delivery.detail }),
 			...(delivery.paneId ? { paneId: delivery.paneId } : {}),
 			...(delivery.agentRole ? { agentRole: delivery.agentRole } : {}),
@@ -59,7 +66,7 @@ export const messageHandlers: Record<string, Handler> = {
 			taskId: task.id,
 			projectId: project.id,
 		};
-	},
+	}),
 
 	// `dev3 message --in <dur> | --at <hh:mm> "text"`: queue a scheduled message on
 	// the task's live agent (validation + cap live in the scheduler core).
@@ -69,6 +76,7 @@ export const messageHandlers: Record<string, Handler> = {
 		const at = (params.at as string) ?? "";
 		// Same gate as the immediate send: a delay changes nothing about the subject.
 		const subject = requireMessageSubject(params.subject, text);
+		if (params.asSender !== undefined) throw new Error("--as-sender cannot be combined with --in or --at.");
 		const addressed = addressedAgent(params);
 		if (addressed) {
 			// Refused now, while the sender is listening, not hours later at fire time.

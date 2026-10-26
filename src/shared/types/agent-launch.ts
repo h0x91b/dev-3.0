@@ -1,5 +1,6 @@
 import type { ResumeDialogPane } from "../agent-resume";
 import type { AgentSessionAction } from "../task-hibernate";
+import type { ExternalSenderRequester } from "../external-senders";
 import type { TaskStatus } from "./task-status";
 import { DEFAULT_PRIORITY, type TaskPriority } from "./task-priority";
 import type { Task } from "./task";
@@ -119,6 +120,12 @@ export interface AgentLaunchRequest {
 	scratch: boolean;
 	requesterSeq: number;
 	requesterTitle: string;
+	/**
+	 * Set when a registered external sender asked (`--as-sender`) rather than a
+	 * task: the dialog names it instead of `#requesterSeq`. Self-asserted on a
+	 * same-user socket, so it attributes the request and proves nothing.
+	 */
+	requesterSender?: ExternalSenderRequester;
 	subject: TaskDialogSubject;
 	/**
 	 * Priority the launch applies unless the user picks another in the dialog:

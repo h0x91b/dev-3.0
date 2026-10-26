@@ -4,6 +4,8 @@ import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask } from "../../sha
 import * as data from "../data";
 import { loadEffectiveTaskHistory } from "../task-blobs";
 import { captureSenderAgent } from "../scheduled-message-author";
+import { requireExternalSender } from "../external-senders";
+import type { ExternalSenderRequester } from "../../shared/external-senders";
 
 const MIN_PREFIX_LENGTH = ID_PREFIX_MIN_LENGTH;
 
@@ -184,6 +186,17 @@ export async function resolveRequesterTask(params: Record<string, unknown>, what
 	const found = await resolveTaskAcrossProjects(sourceId);
 	if (!found) throw new Error(`Unknown requesting task — cannot attribute the ${what}.`);
 	return found.task;
+}
+
+/**
+ * The external sender a request speaks for (`--as-sender`), or null. Unknown ids
+ * throw; a request from inside a task cannot also claim to be a sender.
+ */
+export function senderRequester(params: Record<string, unknown>): ExternalSenderRequester | null {
+	if (params.asSender === undefined) return null;
+	const sender = requireExternalSender(params.asSender);
+	if (params.sourceTaskId) throw new Error("--as-sender cannot be used from inside a task worktree.");
+	return { senderId: sender.id, label: sender.label };
 }
 
 /** A task for `dev3 review`: scoped to a project when the CLI knows it, else found across projects. */

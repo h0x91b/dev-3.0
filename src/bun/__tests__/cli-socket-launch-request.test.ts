@@ -87,6 +87,13 @@ vi.mock("../settings", () => ({
 	recordFavoriteUsages: vi.fn(),
 }));
 
+vi.mock("../external-senders", () => ({
+	requireExternalSender: vi.fn((id: string) => {
+		if (id !== "openclaw:home:main") throw new Error(`Unknown external sender "${id}".`);
+		return { id, label: "OpenClaw main (home)" };
+	}),
+}));
+
 vi.mock("../cli-agent-spawn", () => ({
 	validateLaunchSuggestion: vi.fn(),
 }));
@@ -951,5 +958,76 @@ describe("launch requests with a suggested agent/config (issue #1911)", () => {
 		expect(payload.suggested).toEqual(SUGGESTED);
 		resolveAgentRequest(payload.requestId as string, { approved: false });
 		await respPromise;
+	});
+});
+
+describe("task.moveAsSender — a start an external sender asks for", () => {
+	function senderMoveRequest(params: Record<string, unknown>): CliRequest {
+		return { id: "req-1", method: "task.moveAsSender", params };
+	}
+
+	it("is refused on plain task.move, so no app ever runs a sender's start as an ordinary move", async () => {
+		setupBoard(makeTask());
+		const resp = await handleRequest(moveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("task.moveAsSender") });
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
+	});
+
+	it("goes through the same dialog, naming the sender, and hands back an --as-sender reply command", async () => {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
+
+		const respPromise = handleRequest(senderMoveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			asSender: "openclaw:home:main",
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [event, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(event).toBe("agentLaunchRequested");
+		expect(payload.requesterSender).toEqual({ senderId: "openclaw:home:main", label: "OpenClaw main (home)" });
+		expect(payload.requesterTitle).toBe("OpenClaw main (home)");
+		resolveAgentRequest(payload.requestId as string, { approved: true, launch: { variants: [{ agentId: null, configId: null }] } });
+
+		const resp = await respPromise;
+		const replyCommand = (resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand;
+		expect(replyCommand).toContain("dev3 message --as-sender openclaw:home:main --task seq:7 --project proj-1");
+		// A sender has no task to report back to, so no handoff note is typed.
+		expect(deliverLaunchHandoff).not.toHaveBeenCalled();
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("refuses a handoff note from a sender instead of dropping it", async () => {
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const resp = await handleRequest(senderMoveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main", handoffNote: "brief",
+		}));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--handoff-file does not apply with --as-sender") });
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("refuses an unknown sender before any dialog", async () => {
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "ghost" }));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringMatching(/^Unknown external sender/) });
+		expect(pushFn).not.toHaveBeenCalled();
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("refuses a request that comes from a task AND claims a sender", async () => {
+		setupBoard(makeTask());
+		const resp = await handleRequest(senderMoveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main", sourceTaskId: REQUESTER_ID,
+		}));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--as-sender cannot be used from inside a task") });
 	});
 });

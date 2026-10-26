@@ -70,7 +70,7 @@ beforeEach(() => {
 	vi.mocked(git.commitExists).mockResolvedValue(true);
 	vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
 	vi.mocked(loadSettings).mockResolvedValue({} as Awaited<ReturnType<typeof loadSettings>>);
-	vi.mocked(sendMessageImmediately).mockResolvedValue({ status: "held", spilledPath: null });
+	vi.mocked(sendMessageImmediately).mockResolvedValue({ status: "held", spilledPath: null, messageId: "m" });
 });
 
 describe("runPrWatches", () => {
@@ -371,7 +371,7 @@ describe("runPrWatches", () => {
 		it("does not send the second when the task started waiting on a question", async () => {
 			vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
 				current = { ...current, status: "user-questions" } as Task;
-				return { status: "held", spilledPath: null };
+				return { status: "held", spilledPath: null, messageId: "m" };
 			});
 
 			await runPrWatches(project, "t1", merged, URL, Date.now());
@@ -382,7 +382,7 @@ describe("runPrWatches", () => {
 		it("does not send the second when its watch was removed, and reports only what is still watched", async () => {
 			vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
 				current = { ...current, prWatches: null } as Task;
-				return { status: "held", spilledPath: null };
+				return { status: "held", spilledPath: null, messageId: "m" };
 			});
 
 			await runPrWatches(project, "t1", merged, URL, Date.now());
@@ -393,7 +393,7 @@ describe("runPrWatches", () => {
 		it("builds the second message's last line from the fresh watch list (a watch added meanwhile still stays)", async () => {
 			vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
 				current = { ...current, prWatches: [watch("merged", { author: b }), watch("ci", { id: "w-new", author: b })] } as Task;
-				return { status: "held", spilledPath: null };
+				return { status: "held", spilledPath: null, messageId: "m" };
 			});
 
 			await runPrWatches(project, "t1", merged, URL, Date.now());

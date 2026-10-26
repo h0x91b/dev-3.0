@@ -12,6 +12,7 @@ import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { exitOnSenderError, readSenderFlag } from "./sender";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
 import { launchApprovalTimeoutMs } from "../launch-approval";
@@ -849,7 +850,7 @@ function movesForeignTaskIntoActiveColumn(
 }
 
 /** Print the result of an approved/declined launch, or exit with the decline code. */
-function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean): void {
+function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean, bySender = false): void {
 	if (!outcome.approved) {
 		exitError(
 			"User declined the launch request",
@@ -881,7 +882,9 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 	process.stdout.write(
 		`User approved — task seq:${outcome.seq} is starting: ${outcome.title ?? ""}\n` +
 		`Talk to it with: ${launched[0]?.replyCommand ?? fallback}\n` +
-		"It knows you started it and will report back to this task.\n",
+		(bySender
+			? "It does not know who started it yet — your first --as-sender message tells it how to reply.\n"
+			: "It knows you started it and will report back to this task.\n"),
 	);
 }
 
@@ -889,9 +892,11 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
-		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config",
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender",
 		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
 	]);
+	// An external sender starting a task gets the launch dialog, like an agent does.
+	const asSender = readSenderFlag(args, "as-sender", context);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task move <id|--task id|--task-id id|--id id> --status <status>");
@@ -907,6 +912,13 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const suggestion = readLaunchSuggestion(args);
 	if (suggestion && !movesForeignTaskIntoActiveColumn(taskId, newStatus, context)) {
 		exitUsage("--agent/--config only apply when starting ANOTHER task: run from your worktree with --task <other> --status in-progress.");
+	}
+
+	if (asSender && !ACTIVE_STATUSES.includes(newStatus as TaskStatus)) {
+		exitUsage("--as-sender only applies to starting a task: --status in-progress (or another active status).");
+	}
+	if (asSender && "handoff-file" in args.flags) {
+		exitUsage("--handoff-file does not apply with --as-sender: a sender's launch gets no handoff note. Put your instructions in your first --as-sender message.");
 	}
 
 	const ifStatus = args.flags["if-status"];
@@ -947,6 +959,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// The launched task's first envelope replies to the agent asking, so it needs
 	// to know which one that is.
 	Object.assign(params, senderAgentParams(context));
+	if (asSender) params.asSender = asSender;
 	// Only used when this move turns out to be a launch; a same-task status move
 	// carries it and the server ignores it.
 	const handoffNote = readHandoffFile(args);
@@ -955,10 +968,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	// The approval dialog can sit open for minutes, so a move that might turn
 	// into one waits on the long timeout. A silent move still answers instantly.
-	const resp = movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, "task.move", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) })
-		: await sendRequest(socketPath, "task.move", params);
+	const method = asSender ? "task.moveAsSender" : "task.move";
+	const resp = asSender || movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
+		? await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) })
+		: await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
+		exitOnSenderError(resp.error);
 		// A draft was deliberately parked by the human — give it its own exit code
 		// so an agent can tell "not ready yet" apart from a real failure.
 		if (resp.error?.includes(DRAFT_TASK_ACTIVATION_ERROR)) {
@@ -974,7 +989,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// The server answered with an approval outcome, not a moved task: this move
 	// was an agent-initiated launch and went through the dialog.
 	if (isLaunchApprovalOutcome(resp.data)) {
-		return reportLaunchOutcome(resp.data, codexStopHook);
+		return reportLaunchOutcome(resp.data, codexStopHook, Boolean(asSender));
 	}
 
 	const task = resp.data as Task;

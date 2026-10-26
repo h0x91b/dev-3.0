@@ -15,7 +15,8 @@ import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import type { AgentMessageOrigin } from "../shared/agent-message-log";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { coordinatorBoardEpilogue } from "./coordinator-board";
-import { wrapAgentMessage } from "../shared/agent-message-envelope";
+import { type ExternalSenderStamp, wrapAgentMessage, wrapExternalSenderMessage } from "../shared/agent-message-envelope";
+import type { ExternalSender } from "../shared/external-senders";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
 import { resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
@@ -84,13 +85,20 @@ async function recipientRole(task: Task, paneId: string | undefined): Promise<Ag
 	}
 }
 
-async function deliverToTarget(task: Task, message: ScheduledMessage, hold: boolean): Promise<MessageDelivery> {
+async function deliverToTarget(
+	task: Task,
+	message: ScheduledMessage,
+	hold: boolean,
+	sender?: ExternalSenderStamp,
+): Promise<MessageDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote. The spill
 	// already measured this exact envelope at queue time, so it fits one pty read.
-	const text = message.source
-		? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
-		: message.text;
+	const text = sender
+		? wrapExternalSenderMessage(message.text, sender, message.subject)
+		: message.source
+			? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
+			: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message
 	// reaching one ends on a fresh board snapshot — once per burst, built when the
@@ -124,15 +132,22 @@ async function deliverToTarget(task: Task, message: ScheduledMessage, hold: bool
  * user reconstructing a silence needs to find. Every attempt is logged,
  * `not-delivered` included, and the row carries the real verdict, never an intent.
  */
-async function recordMessageAttempt(task: Task, message: ScheduledMessage, delivery: MessageDelivery): Promise<void> {
+async function recordMessageAttempt(
+	task: Task,
+	message: ScheduledMessage,
+	delivery: MessageDelivery,
+	sender?: ExternalSender,
+): Promise<void> {
 	try {
 		const project = await data.getProject(task.projectId);
 		const source = message.source;
 		appendAgentMessageLog(project, {
 			at: new Date().toISOString(),
+			...(message.id ? { messageId: message.id } : {}),
 			fromTaskId: source?.taskId ?? null,
 			fromSeq: source?.seq ?? null,
 			...(source?.title ? { fromTitle: source.title } : {}),
+			...(sender ? { fromSender: sender.id, fromTitle: sender.label } : {}),
 			...(source?.projectId ? { fromProjectId: source.projectId } : {}),
 			toTaskId: task.id,
 			toSeq: task.seq,
@@ -415,36 +430,47 @@ export async function sendMessageImmediately(
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-	opts: { hold?: boolean; subject?: string | null; origin?: AgentMessageOrigin; author?: ScheduledMessageAuthor | null } = {},
-): Promise<MessageDelivery & { spilledPath: string | null }> {
+	opts: {
+		hold?: boolean;
+		subject?: string | null;
+		origin?: AgentMessageOrigin;
+		author?: ScheduledMessageAuthor | null;
+		/** A registered external sender wrote it (`--as-sender`); wins over `source`. */
+		externalSender?: ExternalSender | null;
+	} = {},
+): Promise<MessageDelivery & { spilledPath: string | null; messageId: string }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
 		throw new Error("Cannot send a message to a completed or cancelled task");
 	}
+	const id = crypto.randomUUID();
+	const external = opts.externalSender ?? null;
+	const stamp = external ? { id: external.id, label: external.label, messageId: id } : undefined;
 	const { text: payload, spilledPath } = await spillOversizedAgentMessage(
 		task,
 		trimmed,
-		source ? { source, subject: opts.subject } : null,
+		stamp ? { sender: stamp, subject: opts.subject } : source ? { source, subject: opts.subject } : null,
 	);
+	const origin: AgentMessageOrigin | undefined = external ? "external-sender" : opts.origin;
 	const message: ScheduledMessage = {
-		id: "",
+		id,
 		text: payload,
 		...(opts.subject ? { subject: opts.subject } : {}),
 		at: "",
 		target: normalizeTarget(target),
-		...(source ? { source } : {}),
-		...(opts.origin ? { origin: opts.origin } : {}),
+		...(source && !external ? { source } : {}),
+		...(origin ? { origin } : {}),
 		...(spilledPath ? { spilledPath } : {}),
 		...(opts.author ? { author: opts.author } : {}),
 	};
-	const delivery = await deliverToTarget(task, message, opts.hold !== false);
-	await recordMessageAttempt(task, message, delivery);
+	const delivery = await deliverToTarget(task, message, opts.hold !== false, stamp);
+	await recordMessageAttempt(task, message, delivery, external ?? undefined);
 	if (delivery.status === "not-delivered") {
 		// A bound message says which agent is gone; a bare refusal keeps the old wording.
 		const why = message.author || delivery.reason === "pane-absent" ? delivery.detail : undefined;
 		throw new Error(`Could not deliver the message — ${why ?? "the task has no live agent session."}`);
 	}
-	return { ...delivery, spilledPath };
+	return { ...delivery, spilledPath, messageId: id };
 }
 
 /**

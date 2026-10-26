@@ -255,10 +255,15 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					</h2>
 
 					<p className="text-fg-2 text-sm leading-relaxed">
-						{t("agentLaunch.requestedBy", {
-							seq: String(request.requesterSeq),
-							title: request.requesterTitle,
-						})}
+						{request.requesterSender
+							? t("agentLaunch.requestedBySender", {
+								label: request.requesterSender.label,
+								id: request.requesterSender.senderId,
+							})
+							: t("agentLaunch.requestedBy", {
+								seq: String(request.requesterSeq),
+								title: request.requesterTitle,
+							})}
 					</p>
 
 					<TaskDialogSubjectCard

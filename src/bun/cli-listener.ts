@@ -61,7 +61,8 @@ export interface StartCliListenerOptions {
 	/** Task context this instance was launched from, or null for a primary. */
 	hostTaskId: string | null;
 	transport: CliTransport;
-	handle: (req: CliRequest) => Promise<CliResponse>;
+	/** `signal` aborts when the client's connection closes, so a parked request can stop. */
+	handle: (req: CliRequest, signal?: AbortSignal) => Promise<CliResponse>;
 	listen?: CliListenFn;
 }
 
@@ -80,6 +81,7 @@ export interface CliListener {
  * both halves into U+FFFD. Only a complete line is ever decoded.
  */
 const pendingRequestBytes = new Map<unknown, Buffer>();
+const connectionAborts = new Map<unknown, AbortController>();
 
 function formatKiB(bytes: number): number {
 	return Math.ceil(bytes / 1024);
@@ -157,7 +159,12 @@ export function createSocketHandlers(handle: StartCliListenerOptions["handle"], 
 					continue;
 				}
 
-				const resp = await handle(req);
+				let abort = connectionAborts.get(socket);
+				if (!abort) {
+					abort = new AbortController();
+					connectionAborts.set(socket, abort);
+				}
+				const resp = await handle(req, abort.signal);
 				responseData += JSON.stringify(resp) + "\n";
 			}
 
@@ -171,6 +178,8 @@ export function createSocketHandlers(handle: StartCliListenerOptions["handle"], 
 		close(socket: CliSocket) {
 			pendingWrites.delete(socket);
 			pendingRequestBytes.delete(socket);
+			connectionAborts.get(socket)?.abort();
+			connectionAborts.delete(socket);
 			log.debug("CLI client disconnected");
 		},
 		error(_socket: CliSocket, error: unknown) {

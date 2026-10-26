@@ -93,6 +93,11 @@ describe("agent resume", () => {
 		await resume({ task: "seq:8", "allow-agent-latest": "true" }, null);
 		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.resume", { taskId: "seq:8", allowAgentLatest: true }, expect.anything());
 	});
+	it("asks as an external sender on agent.resumeAsSender, never on plain agent.resume", async () => {
+		respond(resumed);
+		await resume({ task: "seq:8", project: "project-1", "as-sender": "openclaw:home:main" }, null);
+		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.resumeAsSender", expect.objectContaining({ asSender: "openclaw:home:main" }), expect.anything());
+	});
 	it("prints the whole outcome as JSON", async () => {
 		respond(resumed);
 		await resume({ task: "seq:8", json: "true" });

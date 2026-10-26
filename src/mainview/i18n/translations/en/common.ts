@@ -46,6 +46,7 @@ const common = {
 	"agentLaunch.title": "Agent wants to start this task",
 	"agentLaunch.titleScratch": "Agent wants a scratch task",
 	"agentLaunch.requestedBy": "Asked by task #{seq} — {title}",
+	"agentLaunch.requestedBySender": "Asked by external sender {label} ({id})",
 	"agentLaunch.scratchHasNoPrompt": "Starts with no prompt. The asking agent sends it instructions once it is up.",
 	"agentLaunch.launch": "Launch",
 	"agentLaunch.launchVariants_one": "Launch {count} variant",

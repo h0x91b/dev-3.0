@@ -57,8 +57,11 @@ export type AgentMessageLogKind = "immediate" | "scheduled";
  * run outside a worktree, which are three different things wearing the same face.
  * Absent therefore means unknown, and a reader must treat it as unknown. `"dev3"` is
  * the app itself speaking on a subscription an agent made (`dev3 pr watch`).
+ * `"external-sender"` is a registered outside agent (`dev3 message --as-sender`),
+ * named in `fromSender` — self-asserted, so attribution and never proof. It is
+ * never stored on a queued message: `--as-sender` refuses `--in`/`--at`.
  */
-export type AgentMessageOrigin = "user" | "dev3";
+export type AgentMessageOrigin = "user" | "dev3" | "external-sender";
 
 /**
  * The one place that answers "did the user send this?".
@@ -76,11 +79,15 @@ export interface AgentMessageLogRow {
 	v: number;
 	/** ISO timestamp of the delivery attempt, not of authoring. */
 	at: string;
+	/** The message's id — what `dev3 message --json` printed. Absent on older rows. */
+	messageId?: string;
 	/** Sender task, or null when no agent wrote it (a UI button, a dev3 hand-off). */
 	fromTaskId: string | null;
 	fromSeq: number | null;
 	fromTitle?: string;
 	fromProjectId?: string;
+	/** The external sender id on `origin: "external-sender"` rows; `fromTitle` holds its label. */
+	fromSender?: string;
 	toTaskId: string;
 	toSeq: number;
 	toTitle?: string;

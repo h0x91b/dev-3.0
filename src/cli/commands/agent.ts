@@ -10,6 +10,7 @@ import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
+import { exitOnSenderError, readSenderFlag } from "./sender";
 
 export async function handleAgent(subcommand: string | undefined, args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	if (subcommand === "list") {
@@ -28,7 +29,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		return;
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]");
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--as-sender <id>] [--json]");
 	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -76,8 +77,10 @@ function describePane(pane: ResumePaneReport): string {
 
 /** Same managed path as the terminal's Resume Session button — never a reset or a new worktree, and never the task brief again. */
 async function handleResume(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "json"]);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "as-sender", "json"]);
 	if (args.positional.length) return exitUsage("agent resume takes flags, not positional arguments");
+	// A sender's resume goes through the same approval dialog an agent's does.
+	const asSender = readSenderFlag(args, "as-sender", context);
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
 	const json = "json" in args.flags;
@@ -86,18 +89,22 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 		taskId: expandShortId(rawTask, context),
 		...(projectId ? { projectId } : {}),
 		...(context?.taskId ? { sourceTaskId: context.taskId } : {}),
+		...(asSender ? { asSender } : {}),
 		allowAgentLatest: "allow-agent-latest" in args.flags,
 	};
 	let resp;
 	try {
-		resp = await sendRequest(socketPath, "agent.resume", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		resp = await sendRequest(socketPath, asSender ? "agent.resumeAsSender" : "agent.resume", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			return exitError("Timed out waiting for the resume", "The approval dialog may still be open and a later approval still resumes the task. Running the same command again waits on that same request.");
 		}
 		throw err;
 	}
-	if (!resp.ok) return exitError(resp.error || "Failed to resume the task");
+	if (!resp.ok) {
+		exitOnSenderError(resp.error);
+		return exitError(resp.error || "Failed to resume the task");
+	}
 	reportResumeOutcome(resp.data as CliResumeOutcome, json);
 }
 

@@ -305,3 +305,21 @@ describe("loopback request handling", () => {
 		expect(responses(resumed)[0].ok).toBe(true);
 	});
 });
+
+describe("connection close", () => {
+	it("aborts the signal a parked request was handed", async () => {
+		let seen: AbortSignal | undefined;
+		const handlers = createSocketHandlers(async (req, signal) => {
+			seen = signal;
+			await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve()));
+			return { id: req.id, ok: true, data: { aborted: signal?.aborted } };
+		}, null);
+		const socket = mockSocket();
+		const pending = handlers.data(socket, requestLine("sender.wait"));
+		await vi.waitFor(() => expect(seen).toBeDefined());
+		expect(seen!.aborted).toBe(false);
+		handlers.close(socket);
+		await pending;
+		expect(seen!.aborted).toBe(true);
+	});
+});

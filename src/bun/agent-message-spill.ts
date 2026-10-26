@@ -15,7 +15,9 @@ import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, type AgentMessageSource, type Task
 import {
 	AGENT_MESSAGE_BURST_SEPARATOR,
 	heldBatchSenders,
+	type ExternalSenderStamp,
 	wrapAgentMessage,
+	wrapExternalSenderMessage,
 	wrapHeldBatchPointer,
 } from "../shared/agent-message-envelope";
 import { utf8Length } from "../shared/pane-input";
@@ -33,10 +35,9 @@ export interface SpilledAgentMessage {
 }
 
 /** Who is writing and what about — everything the envelope adds around the body. */
-export interface AgentMessageEnvelope {
-	source: AgentMessageSource;
-	subject?: string | null;
-}
+export type AgentMessageEnvelope =
+	| { source: AgentMessageSource; sender?: undefined; subject?: string | null }
+	| { sender: ExternalSenderStamp; source?: undefined; subject?: string | null };
 
 /**
  * Write `content` to a fresh file under the task's `messages/`, a sibling of the git
@@ -69,7 +70,10 @@ function spillPointerText(path: string, bytes: number): string {
  */
 function typedBytes(task: Task, text: string, envelope: AgentMessageEnvelope | null): number {
 	if (!envelope) return utf8Length(text);
-	return utf8Length(wrapAgentMessage(text, envelope.source, task.projectId, envelope.subject ?? undefined));
+	const subject = envelope.subject ?? undefined;
+	return utf8Length(envelope.sender
+		? wrapExternalSenderMessage(text, envelope.sender, subject)
+		: wrapAgentMessage(text, envelope.source, task.projectId, subject));
 }
 
 /**

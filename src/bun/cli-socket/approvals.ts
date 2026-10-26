@@ -1,5 +1,6 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
+import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
 import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, taskNeedsReset, taskResetConsent } from "../../shared/types";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
@@ -173,8 +174,9 @@ type LaunchApprovalOutcome =
  * #1496. An explicit priority on the target always wins, and the user can still
  * override either in the launch dialog. Unreadable requester ⇒ the plain default.
  */
-async function resolveLaunchPriority(task: Task, requester: AgentMessageSource): Promise<TaskPriority> {
+async function resolveLaunchPriority(task: Task, requester: AgentMessageSource | ExternalSenderRequester): Promise<TaskPriority> {
 	if (task.priority) return task.priority;
+	if (isExternalSenderRequester(requester)) return DEFAULT_PRIORITY;
 	try {
 		const found = await resolveTaskAcrossProjects(requester.taskId);
 		return found?.task.priority ?? DEFAULT_PRIORITY;
@@ -196,13 +198,17 @@ export async function requestAgentLaunchApproval(opts: {
 	project: Project;
 	task: Task;
 	targetStatus: TaskStatus;
-	requester: AgentMessageSource;
+	/** A task's agent, or a registered external sender (`--as-sender`). */
+	requester: AgentMessageSource | ExternalSenderRequester;
 	/** The launcher's standing text, already read from its `--handoff-file`. */
 	launcherNote?: string | null;
 	/** Validated `--agent`/`--config` suggestion; only preselects the dialog. */
 	suggested?: LaunchVariant | null;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
+	if (isExternalSenderRequester(requester) && opts.launcherNote) {
+		throw new Error("--handoff-file does not apply with --as-sender: a sender's launch gets no handoff note.");
+	}
 	const push = getPushMessage();
 	if (!push) {
 		throw new Error("No app window is connected — cannot ask the user for approval");
@@ -233,8 +239,9 @@ export async function requestAgentLaunchApproval(opts: {
 		taskTitle: getTaskTitle(task),
 		targetStatus,
 		scratch: task.scratch === true,
-		requesterSeq: requester.seq,
-		requesterTitle: requester.title,
+		...(isExternalSenderRequester(requester)
+			? { requesterSeq: 0, requesterTitle: requester.label, requesterSender: requester }
+			: { requesterSeq: requester.seq, requesterTitle: requester.title }),
 		// Same read-only context card as the completion dialog, so the user
 		// recognizes which task an agent wants to set running.
 		subject: buildTaskDialogSubject(task, project),
@@ -265,11 +272,15 @@ export async function requestAgentLaunchApproval(opts: {
 	// far longer than the requesting agent should sit blocked on a socket. Every
 	// variant gets its own note — each one is a separate agent that has to know
 	// who started it.
-	for (const child of launched) {
+	// A sender gets no handoff note: it has no task to report back to, and its own
+	// first `--as-sender` message carries the reply command.
+	const taskRequester = isExternalSenderRequester(requester) ? null : requester;
+	for (const child of taskRequester ? launched : []) {
+		if (!taskRequester) break;
 		void deliverLaunchHandoff({
 			projectId: project.id,
 			childTaskId: child.id,
-			source: requester,
+			source: taskRequester,
 			launcherNote: opts.launcherNote ?? null,
 		});
 	}
@@ -288,16 +299,26 @@ export async function requestAgentLaunchApproval(opts: {
 			// The requester may live on another board (it launched a task in a
 			// different project), and then the bare `--task` form would resolve
 			// against its own.
-			replyCommand: agentReplyCommand({
-				target: {
-					...child,
-					seqShared: boardTasks ? seqIsShared(child, boardTasks) : child.variantIndex != null,
-				},
-				fromProjectId: requester.projectId ?? child.projectId,
-				quoted: "your message",
-			}),
+			replyCommand: launchReplyCommand(child, requester, boardTasks),
 		})),
 	};
+}
+
+/**
+ * How the requester reaches a launched task. A sender has no board of its own, so
+ * its command always names the project and speaks as that sender.
+ */
+function launchReplyCommand(child: Task, requester: AgentMessageSource | ExternalSenderRequester, boardTasks: Task[] | null): string {
+	const sender = isExternalSenderRequester(requester) ? requester : null;
+	const command = agentReplyCommand({
+		target: {
+			...child,
+			seqShared: boardTasks ? seqIsShared(child, boardTasks) : child.variantIndex != null,
+		},
+		fromProjectId: sender ? "" : (requester as AgentMessageSource).projectId ?? child.projectId,
+		quoted: "your message",
+	});
+	return sender ? command.replace("dev3 message ", `dev3 message --as-sender ${sender.senderId} `) : command;
 }
 
 /**

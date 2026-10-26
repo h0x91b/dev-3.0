@@ -166,6 +166,16 @@ describe("AgentLaunchRequestModal", () => {
 		expect(screen.getByText("dev-3.0")).toBeInTheDocument();
 	});
 
+	it("names an external sender instead of a task when one asked", async () => {
+		renderModal(makeRequest({
+			requesterSeq: 0,
+			requesterTitle: "OpenClaw main (home)",
+			requesterSender: { senderId: "openclaw:home:main", label: "OpenClaw main (home)" },
+		}));
+		expect(await screen.findByText("Asked by external sender OpenClaw main (home) (openclaw:home:main)")).toBeInTheDocument();
+		expect(screen.queryByText(/Asked by task #/)).not.toBeInTheDocument();
+	});
+
 	it("marks the dialog as an AI-agent request", async () => {
 		renderModal();
 		expect(await screen.findByText(/AI agent request/i)).toBeInTheDocument();
