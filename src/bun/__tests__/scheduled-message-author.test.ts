@@ -25,6 +25,7 @@ import {
 	taskMainAgentLiveness,
 } from "../scheduled-message-author";
 import type { PaneSessionEntry, Task } from "../../shared/types";
+import { decodeAgentHandle, encodeAgentHandle } from "../../shared/agent-handle";
 
 /** A synthetic machine: processes plus the tmux panes (root pid each) on one server generation. */
 type Proc = { pid: number; ppid: number; args: string; start?: string };
@@ -287,6 +288,19 @@ describe("resolveScheduledMessageAuthorPane — where the reminder may land", ()
 		const a = await authorOf("%1", 103);
 		procs.find((p) => p.pid === 101)!.start = "Tue Oct  6 11:00:00 2026";
 		expect((await resolveScheduledMessageAuthorPane(task(), a)).ok).toBe(false);
+	});
+
+	it("refuses, never relocates, while A still runs but its pane cannot be read — even through a handle", async () => {
+		const a = decodeAgentHandle(encodeAgentHandle(await authorOf("%1", 103)))!;
+		// A's process 101 is alive; its pane left the task session. %7 runs an agent on A's conversation.
+		delete panes["%1"];
+		panes["%7"] = 700;
+		procs.push({ pid: 700, ppid: 50, args: "/opt/homebrew/bin/zsh /tmp/dev3-task-cmd.sh" }, { pid: 701, ppid: 700, args: "/Users/me/.local/bin/claude --resume conv-a" });
+		const t = task([pane("%2", "conv-b"), pane("%7", "conv-a")]);
+		expect(await resolveScheduledMessageAuthorPane(t, a)).toMatchObject({ ok: false, detail: expect.stringContaining("no longer running") });
+		// Once A's process is really gone, the same handle follows the conversation to %7, as #2062 did.
+		procs = procs.filter((p) => p.pid !== 101 && p.ppid !== 101);
+		expect(await resolveScheduledMessageAuthorPane(t, a)).toEqual({ ok: true, paneId: "%7" });
 	});
 
 	it("follows A's conversation when it was resumed into a new pane after a tmux restart", async () => {

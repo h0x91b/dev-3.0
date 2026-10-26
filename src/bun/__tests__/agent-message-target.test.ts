@@ -26,11 +26,10 @@ import {
 	addressedAgentRefusal,
 	agentPaneRoles,
 	isSoleMainAgent,
-	resolveAgentHandle,
 	resolveMainAgentTarget,
 	withAgentPanes,
 } from "../agent-message-target";
-import { encodeAgentHandle, parseAgentHandle } from "../../shared/agent-handle";
+import { decodeAgentHandle } from "../../shared/agent-handle";
 import type { PaneRunListing, PaneRunPaneLine } from "../../shared/pane-runs";
 import type { PaneSessionEntry, ScheduledMessageAuthor, Task } from "../../shared/types";
 
@@ -128,10 +127,12 @@ describe("withAgentPanes — what `dev3 pane list` adds", () => {
 	const listing = (panes: PaneRunPaneLine[]): PaneRunListing =>
 		({ backend: "tmux", screenReadable: true, screenReadableDetail: "", selfPaneId: null, panes, runs: [] });
 
-	it("gives each live agent pane its role and that agent's handle", async () => {
+	it("gives each live agent pane its role and a handle that decodes to that agent", async () => {
 		const out = await withAgentPanes(task(), listing([line("%1", 1), line("%3", 3), line("%4", 4)]));
-		expect(out.panes[0]).toMatchObject({ agentRole: "main", agentHandle: encodeAgentHandle(author("%1")) });
-		expect(out.panes[1]).toMatchObject({ agentRole: "review", agentHandle: encodeAgentHandle(author("%3")) });
+		expect(out.panes[0]).toMatchObject({ agentRole: "main" });
+		expect(decodeAgentHandle(out.panes[0]!.agentHandle!)).toEqual(author("%1"));
+		expect(out.panes[1]).toMatchObject({ agentRole: "review" });
+		expect(decodeAgentHandle(out.panes[1]!.agentHandle!)).toEqual(author("%3"));
 		expect(out.panes[2]).toEqual(line("%4", 4));
 	});
 
@@ -156,90 +157,6 @@ describe("addressedAgentRefusal — asked again at release", () => {
 		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toBe("the addressed agent (pane %3) is no longer running");
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: true, paneId: "%9" });
 		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toContain("moved to pane %9");
-	});
-});
-
-describe("resolveAgentHandle — a short handle back to the full agent binding", () => {
-	const handle = (who: ScheduledMessageAuthor) => parseAgentHandle(encodeAgentHandle(who))!;
-
-	it("is the agent running in that pane now, when it is the process the handle was written for", async () => {
-		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toEqual({ ok: true, author: author("%3") });
-	});
-
-	it("refuses a replacement in the same pane: another agent process, or a new tmux server", async () => {
-		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: author("%3", 202) });
-		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: false, detail: expect.stringContaining("has been replaced") });
-		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: { ...author("%3"), paneToken: "gen-2" } });
-		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: false });
-	});
-
-	it("refuses when the pane runs no agent any more: the shell an exited agent left", async () => {
-		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: false, reason: "no-agent", detail: "the agent in pane %3 has exited" });
-		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toEqual({
-			ok: false,
-			detail: "the addressed agent in pane %3 is not running (the agent in pane %3 has exited)",
-		});
-	});
-
-	it("keeps a changed conversation id: the process is the identity", async () => {
-		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: { ...author("%3"), sessionId: "conv-new" } });
-		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: true, author: { sessionId: "conv-new" } });
-	});
-});
-
-describe("resolveAgentHandle — #2062's relocation, kept behind the short handle", () => {
-	const sessioned = (paneId: string, sessionId: string, pid = 101): ScheduledMessageAuthor => ({ ...author(paneId, pid), sessionId });
-	const handle = (who: ScheduledMessageAuthor) => parseAgentHandle(encodeAgentHandle(who))!;
-	const registry = (...panes: Array<[string, string | null]>) =>
-		task(panes.map(([paneId, sessionId]) => ({ ...entry(paneId), sessionId })));
-	const identities = (byPane: Record<string, ScheduledMessageAuthor | "exited">) =>
-		vi.mocked(readPaneAgentIdentity).mockImplementation(async (_t, paneId) => {
-			const who = byPane[paneId];
-			return who && who !== "exited" ? { ok: true, author: who } : { ok: false, reason: "no-agent", detail: `the agent in pane ${paneId} has exited` };
-		});
-
-	it("follows the conversation resumed in another pane", async () => {
-		identities({ "%3": "exited", "%7": sessioned("%7", "conv-a", 707) });
-		await expect(resolveAgentHandle(registry(["%1", null], ["%7", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toEqual({
-			ok: true,
-			author: sessioned("%7", "conv-a", 707),
-		});
-	});
-
-	it("follows it into the same pane id on a NEW tmux server", async () => {
-		identities({ "%3": { ...sessioned("%3", "conv-a", 909), paneToken: "gen-2" } });
-		await expect(resolveAgentHandle(registry(["%3", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
-			ok: true,
-			author: { paneId: "%3", paneToken: "gen-2" },
-		});
-	});
-
-	it("refuses another agent in the same pane on the same server, even with the old conversation on record", async () => {
-		identities({ "%3": sessioned("%3", "conv-a", 909) });
-		await expect(resolveAgentHandle(registry(["%3", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
-			ok: false,
-			detail: expect.stringContaining("has been replaced"),
-		});
-	});
-
-	it("refuses when the conversation matches several panes, or none that runs an agent", async () => {
-		identities({ "%3": "exited", "%7": sessioned("%7", "conv-a"), "%8": sessioned("%8", "conv-a") });
-		await expect(resolveAgentHandle(registry(["%7", "conv-a"], ["%8", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
-			ok: false,
-			detail: expect.stringContaining("matches several panes; not guessing"),
-		});
-		identities({ "%3": "exited", "%7": "exited" });
-		await expect(resolveAgentHandle(registry(["%7", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({ ok: false });
-		identities({ "%3": "exited", "%7": sessioned("%7", "conv-b") });
-		await expect(resolveAgentHandle(registry(["%7", "conv-b"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({ ok: false });
-	});
-
-	it("never relocates without a conversation id, or on native", async () => {
-		identities({ "%3": "exited", "%7": author("%7") });
-		await expect(resolveAgentHandle(registry(["%7", null]), handle(author("%3")))).resolves.toMatchObject({ ok: false });
-		identities({ "pane-1": "exited", "pane-2": sessioned("pane-2", "conv-a") });
-		const native = { ...registry(["pane-2", "conv-a"]), terminalBackend: "native" } as unknown as Task;
-		await expect(resolveAgentHandle(native, handle(sessioned("pane-1", "conv-a")))).resolves.toMatchObject({ ok: false });
 	});
 });
 

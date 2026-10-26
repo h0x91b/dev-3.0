@@ -10,7 +10,7 @@
 
 import type { ScheduledMessageAuthor, Task } from "../shared/types";
 import type { PaneRunListing } from "../shared/pane-runs";
-import { type AgentHandle, agentDigest, agentHandleNames, encodeAgentHandle } from "../shared/agent-handle";
+import { encodeAgentHandle } from "../shared/agent-handle";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { nativeTaskPanesState } from "./native-task-panes";
 import { liveAgentPaneIds, readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
@@ -121,35 +121,6 @@ export async function addressedAgentRefusal(task: Task, author: ScheduledMessage
 	const resolved = await resolveScheduledMessageAuthorPane(task, author);
 	if (!resolved.ok) return resolved.detail;
 	return resolved.paneId === paneId ? null : `the addressed agent moved to pane ${resolved.paneId}; not typed into pane ${paneId}`;
-}
-
-/**
- * The agent a `--agent` handle names, as it runs in `task` right now. Either the
- * very process in that pane, or — #2062's relocation — its conversation resumed
- * in ANOTHER pane or tmux server. A replacement, a bare shell, an ambiguous
- * conversation match or a probe that failed is refused, never guessed.
- */
-export async function resolveAgentHandle(
-	task: Task,
-	handle: AgentHandle,
-): Promise<{ ok: true; author: ScheduledMessageAuthor } | { ok: false; detail: string }> {
-	const where = `the addressed agent in pane ${handle.paneId}`;
-	const identity = await readPaneAgentIdentity(task, handle.paneId);
-	if (identity.ok && agentHandleNames(handle, identity.author)) return { ok: true, author: identity.author };
-	const gone = {
-		ok: false as const,
-		detail: identity.ok ? `${where} has been replaced by another agent process` : `${where} is not running (${identity.detail})`,
-	};
-	if (!handle.sessionId || taskTerminalBackendIdentity(task) !== "tmux") return gone;
-	const matches = (task.sessionState?.panes ?? []).filter((p) => p.paneId && p.sessionId && agentDigest(p.sessionId) === handle.sessionId);
-	if (matches.length > 1) return { ok: false, detail: `${where}: its conversation matches several panes; not guessing` };
-	const candidate = matches[0]?.paneId;
-	if (!candidate) return gone;
-	const resumed = candidate === handle.paneId ? identity : await readPaneAgentIdentity(task, candidate);
-	if (!resumed.ok) return gone;
-	// Same pane on the same server: the agent exited and another started there, whatever the record says.
-	if (candidate === handle.paneId && agentDigest(resumed.author.paneToken) === handle.paneToken) return gone;
-	return { ok: true, author: resumed.author };
 }
 
 /**

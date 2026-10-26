@@ -241,13 +241,13 @@ describe("rendering", () => {
 			screenReadableDetail: "",
 			selfPaneId: "%1",
 			panes: [
-				{ paneId: "%1", index: 1, label: "bash cmd.sh", active: false, self: true, alive: null, runId: null, agentRole: "main", agentHandle: "%1.0a1b2c3d.11aa22bb" },
+				{ paneId: "%1", index: 1, label: "bash cmd.sh", active: false, self: true, alive: null, runId: null, agentRole: "main", agentHandle: "AiEB" },
 				{ paneId: "%3", index: 2, label: "bash col-agent.sh", active: false, self: false, alive: null, runId: null, agentRole: "review", agentHandleUnavailable: "the agent in pane %3 has exited" },
 				{ paneId: "%4", index: 3, label: "zsh", active: false, self: false, alive: null, runId: null },
 			],
 			runs: [],
 		});
-		expect(text).toContain("1. %1 bash cmd.sh [main agent, you]\n     message it: --agent %1.0a1b2c3d.11aa22bb\n");
+		expect(text).toContain("1. %1 bash cmd.sh [main agent, you]\n     message it: --agent AiEB\n");
 		expect(text).toContain("2. %3 bash col-agent.sh [AI Review agent]\n     no --agent handle: the agent in pane %3 has exited\n");
 		expect(text).toMatch(/3\. %4 zsh\n\nruns:/);
 	});

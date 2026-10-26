@@ -1,49 +1,108 @@
-import { describe, expect, it } from "vitest";
-import { agentDigest, agentHandleNames, encodeAgentHandle, parseAgentHandle } from "../../shared/agent-handle";
+import { afterEach, describe, expect, it } from "vitest";
+import { decodeAgentHandle, encodeAgentHandle } from "../../shared/agent-handle";
 import { agentReplyCommand } from "../../shared/agent-message-envelope";
+import type { ScheduledMessageAuthor } from "../../shared/types";
 
-const AGENT = { paneId: "%14", sessionId: "conv-1234", paneToken: "srv-token-1", agentProcess: "48213@Mon Oct 26 09:41:07 2026" };
+/** The shape a real tmux sender has: UUID conversation, UUID server token, `pid@<ps lstart>`. */
+const AGENT: ScheduledMessageAuthor = {
+	paneId: "%14",
+	sessionId: "3f6c2a1e-8b7d-4c19-9e2f-5a0b7c3d1e42",
+	paneToken: "d1a7f0c2-6e3b-4a95-8c1d-2b9e4f7a0c63",
+	agentProcess: "48213@Mon Oct 26 21:02:11 2026",
+};
 
-describe("agent handles", () => {
-	it("is the pane plus 8-hex digests of generation, process and conversation: one short shell word", () => {
-		expect(encodeAgentHandle(AGENT)).toMatch(/^%14\.[0-9a-f]{8}\.[0-9a-f]{8}\.[0-9a-f]{8}$/);
-		expect(encodeAgentHandle({ ...AGENT, sessionId: null })).toMatch(/^%14\.[0-9a-f]{8}\.[0-9a-f]{8}$/);
-		expect(encodeAgentHandle({ ...AGENT, paneId: "pane-2" })).toMatch(/^pane-2\./);
+const roundTrip = (author: ScheduledMessageAuthor) => decodeAgentHandle(encodeAgentHandle(author));
+const bytesOf = (handle: string) => Buffer.from(handle, "base64url");
+
+describe("agent handles — lossless", () => {
+	const savedTz = process.env.TZ;
+	afterEach(() => {
+		process.env.TZ = savedTz;
 	});
 
-	it("carries each digest separately, so the app can tell a moved conversation from a replacement", () => {
-		expect(parseAgentHandle(encodeAgentHandle(AGENT))).toEqual({
-			paneId: "%14",
-			paneToken: agentDigest(AGENT.paneToken),
-			agentProcess: agentDigest(AGENT.agentProcess),
-			sessionId: agentDigest(AGENT.sessionId),
-		});
-		expect(parseAgentHandle(encodeAgentHandle({ ...AGENT, sessionId: null }))?.sessionId).toBeNull();
+	it("round-trips the exact binding and is one shell word", () => {
+		const handle = encodeAgentHandle(AGENT);
+		expect(decodeAgentHandle(handle)).toEqual(AGENT);
+		expect(handle).toMatch(/^[A-Za-z0-9_-]+$/);
+		// version 1 + pane 2 + two UUIDs 2×17 + process 1+3+5: every field took its compact form.
+		expect(bytesOf(handle)).toHaveLength(46);
+		expect(handle).toHaveLength(62);
 	});
 
-	it("names exactly the agent process it was written for", () => {
-		const handle = parseAgentHandle(encodeAgentHandle(AGENT))!;
-		expect(agentHandleNames(handle, AGENT)).toBe(true);
-		// The conversation id is not process identity: it changes under a live process.
-		expect(agentHandleNames(handle, { ...AGENT, sessionId: null })).toBe(true);
+	it("round-trips native pane ids, a missing conversation, and ids that are not lowercase UUIDs", () => {
+		for (const author of [
+			{ ...AGENT, paneId: "pane-1" },
+			{ ...AGENT, paneId: "pane-12", paneToken: "native-s2" },
+			{ ...AGENT, paneId: "%0" },
+			{ ...AGENT, sessionId: null },
+			{ ...AGENT, sessionId: "conv-1234", paneToken: "gen-1" },
+			{ ...AGENT, sessionId: AGENT.sessionId!.toUpperCase() },
+			{ ...AGENT, paneId: "weird pane/ü", sessionId: "ü-session" },
+			{ ...AGENT, paneId: "%07" },
+		]) {
+			expect(roundTrip(author)).toEqual(author);
+		}
 	});
 
-	it("does not name a replacement: another process, a recycled pid, a new pane generation, another pane", () => {
-		const handle = parseAgentHandle(encodeAgentHandle(AGENT))!;
-		expect(agentHandleNames(handle, { ...AGENT, agentProcess: "48214@Mon Oct 26 09:41:07 2026" })).toBe(false);
-		expect(agentHandleNames(handle, { ...AGENT, agentProcess: "48213@Mon Oct 26 11:00:00 2026" })).toBe(false);
-		expect(agentHandleNames(handle, { ...AGENT, paneToken: "srv-token-2" })).toBe(false);
-		expect(agentHandleNames(handle, { ...AGENT, paneId: "%15" })).toBe(false);
+	it("round-trips every start text exactly, compact or not", () => {
+		for (const agentProcess of [
+			"7@Thu Jan 1 00:00:00 1970",
+			"4294967295@Tue Feb 29 23:59:59 2028",
+			"48213@Mon Oct 5 09:00:00 2026",
+			"48213@Mon Oct  5 09:00:00 2026", // unnormalized spacing
+			"48213@Tue Oct 26 21:02:11 2026", // weekday that does not match the date
+			"48213@lun. oct. 26 21:02:11 2026", // localized `ps`
+			"48213@Mon Oct 26 21:02:11 2026 +0200",
+			"48213@Mon Oct 26 25:02:11 2026",
+			"48213@x",
+		]) {
+			expect(roundTrip({ ...AGENT, agentProcess })).toEqual({ ...AGENT, agentProcess });
+		}
+	});
+
+	it("does not depend on the machine's timezone, DST included", () => {
+		const atDstEdge = { ...AGENT, agentProcess: "48213@Sun Mar 29 02:30:00 2026" }; // a wall time that does not exist in Europe
+		const encoded = [encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)];
+		for (const tz of ["UTC", "Asia/Jerusalem", "America/New_York", "Europe/Berlin", "Pacific/Chatham"]) {
+			process.env.TZ = tz;
+			expect([encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)]).toEqual(encoded);
+			expect(decodeAgentHandle(encoded[1]!)).toEqual(atDstEdge);
+		}
 	});
 
 	it("survives the whitespace a copy-paste adds", () => {
-		expect(parseAgentHandle(`  ${encodeAgentHandle(AGENT)}\n`)).toEqual(parseAgentHandle(encodeAgentHandle(AGENT)));
+		expect(decodeAgentHandle(`  ${encodeAgentHandle(AGENT)}\n`)).toEqual(AGENT);
 	});
 
-	it("rejects a raw pane id, the #2062 long form, junk and a truncated handle", () => {
+	it("rejects an old #2062 handle, a raw pane id, junk, a truncated or extended handle and another version", () => {
 		const handle = encodeAgentHandle(AGENT);
-		for (const bad of ["%14", "", "a1.WyIlMTQiLG51bGwsInRvayIsIjFAeCJd", "%14.", "%14.0011aabb", "%14.XYZ12345.0011aabb", "%14 .0011aabb.0011aabb", handle.slice(0, -1), `${handle}0`, `${handle}.0011aabb`]) {
-			expect(parseAgentHandle(bad)).toBeNull();
+		const bytes = bytesOf(handle);
+		const wrongVersion = Buffer.from([9, ...bytes.subarray(1)]).toString("base64url");
+		const trailing = Buffer.from([...bytes, 0]).toString("base64url");
+		for (const bad of [
+			"a1.WyIlMTQiLG51bGwsInRvayIsIjFAeCJd", "%14", "", "!!!", handle.slice(0, -2), handle.slice(0, 10), wrongVersion, trailing,
+		]) {
+			expect(decodeAgentHandle(bad)).toBeNull();
+		}
+	});
+
+	it("rejects bytes that decode but do not describe one agent process, or that it never writes", () => {
+		const forge = (...bytes: number[]) => Buffer.from(bytes).toString("base64url");
+		const raw = (text: string) => [0, text.length, ...Buffer.from(text)];
+		expect(decodeAgentHandle(forge(2, 1, 3, 3, ...raw("tok"), ...raw("1@x")))).toEqual({ paneId: "%3", sessionId: null, paneToken: "tok", agentProcess: "1@x" });
+		for (const bytes of [
+			[2, 1, 3, 3, ...raw(""), ...raw("1@x")], // empty pane generation
+			[2, 1, 3, 3, 3, ...raw("1@x")], // no pane generation at all
+			[2, 1, 3, 3, ...raw("tok"), ...raw("0@x")], // pid 0
+			[2, 1, 3, 3, ...raw("tok"), ...raw("no-pid")],
+			[2, 0, 0, 3, ...raw("tok"), ...raw("1@x")], // empty pane id
+			[2, 1, 3, 0, 0, ...raw("tok"), ...raw("1@x")], // empty conversation id
+			[2, 0, ...raw("%3").slice(1), 3, ...raw("tok"), ...raw("1@x")], // `%3` spelled raw: not how it is written
+			[2, 1, 0x83, 0, 3, ...raw("tok"), ...raw("1@x")], // overlong varint
+			[2, 7, 3, 3, ...raw("tok"), ...raw("1@x")], // unknown tag
+			[2, 1, 3, 3, ...raw("tok"), 0, 2, 0xff, 0xfe], // invalid UTF-8
+		]) {
+			expect(decodeAgentHandle(forge(...bytes))).toBeNull();
 		}
 	});
 
