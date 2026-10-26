@@ -17,6 +17,7 @@ import {
 } from "../shared/agent-skill-content";
 import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
 import { claudeConfigLocation } from "../shared/claude-config-dir";
+import { dev3SubcommandRules, isBroadDev3Rule } from "../shared/agent-hooks";
 import { COORDINATOR_PROMPT } from "../shared/types";
 
 // Re-exported for backward-compat: agents.ts and other callers import the
@@ -1556,12 +1557,12 @@ function installAgentsMd(compact = false): void {
 }
 
 /**
- * Claude Code matches a `Bash(<prefix>*)` rule against the literal command text,
- * so the rule has to spell the CLI exactly the way our generated commands do —
+ * Claude Code matches a Bash rule against the literal command text, so the rules
+ * have to spell the CLI exactly the way our generated commands do —
  * `~/.dev3.0/bin/dev3` on POSIX, the absolute `dev3.exe` on Windows.
  */
-export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect()): string {
-	return `Bash(${dialect.cli} *)`;
+export function claudeBashPermissions(dialect: HookCliDialect = hookCliDialect()): string[] {
+	return dev3SubcommandRules(dialect.cli);
 }
 
 /**
@@ -1581,7 +1582,7 @@ export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect())
  * an older wording of the same entry is recognised and replaced.
  */
 export const DEV3_AUTO_MODE_ALLOW_ENTRY =
-	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry.";
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
 
 /**
  * Git and PR management a dev3 task does when the user asks for it. The defaults
@@ -1640,12 +1641,15 @@ const AUTO_MODE_DEFAULTS = "$defaults";
 export function applyClaudeSettings(settings: Record<string, unknown>, socketsPath: string): boolean {
 	let changed = false;
 
-	// 1. permissions.allow — auto-approve the dev3 CLI.
-	const bashPermission = claudeBashPermission();
+	// 1. permissions.allow — auto-approve the dev3 metadata subcommands, and take
+	// back the whole-CLI rule an older dev3 wrote (it covered `dev3 pane run`).
 	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
-	const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
-	if (!allow.includes(bashPermission)) {
-		allow.push(bashPermission);
+	const existingAllow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
+	const allow = existingAllow.filter((rule) => !isBroadDev3Rule(rule));
+	if (allow.length !== existingAllow.length) changed = true;
+	for (const rule of claudeBashPermissions()) {
+		if (allow.includes(rule)) continue;
+		allow.push(rule);
 		changed = true;
 	}
 	permissions.allow = allow;

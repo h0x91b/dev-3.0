@@ -5,7 +5,7 @@ import {
 	buildCodexSkillContent,
 	buildGenericSkillContent,
 	buildOmpSkillContent,
-	claudeBashPermission,
+	claudeBashPermissions,
 	CLAUDE_SKILL_BODY,
 	DEV3_AUTO_MODE_ALLOW_ENTRY,
 	DEV3_AUTO_MODE_ALLOW_ENTRIES,
@@ -556,7 +556,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 
 		expect(changed).toBe(true);
 		const permissions = settings.permissions as { allow: string[] };
-		expect(permissions.allow).toContain("Bash(~/.dev3.0/bin/dev3 *)");
+		expect(permissions.allow).toEqual(claudeBashPermissions());
 		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
 		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
 	});
@@ -571,7 +571,7 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 
 	it("is a no-op (returns false) when every entry is already present", () => {
 		const settings: Record<string, unknown> = {
-			permissions: { allow: ["Bash(~/.dev3.0/bin/dev3 *)"] },
+			permissions: { allow: claudeBashPermissions() },
 			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
 			autoMode: { allow: ["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES] },
 		};
@@ -589,10 +589,24 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(changed).toBe(true);
 		expect(settings.model).toBe("claude-opus-4-8");
 		const permissions = settings.permissions as { allow: string[]; deny: string[] };
-		expect(permissions.allow).toEqual(["Bash(ls *)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+		expect(permissions.allow).toEqual(["Bash(ls *)", ...claudeBashPermissions()]);
 		expect(permissions.deny).toEqual(["Bash(rm *)"]);
 		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
 		expect(sandbox.network.allowUnixSockets).toEqual(["/tmp/other.sock", SOCKETS]);
+	});
+
+	// Issue #2043: the whole-CLI rule an older dev3 wrote here approved
+	// `dev3 pane run "<anything>"` before the classifier could see it.
+	it("replaces the broad whole-CLI rule with the metadata allowlist", () => {
+		const settings: Record<string, unknown> = {
+			permissions: { allow: ["Bash(ls *)", "Bash(~/.dev3.0/bin/dev3 *)"] },
+			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
+			autoMode: { allow: ["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES] },
+		};
+		expect(applyClaudeSettings(settings, SOCKETS)).toBe(true);
+		const permissions = settings.permissions as { allow: string[] };
+		expect(permissions.allow).toEqual(["Bash(ls *)", ...claudeBashPermissions()]);
+		expect(permissions.allow.some((rule) => rule.includes("pane run"))).toBe(false);
 	});
 
 	// The classifier is a second gate, and it reads autoMode ONLY from this file —
@@ -609,6 +623,14 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 	it("names only the dev3 CLI in that entry", () => {
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toContain("dev3");
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/only to `dev3` subcommands/);
+	});
+
+	// Issue #2043: the classifier now sees `dev3 pane run`, so the entry must not
+	// read as clearing the command it carries.
+	it("tells the classifier to judge the command a pane run or dev server executes", () => {
+		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/`dev3 pane run "<command>"` runs `<command>`/);
+		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/dev-server start\|restart/);
+		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/exactly as if the agent ran it directly; this entry clears none of it/);
 	});
 
 	it("scopes the git entry to the task's own repo, branch and PR, on the user's request", () => {
@@ -761,9 +783,10 @@ describe("skill content per platform dialect", () => {
 		}
 	});
 
-	it("spells the Claude bash permission the same way the generated commands do", () => {
-		expect(claudeBashPermission(POSIX)).toBe("Bash(~/.dev3.0/bin/dev3 *)");
-		expect(claudeBashPermission(WINDOWS)).toBe('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)');
+	it("spells the Claude bash permissions the same way the generated commands do", () => {
+		expect(claudeBashPermissions(POSIX)).toContain("Bash(~/.dev3.0/bin/dev3 current)");
+		expect(claudeBashPermissions(WINDOWS)).toContain('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" task *)');
+		expect(claudeBashPermissions(POSIX).every((rule) => rule.startsWith("Bash(~/.dev3.0/bin/dev3 "))).toBe(true);
 	});
 });
 

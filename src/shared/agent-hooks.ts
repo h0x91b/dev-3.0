@@ -213,7 +213,7 @@ export const COPILOT_PERMISSIONS_FILE = "permissions-config.json";
 /**
  * Pre-approve the dev3 CLI for one repository, so a task agent is not stopped by
  * "Do you want to run this command?" on the status move its own protocol told it
- * to make. Same intent as `DEV3_BASH_PERMISSION` for Claude. Idempotent, and it
+ * to make. Same intent as `dev3BashPermissions` for Claude. Idempotent, and it
  * only ever adds: an approval the user granted themselves is never dropped.
  */
 export function ensureCopilotCommandApproval(
@@ -637,19 +637,54 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
 	return mentionsDev3Cli(entry.command as string | undefined);
 }
 
-export const DEV3_BASH_PERMISSION = "Bash(dev3:*)";
+/**
+ * dev3 subcommands an agent runs with no approval: they read or edit board
+ * metadata and never start a process of their own. Everything that executes a
+ * command — `pane run`, `dev-server start`, `agent spawn`, `automations run`,
+ * `remote`, `update`, the internal `__pane-run` runner — is deliberately absent,
+ * so the harness's own check (auto-mode classifier, permission prompt) still
+ * judges it. Issue #2043; see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`.
+ */
+export const DEV3_AUTO_APPROVED_SUBCOMMANDS = [
+	"current", "task", "tasks", "note", "overview", "label", "review", "spaces", "space",
+	"projects list", "project list", "keep-alive", "events", "message", "notify", "attention",
+	"peek", "show-image", "show-video", "show-artifact", "artifact-template", "conversations",
+	"vents", "pr", "config show", "config export", "automations list", "automations show",
+	"automations templates", "agent list", "agent resume", "dev-server status", "dev-server logs",
+	"dev-server stop", "pane list", "pane logs", "pane close", "ui state",
+] as const;
 
 /**
- * Claude Code matches a Bash rule against the literal command text, so one rule
- * per spelling the agent may type. The bare `dev3` covers what the protocol asks
- * for; the dialect spelling covers the `~/.dev3.0/bin/dev3` (or absolute
- * `dev3.exe`) form our own generated skills and hooks put in front of the agent.
- * The worktree file has to carry both on its own — `~/.claude/settings.json`
- * holds only the dialect one, and a session can run with that file missing.
+ * One exact rule plus one ` *` rule per subcommand: the space before `*` is a word
+ * boundary in Claude Code's matcher, so `dev3 pr *` can never reach `dev3 projects`.
+ */
+export function dev3SubcommandRules(cli: string): string[] {
+	return DEV3_AUTO_APPROVED_SUBCOMMANDS.flatMap((sub) => [`Bash(${cli} ${sub})`, `Bash(${cli} ${sub} *)`]);
+}
+
+/**
+ * Claude Code matches a Bash rule against the literal command text, so the rules
+ * come once per spelling the agent may type. The bare `dev3` covers what the
+ * protocol asks for; the dialect spelling covers the `~/.dev3.0/bin/dev3` (or
+ * absolute `dev3.exe`) form our own generated skills and hooks put in front of
+ * the agent.
  */
 export function dev3BashPermissions(dialect: HookCliDialect = DEFAULT_DIALECT): string[] {
-	const dialectRule = `Bash(${dialect.cli} *)`;
-	return dialectRule === `Bash(dev3 *)` ? [DEV3_BASH_PERMISSION] : [DEV3_BASH_PERMISSION, dialectRule];
+	const spellings = dialect.cli === "dev3" ? ["dev3"] : ["dev3", dialect.cli];
+	return spellings.flatMap(dev3SubcommandRules);
+}
+
+/**
+ * The whole-CLI rule an older dev3 wrote (`Bash(dev3:*)`, `Bash(~/.dev3.0/bin/dev3 *)`,
+ * a quoted `dev3.exe`). It approves `dev3 pane run "<anything>"` too, so it is taken
+ * back out however the CLI was spelled.
+ */
+export function isBroadDev3Rule(rule: unknown): boolean {
+	if (typeof rule !== "string") return false;
+	const match = /^Bash\((.+?)(?::\*| \*)\)$/.exec(rule);
+	if (!match) return false;
+	const cli = normalizeCliMention(match[1]).trim();
+	return cli === "dev3" || cli.endsWith("/dev3") || cli.endsWith("/dev3.exe");
 }
 
 /**
@@ -689,8 +724,8 @@ export function mergeCodexHooks(
 }
 
 /**
- * Add the dev3 CLI bash rules to permissions.allow in a settings object.
- * Idempotent.
+ * Add the dev3 CLI bash rules to permissions.allow in a settings object, dropping
+ * the broad whole-CLI rule an older dev3 wrote. Idempotent.
  */
 export function ensureDevPermission(
 	settings: Record<string, unknown>,
@@ -698,7 +733,7 @@ export function ensureDevPermission(
 ): Record<string, unknown> {
 	const base = asRecord(settings);
 	const permissions = asRecord(base.permissions);
-	const allow = Array.isArray(permissions.allow) ? [...permissions.allow as string[]] : [];
+	const allow = Array.isArray(permissions.allow) ? (permissions.allow as unknown[]).filter((rule) => !isBroadDev3Rule(rule)) as string[] : [];
 	for (const rule of dev3BashPermissions(dialect)) {
 		if (!allow.includes(rule)) allow.push(rule);
 	}

@@ -83,7 +83,7 @@ Cursor's separate accounting hooks are user-level and intentionally include loca
 
 ### Claude Code
 
-Injected into `.claude/settings.local.json`, together with dev3's `Bash(dev3:*)` permission and the launch's `permissions.defaultMode`. A committed `.claude/settings.json` is never written. When `.claude/` or `settings.local.json` is a symlink that leads outside the worktree (or nowhere), dev3 writes nothing there and logs a warning: the task then gets no status hooks. Links that stay inside the worktree are fine. The same rule covers `.codex/hooks.json` and the MCP pre-approval. See `decisions/2026/10/01/worktree-agent-config-local-only-no-symlinks.md`.
+Injected into `.claude/settings.local.json`, together with dev3's Bash allowlist for its metadata subcommands (`DEV3_AUTO_APPROVED_SUBCOMMANDS` — never `pane run`, `dev-server start` or anything else that executes a command, see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`) and the launch's `permissions.defaultMode`. A committed `.claude/settings.json` is never written. When `.claude/` or `settings.local.json` is a symlink that leads outside the worktree (or nowhere), dev3 writes nothing there and logs a warning: the task then gets no status hooks. Links that stay inside the worktree are fine. The same rule covers `.codex/hooks.json` and the MCP pre-approval. See `decisions/2026/10/01/worktree-agent-config-local-only-no-symlinks.md`.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
