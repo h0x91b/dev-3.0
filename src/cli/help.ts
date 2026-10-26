@@ -387,7 +387,7 @@ const COMMANDS: CommandHelp[] = [
 				summary: "One record per task: status, lines changed, moves, focus time.",
 				details: [
 					"Every project by default; --project narrows to one, and an id that matches no project fails rather than printing nothing.",
-					"--since 7d keeps tasks created, moved or changed status since then (also 12h, 2w, or a date: 2026-10-01 is local midnight).",
+					"--since 7d keeps tasks created, moved or changed status since then (also 12h, 2w; a date like 2026-10-01 is local midnight, a timestamp like 2026-10-01T09:00:00 is UTC).",
 					"Active tasks report a live worktree diff, so a large board takes a few seconds.",
 					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
 				],

@@ -37,7 +37,7 @@ function statEvent(overrides: Partial<ProductivityStatEvent> = {}): Productivity
 
 function usageDay(overrides: Partial<AgentUsageDay> = {}): AgentUsageDay {
 	return {
-		date: "2026-10-20", startMs: Date.parse("2026-10-20T00:00:00.000Z"), source: "claude", inputTokens: 1500,
+		date: "2026-10-20", startMs: new Date(2026, 9, 20).getTime(), source: "claude", inputTokens: 1500,
 		outputTokens: 2_500_000, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 3.5, fullyPriced: true,
 		...overrides,
 	};
@@ -112,6 +112,17 @@ describe("dev3 stats productivity", () => {
 		expect(json().since).toBe(new Date(2026, 9, 1).toISOString());
 	});
 
+	it("refuses an impossible date instead of rolling it into the next month", async () => {
+		await expect(handleStats("productivity", args({ since: "2026-02-31" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(stderr).toContain("Unparseable --since value: 2026-02-31");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("says a too-short --project prefix is too short, not missing", async () => {
+		await expect(handleStats("productivity", args({ project: "aaaaaaa" }), SOCKET, null)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(stderr).toContain("--project prefix too short");
+	});
+
 	it("rejects a stray positional", async () => {
 		await expect(handleStats("productivity", { positional: ["foo"], flags: {} }, SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 	});
@@ -143,9 +154,22 @@ describe("activity filters", () => {
 		expect(productivityEventActiveSince(statEvent({ statusEnteredAt: "2026-10-10T00:00:00.000Z" }), since)).toBe(true);
 	});
 
+	it("ends a 25-hour DST day at the next local midnight, not 24 hours in", () => {
+		const tz = process.env.TZ;
+		process.env.TZ = "Europe/Berlin";
+		try {
+			// 2026-10-25 is 25 hours long in Berlin; 23:30 local is 24.5 h after its midnight.
+			const day = usageDay({ date: "2026-10-25", startMs: new Date(2026, 9, 25).getTime() });
+			expect(usageDayOverlapsSince(day, new Date(2026, 9, 25, 23, 30).toISOString())).toBe(true);
+			expect(usageDayOverlapsSince(day, new Date(2026, 9, 26).toISOString())).toBe(false);
+		} finally {
+			process.env.TZ = tz;
+		}
+	});
+
 	it("keeps a usage day the cutoff falls inside", () => {
-		expect(usageDayOverlapsSince(usageDay(), "2026-10-20T18:00:00.000Z")).toBe(true);
-		expect(usageDayOverlapsSince(usageDay(), "2026-10-21T00:00:00.000Z")).toBe(false);
+		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 20, 18).toISOString())).toBe(true);
+		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 21).toISOString())).toBe(false);
 	});
 });
 
@@ -158,7 +182,7 @@ describe("dev3 stats usage", () => {
 
 	it("recomputes hasUnpricedModels for the days --since kept", async () => {
 		mockSend.mockResolvedValue(ok({
-			days: [usageDay({ fullyPriced: false }), usageDay({ date: "2099-01-01", startMs: Date.parse("2099-01-01T00:00:00Z") })],
+			days: [usageDay({ fullyPriced: false }), usageDay({ date: "2099-01-01", startMs: new Date(2099, 0, 1).getTime() })],
 			generatedAt: "G", hasUnpricedModels: true,
 		}));
 		await handleStats("usage", args({ json: "true", since: "2098-12-31" }), SOCKET, CTX);

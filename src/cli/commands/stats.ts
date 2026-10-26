@@ -5,6 +5,7 @@ import { parseEventCursor } from "../../shared/board-events";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
+import { ID_PREFIX_MIN_LENGTH } from "../../shared/types";
 import { expandShortProjectId, readProjectDirect, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
@@ -14,7 +15,6 @@ import { rejectUnknownFlags } from "../flag-validation";
  */
 export const STATS_JSON_SCHEMA_VERSION = 1;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_HUMAN_ROWS = 50;
 
 function printJson(payload: Record<string, unknown>): void {
@@ -27,8 +27,9 @@ function rejectPositionals(args: ParsedArgs, usage: string): void {
 }
 
 /**
- * `--since 7d` / a date / a cursor-style instant, resolved to ISO; null when not
- * given. A bare date is LOCAL midnight, the same clock the usage days are cut on.
+ * `--since 7d` / a date / a timestamp, resolved to ISO; null when not given. A bare
+ * date is LOCAL midnight, the clock usage days are cut on; a timestamp is UTC, as in
+ * `dev3 events --from`.
  */
 function readSince(args: ParsedArgs): string | null {
 	const raw = args.flags.since;
@@ -37,13 +38,18 @@ function readSince(args: ParsedArgs): string | null {
 	const since = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())
 		? localMidnight(raw.trim())
 		: parseEventCursor(raw);
-	if (!since) exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w) or a date (2026-10-01).`);
+	if (!since) {
+		exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w), a date (2026-10-01, local midnight) or a UTC timestamp (2026-10-01T09:00:00).`);
+	}
 	return since;
 }
 
+/** Null for an impossible date: `new Date` would roll 2026-02-31 over to March. */
 function localMidnight(date: string): string | null {
-	const ms = new Date(`${date}T00:00:00`).getTime();
-	return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+	const [y, m, d] = date.split("-").map(Number);
+	const at = new Date(y, m - 1, d);
+	if (at.getFullYear() !== y || at.getMonth() !== m - 1 || at.getDate() !== d) return null;
+	return at.toISOString();
 }
 
 /** Filtering happens here, so an id that matches no project must fail — not print an empty result. */
@@ -52,6 +58,7 @@ function readProject(args: ParsedArgs, context: CliContext | null): string | nul
 	if (raw === undefined) return null;
 	if (raw === "true") exitUsage("--project needs a project id");
 	const id = expandShortProjectId(raw, context);
+	if (id.length < ID_PREFIX_MIN_LENGTH) exitUsage(`--project prefix too short: ${raw}. Use at least ${ID_PREFIX_MIN_LENGTH} characters.`);
 	if (readProjectDirect(id)?.id !== id) exitError(`Project not found: ${raw}`, "Run `dev3 projects list` for the ids.");
 	return id;
 }
@@ -75,9 +82,11 @@ export function productivityEventActiveSince(event: ProductivityStatEvent, since
 		|| event.movements.some((m) => after(m.at));
 }
 
-/** A day counts when any part of it falls at or after `since`. */
+/** A day counts when any part of it falls at or after `since`. Days are local, so a DST day is 23 or 25 hours. */
 export function usageDayOverlapsSince(day: AgentUsageDay, since: string): boolean {
-	return day.startMs + DAY_MS > Date.parse(since);
+	const start = new Date(day.startMs);
+	const nextMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1).getTime();
+	return nextMidnight > Date.parse(since);
 }
 
 function lastActivity(event: ProductivityStatEvent): string {

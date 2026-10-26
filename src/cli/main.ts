@@ -86,6 +86,10 @@ Commands:
   dev3 review reply <id> "..." [--task <id>]  Answer a comment without closing it
   dev3 review reopen <id> [--task <id>]  Reopen a resolved comment
   dev3 vents "name" "markdown"          File anonymous dev3-platform feedback (opt-in)
+  dev3 events [--from <id|cursor|duration>] [--project <ref>|all] [--json]  Cross-task feed of notes and column moves
+  dev3 stats productivity|usage|limits|memory [--project <id>] [--since <dur|date>] [--json]  Read-only Stats page numbers
+  dev3 approvals list [--project <id>] [--json]  Requests waiting for the user's answer (read only)
+  dev3 sender inbox|ack --as-sender <id> [--json]  An outside agent reads or acknowledges task replies
   dev3 overview set "..." [--task <id>] Set task overview (one paragraph)
   dev3 overview show [--task <id>]      Show task overview (or description fallback)
   dev3 overview clear [--task <id>]     Remove task overview
