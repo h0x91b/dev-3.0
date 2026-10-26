@@ -15,7 +15,7 @@ import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
 import { codexTurnWatches } from "../codex-turn-watch";
 import { autoHibernateStillIdle } from "../../shared/auto-hibernate";
-import { forgetTaskActivity, lastAutoHibernatePolicyChange, lastTaskActivity } from "../task-activity";
+import { forgetTaskActivity, lastAutoHibernatePolicyChange, lastTaskActivity, recordTaskActivity } from "../task-activity";
 import { loadSettings } from "../settings";
 
 type LifecycleEnvelope = {
@@ -188,6 +188,12 @@ class LifecycleService {
 		if (event.type === "hibernateRequested" && event.inactivity) {
 			const { lastActivityAt, timeoutMinutes } = event.inactivity;
 			const configured = (await loadSettings()).autoHibernateMinutes;
+			try {
+				const { readAutoHibernateOutputAt } = await import("../auto-hibernate-activity");
+				const outputAt = await readAutoHibernateOutputAt(task);
+				if (outputAt === null) return task;
+				recordTaskActivity(taskId, outputAt);
+			} catch { return task; }
 			// Recheck inside the actor: input or a working agent can overtake the poll.
 			if (!autoHibernateStillIdle(task, lastActivityAt, timeoutMinutes, configured,
 				Math.max(lastTaskActivity(taskId), lastAutoHibernatePolicyChange()), Date.now())) return task;
