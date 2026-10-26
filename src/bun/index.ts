@@ -1,6 +1,7 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { probeDevServer, resolveMainViewUrl } from "./main-view-url";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 import { codexTurnWatches } from "./codex-turn-watch";
 import Electrobun, {
@@ -658,6 +659,7 @@ startRendererWatchdog({
 
 // Reconcile persisted lifecycle hints before background activity starts.
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 // Start background merge detection poller
 startMergeDetectionPoller();
@@ -832,6 +834,7 @@ function runGlobalQuitCleanup(): void {
 	codexTurnWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
+	stopAutoHibernate();
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
 	try { void stopBackgroundSchedulers(); } catch (err) { log.warn("stopBackgroundSchedulers failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }

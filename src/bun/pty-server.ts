@@ -40,6 +40,7 @@ import {
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask } from "./agent-message-hold";
+import { recordTaskActivity } from "./task-activity";
 import { scanHumanTerminalInput } from "../shared/human-terminal-input";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
@@ -361,6 +362,7 @@ export function createSession(
 /** Feed one chunk of PTY bytes through the same pipeline both backends share. */
 function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
+	if (session.backend === "native") recordTaskActivity(session.taskId);
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
@@ -975,6 +977,13 @@ export function getSessionTmuxName(key: string): string {
 	return sessions.get(key)?.tmuxSessionName ?? computeTmuxSessionName(key, "task");
 }
 
+/** Detached native sessions have no observable output clock in this process. */
+export function getNativeTaskOutputTime(taskId: string, paneIds: string[]): number | null {
+	const native = [...sessions.values()].filter(session => session.taskId === taskId && session.backend === "native" && session.native && !session.nativeAttaching);
+	if (!paneIds.length || paneIds.some(id => !native.some(session => session.native?.paneId === id))) return null;
+	return native.length ? Math.max(...native.map(session => session.lastOutputTime)) : null;
+}
+
 export function getSessionType(key: string): PtySessionType | null {
 	return sessions.get(key)?.sessionType ?? null;
 }
@@ -1340,6 +1349,7 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * split across frames would otherwise have its content read as keypresses.
  */
 export function noteHumanTerminalInput(session: PtySession, ws: any, data: string): void {
+	recordTaskActivity(session.taskId);
 	const scan = scanHumanTerminalInput(data, ws.inBracketedPaste === true);
 	ws.inBracketedPaste = scan.inPaste;
 	if (scan.submitted) flushHeldAgentMessagesForTask(session.taskId);

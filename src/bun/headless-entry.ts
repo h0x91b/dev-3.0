@@ -1,5 +1,6 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 import { codexTurnWatches } from "./codex-turn-watch";
 /**
@@ -503,6 +504,7 @@ startQrAutoRefresh(() => getAccessUrl());
 
 // ── Background pollers ──
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 startMergeDetectionPoller();
 startBoardCopy();
@@ -602,6 +604,7 @@ function shutdown(signal: string): void {
 	codexTurnWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
+	stopAutoHibernate();
 	stopResourceMonitor();
 	stopRateLimitMonitor();
 	const focusFlushed = stopBackgroundSchedulers();

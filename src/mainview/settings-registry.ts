@@ -233,6 +233,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "sidecar",
 	},
 	{
+		id: "auto-hibernate",
+		category: "tasks",
+		titleKey: "settings.autoHibernate",
+		descriptionKey: "settings.autoHibernateDesc",
+		anchor: "auto-hibernate",
+		globalField: "autoHibernateMinutes",
+		storage: "global",
+	},
+	{
 		id: "pr-origin-task-link",
 		category: "tasks",
 		titleKey: "settings.prOriginTaskLink",
@@ -852,6 +861,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"prOriginTaskLink",
 	"agentLaunchAutoApproveMinutes",
 	"resourceLevels",
+	"autoHibernateMinutes",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"remoteTunnel",

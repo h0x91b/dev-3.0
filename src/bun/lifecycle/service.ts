@@ -14,6 +14,9 @@ import { activitiesFor, transition, type LifecycleActivity } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
 import { codexTurnWatches } from "../codex-turn-watch";
+import { autoHibernateStillIdle } from "../../shared/auto-hibernate";
+import { forgetTaskActivity, lastAutoHibernatePolicyChange, lastTaskActivity } from "../task-activity";
+import { loadSettings } from "../settings";
 
 type LifecycleEnvelope = {
 	projectId: string;
@@ -103,6 +106,7 @@ class LifecycleService {
 	}
 
 	delete(taskId: string): void {
+		forgetTaskActivity(taskId);
 		claudeSessionWatches.forgetTask(taskId);
 		codexTurnWatches.forgetTask(taskId);
 		const runtime = this.actors.peekRuntime(taskId);
@@ -180,6 +184,13 @@ class LifecycleService {
 			// envelope snapshot instead of evaluating this task's event against another.
 			project = snapshot.project;
 			task = snapshot.task;
+		}
+		if (event.type === "hibernateRequested" && event.inactivity) {
+			const { lastActivityAt, timeoutMinutes } = event.inactivity;
+			const configured = (await loadSettings()).autoHibernateMinutes;
+			// Recheck inside the actor: input or a working agent can overtake the poll.
+			if (!autoHibernateStillIdle(task, lastActivityAt, timeoutMinutes, configured,
+				Math.max(lastTaskActivity(taskId), lastAutoHibernatePolicyChange()), Date.now())) return task;
 		}
 		const currentState = lifecycleStateFromTask(project, task);
 		const actorRuntime = this.actors.runtime(taskId);
