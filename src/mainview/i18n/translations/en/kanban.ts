@@ -1,4 +1,5 @@
 const kanban = {
+	"task.autoHibernated": "Task automatically hibernated after inactivity.",
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
 	"kanban.noTasksHint": "Drag a task here, or use the button below to create one.",

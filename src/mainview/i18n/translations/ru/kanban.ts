@@ -1,4 +1,5 @@
 const kanban = {
+	"task.autoHibernated": "Задача автоматически заморожена из-за неактивности.",
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",
 	"kanban.noTasksHint": "Перетащите задачу сюда или используйте кнопку ниже.",

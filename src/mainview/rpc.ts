@@ -91,6 +91,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	secretRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:secretRequested", { detail: payload })),
 	secretRequestResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:secretRequestResolved", { detail: payload })),
 	taskUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: payload })),
+	taskAutoHibernated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskAutoHibernated", { detail: payload })),
 	taskRemoved: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: payload })),
 	projectUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectUpdated", { detail: payload })),
 	projectAdded: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectAdded", { detail: payload })),
