@@ -102,7 +102,7 @@ export const PANE_INJECTED_ENV_SAMPLE = [
  * store (it did: Seq 2021, 2026-09-28). `test-isolation.test.ts` fails when
  * source starts reading another `*_HOME` / `*_CONFIG_DIR` / `*_CONFIG_HOME`.
  */
-export const AGENT_STORE_ENV = ["CODEX_HOME", "CLAUDE_CONFIG_DIR", "GEMINI_CLI_HOME", "COPILOT_HOME", "GH_CONFIG_DIR"] as const;
+export const AGENT_STORE_ENV = ["CODEX_HOME", "CLAUDE_CONFIG_DIR", "GEMINI_CLI_HOME", "COPILOT_HOME", "GH_CONFIG_DIR", "OPENCODE_DB"] as const;
 
 /**
  * Move every implicit user/global path used by a test process into a sandbox.

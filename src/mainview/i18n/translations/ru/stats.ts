@@ -78,7 +78,7 @@ const stats = {
 	"stats.counters.allTimeCompleted": "Завершено за всё время",
 	"stats.counters.bestStreak": "Лучшая серия",
 	"stats.counters.tokensUsed": "Токенов использовано",
-	"stats.counters.tokensUsedHint": "Сохранённые токены ввода, вывода и кэша Claude Code, Codex, Gemini CLI, Cursor Agent и GitHub Copilot CLI. Cursor учитывается после настройки хуков; Copilot — по сохранённым контрольным точкам или завершению сеанса.",
+	"stats.counters.tokensUsedHint": "Сохранённые токены ввода, вывода и кэша Claude Code, Codex, Gemini CLI, Cursor Agent, GitHub Copilot CLI, OpenCode, pi и Oh My Pi. Cursor учитывается после настройки хуков; Copilot — по сохранённым контрольным точкам или завершению сеанса.",
 	"stats.counters.apiCost": "~Цена по API",
 	"stats.counters.apiCostHint": "Оценка по публичным API-тарифам, обновляемым ежедневно при подключении к сети. Платежи по подписке и кредиты могут отличаться.",
 	"stats.counters.apiCostHintPartial": "Оценка не учитывает часть моделей с неизвестной ценой, поэтому реальная сумма по API-тарифам выше.",

@@ -1,4 +1,5 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +53,7 @@ beforeEach(() => {
 	vi.stubEnv("CODEX_HOME", join(tempRoot, "codex"));
 	vi.stubEnv("GEMINI_CLI_HOME", tempRoot);
 	vi.stubEnv("COPILOT_HOME", join(tempRoot, ".copilot"));
+	vi.stubEnv("XDG_DATA_HOME", join(tempRoot, "xdg-data"));
 });
 
 afterEach(() => {
@@ -94,6 +96,41 @@ describe("getAgentUsage", () => {
 		expect(first.days.reduce((sum, row) => sum + row.costUsd, 0)).toBe(9);
 		expect(first.hasUnpricedModels).toBe(true);
 		for (const root of [geminiRoot, join(tempRoot, ".copilot"), join(tempRoot, ".dev3.0", "usage")]) rmSync(root, { recursive: true });
+		expect((await getAgentUsage()).days).toEqual(first.days);
+	});
+
+	it("retains OpenCode, pi and omp usage, including managed agent dirs, after their stores disappear", async () => {
+		const timestamp = "2026-10-20T12:00:00Z";
+		const accountsDir = defaultAccountPaths().accountsDir;
+		mkdirSync(accountsDir, { recursive: true });
+		for (const kind of ["pi", "omp"]) {
+			writeFileSync(join(accountsDir, `${kind}-accounts.json`), JSON.stringify({ version: 1, activeId: null, accounts: [{ id: "managed" }] }));
+		}
+		const assistant = (id: string) => ({
+			type: "message", id, parentId: null, timestamp,
+			message: { role: "assistant", provider: "openai", api: "openai-responses", model: "gpt-6.1-sol", content: "private text",
+				usage: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 1_000_000 }, timestamp: Date.parse(timestamp) },
+		});
+		writeJsonl(join(tempRoot, ".pi", "agent", "sessions", "--repo--", "a.jsonl"), [assistant("pi-default")]);
+		writeJsonl(join(accountsDir, "pi", "managed", "sessions", "--repo--", "a.jsonl"), [assistant("pi-managed")]);
+		writeJsonl(join(accountsDir, "omp", "managed", "sessions", "--repo--", "a.jsonl"), [assistant("omp-managed")]);
+		const dbDir = join(tempRoot, "xdg-data", "opencode");
+		mkdirSync(dbDir, { recursive: true });
+		const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
+		const db = new DatabaseSync(join(dbDir, "opencode.db"));
+		db.exec(`CREATE TABLE message (id text, session_id text, time_created integer, time_updated integer, data text);
+			CREATE TABLE part (id text, message_id text, session_id text, time_created integer, time_updated integer, data text);`);
+		db.prepare("INSERT INTO message VALUES ('m', 's', 0, 0, ?)").run(JSON.stringify({ role: "assistant", modelID: "gpt-6.1-sol" }));
+		db.prepare("INSERT INTO part VALUES ('p', 'm', 's', ?, 0, ?)").run(Date.parse(timestamp),
+			JSON.stringify({ type: "step-finish", tokens: { input: 1_000_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }));
+		db.close();
+		const first = await getAgentUsage();
+		expect(first.days.map((row) => [row.source, row.inputTokens, row.costUsd]).sort()).toEqual([
+			["omp", 1_000_000, 2], ["opencode", 1_000_000, 2], ["pi", 2_000_000, 4],
+		]);
+		for (const root of [join(tempRoot, ".pi"), join(accountsDir, "pi", "managed"), join(accountsDir, "omp", "managed"), dbDir]) {
+			rmSync(root, { recursive: true });
+		}
 		expect((await getAgentUsage()).days).toEqual(first.days);
 	});
 

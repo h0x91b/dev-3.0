@@ -63,7 +63,7 @@ export interface ProductivityStats {
 // ---- Agent usage (tokens & cost) ----
 
 /** Which coding agent a usage row was parsed from. */
-export type AgentUsageSource = "claude" | "codex" | "gemini" | "cursor" | "copilot";
+export type AgentUsageSource = "claude" | "codex" | "gemini" | "cursor" | "copilot" | "opencode" | "pi" | "omp";
 
 /**
  * One agent's token usage for a single local calendar day, as reconstructed from

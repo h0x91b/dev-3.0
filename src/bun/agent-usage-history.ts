@@ -109,7 +109,10 @@ async function retainLegacyHistory(current: States): Promise<States> {
 	}
 }
 
-async function retainAdditionalHistory(source: "gemini" | "cursor" | "copilot", current: UsageState): Promise<UsageState> {
+type AdditionalSource = Exclude<AgentUsageSource, "claude" | "codex">;
+const ADDITIONAL_SOURCES: AdditionalSource[] = ["gemini", "cursor", "copilot", "opencode", "pi", "omp"];
+
+async function retainAdditionalHistory(source: AdditionalSource, current: UsageState): Promise<UsageState> {
 	const file = join(DEV3_HOME, `agent-usage-history-${source}-v1.json`);
 	try {
 		return await withFileLock(file, async () => {
@@ -142,7 +145,7 @@ export async function retainUsageHistory<S extends AgentUsageSource>(current: Re
 			for (const source of ["claude", "codex"] as const) if (requested[source]) result[source] = retained[source];
 		}));
 	}
-	for (const source of ["gemini", "cursor", "copilot"] as const) {
+	for (const source of ADDITIONAL_SOURCES) {
 		const state = requested[source];
 		if (state) work.push(retainAdditionalHistory(source, state).then((retained) => { result[source] = retained; }));
 	}

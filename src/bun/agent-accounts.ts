@@ -651,6 +651,16 @@ export function listClaudeAccountDirs(paths: AccountPaths = defaultAccountPaths(
 	}
 }
 
+/** Absolute dirs of every managed omp/pi account (each a per-account agent dir
+ * with private sessions). Best-effort: [] when the registry is unreadable. */
+export function listAgentDirAccountDirs(kind: AgentDirAccountKind, paths: AccountPaths = defaultAccountPaths()): string[] {
+	try {
+		return loadAgentDirRegistry(kind, paths).accounts.map((e) => agentDirAccountDir(kind, e.id, paths));
+	} catch {
+		return [];
+	}
+}
+
 export async function listAgentAccounts(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccountsState> {
 	let registry = loadRegistry(paths);
 	if (applyCodexWorkspaceNames(registry, {}, paths)) saveRegistry(registry, paths);

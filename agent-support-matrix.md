@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-10-16
+Last updated: 2026-10-26
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
@@ -53,7 +53,7 @@ Last updated: 2026-10-16
 | **Agent selection** | — | — | — | — | `--agent` | — | — | — |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — | Yes (`ensureCopilotTrust` → `config.json` `trustedFolders`) | — | — (pi's project-trust prompt is left to the user; the dev3 extension is passed explicitly and is not gated by it) |
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — | Yes (5 hooks inline in `~/.copilot/settings.json`, guarded on `DEV3_TASK_ID`) | Yes (one generated extension loaded with `--hook`) | Yes (one generated extension loaded with `--extension`) |
-| **Productivity usage accounting** | Local response records | Global `afterAgentResponse` / `stop` usage hooks; no status changes | Local native / legacy rollout records, including archives | Local session message records | — | Local accounting checkpoints / shutdown records | — | — |
+| **Productivity usage accounting** | Local response records | Global `afterAgentResponse` / `stop` usage hooks; no status changes | Local native / legacy rollout records, including archives | Local session message records | Local SQLite `step-finish` parts (one per model call; a message's own `tokens` holds only its last step) | Local accounting checkpoints / shutdown records | Local session `message` (assistant) and `model_usage` entries, subagent sessions included | Local session assistant, `usage`, tool-result and summary entries (unattributed ones stay unpriced) |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) | Automatic via hooks, `user-questions` included (read off the `ask_user` tool, not an event) | Automatic via the status extension, `user-questions` included (`tool_approval_requested`) | Automatic via the status extension; `user-questions` only for a blocking prompt raised by one of the user's own extensions (`ui_prompt_start`) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) | — |
 | **Graceful exit before teardown** (`exitProgram`) — runs only where launch readiness can be PROVED, see below | Ctrl-C, `/exit`, Enter — command verified against 2.1.273; SessionEnd hooks run | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command verified against gemini-cli 0.46.0 | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/exit`, Enter — command not validated | — (no quit command observed) | Ctrl-C, `/quit`, Enter — command verified against pi 0.99.2 |

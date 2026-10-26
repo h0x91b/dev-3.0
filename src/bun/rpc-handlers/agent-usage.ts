@@ -9,7 +9,7 @@ import { scanWorktreeDiskUsage } from "../worktree-disk-usage";
 import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
 import { nativeModelIdForWireName } from "../../shared/model-catalog";
 import { loadModelCatalog } from "../model-catalog-store";
-import { listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
+import { listAgentDirAccountDirs, listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
 import { retainUsageHistory } from "../agent-usage-history";
 import { getPricingResolver } from "../agent-pricing-refresh";
 import { DEV3_HOME } from "../paths";
@@ -17,12 +17,15 @@ import { resolveCopilotHome } from "../copilot-config";
 import { collectGeminiUsage } from "../usage-collectors/gemini";
 import { collectCursorUsage } from "../usage-collectors/cursor";
 import { collectCopilotUsage } from "../usage-collectors/copilot";
+import { collectOpenCodeUsage, openCodeDatabases } from "../usage-collectors/opencode";
+import { collectPiUsage, piSessionRoots } from "../usage-collectors/pi";
+import { queryReadonlySqlite } from "../sqlite-readonly";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
 /**
  * Agent usage (tokens + API-equivalent cost) reconstructed from LOCAL on-disk
- * agent state. Covers Claude, Codex, Gemini, Cursor hooks and Copilot accounting.
+ * agent state. Covers Claude, Codex, Gemini, Cursor hooks, Copilot, OpenCode, pi and omp.
  * Usage stays local; public pricing refreshes independently of the raw records.
  */
 
@@ -98,11 +101,16 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	const states = {
 		claude: claudeState, codex: codexState,
 		gemini: newUsageState(), cursor: newUsageState(), copilot: newUsageState(),
+		opencode: newUsageState(), pi: newUsageState(), omp: newUsageState(),
 	};
 	const collectors = [
 		() => collectGeminiUsage(states.gemini, homedir()),
 		() => collectCursorUsage(states.cursor, DEV3_HOME),
 		() => collectCopilotUsage(states.copilot, resolveCopilotHome()),
+		() => collectOpenCodeUsage(states.opencode, openCodeDatabases(homedir()), queryReadonlySqlite,
+			(db, error) => log.warn("OpenCode usage store unreadable (skipped)", { db, error: String(error) })),
+		() => collectPiUsage(states.pi, "pi", piSessionRoots("pi", homedir(), listAgentDirAccountDirs("pi"))),
+		() => collectPiUsage(states.omp, "omp", piSessionRoots("omp", homedir(), listAgentDirAccountDirs("omp"))),
 	];
 	for (const collect of collectors) {
 		try { collect(); }
