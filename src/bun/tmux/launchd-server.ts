@@ -41,7 +41,7 @@ export interface LaunchdServerDeps {
 const defaultDeps: LaunchdServerDeps = {
 	platform: process.platform,
 	uid: process.getuid?.() ?? 0,
-	spawnSync: defaultSpawnSync as SpawnSyncFn,
+	spawnSync: (cmd, opts) => defaultSpawnSync(cmd, opts),
 	writeFile: (path, contents) => writeFileSync(path, contents, { mode: 0o600 }),
 	removeFile: (path) => {
 		try {
