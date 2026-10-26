@@ -36,7 +36,7 @@ function AutoHibernateEntry({ t, minutes, onChange }: { t: TFunction; minutes: n
 						onChange={e => setDraft(e.target.value)} onBlur={commit}
 						onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
 						className="w-24 px-3 py-3 bg-raised border border-edge rounded-xl text-fg text-sm text-center tabular-nums outline-none focus:border-edge-active" />
-					<span className="text-fg-3 text-sm">{t("settings.autoApproveMinutes")}</span>
+					<span className="text-fg-3 text-sm">{t("settings.autoHibernateMinutes")}</span>
 				</label>
 			)}
 			<p className="text-fg-muted text-xs mt-3">{t("settings.autoHibernateWarning")}</p>

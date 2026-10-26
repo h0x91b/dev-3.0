@@ -1737,6 +1737,10 @@ export type AppRPCSchema = {
 				params: { projectId: string | null; taskId: string | null };
 				response: void;
 			};
+			reportTaskActivity: {
+				params: { clientId: string; taskId: string | null; focused: boolean };
+				response: void;
+			};
 			/**
 			 * Renderer reports its streamer-mode state together with the projects
 			 * marked `sensitive`, so the backend can drop OS-level notifications the
@@ -2020,6 +2024,8 @@ export type AppRPCSchema = {
 			 * consumePendingDeepLinkNav pull instead — see decisions/144.
 			 */
 			openDeepLink: DeepLinkNav;
+			/** Automatic hibernation notification; the renderer owns localized copy. */
+			taskAutoHibernated: { projectId: string; taskId: string };
 			/**
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.

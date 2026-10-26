@@ -12,7 +12,8 @@ vi.mock("../../rpc-handlers/shared", () => ({ log: { warn: vi.fn(), error: vi.fn
 import * as data from "../../data";
 import { readAutoHibernateOutputAt } from "../../auto-hibernate-activity";
 import { executeLifecycleEffect } from "../executor";
-import { dispatchLifecycleEvent, _resetLifecycleActorsForTest } from "../service";
+import { dispatchGuardedLifecycleEvent, _resetLifecycleActorsForTest } from "../service";
+import { confirmAutoHibernate } from "../../auto-hibernate-guard";
 import { forgetTaskActivity } from "../../task-activity";
 
 const now = Date.UTC(2026, 9, 26);
@@ -35,20 +36,26 @@ afterEach(async () => {
 describe("automatic hibernation actor recheck", () => {
 	it.each([now, null])("cancels teardown if terminal output became fresh or unreadable (%s)", async outputAt => {
 		vi.mocked(readAutoHibernateOutputAt).mockResolvedValue(outputAt);
-		await dispatchLifecycleEvent("project", task.id, { type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } });
+		await dispatchGuardedLifecycleEvent("project", task.id,
+			{ type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } },
+			current => confirmAutoHibernate(current, { lastActivityAt, timeoutMinutes: 10 }));
 		expect(readAutoHibernateOutputAt).toHaveBeenCalledWith(task);
 		expect(executeLifecycleEffect).not.toHaveBeenCalled();
 	});
 
 	it("cancels teardown if the fresh activity probe fails", async () => {
 		vi.mocked(readAutoHibernateOutputAt).mockRejectedValue(new Error("probe failed"));
-		await dispatchLifecycleEvent("project", task.id, { type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } });
+		await dispatchGuardedLifecycleEvent("project", task.id,
+			{ type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } },
+			current => confirmAutoHibernate(current, { lastActivityAt, timeoutMinutes: 10 }));
 		expect(executeLifecycleEffect).not.toHaveBeenCalled();
 	});
 
 	it("executes ordinary hibernation after confirming the terminal is still inactive", async () => {
 		vi.mocked(readAutoHibernateOutputAt).mockResolvedValue(lastActivityAt);
-		await dispatchLifecycleEvent("project", task.id, { type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } });
+		await dispatchGuardedLifecycleEvent("project", task.id,
+			{ type: "hibernateRequested", inactivity: { lastActivityAt, timeoutMinutes: 10 } },
+			current => confirmAutoHibernate(current, { lastActivityAt, timeoutMinutes: 10 }));
 		expect(executeLifecycleEffect).toHaveBeenCalled();
 	});
 });

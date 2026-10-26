@@ -1,5 +1,5 @@
 import { interfaceOnboarding } from "../interface-onboarding";
-import { recordTaskActivity } from "../task-activity";
+import { reportTaskViewer } from "../task-activity";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
@@ -143,7 +143,6 @@ async function setTerminalFocusHandler(params: { active: boolean }): Promise<voi
  */
 async function setActiveContextHandler(params: { projectId: string | null; taskId: string | null }): Promise<void> {
 	setActiveContext(params);
-	if (params.taskId) recordTaskActivity(params.taskId);
 }
 
 /**
@@ -1110,6 +1109,9 @@ export const appHandlers = {
 	setWindowTitleContext,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
+	reportTaskActivity: async (params: { clientId: string; taskId: string | null; focused: boolean }): Promise<void> => {
+		reportTaskViewer(params.clientId, params.taskId, params.focused);
+	},
 	setStreamerPrivacy: setStreamerPrivacyHandler,
 	ping,
 	updateMenuContext,

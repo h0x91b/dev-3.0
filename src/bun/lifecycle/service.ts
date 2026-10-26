@@ -13,12 +13,13 @@ import type { LifecycleEvent } from "./events";
 import { activitiesFor, transition, type LifecycleActivity } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
-import { autoHibernateStillIdle } from "../../shared/auto-hibernate";
-import { forgetTaskActivity, lastAutoHibernatePolicyChange, lastTaskActivity, recordTaskActivity } from "../task-activity";
-import { loadSettings } from "../settings";
+import { forgetTaskActivity } from "../task-activity";
+
+export type LifecycleGuard = (task: Task) => Promise<boolean>;
 
 type LifecycleEnvelope = {
 	projectId: string;
+	guard?: LifecycleGuard;
 	event: LifecycleEvent;
 	generation: number;
 	snapshot?: { project: Project; task: Task };
@@ -79,6 +80,7 @@ class LifecycleService {
 			envelope.snapshot,
 			envelope.snapshotMode,
 			envelope.generation,
+			envelope.guard,
 		),
 		() => ({}),
 	);
@@ -90,6 +92,7 @@ class LifecycleService {
 		snapshot?: { project: Project; task: Task },
 		snapshotMode: "primary" | "fallback" | "activity" = "primary",
 		generation = this.generation,
+		guard?: LifecycleGuard,
 	): Promise<Task> {
 		if (generation !== this.generation && snapshot) return Promise.resolve(snapshot.task);
 		const normalized = event.type === "moveRequested" && !event.runId
@@ -97,6 +100,7 @@ class LifecycleService {
 			: event;
 		return this.actors.dispatch(taskId, {
 			projectId,
+			guard,
 			event: normalized,
 			generation,
 			snapshot,
@@ -141,6 +145,7 @@ class LifecycleService {
 		snapshot?: { project: Project; task: Task },
 		snapshotMode: "primary" | "fallback" | "activity" = "primary",
 		generation = this.generation,
+		guard?: LifecycleGuard,
 	): Promise<Task> {
 		if (generation !== this.generation && snapshot) return snapshot.task;
 		let project: Project | undefined;
@@ -182,19 +187,7 @@ class LifecycleService {
 			project = snapshot.project;
 			task = snapshot.task;
 		}
-		if (event.type === "hibernateRequested" && event.inactivity) {
-			const { lastActivityAt, timeoutMinutes } = event.inactivity;
-			const configured = (await loadSettings()).autoHibernateMinutes;
-			try {
-				const { readAutoHibernateOutputAt } = await import("../auto-hibernate-activity");
-				const outputAt = await readAutoHibernateOutputAt(task);
-				if (outputAt === null) return task;
-				recordTaskActivity(taskId, outputAt);
-			} catch { return task; }
-			// Recheck inside the actor: input or a working agent can overtake the poll.
-			if (!autoHibernateStillIdle(task, lastActivityAt, timeoutMinutes, configured,
-				Math.max(lastTaskActivity(taskId), lastAutoHibernatePolicyChange()), Date.now())) return task;
-		}
+		if (guard && !(await guard(task))) return task;
 		const currentState = lifecycleStateFromTask(project, task);
 		const actorRuntime = this.actors.runtime(taskId);
 		const mergePromptReservation = actorRuntime.mergePromptReservation;
@@ -365,6 +358,15 @@ export function dispatchLifecycleEvent(
 	snapshot?: { project: Project; task: Task },
 ): Promise<Task> {
 	return lifecycleService.dispatch(projectId, taskId, event, snapshot, snapshot ? "fallback" : "primary");
+}
+
+export function dispatchGuardedLifecycleEvent(
+	projectId: string,
+	taskId: string,
+	event: LifecycleEvent,
+	guard: LifecycleGuard,
+): Promise<Task> {
+	return lifecycleService.dispatch(projectId, taskId, event, undefined, "primary", undefined, guard);
 }
 
 export function dispatchLifecycleFinding(
